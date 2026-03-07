@@ -54,7 +54,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
   };
 
   return (
-    <div className="bg-[#1a1a1b] rounded-lg border border-gray-800 p-6">
+    <div className="bg-[#0a0a0b] rounded-lg border border-gray-800 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>

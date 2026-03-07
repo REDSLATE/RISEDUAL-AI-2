@@ -110,7 +110,7 @@ const BrokerConnect = () => {
     const isConnected = connectedBrokers.includes(broker.id);
 
     return (
-      <Card className="bg-[#1a1a1b] border-gray-800 p-5 hover:border-gray-700 transition-all">
+      <Card className="bg-[#0a0a0b] border-gray-800 p-5 hover:border-gray-700 transition-all">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className="text-4xl">{broker.logo}</div>
@@ -188,7 +188,7 @@ const BrokerConnect = () => {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0f0f10] rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-[#0a0a0b] rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
             <div className="border-b border-gray-800 p-6">
               <div className="flex items-start justify-between">
@@ -232,7 +232,7 @@ const BrokerConnect = () => {
               </div>
 
               {/* Info Section */}
-              <div className="mt-6 p-4 bg-[#1a1a1b] border border-gray-800 rounded-lg">
+              <div className="mt-6 p-4 bg-[#0a0a0b] border border-gray-800 rounded-lg">
                 <h3 className="text-white font-semibold mb-2">How it works:</h3>
                 <ol className="text-gray-400 text-sm space-y-1 list-decimal list-inside">
                   <li>Click "Connect Account" on your preferred broker</li>

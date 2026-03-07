@@ -30,14 +30,14 @@ const CryptoTicker = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#1a1a1b] border-b border-gray-800 py-4 px-6">
+      <div className="bg-[#0a0a0b] border-b border-gray-800 py-4 px-6">
         <div className="text-gray-400 text-sm">Loading crypto data...</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#1a1a1b] border-b border-gray-800">
+    <div className="bg-[#0a0a0b] border-b border-gray-800">
       <div className="overflow-x-auto">
         <div className="flex gap-6 px-6 py-3 min-w-max">
           {cryptos.map((crypto) => (

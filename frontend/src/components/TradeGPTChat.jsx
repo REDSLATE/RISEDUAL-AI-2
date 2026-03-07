@@ -58,7 +58,7 @@ const TradeGPTChat = () => {
       {/* Chat Window */}
       <Card
         id="chat-window"
-        className="hidden w-96 h-[500px] bg-[#1a1a1b] border-gray-800 flex flex-col shadow-2xl"
+        className="hidden w-96 h-[500px] bg-[#0a0a0b] border-gray-800 flex flex-col shadow-2xl"
       >
         {/* Header */}
         <div className="bg-blue-600 text-white px-4 py-3 rounded-t-lg">

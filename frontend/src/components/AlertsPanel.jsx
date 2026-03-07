@@ -74,7 +74,7 @@ const AlertsPanel = () => {
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#1a1a1b] border border-gray-800 rounded-full p-3 hover:bg-[#272729] transition-colors"
+        className="relative bg-[#0a0a0b] border border-gray-800 rounded-full p-3 hover:bg-[#0a0a0b] transition-colors"
       >
         <Bell className="w-5 h-5 text-white" />
         {unreadCount > 0 && (
@@ -86,7 +86,7 @@ const AlertsPanel = () => {
 
       {/* Alerts Panel */}
       {isOpen && (
-        <Card className="absolute top-12 right-0 w-96 bg-[#1a1a1b] border-gray-800 shadow-2xl max-h-[500px] overflow-hidden flex flex-col">
+        <Card className="absolute top-12 right-0 w-96 bg-[#0a0a0b] border-gray-800 shadow-2xl max-h-[500px] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="border-b border-gray-800 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">

@@ -47,7 +47,7 @@ const Watchlist = () => {
   };
 
   return (
-    <Card className="bg-[#1a1a1b] border-gray-800 p-4">
+    <Card className="bg-[#0a0a0b] border-gray-800 p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />

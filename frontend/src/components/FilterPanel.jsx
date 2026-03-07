@@ -49,7 +49,7 @@ const FilterPanel = ({ onFilterChange }) => {
 
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <Card className="bg-[#1a1a1b] border-gray-800 p-6 w-full max-w-md">
+          <Card className="bg-[#0a0a0b] border-gray-800 p-6 w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white text-lg font-semibold">Filter Options</h3>
@@ -110,7 +110,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1b] border-gray-800">
+                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
                     <SelectItem value="all" className="text-white">All</SelectItem>
                     <SelectItem value="bullish" className="text-white">Bullish</SelectItem>
                     <SelectItem value="bearish" className="text-white">Bearish</SelectItem>
@@ -128,7 +128,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1b] border-gray-800">
+                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
                     <SelectItem value="today" className="text-white">Today</SelectItem>
                     <SelectItem value="week" className="text-white">This Week</SelectItem>
                     <SelectItem value="month" className="text-white">This Month</SelectItem>
