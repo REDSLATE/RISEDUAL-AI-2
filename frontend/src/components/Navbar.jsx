@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import BrokerConnect from './BrokerConnect';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -152,6 +153,8 @@ const Navbar = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <BrokerConnect />
 
           <Button variant="outline" className="bg-white text-black hover:bg-gray-200 border-0">
             Login
