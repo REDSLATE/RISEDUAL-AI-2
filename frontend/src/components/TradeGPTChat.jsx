@@ -3,16 +3,18 @@ import { Send, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
+import { sendChatMessage } from '../services/api';
 
 const TradeGPTChat = () => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Hello! I\'m TradeGPT, your AI-powered trading assistant. Ask me anything about stocks, options, market analysis, or trading strategies.',
+      content: 'Hello! I\'m RISEDUALAI, your AI-powered trading assistant. Ask me anything about stocks, options, market analysis, or trading strategies.',
     },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substring(7)}`);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -22,15 +24,23 @@ const TradeGPTChat = () => {
     setInput('');
     setIsLoading(true);
 
-    // Mock response - will be replaced with real API
-    setTimeout(() => {
+    try {
+      const response = await sendChatMessage(input, sessionId);
       const assistantMessage = {
         role: 'assistant',
-        content: 'This is a mock response. Real AI integration coming soon with backend implementation.',
+        content: response.response,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage = {
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error. Please try again.',
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -54,9 +64,9 @@ const TradeGPTChat = () => {
         <div className="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
-            <h3 className="font-semibold">TradeGPT</h3>
+            <h3 className="font-semibold">RISEDUALAI</h3>
           </div>
-          <p className="text-xs text-blue-100 mt-1">AI Trading Assistant</p>
+          <p className="text-xs text-blue-100 mt-1">AI Trading Assistant (Powered by GPT-5.2)</p>
         </div>
 
         {/* Messages */}

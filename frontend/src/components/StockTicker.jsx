@@ -1,10 +1,34 @@
-import React, { useEffect, useRef } from 'react';
-import { stockTickerData } from '../mockData';
+import React, { useEffect, useRef, useState } from 'react';
+import { getTickerData } from '../services/api';
 
 const StockTicker = () => {
   const tickerRef = useRef(null);
+  const [stockData, setStockData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    fetchTickerData();
+    // Update every 30 seconds
+    const interval = setInterval(fetchTickerData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchTickerData = async () => {
+    try {
+      const data = await getTickerData();
+      if (data && data.length > 0) {
+        setStockData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch ticker data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (stockData.length === 0) return;
+
     const ticker = tickerRef.current;
     if (!ticker) return;
 
@@ -23,7 +47,7 @@ const StockTicker = () => {
     animationId = requestAnimationFrame(animate);
 
     return () => cancelAnimationFrame(animationId);
-  }, []);
+  }, [stockData]);
 
   const TickerItem = ({ symbol, price, change, changePercent }) => {
     const isNegative = change < 0;
@@ -38,8 +62,18 @@ const StockTicker = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="bg-[#0a0a0b] border-b border-gray-800 overflow-hidden">
+        <div className="flex py-2 px-6">
+          <span className="text-gray-400 text-sm">Loading market data...</span>
+        </div>
+      </div>
+    );
+  }
+
   // Duplicate data for seamless loop
-  const duplicatedData = [...stockTickerData, ...stockTickerData, ...stockTickerData];
+  const duplicatedData = [...stockData, ...stockData, ...stockData];
 
   return (
     <div className="bg-[#0a0a0b] border-b border-gray-800 overflow-hidden">

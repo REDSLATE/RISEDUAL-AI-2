@@ -17,7 +17,7 @@ const Navbar = () => {
                 <path d="M13 10V3L4 14h7v7l9-11h-7z" fill="#1a1a1b" />
               </svg>
             </div>
-            <span className="text-white font-semibold text-lg">TradeAlgo</span>
+            <span className="text-white font-semibold text-lg">RISEDUALAI</span>
           </div>
 
           {/* Search Bar */}
