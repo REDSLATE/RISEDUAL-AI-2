@@ -3,6 +3,8 @@ import './App.css';
 import Navbar from './components/Navbar';
 import StockTicker from './components/StockTicker';
 import CryptoTicker from './components/CryptoTicker';
+import Watchlist from './components/Watchlist';
+import AlertsPanel from './components/AlertsPanel';
 import OptionsRadar from './components/OptionsRadar';
 import OptionsFlowScreener from './components/OptionsFlowScreener';
 import AdditionalSections from './components/AdditionalSections';
@@ -22,8 +24,16 @@ function App() {
       {/* Crypto Ticker */}
       <CryptoTicker />
 
+      {/* Alerts Panel */}
+      <AlertsPanel />
+
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-6 py-8">
+        {/* Watchlist */}
+        <div className="mb-8">
+          <Watchlist />
+        </div>
+
         {/* AI Options Radar */}
         <div id="options-radar">
           <OptionsRadar />
