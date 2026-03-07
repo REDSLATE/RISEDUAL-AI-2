@@ -27,24 +27,30 @@ const AdditionalSections = () => {
     <div className="space-y-6 mt-8">
       {/* Momentum Close Strength and Fast Mover Calls */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DataTable
-          title="Momentum Close Strength"
-          columns={momentumColumns}
-          data={momentumData}
-        />
-        <DataTable
-          title="Fast Mover Calls"
-          columns={momentumColumns}
-          data={fastMoverCallsData}
-        />
+        <div id="momentum">
+          <DataTable
+            title="Momentum Close Strength"
+            columns={momentumColumns}
+            data={momentumData}
+          />
+        </div>
+        <div id="fast-movers">
+          <DataTable
+            title="Fast Mover Calls"
+            columns={momentumColumns}
+            data={fastMoverCallsData}
+          />
+        </div>
       </div>
 
       {/* Unusual Options Volume */}
-      <DataTable
-        title="Unusual Options Volume"
-        columns={unusualVolumeColumns}
-        data={unusualVolumeData}
-      />
+      <div id="unusual-volume">
+        <DataTable
+          title="Unusual Options Volume"
+          columns={unusualVolumeColumns}
+          data={unusualVolumeData}
+        />
+      </div>
     </div>
   );
 };

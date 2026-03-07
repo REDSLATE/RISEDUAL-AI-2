@@ -25,19 +25,27 @@ function App() {
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-6 py-8">
         {/* AI Options Radar */}
-        <OptionsRadar />
+        <div id="options-radar">
+          <OptionsRadar />
+        </div>
 
         {/* Options Flow Screener */}
-        <OptionsFlowScreener />
+        <div id="options-flow">
+          <OptionsFlowScreener />
+        </div>
 
-        {/* Additional Sections */}
+        {/* Additional Sections - contains momentum, fast-movers, unusual-volume IDs */}
         <AdditionalSections />
 
         {/* Dark Pool Data */}
-        <DarkPoolData />
+        <div id="dark-pool">
+          <DarkPoolData />
+        </div>
 
         {/* Cryptocurrency Section */}
-        <CryptoSection />
+        <div id="crypto">
+          <CryptoSection />
+        </div>
       </main>
 
       {/* TradeGPT Chat */}
