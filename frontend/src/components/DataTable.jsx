@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { ThumbsUp, ThumbsDown, HelpCircle, Download } from 'lucide-react';
 import { Button } from './ui/button';
 import FilterPanel from './FilterPanel';
+import QuickTrade from './QuickTrade';
 
-const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilters = false }) => {
+const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilters = false, showTrading = true }) => {
   const [filteredData, setFilteredData] = useState(data);
   const [filters, setFilters] = useState(null);
 
@@ -106,6 +107,11 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                   </div>
                 </th>
               ))}
+              {showTrading && (
+                <th className="text-left py-3 px-3 text-gray-400 text-xs font-medium uppercase tracking-wider">
+                  QUICK TRADE
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -143,6 +149,11 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                     )}
                   </td>
                 ))}
+                {showTrading && (
+                  <td className="py-3 px-3">
+                    <QuickTrade symbol={row.contract} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

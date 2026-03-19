@@ -232,6 +232,157 @@ async def get_dark_pool():
         logging.error(f"Error fetching dark pool data: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching dark pool data")
 
+# Trading & Broker Integration Endpoints
+@api_router.post("/broker/connect")
+async def connect_broker(broker_id: str, credentials: Dict):
+    """Connect to a broker (requires API credentials)"""
+    try:
+        from services.broker_service import BrokerService
+        
+        # Validate credentials by testing connection
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        account = client.get_account()
+        
+        if not account:
+            raise HTTPException(status_code=400, detail="Failed to connect to broker")
+        
+        # In production, store encrypted credentials in database
+        return {
+            "status": "connected",
+            "broker_id": broker_id,
+            "account_id": account.get('account_number', 'N/A'),
+            "message": "Successfully connected to broker"
+        }
+    except Exception as e:
+        logging.error(f"Error connecting to broker: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/trading/account/{broker_id}")
+async def get_account_info(broker_id: str):
+    """Get account balance and information"""
+    try:
+        from services.broker_service import BrokerService
+        
+        # In production, retrieve credentials from database
+        credentials = {
+            'api_key': os.environ.get('ALPACA_API_KEY'),
+            'api_secret': os.environ.get('ALPACA_API_SECRET'),
+            'paper': os.environ.get('ALPACA_PAPER_TRADING', 'true').lower() == 'true'
+        }
+        
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        account = client.get_account()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        return {
+            "broker": broker_id,
+            "account_id": account.get('account_number'),
+            "cash": float(account.get('cash', 0)),
+            "buying_power": float(account.get('buying_power', 0)),
+            "portfolio_value": float(account.get('portfolio_value', 0)),
+            "equity": float(account.get('equity', 0))
+        }
+    except Exception as e:
+        logging.error(f"Error fetching account: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching account")
+
+@api_router.get("/trading/positions/{broker_id}")
+async def get_positions(broker_id: str):
+    """Get all open positions"""
+    try:
+        from services.broker_service import BrokerService
+        
+        credentials = {
+            'api_key': os.environ.get('ALPACA_API_KEY'),
+            'api_secret': os.environ.get('ALPACA_API_SECRET'),
+            'paper': os.environ.get('ALPACA_PAPER_TRADING', 'true').lower() == 'true'
+        }
+        
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        positions = client.get_positions()
+        
+        return positions
+    except Exception as e:
+        logging.error(f"Error fetching positions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching positions")
+
+@api_router.post("/trading/order/{broker_id}")
+async def place_order(broker_id: str, order: Dict):
+    """Place a trading order"""
+    try:
+        from services.broker_service import BrokerService
+        
+        credentials = {
+            'api_key': os.environ.get('ALPACA_API_KEY'),
+            'api_secret': os.environ.get('ALPACA_API_SECRET'),
+            'paper': os.environ.get('ALPACA_PAPER_TRADING', 'true').lower() == 'true'
+        }
+        
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        
+        result = client.place_order(
+            symbol=order.get('symbol'),
+            qty=order.get('quantity'),
+            side=order.get('side'),
+            order_type=order.get('type', 'market'),
+            time_in_force=order.get('time_in_force', 'day'),
+            limit_price=order.get('limit_price'),
+            stop_price=order.get('stop_price')
+        )
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="Failed to place order")
+        
+        return result
+    except Exception as e:
+        logging.error(f"Error placing order: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/trading/orders/{broker_id}")
+async def get_orders(broker_id: str, status: str = 'all'):
+    """Get all orders"""
+    try:
+        from services.broker_service import BrokerService
+        
+        credentials = {
+            'api_key': os.environ.get('ALPACA_API_KEY'),
+            'api_secret': os.environ.get('ALPACA_API_SECRET'),
+            'paper': os.environ.get('ALPACA_PAPER_TRADING', 'true').lower() == 'true'
+        }
+        
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        orders = client.get_orders(status=status)
+        
+        return orders
+    except Exception as e:
+        logging.error(f"Error fetching orders: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching orders")
+
+@api_router.delete("/trading/order/{broker_id}/{order_id}")
+async def cancel_order(broker_id: str, order_id: str):
+    """Cancel an order"""
+    try:
+        from services.broker_service import BrokerService
+        
+        credentials = {
+            'api_key': os.environ.get('ALPACA_API_KEY'),
+            'api_secret': os.environ.get('ALPACA_API_SECRET'),
+            'paper': os.environ.get('ALPACA_PAPER_TRADING', 'true').lower() == 'true'
+        }
+        
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        success = client.cancel_order(order_id)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to cancel order")
+        
+        return {"status": "cancelled", "order_id": order_id}
+    except Exception as e:
+        logging.error(f"Error cancelling order: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Include the router in the main app
 app.include_router(api_router)
 
