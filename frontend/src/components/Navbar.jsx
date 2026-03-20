@@ -22,7 +22,7 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-[#0a0a0b] border-b border-gray-800 px-6 py-3 sticky top-0 z-50">
+    <nav className="bg-[#0a0a0b] border-b border-gray-800 px-6 py-3 sticky top-0 z-40">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-8">
           {/* Logo */}
@@ -54,7 +54,7 @@ const Navbar = () => {
             <DropdownMenuTrigger className="text-gray-300 hover:text-white flex items-center gap-1 text-sm transition-colors outline-none">
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800">
+            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800 z-[60]">
               <DropdownMenuItem 
                 className="text-gray-300 hover:text-white hover:bg-[#272729] cursor-pointer"
                 onClick={() => document.getElementById('options-radar')?.scrollIntoView({ behavior: 'smooth' })}
@@ -86,7 +86,7 @@ const Navbar = () => {
             <DropdownMenuTrigger className="text-gray-300 hover:text-white flex items-center gap-1 text-sm transition-colors outline-none">
               Strategies <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800">
+            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800 z-[60]">
               <DropdownMenuItem 
                 className="text-gray-300 hover:text-white hover:bg-[#272729] cursor-pointer"
                 onClick={() => document.getElementById('momentum')?.scrollIntoView({ behavior: 'smooth' })}
@@ -112,7 +112,7 @@ const Navbar = () => {
             <DropdownMenuTrigger className="text-gray-300 hover:text-white flex items-center gap-1 text-sm transition-colors outline-none">
               Education <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800">
+            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800 z-[60]">
               <DropdownMenuItem 
                 className="text-gray-300 hover:text-white hover:bg-[#272729] cursor-pointer"
                 onClick={() => document.getElementById('chat-window')?.classList.remove('hidden')}
@@ -135,7 +135,7 @@ const Navbar = () => {
             <DropdownMenuTrigger className="text-gray-300 hover:text-white flex items-center gap-1 text-sm transition-colors outline-none">
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800">
+            <DropdownMenuContent className="bg-[#0a0a0b] border-gray-800 z-[60]">
               <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-[#272729] cursor-pointer">
                 API Documentation
               </DropdownMenuItem>
@@ -156,7 +156,11 @@ const Navbar = () => {
 
           <BrokerConnect />
 
-          <Button variant="outline" className="bg-white text-black hover:bg-gray-200 border-0">
+          <Button 
+            variant="outline" 
+            className="bg-white text-black hover:bg-gray-200 border-0"
+            onClick={() => alert('Login functionality coming soon! This will integrate with authentication.')}
+          >
             Login
           </Button>
         </div>

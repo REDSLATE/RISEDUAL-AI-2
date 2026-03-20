@@ -80,10 +80,16 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
           </Button>
           {showLikes && (
             <>
-              <button className="text-gray-500 hover:text-white transition-colors">
+              <button 
+                onClick={() => alert('Thanks for your feedback!')}
+                className="text-gray-500 hover:text-green-400 transition-colors"
+              >
                 <ThumbsUp className="w-5 h-5" />
               </button>
-              <button className="text-gray-500 hover:text-white transition-colors">
+              <button 
+                onClick={() => alert('Thanks for your feedback! We\'ll improve this.')}
+                className="text-gray-500 hover:text-red-400 transition-colors"
+              >
                 <ThumbsDown className="w-5 h-5" />
               </button>
             </>
@@ -123,7 +129,10 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                 {columns.map((col, colIndex) => (
                   <td key={colIndex} className="py-3 px-3 text-sm">
                     {col.key === 'contract' ? (
-                      <span className="text-blue-400 font-medium hover:underline cursor-pointer">
+                      <span 
+                        onClick={() => alert(`Viewing details for ${row[col.key]}\n\nThis will show:\n- Detailed contract info\n- Price history\n- Volume analysis\n- Greeks (for options)`)}
+                        className="text-blue-400 font-medium hover:underline cursor-pointer"
+                      >
                         {row[col.key]}
                       </span>
                     ) : col.key === 'power' ? (
@@ -165,7 +174,10 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
         <p className="text-gray-500 text-sm">
           Showing {filteredData.length} of {data.length} results
         </p>
-        <button className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors">
+        <button 
+          onClick={() => alert('Full data view coming soon!')}
+          className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+        >
           See more →
         </button>
       </div>
