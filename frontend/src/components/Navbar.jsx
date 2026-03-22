@@ -3,6 +3,7 @@ import { Search, ChevronDown } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
+import SubscriptionPricing from './SubscriptionPricing';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,7 @@ import {
 
 const Navbar = () => {
   const [searchValue, setSearchValue] = useState('');
+  const [showSubscription, setShowSubscription] = useState(false);
 
   const handleSearch = (e) => {
     e.preventDefault();

@@ -257,6 +257,98 @@ async def connect_broker(broker_id: str, credentials: Dict):
         logging.error(f"Error connecting to broker: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Subscription & Payment Endpoints
+@api_router.post("/subscription/create-checkout-session")
+async def create_checkout_session(request: Dict):
+    """Create Stripe checkout session"""
+    try:
+        from services.payment_service import StripeService
+        
+        # In production, get user from authenticated session
+        user_email = request.get('email', 'user@example.com')
+        user_id = request.get('user_id', 'demo_user')
+        
+        stripe_service = StripeService()
+        result = stripe_service.create_checkout_session(user_email, user_id)
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="Failed to create checkout session")
+        
+        return result
+    except Exception as e:
+        logging.error(f"Error creating checkout session: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/subscription/create-paypal-order")
+async def create_paypal_order(request: Dict):
+    """Create PayPal subscription order"""
+    try:
+        from services.payment_service import PayPalService
+        
+        user_email = request.get('email', 'user@example.com')
+        user_id = request.get('user_id', 'demo_user')
+        
+        paypal_service = PayPalService()
+        result = paypal_service.create_subscription(user_email, user_id)
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="Failed to create PayPal order")
+        
+        return result
+    except Exception as e:
+        logging.error(f"Error creating PayPal order: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/subscription/status/{user_id}")
+async def get_subscription_status(user_id: str):
+    """Get user subscription status"""
+    try:
+        # In production, query database for user subscription
+        subscription = await db.subscriptions.find_one({"user_id": user_id})
+        
+        if not subscription:
+            return {"status": "none", "message": "No active subscription"}
+        
+        return {
+            "status": subscription.get('status'),
+            "plan": subscription.get('plan_type'),
+            "current_period_end": subscription.get('current_period_end')
+        }
+    except Exception as e:
+        logging.error(f"Error fetching subscription: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching subscription")
+
+@api_router.post("/subscription/cancel/{user_id}")
+async def cancel_subscription(user_id: str):
+    """Cancel user subscription"""
+    try:
+        subscription = await db.subscriptions.find_one({"user_id": user_id})
+        
+        if not subscription:
+            raise HTTPException(status_code=404, detail="No subscription found")
+        
+        # Cancel based on payment provider
+        if subscription['payment_provider'] == 'stripe':
+            from services.payment_service import StripeService
+            stripe_service = StripeService()
+            success = stripe_service.cancel_subscription(subscription['stripe_subscription_id'])
+        else:
+            from services.payment_service import PayPalService
+            paypal_service = PayPalService()
+            success = paypal_service.cancel_subscription(subscription['paypal_subscription_id'])
+        
+        if success:
+            await db.subscriptions.update_one(
+                {"user_id": user_id},
+                {"$set": {"cancel_at_period_end": True, "updated_at": datetime.now(timezone.utc)}}
+            )
+            return {"status": "cancelled", "message": "Subscription will cancel at period end"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to cancel subscription")
+    except Exception as e:
+        logging.error(f"Error cancelling subscription: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/trading/account/{broker_id}")
 async def get_account_info(broker_id: str):
     """Get account balance and information"""
