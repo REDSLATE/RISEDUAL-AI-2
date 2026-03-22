@@ -12,8 +12,8 @@ class StripeService:
         if self.api_key:
             stripe.api_key = self.api_key
         self.price_id = os.environ.get('STRIPE_PRICE_ID')  # Yearly subscription price ID
-        self.success_url = os.environ.get('STRIPE_SUCCESS_URL', 'https://yourdomain.com/success')
-        self.cancel_url = os.environ.get('STRIPE_CANCEL_URL', 'https://yourdomain.com/cancel')
+        self.success_url = os.environ.get('STRIPE_SUCCESS_URL')
+        self.cancel_url = os.environ.get('STRIPE_CANCEL_URL')
     
     def create_checkout_session(self, user_email: str, user_id: str) -> Optional[Dict]:
         """Create a Stripe Checkout Session for subscription"""
@@ -122,8 +122,8 @@ class PayPalService:
                 },
                 'application_context': {
                     'brand_name': 'RISEDUALAI',
-                    'return_url': os.environ.get('PAYPAL_RETURN_URL', 'https://yourdomain.com/success'),
-                    'cancel_url': os.environ.get('PAYPAL_CANCEL_URL', 'https://yourdomain.com/cancel'),
+                    'return_url': os.environ.get('PAYPAL_RETURN_URL'),
+                    'cancel_url': os.environ.get('PAYPAL_CANCEL_URL'),
                     'user_action': 'SUBSCRIBE_NOW'
                 },
                 'custom_id': user_id
