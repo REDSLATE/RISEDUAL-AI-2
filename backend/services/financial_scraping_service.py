@@ -23,6 +23,11 @@ class FinancialScrapingService:
         news.extend(await self._scrape_cnbc())
         news.extend(await self._scrape_reuters())
         news.extend(await self._scrape_marketwatch())
+        news.extend(await self._scrape_fox_business())
+        news.extend(await self._scrape_wsj())
+        news.extend(await self._scrape_bloomberg())
+        news.extend(await self._scrape_oan())
+        news.extend(await self._scrape_epoch_times())
         
         return news
     
@@ -92,6 +97,128 @@ class FinancialScrapingService:
         except Exception as e:
             logger.error(f"MarketWatch scraping error: {str(e)}")
             return []
+    
+    async def _scrape_fox_business(self) -> List[Dict]:
+        """Scrape Fox Business news"""
+        try:
+            url = 'https://www.foxbusiness.com/markets'
+            response = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            articles = []
+            for article in soup.find_all('h2', class_='title')[:10]:
+                link = article.find('a')
+                if link:
+                    articles.append({
+                        'source': 'Fox Business',
+                        'title': link.get_text(strip=True),
+                        'url': 'https://www.foxbusiness.com' + link.get('href', ''),
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'sentiment': None
+                    })
+            return articles
+        except Exception as e:
+            logger.error(f"Fox Business scraping error: {str(e)}")
+            return []
+    
+    async def _scrape_wsj(self) -> List[Dict]:
+        """Scrape Wall Street Journal market news"""
+        try:
+            url = 'https://www.wsj.com/news/markets'
+            response = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            articles = []
+            for article in soup.find_all('h3', class_='WSJTheme--headline')[:10]:
+                link = article.find('a')
+                if link:
+                    href = link.get('href', '')
+                    full_url = href if href.startswith('http') else 'https://www.wsj.com' + href
+                    articles.append({
+                        'source': 'Wall Street Journal',
+                        'title': link.get_text(strip=True),
+                        'url': full_url,
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'sentiment': None
+                    })
+            return articles
+        except Exception as e:
+            logger.error(f"WSJ scraping error: {str(e)}")
+            return []
+    
+    async def _scrape_bloomberg(self) -> List[Dict]:
+        """Scrape Bloomberg market news"""
+        try:
+            url = 'https://www.bloomberg.com/markets'
+            response = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            articles = []
+            for article in soup.find_all('article')[:10]:
+                headline = article.find('a')
+                if headline:
+                    href = headline.get('href', '')
+                    full_url = href if href.startswith('http') else 'https://www.bloomberg.com' + href
+                    articles.append({
+                        'source': 'Bloomberg',
+                        'title': headline.get_text(strip=True),
+                        'url': full_url,
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'sentiment': None
+                    })
+            return articles
+        except Exception as e:
+            logger.error(f"Bloomberg scraping error: {str(e)}")
+            return []
+    
+    async def _scrape_oan(self) -> List[Dict]:
+        """Scrape One America News (OAN) business news"""
+        try:
+            url = 'https://www.oann.com/category/business/'
+            response = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            articles = []
+            for article in soup.find_all('h2', class_='entry-title')[:10]:
+                link = article.find('a')
+                if link:
+                    articles.append({
+                        'source': 'OAN',
+                        'title': link.get_text(strip=True),
+                        'url': link.get('href'),
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'sentiment': None
+                    })
+            return articles
+        except Exception as e:
+            logger.error(f"OAN scraping error: {str(e)}")
+            return []
+    
+    async def _scrape_epoch_times(self) -> List[Dict]:
+        """Scrape Epoch Times business news"""
+        try:
+            url = 'https://www.theepochtimes.com/business'
+            response = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            articles = []
+            for article in soup.find_all('h3')[:10]:
+                link = article.find('a')
+                if link:
+                    href = link.get('href', '')
+                    full_url = href if href.startswith('http') else 'https://www.theepochtimes.com' + href
+                    articles.append({
+                        'source': 'Epoch Times',
+                        'title': link.get_text(strip=True),
+                        'url': full_url,
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'sentiment': None
+                    })
+            return articles
+        except Exception as e:
+            logger.error(f"Epoch Times scraping error: {str(e)}")
+            return []
+
     
     async def scrape_reddit_sentiment(self) -> List[Dict]:
         """Scrape Reddit WallStreetBets for sentiment"""

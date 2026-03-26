@@ -128,7 +128,12 @@ const MarketPrediction = () => {
               {/* Data Sources */}
               <div className="text-center">
                 <div className="text-white text-sm space-y-1">
-                  <div>📰 {prediction.data_sources?.news_articles || 0} News Articles</div>
+                  <div className="font-semibold mb-2">Data Sources:</div>
+                  <div>📰 {prediction.data_sources?.news_articles || 0} Articles</div>
+                  <div className="text-xs text-gray-400">
+                    CNBC • Reuters • MarketWatch • Fox Business<br/>
+                    WSJ • Bloomberg • OAN • Epoch Times
+                  </div>
                   <div>💬 {prediction.data_sources?.social_posts || 0} Social Posts</div>
                   <div>₿ {prediction.data_sources?.crypto_signals || 0} Crypto Signals</div>
                   <div>📊 {prediction.data_sources?.insider_trades || 0} Insider Trades</div>
