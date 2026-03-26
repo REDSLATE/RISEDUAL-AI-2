@@ -349,6 +349,100 @@ async def cancel_subscription(user_id: str):
         logging.error(f"Error cancelling subscription: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Market Prediction & Scraping Endpoints
+@api_router.get("/market/prediction")
+async def get_market_prediction():
+    """Get AI-powered market prediction based on scraped data"""
+    try:
+        from services.financial_scraping_service import FinancialScrapingService
+        from services.crypto_scraping_service import CryptoScrapingService
+        from services.market_prediction_service import MarketPredictionService
+        
+        # Gather data from all sources
+        financial_scraper = FinancialScrapingService()
+        crypto_scraper = CryptoScrapingService()
+        
+        financial_news = await financial_scraper.scrape_financial_news()
+        reddit_sentiment = await financial_scraper.scrape_reddit_sentiment()
+        insider_trades = await financial_scraper.scrape_insider_trades()
+        
+        crypto_data = await crypto_scraper.get_exchange_data()
+        whale_transactions = await crypto_scraper.get_whale_transactions()
+        crypto_sentiment = await crypto_scraper.get_crypto_sentiment()
+        
+        # Combine crypto data
+        all_crypto_data = crypto_data + [crypto_sentiment] + whale_transactions
+        
+        # Get AI prediction
+        prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
+        prediction = await prediction_service.analyze_market(
+            financial_news=financial_news,
+            crypto_data=all_crypto_data,
+            insider_trades=insider_trades,
+            social_sentiment=reddit_sentiment
+        )
+        
+        return prediction
+    except Exception as e:
+        logging.error(f"Error generating prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error generating market prediction")
+
+@api_router.get("/market/news")
+async def get_financial_news():
+    """Get latest financial news from multiple sources"""
+    try:
+        from services.financial_scraping_service import FinancialScrapingService
+        scraper = FinancialScrapingService()
+        news = await scraper.scrape_financial_news()
+        return news
+    except Exception as e:
+        logging.error(f"Error fetching news: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching news")
+
+@api_router.get("/market/social-sentiment")
+async def get_social_sentiment():
+    """Get social media sentiment from Reddit WallStreetBets"""
+    try:
+        from services.financial_scraping_service import FinancialScrapingService
+        scraper = FinancialScrapingService()
+        sentiment = await scraper.scrape_reddit_sentiment()
+        return sentiment
+    except Exception as e:
+        logging.error(f"Error fetching social sentiment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching social sentiment")
+
+@api_router.get("/market/insider-trades")
+async def get_insider_trades():
+    """Get recent insider trading activity"""
+    try:
+        from services.financial_scraping_service import FinancialScrapingService
+        scraper = FinancialScrapingService()
+        trades = await scraper.scrape_insider_trades()
+        return trades
+    except Exception as e:
+        logging.error(f"Error fetching insider trades: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching insider trades")
+
+@api_router.get("/market/crypto-data")
+async def get_crypto_market_data():
+    """Get crypto market data from exchanges"""
+    try:
+        from services.crypto_scraping_service import CryptoScrapingService
+        scraper = CryptoScrapingService()
+        
+        exchange_data = await scraper.get_exchange_data()
+        whale_transactions = await scraper.get_whale_transactions()
+        crypto_sentiment = await scraper.get_crypto_sentiment()
+        
+        return {
+            'exchange_data': exchange_data,
+            'whale_transactions': whale_transactions,
+            'sentiment': crypto_sentiment
+        }
+    except Exception as e:
+        logging.error(f"Error fetching crypto data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching crypto data")
+
 @api_router.get("/trading/account/{broker_id}")
 async def get_account_info(broker_id: str):
     """Get account balance and information"""

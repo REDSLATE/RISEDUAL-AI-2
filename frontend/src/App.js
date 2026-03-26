@@ -5,6 +5,7 @@ import StockTicker from './components/StockTicker';
 import CryptoTicker from './components/CryptoTicker';
 import Watchlist from './components/Watchlist';
 import AlertsPanel from './components/AlertsPanel';
+import MarketPrediction from './components/MarketPrediction';
 import OptionsRadar from './components/OptionsRadar';
 import OptionsFlowScreener from './components/OptionsFlowScreener';
 import AdditionalSections from './components/AdditionalSections';
@@ -32,6 +33,11 @@ function App() {
         {/* Watchlist */}
         <div className="mb-8">
           <Watchlist />
+        </div>
+
+        {/* AI Market Prediction */}
+        <div className="mb-8">
+          <MarketPrediction />
         </div>
 
         {/* AI Options Radar */}
