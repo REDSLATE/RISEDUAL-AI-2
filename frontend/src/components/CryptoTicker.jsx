@@ -30,14 +30,14 @@ const CryptoTicker = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#0a0a0b] border-b border-gray-800 py-4 px-6">
-        <div className="text-gray-400 text-sm">Loading crypto data...</div>
+      <div className="bg-[#0F172A] border-b border-slate-700 py-4 px-6">
+        <div className="text-slate-400 text-sm">Loading crypto data...</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#0a0a0b] border-b border-gray-800">
+    <div className="bg-[#0F172A] border-b border-slate-700">
       <div className="overflow-x-auto">
         <div className="flex gap-6 px-6 py-3 min-w-max">
           {cryptos.map((crypto) => (
@@ -49,12 +49,12 @@ const CryptoTicker = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-white font-medium text-sm">{crypto.symbol}</span>
-                    <span className="text-gray-400 text-xs">/USD</span>
+                    <span className="text-slate-400 text-xs">/USD</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-sm">${crypto.price.toLocaleString()}</span>
                     <span className={`text-xs flex items-center gap-1 ${
-                      crypto.changePercent >= 0 ? 'text-green-400' : 'text-red-400'
+                      crypto.changePercent >= 0 ? 'text-emerald-400' : 'text-red-400'
                     }`}>
                       {crypto.changePercent >= 0 ? (
                         <TrendingUp className="w-3 h-3" />

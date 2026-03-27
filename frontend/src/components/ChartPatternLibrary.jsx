@@ -77,10 +77,10 @@ const patternData = [
 
 const PatternSVG = ({ pattern }) => (
   <svg viewBox="0 0 150 90" className="w-full h-full">
-    <rect x="0" y="0" width="150" height="90" fill="#1a1a1c" rx="4" />
+    <rect x="0" y="0" width="150" height="90" fill="#1E293B" rx="4" />
     {/* Grid lines */}
     {[20, 40, 60, 80].map((y) => (
-      <line key={y} x1="10" y1={y} x2="140" y2={y} stroke="#2a2a2c" strokeWidth="0.5" />
+      <line key={y} x1="10" y1={y} x2="140" y2={y} stroke="#334155" strokeWidth="0.5" />
     ))}
     {/* Neckline */}
     {pattern.neckline && (
@@ -120,26 +120,26 @@ const PatternSVG = ({ pattern }) => (
 const PatternCard = ({ pattern, onClick }) => (
   <button
     onClick={() => onClick(pattern)}
-    className="bg-[#1a1a1c] border border-gray-800 rounded-lg p-2 hover:border-blue-500 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10 text-left group"
+    className="bg-[#1E293B] border border-slate-700 rounded-xl p-2 hover:border-[#0052FF] transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10 text-left group"
     data-testid={`pattern-card-${pattern.id}`}
   >
     <div className="aspect-[5/3] mb-2 rounded overflow-hidden">
       <PatternSVG pattern={pattern} />
     </div>
     <p className="text-xs font-semibold text-white truncate group-hover:text-blue-400 transition-colors">{pattern.name}</p>
-    <p className={`text-[10px] font-medium ${pattern.color === '#22c55e' ? 'text-green-400' : 'text-red-400'}`}>
+    <p className={`text-[10px] font-medium ${pattern.color === '#22c55e' ? 'text-emerald-400' : 'text-red-400'}`}>
       {pattern.type}
     </p>
   </button>
 );
 
 const ChartPatternLibrary = ({ onSelectPattern }) => (
-  <div className="bg-[#0f0f11] rounded-lg p-3 border border-gray-800" data-testid="pattern-library">
+  <div className="bg-[#0F172A] rounded-xl p-3 border border-slate-700" data-testid="pattern-library">
     <div className="flex items-center gap-2 mb-3">
       <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
       <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">Chart Pattern Library</p>
     </div>
-    <p className="text-[11px] text-gray-400 mb-3">Tap any pattern to get AI analysis and trading strategies.</p>
+    <p className="text-[11px] text-slate-400 mb-3">Tap any pattern to get AI analysis and trading strategies.</p>
     <div className="grid grid-cols-2 gap-2">
       {patternData.map((pattern) => (
         <PatternCard key={pattern.id} pattern={pattern} onClick={onSelectPattern} />

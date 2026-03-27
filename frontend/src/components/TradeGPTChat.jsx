@@ -141,7 +141,7 @@ const TradeGPTChat = () => {
       <div className="mb-4 flex justify-end">
         <Button
           data-testid="chat-toggle-btn"
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-14 h-14 shadow-lg"
+          className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-full w-14 h-14 shadow-lg"
           onClick={() => setIsOpen(!isOpen)}
         >
           <Sparkles className="w-6 h-6" />
@@ -150,14 +150,14 @@ const TradeGPTChat = () => {
 
       {isOpen && <Card
         data-testid="chat-window"
-        className="w-96 h-[500px] bg-[#0a0a0b] border-gray-800 flex flex-col shadow-2xl z-50"
+        className="w-96 h-[500px] bg-slate-900 border-slate-700/50 flex flex-col shadow-2xl z-50 rounded-xl"
       >
-        <div className="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+        <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
             <h3 className="font-semibold">RISEDUALAI</h3>
           </div>
-          <p className="text-xs text-blue-100 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
+          <p className="text-xs text-blue-200 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
@@ -173,8 +173,8 @@ const TradeGPTChat = () => {
                     : 'max-w-[80%]'
                 } ${
                   message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-[#272729] text-gray-200'
+                    ? 'bg-[#0052FF] text-white'
+                    : 'bg-[#1E293B] text-slate-200'
                 }`}
               >
                 {renderMessageContent(message, index)}
@@ -183,7 +183,7 @@ const TradeGPTChat = () => {
           ))}
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-[#272729] text-gray-200 rounded-lg px-4 py-2">
+              <div className="bg-[#1E293B] text-slate-200 rounded-lg px-4 py-2">
                 <div className="flex gap-1">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
@@ -196,12 +196,12 @@ const TradeGPTChat = () => {
         </div>
 
         {imagePreview && (
-          <div className="px-4 py-2 border-t border-gray-800" data-testid="image-preview-area">
+          <div className="px-4 py-2 border-t border-slate-700" data-testid="image-preview-area">
             <div className="relative inline-block">
               <img
                 src={imagePreview}
                 alt="Upload preview"
-                className="h-16 w-auto rounded border border-gray-700"
+                className="h-16 w-auto rounded border border-slate-600"
                 data-testid="image-preview-thumbnail"
               />
               <button
@@ -215,7 +215,7 @@ const TradeGPTChat = () => {
           </div>
         )}
 
-        <div className="border-t border-gray-800 p-3">
+        <div className="border-t border-slate-700 p-3">
           <div className="flex gap-2 mb-2">
             <button
               onClick={() => {
@@ -224,7 +224,7 @@ const TradeGPTChat = () => {
                   { role: 'assistant', content: '__PATTERN_LIBRARY__' }
                 ]);
               }}
-              className="text-[10px] px-2 py-1 rounded-full border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-500 transition-colors flex items-center gap-1"
+              className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-400 hover:text-blue-400 hover:border-blue-500 transition-colors flex items-center gap-1"
               data-testid="patterns-shortcut-btn"
             >
               <BarChart3 className="w-3 h-3" />
@@ -244,7 +244,7 @@ const TradeGPTChat = () => {
               onClick={() => fileInputRef.current?.click()}
               variant="outline"
               size="icon"
-              className="border-gray-700 bg-[#272729] hover:bg-[#3a3a3c] text-gray-300 shrink-0"
+              className="border-slate-600 bg-[#1E293B] hover:bg-[#334155] text-slate-300 shrink-0"
               title="Upload chart screenshot"
               data-testid="upload-image-btn"
             >
@@ -256,13 +256,13 @@ const TradeGPTChat = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              className="flex-1 bg-[#272729] border-gray-700 text-white placeholder-gray-500"
+              className="flex-1 bg-[#1E293B] border-slate-600 text-white placeholder-slate-500"
               data-testid="chat-input"
             />
             <Button
               onClick={handleSend}
               disabled={isLoading || (!input.trim() && !imageBase64)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-[#0052FF] hover:bg-[#2563EB] text-white"
               data-testid="chat-send-btn"
             >
               <Send className="w-4 h-4" />

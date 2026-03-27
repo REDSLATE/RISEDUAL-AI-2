@@ -9,21 +9,21 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1b;
+  background: #1E293B;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a3a3b;
+  background: #475569;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4b;
+  background: #64748B;
 }
 
 /* Smooth transitions */
 * {
   transition-property: color, background-color, border-color;
-  transition-duration: 0.2s;
+  transition-duration: 0.15s;
   transition-timing-function: ease-in-out;
 }

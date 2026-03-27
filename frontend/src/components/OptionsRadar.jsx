@@ -17,7 +17,7 @@ const OptionsRadar = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+        <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center">
           <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
             <circle cx="12" cy="12" r="8" stroke="white" strokeWidth="2" />
             <circle cx="12" cy="12" r="3" fill="white" />
@@ -25,7 +25,7 @@ const OptionsRadar = () => {
         </div>
         <div>
           <h2 className="text-white text-2xl font-bold">AI Options Radar</h2>
-          <p className="text-gray-400 text-sm">OPRA data is delayed by 15 minutes</p>
+          <p className="text-slate-400 text-sm">OPRA data is delayed by 15 minutes</p>
         </div>
       </div>
 

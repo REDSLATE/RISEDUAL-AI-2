@@ -46,13 +46,13 @@ const SubscriptionPricing = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#0a0a0b] rounded-xl max-w-4xl w-full my-8" data-testid="subscription-modal">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-8 border border-slate-700/50" data-testid="subscription-modal">
         {/* Header */}
-        <div className="relative p-8 text-center border-b border-gray-800">
+        <div className="relative p-8 text-center border-b border-slate-700">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-50 text-2xl"
             data-testid="subscription-close-btn"
           >
             x
@@ -61,24 +61,24 @@ const SubscriptionPricing = ({ onClose }) => {
             <Crown className="w-8 h-8 text-yellow-500" />
             <h2 className="text-3xl font-bold text-white">Upgrade to Premium</h2>
           </div>
-          <p className="text-gray-400 mt-2">Unlock the full power of RISEDUALAI</p>
+          <p className="text-slate-400 mt-2">Unlock the full power of RISEDUALAI</p>
         </div>
 
         {/* Pricing Card */}
         <div className="p-8">
           <div className="max-w-md mx-auto">
-            <Card className="bg-gradient-to-br from-blue-900 to-purple-900 border-2 border-yellow-500 p-8 relative overflow-hidden">
-              <Badge className="absolute top-4 right-4 bg-yellow-500 text-black font-bold">
+            <Card className="bg-gradient-to-br from-[#0052FF]/20 to-slate-800 border border-[#0052FF]/40 rounded-2xl p-8 relative overflow-hidden">
+              <Badge className="absolute top-4 right-4 bg-[#0052FF] text-white font-bold">
                 BEST VALUE
               </Badge>
 
               <div className="text-center mb-6">
                 <div className="text-5xl font-bold text-white mb-2">
                   $25
-                  <span className="text-xl text-gray-300">/month</span>
+                  <span className="text-xl text-slate-300">/month</span>
                 </div>
-                <p className="text-gray-300">Less than $1/day</p>
-                <div className="mt-4 inline-flex items-center gap-2 bg-green-900 bg-opacity-30 text-green-400 px-4 py-2 rounded-full text-sm">
+                <p className="text-slate-300">Less than $1/day</p>
+                <div className="mt-4 inline-flex items-center gap-2 bg-emerald-900 bg-opacity-30 text-emerald-400 px-4 py-2 rounded-full text-sm">
                   <Zap className="w-4 h-4" />
                   Full access to all premium features
                 </div>
@@ -88,14 +88,14 @@ const SubscriptionPricing = ({ onClose }) => {
                 <Button
                   onClick={handleStripeCheckout}
                   disabled={isProcessing}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 text-lg"
+                  className="w-full bg-[#0052FF] hover:bg-[#2563EB] text-white font-semibold py-6 text-lg"
                   data-testid="stripe-checkout-btn"
                 >
                   {isProcessing ? 'Redirecting to Stripe...' : 'Subscribe Now — $25/month'}
                 </Button>
               </div>
 
-              <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-xs">
+              <div className="mt-4 flex items-center justify-center gap-2 text-slate-400 text-xs">
                 <Shield className="w-4 h-4" />
                 <span>Secure payment via Stripe -- Cancel anytime -- 30-day money-back guarantee</span>
               </div>
@@ -111,9 +111,9 @@ const SubscriptionPricing = ({ onClose }) => {
               {features.map((feature, index) => {
                 const Icon = feature.icon;
                 return (
-                  <div key={index} className="flex items-center gap-3 text-gray-300">
-                    <div className="bg-green-900 bg-opacity-30 p-2 rounded-lg">
-                      <Icon className="w-5 h-5 text-green-400" />
+                  <div key={index} className="flex items-center gap-3 text-slate-300">
+                    <div className="bg-emerald-900 bg-opacity-30 p-2 rounded-lg">
+                      <Icon className="w-5 h-5 text-emerald-400" />
                     </div>
                     <span>{feature.text}</span>
                   </div>
@@ -123,20 +123,20 @@ const SubscriptionPricing = ({ onClose }) => {
           </div>
 
           {/* FAQ */}
-          <div className="mt-8 border-t border-gray-800 pt-8">
+          <div className="mt-8 border-t border-slate-700 pt-8">
             <h3 className="text-white text-lg font-semibold text-center mb-4">Frequently Asked Questions</h3>
             <div className="space-y-4 max-w-2xl mx-auto">
               <div>
                 <p className="text-white font-medium">Can I cancel anytime?</p>
-                <p className="text-gray-400 text-sm mt-1">Yes! Cancel your subscription anytime with no penalties. You'll retain access until the end of your billing period.</p>
+                <p className="text-slate-400 text-sm mt-1">Yes! Cancel your subscription anytime with no penalties. You'll retain access until the end of your billing period.</p>
               </div>
               <div>
                 <p className="text-white font-medium">What payment methods do you accept?</p>
-                <p className="text-gray-400 text-sm mt-1">We accept all major credit/debit cards securely processed via Stripe.</p>
+                <p className="text-slate-400 text-sm mt-1">We accept all major credit/debit cards securely processed via Stripe.</p>
               </div>
               <div>
                 <p className="text-white font-medium">Is my payment information secure?</p>
-                <p className="text-gray-400 text-sm mt-1">Absolutely! All transactions are processed securely through Stripe. We never store your payment details.</p>
+                <p className="text-slate-400 text-sm mt-1">Absolutely! All transactions are processed securely through Stripe. We never store your payment details.</p>
               </div>
             </div>
           </div>

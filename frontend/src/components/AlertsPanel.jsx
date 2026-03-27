@@ -74,7 +74,7 @@ const AlertsPanel = () => {
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#0a0a0b] border border-gray-800 rounded-full p-3 hover:bg-[#0a0a0b] transition-colors"
+        className="relative bg-[#0F172A] border border-slate-700 rounded-full p-3 hover:bg-[#0F172A] transition-colors"
       >
         <Bell className="w-5 h-5 text-white" />
         {unreadCount > 0 && (
@@ -86,9 +86,9 @@ const AlertsPanel = () => {
 
       {/* Alerts Panel */}
       {isOpen && (
-        <Card className="absolute top-12 right-0 w-96 bg-[#0a0a0b] border-gray-800 shadow-2xl max-h-[500px] overflow-hidden flex flex-col">
+        <Card className="absolute top-12 right-0 w-96 bg-slate-900 border-slate-700/50 shadow-2xl rounded-xl max-h-[500px] overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="border-b border-gray-800 p-4 flex items-center justify-between">
+          <div className="border-b border-slate-700 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-white font-semibold">Alerts</h3>
               {unreadCount > 0 && (
@@ -101,14 +101,14 @@ const AlertsPanel = () => {
                   variant="ghost"
                   size="sm"
                   onClick={clearAll}
-                  className="text-gray-400 hover:text-white text-xs"
+                  className="text-slate-400 hover:text-slate-50 text-xs"
                 >
                   Clear all
                 </Button>
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-50"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -120,7 +120,7 @@ const AlertsPanel = () => {
             {alerts.length === 0 ? (
               <div className="text-center py-8 px-4">
                 <Bell className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                <p className="text-gray-400">No alerts yet</p>
+                <p className="text-slate-400">No alerts yet</p>
                 <p className="text-gray-600 text-sm">You'll be notified of unusual activity</p>
               </div>
             ) : (
@@ -128,8 +128,8 @@ const AlertsPanel = () => {
                 {alerts.map((alert) => (
                   <div
                     key={alert.id}
-                    className={`p-4 hover:bg-[#272729] transition-colors cursor-pointer ${
-                      !alert.read ? 'bg-[#222223]' : ''
+                    className={`p-4 hover:bg-[#1E293B] transition-colors cursor-pointer ${
+                      !alert.read ? 'bg-slate-800' : ''
                     }`}
                     onClick={() => markAsRead(alert.id)}
                   >
@@ -137,7 +137,7 @@ const AlertsPanel = () => {
                       <alert.icon className={`w-5 h-5 ${alert.color} flex-shrink-0 mt-0.5`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm">{alert.message}</p>
-                        <p className="text-gray-500 text-xs mt-1">
+                        <p className="text-slate-500 text-xs mt-1">
                           {alert.timestamp.toLocaleTimeString()}
                         </p>
                       </div>

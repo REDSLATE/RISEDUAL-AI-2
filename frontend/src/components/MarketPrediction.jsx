@@ -33,26 +33,26 @@ const MarketPrediction = () => {
   };
 
   const getDirectionIcon = (direction) => {
-    if (direction === 'BULLISH') return <TrendingUp className="w-6 h-6 text-green-400" />;
+    if (direction === 'BULLISH') return <TrendingUp className="w-6 h-6 text-emerald-400" />;
     if (direction === 'BEARISH') return <TrendingDown className="w-6 h-6 text-red-400" />;
     return <Minus className="w-6 h-6 text-yellow-400" />;
   };
 
   const getDirectionColor = (direction) => {
-    if (direction === 'BULLISH') return 'text-green-400 bg-green-900 bg-opacity-20 border-green-800';
+    if (direction === 'BULLISH') return 'text-emerald-400 bg-emerald-900 bg-opacity-20 border-green-800';
     if (direction === 'BEARISH') return 'text-red-400 bg-red-900 bg-opacity-20 border-red-800';
     return 'text-yellow-400 bg-yellow-900 bg-opacity-20 border-yellow-800';
   };
 
   const getConfidenceColor = (score) => {
-    if (score >= 75) return 'text-green-400';
+    if (score >= 75) return 'text-emerald-400';
     if (score >= 50) return 'text-yellow-400';
     return 'text-orange-400';
   };
 
   if (loading && !prediction) {
     return (
-      <div className="bg-[#0a0a0b] rounded-lg border border-gray-800 p-8">
+      <div className="bg-[#0F172A] rounded-xl border border-slate-700/50 p-8">
         <div className="flex items-center justify-center gap-3">
           <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
           <p className="text-white">Analyzing market data...</p>
@@ -66,12 +66,12 @@ const MarketPrediction = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center">
             <Brain className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-white text-2xl font-bold">AI Market Prediction</h2>
-            <p className="text-gray-400 text-sm">
+            <p className="text-slate-400 text-sm">
               Powered by real-time scraping & GPT-5.2 analysis
             </p>
           </div>
@@ -80,7 +80,7 @@ const MarketPrediction = () => {
           onClick={fetchPrediction}
           disabled={loading}
           variant="outline"
-          className="bg-[#272729] border-gray-700 text-white hover:bg-[#2a2a2c]"
+          className="bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700"
         >
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -104,7 +104,7 @@ const MarketPrediction = () => {
                 <h3 className="text-white text-2xl font-bold mb-1">
                   {prediction.overall_direction}
                 </h3>
-                <p className="text-gray-300 text-sm">Overall Direction</p>
+                <p className="text-slate-300 text-sm">Overall Direction</p>
               </div>
 
               {/* Confidence Score */}
@@ -112,11 +112,11 @@ const MarketPrediction = () => {
                 <div className={`text-4xl font-bold mb-2 ${getConfidenceColor(prediction.confidence_score)}`}>
                   {prediction.confidence_score}%
                 </div>
-                <p className="text-gray-300 text-sm">Confidence Score</p>
-                <div className="mt-2 w-full bg-gray-800 rounded-full h-2">
+                <p className="text-slate-300 text-sm">Confidence Score</p>
+                <div className="mt-2 w-full bg-slate-700 rounded-full h-2">
                   <div
                     className={`h-2 rounded-full ${
-                      prediction.confidence_score >= 75 ? 'bg-green-500' :
+                      prediction.confidence_score >= 75 ? 'bg-emerald-500' :
                       prediction.confidence_score >= 50 ? 'bg-yellow-500' :
                       'bg-orange-500'
                     }`}
@@ -130,7 +130,7 @@ const MarketPrediction = () => {
                 <div className="text-white text-sm space-y-1">
                   <div className="font-semibold mb-2">Data Sources:</div>
                   <div>📰 {prediction.data_sources?.news_articles || 0} Articles</div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-slate-400">
                     CNBC • Reuters • MarketWatch • Fox Business<br/>
                     WSJ • Bloomberg • OAN • Epoch Times
                   </div>
@@ -146,7 +146,7 @@ const MarketPrediction = () => {
 
             {/* Summary */}
             {prediction.summary && (
-              <div className="mt-6 pt-6 border-t border-gray-700">
+              <div className="mt-6 pt-6 border-t border-slate-600">
                 <p className="text-white text-center">{prediction.summary}</p>
               </div>
             )}
@@ -160,7 +160,7 @@ const MarketPrediction = () => {
                 if (!data) return null;
                 
                 return (
-                  <Card key={timeframe} className="bg-[#0a0a0b] border-gray-800 p-4">
+                  <Card key={timeframe} className="bg-[#0F172A] border-slate-700 p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-blue-400" />
@@ -173,7 +173,7 @@ const MarketPrediction = () => {
                       </Badge>
                     </div>
                     {data.target && (
-                      <div className="flex items-center gap-2 text-gray-300 text-sm">
+                      <div className="flex items-center gap-2 text-slate-300 text-sm">
                         <Target className="w-4 h-4" />
                         <span>Target: {data.target}</span>
                       </div>
@@ -188,15 +188,15 @@ const MarketPrediction = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Bullish Signals */}
             {prediction.key_signals && prediction.key_signals.length > 0 && (
-              <Card className="bg-[#0a0a0b] border-gray-800 p-5">
+              <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5">
                 <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-green-400" />
+                  <TrendingUp className="w-5 h-5 text-emerald-400" />
                   Key Signals
                 </h3>
                 <ul className="space-y-2">
                   {prediction.key_signals.map((signal, index) => (
-                    <li key={index} className="text-gray-300 text-sm flex items-start gap-2">
-                      <span className="text-green-400">•</span>
+                    <li key={index} className="text-slate-300 text-sm flex items-start gap-2">
+                      <span className="text-emerald-400">•</span>
                       {signal}
                     </li>
                   ))}
@@ -206,14 +206,14 @@ const MarketPrediction = () => {
 
             {/* Risk Factors */}
             {prediction.risk_factors && prediction.risk_factors.length > 0 && (
-              <Card className="bg-[#0a0a0b] border-gray-800 p-5">
+              <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5">
                 <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-orange-400" />
                   Risk Factors
                 </h3>
                 <ul className="space-y-2">
                   {prediction.risk_factors.map((risk, index) => (
-                    <li key={index} className="text-gray-300 text-sm flex items-start gap-2">
+                    <li key={index} className="text-slate-300 text-sm flex items-start gap-2">
                       <span className="text-orange-400">•</span>
                       {risk}
                     </li>
@@ -226,15 +226,15 @@ const MarketPrediction = () => {
           {/* Market Outlooks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {prediction.stock_outlook && (
-              <Card className="bg-[#0a0a0b] border-gray-800 p-5">
+              <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5">
                 <h3 className="text-white font-semibold mb-2">📈 Stock Market Outlook</h3>
-                <p className="text-gray-300 text-sm">{prediction.stock_outlook}</p>
+                <p className="text-slate-300 text-sm">{prediction.stock_outlook}</p>
               </Card>
             )}
             {prediction.crypto_outlook && (
-              <Card className="bg-[#0a0a0b] border-gray-800 p-5">
+              <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5">
                 <h3 className="text-white font-semibold mb-2">₿ Crypto Market Outlook</h3>
-                <p className="text-gray-300 text-sm">{prediction.crypto_outlook}</p>
+                <p className="text-slate-300 text-sm">{prediction.crypto_outlook}</p>
               </Card>
             )}
           </div>
@@ -247,13 +247,13 @@ const MarketPrediction = () => {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-gray-400 text-sm mb-1">Housing Market Health:</p>
+                  <p className="text-slate-400 text-sm mb-1">Housing Market Health:</p>
                   <p className="text-white font-medium capitalize">
                     {prediction.real_estate_summary.housing_health || 'Analyzing...'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-400 text-sm mb-1">Commercial Trend:</p>
+                  <p className="text-slate-400 text-sm mb-1">Commercial Trend:</p>
                   <p className="text-white font-medium capitalize">
                     {prediction.real_estate_summary.commercial_trend || 'Mixed'}
                   </p>
@@ -261,13 +261,13 @@ const MarketPrediction = () => {
               </div>
               {prediction.real_estate_summary.implications && (
                 <div className="mt-4 pt-4 border-t border-orange-800">
-                  <p className="text-gray-400 text-xs mb-2">Market Implications:</p>
+                  <p className="text-slate-400 text-xs mb-2">Market Implications:</p>
                   <div className="space-y-1 text-sm">
                     {prediction.real_estate_summary.implications.stocks && (
-                      <p className="text-gray-300">• Stocks: {prediction.real_estate_summary.implications.stocks}</p>
+                      <p className="text-slate-300">• Stocks: {prediction.real_estate_summary.implications.stocks}</p>
                     )}
                     {prediction.real_estate_summary.implications.crypto && (
-                      <p className="text-gray-300">• Crypto: {prediction.real_estate_summary.implications.crypto}</p>
+                      <p className="text-slate-300">• Crypto: {prediction.real_estate_summary.implications.crypto}</p>
                     )}
                   </div>
                 </div>
@@ -289,7 +289,7 @@ const MarketPrediction = () => {
 
           {/* Last Updated */}
           {lastUpdated && (
-            <p className="text-center text-gray-500 text-xs">
+            <p className="text-center text-slate-500 text-xs">
               Last updated: {lastUpdated.toLocaleString()}
             </p>
           )}

@@ -41,7 +41,7 @@ const FilterPanel = ({ onFilterChange }) => {
       <Button
         onClick={() => setIsOpen(!isOpen)}
         variant="outline"
-        className="bg-[#272729] border-gray-700 text-white hover:bg-[#2a2a2c]"
+        className="bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700"
       >
         <Filter className="w-4 h-4 mr-2" />
         Filters
@@ -49,13 +49,13 @@ const FilterPanel = ({ onFilterChange }) => {
 
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <Card className="bg-[#0a0a0b] border-gray-800 p-6 w-full max-w-md">
+          <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-6 w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white text-lg font-semibold">Filter Options</h3>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-50"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -107,10 +107,10 @@ const FilterPanel = ({ onFilterChange }) => {
                   value={filters.sentiment}
                   onValueChange={(value) => handleFilterChange('sentiment', value)}
                 >
-                  <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
+                  <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
+                  <SelectContent className="bg-slate-800 border-slate-700">
                     <SelectItem value="all" className="text-white">All</SelectItem>
                     <SelectItem value="bullish" className="text-white">Bullish</SelectItem>
                     <SelectItem value="bearish" className="text-white">Bearish</SelectItem>
@@ -125,10 +125,10 @@ const FilterPanel = ({ onFilterChange }) => {
                   value={filters.timeframe}
                   onValueChange={(value) => handleFilterChange('timeframe', value)}
                 >
-                  <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
+                  <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
+                  <SelectContent className="bg-slate-800 border-slate-700">
                     <SelectItem value="today" className="text-white">Today</SelectItem>
                     <SelectItem value="week" className="text-white">This Week</SelectItem>
                     <SelectItem value="month" className="text-white">This Month</SelectItem>
@@ -142,14 +142,14 @@ const FilterPanel = ({ onFilterChange }) => {
               <Button
                 onClick={resetFilters}
                 variant="outline"
-                className="flex-1 bg-[#272729] border-gray-700 text-white hover:bg-[#2a2a2c]"
+                className="flex-1 bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reset
               </Button>
               <Button
                 onClick={() => setIsOpen(false)}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 bg-[#0052FF] hover:bg-[#2563EB]"
               >
                 Apply Filters
               </Button>

@@ -51,8 +51,8 @@ const DarkPoolData = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#0a0a0b] rounded-lg border border-gray-800 p-6">
-        <div className="text-gray-400">Loading dark pool data...</div>
+      <div className="bg-[#0F172A] rounded-xl border border-slate-700/50 p-6">
+        <div className="text-slate-400">Loading dark pool data...</div>
       </div>
     );
   }
@@ -66,7 +66,7 @@ const DarkPoolData = () => {
         </div>
         <div>
           <h2 className="text-white text-2xl font-bold">Dark Pool Trading</h2>
-          <p className="text-gray-400 text-sm">Off-exchange institutional trading activity</p>
+          <p className="text-slate-400 text-sm">Off-exchange institutional trading activity</p>
         </div>
       </div>
 
@@ -80,32 +80,32 @@ const DarkPoolData = () => {
 
       {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-[#0a0a0b] border border-gray-800 rounded-lg p-4">
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-5 h-5 text-purple-400" />
             <h3 className="text-white font-semibold">What is Dark Pool?</h3>
           </div>
-          <p className="text-gray-400 text-sm">
+          <p className="text-slate-400 text-sm">
             Dark pools are private exchanges where institutional investors trade large blocks of securities anonymously.
           </p>
         </div>
         
-        <div className="bg-[#0a0a0b] border border-gray-800 rounded-lg p-4">
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-5 h-5 text-green-400" />
+            <TrendingUp className="w-5 h-5 text-emerald-400" />
             <h3 className="text-white font-semibold">Why It Matters</h3>
           </div>
-          <p className="text-gray-400 text-sm">
+          <p className="text-slate-400 text-sm">
             High dark pool activity can indicate institutional interest and potential price movements in securities.
           </p>
         </div>
         
-        <div className="bg-[#0a0a0b] border border-gray-800 rounded-lg p-4">
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Eye className="w-5 h-5 text-blue-400" />
             <h3 className="text-white font-semibold">How to Use</h3>
           </div>
-          <p className="text-gray-400 text-sm">
+          <p className="text-slate-400 text-sm">
             Monitor dark pool percentage - higher values suggest significant institutional positioning.
           </p>
         </div>

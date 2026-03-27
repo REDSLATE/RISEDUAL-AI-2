@@ -9,7 +9,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
   const [filters, setFilters] = useState(null);
 
   const getPowerColor = (power) => {
-    if (power >= 80) return 'bg-green-500';
+    if (power >= 80) return 'bg-emerald-500';
     if (power >= 60) return 'bg-yellow-500';
     return 'bg-orange-500';
   };
@@ -55,16 +55,16 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
   };
 
   return (
-    <div className="bg-[#0a0a0b] rounded-lg border border-gray-800 p-6">
+    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-white text-lg font-semibold">{title}</h3>
-            <HelpCircle className="w-4 h-4 text-gray-500" />
+            <HelpCircle className="w-4 h-4 text-slate-500" />
           </div>
           {subtitle && (
-            <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
+            <p className="text-slate-500 text-sm mt-1">{subtitle}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -73,7 +73,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
             onClick={exportToCSV}
             variant="outline"
             size="sm"
-            className="bg-[#272729] border-gray-700 text-white hover:bg-[#2a2a2c]"
+            className="bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700"
           >
             <Download className="w-4 h-4 mr-2" />
             Export
@@ -82,13 +82,13 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
             <>
               <button 
                 onClick={() => alert('Thanks for your feedback!')}
-                className="text-gray-500 hover:text-green-400 transition-colors"
+                className="text-slate-500 hover:text-emerald-400 transition-colors"
               >
                 <ThumbsUp className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => alert('Thanks for your feedback! We\'ll improve this.')}
-                className="text-gray-500 hover:text-red-400 transition-colors"
+                className="text-slate-500 hover:text-red-400 transition-colors"
               >
                 <ThumbsDown className="w-5 h-5" />
               </button>
@@ -101,11 +101,11 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-800">
+            <tr className="border-b border-slate-700">
               {columns.map((col, index) => (
                 <th
                   key={index}
-                  className="text-left py-3 px-3 text-gray-400 text-xs font-medium uppercase tracking-wider"
+                  className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider"
                 >
                   <div className="flex items-center gap-1">
                     {col.label}
@@ -114,7 +114,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                 </th>
               ))}
               {showTrading && (
-                <th className="text-left py-3 px-3 text-gray-400 text-xs font-medium uppercase tracking-wider">
+                <th className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider">
                   QUICK TRADE
                 </th>
               )}
@@ -124,7 +124,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
             {filteredData.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
-                className="border-b border-gray-800 hover:bg-[#222223] transition-colors"
+                className="border-b border-slate-700 hover:bg-slate-700 transition-colors"
               >
                 {columns.map((col, colIndex) => (
                   <td key={colIndex} className="py-3 px-3 text-sm">
@@ -137,24 +137,24 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                       </span>
                     ) : col.key === 'power' ? (
                       <div className="flex items-center gap-2">
-                        <div className="w-12 h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="w-12 h-2 bg-slate-700 rounded-full overflow-hidden">
                           <div
                             className={`h-full ${getPowerColor(row[col.key])}`}
                             style={{ width: getPowerBarWidth(row[col.key]) }}
                           />
                         </div>
-                        <span className="text-gray-300 text-xs">{row[col.key]}%</span>
+                        <span className="text-slate-300 text-xs">{row[col.key]}%</span>
                       </div>
                     ) : col.key === 'returns' ? (
-                      <span className="text-green-400">{row[col.key]}</span>
+                      <span className="text-emerald-400">{row[col.key]}</span>
                     ) : col.key === 'sentiment' ? (
                       <span className="text-red-400">{row[col.key]}</span>
                     ) : col.key === 'aiScore' ? (
-                      <span className={row[col.key] >= 50 ? 'text-green-400' : 'text-orange-400'}>
+                      <span className={row[col.key] >= 50 ? 'text-emerald-400' : 'text-orange-400'}>
                         {row[col.key]}
                       </span>
                     ) : (
-                      <span className="text-gray-300">{row[col.key]}</span>
+                      <span className="text-slate-300">{row[col.key]}</span>
                     )}
                   </td>
                 ))}
@@ -171,7 +171,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
 
       {/* Results Info */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-gray-500 text-sm">
+        <p className="text-slate-500 text-sm">
           Showing {filteredData.length} of {data.length} results
         </p>
         <button 

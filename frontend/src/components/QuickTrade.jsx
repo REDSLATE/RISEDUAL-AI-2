@@ -98,7 +98,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
       {/* Trading Modal */}
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-          <Card className="bg-[#0a0a0b] border-gray-800 p-6 w-full max-w-md">
+          <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-6 w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white text-xl font-bold">
@@ -106,7 +106,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
               </h3>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white text-2xl"
+                className="text-slate-400 hover:text-slate-50 text-2xl"
               >
                 ×
               </button>
@@ -114,9 +114,9 @@ const QuickTrade = ({ symbol, currentPrice }) => {
 
             {/* Current Price */}
             {currentPrice && (
-              <div className="bg-[#272729] rounded-lg p-3 mb-4">
+              <div className="bg-[#1E293B] rounded-lg p-3 mb-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-400 text-sm">Current Price</span>
+                  <span className="text-slate-400 text-sm">Current Price</span>
                   <span className="text-white font-semibold">${currentPrice.toFixed(2)}</span>
                 </div>
               </div>
@@ -131,7 +131,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   value={orderData.symbol}
                   onChange={(e) => setOrderData({ ...orderData, symbol: e.target.value })}
                   placeholder="AAPL"
-                  className="bg-[#272729] border-gray-700 text-white"
+                  className="bg-[#1E293B] border-slate-600 text-white"
                 />
               </div>
 
@@ -142,10 +142,10 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   value={orderData.type}
                   onValueChange={(value) => setOrderData({ ...orderData, type: value })}
                 >
-                  <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
+                  <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
+                  <SelectContent className="bg-slate-800 border-slate-700">
                     <SelectItem value="market" className="text-white">Market Order</SelectItem>
                     <SelectItem value="limit" className="text-white">Limit Order</SelectItem>
                   </SelectContent>
@@ -162,7 +162,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                     value={orderData.limitPrice}
                     onChange={(e) => setOrderData({ ...orderData, limitPrice: e.target.value })}
                     placeholder="0.00"
-                    className="bg-[#272729] border-gray-700 text-white"
+                    className="bg-[#1E293B] border-slate-600 text-white"
                   />
                 </div>
               )}
@@ -175,7 +175,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   min="1"
                   value={orderData.quantity}
                   onChange={(e) => setOrderData({ ...orderData, quantity: e.target.value })}
-                  className="bg-[#272729] border-gray-700 text-white"
+                  className="bg-[#1E293B] border-slate-600 text-white"
                 />
               </div>
 
@@ -186,21 +186,21 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   value={orderData.broker}
                   onValueChange={(value) => setOrderData({ ...orderData, broker: value })}
                 >
-                  <SelectTrigger className="bg-[#272729] border-gray-700 text-white">
+                  <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0a0a0b] border-gray-800">
+                  <SelectContent className="bg-slate-800 border-slate-700">
                     <SelectItem value="alpaca" className="text-white">Alpaca</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Estimated Cost */}
-              <div className="bg-[#272729] rounded-lg p-3">
+              <div className="bg-[#1E293B] rounded-lg p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-400">Estimated {orderData.side === 'buy' ? 'Cost' : 'Value'}</span>
+                  <span className="text-slate-400">Estimated {orderData.side === 'buy' ? 'Cost' : 'Value'}</span>
                   <div className="flex items-center gap-1">
-                    <DollarSign className="w-4 h-4 text-green-400" />
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
                     <span className="text-white font-semibold">{estimatedCost.toFixed(2)}</span>
                   </div>
                 </div>
@@ -210,13 +210,13 @@ const QuickTrade = ({ symbol, currentPrice }) => {
             {/* Result Message */}
             {result && (
               <div className={`mt-4 p-3 rounded-lg flex items-start gap-2 ${
-                result.success ? 'bg-green-900 bg-opacity-20 border border-green-800' : 'bg-red-900 bg-opacity-20 border border-red-800'
+                result.success ? 'bg-emerald-900 bg-opacity-20 border border-green-800' : 'bg-red-900 bg-opacity-20 border border-red-800'
               }`}>
-                <AlertCircle className={`w-5 h-5 flex-shrink-0 ${result.success ? 'text-green-400' : 'text-red-400'}`} />
+                <AlertCircle className={`w-5 h-5 flex-shrink-0 ${result.success ? 'text-emerald-400' : 'text-red-400'}`} />
                 <div>
-                  <p className={result.success ? 'text-green-400' : 'text-red-400'}>{result.message}</p>
+                  <p className={result.success ? 'text-emerald-400' : 'text-red-400'}>{result.message}</p>
                   {result.orderId && (
-                    <p className="text-gray-400 text-xs mt-1">Order ID: {result.orderId}</p>
+                    <p className="text-slate-400 text-xs mt-1">Order ID: {result.orderId}</p>
                   )}
                 </div>
               </div>
@@ -227,7 +227,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
               <Button
                 onClick={() => setIsOpen(false)}
                 variant="outline"
-                className="flex-1 bg-[#272729] border-gray-700 text-white hover:bg-[#2a2a2c]"
+                className="flex-1 bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700"
               >
                 Cancel
               </Button>
@@ -245,7 +245,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
             </div>
 
             {/* Warning */}
-            <p className="text-gray-500 text-xs mt-4 text-center">
+            <p className="text-slate-500 text-xs mt-4 text-center">
               ⚠️ Trading involves risk. This is connected to your real brokerage account.
             </p>
           </Card>
