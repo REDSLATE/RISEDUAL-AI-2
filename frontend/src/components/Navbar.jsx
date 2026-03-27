@@ -60,7 +60,7 @@ const Navbar = () => {
 
         <div className="flex items-center gap-4">
           {/* Platform Dropdown */}
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="platform-menu">
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
@@ -93,7 +93,7 @@ const Navbar = () => {
           </DropdownMenu>
 
           {/* Strategies Dropdown */}
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="strategies-menu">
               Strategies <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
@@ -120,7 +120,7 @@ const Navbar = () => {
           </DropdownMenu>
 
           {/* Education Dropdown */}
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="education-menu">
               Education <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
@@ -153,7 +153,7 @@ const Navbar = () => {
           </DropdownMenu>
 
           {/* Resources Dropdown */}
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="resources-menu">
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
