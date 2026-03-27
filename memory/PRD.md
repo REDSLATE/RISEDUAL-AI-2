@@ -25,7 +25,8 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] AI Chat with GPT-5.2 session management
 - [x] **AI Chat Vision/Screenshot Upload** — Users can upload JPEG/PNG/WEBP chart images for AI analysis (2026-03-27)
 - [x] **Chart Pattern Library** — Type `/patterns` to browse 8 common chart patterns with SVG illustrations; click any pattern for AI analysis (2026-03-27)
-- [x] **Real Stripe Payment Integration** — $50/year subscription checkout via Stripe, payment status polling, MongoDB transaction records (2026-03-27)
+- [x] **Real Stripe Payment Integration** — $25/month subscription checkout via Stripe, payment status polling, MongoDB transaction records (2026-03-27)
+- [x] **Fidelity x Coinbase Theme Redesign** — Deep navy (#0F172A), blue primary (#0052FF), glassmorphism navbar, rounded-xl cards, Manrope/IBM Plex Sans/JetBrains Mono fonts (2026-03-27)
 - [x] Market Prediction engine (8+ news sources scraping)
 - [x] Real Estate market scraping
 - [x] Crypto & Dark Pool data endpoints + UI
