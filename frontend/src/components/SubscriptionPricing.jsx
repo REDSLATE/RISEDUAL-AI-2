@@ -46,17 +46,18 @@ const SubscriptionPricing = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-8 border border-slate-700/50" data-testid="subscription-modal">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-700/50 relative" data-testid="subscription-modal">
+        {/* Sticky close button */}
+        <button
+          onClick={onClose}
+          className="sticky top-2 float-right mr-4 mt-2 z-10 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 rounded-full w-8 h-8 flex items-center justify-center text-lg"
+          data-testid="subscription-close-btn"
+        >
+          x
+        </button>
         {/* Header */}
-        <div className="relative p-8 text-center border-b border-slate-700">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-50 text-2xl"
-            data-testid="subscription-close-btn"
-          >
-            x
-          </button>
+        <div className="p-8 pt-2 text-center border-b border-slate-700">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Crown className="w-8 h-8 text-yellow-500" />
             <h2 className="text-3xl font-bold text-white">Upgrade to Premium</h2>

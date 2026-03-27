@@ -31,6 +31,7 @@ const Navbar = () => {
   };
 
   return (
+    <>
     <nav className="bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 px-6 py-3 sticky top-0 z-40">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-8">
@@ -206,10 +207,11 @@ const Navbar = () => {
         </div>
       </div>
 
-      {showSubscription && (
-        <SubscriptionPricing onClose={() => setShowSubscription(false)} />
-      )}
     </nav>
+    {showSubscription && (
+      <SubscriptionPricing onClose={() => setShowSubscription(false)} />
+    )}
+    </>
   );
 };
 
