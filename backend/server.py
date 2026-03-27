@@ -356,11 +356,13 @@ async def get_market_prediction():
     try:
         from services.financial_scraping_service import FinancialScrapingService
         from services.crypto_scraping_service import CryptoScrapingService
+        from services.real_estate_scraping_service import RealEstateScrapingService
         from services.market_prediction_service import MarketPredictionService
         
         # Gather data from all sources
         financial_scraper = FinancialScrapingService()
         crypto_scraper = CryptoScrapingService()
+        real_estate_scraper = RealEstateScrapingService()
         
         financial_news = await financial_scraper.scrape_financial_news()
         reddit_sentiment = await financial_scraper.scrape_reddit_sentiment()
@@ -370,17 +372,29 @@ async def get_market_prediction():
         whale_transactions = await crypto_scraper.get_whale_transactions()
         crypto_sentiment = await crypto_scraper.get_crypto_sentiment()
         
+        # NEW: Get real estate data
+        real_estate_data = await real_estate_scraper.scrape_all_real_estate_data()
+        
         # Combine crypto data
         all_crypto_data = crypto_data + [crypto_sentiment] + whale_transactions
         
-        # Get AI prediction
+        # Get AI prediction with real estate data
         prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
         prediction = await prediction_service.analyze_market(
             financial_news=financial_news,
             crypto_data=all_crypto_data,
             insider_trades=insider_trades,
-            social_sentiment=reddit_sentiment
+            social_sentiment=reddit_sentiment,
+            real_estate_data=real_estate_data
         )
+        
+        # Add real estate summary to prediction
+        prediction['real_estate_summary'] = {
+            'housing_health': real_estate_data.get('housing', {}).get('market_health', 'unknown'),
+            'commercial_trend': 'mixed',
+            'data_sources': len(real_estate_data.get('housing', {}).get('sources', [])),
+            'implications': real_estate_data.get('trends', {}).get('market_implications', {})
+        }
         
         return prediction
     except Exception as e:
@@ -442,6 +456,19 @@ async def get_crypto_market_data():
     except Exception as e:
         logging.error(f"Error fetching crypto data: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching crypto data")
+
+@api_router.get("/market/real-estate")
+async def get_real_estate_data():
+    """Get housing and commercial real estate market data"""
+    try:
+        from services.real_estate_scraping_service import RealEstateScrapingService
+        scraper = RealEstateScrapingService()
+        
+        real_estate_data = await scraper.scrape_all_real_estate_data()
+        return real_estate_data
+    except Exception as e:
+        logging.error(f"Error fetching real estate data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching real estate data")
 
 @api_router.get("/trading/account/{broker_id}")
 async def get_account_info(broker_id: str):

@@ -29,12 +29,13 @@ class MarketPredictionService:
         Be data-driven, objective, and always mention uncertainty."""
     
     async def analyze_market(self, financial_news: List[Dict], crypto_data: List[Dict], 
-                            insider_trades: List[Dict], social_sentiment: List[Dict]) -> Dict:
+                            insider_trades: List[Dict], social_sentiment: List[Dict],
+                            real_estate_data: Optional[Dict] = None) -> Dict:
         """Comprehensive market analysis using all data sources"""
         try:
             # Prepare data summary for AI
             data_summary = self._prepare_data_summary(
-                financial_news, crypto_data, insider_trades, social_sentiment
+                financial_news, crypto_data, insider_trades, social_sentiment, real_estate_data
             )
             
             # Get AI analysis
@@ -93,7 +94,7 @@ Provide your analysis in JSON format with:
             logger.error(f"Market prediction error: {str(e)}")
             return self._fallback_prediction()
     
-    def _prepare_data_summary(self, news: List, crypto: List, trades: List, social: List) -> str:
+    def _prepare_data_summary(self, news: List, crypto: List, trades: List, social: List, real_estate: Dict = None) -> str:
         """Prepare concise data summary for AI"""
         summary = "MARKET DATA SUMMARY\n\n"
         
@@ -116,6 +117,31 @@ Provide your analysis in JSON format with:
         summary += "\nSOCIAL MEDIA SENTIMENT:\n"
         for post in social[:3]:
             summary += f"- {post.get('title', 'N/A')} (Score: {post.get('score', 0)})\n"
+        
+        # Real estate data
+        if real_estate:
+            summary += "\nREAL ESTATE MARKET INDICATORS:\n"
+            if real_estate.get('housing'):
+                housing = real_estate['housing']
+                summary += f"- Housing Market: {housing.get('market_health', 'N/A')}\n"
+                summary += f"  Sources: {len(housing.get('sources', []))} data providers\n"
+            
+            if real_estate.get('commercial'):
+                commercial = real_estate['commercial']
+                summary += f"- Commercial RE:\n"
+                summary += f"  Office: {commercial.get('office', {}).get('trend', 'N/A')}\n"
+                summary += f"  Industrial: {commercial.get('industrial', {}).get('trend', 'N/A')}\n"
+            
+            if real_estate.get('mortgage_rates'):
+                rates = real_estate['mortgage_rates']
+                summary += f"- Mortgage Rates: {rates.get('30_year_fixed', 'N/A')}\n"
+            
+            if real_estate.get('trends'):
+                trends = real_estate['trends']
+                summary += f"- Market Implications:\n"
+                implications = trends.get('market_implications', {})
+                summary += f"  Stocks: {implications.get('stocks', 'N/A')}\n"
+                summary += f"  Crypto: {implications.get('crypto', 'N/A')}\n"
         
         return summary
     

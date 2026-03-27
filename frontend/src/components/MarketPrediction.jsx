@@ -137,6 +137,9 @@ const MarketPrediction = () => {
                   <div>💬 {prediction.data_sources?.social_posts || 0} Social Posts</div>
                   <div>₿ {prediction.data_sources?.crypto_signals || 0} Crypto Signals</div>
                   <div>📊 {prediction.data_sources?.insider_trades || 0} Insider Trades</div>
+                  {prediction.real_estate_summary && (
+                    <div>🏠 {prediction.real_estate_summary?.data_sources || 0} Real Estate Sources</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -235,6 +238,42 @@ const MarketPrediction = () => {
               </Card>
             )}
           </div>
+
+          {/* Real Estate Impact */}
+          {prediction.real_estate_summary && (
+            <Card className="bg-gradient-to-r from-orange-900 to-red-900 bg-opacity-20 border-orange-800 p-5">
+              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                🏠 Real Estate Market Impact
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Housing Market Health:</p>
+                  <p className="text-white font-medium capitalize">
+                    {prediction.real_estate_summary.housing_health || 'Analyzing...'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Commercial Trend:</p>
+                  <p className="text-white font-medium capitalize">
+                    {prediction.real_estate_summary.commercial_trend || 'Mixed'}
+                  </p>
+                </div>
+              </div>
+              {prediction.real_estate_summary.implications && (
+                <div className="mt-4 pt-4 border-t border-orange-800">
+                  <p className="text-gray-400 text-xs mb-2">Market Implications:</p>
+                  <div className="space-y-1 text-sm">
+                    {prediction.real_estate_summary.implications.stocks && (
+                      <p className="text-gray-300">• Stocks: {prediction.real_estate_summary.implications.stocks}</p>
+                    )}
+                    {prediction.real_estate_summary.implications.crypto && (
+                      <p className="text-gray-300">• Crypto: {prediction.real_estate_summary.implications.crypto}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* Disclaimer */}
           <div className="bg-yellow-900 bg-opacity-20 border border-yellow-800 rounded-lg p-4">
