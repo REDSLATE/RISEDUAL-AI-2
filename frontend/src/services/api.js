@@ -108,12 +108,13 @@ export const getDarkPoolData = async () => {
 };
 
 // AI Chat APIs
-export const sendChatMessage = async (message, sessionId) => {
+export const sendChatMessage = async (message, sessionId, imageBase64 = null) => {
   try {
-    const response = await axios.post(`${API}/chat`, {
-      message,
-      sessionId
-    });
+    const payload = { message, sessionId };
+    if (imageBase64) {
+      payload.image_base64 = imageBase64;
+    }
+    const response = await axios.post(`${API}/chat`, payload);
     return response.data;
   } catch (error) {
     console.error('Error sending chat message:', error);

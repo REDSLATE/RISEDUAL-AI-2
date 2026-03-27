@@ -159,11 +159,15 @@ async def chat(request: ChatRequest):
             new_session = ChatSession(session_id=request.sessionId)
             await db.chat_sessions.insert_one(new_session.dict())
         
-        # Get AI response
-        ai_response = await ai_service.chat(request.message, request.sessionId)
+        # Get AI response (with optional image)
+        ai_response = await ai_service.chat(request.message, request.sessionId, request.image_base64)
         
-        # Save messages to database
-        user_message = ChatMessage(role="user", content=request.message)
+        # Save messages to database (don't store full base64 in DB, just a flag)
+        user_message = ChatMessage(
+            role="user",
+            content=request.message,
+            image_base64="[image_attached]" if request.image_base64 else None
+        )
         assistant_message = ChatMessage(role="assistant", content=ai_response)
         
         await db.chat_sessions.update_one(

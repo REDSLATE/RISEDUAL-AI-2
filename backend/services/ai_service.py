@@ -1,7 +1,7 @@
 import os
 import logging
-from typing import List, Dict
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from typing import Optional
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 logger = logging.getLogger(__name__)
 
@@ -17,27 +17,38 @@ class AIService:
         - Market trends and predictions
         - Cryptocurrency market analysis
         - Dark pool trading insights
+        - Analyzing stock charts, candlestick patterns, and technical indicators from uploaded images
+        
+        When a user uploads an image of a chart or financial asset, analyze it thoroughly:
+        - Identify the asset/ticker if visible
+        - Describe chart patterns (head & shoulders, double top/bottom, triangles, etc.)
+        - Note support/resistance levels
+        - Identify trend direction and momentum
+        - Suggest potential trade setups based on what you see
         
         Provide clear, actionable advice while always reminding users that trading involves risk. 
         Be professional, knowledgeable, and helpful. Use data-driven insights when possible.
         Your responses should be informative yet concise."""
     
-    async def chat(self, message: str, session_id: str) -> str:
-        """Send a message to the AI and get a response"""
+    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None) -> str:
+        """Send a message to the AI and get a response, optionally with an image"""
         try:
-            # Initialize chat with session
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=session_id,
                 system_message=self.system_message
             ).with_model("openai", "gpt-5.2")
             
-            # Create user message
-            user_message = UserMessage(text=message)
+            if image_base64:
+                image_content = ImageContent(image_base64=image_base64)
+                user_message = UserMessage(
+                    text=message or "Please analyze this chart/image and provide trading insights.",
+                    file_contents=[image_content]
+                )
+            else:
+                user_message = UserMessage(text=message)
             
-            # Get response
             response = await chat.send_message(user_message)
-            
             return response
             
         except Exception as e:
