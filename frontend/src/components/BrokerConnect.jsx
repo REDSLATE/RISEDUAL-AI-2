@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { Building2, CheckCircle, ExternalLink, ArrowRight, Shield } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -185,8 +186,8 @@ const BrokerConnect = () => {
         )}
       </Button>
 
-      {/* Modal */}
-      {isModalOpen && (
+      {/* Modal via Portal to escape navbar stacking context */}
+      {isModalOpen && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-700/50">
             {/* Header */}
@@ -247,7 +248,7 @@ const BrokerConnect = () => {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </>
   );
 };
