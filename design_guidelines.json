@@ -1,0 +1,85 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) - Brighter Dark Theme (Coinbase x Fidelity)",
+  "vibe": "Welcoming, modern, accessible but professional trading dashboard. Brighter dark tones, deep slate navies over pitch black.",
+  "colors": {
+    "background": "#0F172A", 
+    "surface": "#1E293B",
+    "surface_hover": "#334155",
+    "primary": "#0052FF",
+    "primary_hover": "#2563EB",
+    "secondary": "#334155",
+    "secondary_hover": "#475569",
+    "accent_up": "#16A34A",
+    "accent_down": "#DC2626",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "border": "#334155",
+    "ring": "#0052FF"
+  },
+  "typography": {
+    "heading_font": "Manrope",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "JetBrains Mono",
+    "rules": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-black text-white",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-bold text-white",
+      "h3": "text-xl sm:text-2xl font-semibold text-white",
+      "h4": "text-lg sm:text-xl font-medium text-slate-100",
+      "body": "text-base text-slate-300 leading-relaxed",
+      "small_labels": "text-xs tracking-[0.1em] uppercase text-slate-400 font-semibold"
+    }
+  },
+  "layout": {
+    "strategy": "Control Room Grid for Analytics",
+    "spacing_scale": "p-1, p-2, p-4, p-6, p-8, p-12",
+    "grid_structure": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 or gap-6",
+    "alignment": "Left-aligned data, dense and compact but visually clean with generous padding within cards.",
+    "surface_style": "Flat Solid with subtle roundness. Backgrounds match surface color (#1E293B) with a 1px solid border (#334155). Avoid muddy shadows. Use rounded-xl or rounded-2xl for Coinbase-friendly feel.",
+    "header": "Sticky glassmorphism: backdrop-blur-xl bg-slate-900/80 border-b border-slate-800 z-50."
+  },
+  "components": {
+    "general": "Use Shadcn/UI for tables, dropdowns, dialogs, tabs. Customize spacing, radius to rounded-xl, and colors.",
+    "buttons": "Primary CTA rounded-full or rounded-xl, high contrast. Use #0052FF with white text.",
+    "cards": "Subtle border, flat background #1E293B. Hover: slight border color lighten or bg-slate-800.",
+    "tables": "Dense. JetBrains Mono for numbers. Left-aligned text, right-aligned numbers. Accent Up (Green) and Down (Red) for P&L.",
+    "charts": "Shadcn charts or Recharts. Clear tooltips, minimalistic grid lines (slate-700/50).",
+    "modals": "Use Shadcn Dialog. Backdrop blur over dashboard."
+  },
+  "motion": {
+    "hover": "Transition bg-color and border-color 0.2s ease. NO transform scale on dense dashboard tables.",
+    "entrance": "Staggered fade-in for grid items (opacity 0 to 1, translate-y-2 to 0).",
+    "loading": "Subtle skeleton pulses (bg-slate-800)."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Clean, stroke-width 2, sizes 16-24px depending on context."
+  },
+  "accessibility": {
+    "contrast": "Ensure text against #1E293B or #0F172A meets 4.5:1.",
+    "focus": "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900",
+    "testing": "All interactive elements MUST include data-testid attribute (e.g., data-testid='broker-connect-btn')."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1762279389020-eeeb69c25813?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGZpbmFuY2UlMjB0cmFkaW5nJTIwY2hhcnQlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDU4MjIwN3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract glowing lines forming a complex data visualization - useful for banner backgrounds or empty states."
+      },
+      {
+        "category": "ai_avatar",
+        "url": "https://images.unsplash.com/photo-1677442135132-141348e809d9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwxfHxyb2JvdCUyMGhlYWQlMjBhaSUyMG1pbmltYWwlMjBhdmF0YXIlMjBibHVlfGVufDB8fHx8MTc3NDU4MjIxNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Blue minimal AI avatar for the AI Chat Widget."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a welcoming trading dashboard blending Coinbase (friendly, bright blues, rounded) and Fidelity (trustworthy, green up-ticks).",
+    "Base background is slate-900 (#0F172A), completely overriding the previous #0a0a0b pure black.",
+    "Implement the 'Control Room' bento grid (grid-cols-4) to layout widgets: Options Radar, Flow Screener, Market Prediction.",
+    "Ensure all numbers in the Stock/Crypto Ticker use JetBrains Mono or tabular-nums for alignment.",
+    "Implement the Navigation Bar with a sticky glassmorphic header.",
+    "Add 'data-testid' to all buttons, tabs, modal triggers, and form inputs."
+  ]
+}
