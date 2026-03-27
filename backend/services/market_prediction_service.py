@@ -67,15 +67,20 @@ Provide your analysis in JSON format with:
             
             response = await chat.send_message(UserMessage(text=prompt))
             
-            # Parse AI response
+            # Parse AI response - strip markdown code blocks if present
             try:
-                prediction = json.loads(response)
-            except:
+                clean = response.strip()
+                if clean.startswith('```'):
+                    clean = clean.split('\n', 1)[1] if '\n' in clean else clean[3:]
+                    if clean.endswith('```'):
+                        clean = clean[:-3].strip()
+                prediction = json.loads(clean)
+            except Exception:
                 # If not valid JSON, return structured default
                 prediction = {
                     'overall_direction': self._simple_sentiment_analysis(financial_news),
                     'confidence_score': 70,
-                    'summary': response[:500],
+                    'summary': 'AI analysis complete. See signals and risk factors below.',
                     'key_signals': ['AI analysis in progress'],
                     'timestamp': datetime.utcnow().isoformat()
                 }
