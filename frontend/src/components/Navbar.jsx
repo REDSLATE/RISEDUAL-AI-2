@@ -11,6 +11,14 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 
+const scrollTo = (id) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+};
+
+const openChat = () => {
+  window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
+};
+
 const Navbar = () => {
   const [searchValue, setSearchValue] = useState('');
   const [showSubscription, setShowSubscription] = useState(false);
@@ -18,7 +26,6 @@ const Navbar = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchValue.trim()) {
-      // Scroll to relevant section or show results
       console.log('Searching for:', searchValue);
     }
   };
@@ -37,119 +44,141 @@ const Navbar = () => {
             <span className="text-white font-bold text-lg tracking-tight" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUALAI</span>
           </div>
 
-          {/* Search Bar */}
-          <form onSubmit={handleSearch} className="relative w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-4 h-4" />
+          {/* Search */}
+          <form onSubmit={handleSearch} className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input
               type="text"
               placeholder="Search Symbol"
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#0052FF] rounded-xl"
+              data-testid="search-input"
             />
           </form>
         </div>
 
-        {/* Navigation Menu */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          {/* Platform Dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none">
+            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="platform-menu">
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('options-radar')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('options-radar')}
               >
                 AI Options Radar
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('options-flow')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('options-flow')}
               >
                 Options Flow Screener
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('dark-pool')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('dark-pool')}
               >
                 Dark Pool Trading
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('crypto')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('crypto')}
               >
                 Crypto Market
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Strategies Dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none">
+            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="strategies-menu">
               Strategies <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('momentum')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('momentum')}
               >
                 Momentum Close Strength
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('fast-movers')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('fast-movers')}
               >
                 Fast Mover Calls
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('unusual-volume')?.scrollIntoView({ behavior: 'smooth' })}
+                onSelect={() => scrollTo('unusual-volume')}
               >
                 Unusual Options Volume
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Education Dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none">
+            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="education-menu">
               Education <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => document.getElementById('chat-window')?.classList.remove('hidden')}
+                onSelect={openChat}
               >
                 Ask RISEDUALAI
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
-                Trading Basics
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('market-prediction')}
+              >
+                Market Analysis
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('options-radar')}
+              >
                 Options Guide
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
-                Risk Management
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('dark-pool')}
+              >
+                Dark Pool Explained
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Resources Dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none">
+            <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="resources-menu">
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
-                API Documentation
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
-                Market Data Sources
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-[#1E293B] cursor-pointer">
-                Support Center
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('market-prediction')}
+              >
+                AI Market Predictions
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
-                onClick={() => window.open('https://emergent.sh', '_blank')}
+                onSelect={() => scrollTo('crypto')}
+              >
+                Crypto Data
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={openChat}
+              >
+                Support / Ask AI
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => window.open('https://risedual.com', '_blank')}
               >
                 About RISEDUALAI
               </DropdownMenuItem>

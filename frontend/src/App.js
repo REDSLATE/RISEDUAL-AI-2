@@ -56,7 +56,7 @@ function App() {
         </div>
 
         {/* AI Market Prediction */}
-        <div className="mb-8">
+        <div id="market-prediction" className="mb-8">
           <MarketPrediction />
         </div>
 

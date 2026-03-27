@@ -26,6 +26,12 @@ const TradeGPTChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    const handleOpenChat = () => setIsOpen(true);
+    window.addEventListener('risedualai-open-chat', handleOpenChat);
+    return () => window.removeEventListener('risedualai-open-chat', handleOpenChat);
+  }, []);
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
