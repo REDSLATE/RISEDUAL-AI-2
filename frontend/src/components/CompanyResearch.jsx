@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Building2, TrendingUp, BarChart3, Globe, Users, Loader2, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Building2, TrendingUp, BarChart3, Globe, Users, Loader2, ExternalLink, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -41,7 +41,21 @@ const SourceBadge = ({ source }) => (
 
 const ResearchCard = ({ data, compact = false }) => {
   const [expanded, setExpanded] = useState(!compact);
+  const [inWatchlist, setInWatchlist] = useState(false);
   const overview = data.overview || {};
+
+  useEffect(() => {
+    const saved = localStorage.getItem('risedualai_watchlist');
+    if (saved) {
+      const list = JSON.parse(saved);
+      setInWatchlist(list.some(item => item.symbol === data.symbol));
+    }
+  }, [data.symbol]);
+
+  const addToWatchlist = () => {
+    window.dispatchEvent(new CustomEvent('risedualai-add-watchlist', { detail: data.symbol }));
+    setInWatchlist(true);
+  };
 
   return (
     <Card className="bg-slate-800/30 border-slate-700/50 rounded-xl overflow-hidden" data-testid="research-card">
@@ -64,17 +78,29 @@ const ResearchCard = ({ data, compact = false }) => {
             </p>
           </div>
         </div>
-        {compact && (
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setExpanded(!expanded)}
-            className="text-slate-400 hover:text-white"
-            data-testid="expand-research"
+            onClick={addToWatchlist}
+            disabled={inWatchlist}
+            className={inWatchlist ? "text-yellow-500" : "text-slate-400 hover:text-yellow-500"}
+            data-testid="add-to-watchlist-btn"
           >
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <Star className={`w-4 h-4 ${inWatchlist ? 'fill-yellow-500' : ''}`} />
           </Button>
-        )}
+          {compact && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              className="text-slate-400 hover:text-white"
+              data-testid="expand-research"
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          )}
+        </div>
       </div>
 
       {expanded && (

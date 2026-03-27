@@ -15,6 +15,21 @@ const Watchlist = () => {
     if (saved) {
       setWatchlist(JSON.parse(saved));
     }
+
+    // Listen for external "add to watchlist" events
+    const handleAdd = (e) => {
+      if (!e.detail) return;
+      const symbol = e.detail.toUpperCase().trim();
+      setWatchlist((prev) => {
+        if (prev.find(item => item.symbol === symbol)) return prev;
+        const updated = [...prev, { symbol, addedAt: new Date().toISOString(), price: 0, change: 0, changePercent: 0 }];
+        localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
+        return updated;
+      });
+      setIsExpanded(true);
+    };
+    window.addEventListener('risedualai-add-watchlist', handleAdd);
+    return () => window.removeEventListener('risedualai-add-watchlist', handleAdd);
   }, []);
 
   const addSymbol = () => {
