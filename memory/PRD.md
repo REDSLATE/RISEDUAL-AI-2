@@ -25,6 +25,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] AI Chat with GPT-5.2 session management
 - [x] **AI Chat Vision/Screenshot Upload** — Users can upload JPEG/PNG/WEBP chart images for AI analysis (2026-03-27)
 - [x] **Chart Pattern Library** — Type `/patterns` to browse 8 common chart patterns with SVG illustrations; click any pattern for AI analysis (2026-03-27)
+- [x] **Real Stripe Payment Integration** — $50/year subscription checkout via Stripe, payment status polling, MongoDB transaction records (2026-03-27)
 - [x] Market Prediction engine (8+ news sources scraping)
 - [x] Real Estate market scraping
 - [x] Crypto & Dark Pool data endpoints + UI
@@ -35,8 +36,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 
 ## Prioritized Backlog
 ### P1 - Upcoming
-- Real Payment Integration (Stripe) — Blocked on user providing Stripe API keys
-- Deployment to custom domain (www.risedual.com) — Blocked on Stripe + user confirmation
+- Deployment to custom domain (www.risedual.com) — User needs to configure DNS
 
 ### P2 - Future
 - Real Broker Integration (Alpaca OAuth) — Replace mocked trading endpoints
@@ -44,7 +44,6 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 
 ## Mocked Features
 - Broker trading execution (Alpaca) — UI exists, backend mocked
-- Payment processing (Stripe/PayPal) — UI exists, backend mocked pending API keys
 
 ## Key Files
 - `/app/backend/services/ai_service.py` — AI chat with vision capability
