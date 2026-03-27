@@ -131,3 +131,15 @@ export const getChatHistory = async (sessionId) => {
     throw error;
   }
 };
+
+// Company Research API
+export const researchCompany = async (symbol) => {
+  try {
+    const response = await axios.get(`${API}/research/${symbol}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error researching company:', error);
+    throw error;
+  }
+};
+

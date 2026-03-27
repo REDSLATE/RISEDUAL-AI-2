@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Image, X, BarChart3 } from 'lucide-react';
+import { Send, Sparkles, Image, X, BarChart3, Building2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
-import { sendChatMessage } from '../services/api';
+import { sendChatMessage, researchCompany } from '../services/api';
 import ChartPatternLibrary from './ChartPatternLibrary';
+import { ResearchCard } from './CompanyResearch';
 
 const TradeGPTChat = () => {
   const [messages, setMessages] = useState([
@@ -97,6 +98,24 @@ const TradeGPTChat = () => {
       return;
     }
 
+    // Check for /research TICKER command
+    const researchMatch = input.trim().match(/^\/research\s+(\w+)$/i);
+    if (researchMatch) {
+      const ticker = researchMatch[1].toUpperCase();
+      setMessages((prev) => [...prev, { role: 'user', content: `/research ${ticker}` }]);
+      setInput('');
+      setIsLoading(true);
+      try {
+        const data = await researchCompany(ticker);
+        setMessages((prev) => [...prev, { role: 'assistant', content: '__RESEARCH__', researchData: data }]);
+      } catch {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Could not find research data for ${ticker}.` }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     const userMessage = {
       role: 'user',
       content: input || (imageBase64 ? 'Analyze this chart' : ''),
@@ -125,6 +144,10 @@ const TradeGPTChat = () => {
   const renderMessageContent = (message, index) => {
     if (message.content === '__PATTERN_LIBRARY__') {
       return <ChartPatternLibrary onSelectPattern={handlePatternSelect} />;
+    }
+
+    if (message.content === '__RESEARCH__' && message.researchData) {
+      return <ResearchCard data={message.researchData} compact={true} />;
     }
 
     return (
@@ -174,7 +197,7 @@ const TradeGPTChat = () => {
             >
               <div
                 className={`rounded-lg px-4 py-2 ${
-                  message.content === '__PATTERN_LIBRARY__'
+                  message.content === '__PATTERN_LIBRARY__' || message.content === '__RESEARCH__'
                     ? 'max-w-[95%]'
                     : 'max-w-[80%]'
                 } ${
@@ -235,6 +258,14 @@ const TradeGPTChat = () => {
             >
               <BarChart3 className="w-3 h-3" />
               /patterns
+            </button>
+            <button
+              onClick={() => setInput('/research ')}
+              className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-400 hover:text-[#0052FF] hover:border-[#0052FF] transition-colors flex items-center gap-1"
+              data-testid="research-shortcut-btn"
+            >
+              <Building2 className="w-3 h-3" />
+              /research
             </button>
           </div>
           <div className="flex gap-2">

@@ -13,6 +13,7 @@ import DarkPoolData from './components/DarkPoolData';
 import CryptoSection from './components/CryptoSection';
 import TradeGPTChat from './components/TradeGPTChat';
 import PaymentStatus from './components/PaymentStatus';
+import CompanyResearch from './components/CompanyResearch';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -58,6 +59,11 @@ function App() {
         {/* AI Market Prediction */}
         <div id="market-prediction" className="mb-8">
           <MarketPrediction />
+        </div>
+
+        {/* Company Research (Perplexity-style) */}
+        <div id="company-research" className="mb-8">
+          <CompanyResearch />
         </div>
 
         {/* AI Options Radar */}

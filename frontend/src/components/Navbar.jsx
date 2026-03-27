@@ -26,7 +26,9 @@ const Navbar = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchValue.trim()) {
-      console.log('Searching for:', searchValue);
+      // Dispatch event with the ticker symbol for the Research section
+      window.dispatchEvent(new CustomEvent('risedualai-research', { detail: searchValue.trim().toUpperCase() }));
+      scrollTo('company-research');
     }
   };
 
@@ -159,6 +161,12 @@ const Navbar = () => {
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('company-research')}
+              >
+                Company Research
+              </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
                 onSelect={() => scrollTo('market-prediction')}

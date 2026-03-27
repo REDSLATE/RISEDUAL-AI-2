@@ -261,6 +261,21 @@ async def connect_broker(broker_id: str, credentials: Dict):
         logging.error(f"Error connecting to broker: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# Company Research Endpoints (Perplexity-style)
+@api_router.get("/research/{symbol}")
+async def research_company(symbol: str):
+    """Perplexity-style company research with AI synthesis"""
+    try:
+        from services.company_research_service import CompanyResearchService
+        research_service = CompanyResearchService()
+        session_id = f"research_{symbol}_{datetime.now(timezone.utc).isoformat()}"
+        result = await research_service.research_company(symbol, session_id)
+        return result
+    except Exception as e:
+        logging.error(f"Error researching {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Subscription & Payment Endpoints
 class CheckoutRequest(BaseModel):
     origin_url: str
