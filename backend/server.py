@@ -276,7 +276,7 @@ async def create_checkout_session(request: CheckoutRequest, http_request: Reques
         webhook_url = f"{host_url}/api/webhook/stripe"
 
         metadata = {
-            "plan": "risedualai_pro_yearly",
+            "plan": "risedualai_pro_monthly",
             "source": "web_checkout"
         }
 
@@ -289,9 +289,9 @@ async def create_checkout_session(request: CheckoutRequest, http_request: Reques
         # Record pending transaction in DB
         await db.payment_transactions.insert_one({
             "session_id": session.session_id,
-            "amount": 50.00,
+            "amount": 25.00,
             "currency": "usd",
-            "plan": "risedualai_pro_yearly",
+            "plan": "risedualai_pro_monthly",
             "metadata": metadata,
             "payment_status": "initiated",
             "created_at": datetime.now(timezone.utc).isoformat()

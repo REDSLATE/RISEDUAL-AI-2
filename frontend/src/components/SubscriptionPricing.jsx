@@ -74,13 +74,13 @@ const SubscriptionPricing = ({ onClose }) => {
 
               <div className="text-center mb-6">
                 <div className="text-5xl font-bold text-white mb-2">
-                  $50
-                  <span className="text-xl text-gray-300">/year</span>
+                  $25
+                  <span className="text-xl text-gray-300">/month</span>
                 </div>
-                <p className="text-gray-300">Just $4.17/month</p>
+                <p className="text-gray-300">Less than $1/day</p>
                 <div className="mt-4 inline-flex items-center gap-2 bg-green-900 bg-opacity-30 text-green-400 px-4 py-2 rounded-full text-sm">
                   <Zap className="w-4 h-4" />
-                  Save 65% compared to monthly plans
+                  Full access to all premium features
                 </div>
               </div>
 
@@ -91,7 +91,7 @@ const SubscriptionPricing = ({ onClose }) => {
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 text-lg"
                   data-testid="stripe-checkout-btn"
                 >
-                  {isProcessing ? 'Redirecting to Stripe...' : 'Subscribe Now — $50/year'}
+                  {isProcessing ? 'Redirecting to Stripe...' : 'Subscribe Now — $25/month'}
                 </Button>
               </div>
 
