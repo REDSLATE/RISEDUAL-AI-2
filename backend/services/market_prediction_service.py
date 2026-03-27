@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 from datetime import datetime
