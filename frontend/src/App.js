@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import Navbar from './components/Navbar';
 import StockTicker from './components/StockTicker';
@@ -12,8 +12,28 @@ import AdditionalSections from './components/AdditionalSections';
 import DarkPoolData from './components/DarkPoolData';
 import CryptoSection from './components/CryptoSection';
 import TradeGPTChat from './components/TradeGPTChat';
+import PaymentStatus from './components/PaymentStatus';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 function App() {
+  const [paymentInfo, setPaymentInfo] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment_status');
+    const sessionId = params.get('session_id');
+
+    if (paymentStatus && sessionId) {
+      setPaymentInfo({ status: paymentStatus, sessionId });
+      // Clean URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (paymentStatus === 'cancelled') {
+      setPaymentInfo({ status: 'cancelled', sessionId: null });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#0a0a0b]">
       {/* Stock Ticker */}
@@ -66,6 +86,15 @@ function App() {
 
       {/* TradeGPT Chat */}
       <TradeGPTChat />
+
+      {/* Payment Status Modal */}
+      {paymentInfo && (
+        <PaymentStatus
+          sessionId={paymentInfo.sessionId}
+          initialStatus={paymentInfo.status}
+          onClose={() => setPaymentInfo(null)}
+        />
+      )}
 
       {/* Footer Note */}
       <div className="text-center py-8 text-gray-500 text-sm">

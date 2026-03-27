@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,7 +6,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Dict
+from typing import List, Dict, Optional
 import uuid
 from datetime import datetime, timezone
 
@@ -262,96 +262,111 @@ async def connect_broker(broker_id: str, credentials: Dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Subscription & Payment Endpoints
+class CheckoutRequest(BaseModel):
+    origin_url: str
+
 @api_router.post("/subscription/create-checkout-session")
-async def create_checkout_session(request: Dict):
-    """Create Stripe checkout session"""
+async def create_checkout_session(request: CheckoutRequest, http_request: Request):
+    """Create Stripe checkout session for $50/year subscription"""
     try:
-        from services.payment_service import StripeService
-        
-        # In production, get user from authenticated session
-        user_email = request.get('email', 'user@example.com')
-        user_id = request.get('user_id', 'demo_user')
-        
-        stripe_service = StripeService()
-        result = stripe_service.create_checkout_session(user_email, user_id)
-        
-        if not result:
-            raise HTTPException(status_code=400, detail="Failed to create checkout session")
-        
-        return result
+        from services.payment_service import StripePaymentService
+
+        payment_service = StripePaymentService()
+        host_url = str(http_request.base_url).rstrip('/')
+        webhook_url = f"{host_url}/api/webhook/stripe"
+
+        metadata = {
+            "plan": "risedualai_pro_yearly",
+            "source": "web_checkout"
+        }
+
+        session = await payment_service.create_checkout_session(
+            origin_url=request.origin_url,
+            webhook_url=webhook_url,
+            metadata=metadata
+        )
+
+        # Record pending transaction in DB
+        await db.payment_transactions.insert_one({
+            "session_id": session.session_id,
+            "amount": 50.00,
+            "currency": "usd",
+            "plan": "risedualai_pro_yearly",
+            "metadata": metadata,
+            "payment_status": "initiated",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+        return {"url": session.url, "session_id": session.session_id}
+
     except Exception as e:
         logging.error(f"Error creating checkout session: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/subscription/create-paypal-order")
-async def create_paypal_order(request: Dict):
-    """Create PayPal subscription order"""
+@api_router.get("/subscription/status/{session_id}")
+async def get_payment_status(session_id: str, http_request: Request):
+    """Poll payment status for a checkout session"""
     try:
-        from services.payment_service import PayPalService
-        
-        user_email = request.get('email', 'user@example.com')
-        user_id = request.get('user_id', 'demo_user')
-        
-        paypal_service = PayPalService()
-        result = paypal_service.create_subscription(user_email, user_id)
-        
-        if not result:
-            raise HTTPException(status_code=400, detail="Failed to create PayPal order")
-        
-        return result
-    except Exception as e:
-        logging.error(f"Error creating PayPal order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        from services.payment_service import StripePaymentService
 
-@api_router.get("/subscription/status/{user_id}")
-async def get_subscription_status(user_id: str):
-    """Get user subscription status"""
-    try:
-        # In production, query database for user subscription
-        subscription = await db.subscriptions.find_one({"user_id": user_id})
-        
-        if not subscription:
-            return {"status": "none", "message": "No active subscription"}
-        
-        return {
-            "status": subscription.get('status'),
-            "plan": subscription.get('plan_type'),
-            "current_period_end": subscription.get('current_period_end')
-        }
-    except Exception as e:
-        logging.error(f"Error fetching subscription: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error fetching subscription")
+        payment_service = StripePaymentService()
+        host_url = str(http_request.base_url).rstrip('/')
+        webhook_url = f"{host_url}/api/webhook/stripe"
 
-@api_router.post("/subscription/cancel/{user_id}")
-async def cancel_subscription(user_id: str):
-    """Cancel user subscription"""
-    try:
-        subscription = await db.subscriptions.find_one({"user_id": user_id})
-        
-        if not subscription:
-            raise HTTPException(status_code=404, detail="No subscription found")
-        
-        # Cancel based on payment provider
-        if subscription['payment_provider'] == 'stripe':
-            from services.payment_service import StripeService
-            stripe_service = StripeService()
-            success = stripe_service.cancel_subscription(subscription['stripe_subscription_id'])
-        else:
-            from services.payment_service import PayPalService
-            paypal_service = PayPalService()
-            success = paypal_service.cancel_subscription(subscription['paypal_subscription_id'])
-        
-        if success:
-            await db.subscriptions.update_one(
-                {"user_id": user_id},
-                {"$set": {"cancel_at_period_end": True, "updated_at": datetime.now(timezone.utc)}}
+        status = await payment_service.get_checkout_status(session_id, webhook_url)
+
+        # Update transaction in DB (only once)
+        existing = await db.payment_transactions.find_one({"session_id": session_id})
+        if existing and existing.get("payment_status") != status.payment_status:
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": {
+                    "payment_status": status.payment_status,
+                    "status": status.status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
             )
-            return {"status": "cancelled", "message": "Subscription will cancel at period end"}
-        else:
-            raise HTTPException(status_code=400, detail="Failed to cancel subscription")
+
+        return {
+            "status": status.status,
+            "payment_status": status.payment_status,
+            "amount_total": status.amount_total,
+            "currency": status.currency
+        }
+
     except Exception as e:
-        logging.error(f"Error cancelling subscription: {str(e)}")
+        logging.error(f"Error fetching payment status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    try:
+        from services.payment_service import StripePaymentService
+
+        payment_service = StripePaymentService()
+        body = await request.body()
+        signature = request.headers.get("Stripe-Signature", "")
+        host_url = str(request.base_url).rstrip('/')
+        webhook_url = f"{host_url}/api/webhook/stripe"
+
+        webhook_response = await payment_service.handle_webhook(body, signature, webhook_url)
+
+        if webhook_response and webhook_response.session_id:
+            await db.payment_transactions.update_one(
+                {"session_id": webhook_response.session_id},
+                {"$set": {
+                    "payment_status": webhook_response.payment_status,
+                    "event_type": webhook_response.event_type,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        logging.error(f"Webhook error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Market Prediction & Scraping Endpoints
 @api_router.get("/market/prediction")

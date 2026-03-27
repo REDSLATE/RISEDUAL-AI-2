@@ -4,8 +4,9 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
 const SubscriptionPricing = ({ onClose }) => {
-  const [selectedPlan, setSelectedPlan] = useState('yearly');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const features = [
@@ -22,35 +23,23 @@ const SubscriptionPricing = ({ onClose }) => {
   const handleStripeCheckout = async () => {
     setIsProcessing(true);
     try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/subscription/create-checkout-session`, {
+      const originUrl = window.location.origin;
+      const response = await fetch(`${API}/subscription/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          plan: 'yearly',
-          payment_method: 'stripe'
-        })
+        body: JSON.stringify({ origin_url: originUrl })
       });
-      
-      const { url } = await response.json();
-      window.location.href = url;
-    } catch (error) {
-      alert('Payment processing error. Please try again.');
-      setIsProcessing(false);
-    }
-  };
 
-  const handlePayPalCheckout = async () => {
-    setIsProcessing(true);
-    try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/subscription/create-paypal-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: 'yearly' })
-      });
-      
-      const { approval_url } = await response.json();
-      window.location.href = approval_url;
+      if (!response.ok) throw new Error('Failed to create checkout session');
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
     } catch (error) {
+      console.error('Stripe checkout error:', error);
       alert('Payment processing error. Please try again.');
       setIsProcessing(false);
     }
@@ -58,14 +47,15 @@ const SubscriptionPricing = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#0a0a0b] rounded-xl max-w-4xl w-full my-8">
+      <div className="bg-[#0a0a0b] rounded-xl max-w-4xl w-full my-8" data-testid="subscription-modal">
         {/* Header */}
         <div className="relative p-8 text-center border-b border-gray-800">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
+            data-testid="subscription-close-btn"
           >
-            ×
+            x
           </button>
           <div className="flex items-center justify-center gap-2 mb-2">
             <Crown className="w-8 h-8 text-yellow-500" />
@@ -78,12 +68,10 @@ const SubscriptionPricing = ({ onClose }) => {
         <div className="p-8">
           <div className="max-w-md mx-auto">
             <Card className="bg-gradient-to-br from-blue-900 to-purple-900 border-2 border-yellow-500 p-8 relative overflow-hidden">
-              {/* Popular Badge */}
               <Badge className="absolute top-4 right-4 bg-yellow-500 text-black font-bold">
                 BEST VALUE
               </Badge>
 
-              {/* Price */}
               <div className="text-center mb-6">
                 <div className="text-5xl font-bold text-white mb-2">
                   $50
@@ -96,29 +84,20 @@ const SubscriptionPricing = ({ onClose }) => {
                 </div>
               </div>
 
-              {/* Payment Buttons */}
               <div className="space-y-3">
                 <Button
                   onClick={handleStripeCheckout}
                   disabled={isProcessing}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 text-lg"
+                  data-testid="stripe-checkout-btn"
                 >
-                  {isProcessing ? 'Processing...' : 'Pay with Stripe'}
-                </Button>
-                
-                <Button
-                  onClick={handlePayPalCheckout}
-                  disabled={isProcessing}
-                  className="w-full bg-[#0070ba] hover:bg-[#005ea6] text-white font-semibold py-6 text-lg"
-                >
-                  {isProcessing ? 'Processing...' : 'Pay with PayPal'}
+                  {isProcessing ? 'Redirecting to Stripe...' : 'Subscribe Now — $50/year'}
                 </Button>
               </div>
 
-              {/* Security Note */}
               <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-xs">
                 <Shield className="w-4 h-4" />
-                <span>Secure payment • Cancel anytime • 30-day money-back guarantee</span>
+                <span>Secure payment via Stripe -- Cancel anytime -- 30-day money-back guarantee</span>
               </div>
             </Card>
           </div>
@@ -153,11 +132,11 @@ const SubscriptionPricing = ({ onClose }) => {
               </div>
               <div>
                 <p className="text-white font-medium">What payment methods do you accept?</p>
-                <p className="text-gray-400 text-sm mt-1">We accept all major credit cards via Stripe and PayPal payments for your convenience.</p>
+                <p className="text-gray-400 text-sm mt-1">We accept all major credit/debit cards securely processed via Stripe.</p>
               </div>
               <div>
                 <p className="text-white font-medium">Is my payment information secure?</p>
-                <p className="text-gray-400 text-sm mt-1">Absolutely! We use industry-standard encryption and never store your payment details. All transactions are processed securely through Stripe and PayPal.</p>
+                <p className="text-gray-400 text-sm mt-1">Absolutely! All transactions are processed securely through Stripe. We never store your payment details.</p>
               </div>
             </div>
           </div>

@@ -160,6 +160,15 @@ const Navbar = () => {
 
           <Button 
             variant="outline" 
+            className="bg-yellow-500 text-black hover:bg-yellow-400 border-0 font-semibold"
+            onClick={() => setShowSubscription(true)}
+            data-testid="upgrade-btn"
+          >
+            Upgrade Pro
+          </Button>
+
+          <Button 
+            variant="outline" 
             className="bg-white text-black hover:bg-gray-200 border-0"
             onClick={() => alert('Login functionality coming soon! This will integrate with authentication.')}
           >
@@ -167,6 +176,10 @@ const Navbar = () => {
           </Button>
         </div>
       </div>
+
+      {showSubscription && (
+        <SubscriptionPricing onClose={() => setShowSubscription(false)} />
+      )}
     </nav>
   );
 };
