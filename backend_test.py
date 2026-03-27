@@ -7,7 +7,7 @@ import time
 from typing import Dict, List, Optional
 
 # Backend URL from frontend .env
-BACKEND_URL = "https://algo-trader-ai-1.preview.emergentagent.com/api"
+BACKEND_URL = "https://ai-trading-edge-2.preview.emergentagent.com/api"
 
 class TradealgoAPITester:
     def __init__(self):
