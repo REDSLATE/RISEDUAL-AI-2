@@ -15,6 +15,7 @@ const TradeGPTChat = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+  const [isOpen, setIsOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const fileInputRef = useRef(null);
@@ -94,16 +95,16 @@ const TradeGPTChat = () => {
         <Button
           data-testid="chat-toggle-btn"
           className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-14 h-14 shadow-lg"
-          onClick={() => document.getElementById('chat-window').classList.toggle('hidden')}
+          onClick={() => setIsOpen(!isOpen)}
         >
           <Sparkles className="w-6 h-6" />
         </Button>
       </div>
 
-      <Card
+      {isOpen && <Card
         id="chat-window"
         data-testid="chat-window"
-        className="hidden w-96 h-[500px] bg-[#0a0a0b] border-gray-800 flex flex-col shadow-2xl z-50"
+        className="w-96 h-[500px] bg-[#0a0a0b] border-gray-800 flex flex-col shadow-2xl z-50"
       >
         <div className="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
           <div className="flex items-center gap-2">
@@ -212,7 +213,7 @@ const TradeGPTChat = () => {
             </Button>
           </div>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 };
