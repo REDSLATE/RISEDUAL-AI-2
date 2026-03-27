@@ -24,6 +24,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] Alpha Vantage real market data integration
 - [x] AI Chat with GPT-5.2 session management
 - [x] **AI Chat Vision/Screenshot Upload** — Users can upload JPEG/PNG/WEBP chart images for AI analysis (2026-03-27)
+- [x] **Chart Pattern Library** — Type `/patterns` to browse 8 common chart patterns with SVG illustrations; click any pattern for AI analysis (2026-03-27)
 - [x] Market Prediction engine (8+ news sources scraping)
 - [x] Real Estate market scraping
 - [x] Crypto & Dark Pool data endpoints + UI
