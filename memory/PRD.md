@@ -40,6 +40,8 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] **Macro Data Integration into Market Predictions** — World events, foreign markets, and government filings all feed into GPT-5.2 AI analysis prompt for comprehensive predictions (2026-03-31)
 - [x] **Frontend Macro Data Cards** — Market Prediction UI now displays World Events, Foreign Markets, Government Data intelligence cards and Geopolitical Impact assessment (2026-03-31)
 
+- [x] **Macro Intelligence Dashboard** — Bloomberg-terminal-style standalone section with 3 tabs: World Events (RSS news with sector impact mapping, high-impact alerts), Foreign Markets (global indices heatmap, commodities, currencies, correlation signals), Congress Trades (congressional stock trades table, Fed announcements, SEC filings). Accessible from Navbar Platform & Resources dropdowns (2026-04-02)
+
 ## Prioritized Backlog
 ### P1 - Upcoming
 - Deployment to custom domain (www.risedual.com) — User needs to configure DNS
