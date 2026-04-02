@@ -15,8 +15,16 @@ import TradeGPTChat from './components/TradeGPTChat';
 import PaymentStatus from './components/PaymentStatus';
 import CompanyResearch from './components/CompanyResearch';
 import MacroDashboard from './components/MacroDashboard';
+import MobileBottomNav from './components/MobileBottomNav';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
+}
 
 function App() {
   const [paymentInfo, setPaymentInfo] = useState(null);
@@ -28,7 +36,6 @@ function App() {
 
     if (paymentStatus && sessionId) {
       setPaymentInfo({ status: paymentStatus, sessionId });
-      // Clean URL without reload
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paymentStatus === 'cancelled') {
       setPaymentInfo({ status: 'cancelled', sessionId: null });
@@ -36,10 +43,16 @@ function App() {
     }
   }, []);
 
+  const openChat = () => {
+    window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
+  };
+
   return (
-    <div className="min-h-screen bg-[#0F172A]">
+    <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
       {/* Stock Ticker */}
-      <StockTicker />
+      <div id="stock-ticker">
+        <StockTicker />
+      </div>
       
       {/* Navigation */}
       <Navbar />
@@ -51,24 +64,24 @@ function App() {
       <AlertsPanel />
 
       {/* Main Content */}
-      <main className="max-w-[1600px] mx-auto px-6 py-8">
+      <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Watchlist */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <Watchlist />
         </div>
 
         {/* AI Market Prediction */}
-        <div id="market-prediction" className="mb-8">
+        <div id="market-prediction" className="mb-6 sm:mb-8">
           <MarketPrediction />
         </div>
 
         {/* Company Research (Perplexity-style) */}
-        <div id="company-research" className="mb-8">
+        <div id="company-research" className="mb-6 sm:mb-8">
           <CompanyResearch />
         </div>
 
         {/* Macro Intelligence Dashboard */}
-        <div id="macro-dashboard" className="mb-8">
+        <div id="macro-dashboard" className="mb-6 sm:mb-8">
           <MacroDashboard />
         </div>
 
@@ -99,6 +112,9 @@ function App() {
       {/* TradeGPT Chat */}
       <TradeGPTChat />
 
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav onOpenChat={openChat} />
+
       {/* Payment Status Modal */}
       {paymentInfo && (
         <PaymentStatus
@@ -109,7 +125,7 @@ function App() {
       )}
 
       {/* Footer Note */}
-      <div className="text-center py-8 text-gray-500 text-sm">
+      <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <p>RISEDUALAI - Advanced AI-Powered Trading Platform</p>
         <p className="mt-1">Last updated on {new Date().toLocaleString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'UTC' })} UTC</p>
       </div>

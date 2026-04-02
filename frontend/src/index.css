@@ -9,6 +9,7 @@ body,
     padding: 0;
     background-color: #0F172A !important;
     min-height: 100vh;
+    -webkit-overflow-scrolling: touch;
 }
 
 body {
@@ -25,6 +26,53 @@ h1, h2, h3, h4, h5, h6 {
 
 code, .font-mono {
     font-family: 'JetBrains Mono', source-code-pro, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Safe area padding for notched devices */
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Custom scrollbar for all platforms */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.3);
+    border-radius: 4px;
+}
+
+/* Responsive table wrapper */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Hide desktop chat FAB on mobile (bottom nav handles it) */
+@media (max-width: 767px) {
+    /* Ensure modals are above bottom nav */
+    [role="dialog"] {
+        z-index: 60 !important;
+    }
+    /* Prevent horizontal overflow */
+    body, #root {
+        overflow-x: hidden;
+    }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+    button, a, [role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    input, select, textarea {
+        font-size: 16px !important; /* Prevent iOS zoom */
+    }
 }
 
 @layer base {

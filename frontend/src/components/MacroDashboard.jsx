@@ -117,14 +117,14 @@ const MacroDashboard = () => {
   return (
     <div className="space-y-6" data-testid="macro-dashboard">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-violet-600 rounded-xl flex items-center justify-center">
             <Globe className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="text-white text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>Macro Intelligence</h2>
-            <p className="text-slate-400 text-sm">Real-time world events, foreign markets & government activity</p>
+            <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>Macro Intelligence</h2>
+            <p className="text-slate-400 text-xs sm:text-sm">Real-time world events, foreign markets & government activity</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -196,7 +196,7 @@ const WorldEventsTab = ({ data, loading }) => {
   return (
     <div className="space-y-5" data-testid="world-events-tab">
       {/* Stats Bar */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatCard icon={<Zap className="w-4 h-4 text-amber-400" />} label="Total Events" value={data.total_events || 0} />
         <StatCard icon={<AlertTriangle className="w-4 h-4 text-red-400" />} label="High Impact" value={data.high_impact_count || 0} accent="red" />
         <StatCard icon={<Shield className="w-4 h-4 text-blue-400" />} label="Sectors Affected" value={affected_sectors.length} accent="blue" />
@@ -398,7 +398,7 @@ const CongressTab = ({ data, loading }) => {
   return (
     <div className="space-y-5" data-testid="congress-tab">
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatCard icon={<Landmark className="w-4 h-4 text-violet-400" />} label="Congressional Trades" value={data.congressional_count || 0} accent="violet" />
         <StatCard icon={<Shield className="w-4 h-4 text-blue-400" />} label="Fed Announcements" value={data.fed_count || 0} accent="blue" />
         <StatCard icon={<BarChart3 className="w-4 h-4 text-emerald-400" />} label="SEC Insider Filings" value={data.insider_count || 0} accent="emerald" />
@@ -412,7 +412,7 @@ const CongressTab = ({ data, loading }) => {
               <Landmark className="w-4 h-4 text-violet-400" /> Recent Congressional Stock Trades
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <table className="w-full text-sm" data-testid="congress-trades-table">
               <thead>
                 <tr className="border-b border-slate-700/40">

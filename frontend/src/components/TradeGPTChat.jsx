@@ -166,11 +166,11 @@ const TradeGPTChat = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-40">
+    <div className="fixed bottom-6 right-6 z-40 max-lg:bottom-20 max-lg:right-3">
       <div className="mb-4 flex justify-end">
         <Button
           data-testid="chat-toggle-btn"
-          className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-full w-14 h-14 shadow-lg"
+          className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-full w-14 h-14 shadow-lg hidden lg:flex"
           onClick={() => setIsOpen(!isOpen)}
         >
           <Sparkles className="w-6 h-6" />
@@ -179,7 +179,7 @@ const TradeGPTChat = () => {
 
       {isOpen && <Card
         data-testid="chat-window"
-        className="w-96 h-[500px] bg-slate-900 border-slate-700/50 flex flex-col shadow-2xl z-50 rounded-xl"
+        className="w-96 max-lg:w-[calc(100vw-1.5rem)] max-lg:max-w-none h-[500px] max-lg:h-[70vh] bg-slate-900 border-slate-700/50 flex flex-col shadow-2xl z-50 rounded-xl max-lg:fixed max-lg:bottom-20 max-lg:right-3 max-lg:left-3"
       >
         <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-2">
