@@ -41,6 +41,8 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] **Frontend Macro Data Cards** — Market Prediction UI now displays World Events, Foreign Markets, Government Data intelligence cards and Geopolitical Impact assessment (2026-03-31)
 
 - [x] **Macro Intelligence Dashboard** — Bloomberg-terminal-style standalone section with 3 tabs: World Events (RSS news with sector impact mapping, high-impact alerts), Foreign Markets (global indices heatmap, commodities, currencies, correlation signals), Congress Trades (congressional stock trades table, Fed announcements, SEC filings). Accessible from Navbar Platform & Resources dropdowns (2026-04-02)
+- [x] **Live Auto-Refresh** — 30-second auto-polling for Macro Dashboard with LIVE/PAUSED toggle, pulse animations on price changes, and last-refresh timestamp (2026-04-02)
+- [x] **Dual Subscription Pricing** — Monthly ($45/month) and Annual ($40.50/month, $486/year, 10% discount) with plan selector. Backend creates separate Stripe checkout sessions per plan (2026-04-02)
 
 ## Prioritized Backlog
 ### P1 - Upcoming
