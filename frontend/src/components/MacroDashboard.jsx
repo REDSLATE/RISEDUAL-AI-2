@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Globe, BarChart3, Landmark, RefreshCw, AlertTriangle, TrendingUp, TrendingDown, ChevronRight, Clock, Zap, Shield } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Globe, BarChart3, Landmark, RefreshCw, AlertTriangle, TrendingUp, TrendingDown, ChevronRight, Clock, Zap, Shield, Radio } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+const AUTO_REFRESH_MS = 30000; // 30 seconds
 
 const TABS = [
   { id: 'world', label: 'World Events', icon: Globe },
@@ -18,6 +20,10 @@ const MacroDashboard = () => {
   const [foreignMarkets, setForeignMarkets] = useState(null);
   const [govFilings, setGovFilings] = useState(null);
   const [loading, setLoading] = useState({});
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [changedSymbols, setChangedSymbols] = useState(new Set());
+  const prevMarketsRef = useRef(null);
 
   const fetchData = useCallback(async (endpoint, setter, key) => {
     setLoading(prev => ({ ...prev, [key]: true }));
@@ -31,16 +37,81 @@ const MacroDashboard = () => {
     }
   }, []);
 
+  // Detect price changes for pulse animation
+  const fetchMarketsWithDiff = useCallback(async () => {
+    setLoading(prev => ({ ...prev, markets: true }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/foreign-markets`);
+      if (res.ok) {
+        const newData = await res.json();
+        // Compare with previous data to find changed symbols
+        if (prevMarketsRef.current) {
+          const changes = new Set();
+          const allPrev = [
+            ...(prevMarketsRef.current.asia || []),
+            ...(prevMarketsRef.current.europe || []),
+            ...(prevMarketsRef.current.americas || []),
+            ...(prevMarketsRef.current.commodities || []),
+            ...(prevMarketsRef.current.currencies || []),
+          ];
+          const allNew = [
+            ...(newData.asia || []),
+            ...(newData.europe || []),
+            ...(newData.americas || []),
+            ...(newData.commodities || []),
+            ...(newData.currencies || []),
+          ];
+          const prevMap = {};
+          allPrev.forEach(m => { prevMap[m.symbol] = m.price; });
+          allNew.forEach(m => {
+            if (prevMap[m.symbol] !== undefined && prevMap[m.symbol] !== m.price) {
+              changes.add(m.symbol);
+            }
+          });
+          if (changes.size > 0) {
+            setChangedSymbols(changes);
+            setTimeout(() => setChangedSymbols(new Set()), 2000);
+          }
+        }
+        prevMarketsRef.current = newData;
+        setForeignMarkets(newData);
+        setLastRefresh(new Date());
+      }
+    } catch (e) {
+      console.error('Error fetching foreign-markets:', e);
+    } finally {
+      setLoading(prev => ({ ...prev, markets: false }));
+    }
+  }, []);
+
+  // Initial load
   useEffect(() => {
     fetchData('world-events', setWorldEvents, 'world');
-    fetchData('foreign-markets', setForeignMarkets, 'markets');
+    fetchMarketsWithDiff();
     fetchData('gov-filings', setGovFilings, 'congress');
-  }, [fetchData]);
+  }, [fetchData, fetchMarketsWithDiff]);
+
+  // Auto-refresh timer
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      if (activeTab === 'markets') {
+        fetchMarketsWithDiff();
+      } else if (activeTab === 'world') {
+        fetchData('world-events', setWorldEvents, 'world');
+        setLastRefresh(new Date());
+      } else {
+        fetchData('gov-filings', setGovFilings, 'congress');
+        setLastRefresh(new Date());
+      }
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [autoRefresh, activeTab, fetchData, fetchMarketsWithDiff]);
 
   const refresh = () => {
-    if (activeTab === 'world') fetchData('world-events', setWorldEvents, 'world');
-    if (activeTab === 'markets') fetchData('foreign-markets', setForeignMarkets, 'markets');
-    if (activeTab === 'congress') fetchData('gov-filings', setGovFilings, 'congress');
+    if (activeTab === 'world') { fetchData('world-events', setWorldEvents, 'world'); setLastRefresh(new Date()); }
+    if (activeTab === 'markets') fetchMarketsWithDiff();
+    if (activeTab === 'congress') { fetchData('gov-filings', setGovFilings, 'congress'); setLastRefresh(new Date()); }
   };
 
   return (
@@ -56,10 +127,24 @@ const MacroDashboard = () => {
             <p className="text-slate-400 text-sm">Real-time world events, foreign markets & government activity</p>
           </div>
         </div>
-        <Button onClick={refresh} disabled={loading[activeTab]} variant="outline" className="bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700" data-testid="macro-refresh-btn">
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading[activeTab] ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={refresh} disabled={loading[activeTab]} variant="outline" className="bg-[#1E293B] border-slate-600 text-white hover:bg-slate-700" data-testid="macro-refresh-btn">
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading[activeTab] ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <button
+            onClick={() => setAutoRefresh(prev => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
+              autoRefresh
+                ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400'
+                : 'bg-slate-800 border-slate-700 text-slate-500'
+            }`}
+            data-testid="auto-refresh-toggle"
+          >
+            <Radio className={`w-3 h-3 ${autoRefresh ? 'animate-pulse' : ''}`} />
+            {autoRefresh ? 'LIVE' : 'PAUSED'}
+          </button>
+        </div>
       </div>
 
       {/* Tab Bar */}
@@ -87,8 +172,17 @@ const MacroDashboard = () => {
 
       {/* Tab Content */}
       {activeTab === 'world' && <WorldEventsTab data={worldEvents} loading={loading.world} />}
-      {activeTab === 'markets' && <ForeignMarketsTab data={foreignMarkets} loading={loading.markets} />}
+      {activeTab === 'markets' && <ForeignMarketsTab data={foreignMarkets} loading={loading.markets} changedSymbols={changedSymbols} />}
       {activeTab === 'congress' && <CongressTab data={govFilings} loading={loading.congress} />}
+
+      {/* Last refresh indicator */}
+      {lastRefresh && (
+        <div className="flex items-center justify-center gap-2 text-slate-600 text-[10px]">
+          <Clock className="w-3 h-3" />
+          Last refreshed: {lastRefresh.toLocaleTimeString()}
+          {autoRefresh && <span className="text-emerald-600">· Auto-refreshing every 30s</span>}
+        </div>
+      )}
     </div>
   );
 };
@@ -182,7 +276,7 @@ const EventCard = ({ event, isHighImpact }) => (
 );
 
 /* ── Foreign Markets Tab ── */
-const ForeignMarketsTab = ({ data, loading }) => {
+const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
   if (loading || !data) return <LoadingState text="Fetching global markets..." />;
 
   const regions = [
@@ -226,7 +320,7 @@ const ForeignMarketsTab = ({ data, loading }) => {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {items.map((mkt, i) => (
-                <MarketCard key={i} market={mkt} />
+                <MarketCard key={i} market={mkt} isPulsing={changedSymbols.has(mkt.symbol)} />
               ))}
             </div>
           </div>
@@ -239,7 +333,7 @@ const ForeignMarketsTab = ({ data, loading }) => {
           <div>
             <h3 className="text-slate-300 text-sm font-semibold mb-3">Commodities</h3>
             <div className="grid grid-cols-2 gap-3">
-              {data.commodities.map((c, i) => <MarketCard key={i} market={c} compact />)}
+              {data.commodities.map((c, i) => <MarketCard key={i} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
             </div>
           </div>
         )}
@@ -247,7 +341,7 @@ const ForeignMarketsTab = ({ data, loading }) => {
           <div>
             <h3 className="text-slate-300 text-sm font-semibold mb-3">Currencies</h3>
             <div className="grid grid-cols-2 gap-3">
-              {data.currencies.map((c, i) => <MarketCard key={i} market={c} compact />)}
+              {data.currencies.map((c, i) => <MarketCard key={i} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
             </div>
           </div>
         )}
@@ -256,13 +350,14 @@ const ForeignMarketsTab = ({ data, loading }) => {
   );
 };
 
-const MarketCard = ({ market, compact }) => {
+const MarketCard = ({ market, compact, isPulsing }) => {
   const isUp = market.change_percent >= 0;
   const absPct = Math.abs(market.change_percent || 0).toFixed(2);
   const isHot = Math.abs(market.change_percent || 0) >= 2;
 
   return (
     <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${
+      isPulsing ? 'ring-2 ring-[#0052FF]/50 animate-pulse' :
       isHot
         ? isUp ? 'bg-emerald-950/15 border-emerald-800/30' : 'bg-red-950/15 border-red-800/30'
         : 'bg-slate-800/40 border-slate-700/30'

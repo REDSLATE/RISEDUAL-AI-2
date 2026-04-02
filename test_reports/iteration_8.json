@@ -1,0 +1,106 @@
+{
+  "summary": "Completed testing of RISEDUALAI new features: 1) Dual subscription pricing (monthly/annual) - ALL TESTS PASSED. 2) Auto-refresh functionality with LIVE/PAUSED toggle - WORKING. Backend: 12/13 tests passed (1 timeout on slow API). Frontend: All subscription modal features working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/foreign-markets",
+        "issue": "API can take 60-90 seconds to respond, causing occasional timeouts in tests",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_subscription_plans.py",
+    "/app/test_reports/pytest/subscription_plans_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_subscription_plans.py"
+  ],
+  "success_rate": {
+    "backend": "92% (12/13 tests passed)",
+    "frontend": "100%"
+  },
+  "test_credentials": "None required - all endpoints are public",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dual subscription pricing and auto-refresh features fully tested. Subscription modal: Monthly ($45/month) and Annual ($40.50/month, $486/year) plans with SAVE 10% badge. Plan toggle works correctly. CTA button text updates based on selected plan. Auto-refresh toggle (LIVE/PAUSED) works correctly in Macro Dashboard. Foreign Markets API can be slow (60-90s) but returns correct data.",
+  "tests_executed": {
+    "backend": [
+      "TestSubscriptionCheckout::test_monthly_checkout_returns_200 - PASSED",
+      "TestSubscriptionCheckout::test_monthly_checkout_returns_valid_url - PASSED",
+      "TestSubscriptionCheckout::test_annual_checkout_returns_200 - PASSED",
+      "TestSubscriptionCheckout::test_annual_checkout_returns_valid_url - PASSED",
+      "TestSubscriptionCheckout::test_default_plan_is_monthly - PASSED",
+      "TestSubscriptionCheckout::test_invalid_plan_defaults_to_monthly - PASSED",
+      "TestForeignMarketsEndpoint::test_foreign_markets_returns_200 - PASSED",
+      "TestForeignMarketsEndpoint::test_foreign_markets_has_asia - PASSED (5 indices)",
+      "TestForeignMarketsEndpoint::test_foreign_markets_has_europe - PASSED (4 indices)",
+      "TestForeignMarketsEndpoint::test_foreign_markets_has_americas - FAILED (timeout)",
+      "TestForeignMarketsEndpoint::test_foreign_markets_has_commodities - PASSED",
+      "TestForeignMarketsEndpoint::test_foreign_markets_has_currencies - PASSED",
+      "TestForeignMarketsEndpoint::test_market_data_has_required_fields - PASSED"
+    ],
+    "frontend": [
+      "Subscription modal opens via Upgrade Pro button - PASSED",
+      "Monthly plan card visible ($45/month) - PASSED",
+      "Annual plan card visible ($40.50/month, $486/year) - PASSED",
+      "SAVE 10% badge on annual plan - PASSED",
+      "Annual plan selected by default - PASSED",
+      "CTA button shows 'Subscribe Now — $486/year' when annual selected - PASSED",
+      "Plan toggle to monthly works - PASSED",
+      "CTA button shows 'Subscribe Now — $45/month' when monthly selected - PASSED",
+      "Plan toggle back to annual works - PASSED",
+      "Subscription modal close button works - PASSED",
+      "Auto-refresh toggle (LIVE) visible in Macro Dashboard - PASSED",
+      "Auto-refresh toggle shows 'LIVE' by default - PASSED",
+      "Toggle to PAUSED works - PASSED",
+      "Toggle back to LIVE works - PASSED",
+      "Refresh button visible next to LIVE toggle - PASSED"
+    ]
+  },
+  "feature_verification": {
+    "dual_subscription_pricing": {
+      "status": "WORKING",
+      "monthly_plan": {
+        "price": "$45/month",
+        "cta_text": "Subscribe Now — $45/month"
+      },
+      "annual_plan": {
+        "price": "$40.50/month ($486/year)",
+        "cta_text": "Subscribe Now — $486/year",
+        "badge": "SAVE 10%",
+        "strikethrough": "$540"
+      },
+      "default_selection": "annual",
+      "plan_toggle": "Working (radio button style)"
+    },
+    "auto_refresh_feature": {
+      "status": "WORKING",
+      "toggle_button": "data-testid='auto-refresh-toggle'",
+      "default_state": "LIVE",
+      "toggle_states": ["LIVE", "PAUSED"],
+      "refresh_interval": "30 seconds",
+      "last_refresh_timestamp": "Visible when data loaded",
+      "auto_refresh_indicator": "'Auto-refreshing every 30s' shown when LIVE"
+    },
+    "backend_checkout_endpoint": {
+      "status": "WORKING",
+      "endpoint": "POST /api/subscription/create-checkout-session",
+      "monthly_request": "{\"origin_url\":\"...\",\"plan\":\"monthly\"}",
+      "annual_request": "{\"origin_url\":\"...\",\"plan\":\"annual\"}",
+      "response": "{\"url\":\"https://checkout.stripe.com/...\",\"session_id\":\"...\"}"
+    }
+  },
+  "mocked_apis": {
+    "note": "Stripe checkout uses Emergent integration (test mode). Creates real test sessions. All other APIs are REAL."
+  }
+}

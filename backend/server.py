@@ -316,10 +316,11 @@ async def get_gov_filings():
 # Subscription & Payment Endpoints
 class CheckoutRequest(BaseModel):
     origin_url: str
+    plan: str = "monthly"
 
 @api_router.post("/subscription/create-checkout-session")
 async def create_checkout_session(request: CheckoutRequest, http_request: Request):
-    """Create Stripe checkout session for $50/year subscription"""
+    """Create Stripe checkout session for monthly or annual subscription"""
     try:
         from services.payment_service import StripePaymentService
 
@@ -327,23 +328,27 @@ async def create_checkout_session(request: CheckoutRequest, http_request: Reques
         host_url = str(http_request.base_url).rstrip('/')
         webhook_url = f"{host_url}/api/webhook/stripe"
 
+        plan = request.plan if request.plan in ("monthly", "annual") else "monthly"
+        amount = 486.00 if plan == "annual" else 45.00
+
         metadata = {
-            "plan": "risedualai_pro_monthly",
+            "plan": f"risedualai_pro_{plan}",
             "source": "web_checkout"
         }
 
         session = await payment_service.create_checkout_session(
             origin_url=request.origin_url,
             webhook_url=webhook_url,
-            metadata=metadata
+            metadata=metadata,
+            plan=plan
         )
 
         # Record pending transaction in DB
         await db.payment_transactions.insert_one({
             "session_id": session.session_id,
-            "amount": 45.00,
+            "amount": amount,
             "currency": "usd",
-            "plan": "risedualai_pro_monthly",
+            "plan": f"risedualai_pro_{plan}",
             "metadata": metadata,
             "payment_status": "initiated",
             "created_at": datetime.now(timezone.utc).isoformat()

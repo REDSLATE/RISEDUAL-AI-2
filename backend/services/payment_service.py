@@ -11,7 +11,8 @@ from emergentintegrations.payments.stripe.checkout import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-SUBSCRIPTION_PRICE = 45.00  # $45/month - server-side defined, never from frontend
+SUBSCRIPTION_PRICE_MONTHLY = 45.00  # $45/month
+SUBSCRIPTION_PRICE_ANNUAL = 486.00  # $40.50/month billed annually (10% off)
 
 class StripePaymentService:
     def __init__(self):
@@ -21,13 +22,15 @@ class StripePaymentService:
     def _get_checkout(self, webhook_url: str) -> StripeCheckout:
         return StripeCheckout(api_key=self.api_key, webhook_url=webhook_url)
 
-    async def create_checkout_session(self, origin_url: str, webhook_url: str, metadata: dict = None) -> CheckoutSessionResponse:
+    async def create_checkout_session(self, origin_url: str, webhook_url: str, metadata: dict = None, plan: str = "monthly") -> CheckoutSessionResponse:
         checkout = self._get_checkout(webhook_url)
         success_url = f"{origin_url}?payment_status=success&session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = f"{origin_url}?payment_status=cancelled"
 
+        amount = SUBSCRIPTION_PRICE_ANNUAL if plan == "annual" else SUBSCRIPTION_PRICE_MONTHLY
+
         request = CheckoutSessionRequest(
-            amount=45.00,
+            amount=amount,
             currency="usd",
             success_url=success_url,
             cancel_url=cancel_url,
