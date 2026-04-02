@@ -11,7 +11,7 @@ from emergentintegrations.payments.stripe.checkout import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-SUBSCRIPTION_PRICE = 25.00  # $25/month - server-side defined, never from frontend
+SUBSCRIPTION_PRICE = 45.00  # $45/month - server-side defined, never from frontend
 
 class StripePaymentService:
     def __init__(self):
@@ -27,7 +27,7 @@ class StripePaymentService:
         cancel_url = f"{origin_url}?payment_status=cancelled"
 
         request = CheckoutSessionRequest(
-            amount=25.00,
+            amount=45.00,
             currency="usd",
             success_url=success_url,
             cancel_url=cancel_url,

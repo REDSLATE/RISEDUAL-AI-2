@@ -304,7 +304,7 @@ async def create_checkout_session(request: CheckoutRequest, http_request: Reques
         # Record pending transaction in DB
         await db.payment_transactions.insert_one({
             "session_id": session.session_id,
-            "amount": 25.00,
+            "amount": 45.00,
             "currency": "usd",
             "plan": "risedualai_pro_monthly",
             "metadata": metadata,
