@@ -1,0 +1,204 @@
+import logging
+import requests
+import re
+from typing import Dict, List
+from bs4 import BeautifulSoup
+from datetime import datetime, timezone, timedelta
+
+logger = logging.getLogger(__name__)
+
+
+class GovFilingsService:
+    def __init__(self):
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+
+    async def get_sec_filings(self, ticker: str = None) -> List[Dict]:
+        """Fetch recent SEC EDGAR filings via full-text search API"""
+        filings = []
+        try:
+            # EDGAR EFTS search API for recent Form 4 filings
+            url = 'https://efts.sec.gov/LATEST/search-index?q=*&forms=4'
+            resp = requests.get(url, headers={
+                'User-Agent': 'RISEDUALAI admin@risedual.com',
+                'Accept': 'application/json',
+            }, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                hits = data.get('hits', {}).get('hits', [])[:15]
+                for hit in hits:
+                    src = hit.get('_source', {})
+                    filings.append({
+                        'form_type': src.get('forms', 'Form 4'),
+                        'company': src.get('display_names', ['Unknown'])[0] if src.get('display_names') else 'Unknown',
+                        'filed_date': src.get('file_date', ''),
+                        'description': 'Insider Transaction',
+                    })
+        except Exception as e:
+            logger.error(f"Error fetching SEC filings: {str(e)}")
+
+        # Fallback: scrape OpenInsider
+        if not filings:
+            filings = self._scrape_openinsider()
+
+        return filings[:15]
+
+    def _scrape_openinsider(self) -> List[Dict]:
+        """Scrape insider trading data from OpenInsider"""
+        trades = []
+        try:
+            url = 'http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=7&fdr=&td=0&tdr=&feession=&teession=&xp=1&vl=&vh=&ocl=&och=&sic1l=&sic1h=&iession1l=&iession1h=&cnt=15'
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            table = soup.find('table', class_='tinytable')
+            if table:
+                rows = table.find_all('tr')[1:16]
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 12:
+                        trades.append({
+                            'form_type': 'Form 4',
+                            'filed_date': cols[1].get_text(strip=True),
+                            'ticker': cols[3].get_text(strip=True),
+                            'company': cols[4].get_text(strip=True),
+                            'insider_name': cols[5].get_text(strip=True),
+                            'insider_title': cols[6].get_text(strip=True),
+                            'trade_type': cols[7].get_text(strip=True),
+                            'price': cols[8].get_text(strip=True),
+                            'qty': cols[9].get_text(strip=True),
+                            'value': cols[11].get_text(strip=True),
+                            'description': f"Insider {cols[7].get_text(strip=True)} by {cols[5].get_text(strip=True)}",
+                        })
+        except Exception as e:
+            logger.error(f"Error scraping OpenInsider: {str(e)}")
+        return trades
+
+    async def get_fed_announcements(self) -> List[Dict]:
+        """Scrape Federal Reserve announcements from RSS"""
+        announcements = []
+        try:
+            url = 'https://www.federalreserve.gov/feeds/press_all.xml'
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(resp.content, 'xml')
+            items = soup.find_all('item')[:10]
+            for item in items:
+                title = item.find('title')
+                link = item.find('link')
+                pub_date = item.find('pubDate')
+                desc = item.find('description')
+                announcements.append({
+                    'title': title.get_text(strip=True) if title else '',
+                    'url': link.get_text(strip=True) if link else '',
+                    'date': pub_date.get_text(strip=True) if pub_date else '',
+                    'description': desc.get_text(strip=True)[:300] if desc else '',
+                    'source': 'Federal Reserve',
+                    'type': 'fed_announcement',
+                })
+        except Exception as e:
+            logger.error(f"Error fetching Fed announcements: {str(e)}")
+        return announcements
+
+    async def get_congressional_trades(self) -> List[Dict]:
+        """Scrape congressional stock trades from Capitol Trades"""
+        trades = []
+        try:
+            url = 'https://www.capitoltrades.com/trades'
+            resp = requests.get(url, headers=self.headers, timeout=15)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                table = soup.find('table')
+                if table:
+                    rows = table.find_all('tr')[1:21]  # Skip header, get up to 20
+                    for row in rows:
+                        cols = row.find_all('td')
+                        if len(cols) >= 8:
+                            politician_text = cols[0].get_text(strip=True)
+                            issuer_text = cols[1].get_text(strip=True)
+                            trade_type = cols[6].get_text(strip=True)
+                            size = cols[7].get_text(strip=True)
+
+                            # Parse politician info (name + party + chamber)
+                            name = politician_text
+                            party = ''
+                            chamber = ''
+                            if 'Republican' in politician_text:
+                                party = 'R'
+                                name = politician_text.split('Republican')[0].strip()
+                            elif 'Democrat' in politician_text:
+                                party = 'D'
+                                name = politician_text.split('Democrat')[0].strip()
+                            if 'House' in politician_text:
+                                chamber = 'House'
+                            elif 'Senate' in politician_text:
+                                chamber = 'Senate'
+
+                            # Extract ticker from issuer text
+                            ticker_match = re.search(r'([A-Z]{1,5}):[A-Z]{2}', issuer_text)
+                            ticker = ticker_match.group(1) if ticker_match else ''
+                            company = issuer_text.split(ticker)[0].strip() if ticker else issuer_text
+
+                            traded_date = cols[3].get_text(strip=True) if len(cols) > 3 else ''
+                            published = cols[2].get_text(strip=True) if len(cols) > 2 else ''
+
+                            trades.append({
+                                'representative': name,
+                                'ticker': ticker,
+                                'company': company,
+                                'transaction_date': traded_date,
+                                'disclosure_date': published,
+                                'type': trade_type,
+                                'amount': size,
+                                'party': party,
+                                'chamber': chamber,
+                                'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) - {ticker} {size}",
+                            })
+        except Exception as e:
+            logger.error(f"Error scraping Capitol Trades: {str(e)}")
+
+        # Fallback: scrape QuiverQuant congress page
+        if not trades:
+            trades = self._scrape_quiverquant_congress()
+
+        return trades[:20]
+
+    def _scrape_quiverquant_congress(self) -> List[Dict]:
+        """Fallback: scrape QuiverQuant congressional trading page"""
+        trades = []
+        try:
+            url = 'https://www.quiverquant.com/congresstrading/'
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            table = soup.find('table')
+            if table:
+                rows = table.find_all('tr')[1:16]
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 5:
+                        trades.append({
+                            'representative': cols[0].get_text(strip=True),
+                            'ticker': cols[1].get_text(strip=True),
+                            'type': cols[2].get_text(strip=True) if len(cols) > 2 else '',
+                            'amount': cols[3].get_text(strip=True) if len(cols) > 3 else '',
+                            'transaction_date': cols[4].get_text(strip=True) if len(cols) > 4 else '',
+                            'description': f"Congressional trade: {cols[0].get_text(strip=True)} - {cols[1].get_text(strip=True)}",
+                        })
+        except Exception as e:
+            logger.error(f"Error scraping QuiverQuant: {str(e)}")
+        return trades
+
+    async def get_all_gov_data(self) -> Dict:
+        insider_trades = await self.get_sec_filings()
+        fed_announcements = await self.get_fed_announcements()
+        congressional_trades = await self.get_congressional_trades()
+
+        return {
+            'insider_trades': insider_trades,
+            'insider_count': len(insider_trades),
+            'fed_announcements': fed_announcements,
+            'fed_count': len(fed_announcements),
+            'congressional_trades': congressional_trades,
+            'congressional_count': len(congressional_trades),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        }

@@ -17,7 +17,11 @@ class MarketPredictionService:
         - Social media trends (Reddit, Twitter)
         - Insider trading activity
         - Crypto market data and whale movements
-        - Technical indicators
+        - World events and geopolitical impacts
+        - Foreign market indices and commodities
+        - Congressional stock trades and government filings
+        - Federal Reserve announcements
+        - Real estate market indicators
         
         Provide predictions with:
         1. Market direction (BULLISH/BEARISH/NEUTRAL)
@@ -25,17 +29,22 @@ class MarketPredictionService:
         3. Key signals supporting the prediction
         4. Price targets and timeframes
         5. Risk factors
+        6. Geopolitical impact assessment
         
         Be data-driven, objective, and always mention uncertainty."""
     
     async def analyze_market(self, financial_news: List[Dict], crypto_data: List[Dict], 
                             insider_trades: List[Dict], social_sentiment: List[Dict],
-                            real_estate_data: Optional[Dict] = None) -> Dict:
+                            real_estate_data: Optional[Dict] = None,
+                            world_events: Optional[Dict] = None,
+                            foreign_markets: Optional[Dict] = None,
+                            gov_filings: Optional[Dict] = None) -> Dict:
         """Comprehensive market analysis using all data sources"""
         try:
             # Prepare data summary for AI
             data_summary = self._prepare_data_summary(
-                financial_news, crypto_data, insider_trades, social_sentiment, real_estate_data
+                financial_news, crypto_data, insider_trades, social_sentiment,
+                real_estate_data, world_events, foreign_markets, gov_filings
             )
             
             # Get AI analysis
@@ -62,6 +71,7 @@ Provide your analysis in JSON format with:
   "risk_factors": ["risk1", "risk2", ...],
   "crypto_outlook": "...",
   "stock_outlook": "...",
+  "geopolitical_impact": "Brief assessment of how world events affect markets",
   "summary": "Brief analysis summary"
 }}"""
             
@@ -90,7 +100,11 @@ Provide your analysis in JSON format with:
                 'news_articles': len(financial_news),
                 'crypto_signals': len(crypto_data),
                 'insider_trades': len(insider_trades),
-                'social_posts': len(social_sentiment)
+                'social_posts': len(social_sentiment),
+                'world_events': world_events.get('total_events', 0) if world_events else 0,
+                'foreign_markets': len(foreign_markets.get('asia', []) + foreign_markets.get('europe', []) + foreign_markets.get('americas', [])) if foreign_markets else 0,
+                'congressional_trades': gov_filings.get('congressional_count', 0) if gov_filings else 0,
+                'fed_announcements': gov_filings.get('fed_count', 0) if gov_filings else 0,
             }
             
             return prediction
@@ -99,7 +113,9 @@ Provide your analysis in JSON format with:
             logger.error(f"Market prediction error: {str(e)}")
             return self._fallback_prediction()
     
-    def _prepare_data_summary(self, news: List, crypto: List, trades: List, social: List, real_estate: Dict = None) -> str:
+    def _prepare_data_summary(self, news: List, crypto: List, trades: List, social: List,
+                              real_estate: Dict = None, world_events: Dict = None,
+                              foreign_markets: Dict = None, gov_filings: Dict = None) -> str:
         """Prepare concise data summary for AI"""
         summary = "MARKET DATA SUMMARY\n\n"
         
@@ -122,6 +138,59 @@ Provide your analysis in JSON format with:
         summary += "\nSOCIAL MEDIA SENTIMENT:\n"
         for post in social[:3]:
             summary += f"- {post.get('title', 'N/A')} (Score: {post.get('score', 0)})\n"
+
+        # World Events (NEW)
+        if world_events:
+            summary += "\nWORLD EVENTS & GEOPOLITICAL:\n"
+            high_impact = world_events.get('high_impact_events', [])
+            for event in high_impact[:5]:
+                sectors = ', '.join([s['sector'] for s in event.get('affected_sectors', [])[:3]])
+                summary += f"- [{event.get('source', 'N/A')}] {event.get('title', 'N/A')}"
+                if sectors:
+                    summary += f" (Sectors: {sectors})"
+                summary += "\n"
+            # Sector summary
+            affected = world_events.get('affected_sectors', [])
+            if affected:
+                summary += "  Top Affected Sectors: "
+                summary += ', '.join([f"{s['sector']} (impact:{s['avg_impact']})" for s in affected[:5]])
+                summary += "\n"
+
+        # Foreign Markets (NEW)
+        if foreign_markets:
+            summary += "\nFOREIGN MARKETS & COMMODITIES:\n"
+            for region_key in ['asia', 'europe']:
+                region_data = foreign_markets.get(region_key, [])
+                for mkt in region_data[:3]:
+                    chg = mkt.get('change_percent', 0)
+                    arrow = '+' if chg >= 0 else ''
+                    summary += f"- {mkt.get('name', 'N/A')}: {arrow}{chg}% ({mkt.get('market_state', '')})\n"
+            # Commodities
+            for comm in foreign_markets.get('commodities', [])[:3]:
+                chg = comm.get('change_percent', 0)
+                arrow = '+' if chg >= 0 else ''
+                summary += f"- {comm.get('name', 'N/A')}: ${comm.get('price', 0)} ({arrow}{chg}%)\n"
+            # Correlation signals
+            signals = foreign_markets.get('correlation_signals', [])
+            if signals:
+                summary += "  Correlation Signals: "
+                summary += '; '.join([s['signal'] for s in signals[:3]])
+                summary += "\n"
+
+        # Government Filings (NEW)
+        if gov_filings:
+            # Congressional trades
+            cong_trades = gov_filings.get('congressional_trades', [])
+            if cong_trades:
+                summary += "\nCONGRESSIONAL STOCK TRADES:\n"
+                for ct in cong_trades[:5]:
+                    summary += f"- {ct.get('description', 'N/A')}\n"
+            # Fed announcements
+            fed = gov_filings.get('fed_announcements', [])
+            if fed:
+                summary += "\nFEDERAL RESERVE ANNOUNCEMENTS:\n"
+                for fa in fed[:3]:
+                    summary += f"- {fa.get('title', 'N/A')}\n"
         
         # Real estate data
         if real_estate:

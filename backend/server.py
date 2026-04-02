@@ -276,6 +276,43 @@ async def research_company(symbol: str):
         logging.error(f"Error researching {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# World Events & Geopolitical Impact
+@api_router.get("/world-events")
+async def get_world_events():
+    """Scrape world events and map to affected sectors/companies"""
+    try:
+        from services.world_events_service import WorldEventsService
+        service = WorldEventsService()
+        return await service.scrape_world_events()
+    except Exception as e:
+        logging.error(f"Error fetching world events: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Foreign Markets & Commodities
+@api_router.get("/foreign-markets")
+async def get_foreign_markets():
+    """Get international market indices, commodities, and currencies"""
+    try:
+        from services.foreign_markets_service import ForeignMarketsService
+        service = ForeignMarketsService()
+        return await service.get_foreign_markets()
+    except Exception as e:
+        logging.error(f"Error fetching foreign markets: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Government & Regulatory Filings
+@api_router.get("/gov-filings")
+async def get_gov_filings():
+    """Get SEC insider trades, Fed announcements, and Congressional trades"""
+    try:
+        from services.gov_filings_service import GovFilingsService
+        service = GovFilingsService()
+        return await service.get_all_gov_data()
+    except Exception as e:
+        logging.error(f"Error fetching gov filings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Subscription & Payment Endpoints
 class CheckoutRequest(BaseModel):
     origin_url: str
@@ -386,17 +423,23 @@ async def stripe_webhook(request: Request):
 # Market Prediction & Scraping Endpoints
 @api_router.get("/market/prediction")
 async def get_market_prediction():
-    """Get AI-powered market prediction based on scraped data"""
+    """Get AI-powered market prediction based on scraped data + macro sources"""
     try:
         from services.financial_scraping_service import FinancialScrapingService
         from services.crypto_scraping_service import CryptoScrapingService
         from services.real_estate_scraping_service import RealEstateScrapingService
         from services.market_prediction_service import MarketPredictionService
+        from services.world_events_service import WorldEventsService
+        from services.foreign_markets_service import ForeignMarketsService
+        from services.gov_filings_service import GovFilingsService
         
         # Gather data from all sources
         financial_scraper = FinancialScrapingService()
         crypto_scraper = CryptoScrapingService()
         real_estate_scraper = RealEstateScrapingService()
+        world_events_svc = WorldEventsService()
+        foreign_markets_svc = ForeignMarketsService()
+        gov_filings_svc = GovFilingsService()
         
         financial_news = await financial_scraper.scrape_financial_news()
         reddit_sentiment = await financial_scraper.scrape_reddit_sentiment()
@@ -406,20 +449,27 @@ async def get_market_prediction():
         whale_transactions = await crypto_scraper.get_whale_transactions()
         crypto_sentiment = await crypto_scraper.get_crypto_sentiment()
         
-        # NEW: Get real estate data
         real_estate_data = await real_estate_scraper.scrape_all_real_estate_data()
+        
+        # NEW: Macro data sources
+        world_events = await world_events_svc.scrape_world_events()
+        foreign_markets = await foreign_markets_svc.get_foreign_markets()
+        gov_filings = await gov_filings_svc.get_all_gov_data()
         
         # Combine crypto data
         all_crypto_data = crypto_data + [crypto_sentiment] + whale_transactions
         
-        # Get AI prediction with real estate data
+        # Get AI prediction with all data sources
         prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
         prediction = await prediction_service.analyze_market(
             financial_news=financial_news,
             crypto_data=all_crypto_data,
             insider_trades=insider_trades,
             social_sentiment=reddit_sentiment,
-            real_estate_data=real_estate_data
+            real_estate_data=real_estate_data,
+            world_events=world_events,
+            foreign_markets=foreign_markets,
+            gov_filings=gov_filings,
         )
         
         # Add real estate summary to prediction
@@ -428,6 +478,24 @@ async def get_market_prediction():
             'commercial_trend': 'mixed',
             'data_sources': len(real_estate_data.get('housing', {}).get('sources', [])),
             'implications': real_estate_data.get('trends', {}).get('market_implications', {})
+        }
+        
+        # Add macro data summaries
+        prediction['macro_data'] = {
+            'world_events': {
+                'total': world_events.get('total_events', 0),
+                'high_impact': world_events.get('high_impact_count', 0),
+                'top_sectors': [s['sector'] for s in world_events.get('affected_sectors', [])[:5]],
+            },
+            'foreign_markets': {
+                'correlation_signals': foreign_markets.get('correlation_signals', [])[:5],
+                'total_indices': len(foreign_markets.get('asia', []) + foreign_markets.get('europe', []) + foreign_markets.get('americas', [])),
+            },
+            'gov_filings': {
+                'congressional_trades': gov_filings.get('congressional_count', 0),
+                'fed_announcements': gov_filings.get('fed_count', 0),
+                'insider_trades': gov_filings.get('insider_count', 0),
+            },
         }
         
         return prediction

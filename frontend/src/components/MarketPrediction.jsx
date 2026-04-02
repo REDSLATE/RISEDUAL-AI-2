@@ -137,6 +137,18 @@ const MarketPrediction = () => {
                   <div>💬 {prediction.data_sources?.social_posts || 0} Social Posts</div>
                   <div>₿ {prediction.data_sources?.crypto_signals || 0} Crypto Signals</div>
                   <div>📊 {prediction.data_sources?.insider_trades || 0} Insider Trades</div>
+                  {prediction.data_sources?.world_events > 0 && (
+                    <div>🌍 {prediction.data_sources.world_events} World Events</div>
+                  )}
+                  {prediction.data_sources?.foreign_markets > 0 && (
+                    <div>📈 {prediction.data_sources.foreign_markets} Foreign Indices</div>
+                  )}
+                  {prediction.data_sources?.congressional_trades > 0 && (
+                    <div>🏛 {prediction.data_sources.congressional_trades} Congressional Trades</div>
+                  )}
+                  {prediction.data_sources?.fed_announcements > 0 && (
+                    <div>🏦 {prediction.data_sources.fed_announcements} Fed Announcements</div>
+                  )}
                   {prediction.real_estate_summary && (
                     <div>🏠 {prediction.real_estate_summary?.data_sources || 0} Real Estate Sources</div>
                   )}
@@ -238,6 +250,102 @@ const MarketPrediction = () => {
               </Card>
             )}
           </div>
+
+          {/* Geopolitical Impact */}
+          {prediction.geopolitical_impact && (
+            <Card className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border-blue-700/50 rounded-xl p-5">
+              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                🌍 Geopolitical Impact Assessment
+              </h3>
+              <p className="text-slate-300 text-sm">{prediction.geopolitical_impact}</p>
+            </Card>
+          )}
+
+          {/* Macro Data Intelligence */}
+          {prediction.macro_data && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* World Events */}
+              {prediction.macro_data.world_events && prediction.macro_data.world_events.total > 0 && (
+                <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5" data-testid="macro-world-events">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    🌍 World Events
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Events Tracked</span>
+                      <span className="text-white font-medium">{prediction.macro_data.world_events.total}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">High Impact</span>
+                      <span className="text-red-400 font-medium">{prediction.macro_data.world_events.high_impact}</span>
+                    </div>
+                    {prediction.macro_data.world_events.top_sectors?.length > 0 && (
+                      <div>
+                        <span className="text-slate-400 text-xs">Affected Sectors:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {prediction.macro_data.world_events.top_sectors.map((s, i) => (
+                            <Badge key={i} variant="outline" className="text-xs border-slate-600 text-slate-300">{s}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Foreign Markets */}
+              {prediction.macro_data.foreign_markets && prediction.macro_data.foreign_markets.total_indices > 0 && (
+                <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5" data-testid="macro-foreign-markets">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    📊 Foreign Markets
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Indices Tracked</span>
+                      <span className="text-white font-medium">{prediction.macro_data.foreign_markets.total_indices}</span>
+                    </div>
+                    {prediction.macro_data.foreign_markets.correlation_signals?.length > 0 && (
+                      <div>
+                        <span className="text-slate-400 text-xs">Correlation Signals:</span>
+                        <ul className="mt-1 space-y-1">
+                          {prediction.macro_data.foreign_markets.correlation_signals.slice(0, 3).map((sig, i) => (
+                            <li key={i} className="text-xs text-slate-300">
+                              <span className={sig.change_percent > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                {sig.change_percent > 0 ? '▲' : '▼'}
+                              </span> {sig.signal}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Government Data */}
+              {prediction.macro_data.gov_filings && (
+                <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-5" data-testid="macro-gov-filings">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    🏛 Government Data
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Congressional Trades</span>
+                      <span className="text-white font-medium">{prediction.macro_data.gov_filings.congressional_trades}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Fed Announcements</span>
+                      <span className="text-white font-medium">{prediction.macro_data.gov_filings.fed_announcements}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">SEC Insider Filings</span>
+                      <span className="text-white font-medium">{prediction.macro_data.gov_filings.insider_trades}</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
 
           {/* Real Estate Impact */}
           {prediction.real_estate_summary && (
