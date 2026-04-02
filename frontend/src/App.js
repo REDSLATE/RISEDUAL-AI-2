@@ -14,6 +14,7 @@ import CryptoSection from './components/CryptoSection';
 import TradeGPTChat from './components/TradeGPTChat';
 import PaymentStatus from './components/PaymentStatus';
 import CompanyResearch from './components/CompanyResearch';
+import MacroDashboard from './components/MacroDashboard';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -64,6 +65,11 @@ function App() {
         {/* Company Research (Perplexity-style) */}
         <div id="company-research" className="mb-8">
           <CompanyResearch />
+        </div>
+
+        {/* Macro Intelligence Dashboard */}
+        <div id="macro-dashboard" className="mb-8">
+          <MacroDashboard />
         </div>
 
         {/* AI Options Radar */}

@@ -88,6 +88,12 @@ const Navbar = () => {
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('macro-dashboard')}
+              >
+                Macro Intelligence
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
                 onSelect={() => scrollTo('crypto')}
               >
                 Crypto Market
@@ -172,6 +178,12 @@ const Navbar = () => {
                 onSelect={() => scrollTo('market-prediction')}
               >
                 AI Market Predictions
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
+                onSelect={() => scrollTo('macro-dashboard')}
+              >
+                Macro Intelligence
               </DropdownMenuItem>
               <DropdownMenuItem 
                 className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer"
