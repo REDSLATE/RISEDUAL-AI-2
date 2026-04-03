@@ -22,7 +22,7 @@ class GovFilingsService:
             # EDGAR EFTS search API for recent Form 4 filings
             url = 'https://efts.sec.gov/LATEST/search-index?q=*&forms=4'
             resp = requests.get(url, headers={
-                'User-Agent': 'RISEDUALAI admin@risedual.com',
+                'User-Agent': 'RISEDUALAI admin@risedual.ai',
                 'Accept': 'application/json',
             }, timeout=10)
             if resp.status_code == 200:

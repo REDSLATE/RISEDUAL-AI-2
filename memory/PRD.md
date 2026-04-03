@@ -47,7 +47,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 
 ## Prioritized Backlog
 ### P1 - Upcoming
-- Deployment to custom domain (www.risedual.com) — User needs to configure DNS
+- Deployment to custom domain (risedual.ai) — User needs to configure DNS
 
 ### P2 - Future
 - Alpha Vantage API upgrade (user currently on free 5/min tier)

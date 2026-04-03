@@ -119,7 +119,7 @@ const Navbar = () => {
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Data</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={openChat}>Support / Ask AI</DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => window.open('https://risedual.com', '_blank')}>About RISEDUALAI</DropdownMenuItem>
+              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => window.open('https://risedual.ai', '_blank')}>About RISEDUALAI</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
