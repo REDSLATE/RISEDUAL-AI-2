@@ -17,6 +17,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - AI Investment Hypothesis with paywall (free=blurred, pro=full access)
 - Owner Admin Panel with user management
 - User Workspace with saved watchlist and hypothesis history
+- Pro-only AI Alerts (verdict change notifications)
 
 ## Architecture
 - Frontend: React + TailwindCSS + Shadcn UI + PWA
@@ -29,8 +30,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 ## What's Been Implemented
 - [x] Full trading dashboard UI (Navbar, StockTicker, OptionsRadar, CryptoTicker, DarkPool)
 - [x] Alpha Vantage real market data integration
-- [x] AI Chat with GPT-5.2 session management
-- [x] AI Chat Vision/Screenshot Upload
+- [x] AI Chat with GPT-5.2 session management + Vision/Screenshot Upload
 - [x] Chart Pattern Library (`/patterns`)
 - [x] Real Stripe Payment Integration ($45/month + $486/year)
 - [x] Fidelity x Coinbase Theme Redesign
@@ -38,39 +38,48 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] Market Prediction engine (8+ news sources scraping)
 - [x] Real Estate market scraping
 - [x] Crypto & Dark Pool data endpoints + UI
-- [x] World Events Scraping (Reuters, BBC, NYT, AP, CNBC)
-- [x] Foreign Markets Service (Yahoo Finance)
-- [x] Gov Filings Service (Capitol Trades, Fed RSS, SEC EDGAR)
-- [x] Macro Intelligence Dashboard (3-tab Bloomberg-terminal style)
-- [x] Live Auto-Refresh (30s polling with LIVE/PAUSED toggle)
-- [x] Dual Subscription Pricing (Monthly + Annual)
+- [x] World Events / Foreign Markets / Gov Filings Scraping
+- [x] Macro Intelligence Dashboard (Bloomberg-terminal style)
+- [x] Live Auto-Refresh (30s polling)
 - [x] Responsive PWA (mobile nav, service worker, manifest)
 - [x] JWT Auth System (login, register, Bearer tokens, brute force protection)
 - [x] AI Investment Hypothesis (paywalled with blur for free users)
-- [x] **Owner Admin Panel** — Owner-only user management: view all users, activate/deactivate, grant/revoke Pro. Accessible from user dropdown menu (2026-04-03)
-- [x] **User Workspace** — Personalized workspace with saved watchlist tickers and hypothesis search history. Two tabs (Watchlist + History). Auto-saves hypothesis results for Pro users (2026-04-03)
-- [x] **Navbar Integration** — User dropdown shows "My Workspace" (all users) and "Admin Panel" (owner only). Mobile menu also has workspace/admin buttons (2026-04-03)
+- [x] Owner Admin Panel — user management (activate/deactivate, grant/revoke Pro) (2026-04-03)
+- [x] User Workspace — saved watchlist + hypothesis history (2026-04-03)
+- [x] **Pro-only AI Alerts** — Real notification system: detects verdict changes (BUY→SELL etc.) when a Pro user re-analyzes a ticker. Shows watchlist star icon, confidence %, timestamps. Free users see a paywall with "Upgrade to Pro" CTA. Bell icon with unread count badge. Auto-polls every 60s. (2026-04-03)
 
 ## Prioritized Backlog
 ### P1 - Upcoming
-- Deployment to custom domain (risedual.ai) — User needs to configure DNS and deploy via Emergent interface
+- Deployment to custom domain (risedual.ai)
 
 ### P2 - Future
-- Alpha Vantage API upgrade (user currently on free 5/min tier)
-- Real Broker Integration (Alpaca OAuth) — Replace mocked trading endpoints
-- Refactor server.py (~800+ lines) into separate route modules
+- Alpha Vantage API upgrade (free tier → premium)
+- Real Broker Integration (Alpaca OAuth)
+- Refactor server.py (~900+ lines) into separate route modules
 
 ## Mocked Features
 - Broker trading execution (Alpaca) — UI exists, backend mocked
 
 ## Key Files
 - `/app/backend/routes/auth.py` — Auth + admin endpoints
-- `/app/backend/server.py` — All API routes + workspace endpoints
+- `/app/backend/server.py` — All API routes + workspace + notification endpoints
 - `/app/frontend/src/contexts/AuthContext.jsx` — Auth state + authFetch helper
-- `/app/frontend/src/components/AdminPanel.jsx` — Owner admin panel modal
-- `/app/frontend/src/components/UserWorkspace.jsx` — User workspace modal
+- `/app/frontend/src/components/AdminPanel.jsx` — Owner admin panel
+- `/app/frontend/src/components/UserWorkspace.jsx` — User workspace
+- `/app/frontend/src/components/AlertsPanel.jsx` — Pro-only notification bell + paywall
 - `/app/frontend/src/components/Navbar.jsx` — Nav with user dropdown
 - `/app/frontend/src/App.js` — Main app with state management
 
+## Key API Endpoints
+- `POST /api/auth/login` — JWT login
+- `GET /api/auth/me` — Current user
+- `GET /api/auth/admin/users` — Owner-only user list
+- `GET /api/hypothesis/{symbol}` — AI hypothesis (paywalled)
+- `GET /api/workspace/watchlist` — User's saved tickers
+- `GET /api/workspace/history` — Hypothesis history
+- `GET /api/notifications` — Pro-only alerts
+- `POST /api/notifications/read-all` — Mark all read
+- `POST /api/subscription/create-checkout-session` — Stripe checkout
+
 ## Known Infrastructure Issue
-The Emergent preview environment's proxy (`emergent-main.js`) intermittently blocks browser fetch requests to the backend API. This causes login and data loading to fail in the preview URL. All backend APIs work correctly via curl. This issue will NOT affect production deployment.
+The Emergent preview environment's proxy intermittently blocks browser fetch requests. All backend APIs work correctly via curl. This does NOT affect production deployment.

@@ -61,7 +61,7 @@ function AppContent() {
       <div id="stock-ticker"><StockTicker /></div>
       <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} />
       <CryptoTicker />
-      <AlertsPanel />
+      <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         <div className="mb-6 sm:mb-8"><Watchlist /></div>

@@ -565,6 +565,34 @@ async def get_hypothesis(symbol: str, request: Request):
         hypothesis_svc = HypothesisService(os.environ.get("EMERGENT_LLM_KEY"))
         hypothesis = await hypothesis_svc.generate_hypothesis(symbol, data)
         hypothesis["is_pro"] = True
+        
+        # Check for verdict change → generate notification
+        if user and hypothesis.get("verdict"):
+            try:
+                prev = await db.hypothesis_history.find_one(
+                    {"user_id": user["_id"], "symbol": symbol.upper()},
+                    sort=[("searched_at", -1)]
+                )
+                if prev and prev.get("verdict") and prev["verdict"] != hypothesis["verdict"]:
+                    # Check if ticker is in user's watchlist
+                    wl = await db.watchlists.find_one({"user_id": user["_id"]})
+                    tickers = wl.get("tickers", []) if wl else []
+                    in_watchlist = symbol.upper() in tickers
+                    
+                    await db.notifications.insert_one({
+                        "user_id": user["_id"],
+                        "type": "verdict_change",
+                        "symbol": symbol.upper(),
+                        "old_verdict": prev["verdict"],
+                        "new_verdict": hypothesis["verdict"],
+                        "confidence": hypothesis.get("confidence", 0),
+                        "in_watchlist": in_watchlist,
+                        "read": False,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
+            except Exception as notif_err:
+                logging.warning(f"Notification creation error: {notif_err}")
+        
         return hypothesis
         
     except Exception as e:
@@ -654,6 +682,42 @@ async def save_hypothesis_history(request: Request):
         "searched_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"message": "Saved to history"}
+
+# --- Notification Endpoints (Pro Only) ---
+@api_router.get("/notifications")
+async def get_notifications(request: Request):
+    """Get user's notifications (Pro only)"""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        return {"notifications": [], "unread_count": 0, "is_pro": False}
+    cursor = db.notifications.find(
+        {"user_id": user["_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(30)
+    notifications = []
+    async for doc in cursor:
+        notifications.append(doc)
+    unread = sum(1 for n in notifications if not n.get("read"))
+    return {"notifications": notifications, "unread_count": unread, "is_pro": True}
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_count(request: Request):
+    """Get unread notification count (Pro only)"""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        return {"count": 0, "is_pro": False}
+    count = await db.notifications.count_documents({"user_id": user["_id"], "read": False})
+    return {"count": count, "is_pro": True}
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(request: Request):
+    """Mark all notifications as read"""
+    user = await get_current_user(request)
+    await db.notifications.update_many(
+        {"user_id": user["_id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All notifications marked as read"}
 
 
 

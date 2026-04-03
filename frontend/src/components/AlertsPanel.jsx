@@ -1,149 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, X, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Bell, X, TrendingUp, TrendingDown, Minus, Lock, Star } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 
-const AlertsPanel = () => {
-  const [alerts, setAlerts] = useState([]);
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const AlertsPanel = ({ onSubscribe }) => {
+  const { user, isPro } = useAuth();
+  const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user || !isPro) return;
+    try {
+      const res = await authFetch(`${API}/notifications`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unread_count || 0);
+      }
+    } catch (e) {
+      console.error('Notification fetch error:', e);
+    }
+  }, [user, isPro]);
 
   useEffect(() => {
-    // Simulate real-time alerts
-    const interval = setInterval(() => {
-      generateAlert();
-    }, 30000); // Every 30 seconds
-
+    fetchNotifications();
+    if (!isPro) return;
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchNotifications, isPro]);
 
-  const generateAlert = () => {
-    const alertTypes = [
-      { type: 'unusual_volume', icon: TrendingUp, color: 'text-orange-400' },
-      { type: 'price_alert', icon: AlertCircle, color: 'text-yellow-400' },
-      { type: 'dark_pool', icon: AlertCircle, color: 'text-purple-400' },
-    ];
-
-    const symbols = ['AAPL', 'TSLA', 'NVDA', 'META', 'GOOGL'];
-    const alertType = alertTypes[Math.floor(Math.random() * alertTypes.length)];
-    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
-
-    const newAlert = {
-      id: Date.now(),
-      symbol,
-      type: alertType.type,
-      icon: alertType.icon,
-      color: alertType.color,
-      message: getAlertMessage(alertType.type, symbol),
-      timestamp: new Date(),
-      read: false
-    };
-
-    setAlerts(prev => [newAlert, ...prev].slice(0, 20));
-    setUnreadCount(prev => prev + 1);
-  };
-
-  const getAlertMessage = (type, symbol) => {
-    switch (type) {
-      case 'unusual_volume':
-        return `${symbol} - Unusual options volume detected`;
-      case 'price_alert':
-        return `${symbol} - Price movement above threshold`;
-      case 'dark_pool':
-        return `${symbol} - Significant dark pool activity`;
-      default:
-        return `${symbol} - Alert triggered`;
+  const markAllRead = async () => {
+    setLoading(true);
+    try {
+      await authFetch(`${API}/notifications/read-all`, { method: 'POST' });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (e) {
+      console.error('Mark read error:', e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const markAsRead = (id) => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === id ? { ...alert, read: true } : alert
-    ));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+  const verdictIcon = (verdict) => {
+    if (verdict === 'BUY') return <TrendingUp className="w-4 h-4 text-emerald-400" />;
+    if (verdict === 'SELL') return <TrendingDown className="w-4 h-4 text-red-400" />;
+    return <Minus className="w-4 h-4 text-amber-400" />;
   };
 
-  const clearAll = () => {
-    setAlerts([]);
-    setUnreadCount(0);
+  const verdictColor = (verdict) => {
+    if (verdict === 'BUY') return 'text-emerald-400';
+    if (verdict === 'SELL') return 'text-red-400';
+    return 'text-amber-400';
   };
+
+  if (!user) return null;
 
   return (
-    <div className="fixed top-20 right-6 z-40">
+    <div className="fixed top-20 right-6 z-40" data-testid="alerts-panel">
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#0F172A] border border-slate-700 rounded-full p-3 hover:bg-[#0F172A] transition-colors"
+        className="relative bg-[#0F172A] border border-slate-700 rounded-full p-3 hover:bg-slate-800 transition-colors"
+        data-testid="alerts-bell"
       >
         <Bell className="w-5 h-5 text-white" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+        {isPro && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-[#0052FF] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+        {!isPro && (
+          <span className="absolute -top-1 -right-1 bg-slate-600 text-slate-300 text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+            <Lock className="w-2.5 h-2.5" />
           </span>
         )}
       </button>
 
-      {/* Alerts Panel */}
+      {/* Panel */}
       {isOpen && (
-        <Card className="absolute top-12 right-0 w-96 bg-slate-900 border-slate-700/50 shadow-2xl rounded-xl max-h-[500px] overflow-hidden flex flex-col">
-          {/* Header */}
+        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-700/50 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
           <div className="border-b border-slate-700 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-semibold">Alerts</h3>
-              {unreadCount > 0 && (
-                <Badge className="bg-red-500">{unreadCount} new</Badge>
+              <h3 className="text-white font-semibold text-sm">AI Alerts</h3>
+              {isPro && unreadCount > 0 && (
+                <Badge className="bg-[#0052FF] text-white text-[10px] px-1.5 py-0">{unreadCount} new</Badge>
               )}
+              {isPro && <Badge className="bg-[#0052FF]/20 text-[#0052FF] border-0 text-[10px]">PRO</Badge>}
             </div>
-            <div className="flex items-center gap-2">
-              {alerts.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearAll}
-                  className="text-slate-400 hover:text-slate-50 text-xs"
-                >
-                  Clear all
+            <div className="flex items-center gap-1">
+              {isPro && notifications.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={markAllRead} disabled={loading || unreadCount === 0}
+                  className="text-slate-400 hover:text-white text-[10px] h-7 px-2">
+                  Mark all read
                 </Button>
               )}
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-slate-400 hover:text-slate-50"
-              >
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Alerts List */}
           <div className="overflow-y-auto flex-1">
-            {alerts.length === 0 ? (
+            {!isPro ? (
+              /* Free user — paywall teaser */
+              <div className="text-center py-8 px-6" data-testid="alerts-paywall">
+                <div className="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-7 h-7 text-slate-500" />
+                </div>
+                <h4 className="text-white font-semibold mb-1">Pro AI Alerts</h4>
+                <p className="text-slate-400 text-xs leading-relaxed mb-4">
+                  Get notified when our AI detects a verdict change on your watchlist tickers. Never miss a BUY→SELL flip.
+                </p>
+                <Button className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl text-sm w-full" onClick={() => { onSubscribe?.(); setIsOpen(false); }} data-testid="alerts-upgrade-btn">
+                  Upgrade to Pro
+                </Button>
+              </div>
+            ) : notifications.length === 0 ? (
+              /* Pro but no notifications */
               <div className="text-center py-8 px-4">
-                <Bell className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                <p className="text-slate-400">No alerts yet</p>
-                <p className="text-gray-600 text-sm">You'll be notified of unusual activity</p>
+                <Bell className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">No alerts yet</p>
+                <p className="text-slate-500 text-xs mt-1">You'll be notified when AI detects a verdict change on your watchlist tickers</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-800">
-                {alerts.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={`p-4 hover:bg-[#1E293B] transition-colors cursor-pointer ${
-                      !alert.read ? 'bg-slate-800' : ''
-                    }`}
-                    onClick={() => markAsRead(alert.id)}
-                  >
+              /* Pro with notifications */
+              <div className="divide-y divide-slate-800/60">
+                {notifications.map((n, i) => (
+                  <div key={i} className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#0052FF]/5' : 'hover:bg-slate-800/40'}`} data-testid={`notification-${i}`}>
                     <div className="flex items-start gap-3">
-                      <alert.icon className={`w-5 h-5 ${alert.color} flex-shrink-0 mt-0.5`} />
+                      <div className="mt-0.5 flex-shrink-0">
+                        {verdictIcon(n.new_verdict)}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm">{alert.message}</p>
-                        <p className="text-slate-500 text-xs mt-1">
-                          {alert.timestamp.toLocaleTimeString()}
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-white text-sm font-semibold">{n.symbol}</span>
+                          {n.in_watchlist && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                          {!n.read && <div className="w-1.5 h-1.5 bg-[#0052FF] rounded-full" />}
+                        </div>
+                        <p className="text-slate-300 text-xs">
+                          Verdict changed: <span className={verdictColor(n.old_verdict)}>{n.old_verdict}</span>
+                          {' → '}
+                          <span className={verdictColor(n.new_verdict)}>{n.new_verdict}</span>
+                        </p>
+                        {n.confidence > 0 && (
+                          <p className="text-slate-500 text-[10px] mt-0.5">Confidence: {n.confidence}%</p>
+                        )}
+                        <p className="text-slate-600 text-[10px] mt-0.5">
+                          {n.created_at ? new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                         </p>
                       </div>
-                      {!alert.read && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2" />
-                      )}
                     </div>
                   </div>
                 ))}
