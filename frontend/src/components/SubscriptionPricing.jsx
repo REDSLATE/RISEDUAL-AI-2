@@ -64,7 +64,7 @@ const SubscriptionPricing = ({ onClose }) => {
             <Crown className="w-8 h-8 text-yellow-500" />
             <h2 className="text-3xl font-bold text-white">Upgrade to Premium</h2>
           </div>
-          <p className="text-slate-400 mt-2">Unlock the full power of RISEDUALAI</p>
+          <p className="text-slate-400 mt-2">Unlock the full power of RISEDUAL AI</p>
         </div>
 
         {/* Pricing Cards */}

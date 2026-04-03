@@ -91,7 +91,7 @@ function AppContent() {
       {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} />}
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
-        <p>RISEDUALAI - Advanced AI-Powered Trading Platform</p>
+        <p>RISEDUAL AI - Advanced AI-Powered Trading Platform</p>
         <p className="mt-1">Last updated on {new Date().toLocaleString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'UTC' })} UTC</p>
       </div>
     </div>

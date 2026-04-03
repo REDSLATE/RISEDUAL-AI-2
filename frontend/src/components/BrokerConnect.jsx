@@ -196,7 +196,7 @@ const BrokerConnect = () => {
                 <div>
                   <h2 className="text-white text-2xl font-bold mb-2">Connect Your Broker</h2>
                   <p className="text-slate-400">
-                    Link your brokerage account to execute trades directly from RISEDUALAI
+                    Link your brokerage account to execute trades directly from RISEDUAL AI
                   </p>
                   <div className="flex items-center gap-2 mt-3 text-sm text-slate-500">
                     <Shield className="w-4 h-4" />
@@ -238,7 +238,7 @@ const BrokerConnect = () => {
                 <ol className="text-slate-400 text-sm space-y-1 list-decimal list-inside">
                   <li>Click "Connect Account" on your preferred broker</li>
                   <li>You'll be redirected to securely login to your broker account</li>
-                  <li>Authorize RISEDUALAI to access trading capabilities</li>
+                  <li>Authorize RISEDUAL AI to access trading capabilities</li>
                   <li>Start executing trades directly from our platform</li>
                 </ol>
                 <p className="text-slate-500 text-xs mt-3">

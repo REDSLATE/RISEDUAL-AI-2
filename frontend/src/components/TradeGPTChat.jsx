@@ -11,7 +11,7 @@ const TradeGPTChat = () => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Hello! I\'m RISEDUALAI, your AI-powered trading assistant. Ask me anything about stocks, options, market analysis, or trading strategies.\n\nTip: Type /patterns to browse common chart patterns, or upload a screenshot for AI analysis!',
+      content: 'Hello! I\'m RISEDUAL AI, your AI-powered trading assistant. Ask me anything about stocks, options, market analysis, or trading strategies.\n\nTip: Type /patterns to browse common chart patterns, or upload a screenshot for AI analysis!',
     },
   ]);
   const [input, setInput] = useState('');
@@ -184,7 +184,7 @@ const TradeGPTChat = () => {
         <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
-            <h3 className="font-semibold">RISEDUALAI</h3>
+            <h3 className="font-semibold">RISEDUAL AI</h3>
           </div>
           <p className="text-xs text-blue-200 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
         </div>

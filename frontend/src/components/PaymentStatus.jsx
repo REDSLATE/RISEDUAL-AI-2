@@ -66,7 +66,7 @@ const PaymentStatus = ({ sessionId, initialStatus, onClose }) => {
           <div className="text-center" data-testid="payment-success">
             <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Payment Successful!</h3>
-            <p className="text-slate-400 mb-2">Welcome to RISEDUALAI Premium.</p>
+            <p className="text-slate-400 mb-2">Welcome to RISEDUAL AI Premium.</p>
             <p className="text-emerald-400 text-sm">Your annual subscription is now active.</p>
           </div>
         );
