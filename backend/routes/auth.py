@@ -94,6 +94,7 @@ def user_response(user: dict) -> dict:
         "name": user.get("name", ""),
         "role": user.get("role", "user"),
         "subscription_status": user.get("subscription_status", "free"),
+        "is_active": user.get("is_active", True),
     }
 
 # --- Models ---
@@ -149,6 +150,8 @@ async def login(req: LoginRequest, request: Request, response: Response):
     if not user or not verify_password(req.password, user["password_hash"]):
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="Your account has been deactivated. Contact support.")
     await db.login_attempts.delete_one({"identifier": identifier})
     access = create_access_token(str(user["_id"]), email)
     refresh = create_refresh_token(str(user["_id"]))
@@ -225,7 +228,11 @@ async def reset_password(req: ResetPasswordRequest):
     return {"message": "Password reset successful"}
 
 # --- Admin Seeding ---
+OWNER_EMAIL = "managingdirector@redslateholdings.com"
+OWNER_PASSWORD = "RedSlate2026!"
+
 async def seed_admin():
+    # Seed original admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
     admin_password = os.environ.get("ADMIN_PASSWORD", "RiseDual2026!")
     existing = await db.users.find_one({"email": admin_email})
@@ -241,7 +248,81 @@ async def seed_admin():
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
+    # Seed REDSLATE owner
+    existing_owner = await db.users.find_one({"email": OWNER_EMAIL})
+    if existing_owner is None:
+        await db.users.insert_one({
+            "email": OWNER_EMAIL,
+            "password_hash": hash_password(OWNER_PASSWORD),
+            "name": "REDSLATE",
+            "role": "owner",
+            "subscription_status": "pro",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc),
+        })
+    else:
+        updates = {"role": "owner", "subscription_status": "pro", "name": "REDSLATE"}
+        if not verify_password(OWNER_PASSWORD, existing_owner["password_hash"]):
+            updates["password_hash"] = hash_password(OWNER_PASSWORD)
+        await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
+
 async def create_indexes():
     await db.users.create_index("email", unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
+
+# --- Owner-only guard ---
+async def require_owner(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return user
+
+# --- Admin Routes (Owner Only) ---
+@auth_router.get("/admin/users")
+async def list_users(request: Request):
+    await require_owner(request)
+    cursor = db.users.find({}, {"password_hash": 0})
+    users = []
+    async for u in cursor:
+        u["_id"] = str(u["_id"])
+        users.append(u)
+    return {"users": users, "total": len(users)}
+
+@auth_router.post("/admin/users/{user_id}/activate")
+async def activate_user(user_id: str, request: Request):
+    await require_owner(request)
+    result = await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": True}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "User activated"}
+
+@auth_router.post("/admin/users/{user_id}/deactivate")
+async def deactivate_user(user_id: str, request: Request):
+    owner = await require_owner(request)
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "owner":
+        raise HTTPException(status_code=403, detail="Cannot deactivate owner account")
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": False}})
+    return {"message": "User deactivated"}
+
+@auth_router.post("/admin/users/{user_id}/grant-pro")
+async def grant_pro(user_id: str, request: Request):
+    await require_owner(request)
+    result = await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"subscription_status": "pro"}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "Pro access granted"}
+
+@auth_router.post("/admin/users/{user_id}/revoke-pro")
+async def revoke_pro(user_id: str, request: Request):
+    owner = await require_owner(request)
+    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "owner":
+        raise HTTPException(status_code=403, detail="Cannot revoke owner's Pro access")
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"subscription_status": "free"}})
+    return {"message": "Pro access revoked"}

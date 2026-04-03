@@ -588,6 +588,74 @@ async def update_subscription(request: Request):
     )
     return {"message": "Subscription updated", "status": status}
 
+# --- User Workspace Endpoints ---
+@api_router.get("/workspace/watchlist")
+async def get_watchlist(request: Request):
+    """Get user's saved tickers"""
+    user = await get_current_user(request)
+    doc = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0})
+    return {"tickers": doc.get("tickers", []) if doc else []}
+
+@api_router.post("/workspace/watchlist/add")
+async def add_to_watchlist(request: Request):
+    """Add a ticker to user's watchlist"""
+    user = await get_current_user(request)
+    body = await request.json()
+    ticker = body.get("ticker", "").upper().strip()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker required")
+    await db.watchlists.update_one(
+        {"user_id": user["_id"]},
+        {"$addToSet": {"tickers": ticker}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"message": f"{ticker} added to watchlist"}
+
+@api_router.post("/workspace/watchlist/remove")
+async def remove_from_watchlist(request: Request):
+    """Remove a ticker from user's watchlist"""
+    user = await get_current_user(request)
+    body = await request.json()
+    ticker = body.get("ticker", "").upper().strip()
+    await db.watchlists.update_one(
+        {"user_id": user["_id"]},
+        {"$pull": {"tickers": ticker}}
+    )
+    return {"message": f"{ticker} removed from watchlist"}
+
+@api_router.get("/workspace/history")
+async def get_hypothesis_history(request: Request):
+    """Get user's hypothesis search history"""
+    user = await get_current_user(request)
+    cursor = db.hypothesis_history.find(
+        {"user_id": user["_id"]},
+        {"_id": 0}
+    ).sort("searched_at", -1).limit(20)
+    history = []
+    async for doc in cursor:
+        history.append(doc)
+    return {"history": history}
+
+@api_router.post("/workspace/history/save")
+async def save_hypothesis_history(request: Request):
+    """Save a hypothesis to user's history"""
+    user = await get_current_user(request)
+    body = await request.json()
+    symbol = body.get("symbol", "").upper().strip()
+    verdict = body.get("verdict", "")
+    confidence = body.get("confidence", 0)
+    if not symbol:
+        raise HTTPException(status_code=400, detail="Symbol required")
+    await db.hypothesis_history.insert_one({
+        "user_id": user["_id"],
+        "symbol": symbol,
+        "verdict": verdict,
+        "confidence": confidence,
+        "searched_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"message": "Saved to history"}
+
+
 
 @api_router.get("/market/news")
 async def get_financial_news():
@@ -808,17 +876,20 @@ async def startup_event():
     set_auth_db(db)
     await create_indexes()
     await seed_admin()
-    # Write test credentials
     creds_path = Path("/app/memory/test_credentials.md")
     creds_path.parent.mkdir(parents=True, exist_ok=True)
     creds_path.write_text(
         "# Test Credentials\n\n"
+        "## Owner (REDSLATE)\n"
+        "- Email: managingdirector@redslateholdings.com\n"
+        "- Password: RedSlate2026!\n"
+        "- Role: owner\n- Subscription: pro\n"
+        "- Can activate/deactivate users and grant/revoke Pro\n\n"
         f"## Admin\n- Email: {os.environ.get('ADMIN_EMAIL', 'admin@risedual.ai')}\n"
         f"- Password: {os.environ.get('ADMIN_PASSWORD', 'RiseDual2026!')}\n"
         "- Role: admin\n- Subscription: pro\n\n"
-        "## Auth Endpoints\n"
-        "- POST /api/auth/register\n- POST /api/auth/login\n- POST /api/auth/logout\n"
-        "- GET /api/auth/me\n- POST /api/auth/refresh\n"
+        "## Auth Method\n- Bearer token via localStorage\n"
+        "- POST /api/auth/login → returns access_token + refresh_token\n"
     )
 
 @app.on_event("shutdown")
