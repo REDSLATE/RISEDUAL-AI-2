@@ -289,7 +289,7 @@ async def require_owner(request: Request):
 @auth_router.get("/admin/users")
 async def list_users(request: Request):
     await require_owner(request)
-    cursor = db.users.find({}, {"password_hash": 0})
+    cursor = db.users.find({}, {"password_hash": 0}).limit(200)
     users = []
     async for u in cursor:
         u["_id"] = str(u["_id"])
