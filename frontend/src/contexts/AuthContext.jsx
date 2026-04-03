@@ -7,23 +7,27 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 // Helper to make authenticated requests with retry
-export const authFetch = async (url, options = {}, retries = 2) => {
+export const authFetch = async (url, options = {}, retries = 3) => {
   const token = localStorage.getItem('access_token');
   const headers = { ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   
   for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-      const res = await fetch(url, { ...options, headers });
+      const res = await fetch(url, { ...options, headers, signal: controller.signal });
+      clearTimeout(timeoutId);
       if (res.status === 502 && i < retries) {
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
         continue;
       }
       return res;
     } catch (e) {
+      clearTimeout(timeoutId);
       if (i === retries) throw e;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
     }
   }
 };
@@ -82,18 +86,22 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('refresh_token');
   };
 
-  const fetchWithRetry = async (url, opts, retries = 2) => {
+  const fetchWithRetry = async (url, opts, retries = 3) => {
     for (let i = 0; i <= retries; i++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       try {
-        const res = await fetch(url, opts);
+        const res = await fetch(url, { ...opts, signal: controller.signal });
+        clearTimeout(timeoutId);
         if (res.status === 502 && i < retries) {
-          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+          await new Promise(r => setTimeout(r, 1500 * (i + 1)));
           continue;
         }
         return res;
       } catch (e) {
-        if (i === retries) throw e;
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        clearTimeout(timeoutId);
+        if (i === retries) throw new Error('Network error. Please check your connection and try again.');
+        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
       }
     }
   };
@@ -104,8 +112,12 @@ export const AuthProvider = ({ children }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
+    if (!res.ok) {
+      let detail;
+      try { detail = (await res.json()).detail; } catch { detail = `Server error (${res.status}). Please try again.`; }
+      throw new Error(formatDetail(detail));
+    }
     const data = await res.json();
-    if (!res.ok) throw new Error(formatDetail(data.detail));
     storeTokens(data);
     setUser(data);
     return data;
@@ -117,8 +129,12 @@ export const AuthProvider = ({ children }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
     });
+    if (!res.ok) {
+      let detail;
+      try { detail = (await res.json()).detail; } catch { detail = `Server error (${res.status}). Please try again.`; }
+      throw new Error(formatDetail(detail));
+    }
     const data = await res.json();
-    if (!res.ok) throw new Error(formatDetail(data.detail));
     storeTokens(data);
     setUser(data);
     return data;

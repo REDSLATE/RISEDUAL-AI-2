@@ -1,7 +1,7 @@
 # RISEDUALAI - Product Requirements Document
 
 ## Original Problem Statement
-Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It should have an independent look but the same trading processes. Requires real market data integration, crypto & dark pool data, functional trading broker connections, a subscription gateway, an AI chat assistant, and a highly complex AI market prediction engine that scrapes financial news, crypto transactions, and real estate data.
+Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It should have an independent look but the same trading processes. Requires real market data integration, crypto & dark pool data, functional trading broker connections, a subscription gateway, an AI chat assistant, and a highly complex AI market prediction engine that scrapes financial news, crypto transactions, and real estate data. The app must be fully responsive, function as a Progressive Web App (PWA), and include a custom login workspace with a paywalled AI Hypothesis feature.
 
 ## Core Requirements
 - Real-time stock/crypto market data (Alpha Vantage)
@@ -9,63 +9,68 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - AI Chat Assistant (GPT-5.2) with vision/image analysis
 - Market Prediction engine with web scraping (8+ sources)
 - Real estate market scraping
-- Subscription pricing ($45/month) via Stripe
+- Subscription pricing ($45/month, $486/year) via Stripe
 - Broker connection (Alpaca)
 - "Fidelity x Coinbase" theme (#0F172A navy background, #0052FF blue accents)
+- PWA with mobile responsiveness
+- JWT Bearer token authentication
+- AI Investment Hypothesis with paywall (free=blurred, pro=full access)
+- Owner Admin Panel with user management
+- User Workspace with saved watchlist and hypothesis history
 
 ## Architecture
-- Frontend: React + TailwindCSS + Shadcn UI
+- Frontend: React + TailwindCSS + Shadcn UI + PWA
 - Backend: FastAPI + MongoDB (Motor Async)
 - AI: Emergent Integrations (GPT-5.2 via Universal Key)
 - Scraping: BeautifulSoup4 + lxml
+- Auth: PyJWT + bcrypt (Bearer tokens via localStorage)
+- Payments: Stripe (test keys)
 
 ## What's Been Implemented
 - [x] Full trading dashboard UI (Navbar, StockTicker, OptionsRadar, CryptoTicker, DarkPool)
 - [x] Alpha Vantage real market data integration
 - [x] AI Chat with GPT-5.2 session management
-- [x] AI Chat Vision/Screenshot Upload — Users can upload chart images for AI analysis
-- [x] Chart Pattern Library — Type `/patterns` to browse 8 common chart patterns with SVG illustrations
-- [x] Real Stripe Payment Integration — $45/month subscription checkout via Stripe
-- [x] Fidelity x Coinbase Theme Redesign — Deep navy (#0F172A), blue primary (#0052FF), glassmorphism
-- [x] Perplexity-style Company Research — AI-synthesized research reports with cited sources
+- [x] AI Chat Vision/Screenshot Upload
+- [x] Chart Pattern Library (`/patterns`)
+- [x] Real Stripe Payment Integration ($45/month + $486/year)
+- [x] Fidelity x Coinbase Theme Redesign
+- [x] Perplexity-style Company Research
 - [x] Market Prediction engine (8+ news sources scraping)
 - [x] Real Estate market scraping
 - [x] Crypto & Dark Pool data endpoints + UI
-- [x] Subscription UI + Quick Trade UI
-- [x] Broker Connect UI
-- [x] Rebranded to RISEDUALAI
-- [x] **World Events Scraping** — RSS scraping from Reuters, BBC, NYT, AP, CNBC with sector impact mapping
-- [x] **Foreign Markets Service** — Yahoo Finance scraping for global indices, commodities, currencies with correlation signals
-- [x] **Gov Filings Service (Fixed)** — Capitol Trades scraping for congressional stock trades, Fed RSS for announcements, SEC EDGAR + OpenInsider for insider trades (2026-03-31)
-- [x] **Macro Data Integration into Market Predictions** — World events, foreign markets, and government filings all feed into GPT-5.2 AI analysis prompt for comprehensive predictions (2026-03-31)
-- [x] **Frontend Macro Data Cards** — Market Prediction UI now displays World Events, Foreign Markets, Government Data intelligence cards and Geopolitical Impact assessment (2026-03-31)
-
-- [x] **Macro Intelligence Dashboard** — Bloomberg-terminal-style standalone section with 3 tabs: World Events (RSS news with sector impact mapping, high-impact alerts), Foreign Markets (global indices heatmap, commodities, currencies, correlation signals), Congress Trades (congressional stock trades table, Fed announcements, SEC filings). Accessible from Navbar Platform & Resources dropdowns (2026-04-02)
-- [x] **Live Auto-Refresh** — 30-second auto-polling for Macro Dashboard with LIVE/PAUSED toggle, pulse animations on price changes, and last-refresh timestamp (2026-04-02)
-- [x] **Dual Subscription Pricing** — Monthly ($45/month) and Annual ($40.50/month, $486/year, 10% discount) with plan selector. Backend creates separate Stripe checkout sessions per plan (2026-04-02)
-- [x] **Responsive PWA** — Full mobile/tablet responsiveness with hamburger menu (<1024px), mobile bottom navigation (Markets/Options/Macro/Research/AI Chat), full-screen chat widget, responsive grids, safe area padding, touch-friendly 44px targets, PWA manifest + service worker for home screen install (2026-04-02)
-- [x] **JWT Auth System** — Email/password registration and login with Bearer tokens (localStorage), bcrypt password hashing, brute force protection, admin seeding, token refresh flow (2026-04-03)
-- [x] **AI Investment Hypothesis** — Per-ticker AI analysis using ALL scraped macro data (news, world events, congress trades, foreign markets, insider filings). Returns BUY/SELL/HOLD verdict with confidence %, price targets, thesis, catalysts, risks, congressional activity, sector impact (2026-04-03)
-- [x] **Paywall with Blur** — Free users see blurred hypothesis preview with data source counts and "Subscribe to Pro" overlay. Pro subscribers get full analysis. Integrated with Stripe checkout (2026-04-03)
+- [x] World Events Scraping (Reuters, BBC, NYT, AP, CNBC)
+- [x] Foreign Markets Service (Yahoo Finance)
+- [x] Gov Filings Service (Capitol Trades, Fed RSS, SEC EDGAR)
+- [x] Macro Intelligence Dashboard (3-tab Bloomberg-terminal style)
+- [x] Live Auto-Refresh (30s polling with LIVE/PAUSED toggle)
+- [x] Dual Subscription Pricing (Monthly + Annual)
+- [x] Responsive PWA (mobile nav, service worker, manifest)
+- [x] JWT Auth System (login, register, Bearer tokens, brute force protection)
+- [x] AI Investment Hypothesis (paywalled with blur for free users)
+- [x] **Owner Admin Panel** — Owner-only user management: view all users, activate/deactivate, grant/revoke Pro. Accessible from user dropdown menu (2026-04-03)
+- [x] **User Workspace** — Personalized workspace with saved watchlist tickers and hypothesis search history. Two tabs (Watchlist + History). Auto-saves hypothesis results for Pro users (2026-04-03)
+- [x] **Navbar Integration** — User dropdown shows "My Workspace" (all users) and "Admin Panel" (owner only). Mobile menu also has workspace/admin buttons (2026-04-03)
 
 ## Prioritized Backlog
 ### P1 - Upcoming
-- Deployment to custom domain (risedual.ai) — User needs to configure DNS
+- Deployment to custom domain (risedual.ai) — User needs to configure DNS and deploy via Emergent interface
 
 ### P2 - Future
 - Alpha Vantage API upgrade (user currently on free 5/min tier)
 - Real Broker Integration (Alpaca OAuth) — Replace mocked trading endpoints
-- Refactor server.py (~700 lines) into separate route modules
+- Refactor server.py (~800+ lines) into separate route modules
 
 ## Mocked Features
 - Broker trading execution (Alpaca) — UI exists, backend mocked
 
 ## Key Files
-- `/app/backend/services/ai_service.py` — AI chat with vision capability
-- `/app/backend/services/gov_filings_service.py` — Congressional trades (Capitol Trades), Fed announcements, SEC filings
-- `/app/backend/services/world_events_service.py` — World events with sector impact mapping
-- `/app/backend/services/foreign_markets_service.py` — Global indices, commodities, currencies
-- `/app/backend/services/market_prediction_service.py` — AI prediction engine consuming all data sources
-- `/app/backend/server.py` — All API routes
-- `/app/frontend/src/components/MarketPrediction.jsx` — Prediction UI with macro data cards
-- `/app/frontend/src/components/TradeGPTChat.jsx` — Chat widget with image upload
+- `/app/backend/routes/auth.py` — Auth + admin endpoints
+- `/app/backend/server.py` — All API routes + workspace endpoints
+- `/app/frontend/src/contexts/AuthContext.jsx` — Auth state + authFetch helper
+- `/app/frontend/src/components/AdminPanel.jsx` — Owner admin panel modal
+- `/app/frontend/src/components/UserWorkspace.jsx` — User workspace modal
+- `/app/frontend/src/components/Navbar.jsx` — Nav with user dropdown
+- `/app/frontend/src/App.js` — Main app with state management
+
+## Known Infrastructure Issue
+The Emergent preview environment's proxy (`emergent-main.js`) intermittently blocks browser fetch requests to the backend API. This causes login and data loading to fail in the preview URL. All backend APIs work correctly via curl. This issue will NOT affect production deployment.
