@@ -44,6 +44,9 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named **RISEDUALAI**. It sh
 - [x] **Live Auto-Refresh** — 30-second auto-polling for Macro Dashboard with LIVE/PAUSED toggle, pulse animations on price changes, and last-refresh timestamp (2026-04-02)
 - [x] **Dual Subscription Pricing** — Monthly ($45/month) and Annual ($40.50/month, $486/year, 10% discount) with plan selector. Backend creates separate Stripe checkout sessions per plan (2026-04-02)
 - [x] **Responsive PWA** — Full mobile/tablet responsiveness with hamburger menu (<1024px), mobile bottom navigation (Markets/Options/Macro/Research/AI Chat), full-screen chat widget, responsive grids, safe area padding, touch-friendly 44px targets, PWA manifest + service worker for home screen install (2026-04-02)
+- [x] **JWT Auth System** — Email/password registration and login with Bearer tokens (localStorage), bcrypt password hashing, brute force protection, admin seeding, token refresh flow (2026-04-03)
+- [x] **AI Investment Hypothesis** — Per-ticker AI analysis using ALL scraped macro data (news, world events, congress trades, foreign markets, insider filings). Returns BUY/SELL/HOLD verdict with confidence %, price targets, thesis, catalysts, risks, congressional activity, sector impact (2026-04-03)
+- [x] **Paywall with Blur** — Free users see blurred hypothesis preview with data source counts and "Subscribe to Pro" overlay. Pro subscribers get full analysis. Integrated with Stripe checkout (2026-04-03)
 
 ## Prioritized Backlog
 ### P1 - Upcoming

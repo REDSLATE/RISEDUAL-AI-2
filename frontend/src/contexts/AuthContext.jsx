@@ -6,13 +6,26 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
-// Helper to make authenticated requests
-export const authFetch = async (url, options = {}) => {
+// Helper to make authenticated requests with retry
+export const authFetch = async (url, options = {}, retries = 2) => {
   const token = localStorage.getItem('access_token');
   const headers = { ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  return fetch(url, { ...options, headers });
+  
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 502 && i < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
 };
 
 export const AuthProvider = ({ children }) => {
@@ -69,8 +82,24 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('refresh_token');
   };
 
+  const fetchWithRetry = async (url, opts, retries = 2) => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await fetch(url, opts);
+        if (res.status === 502 && i < retries) {
+          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        if (i === retries) throw e;
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  };
+
   const login = async (email, password) => {
-    const res = await fetch(`${API}/auth/login`, {
+    const res = await fetchWithRetry(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -83,7 +112,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (email, password, name) => {
-    const res = await fetch(`${API}/auth/register`, {
+    const res = await fetchWithRetry(`${API}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
