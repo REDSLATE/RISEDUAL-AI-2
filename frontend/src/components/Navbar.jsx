@@ -35,7 +35,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 sm:gap-8">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-8 h-8 object-contain" />
+            <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-600/40 flex items-center justify-center p-1" style={{boxShadow: '0 0 12px rgba(0,82,255,0.3)'}}>
+              <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-full h-full object-contain brightness-125" />
+            </div>
             <span className="text-white font-bold text-lg tracking-tight" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUAL AI</span>
           </div>
 
