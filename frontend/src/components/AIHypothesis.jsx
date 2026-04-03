@@ -24,7 +24,15 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
     try {
       const res = await authFetch(`${API}/hypothesis/${symbol.trim().toUpperCase()}`);
       if (!res.ok) throw new Error('Failed to generate hypothesis');
-      setHypothesis(await res.json());
+      const data = await res.json();
+      setHypothesis(data);
+      // Auto-save to history for Pro users
+      if (data.is_pro && data.verdict) {
+        authFetch(`${API}/workspace/history/save`, {
+          method: 'POST',
+          body: JSON.stringify({ symbol: data.symbol || symbol.trim().toUpperCase(), verdict: data.verdict, confidence: data.confidence || 0 }),
+        }).catch(() => {});
+      }
     } catch (err) {
       setError(err.message);
     } finally {

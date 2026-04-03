@@ -20,6 +20,8 @@ import MobileBottomNav from './components/MobileBottomNav';
 import AIHypothesis from './components/AIHypothesis';
 import AuthModal from './components/AuthModal';
 import SubscriptionPricing from './components/SubscriptionPricing';
+import AdminPanel from './components/AdminPanel';
+import UserWorkspace from './components/UserWorkspace';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -33,6 +35,8 @@ function AppContent() {
   const [showAuth, setShowAuth] = useState(false);
   const [authTab, setAuthTab] = useState('login');
   const [showSubscription, setShowSubscription] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showWorkspace, setShowWorkspace] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -55,7 +59,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} />
       <CryptoTicker />
       <AlertsPanel />
 
@@ -83,6 +87,8 @@ function AppContent() {
       {paymentInfo && <PaymentStatus sessionId={paymentInfo.sessionId} initialStatus={paymentInfo.status} onClose={() => setPaymentInfo(null)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
       {showSubscription && <SubscriptionPricing onClose={() => setShowSubscription(false)} />}
+      {showAdmin && user?.role === 'owner' && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} />}
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <p>RISEDUALAI - Advanced AI-Powered Trading Platform</p>

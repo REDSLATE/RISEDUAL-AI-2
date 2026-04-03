@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -124,6 +124,14 @@ const Navbar = ({ onLogin, onRegister, onSubscribe }) => {
                   </span>
                 </div>
                 {!isPro && <DropdownMenuItem className="text-[#0052FF] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
+                <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenWorkspace} data-testid="nav-workspace-btn">
+                  <Briefcase className="w-4 h-4 mr-2" /> My Workspace
+                </DropdownMenuItem>
+                {user.role === 'owner' && (
+                  <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
+                    <Crown className="w-4 h-4 mr-2" /> Admin Panel
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={logout}>
                   <LogOut className="w-4 h-4 mr-2" /> Log Out
                 </DropdownMenuItem>
@@ -195,6 +203,16 @@ const Navbar = ({ onLogin, onRegister, onSubscribe }) => {
                     {isPro ? 'PRO' : 'FREE'}
                   </span>
                 </div>
+                <Button variant="outline" size="sm" className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 rounded-xl text-xs"
+                  onClick={() => { onOpenWorkspace(); setMobileMenuOpen(false); }} data-testid="mobile-workspace-btn">
+                  <Briefcase className="w-3 h-3 mr-1" /> Workspace
+                </Button>
+                {user.role === 'owner' && (
+                  <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"
+                    onClick={() => { onOpenAdmin(); setMobileMenuOpen(false); }} data-testid="mobile-admin-btn">
+                    <Crown className="w-3 h-3 mr-1" /> Admin
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"
                   onClick={() => { logout(); setMobileMenuOpen(false); }}>
                   Log Out
