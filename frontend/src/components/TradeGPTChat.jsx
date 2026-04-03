@@ -183,7 +183,7 @@ const TradeGPTChat = () => {
       >
         <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5" />
+            <img src="/logo-ai-avatar.png" alt="AI" className="w-6 h-6 object-contain" />
             <h3 className="font-semibold">RISEDUAL AI</h3>
           </div>
           <p className="text-xs text-blue-200 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
