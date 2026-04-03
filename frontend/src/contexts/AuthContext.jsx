@@ -6,17 +6,30 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
+// Helper to make authenticated requests
+export const authFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token');
+  const headers = { ...options.headers };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  return fetch(url, { ...options, headers });
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // null = checking, false = not auth'd
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const checkAuth = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) { setUser(false); setLoading(false); return; }
     try {
-      const res = await fetch(`${API}/auth/me`, { credentials: 'include' });
+      const res = await authFetch(`${API}/auth/me`);
       if (res.ok) {
         setUser(await res.json());
       } else {
-        setUser(false);
+        // Try refresh
+        const refreshed = await tryRefresh();
+        if (!refreshed) { clearTokens(); setUser(false); }
       }
     } catch {
       setUser(false);
@@ -27,15 +40,44 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
+  const tryRefresh = async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) return false;
+    try {
+      const res = await fetch(`${API}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('access_token', data.access_token);
+        const meRes = await authFetch(`${API}/auth/me`);
+        if (meRes.ok) { setUser(await meRes.json()); return true; }
+      }
+    } catch {}
+    return false;
+  };
+
+  const storeTokens = (data) => {
+    if (data.access_token) localStorage.setItem('access_token', data.access_token);
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  };
+
   const login = async (email, password) => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(formatDetail(data.detail));
+    storeTokens(data);
     setUser(data);
     return data;
   };
@@ -44,35 +86,25 @@ export const AuthProvider = ({ children }) => {
     const res = await fetch(`${API}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ email, password, name }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(formatDetail(data.detail));
+    storeTokens(data);
     setUser(data);
     return data;
   };
 
   const logout = async () => {
-    await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
+    await fetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => {});
+    clearTokens();
     setUser(false);
-  };
-
-  const refreshToken = async () => {
-    try {
-      const res = await fetch(`${API}/auth/refresh`, { method: 'POST', credentials: 'include' });
-      if (res.ok) {
-        await checkAuth();
-        return true;
-      }
-    } catch {}
-    return false;
   };
 
   const isPro = user && user.subscription_status === 'pro';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshToken, isPro, checkAuth }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, isPro, checkAuth, authFetch }}>
       {children}
     </AuthContext.Provider>
   );

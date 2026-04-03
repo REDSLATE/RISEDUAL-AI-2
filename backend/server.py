@@ -788,15 +788,12 @@ async def cancel_order(broker_id: str, order_id: str):
 app.include_router(api_router)
 app.include_router(auth_router)
 
-# CORS middleware - use explicit origin for credentials support
-cors_origins = os.environ.get('CORS_ORIGINS', 'https://risedual-trading.preview.emergentagent.com').split(',')
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=cors_origins,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["set-cookie"],
 )
 
 # Configure logging

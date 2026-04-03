@@ -134,8 +134,10 @@ async def register(req: RegisterRequest, response: Response):
     user_doc["_id"] = result.inserted_id
     access = create_access_token(str(user_doc["_id"]), email)
     refresh = create_refresh_token(str(user_doc["_id"]))
-    set_auth_cookies(response, access, refresh)
-    return user_response(user_doc)
+    resp = user_response(user_doc)
+    resp["access_token"] = access
+    resp["refresh_token"] = refresh
+    return resp
 
 @auth_router.post("/login")
 async def login(req: LoginRequest, request: Request, response: Response):
@@ -150,8 +152,10 @@ async def login(req: LoginRequest, request: Request, response: Response):
     await db.login_attempts.delete_one({"identifier": identifier})
     access = create_access_token(str(user["_id"]), email)
     refresh = create_refresh_token(str(user["_id"]))
-    set_auth_cookies(response, access, refresh)
-    return user_response(user)
+    resp = user_response(user)
+    resp["access_token"] = access
+    resp["refresh_token"] = refresh
+    return resp
 
 @auth_router.post("/logout")
 async def logout(response: Response):
@@ -166,7 +170,17 @@ async def me(request: Request):
 
 @auth_router.post("/refresh")
 async def refresh_token(request: Request, response: Response):
-    token = request.cookies.get("refresh_token")
+    # Accept refresh token from body or Authorization header
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    token = body.get("refresh_token") or ""
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
     try:
@@ -177,8 +191,7 @@ async def refresh_token(request: Request, response: Response):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         access = create_access_token(str(user["_id"]), user["email"])
-        response.set_cookie(key="access_token", value=access, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
-        return {"message": "Token refreshed"}
+        return {"access_token": access}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.InvalidTokenError:

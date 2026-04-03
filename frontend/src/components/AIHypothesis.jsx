@@ -4,7 +4,7 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,7 +22,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
     setError('');
     setHypothesis(null);
     try {
-      const res = await fetch(`${API}/hypothesis/${symbol.trim().toUpperCase()}`, { credentials: 'include' });
+      const res = await authFetch(`${API}/hypothesis/${symbol.trim().toUpperCase()}`);
       if (!res.ok) throw new Error('Failed to generate hypothesis');
       setHypothesis(await res.json());
     } catch (err) {
