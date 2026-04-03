@@ -34,11 +34,11 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
     <nav className="bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 px-3 sm:px-6 py-3 sticky top-0 z-40">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 sm:gap-8">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-600/40 flex items-center justify-center p-1" style={{boxShadow: '0 0 12px rgba(0,82,255,0.3)'}}>
+          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <div className="w-11 h-11 rounded-lg bg-slate-800/80 border border-slate-600/40 flex items-center justify-center p-1" style={{boxShadow: '0 0 12px rgba(0,82,255,0.3)'}}>
               <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-full h-full object-contain brightness-125" />
             </div>
-            <span className="text-white font-bold text-lg tracking-tight" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUAL AI</span>
+            <span className="text-white font-bold text-xl tracking-tight" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUAL AI</span>
           </div>
 
           <form onSubmit={handleSearch} className="relative hidden lg:block">
