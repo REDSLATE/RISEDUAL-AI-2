@@ -207,8 +207,8 @@ const WorldEventsTab = ({ data, loading }) => {
         <Card className="bg-slate-800/50 border-slate-700/40 p-4 rounded-xl">
           <h3 className="text-white text-sm font-semibold mb-3">Sector Impact Map</h3>
           <div className="flex flex-wrap gap-2">
-            {affected_sectors.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
+            {affected_sectors.map((s) => (
+              <div key={s.sector} className="flex items-center gap-2 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
                 <div className={`w-2 h-2 rounded-full ${s.avg_impact >= 75 ? 'bg-red-500' : s.avg_impact >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                 <span className="text-white text-xs font-medium">{s.sector}</span>
                 <span className={`text-xs font-bold ${s.avg_impact >= 75 ? 'text-red-400' : s.avg_impact >= 50 ? 'text-amber-400' : 'text-emerald-400'}`}>{s.avg_impact}</span>
@@ -231,7 +231,7 @@ const WorldEventsTab = ({ data, loading }) => {
           </h3>
           <div className="space-y-2">
             {high_impact_events.map((e, i) => (
-              <EventCard key={i} event={e} isHighImpact />
+              <EventCard key={e.title || i} event={e} isHighImpact />
             ))}
           </div>
         </div>
@@ -242,7 +242,7 @@ const WorldEventsTab = ({ data, loading }) => {
         <h3 className="text-slate-300 text-sm font-semibold mb-3">All Events ({all_events.length})</h3>
         <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
           {all_events.map((e, i) => (
-            <EventCard key={i} event={e} />
+            <EventCard key={e.title || i} event={e} />
           ))}
         </div>
       </div>
@@ -264,8 +264,8 @@ const EventCard = ({ event, isHighImpact }) => (
       </div>
       {event.affected_sectors?.length > 0 && (
         <div className="flex gap-1 flex-shrink-0">
-          {event.affected_sectors.slice(0, 2).map((s, j) => (
-            <Badge key={j} variant="outline" className={`text-[10px] border-slate-700 ${
+          {event.affected_sectors.slice(0, 2).map((s) => (
+            <Badge key={s.sector} variant="outline" className={`text-[10px] border-slate-700 ${
               s.impact_score >= 50 ? 'text-amber-400 border-amber-800/50' : 'text-slate-400'
             }`}>{s.sector}</Badge>
           ))}
@@ -295,7 +295,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
           </h3>
           <div className="space-y-1">
             {data.correlation_signals.slice(0, 4).map((sig, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
+              <div key={sig.signal || i} className="flex items-center gap-2 text-sm">
                 {sig.change_percent > 0
                   ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                   : <TrendingDown className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
@@ -319,8 +319,8 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
               <span>{region.emoji}</span> {region.label}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {items.map((mkt, i) => (
-                <MarketCard key={i} market={mkt} isPulsing={changedSymbols.has(mkt.symbol)} />
+              {items.map((mkt) => (
+                <MarketCard key={mkt.symbol || mkt.name} market={mkt} isPulsing={changedSymbols.has(mkt.symbol)} />
               ))}
             </div>
           </div>
@@ -333,7 +333,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
           <div>
             <h3 className="text-slate-300 text-sm font-semibold mb-3">Commodities</h3>
             <div className="grid grid-cols-2 gap-3">
-              {data.commodities.map((c, i) => <MarketCard key={i} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
+              {data.commodities.map((c) => <MarketCard key={c.symbol || c.name} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
             </div>
           </div>
         )}
@@ -341,7 +341,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
           <div>
             <h3 className="text-slate-300 text-sm font-semibold mb-3">Currencies</h3>
             <div className="grid grid-cols-2 gap-3">
-              {data.currencies.map((c, i) => <MarketCard key={i} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
+              {data.currencies.map((c) => <MarketCard key={c.symbol || c.name} market={c} compact isPulsing={changedSymbols.has(c.symbol)} />)}
             </div>
           </div>
         )}
@@ -426,7 +426,7 @@ const CongressTab = ({ data, loading }) => {
               </thead>
               <tbody>
                 {congressional_trades.map((trade, i) => (
-                  <tr key={i} className="border-b border-slate-800/40 hover:bg-slate-700/20 transition-colors">
+                  <tr key={trade.ticker ? `${trade.representative}-${trade.ticker}-${i}` : i} className="border-b border-slate-800/40 hover:bg-slate-700/20 transition-colors">
                     <td className="px-4 py-2.5 text-white font-medium">{trade.representative || 'N/A'}</td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -464,8 +464,8 @@ const CongressTab = ({ data, loading }) => {
             <Shield className="w-4 h-4 text-blue-400" /> Federal Reserve Announcements
           </h3>
           <div className="space-y-2">
-            {fed_announcements.map((ann, i) => (
-              <Card key={i} className="bg-slate-800/40 border-slate-700/30 rounded-xl p-3 hover:border-slate-600 transition-all">
+            {fed_announcements.map((ann) => (
+              <Card key={ann.title || ann.date} className="bg-slate-800/40 border-slate-700/30 rounded-xl p-3 hover:border-slate-600 transition-all">
                 <p className="text-white text-sm font-medium leading-snug">{ann.title}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <Clock className="w-3 h-3 text-slate-500" />

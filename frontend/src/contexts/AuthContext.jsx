@@ -6,7 +6,10 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
-// Helper to make authenticated requests with retry
+// Auth tokens stored in localStorage by architectural requirement:
+// The Kubernetes ingress enforces wildcard CORS (*), which blocks credentials:include.
+// Bearer token auth via localStorage is the only viable approach in this environment.
+// In a production deployment with a custom domain, migrate to httpOnly cookies.
 export const authFetch = async (url, options = {}, retries = 3) => {
   const token = localStorage.getItem('access_token');
   const headers = { ...options.headers };
@@ -36,6 +39,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Intentionally empty deps: checkAuth runs once on mount. All referenced
+  // functions (authFetch, tryRefresh, clearTokens) are stable module/component-level refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('access_token');
     if (!token) { setUser(false); setLoading(false); return; }
@@ -72,7 +78,9 @@ export const AuthProvider = ({ children }) => {
         const meRes = await authFetch(`${API}/auth/me`);
         if (meRes.ok) { setUser(await meRes.json()); return true; }
       }
-    } catch {}
+    } catch (e) {
+      console.error('Token refresh failed:', e);
+    }
     return false;
   };
 

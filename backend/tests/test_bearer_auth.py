@@ -9,9 +9,9 @@ import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-# Admin credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+# Admin credentials from environment
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 
 class TestAuthLogin:

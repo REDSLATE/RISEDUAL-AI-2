@@ -1,4 +1,5 @@
 import os
+import logging
 import bcrypt
 import jwt
 import secrets
@@ -228,13 +229,16 @@ async def reset_password(req: ResetPasswordRequest):
     return {"message": "Password reset successful"}
 
 # --- Admin Seeding ---
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "managingdirector@redslateholdings.com")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD")
 
 async def seed_admin():
     # Seed original admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "RiseDual2026!")
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_password:
+        logging.warning("ADMIN_PASSWORD not set in .env, skipping admin seed")
+        return
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
         await db.users.insert_one({
@@ -249,6 +253,9 @@ async def seed_admin():
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
     # Seed REDSLATE owner
+    if not OWNER_PASSWORD:
+        logging.warning("OWNER_PASSWORD not set in .env, skipping owner seed")
+        return
     existing_owner = await db.users.find_one({"email": OWNER_EMAIL})
     if existing_owner is None:
         await db.users.insert_one({
@@ -299,7 +306,7 @@ async def activate_user(user_id: str, request: Request):
 
 @auth_router.post("/admin/users/{user_id}/deactivate")
 async def deactivate_user(user_id: str, request: Request):
-    owner = await require_owner(request)
+    await require_owner(request)
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -318,7 +325,7 @@ async def grant_pro(user_id: str, request: Request):
 
 @auth_router.post("/admin/users/{user_id}/revoke-pro")
 async def revoke_pro(user_id: str, request: Request):
-    owner = await require_owner(request)
+    await require_owner(request)
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")

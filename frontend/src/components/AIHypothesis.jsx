@@ -215,7 +215,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
                 </h3>
                 <ul className="space-y-2">
                   {hypothesis.catalysts.map((c, i) => (
-                    <li key={i} className="text-slate-300 text-sm flex items-start gap-2">
+                    <li key={`catalyst-${i}-${c.slice(0,20)}`} className="text-slate-300 text-sm flex items-start gap-2">
                       <span className="text-emerald-500 mt-1">+</span> {c}
                     </li>
                   ))}

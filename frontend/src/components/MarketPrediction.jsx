@@ -16,6 +16,7 @@ const MarketPrediction = () => {
     // Auto-refresh every 5 minutes
     const interval = setInterval(fetchPrediction, 300000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchPrediction = async () => {
@@ -207,7 +208,7 @@ const MarketPrediction = () => {
                 </h3>
                 <ul className="space-y-2">
                   {prediction.key_signals.map((signal, index) => (
-                    <li key={index} className="text-slate-300 text-sm flex items-start gap-2">
+                    <li key={`signal-${index}-${signal.slice(0,20)}`} className="text-slate-300 text-sm flex items-start gap-2">
                       <span className="text-emerald-400">•</span>
                       {signal}
                     </li>
@@ -225,7 +226,7 @@ const MarketPrediction = () => {
                 </h3>
                 <ul className="space-y-2">
                   {prediction.risk_factors.map((risk, index) => (
-                    <li key={index} className="text-slate-300 text-sm flex items-start gap-2">
+                    <li key={`risk-${index}-${risk.slice(0,20)}`} className="text-slate-300 text-sm flex items-start gap-2">
                       <span className="text-orange-400">•</span>
                       {risk}
                     </li>
@@ -283,8 +284,8 @@ const MarketPrediction = () => {
                       <div>
                         <span className="text-slate-400 text-xs">Affected Sectors:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {prediction.macro_data.world_events.top_sectors.map((s, i) => (
-                            <Badge key={i} variant="outline" className="text-xs border-slate-600 text-slate-300">{s}</Badge>
+                          {prediction.macro_data.world_events.top_sectors.map((s) => (
+                            <Badge key={s} variant="outline" className="text-xs border-slate-600 text-slate-300">{s}</Badge>
                           ))}
                         </div>
                       </div>
@@ -309,7 +310,7 @@ const MarketPrediction = () => {
                         <span className="text-slate-400 text-xs">Correlation Signals:</span>
                         <ul className="mt-1 space-y-1">
                           {prediction.macro_data.foreign_markets.correlation_signals.slice(0, 3).map((sig, i) => (
-                            <li key={i} className="text-xs text-slate-300">
+                            <li key={sig.signal || i} className="text-xs text-slate-300">
                               <span className={sig.change_percent > 0 ? 'text-emerald-400' : 'text-red-400'}>
                                 {sig.change_percent > 0 ? '▲' : '▼'}
                               </span> {sig.signal}

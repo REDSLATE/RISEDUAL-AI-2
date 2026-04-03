@@ -192,7 +192,7 @@ const TradeGPTChat = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
           {messages.map((message, index) => (
             <div
-              key={index}
+              key={`msg-${index}-${message.role}`}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div

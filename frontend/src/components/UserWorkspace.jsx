@@ -17,6 +17,8 @@ const UserWorkspace = ({ onClose }) => {
   const [addTicker, setAddTicker] = useState('');
   const [addLoading, setAddLoading] = useState(false);
 
+  // Stable deps: API and authFetch are module-level constants
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchWatchlist = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/workspace/watchlist`);
@@ -202,7 +204,7 @@ const UserWorkspace = ({ onClose }) => {
                 </div>
               ) : (
                 history.map((h, i) => (
-                  <div key={i} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
+                  <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
                     <div className="flex items-center gap-3">
                       {verdictIcon(h.verdict)}
                       <div>
