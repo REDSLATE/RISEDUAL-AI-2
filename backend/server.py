@@ -10,14 +10,14 @@ from typing import List, Dict, Optional
 import uuid
 from datetime import datetime, timezone
 
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 # Import services
 from services.market_data_service import MarketDataService
 from services.ai_service import AIService
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
-
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+from routes.auth import auth_router, set_db as set_auth_db, seed_admin, create_indexes, get_current_user, get_optional_user
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -508,6 +508,87 @@ async def get_market_prediction():
         logging.error(f"Error generating prediction: {str(e)}")
         raise HTTPException(status_code=500, detail="Error generating market prediction")
 
+@api_router.get("/hypothesis/{symbol}")
+async def get_hypothesis(symbol: str, request: Request):
+    """Get AI hypothesis for a specific ticker. Requires Pro subscription."""
+    user = await get_optional_user(request)
+    
+    # Check subscription status
+    is_pro = user and user.get("subscription_status") == "pro"
+    
+    try:
+        from services.financial_scraping_service import FinancialScrapingService
+        from services.crypto_scraping_service import CryptoScrapingService
+        from services.world_events_service import WorldEventsService
+        from services.foreign_markets_service import ForeignMarketsService
+        from services.gov_filings_service import GovFilingsService
+        from services.hypothesis_service import HypothesisService
+        
+        financial_scraper = FinancialScrapingService()
+        crypto_scraper = CryptoScrapingService()
+        world_events_svc = WorldEventsService()
+        foreign_markets_svc = ForeignMarketsService()
+        gov_filings_svc = GovFilingsService()
+        
+        # Gather all data
+        news = await financial_scraper.scrape_financial_news()
+        social = await financial_scraper.scrape_reddit_sentiment()
+        crypto_data = await crypto_scraper.get_exchange_data()
+        world_events = await world_events_svc.scrape_world_events()
+        foreign_markets = await foreign_markets_svc.get_foreign_markets()
+        gov_filings = await gov_filings_svc.get_all_gov_data()
+        
+        data = {
+            "news": news,
+            "social": social,
+            "crypto": crypto_data,
+            "world_events": world_events,
+            "foreign_markets": foreign_markets,
+            "gov_filings": gov_filings,
+        }
+        
+        if not is_pro:
+            # Return teaser for free users
+            return {
+                "symbol": symbol.upper(),
+                "is_pro": False,
+                "teaser": {
+                    "data_sources_count": len(news) + len(social) + len(crypto_data),
+                    "world_events_count": world_events.get("total_events", 0),
+                    "congressional_trades_count": gov_filings.get("congressional_count", 0),
+                    "verdict": "LOCKED",
+                    "summary": f"Our AI has analyzed {len(news)} news articles, {world_events.get('total_events', 0)} world events, and {gov_filings.get('congressional_count', 0)} congressional trades to generate a hypothesis for {symbol.upper()}. Subscribe to Pro to unlock the full analysis.",
+                },
+            }
+        
+        # Pro user: generate full hypothesis
+        hypothesis_svc = HypothesisService(os.environ.get("EMERGENT_LLM_KEY"))
+        hypothesis = await hypothesis_svc.generate_hypothesis(symbol, data)
+        hypothesis["is_pro"] = True
+        return hypothesis
+        
+    except Exception as e:
+        logging.error(f"Error generating hypothesis for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error generating hypothesis")
+
+@api_router.post("/user/subscription")
+async def update_subscription(request: Request):
+    """Update user subscription status after payment"""
+    user = await get_current_user(request)
+    body = await request.json()
+    status = body.get("status", "pro")
+    plan = body.get("plan", "monthly")
+    await db.users.update_one(
+        {"_id": __import__('bson').ObjectId(user["_id"])},
+        {"$set": {
+            "subscription_status": status,
+            "subscription_plan": plan,
+            "subscription_updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    return {"message": "Subscription updated", "status": status}
+
+
 @api_router.get("/market/news")
 async def get_financial_news():
     """Get latest financial news from multiple sources"""
@@ -705,13 +786,17 @@ async def cancel_order(broker_id: str, order_id: str):
 
 # Include the router in the main app
 app.include_router(api_router)
+app.include_router(auth_router)
 
+# CORS middleware - use explicit origin for credentials support
+cors_origins = os.environ.get('CORS_ORIGINS', 'https://risedual-trading.preview.emergentagent.com').split(',')
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["set-cookie"],
 )
 
 # Configure logging
@@ -720,6 +805,24 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_event():
+    set_auth_db(db)
+    await create_indexes()
+    await seed_admin()
+    # Write test credentials
+    creds_path = Path("/app/memory/test_credentials.md")
+    creds_path.parent.mkdir(parents=True, exist_ok=True)
+    creds_path.write_text(
+        "# Test Credentials\n\n"
+        f"## Admin\n- Email: {os.environ.get('ADMIN_EMAIL', 'admin@risedual.ai')}\n"
+        f"- Password: {os.environ.get('ADMIN_PASSWORD', 'RiseDual2026!')}\n"
+        "- Role: admin\n- Subscription: pro\n\n"
+        "## Auth Endpoints\n"
+        "- POST /api/auth/register\n- POST /api/auth/login\n- POST /api/auth/logout\n"
+        "- GET /api/auth/me\n- POST /api/auth/refresh\n"
+    )
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
