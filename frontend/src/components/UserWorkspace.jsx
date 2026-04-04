@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import ReferralLeaderboard from './ReferralLeaderboard';
+import SocialShareButtons from './SocialShareButtons';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -331,6 +332,9 @@ const ReferralsTab = () => {
           </Button>
         </div>
         <p className="text-slate-500 text-[10px] mt-2">Your code: <span className="text-white font-mono">{info.code}</span></p>
+        <div className="mt-3">
+          <SocialShareButtons referralLink={referralLink} />
+        </div>
       </Card>
 
       {/* Stats */}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Users, Medal, ChevronUp, Flame } from 'lucide-react';
+import { Trophy, Users, Medal, ChevronUp, Flame, Share2 } from 'lucide-react';
 import { Card } from './ui/card';
+import { useAuth, authFetch } from '../contexts/AuthContext';
+import SocialShareButtons from './SocialShareButtons';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -13,6 +15,8 @@ const RANK_STYLES = [
 const ReferralLeaderboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refCode, setRefCode] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     const load = async () => {
@@ -27,6 +31,20 @@ const ReferralLeaderboard = () => {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    if (!user) { setRefCode(null); return; }
+    const loadCode = async () => {
+      try {
+        const res = await authFetch(`${API}/api/referral/info`);
+        if (res.ok) {
+          const info = await res.json();
+          setRefCode(info.code);
+        }
+      } catch (e) { /* ignore */ }
+    };
+    loadCode();
+  }, [user]);
 
   if (loading) {
     return (
@@ -102,6 +120,19 @@ const ReferralLeaderboard = () => {
           );
         })}
       </div>
+
+      {/* Share section for logged-in users */}
+      {refCode && (
+        <div className="mt-4 pt-3 border-t border-slate-700/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Share2 className="w-3.5 h-3.5 text-slate-400" />
+              <p className="text-slate-400 text-[10px]">Invite friends & climb the ranks</p>
+            </div>
+            <SocialShareButtons referralLink={`${window.location.origin}?ref=${refCode}`} compact />
+          </div>
+        </div>
+      )}
     </Card>
   );
 };
