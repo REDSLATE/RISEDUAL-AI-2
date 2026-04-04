@@ -18,6 +18,7 @@ import CompanyResearch from './components/CompanyResearch';
 import MacroDashboard from './components/MacroDashboard';
 import MobileBottomNav from './components/MobileBottomNav';
 import AIHypothesis from './components/AIHypothesis';
+import PromoBanner from './components/PromoBanner';
 import AuthModal from './components/AuthModal';
 import SubscriptionPricing from './components/SubscriptionPricing';
 import AdminPanel from './components/AdminPanel';
@@ -63,6 +64,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
+      <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
       <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} />
       <CryptoTicker />
