@@ -1,7 +1,7 @@
 # RISEDUAL AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real market data, crypto & dark pool data, broker connections, Stripe subscription, AI chat, and a macro prediction engine. Must be PWA with custom auth, paywalled AI Hypothesis, owner admin panel, user workspace, 7 Pro-only paywall restrictions, and a referral program with public leaderboard.
+Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real market data, crypto & dark pool data, broker connections, Stripe subscription, AI chat, and a macro prediction engine. Must be PWA with custom auth, paywalled AI Hypothesis, owner admin panel, user workspace, 7 Pro-only paywall restrictions, referral program with leaderboard and social sharing.
 
 ## Architecture
 - Frontend: React + TailwindCSS + Shadcn UI + PWA
@@ -34,32 +34,16 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - [x] Responsive PWA
 - [x] JWT Auth (login, register, brute force)
 - [x] AI Investment Hypothesis (paywall)
-- [x] Owner Admin Panel
-- [x] User Workspace
+- [x] Owner Admin Panel + User Workspace
 - [x] Pro-only AI Alerts
-- [x] Server refactor: server.py split into 7 route modules
-- [x] 7 Paywall/Pro Features (2026-04-04):
-  - AI Chat rate limits (5/day free)
-  - Watchlist caps (3 for free)
-  - Text export for hypothesis reports (Pro only)
-  - ProBlurWall on Dark Pool + Congress Trades tables
-  - Chat history locks (24h for free users)
-  - Real-time Market Signals (Pro-only modal)
-  - AI Portfolio Analyzer (Pro-only modal)
-- [x] **Referral Program (2026-04-04)**:
-  - Unique referral codes per user
-  - 7-day free Pro trial for referred users
-  - 1 free month reward for referrers when referred user subscribes
-  - 12 rewards max per 12-month rolling window
-  - Self-referral & duplicate prevention
-  - Referral tab in User Workspace with copy link, stats, history
-  - URL param detection (?ref=CODE) in AuthModal
-- [x] **Referral Leaderboard (2026-04-04)**:
-  - Public endpoint (no auth required)
-  - Top 10 referrers with masked names (J*** D***)
-  - Medal icons for top 3 (gold, silver, bronze)
-  - Total participants count
-  - Shown on main page + UserWorkspace Referrals tab
+- [x] Server refactor into 7 route modules
+- [x] 7 Paywall/Pro Features (chat limits, watchlist cap, export, blur walls, history lock, signals, portfolio)
+- [x] **Referral Program**: codes, 7-day trial, 1-month rewards, 12/12 cap, self-referral prevention
+- [x] **Referral Leaderboard**: public, top 10, masked names, medal icons
+- [x] **Social Share Buttons (2026-04-04)**: Twitter/X, LinkedIn, Facebook, WhatsApp, Telegram, Email
+  - Full mode in UserWorkspace Referrals tab
+  - Compact mode in main page Leaderboard (logged-in users)
+  - Pre-written share message about RISEDUAL AI
 
 ## Prioritized Backlog
 ### P1 - Upcoming
@@ -70,10 +54,3 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 
 ## Mocked Features
 - Broker trading execution (Alpaca)
-
-## DB Collections
-- `users`: email, password_hash, role, subscription_status, trial_ends_at, referred_by
-- `referral_codes`: user_id, code, created_at
-- `referrals`: referrer_id, referred_id, referred_email, status, reward_granted, created_at, completed_at
-- `referral_rewards`: user_id, type, from_referral, referred_email, granted_at, redeemed
-- `chat_sessions`, `chat_usage`, `watchlists`, `hypothesis_history`, `notifications`, `market_signals`, `payment_transactions`
