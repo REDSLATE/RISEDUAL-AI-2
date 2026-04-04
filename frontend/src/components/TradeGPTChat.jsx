@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Image, X, BarChart3, Building2 } from 'lucide-react';
+import { Send, Sparkles, Image, X, BarChart3, Building2, ChevronDown } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -182,11 +182,16 @@ const TradeGPTChat = () => {
         className="w-96 max-lg:w-[calc(100vw-1.5rem)] max-lg:max-w-none h-[500px] max-lg:h-[70vh] bg-slate-900 border-slate-700/50 flex flex-col shadow-2xl z-50 rounded-xl max-lg:fixed max-lg:bottom-20 max-lg:right-3 max-lg:left-3"
       >
         <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-white/15 flex items-center justify-center p-0.5">
-              <img src="/logo-ai-avatar.png" alt="AI" className="w-full h-full object-contain brightness-150 drop-shadow-lg" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-md bg-white/15 flex items-center justify-center p-0.5">
+                <img src="/logo-ai-avatar.png" alt="AI" className="w-full h-full object-contain brightness-150 drop-shadow-lg" />
+              </div>
+              <h3 className="font-semibold text-lg">RISEDUAL AI</h3>
             </div>
-            <h3 className="font-semibold text-lg">RISEDUAL AI</h3>
+            <button onClick={() => setIsOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors" data-testid="chat-minimize-btn">
+              <ChevronDown className="w-5 h-5" />
+            </button>
           </div>
           <p className="text-xs text-blue-200 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
         </div>
