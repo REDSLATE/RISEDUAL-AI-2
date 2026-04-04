@@ -68,7 +68,7 @@ function AppContent() {
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        <div className="mb-6 sm:mb-8"><Watchlist /></div>
+        <div className="mb-6 sm:mb-8"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
 
         {/* AI Investment Hypothesis (Paywalled) */}
         <div id="ai-hypothesis" className="mb-6 sm:mb-8">
@@ -81,7 +81,7 @@ function AppContent() {
         <div id="options-radar"><OptionsRadar /></div>
         <div id="options-flow"><OptionsFlowScreener /></div>
         <AdditionalSections />
-        <div id="dark-pool"><DarkPoolData /></div>
+        <div id="dark-pool"><DarkPoolData onSubscribe={() => setShowSubscription(true)} /></div>
         <div id="crypto"><CryptoSection /></div>
       </main>
 

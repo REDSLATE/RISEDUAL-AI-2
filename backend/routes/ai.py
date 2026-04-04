@@ -248,21 +248,20 @@ Respond in this EXACT JSON format:
 }}"""
 
     try:
-        from emergentintegrations.llm.chat import ChatRequest as LLMChatRequest, chat
-        llm_key = os.environ.get("EMERGENT_LLM_KEY")
-        llm_request = LLMChatRequest(
-            emergent_key=llm_key,
-            model="gpt-5.2",
-            system_prompt="You are a professional portfolio analyst. Return ONLY valid JSON.",
-            user_prompt=prompt,
-            temperature=0.3,
-        )
-        response = await chat(llm_request)
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
         import json
+        llm_key = os.environ.get("EMERGENT_LLM_KEY")
+        llm = LlmChat(
+            api_key=llm_key,
+            session_id=f"portfolio_{user['_id']}",
+            system_message="You are a professional portfolio analyst. Return ONLY valid JSON."
+        ).with_model("openai", "gpt-5.2")
+        response = await llm.send_message(UserMessage(text=prompt))
+        text = response.strip() if isinstance(response, str) else response
         try:
-            result = json.loads(response.response.strip().strip("```json").strip("```"))
+            result = json.loads(text.strip().strip("```json").strip("```"))
         except json.JSONDecodeError:
-            result = {"health_score": 50, "summary": response.response, "suggestions": [], "rebalance_actions": [], "risk_level": "medium", "diversification_grade": "C"}
+            result = {"health_score": 50, "summary": text, "suggestions": [], "rebalance_actions": [], "risk_level": "medium", "diversification_grade": "C"}
 
         result["total_value"] = total_value
         result["holdings_count"] = len(holdings)

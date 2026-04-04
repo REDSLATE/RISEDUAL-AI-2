@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, TrendingUp, Activity } from 'lucide-react';
 import DataTable from './DataTable';
+import ProBlurWall from './ProBlurWall';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const DarkPoolData = () => {
+const DarkPoolData = ({ onSubscribe }) => {
   const [darkPoolData, setDarkPoolData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,12 +72,14 @@ const DarkPoolData = () => {
       </div>
 
       {/* Dark Pool Table */}
-      <DataTable
-        title="Dark Pool Activity"
-        subtitle="Real-time dark pool trading data showing institutional buying and selling patterns"
-        columns={columns}
-        data={formattedData}
-      />
+      <ProBlurWall freeRowCount={3} onSubscribe={onSubscribe} label="Dark Pool Data">
+        <DataTable
+          title="Dark Pool Activity"
+          subtitle="Real-time dark pool trading data showing institutional buying and selling patterns"
+          columns={columns}
+          data={formattedData}
+        />
+      </ProBlurWall>
 
       {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

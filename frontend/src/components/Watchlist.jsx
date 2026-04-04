@@ -1,22 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Star, X, Plus, TrendingUp, TrendingDown } from 'lucide-react';
+import { Star, X, Plus, TrendingUp, TrendingDown, Lock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
+import { useAuth } from '../contexts/AuthContext';
 
-const Watchlist = () => {
+const FREE_WATCHLIST_LIMIT = 3;
+
+const Watchlist = ({ onSubscribe }) => {
+  const { user, isPro } = useAuth();
   const [watchlist, setWatchlist] = useState([]);
   const [newSymbol, setNewSymbol] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [capWarning, setCapWarning] = useState('');
 
   useEffect(() => {
-    // Load watchlist from localStorage
     const saved = localStorage.getItem('risedualai_watchlist');
     if (saved) {
       setWatchlist(JSON.parse(saved));
     }
 
-    // Listen for external "add to watchlist" events
     const handleAdd = (e) => {
       if (!e.detail) return;
       const symbol = e.detail.toUpperCase().trim();
@@ -34,25 +37,22 @@ const Watchlist = () => {
 
   const addSymbol = () => {
     if (!newSymbol.trim()) return;
-    
     const symbol = newSymbol.toUpperCase().trim();
     if (watchlist.find(item => item.symbol === symbol)) {
-      alert('Symbol already in watchlist');
+      setCapWarning('Symbol already in watchlist');
+      setTimeout(() => setCapWarning(''), 3000);
       return;
     }
-
-    const newItem = {
-      symbol,
-      addedAt: new Date().toISOString(),
-      price: 0,
-      change: 0,
-      changePercent: 0
-    };
-
+    if (user && !isPro && watchlist.length >= FREE_WATCHLIST_LIMIT) {
+      setCapWarning(`Free accounts are limited to ${FREE_WATCHLIST_LIMIT} tickers. Upgrade to Pro for unlimited.`);
+      return;
+    }
+    const newItem = { symbol, addedAt: new Date().toISOString(), price: 0, change: 0, changePercent: 0 };
     const updated = [...watchlist, newItem];
     setWatchlist(updated);
     localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
     setNewSymbol('');
+    setCapWarning('');
   };
 
   const removeSymbol = (symbol) => {
@@ -67,7 +67,7 @@ const Watchlist = () => {
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
           <h3 className="text-white font-semibold">My Watchlist</h3>
-          <span className="text-slate-500 text-sm">({watchlist.length})</span>
+          <span className="text-slate-500 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
         </div>
         <Button
           variant="ghost"
@@ -82,18 +82,26 @@ const Watchlist = () => {
       {isExpanded && (
         <>
           {/* Add Symbol Input */}
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-2">
             <Input
               placeholder="Add symbol (e.g., AAPL)"
               value={newSymbol}
               onChange={(e) => setNewSymbol(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && addSymbol()}
               className="bg-[#1E293B] border-slate-600 text-white"
+              data-testid="watchlist-input"
             />
-            <Button onClick={addSymbol} className="bg-[#0052FF] hover:bg-[#2563EB]">
+            <Button onClick={addSymbol} className="bg-[#0052FF] hover:bg-[#2563EB]" data-testid="watchlist-add-btn">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
+          {capWarning && (
+            <div className="flex items-center gap-2 mb-3 bg-amber-900/20 border border-amber-800/40 rounded-lg px-3 py-2" data-testid="watchlist-cap-warning">
+              <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <p className="text-amber-300 text-xs flex-1">{capWarning}</p>
+              {onSubscribe && <Button size="sm" className="bg-[#0052FF] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
+            </div>
+          )}
 
           {/* Watchlist Items */}
           <div className="space-y-2 max-h-96 overflow-y-auto">

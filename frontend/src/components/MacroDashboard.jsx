@@ -176,7 +176,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       {/* Tab Content */}
       {activeTab === 'world' && <WorldEventsTab data={worldEvents} loading={loading.world} />}
       {activeTab === 'markets' && <ForeignMarketsTab data={foreignMarkets} loading={loading.markets} changedSymbols={changedSymbols} />}
-      {activeTab === 'congress' && <CongressTab data={govFilings} loading={loading.congress} />}
+      {activeTab === 'congress' && <CongressTab data={govFilings} loading={loading.congress} isPro={isPro} onSubscribe={onSubscribe} />}
 
       {/* Last refresh indicator */}
       {lastRefresh && (
@@ -393,7 +393,7 @@ const MarketCard = ({ market, compact, isPulsing }) => {
 };
 
 /* ── Congressional Trades Tab ── */
-const CongressTab = ({ data, loading }) => {
+const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
   if (loading || !data) return <LoadingState text="Fetching government filings..." />;
 
   const { congressional_trades = [], fed_announcements = [], insider_trades = [] } = data;
