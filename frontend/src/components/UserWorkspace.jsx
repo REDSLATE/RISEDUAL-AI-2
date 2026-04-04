@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import ReferralLeaderboard from './ReferralLeaderboard';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -384,6 +385,8 @@ const ReferralsTab = () => {
           </div>
         )}
       </div>
+      {/* Leaderboard */}
+      <ReferralLeaderboard />
     </div>
   );
 };

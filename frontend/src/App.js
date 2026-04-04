@@ -24,6 +24,7 @@ import AdminPanel from './components/AdminPanel';
 import UserWorkspace from './components/UserWorkspace';
 import PortfolioAnalyzer from './components/PortfolioAnalyzer';
 import MarketSignals from './components/MarketSignals';
+import ReferralLeaderboard from './components/ReferralLeaderboard';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -69,6 +70,9 @@ function AppContent() {
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         <div className="mb-6 sm:mb-8"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
+
+        {/* Referral Leaderboard */}
+        <div className="mb-6 sm:mb-8"><ReferralLeaderboard /></div>
 
         {/* AI Investment Hypothesis (Paywalled) */}
         <div id="ai-hypothesis" className="mb-6 sm:mb-8">

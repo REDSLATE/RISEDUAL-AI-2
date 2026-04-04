@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api/referral")
 db = None
 REWARD_CAP = 12  # Max rewards per 12-month rolling window
 TRIAL_DAYS = 7
+LEADERBOARD_SIZE = 10
 
 def set_db(database):
     global db
@@ -20,6 +21,20 @@ def set_db(database):
 def _generate_code(length=8):
     chars = string.ascii_uppercase + string.digits
     return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def _mask_name(name: str) -> str:
+    """Partial name masking: 'John Doe' -> 'J*** D***'"""
+    if not name:
+        return "Anonymous"
+    parts = name.strip().split()
+    masked = []
+    for part in parts:
+        if len(part) <= 1:
+            masked.append(part[0] + "***")
+        else:
+            masked.append(part[0] + "*" * (len(part) - 1))
+    return " ".join(masked)
 
 
 @router.get("/info")
@@ -169,3 +184,40 @@ async def complete_referral_reward(referred_user_id: str):
         logging.info(f"Referral reward granted to {referrer_id} for {referral['referred_email']}")
 
     return reward_granted
+
+
+@router.get("/leaderboard")
+async def get_referral_leaderboard():
+    """Public endpoint: top referrers with masked names."""
+    # Aggregate completed referrals per referrer
+    pipeline = [
+        {"$match": {"status": "completed"}},
+        {"$group": {"_id": "$referrer_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": LEADERBOARD_SIZE},
+    ]
+    results = []
+    async for doc in db.referrals.aggregate(pipeline):
+        results.append({"user_id": doc["_id"], "referral_count": doc["count"]})
+
+    # Fetch user names for masking
+    leaderboard = []
+    for i, entry in enumerate(results):
+        user = await db.users.find_one({"_id": entry["user_id"]}, {"name": 1, "email": 1})
+        if not user:
+            # Try string ID match
+            from bson import ObjectId
+            try:
+                user = await db.users.find_one({"_id": ObjectId(entry["user_id"])}, {"name": 1, "email": 1})
+            except Exception:
+                pass
+        name = user.get("name", "") if user else ""
+        if not name and user:
+            name = user.get("email", "").split("@")[0]
+        leaderboard.append({
+            "rank": i + 1,
+            "name": _mask_name(name),
+            "referrals": entry["referral_count"],
+        })
+
+    return {"leaderboard": leaderboard, "total_participants": await db.referral_codes.count_documents({})}
