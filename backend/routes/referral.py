@@ -1,4 +1,5 @@
 """Referral routes: referral code management, tracking, and rewards."""
+import asyncio
 import secrets
 import string
 import logging
@@ -182,6 +183,17 @@ async def complete_referral_reward(referred_user_id: str):
             "redeemed": False,
         })
         logging.info(f"Referral reward granted to {referrer_id} for {referral['referred_email']}")
+
+        # Send reward email to referrer (non-blocking)
+        try:
+            from services.email_service import send_reward_earned_email
+            from bson import ObjectId
+            referrer = await db.users.find_one({"_id": ObjectId(referrer_id) if isinstance(referrer_id, str) else referrer_id}, {"name": 1, "email": 1})
+            if referrer:
+                referrer_name = referrer.get("name", referrer.get("email", "").split("@")[0])
+                asyncio.create_task(send_reward_earned_email(referrer["email"], referrer_name, referral["referred_email"]))
+        except Exception as e:
+            logging.warning(f"Email notification error (reward): {e}")
 
     return reward_granted
 
