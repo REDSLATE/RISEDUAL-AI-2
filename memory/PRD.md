@@ -1,7 +1,7 @@
 # RISEDUAL AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real market data, crypto & dark pool data, broker connections, Stripe subscription, AI chat, and a macro prediction engine. Must be PWA with custom auth, paywalled AI Hypothesis, owner admin panel, user workspace, 7 Pro-only paywall restrictions, and a referral program.
+Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real market data, crypto & dark pool data, broker connections, Stripe subscription, AI chat, and a macro prediction engine. Must be PWA with custom auth, paywalled AI Hypothesis, owner admin panel, user workspace, 7 Pro-only paywall restrictions, and a referral program with public leaderboard.
 
 ## Architecture
 - Frontend: React + TailwindCSS + Shadcn UI + PWA
@@ -20,7 +20,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 | `routes/workspace.py` | Watchlist, history, notifications |
 | `routes/trading.py` | Broker, orders, positions |
 | `routes/market.py` | Stocks, crypto, dark pool, options |
-| `routes/referral.py` | Referral codes, tracking, rewards (12/12 cap) |
+| `routes/referral.py` | Referral codes, tracking, rewards, leaderboard |
 
 ## What's Been Implemented
 - [x] Full trading dashboard UI + Fidelity x Coinbase theme + custom logos
@@ -54,6 +54,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
   - Self-referral & duplicate prevention
   - Referral tab in User Workspace with copy link, stats, history
   - URL param detection (?ref=CODE) in AuthModal
+- [x] **Referral Leaderboard (2026-04-04)**:
+  - Public endpoint (no auth required)
+  - Top 10 referrers with masked names (J*** D***)
+  - Medal icons for top 3 (gold, silver, bronze)
+  - Total participants count
+  - Shown on main page + UserWorkspace Referrals tab
 
 ## Prioritized Backlog
 ### P1 - Upcoming
