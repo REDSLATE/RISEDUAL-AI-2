@@ -142,6 +142,23 @@ async def process_referral_signup(referred_user_id: str, referred_email: str, re
     )
     logging.info(f"Referral: {referred_email} signed up via code {ref_code}, 7-day trial granted")
 
+    # Send email notifications (non-blocking, fire-and-forget)
+    try:
+        from services.email_service import send_referral_signup_email, send_welcome_referral_email
+        from bson import ObjectId
+        referrer = await db.users.find_one(
+            {"_id": ObjectId(referrer_id) if isinstance(referrer_id, str) else referrer_id},
+            {"name": 1, "email": 1}
+        )
+        if referrer:
+            r_name = referrer.get("name", referrer.get("email", "").split("@")[0])
+            r_email = referrer.get("email", "")
+            u_name = referred_email.split("@")[0]
+            asyncio.create_task(send_referral_signup_email(r_email, r_name, referred_email))
+            asyncio.create_task(send_welcome_referral_email(referred_email, u_name, r_name))
+    except Exception as e:
+        logging.warning(f"Email notification error (signup): {e}")
+
 
 async def complete_referral_reward(referred_user_id: str):
     """Called when a referred user subscribes to Pro.
