@@ -131,4 +131,13 @@ async def update_subscription(request: Request):
             "subscription_updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )
+
+    # If upgrading to pro, check for referral reward
+    if status == "pro":
+        try:
+            from routes.referral import complete_referral_reward
+            await complete_referral_reward(user["_id"])
+        except Exception as e:
+            logging.warning(f"Referral reward processing error: {e}")
+
     return {"message": "Subscription updated", "status": status}

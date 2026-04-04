@@ -13,6 +13,14 @@ ai_service = AIService()
 
 FREE_CHAT_DAILY_LIMIT = 5
 
+
+def is_pro_user(user: dict) -> bool:
+    """Check if user has Pro access (includes 'pro' and 'trial' status)."""
+    if not user:
+        return False
+    status = user.get("subscription_status", "free")
+    return status in ("pro", "trial")
+
 # Module-level db reference, set by server.py on startup
 db = None
 
@@ -28,7 +36,7 @@ async def get_chat_limit(request: Request):
     user = await get_optional_user(request)
     if not user:
         return {"limit": FREE_CHAT_DAILY_LIMIT, "used": 0, "remaining": FREE_CHAT_DAILY_LIMIT, "is_pro": False}
-    if user.get("subscription_status") == "pro":
+    if is_pro_user(user):
         return {"limit": -1, "used": 0, "remaining": -1, "is_pro": True}
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
@@ -41,7 +49,7 @@ async def chat(chat_request: ChatRequest, request: Request):
     try:
         # Rate limit for free users
         user = await get_optional_user(request)
-        if user and user.get("subscription_status") != "pro":
+        if user and not is_pro_user(user):
             today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
             if count >= FREE_CHAT_DAILY_LIMIT:
@@ -90,11 +98,11 @@ async def get_chat_history(session_id: str, request: Request):
 
         # Free users: only get messages from last 24 hours
         user = await get_optional_user(request)
-        if user and user.get("subscription_status") != "pro":
+        if user and not is_pro_user(user):
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
             messages = [m for m in messages if m.get("timestamp", "9999") >= cutoff]
 
-        return {"messages": messages, "history_limited": user is not None and user.get("subscription_status") != "pro"}
+        return {"messages": messages, "history_limited": user is not None and not is_pro_user(user)}
     except Exception as e:
         logging.error(f"Error fetching chat history: {e}")
         raise HTTPException(status_code=500, detail="Error fetching chat history")
@@ -105,7 +113,7 @@ async def get_chat_history(session_id: str, request: Request):
 async def export_hypothesis_pdf(symbol: str, request: Request):
     """Generate a PDF report for a hypothesis. Pro only."""
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="PDF export is a Pro feature. Upgrade to unlock.")
     # Return JSON data that frontend will format into PDF
     from services.hypothesis_service import HypothesisService
@@ -133,7 +141,7 @@ async def export_hypothesis_pdf(symbol: str, request: Request):
 async def get_market_signals(request: Request):
     """Get AI-detected market signals for the user's watchlist."""
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         return {"signals": [], "is_pro": False}
     cursor = db.market_signals.find(
         {"user_id": user["_id"]}, {"_id": 0}
@@ -148,7 +156,7 @@ async def get_market_signals(request: Request):
 async def scan_for_signals(request: Request):
     """Manually trigger a signal scan for the user's watchlist tickers."""
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="Market signals is a Pro feature.")
 
     # Get user's watchlist
@@ -206,7 +214,7 @@ async def scan_for_signals(request: Request):
 async def analyze_portfolio(request: Request):
     """AI Portfolio Analyzer — input holdings, get health score + suggestions."""
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="Portfolio Analyzer is a Pro feature. Upgrade to unlock.")
 
     body = await request.json()
@@ -394,7 +402,7 @@ async def get_market_prediction():
 @router.get("/hypothesis/{symbol}")
 async def get_hypothesis(symbol: str, request: Request):
     user = await get_optional_user(request)
-    is_pro = user and user.get("subscription_status") == "pro"
+    is_pro = is_pro_user(user)
 
     try:
         from services.financial_scraping_service import FinancialScrapingService

@@ -13,12 +13,6 @@
 - Role: admin
 - Subscription: pro
 
-## Free Test User
-- Email: freeuser_test@test.com
-- Password: Test1234!
-- Role: user
-- Subscription: free
-
 ## Auth Method
 - Bearer token via localStorage
-- POST /api/auth/login -> returns access_token + refresh_token
+- POST /api/auth/login → returns access_token + refresh_token

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, Lock, User, Eye, EyeOff, Gift } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +14,13 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
 
+  // Detect referral code from URL
+  const refCode = new URLSearchParams(window.location.search).get('ref') || '';
+
+  useEffect(() => {
+    if (refCode) setTab('register');
+  }, [refCode]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -22,7 +29,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
       if (tab === 'login') {
         await login(email, password);
       } else {
-        await register(email, password, name);
+        await register(email, password, name, refCode);
       }
       onClose();
     } catch (err) {
@@ -69,6 +76,12 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {tab === 'register' && refCode && (
+            <div className="bg-emerald-900/20 border border-emerald-700/40 rounded-xl px-3 py-2 flex items-center gap-2" data-testid="referral-banner">
+              <Gift className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <p className="text-emerald-300 text-xs">You've been referred! Sign up to get a <strong>7-day free Pro trial</strong>.</p>
+            </div>
+          )}
           {tab === 'register' && (
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />

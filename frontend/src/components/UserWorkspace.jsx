@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock } from 'lucide-react';
+import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -104,6 +104,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
   const tabs = [
     { id: 'watchlist', label: 'Watchlist', icon: Star },
     { id: 'history', label: 'Hypothesis History', icon: Clock },
+    { id: 'referrals', label: 'Referrals', icon: Gift },
   ];
 
   return (
@@ -220,7 +221,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
                 </div>
               )}
             </div>
-          ) : (
+          ) : tab === 'history' ? (
             <div className="space-y-3">
               {history.length === 0 ? (
                 <div className="text-center py-10">
@@ -254,8 +255,134 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
                 ))
               )}
             </div>
-          )}
+          ) : tab === 'referrals' ? (
+            <ReferralsTab />
+          ) : null}
         </div>
+      </div>
+    </div>
+  );
+};
+
+const ReferralsTab = () => {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await authFetch(`${API}/referral/info`);
+        if (res.ok) setInfo(await res.json());
+      } catch (e) {
+        console.error('Referral info error:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const referralLink = info ? `${window.location.origin}?ref=${info.code}` : '';
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!info) {
+    return <div className="text-center py-10 text-slate-400 text-sm">Unable to load referral info</div>;
+  }
+
+  return (
+    <div className="space-y-5" data-testid="referrals-tab">
+      {/* Share Link */}
+      <Card className="bg-gradient-to-br from-[#0052FF]/10 to-cyan-900/10 border-[#0052FF]/30 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Gift className="w-5 h-5 text-[#0052FF]" />
+          <h3 className="text-white text-sm font-semibold">Share & Earn</h3>
+        </div>
+        <p className="text-slate-400 text-xs mb-3">
+          Invite friends to RISEDUAL AI. When they subscribe to Pro, you earn <strong className="text-white">1 free month</strong>. They get a <strong className="text-white">7-day Pro trial</strong>.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            readOnly
+            value={referralLink}
+            className="bg-slate-800 border-slate-600 text-white text-xs rounded-xl flex-1"
+            data-testid="referral-link-input"
+          />
+          <Button
+            onClick={copyLink}
+            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#0052FF] hover:bg-[#2563EB]'} text-white`}
+            data-testid="copy-referral-btn"
+          >
+            {copied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
+          </Button>
+        </div>
+        <p className="text-slate-500 text-[10px] mt-2">Your code: <span className="text-white font-mono">{info.code}</span></p>
+      </Card>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-white">{info.total_referrals}</p>
+          <p className="text-slate-400 text-[10px]">Total Referrals</p>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-emerald-400">{info.rewards_earned}</p>
+          <p className="text-slate-400 text-[10px]">Months Earned</p>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-[#0052FF]">{info.rewards_remaining}</p>
+          <p className="text-slate-400 text-[10px]">Remaining ({info.reward_cap}/yr)</p>
+        </Card>
+      </div>
+
+      {/* Referral History */}
+      <div>
+        <h4 className="text-white text-sm font-semibold mb-2 flex items-center gap-2">
+          <Users className="w-4 h-4 text-slate-400" /> Referral History
+        </h4>
+        {info.referrals.length === 0 ? (
+          <div className="text-center py-8">
+            <Users className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+            <p className="text-slate-400 text-sm">No referrals yet</p>
+            <p className="text-slate-500 text-xs mt-1">Share your link to start earning free months</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[250px] overflow-y-auto">
+            {info.referrals.map((ref, i) => (
+              <div key={`ref-${i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-2.5" data-testid={`referral-item-${i}`}>
+                <div>
+                  <p className="text-white text-sm">{ref.referred_email}</p>
+                  <p className="text-slate-500 text-[10px]">
+                    {ref.created_at ? new Date(ref.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={`text-[10px] border ${
+                    ref.status === 'completed' ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50' : 'text-amber-400 bg-amber-900/30 border-amber-700/50'
+                  }`}>
+                    {ref.status === 'completed' ? 'Subscribed' : 'Pending'}
+                  </Badge>
+                  {ref.reward_granted && (
+                    <Badge className="text-[10px] bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30">+1 Month</Badge>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

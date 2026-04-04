@@ -131,11 +131,13 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const register = async (email, password, name) => {
+  const register = async (email, password, name, refCode) => {
+    const body = { email, password, name };
+    if (refCode) body.ref_code = refCode;
     const res = await fetchWithRetry(`${API}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       let detail;
@@ -154,7 +156,7 @@ export const AuthProvider = ({ children }) => {
     setUser(false);
   };
 
-  const isPro = user && user.subscription_status === 'pro';
+  const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, isPro, checkAuth, authFetch }}>

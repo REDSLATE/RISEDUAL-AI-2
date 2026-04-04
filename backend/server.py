@@ -24,6 +24,7 @@ from routes.trading import router as trading_router
 from routes.ai import router as ai_router, set_db as set_ai_db
 from routes.workspace import router as workspace_router, set_db as set_workspace_db
 from routes.subscription import router as subscription_router, set_db as set_subscription_db
+from routes.referral import router as referral_router, set_db as set_referral_db
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -79,6 +80,7 @@ app.include_router(trading_router)
 app.include_router(ai_router)
 app.include_router(workspace_router)
 app.include_router(subscription_router)
+app.include_router(referral_router)
 
 # CORS
 app.add_middleware(
@@ -103,6 +105,7 @@ async def startup_event():
     set_ai_db(db)
     set_workspace_db(db)
     set_subscription_db(db)
+    set_referral_db(db)
 
     await create_indexes()
     await seed_admin()

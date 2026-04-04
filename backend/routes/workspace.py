@@ -15,6 +15,14 @@ def set_db(database):
     db = database
 
 
+def is_pro_user(user: dict) -> bool:
+    """Check if user has Pro access (includes 'pro' and 'trial' status)."""
+    if not user:
+        return False
+    status = user.get("subscription_status", "free")
+    return status in ("pro", "trial")
+
+
 # --- Watchlist ---
 @router.get("/workspace/watchlist")
 async def get_watchlist(request: Request):
@@ -35,7 +43,7 @@ async def add_to_watchlist(request: Request):
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker required")
     # Enforce watchlist cap for free users
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         doc = await db.watchlists.find_one({"user_id": user["_id"]})
         current = doc.get("tickers", []) if doc else []
         if ticker not in current and len(current) >= FREE_WATCHLIST_LIMIT:
@@ -96,7 +104,7 @@ async def save_hypothesis_history(request: Request):
 @router.get("/notifications")
 async def get_notifications(request: Request):
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         return {"notifications": [], "unread_count": 0, "is_pro": False}
     cursor = db.notifications.find(
         {"user_id": user["_id"]}, {"_id": 0}
@@ -111,7 +119,7 @@ async def get_notifications(request: Request):
 @router.get("/notifications/unread-count")
 async def get_unread_count(request: Request):
     user = await get_current_user(request)
-    if user.get("subscription_status") != "pro":
+    if not is_pro_user(user):
         return {"count": 0, "is_pro": False}
     count = await db.notifications.count_documents({"user_id": user["_id"], "read": False})
     return {"count": count, "is_pro": True}

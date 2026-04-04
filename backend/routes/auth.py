@@ -96,6 +96,7 @@ def user_response(user: dict) -> dict:
         "role": user.get("role", "user"),
         "subscription_status": user.get("subscription_status", "free"),
         "is_active": user.get("is_active", True),
+        "trial_ends_at": user.get("trial_ends_at"),
     }
 
 # --- Models ---
@@ -103,6 +104,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     name: str = ""
+    ref_code: str = ""
 
 class LoginRequest(BaseModel):
     email: str
@@ -134,6 +136,19 @@ async def register(req: RegisterRequest, response: Response):
     }
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
+
+    # Process referral code if provided
+    if req.ref_code and req.ref_code.strip():
+        try:
+            from routes.referral import process_referral_signup
+            await process_referral_signup(str(user_doc["_id"]), email, req.ref_code.strip())
+            # Reload user doc to reflect trial status
+            updated = await db.users.find_one({"_id": user_doc["_id"]})
+            if updated:
+                user_doc["subscription_status"] = updated.get("subscription_status", "free")
+        except Exception as e:
+            logging.warning(f"Referral processing error: {e}")
+
     access = create_access_token(str(user_doc["_id"]), email)
     refresh = create_refresh_token(str(user_doc["_id"]))
     resp = user_response(user_doc)
