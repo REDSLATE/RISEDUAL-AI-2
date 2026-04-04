@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
@@ -10,6 +10,8 @@ from routes.auth import get_current_user, get_optional_user
 
 router = APIRouter(prefix="/api")
 ai_service = AIService()
+
+FREE_CHAT_DAILY_LIMIT = 5
 
 # Module-level db reference, set by server.py on startup
 db = None
@@ -19,47 +21,256 @@ def set_db(database):
     db = database
 
 
+# --- Chat Rate Limit ---
+@router.get("/chat/limit")
+async def get_chat_limit(request: Request):
+    """Return remaining chat messages for the user today."""
+    user = await get_optional_user(request)
+    if not user:
+        return {"limit": FREE_CHAT_DAILY_LIMIT, "used": 0, "remaining": FREE_CHAT_DAILY_LIMIT, "is_pro": False}
+    if user.get("subscription_status") == "pro":
+        return {"limit": -1, "used": 0, "remaining": -1, "is_pro": True}
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
+    return {"limit": FREE_CHAT_DAILY_LIMIT, "used": count, "remaining": max(0, FREE_CHAT_DAILY_LIMIT - count), "is_pro": False}
+
+
 # --- AI Chat ---
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(chat_request: ChatRequest, request: Request):
     try:
-        session = await db.chat_sessions.find_one({"session_id": request.sessionId})
-        if not session:
-            new_session = ChatSession(session_id=request.sessionId)
-            await db.chat_sessions.insert_one(new_session.dict())
+        # Rate limit for free users
+        user = await get_optional_user(request)
+        if user and user.get("subscription_status") != "pro":
+            today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
+            if count >= FREE_CHAT_DAILY_LIMIT:
+                raise HTTPException(status_code=429, detail=f"Free accounts are limited to {FREE_CHAT_DAILY_LIMIT} AI messages per day. Upgrade to Pro for unlimited.")
+            await db.chat_usage.insert_one({"user_id": user["_id"], "date": today, "timestamp": datetime.now(timezone.utc).isoformat()})
 
-        ai_response = await ai_service.chat(request.message, request.sessionId, request.image_base64)
+        session = await db.chat_sessions.find_one({"session_id": chat_request.sessionId})
+        if not session:
+            new_session = ChatSession(session_id=chat_request.sessionId)
+            session_doc = new_session.dict()
+            if user:
+                session_doc["user_id"] = user["_id"]
+            await db.chat_sessions.insert_one(session_doc)
+
+        ai_response = await ai_service.chat(chat_request.message, chat_request.sessionId, chat_request.image_base64)
 
         user_message = ChatMessage(
             role="user",
-            content=request.message,
-            image_base64="[image_attached]" if request.image_base64 else None
+            content=chat_request.message,
+            image_base64="[image_attached]" if chat_request.image_base64 else None
         )
         assistant_message = ChatMessage(role="assistant", content=ai_response)
 
         await db.chat_sessions.update_one(
-            {"session_id": request.sessionId},
+            {"session_id": chat_request.sessionId},
             {
                 "$push": {"messages": {"$each": [user_message.dict(), assistant_message.dict()]}},
-                "$set": {"updated_at": datetime.now(timezone.utc)}
+                "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
             }
         )
-        return ChatResponse(response=ai_response, sessionId=request.sessionId)
+        return ChatResponse(response=ai_response, sessionId=chat_request.sessionId)
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail="Error processing chat request")
 
 
 @router.get("/chat/history/{session_id}")
-async def get_chat_history(session_id: str):
+async def get_chat_history(session_id: str, request: Request):
     try:
         session = await db.chat_sessions.find_one({"session_id": session_id})
         if not session:
             return {"messages": []}
-        return {"messages": session.get("messages", [])}
+        messages = session.get("messages", [])
+
+        # Free users: only get messages from last 24 hours
+        user = await get_optional_user(request)
+        if user and user.get("subscription_status") != "pro":
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            messages = [m for m in messages if m.get("timestamp", "9999") >= cutoff]
+
+        return {"messages": messages, "history_limited": user is not None and user.get("subscription_status") != "pro"}
     except Exception as e:
         logging.error(f"Error fetching chat history: {e}")
         raise HTTPException(status_code=500, detail="Error fetching chat history")
+
+
+# --- PDF Export (Pro Only) ---
+@router.get("/export/hypothesis/{symbol}")
+async def export_hypothesis_pdf(symbol: str, request: Request):
+    """Generate a PDF report for a hypothesis. Pro only."""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        raise HTTPException(status_code=403, detail="PDF export is a Pro feature. Upgrade to unlock.")
+    # Return JSON data that frontend will format into PDF
+    from services.hypothesis_service import HypothesisService
+    from services.financial_scraping_service import FinancialScrapingService
+    from services.world_events_service import WorldEventsService
+    from services.foreign_markets_service import ForeignMarketsService
+
+    financial_scraper = FinancialScrapingService()
+    news = await financial_scraper.scrape_financial_news()
+    social = await financial_scraper.scrape_reddit_sentiment()
+    world_events = await WorldEventsService().scrape_world_events()
+    foreign_markets = await ForeignMarketsService().get_foreign_markets()
+
+    data = {"news": news, "social": social, "world_events": world_events, "foreign_markets": foreign_markets}
+    hypothesis_svc = HypothesisService(os.environ.get("EMERGENT_LLM_KEY"))
+    hypothesis = await hypothesis_svc.generate_hypothesis(symbol, data)
+    hypothesis["export"] = True
+    hypothesis["exported_at"] = datetime.now(timezone.utc).isoformat()
+    hypothesis["exported_by"] = user.get("name", user.get("email"))
+    return hypothesis
+
+
+# --- Market Signals (Pro Only) ---
+@router.get("/signals")
+async def get_market_signals(request: Request):
+    """Get AI-detected market signals for the user's watchlist."""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        return {"signals": [], "is_pro": False}
+    cursor = db.market_signals.find(
+        {"user_id": user["_id"]}, {"_id": 0}
+    ).sort("detected_at", -1).limit(20)
+    signals = []
+    async for doc in cursor:
+        signals.append(doc)
+    return {"signals": signals, "is_pro": True}
+
+
+@router.post("/signals/scan")
+async def scan_for_signals(request: Request):
+    """Manually trigger a signal scan for the user's watchlist tickers."""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        raise HTTPException(status_code=403, detail="Market signals is a Pro feature.")
+
+    # Get user's watchlist
+    wl = await db.watchlists.find_one({"user_id": user["_id"]})
+    tickers = wl.get("tickers", []) if wl else []
+    if not tickers:
+        return {"signals": [], "message": "No tickers in watchlist"}
+
+    from services.market_data_service import MarketDataService
+    market_svc = MarketDataService()
+
+    signals_found = []
+    for ticker in tickers[:10]:  # Limit to 10 tickers
+        try:
+            dark_pool = market_svc.generate_dark_pool_data()
+            dp_match = [d for d in dark_pool if d.get("ticker") == ticker]
+            if dp_match and dp_match[0].get("volume", 0) > 500000:
+                sig = {
+                    "user_id": user["_id"],
+                    "ticker": ticker,
+                    "type": "dark_pool_spike",
+                    "title": f"Dark Pool Spike: {ticker}",
+                    "detail": f"Unusual dark pool volume detected ({dp_match[0].get('volume', 0):,} shares)",
+                    "severity": "high",
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.market_signals.insert_one(sig)
+                del sig["user_id"]
+                signals_found.append(sig)
+
+            options = market_svc.generate_mock_options_data('flow')
+            opt_match = [o for o in options if o.get("symbol") == ticker or o.get("contract", "").startswith(ticker)]
+            if opt_match:
+                for o in opt_match[:1]:
+                    sig = {
+                        "user_id": user["_id"],
+                        "ticker": ticker,
+                        "type": "options_flow",
+                        "title": f"Options Activity: {ticker}",
+                        "detail": f"Notable options flow detected — {o.get('side', 'N/A')} {o.get('contract', ticker)}",
+                        "severity": "medium",
+                        "detected_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await db.market_signals.insert_one(sig)
+                    del sig["user_id"]
+                    signals_found.append(sig)
+        except Exception as e:
+            logging.warning(f"Signal scan error for {ticker}: {e}")
+
+    return {"signals": signals_found, "tickers_scanned": len(tickers[:10])}
+
+
+# --- Portfolio Analyzer (Pro Only) ---
+@router.post("/portfolio/analyze")
+async def analyze_portfolio(request: Request):
+    """AI Portfolio Analyzer — input holdings, get health score + suggestions."""
+    user = await get_current_user(request)
+    if user.get("subscription_status") != "pro":
+        raise HTTPException(status_code=403, detail="Portfolio Analyzer is a Pro feature. Upgrade to unlock.")
+
+    body = await request.json()
+    holdings = body.get("holdings", [])
+    if not holdings:
+        raise HTTPException(status_code=400, detail="Please provide at least one holding.")
+
+    # Gather macro data for context
+    from services.world_events_service import WorldEventsService
+    from services.foreign_markets_service import ForeignMarketsService
+    world_events = await WorldEventsService().scrape_world_events()
+    foreign_markets = await ForeignMarketsService().get_foreign_markets()
+
+    holdings_text = "\n".join([f"- {h.get('ticker', 'UNKNOWN')}: {h.get('shares', 0)} shares @ ${h.get('avg_price', 0)}" for h in holdings])
+    total_value = sum(h.get("shares", 0) * h.get("avg_price", 0) for h in holdings)
+
+    prompt = f"""You are an expert portfolio analyst for RISEDUAL AI. Analyze this portfolio and provide a health score and rebalancing suggestions.
+
+PORTFOLIO (Total Value: ${total_value:,.2f}):
+{holdings_text}
+
+CURRENT MACRO CONTEXT:
+- World Events: {world_events.get('total_events', 0)} tracked, {world_events.get('high_impact_count', 0)} high-impact
+- Top Affected Sectors: {', '.join([s['sector'] for s in world_events.get('affected_sectors', [])[:5]])}
+- Foreign Market Signals: {len(foreign_markets.get('correlation_signals', []))} correlation signals
+
+Respond in this EXACT JSON format:
+{{
+  "health_score": <0-100>,
+  "risk_level": "<low|medium|high|critical>",
+  "diversification_grade": "<A|B|C|D|F>",
+  "sector_exposure": "<brief description>",
+  "top_risk": "<biggest risk in portfolio>",
+  "suggestions": ["<suggestion 1>", "<suggestion 2>", "<suggestion 3>"],
+  "rebalance_actions": [
+    {{"ticker": "<TICKER>", "action": "<buy|sell|hold>", "reason": "<why>"}}
+  ],
+  "summary": "<2-3 sentence overall assessment>"
+}}"""
+
+    try:
+        from emergentintegrations.llm.chat import ChatRequest as LLMChatRequest, chat
+        llm_key = os.environ.get("EMERGENT_LLM_KEY")
+        llm_request = LLMChatRequest(
+            emergent_key=llm_key,
+            model="gpt-5.2",
+            system_prompt="You are a professional portfolio analyst. Return ONLY valid JSON.",
+            user_prompt=prompt,
+            temperature=0.3,
+        )
+        response = await chat(llm_request)
+        import json
+        try:
+            result = json.loads(response.response.strip().strip("```json").strip("```"))
+        except json.JSONDecodeError:
+            result = {"health_score": 50, "summary": response.response, "suggestions": [], "rebalance_actions": [], "risk_level": "medium", "diversification_grade": "C"}
+
+        result["total_value"] = total_value
+        result["holdings_count"] = len(holdings)
+        result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
+        return result
+    except Exception as e:
+        logging.error(f"Portfolio analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Error analyzing portfolio")
 
 
 # --- Company Research ---

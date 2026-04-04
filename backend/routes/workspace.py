@@ -23,6 +23,10 @@ async def get_watchlist(request: Request):
     return {"tickers": doc.get("tickers", []) if doc else []}
 
 
+FREE_WATCHLIST_LIMIT = 3
+FREE_CHAT_DAILY_LIMIT = 5
+
+
 @router.post("/workspace/watchlist/add")
 async def add_to_watchlist(request: Request):
     user = await get_current_user(request)
@@ -30,6 +34,12 @@ async def add_to_watchlist(request: Request):
     ticker = body.get("ticker", "").upper().strip()
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker required")
+    # Enforce watchlist cap for free users
+    if user.get("subscription_status") != "pro":
+        doc = await db.watchlists.find_one({"user_id": user["_id"]})
+        current = doc.get("tickers", []) if doc else []
+        if ticker not in current and len(current) >= FREE_WATCHLIST_LIMIT:
+            raise HTTPException(status_code=403, detail=f"Free accounts are limited to {FREE_WATCHLIST_LIMIT} watchlist tickers. Upgrade to Pro for unlimited.")
     await db.watchlists.update_one(
         {"user_id": user["_id"]},
         {"$addToSet": {"tickers": ticker}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},

@@ -1,13 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Image, X, BarChart3, Building2, ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Sparkles, Image, X, BarChart3, Building2, ChevronDown, Lock } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
+import { Badge } from './ui/badge';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 import { sendChatMessage, researchCompany } from '../services/api';
 import ChartPatternLibrary from './ChartPatternLibrary';
 import { ResearchCard } from './CompanyResearch';
 
-const TradeGPTChat = () => {
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const TradeGPTChat = ({ onSubscribe }) => {
+  const { user, isPro } = useAuth();
+  const [chatLimit, setChatLimit] = useState({ remaining: 5, used: 0, is_pro: false });
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -18,6 +24,16 @@ const TradeGPTChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substring(7)}`);
   const [isOpen, setIsOpen] = useState(false);
+
+  const fetchChatLimit = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await authFetch(`${API}/chat/limit`);
+      if (res.ok) setChatLimit(await res.json());
+    } catch {}
+  }, [user]);
+
+  useEffect(() => { if (isOpen) fetchChatLimit(); }, [isOpen, fetchChatLimit]);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const fileInputRef = useRef(null);
@@ -88,6 +104,12 @@ const TradeGPTChat = () => {
   const handleSend = async () => {
     if (!input.trim() && !imageBase64) return;
 
+    // Rate limit check for free users
+    if (user && !isPro && chatLimit.remaining <= 0) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `You've used all ${chatLimit.limit} free messages for today. **Upgrade to Pro** for unlimited AI chat access.` }]);
+      return;
+    }
+
     // Check for /patterns command
     if (input.trim().toLowerCase() === '/patterns') {
       setMessages((prev) => [...prev, 
@@ -133,9 +155,14 @@ const TradeGPTChat = () => {
     try {
       const response = await sendChatMessage(currentMessage, sessionId, currentImage);
       setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
+      if (user && !isPro) setChatLimit(prev => ({ ...prev, used: prev.used + 1, remaining: Math.max(0, prev.remaining - 1) }));
     } catch (error) {
-      console.error('Error sending message:', error);
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'I apologize, but I encountered an error. Please try again.' }]);
+      if (error?.message?.includes('429') || error?.message?.includes('limited')) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `You've reached your daily free message limit. **Upgrade to Pro** for unlimited chat.` }]);
+      } else {
+        console.error('Error sending message:', error);
+        setMessages((prev) => [...prev, { role: 'assistant', content: 'I apologize, but I encountered an error. Please try again.' }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -193,7 +220,15 @@ const TradeGPTChat = () => {
               <ChevronDown className="w-5 h-5" />
             </button>
           </div>
-          <p className="text-xs text-blue-200 mt-1">AI Trading Assistant — Image Analysis & Pattern Library</p>
+          <p className="text-xs text-blue-200 mt-1 flex items-center gap-2">
+              AI Trading Assistant
+              {user && !isPro && (
+                <Badge className="bg-white/20 text-white/80 border-0 text-[10px]">
+                  {chatLimit.remaining}/{chatLimit.limit} msgs left
+                </Badge>
+              )}
+              {isPro && <Badge className="bg-white/20 text-white/80 border-0 text-[10px]">Unlimited</Badge>}
+            </p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">

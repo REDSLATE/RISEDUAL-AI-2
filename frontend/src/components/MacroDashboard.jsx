@@ -3,6 +3,8 @@ import { Globe, BarChart3, Landmark, RefreshCw, AlertTriangle, TrendingUp, Trend
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import ProBlurWall from './ProBlurWall';
+import { useAuth } from '../contexts/AuthContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -14,7 +16,8 @@ const TABS = [
   { id: 'congress', label: 'Congress Trades', icon: Landmark },
 ];
 
-const MacroDashboard = () => {
+const MacroDashboard = ({ onSubscribe }) => {
+  const { isPro } = useAuth();
   const [activeTab, setActiveTab] = useState('world');
   const [worldEvents, setWorldEvents] = useState(null);
   const [foreignMarkets, setForeignMarkets] = useState(null);
@@ -412,7 +415,8 @@ const CongressTab = ({ data, loading }) => {
               <Landmark className="w-4 h-4 text-violet-400" /> Recent Congressional Stock Trades
             </h3>
           </div>
-          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <ProBlurWall freeRowCount={3} onSubscribe={onSubscribe} label="Congressional Trades">
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 overflow-hidden" style={{maxHeight: isPro ? 'none' : '320px'}}>
             <table className="w-full text-sm" data-testid="congress-trades-table">
               <thead>
                 <tr className="border-b border-slate-700/40">
@@ -454,6 +458,7 @@ const CongressTab = ({ data, loading }) => {
               </tbody>
             </table>
           </div>
+          </ProBlurWall>
         </Card>
       )}
 

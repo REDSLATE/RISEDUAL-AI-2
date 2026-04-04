@@ -22,6 +22,8 @@ import AuthModal from './components/AuthModal';
 import SubscriptionPricing from './components/SubscriptionPricing';
 import AdminPanel from './components/AdminPanel';
 import UserWorkspace from './components/UserWorkspace';
+import PortfolioAnalyzer from './components/PortfolioAnalyzer';
+import MarketSignals from './components/MarketSignals';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -37,6 +39,8 @@ function AppContent() {
   const [showSubscription, setShowSubscription] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showSignals, setShowSignals] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -59,7 +63,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -73,7 +77,7 @@ function AppContent() {
 
         <div id="market-prediction" className="mb-6 sm:mb-8"><MarketPrediction /></div>
         <div id="company-research" className="mb-6 sm:mb-8"><CompanyResearch /></div>
-        <div id="macro-dashboard" className="mb-6 sm:mb-8"><MacroDashboard /></div>
+        <div id="macro-dashboard" className="mb-6 sm:mb-8"><MacroDashboard onSubscribe={() => setShowSubscription(true)} /></div>
         <div id="options-radar"><OptionsRadar /></div>
         <div id="options-flow"><OptionsFlowScreener /></div>
         <AdditionalSections />
@@ -81,14 +85,16 @@ function AppContent() {
         <div id="crypto"><CryptoSection /></div>
       </main>
 
-      <TradeGPTChat />
+      <TradeGPTChat onSubscribe={() => setShowSubscription(true)} />
       <MobileBottomNav onOpenChat={openChat} />
 
       {paymentInfo && <PaymentStatus sessionId={paymentInfo.sessionId} initialStatus={paymentInfo.status} onClose={() => setPaymentInfo(null)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
       {showSubscription && <SubscriptionPricing onClose={() => setShowSubscription(false)} />}
       {showAdmin && user?.role === 'owner' && <AdminPanel onClose={() => setShowAdmin(false)} />}
-      {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} />}
+      {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} onSubscribe={() => { setShowWorkspace(false); setShowSubscription(true); }} />}
+      {showPortfolio && user && <PortfolioAnalyzer onClose={() => setShowPortfolio(false)} onSubscribe={() => { setShowPortfolio(false); setShowSubscription(true); }} />}
+      {showSignals && user && <MarketSignals onClose={() => setShowSignals(false)} onSubscribe={() => { setShowSignals(false); setShowSubscription(true); }} />}
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <div className="flex items-center justify-center gap-2 mb-1">

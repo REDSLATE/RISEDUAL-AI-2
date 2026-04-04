@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -127,6 +127,12 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenWorkspace} data-testid="nav-workspace-btn">
                   <Briefcase className="w-4 h-4 mr-2" /> My Workspace
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPortfolio} data-testid="nav-portfolio-btn">
+                  <PieChart className="w-4 h-4 mr-2" /> Portfolio Analyzer
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenSignals} data-testid="nav-signals-btn">
+                  <Radio className="w-4 h-4 mr-2" /> Market Signals
+                </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -206,6 +212,14 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 rounded-xl text-xs"
                   onClick={() => { onOpenWorkspace(); setMobileMenuOpen(false); }} data-testid="mobile-workspace-btn">
                   <Briefcase className="w-3 h-3 mr-1" /> Workspace
+                </Button>
+                <Button variant="outline" size="sm" className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 rounded-xl text-xs"
+                  onClick={() => { onOpenPortfolio(); setMobileMenuOpen(false); }} data-testid="mobile-portfolio-btn">
+                  <PieChart className="w-3 h-3 mr-1" /> Portfolio
+                </Button>
+                <Button variant="outline" size="sm" className="bg-amber-900/30 text-amber-400 border-amber-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenSignals(); setMobileMenuOpen(false); }} data-testid="mobile-signals-btn">
+                  <Radio className="w-3 h-3 mr-1" /> Signals
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

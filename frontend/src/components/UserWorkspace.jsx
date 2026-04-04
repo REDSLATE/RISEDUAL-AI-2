@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus } from 'lucide-react';
+import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -7,8 +7,9 @@ import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const FREE_WATCHLIST_LIMIT = 3;
 
-const UserWorkspace = ({ onClose }) => {
+const UserWorkspace = ({ onClose, onSubscribe }) => {
   const { user, isPro } = useAuth();
   const [tab, setTab] = useState('watchlist');
   const [watchlist, setWatchlist] = useState([]);
@@ -16,6 +17,7 @@ const UserWorkspace = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [addTicker, setAddTicker] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState('');
 
   // Stable deps: API and authFetch are module-level constants
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,6 +58,7 @@ const UserWorkspace = ({ onClose }) => {
     e.preventDefault();
     if (!addTicker.trim()) return;
     setAddLoading(true);
+    setAddError('');
     try {
       const res = await authFetch(`${API}/workspace/watchlist/add`, {
         method: 'POST',
@@ -64,6 +67,8 @@ const UserWorkspace = ({ onClose }) => {
       if (res.ok) {
         setAddTicker('');
         await fetchWatchlist();
+      } else if (res.status === 403) {
+        setAddError(`Free accounts are limited to ${FREE_WATCHLIST_LIMIT} tickers. Upgrade to Pro for unlimited.`);
       }
     } catch (e) {
       console.error('Add ticker error:', e);
@@ -169,6 +174,27 @@ const UserWorkspace = ({ onClose }) => {
                   <Plus className="w-4 h-4 mr-1" /> Add
                 </Button>
               </form>
+
+              {/* Watchlist cap indicator for free users */}
+              {!isPro && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
+                  {watchlist.length >= FREE_WATCHLIST_LIMIT && (
+                    <button onClick={onSubscribe} className="text-[#0052FF] hover:underline flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Upgrade for unlimited
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {addError && (
+                <div className="bg-amber-900/20 border border-amber-700/40 rounded-xl px-3 py-2 flex items-center justify-between">
+                  <span className="text-amber-400 text-xs">{addError}</span>
+                  <Button size="sm" className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
+                    Upgrade
+                  </Button>
+                </div>
+              )}
 
               {/* Watchlist */}
               {watchlist.length === 0 ? (

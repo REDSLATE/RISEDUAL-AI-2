@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, TrendingDown, Minus, Lock, Shield, BarChart3, Globe, Landmark, Zap, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, TrendingUp, TrendingDown, Minus, Lock, Shield, BarChart3, Globe, Landmark, Zap, Sparkles, Download } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -14,6 +14,48 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
   const [hypothesis, setHypothesis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const exportReport = () => {
+    if (!hypothesis || !hypothesis.is_pro) return;
+    setExporting(true);
+    try {
+      const lines = [
+        `RISEDUAL AI — HYPOTHESIS REPORT`,
+        `═══════════════════════════════════════`,
+        `Symbol: ${hypothesis.symbol}`,
+        `Generated: ${new Date().toLocaleString()}`,
+        ``,
+        `VERDICT: ${hypothesis.verdict}`,
+        `Confidence: ${hypothesis.confidence}%`,
+        ``,
+        `SUMMARY`,
+        `───────`,
+        hypothesis.summary || 'N/A',
+        ``,
+      ];
+      if (hypothesis.catalysts?.length) {
+        lines.push('CATALYSTS', '─────────');
+        hypothesis.catalysts.forEach((c, i) => lines.push(`${i + 1}. ${c}`));
+        lines.push('');
+      }
+      if (hypothesis.risks?.length) {
+        lines.push('RISKS', '─────');
+        hypothesis.risks.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
+        lines.push('');
+      }
+      lines.push('', '© RISEDUAL AI — risedual.ai');
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `RISEDUAL_AI_${hypothesis.symbol}_Report.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const search = async (e) => {
     e?.preventDefault();
@@ -176,9 +218,12 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
                   <div className="text-sm opacity-70">{hypothesis.symbol}</div>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right flex flex-col items-end gap-1">
                 <div className="text-2xl font-bold">{hypothesis.confidence}%</div>
                 <div className="text-sm opacity-70">Confidence</div>
+                <Button size="sm" variant="outline" className="mt-1 border-white/20 text-white/80 hover:bg-white/10 rounded-lg text-[10px] h-7 px-2" onClick={exportReport} disabled={exporting} data-testid="export-report-btn">
+                  <Download className="w-3 h-3 mr-1" /> Export
+                </Button>
               </div>
             </div>
             {hypothesis.summary && (
