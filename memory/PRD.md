@@ -1,20 +1,21 @@
 # RISEDUAL AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack trading platform with real market data, AI chat, Stripe subscriptions, paywalled features, referral program (leaderboard, social sharing, admin promos, email notifications), and daily digest emails.
+Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack trading platform with real market data, AI chat, Stripe subscriptions, paywalled features, referral program (leaderboard, social sharing, admin promos, email notifications), daily digest emails, and PWA push notifications.
 
 ## Architecture
-- Frontend: React + TailwindCSS + Shadcn UI + PWA
-- Backend: FastAPI + MongoDB (Motor Async) + APScheduler
+- Frontend: React + TailwindCSS + Shadcn UI + PWA (Service Worker + Push)
+- Backend: FastAPI + MongoDB (Motor Async) + APScheduler + pywebpush
 - AI: Emergent Integrations (GPT-5.2 via Universal Key)
 - Auth: PyJWT + bcrypt (Bearer tokens via localStorage)
 - Payments: Stripe ($45/month or $486/year)
-- Email: Resend (placeholder key — add real key to activate)
+- Email: Resend (placeholder key)
+- Push: Web Push with VAPID keys (configured)
 
 ### Backend Modules
 | Module | Responsibility |
 |--------|---------------|
-| `server.py` | App setup, DB init, router registration, APScheduler |
+| `server.py` | App setup, DB, routers, APScheduler |
 | `routes/auth.py` | Auth, admin, user management |
 | `routes/ai.py` | Chat, hypothesis, predictions, research, portfolio, signals |
 | `routes/subscription.py` | Stripe checkout, webhooks |
@@ -23,9 +24,11 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 | `routes/market.py` | Stocks, crypto, dark pool, options |
 | `routes/referral.py` | Referral codes, tracking, rewards, leaderboard |
 | `routes/promo.py` | Admin promo campaigns CRUD |
-| `routes/digest.py` | Daily digest endpoints (trigger, opt-in/out, preview) |
-| `services/email_service.py` | Resend email templates + sending |
-| `services/digest_service.py` | Digest data collection + HTML generation |
+| `routes/digest.py` | Daily digest (trigger, opt-in/out, preview) |
+| `routes/push.py` | Push subscribe/unsubscribe/status/test/broadcast |
+| `services/email_service.py` | Resend email templates |
+| `services/digest_service.py` | Digest data + HTML |
+| `services/push_service.py` | Web Push + notification triggers |
 
 ## What's Been Implemented
 - [x] Full trading dashboard + Fidelity x Coinbase theme + custom logos
@@ -36,16 +39,18 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 - [x] 7 Paywall/Pro Features
 - [x] Referral Program + Leaderboard + Social Share + Admin Promos
 - [x] Email Notifications (Resend, 3 referral event types)
-- [x] **Daily Digest Emails (2026-04-06)**:
-  - APScheduler runs at 6:00 AM UTC daily
-  - Pro users: full predictions, dark pool moves, signals
-  - Free users: teaser (1 item visible, rest blurred + upgrade CTA)
-  - User opt-in/opt-out via DigestToggle in UserWorkspace
-  - Admin: manual trigger + HTML preview endpoints
-  - Graceful degradation with placeholder Resend key
+- [x] Daily Digest Emails (6 AM UTC, Pro full / free teaser)
+- [x] **PWA Push Notifications (2026-04-04)**:
+  - VAPID keys generated and configured
+  - 5 trigger types: prediction flips, dark pool spikes, watchlist alerts, market signals, admin broadcast
+  - Pro users: unlimited notifications
+  - Free users: 1/day teaser (rate limited via push_log collection)
+  - Enable/disable toggle in UserWorkspace (PushToggle component)
+  - Service worker handles push events and notification clicks
+  - Admin: test push and broadcast endpoints
 
 ## Setup Required
-- **Resend**: Add real API key to `/app/backend/.env` → `RESEND_API_KEY=re_...`
+- **Resend**: Add real API key → `RESEND_API_KEY=re_...` in backend .env
 
 ## Prioritized Backlog
 ### P1 - Upcoming
