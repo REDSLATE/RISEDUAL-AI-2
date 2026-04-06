@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import ReferralLeaderboard from './ReferralLeaderboard';
 import SocialShareButtons from './SocialShareButtons';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -394,6 +395,9 @@ const ReferralsTab = () => {
 
       {/* Digest Email Preferences */}
       <DigestToggle />
+
+      {/* Push Notifications */}
+      <PushToggle />
     </div>
   );
 };
@@ -453,6 +457,62 @@ const DigestToggle = () => {
         >
           {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
           {subscribed ? 'Subscribed' : 'Unsubscribed'}
+        </button>
+      </div>
+    </Card>
+  );
+};
+
+const PushToggle = () => {
+  const { permission, subscribed, supported, subscribe, unsubscribe } = usePushNotifications();
+  const [toggling, setToggling] = useState(false);
+  const { isPro } = useAuth();
+
+  if (!supported) return null;
+
+  const handleToggle = async () => {
+    setToggling(true);
+    try {
+      if (subscribed) await unsubscribe();
+      else await subscribe();
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  return (
+    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4" data-testid="push-toggle">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+            <Bell className="w-4 h-4 text-purple-400" />
+          </div>
+          <div>
+            <p className="text-white text-sm font-medium">Push Notifications</p>
+            <p className="text-slate-500 text-[10px]">
+              {isPro ? 'All alerts: predictions, dark pool, watchlist, signals' : '1 alert/day (Pro: unlimited)'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleToggle}
+          disabled={toggling || permission === 'denied'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            permission === 'denied'
+              ? 'bg-red-900/20 text-red-400 border border-red-800/40 cursor-not-allowed'
+              : subscribed
+              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+              : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
+          }`}
+          data-testid="push-toggle-btn"
+        >
+          {permission === 'denied' ? (
+            <><BellOff className="w-3.5 h-3.5" /> Blocked</>
+          ) : subscribed ? (
+            <><Bell className="w-3.5 h-3.5" /> Enabled</>
+          ) : (
+            <><BellOff className="w-3.5 h-3.5" /> Enable</>
+          )}
         </button>
       </div>
     </Card>

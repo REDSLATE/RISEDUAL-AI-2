@@ -27,6 +27,7 @@ from routes.subscription import router as subscription_router, set_db as set_sub
 from routes.referral import router as referral_router, set_db as set_referral_db
 from routes.promo import router as promo_router, set_db as set_promo_db
 from routes.digest import router as digest_router, set_db as set_digest_db
+from routes.push import router as push_router, set_db as set_push_db
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -85,6 +86,7 @@ app.include_router(subscription_router)
 app.include_router(referral_router)
 app.include_router(promo_router)
 app.include_router(digest_router)
+app.include_router(push_router)
 
 # CORS
 app.add_middleware(
@@ -112,6 +114,7 @@ async def startup_event():
     set_referral_db(db)
     set_promo_db(db)
     set_digest_db(db)
+    set_push_db(db)
 
     # Start daily digest scheduler (6:00 AM UTC)
     try:

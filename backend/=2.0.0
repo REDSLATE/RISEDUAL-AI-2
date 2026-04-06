@@ -1,12 +1,41 @@
 Looking in indexes: https://pypi.org/simple, https://d33sy5i8bnduwe.cloudfront.net/simple/
-Collecting resend
-  Downloading resend-2.27.0-py2.py3-none-any.whl.metadata (3.5 kB)
-Requirement already satisfied: requests>=2.31.0 in /root/.venv/lib/python3.11/site-packages (from resend) (2.32.5)
-Requirement already satisfied: typing-extensions>=4.4.0 in /root/.venv/lib/python3.11/site-packages (from resend) (4.15.0)
-Requirement already satisfied: charset_normalizer<4,>=2 in /root/.venv/lib/python3.11/site-packages (from requests>=2.31.0->resend) (3.4.4)
-Requirement already satisfied: idna<4,>=2.5 in /root/.venv/lib/python3.11/site-packages (from requests>=2.31.0->resend) (3.11)
-Requirement already satisfied: urllib3<3,>=1.21.1 in /root/.venv/lib/python3.11/site-packages (from requests>=2.31.0->resend) (2.6.3)
-Requirement already satisfied: certifi>=2017.4.17 in /root/.venv/lib/python3.11/site-packages (from requests>=2.31.0->resend) (2026.2.25)
-Downloading resend-2.27.0-py2.py3-none-any.whl (59 kB)
-Installing collected packages: resend
-Successfully installed resend-2.27.0
+Collecting pywebpush
+  Downloading pywebpush-2.3.0-py3-none-any.whl.metadata (9.7 kB)
+Requirement already satisfied: aiohttp in /root/.venv/lib/python3.11/site-packages (from pywebpush) (3.13.3)
+Requirement already satisfied: cryptography>=2.6.1 in /root/.venv/lib/python3.11/site-packages (from pywebpush) (46.0.5)
+Collecting http-ece>=1.1.0 (from pywebpush)
+  Downloading http_ece-1.2.1.tar.gz (8.8 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: requests>=2.21.0 in /root/.venv/lib/python3.11/site-packages (from pywebpush) (2.32.5)
+Collecting py-vapid>=1.7.0 (from pywebpush)
+  Downloading py_vapid-1.9.4-py2.py3-none-any.whl.metadata (4.6 kB)
+Requirement already satisfied: cffi>=2.0.0 in /root/.venv/lib/python3.11/site-packages (from cryptography>=2.6.1->pywebpush) (2.0.0)
+Requirement already satisfied: pycparser in /root/.venv/lib/python3.11/site-packages (from cffi>=2.0.0->cryptography>=2.6.1->pywebpush) (3.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in /root/.venv/lib/python3.11/site-packages (from requests>=2.21.0->pywebpush) (3.4.4)
+Requirement already satisfied: idna<4,>=2.5 in /root/.venv/lib/python3.11/site-packages (from requests>=2.21.0->pywebpush) (3.11)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /root/.venv/lib/python3.11/site-packages (from requests>=2.21.0->pywebpush) (2.6.3)
+Requirement already satisfied: certifi>=2017.4.17 in /root/.venv/lib/python3.11/site-packages (from requests>=2.21.0->pywebpush) (2026.2.25)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (2.6.1)
+Requirement already satisfied: aiosignal>=1.4.0 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (1.4.0)
+Requirement already satisfied: attrs>=17.3.0 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (25.4.0)
+Requirement already satisfied: frozenlist>=1.1.1 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (1.8.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (6.7.1)
+Requirement already satisfied: propcache>=0.2.0 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (0.4.1)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in /root/.venv/lib/python3.11/site-packages (from aiohttp->pywebpush) (1.23.0)
+Requirement already satisfied: typing-extensions>=4.2 in /root/.venv/lib/python3.11/site-packages (from aiosignal>=1.4.0->aiohttp->pywebpush) (4.15.0)
+Downloading pywebpush-2.3.0-py3-none-any.whl (22 kB)
+Downloading py_vapid-1.9.4-py2.py3-none-any.whl (23 kB)
+Building wheels for collected packages: http-ece
+  Building wheel for http-ece (pyproject.toml): started
+  Building wheel for http-ece (pyproject.toml): finished with status 'done'
+  Created wheel for http-ece: filename=http_ece-1.2.1-py2.py3-none-any.whl size=4847 sha256=d500e2e5d2c84ca00c5da3953ed96691eae20819147df4c8f227cd21be84c927
+  Stored in directory: /root/.cache/pip/wheels/f6/71/2f/56e4f843a88c67685db9ddd0161a07f5bed6a8f92be2a52cf3
+Successfully built http-ece
+Installing collected packages: py-vapid, http-ece, pywebpush
+
+Successfully installed http-ece-1.2.1 py-vapid-1.9.4 pywebpush-2.3.0
