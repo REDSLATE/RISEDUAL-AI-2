@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -133,6 +133,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenSignals} data-testid="nav-signals-btn">
                   <Radio className="w-4 h-4 mr-2" /> Market Signals
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenJournal} data-testid="nav-journal-btn">
+                  <BookOpen className="w-4 h-4 mr-2" /> Trading Journal
+                </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -220,6 +223,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-amber-900/30 text-amber-400 border-amber-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenSignals(); setMobileMenuOpen(false); }} data-testid="mobile-signals-btn">
                   <Radio className="w-3 h-3 mr-1" /> Signals
+                </Button>
+                <Button variant="outline" size="sm" className="bg-indigo-900/30 text-indigo-400 border-indigo-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenJournal(); setMobileMenuOpen(false); }} data-testid="mobile-journal-btn">
+                  <BookOpen className="w-3 h-3 mr-1" /> Journal
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

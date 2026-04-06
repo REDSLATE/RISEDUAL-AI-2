@@ -26,6 +26,7 @@ import UserWorkspace from './components/UserWorkspace';
 import PortfolioAnalyzer from './components/PortfolioAnalyzer';
 import MarketSignals from './components/MarketSignals';
 import ReferralLeaderboard from './components/ReferralLeaderboard';
+import TradingJournal from './components/TradingJournal';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -43,6 +44,7 @@ function AppContent() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
+  const [showJournal, setShowJournal] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -66,7 +68,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -101,6 +103,7 @@ function AppContent() {
       {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} onSubscribe={() => { setShowWorkspace(false); setShowSubscription(true); }} />}
       {showPortfolio && user && <PortfolioAnalyzer onClose={() => setShowPortfolio(false)} onSubscribe={() => { setShowPortfolio(false); setShowSubscription(true); }} />}
       {showSignals && user && <MarketSignals onClose={() => setShowSignals(false)} onSubscribe={() => { setShowSignals(false); setShowSubscription(true); }} />}
+      {showJournal && user && <TradingJournal onClose={() => setShowJournal(false)} onSubscribe={() => { setShowJournal(false); setShowSubscription(true); }} />}
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <div className="flex items-center justify-center gap-2 mb-1">
