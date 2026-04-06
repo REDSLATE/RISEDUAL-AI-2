@@ -1,11 +1,11 @@
 # RISEDUAL AI - Product Requirements Document
 
 ## Original Problem Statement
-Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack trading platform with real market data, AI chat, Stripe subscriptions, paywalled features, referral program with leaderboard + social sharing + admin promo campaigns + email notifications.
+Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack trading platform with real market data, AI chat, Stripe subscriptions, paywalled features, referral program (leaderboard, social sharing, admin promos, email notifications), and daily digest emails.
 
 ## Architecture
 - Frontend: React + TailwindCSS + Shadcn UI + PWA
-- Backend: FastAPI + MongoDB (Motor Async)
+- Backend: FastAPI + MongoDB (Motor Async) + APScheduler
 - AI: Emergent Integrations (GPT-5.2 via Universal Key)
 - Auth: PyJWT + bcrypt (Bearer tokens via localStorage)
 - Payments: Stripe ($45/month or $486/year)
@@ -14,7 +14,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ### Backend Modules
 | Module | Responsibility |
 |--------|---------------|
-| `server.py` | App setup, DB init, router registration |
+| `server.py` | App setup, DB init, router registration, APScheduler |
 | `routes/auth.py` | Auth, admin, user management |
 | `routes/ai.py` | Chat, hypothesis, predictions, research, portfolio, signals |
 | `routes/subscription.py` | Stripe checkout, webhooks |
@@ -23,7 +23,9 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 | `routes/market.py` | Stocks, crypto, dark pool, options |
 | `routes/referral.py` | Referral codes, tracking, rewards, leaderboard |
 | `routes/promo.py` | Admin promo campaigns CRUD |
+| `routes/digest.py` | Daily digest endpoints (trigger, opt-in/out, preview) |
 | `services/email_service.py` | Resend email templates + sending |
+| `services/digest_service.py` | Digest data collection + HTML generation |
 
 ## What's Been Implemented
 - [x] Full trading dashboard + Fidelity x Coinbase theme + custom logos
@@ -32,22 +34,18 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 - [x] Macro Intelligence Dashboard + Responsive PWA + JWT Auth
 - [x] Owner Admin Panel + User Workspace + Pro AI Alerts
 - [x] 7 Paywall/Pro Features
-- [x] Referral Program (codes, 7-day trial, 1-month rewards, 12/12 cap)
-- [x] Referral Leaderboard (public, top 10, masked names)
-- [x] Social Share Buttons (6 platforms, compact + full modes)
-- [x] Admin-Controlled Promo Campaigns (CRUD, banner, countdown, progress)
-- [x] **Email Notifications via Resend (2026-04-04)**:
-  - "Your friend just signed up!" → referrer when someone uses their link
-  - "You earned a free month!" → referrer when referred user subscribes to Pro
-  - "Welcome to RISEDUAL AI!" → referred user with 7-day Pro trial info
-  - Graceful degradation with placeholder key (logs skip, doesn't crash)
-  - Professional HTML email templates matching app branding
-  - Non-blocking via asyncio.create_task
+- [x] Referral Program + Leaderboard + Social Share + Admin Promos
+- [x] Email Notifications (Resend, 3 referral event types)
+- [x] **Daily Digest Emails (2026-04-06)**:
+  - APScheduler runs at 6:00 AM UTC daily
+  - Pro users: full predictions, dark pool moves, signals
+  - Free users: teaser (1 item visible, rest blurred + upgrade CTA)
+  - User opt-in/opt-out via DigestToggle in UserWorkspace
+  - Admin: manual trigger + HTML preview endpoints
+  - Graceful degradation with placeholder Resend key
 
 ## Setup Required
 - **Resend**: Add real API key to `/app/backend/.env` → `RESEND_API_KEY=re_...`
-  - Sign up at https://resend.com, get key from Dashboard → API Keys
-  - Update `SENDER_EMAIL` to your verified domain sender
 
 ## Prioritized Backlog
 ### P1 - Upcoming
