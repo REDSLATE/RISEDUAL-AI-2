@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users } from 'lucide-react';
+import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users, Mail, Bell, BellOff } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -391,7 +391,71 @@ const ReferralsTab = () => {
       </div>
       {/* Leaderboard */}
       <ReferralLeaderboard />
+
+      {/* Digest Email Preferences */}
+      <DigestToggle />
     </div>
+  );
+};
+
+const DigestToggle = () => {
+  const [subscribed, setSubscribed] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await authFetch(`${API}/digest/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setSubscribed(data.subscribed);
+        }
+      } catch (e) { /* ignore */ }
+      finally { setLoading(false); }
+    };
+    load();
+  }, []);
+
+  const toggle = async () => {
+    setToggling(true);
+    try {
+      const endpoint = subscribed ? 'opt-out' : 'opt-in';
+      const res = await authFetch(`${API}/digest/${endpoint}`, { method: 'POST' });
+      if (res.ok) setSubscribed(!subscribed);
+    } catch (e) { /* ignore */ }
+    finally { setToggling(false); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4" data-testid="digest-toggle">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[#0052FF]/10 flex items-center justify-center">
+            <Mail className="w-4 h-4 text-[#0052FF]" />
+          </div>
+          <div>
+            <p className="text-white text-sm font-medium">Daily Market Digest</p>
+            <p className="text-slate-500 text-[10px]">Morning briefing at 6:00 AM UTC</p>
+          </div>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={toggling}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            subscribed
+              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+              : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
+          }`}
+          data-testid="digest-toggle-btn"
+        >
+          {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+          {subscribed ? 'Subscribed' : 'Unsubscribed'}
+        </button>
+      </div>
+    </Card>
   );
 };
 

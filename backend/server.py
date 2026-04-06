@@ -26,6 +26,7 @@ from routes.workspace import router as workspace_router, set_db as set_workspace
 from routes.subscription import router as subscription_router, set_db as set_subscription_db
 from routes.referral import router as referral_router, set_db as set_referral_db
 from routes.promo import router as promo_router, set_db as set_promo_db
+from routes.digest import router as digest_router, set_db as set_digest_db
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -83,6 +84,7 @@ app.include_router(workspace_router)
 app.include_router(subscription_router)
 app.include_router(referral_router)
 app.include_router(promo_router)
+app.include_router(digest_router)
 
 # CORS
 app.add_middleware(
@@ -109,6 +111,18 @@ async def startup_event():
     set_subscription_db(db)
     set_referral_db(db)
     set_promo_db(db)
+    set_digest_db(db)
+
+    # Start daily digest scheduler (6:00 AM UTC)
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from services.digest_service import send_daily_digest
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
+        scheduler.start()
+        logger.info("Daily digest scheduler started (6:00 AM UTC)")
+    except Exception as e:
+        logger.warning(f"Digest scheduler setup failed: {e}")
 
     await create_indexes()
     await seed_admin()
