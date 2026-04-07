@@ -400,9 +400,16 @@ async def get_market_prediction():
 
 # --- AI Hypothesis ---
 @router.get("/hypothesis/{symbol}")
-async def get_hypothesis(symbol: str, request: Request):
+async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
     user = await get_optional_user(request)
     is_pro = is_pro_user(user)
+
+    # Model access control: free users can only use gpt-5.2
+    VALID_MODELS = ["gpt-5.2", "claude-sonnet-4.5", "gemini-pro", "consensus"]
+    if model not in VALID_MODELS:
+        model = "gpt-5.2"
+    if not is_pro and model != "gpt-5.2":
+        raise HTTPException(status_code=403, detail="Premium AI models require a Pro subscription. Free users can use GPT-5.2.")
 
     try:
         from services.financial_scraping_service import FinancialScrapingService
@@ -410,7 +417,7 @@ async def get_hypothesis(symbol: str, request: Request):
         from services.world_events_service import WorldEventsService
         from services.foreign_markets_service import ForeignMarketsService
         from services.gov_filings_service import GovFilingsService
-        from services.hypothesis_service import HypothesisService
+        from services.multi_model_hypothesis_service import generate_hypothesis
 
         financial_scraper = FinancialScrapingService()
         crypto_scraper = CryptoScrapingService()
@@ -444,11 +451,11 @@ async def get_hypothesis(symbol: str, request: Request):
                 },
             }
 
-        hypothesis_svc = HypothesisService(os.environ.get("EMERGENT_LLM_KEY"))
-        hypothesis = await hypothesis_svc.generate_hypothesis(symbol, data)
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        hypothesis = await generate_hypothesis(api_key, symbol, data, model=model)
         hypothesis["is_pro"] = True
 
-        # Check for verdict change → generate notification
+        # Check for verdict change -> generate notification
         if user and hypothesis.get("verdict"):
             try:
                 prev = await db.hypothesis_history.find_one(
@@ -473,6 +480,8 @@ async def get_hypothesis(symbol: str, request: Request):
                 logging.warning(f"Notification creation error: {notif_err}")
 
         return hypothesis
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error generating hypothesis for {symbol}: {e}")
         raise HTTPException(status_code=500, detail="Error generating hypothesis")
