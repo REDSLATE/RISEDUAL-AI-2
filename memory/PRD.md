@@ -86,13 +86,18 @@ All critical and important findings from the code quality audit have been resolv
 - **API**: `GET /api/hypothesis/{symbol}?model={gpt-5.2|claude-sonnet-4.5|gemini-pro|consensus}`
 - **Service**: `/app/backend/services/multi_model_hypothesis_service.py`
 
+## Fixes Applied (2026-04-07, Fork Session)
+- **Finnhub Congressional 403 Fix**: `gov_filings_service.py` now uses per-category fallback — Finnhub for insider trades & earnings calendar, web scraping (Capitol Trades/QuiverQuant) for congressional trades when Finnhub returns 403 on free tier
+- **MongoDB Query Projection Optimization**: Added `{"_id": 0}` projections to `routes/ai.py`, `routes/workspace.py`, `routes/journal.py` find/find_one calls to reduce data transfer
+- **Deployment Health Check**: Passed with zero findings. Application ready for production deployment.
+- **Testing**: Iteration 24 — 100% backend pass rate (9/9 tests)
+
 ## Prioritized Backlog
-### P1 - Upcoming
-- Deployment to risedual.ai
+### P0 - Ready
+- Deployment to risedual.ai (Health check passed, zero blockers)
 ### P2 - Future
 - Real broker integration (Alpaca OAuth)
-- Alpha Vantage API upgrade
+- Migrate JWT from localStorage to httpOnly cookies (security hardening)
 
 ## Mocked Features
 - Broker trading execution (Alpaca)
-- Email sending (placeholder Resend API key)
