@@ -189,6 +189,34 @@ class GovFilingsService:
         return trades
 
     async def get_all_gov_data(self) -> Dict:
+        # Try Finnhub first (reliable API), fallback to scraping
+        finnhub_data = {}
+        try:
+            from services.finnhub_service import FinnhubService
+            fh = FinnhubService()
+            if fh._is_configured():
+                finnhub_data = await fh.get_all_data_for_predictions()
+        except Exception as e:
+            logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
+
+        if finnhub_data.get("congressional_count", 0) > 0:
+            # Use Finnhub data as primary
+            fed_announcements = await self.get_fed_announcements()
+            return {
+                'insider_trades': [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])],
+                'insider_count': finnhub_data.get("insider_count", 0),
+                'fed_announcements': fed_announcements,
+                'fed_count': len(fed_announcements),
+                'congressional_trades': finnhub_data.get("congressional_trades", []),
+                'congressional_count': finnhub_data.get("congressional_count", 0),
+                'upcoming_earnings': finnhub_data.get("upcoming_earnings", []),
+                'earnings_count': finnhub_data.get("earnings_count", 0),
+                'company_news_finnhub': finnhub_data.get("company_news", []),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'source': 'finnhub',
+            }
+
+        # Fallback to web scraping
         insider_trades = await self.get_sec_filings()
         fed_announcements = await self.get_fed_announcements()
         congressional_trades = await self.get_congressional_trades()
@@ -201,4 +229,5 @@ class GovFilingsService:
             'congressional_trades': congressional_trades,
             'congressional_count': len(congressional_trades),
             'timestamp': datetime.now(timezone.utc).isoformat(),
+            'source': 'scraping',
         }
