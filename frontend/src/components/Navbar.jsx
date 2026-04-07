@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2 } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -72,6 +72,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('momentum')}>Momentum Close Strength</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('fast-movers')}>Fast Mover Calls</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('unusual-volume')}>Unusual Options Volume</DropdownMenuItem>
+              <DropdownMenuItem className="text-cyan-400 hover:text-cyan-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMarketplace} data-testid="nav-marketplace-btn">
+                <Store className="w-4 h-4 mr-2" /> Strategy Marketplace
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -138,6 +141,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-violet-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenStrategy} data-testid="nav-strategy-btn">
                   <Wand2 className="w-4 h-4 mr-2" /> Strategy Builder
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-cyan-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMarketplace} data-testid="nav-marketplace-menu-btn">
+                  <Store className="w-4 h-4 mr-2" /> Marketplace
                 </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
@@ -234,6 +240,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-violet-900/30 text-violet-400 border-violet-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenStrategy(); setMobileMenuOpen(false); }} data-testid="mobile-strategy-btn">
                   <Wand2 className="w-3 h-3 mr-1" /> Strategy
+                </Button>
+                <Button variant="outline" size="sm" className="bg-cyan-900/30 text-cyan-400 border-cyan-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenMarketplace(); setMobileMenuOpen(false); }} data-testid="mobile-marketplace-btn">
+                  <Store className="w-3 h-3 mr-1" /> Marketplace
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

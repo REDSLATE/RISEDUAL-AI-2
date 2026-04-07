@@ -1,11 +1,13 @@
-"""Strategy Builder routes — AI-powered trading strategy generation."""
-from fastapi import APIRouter, HTTPException, Request
+"""Strategy Builder routes — AI-powered trading strategy generation + Marketplace."""
+from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
+from typing import Optional
 import os
 import logging
+import uuid
 from datetime import datetime, timezone
 
-from services.auth_helpers import get_current_user, is_pro_user
+from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -31,6 +33,14 @@ class BacktestRequest(BaseModel):
     strategy: dict
     symbol: str
     years: int = 3
+
+
+class PublishRequest(BaseModel):
+    strategy: dict
+    description: str
+    backtest_symbol: str
+    backtest_years: int
+    backtest_metrics: dict
 
 
 # --- Generate Strategy ---
@@ -125,7 +135,7 @@ async def delete_strategy(name: str, request: Request):
 @router.post("/strategy/backtest")
 async def backtest_strategy(req: BacktestRequest, request: Request):
     """Run a backtest simulation on a strategy with historical price data."""
-    user = await get_current_user(request)
+    await get_current_user(request)  # auth check
 
     if not req.symbol.strip():
         raise HTTPException(status_code=400, detail="Symbol is required")
@@ -154,3 +164,110 @@ async def get_code_quality(request: Request):
 
     from services.strategy_service import get_code_quality_score
     return await get_code_quality_score(db)
+
+
+# ═══════════════════════════════════════════════
+# STRATEGY MARKETPLACE
+# ═══════════════════════════════════════════════
+
+@router.post("/marketplace/publish")
+async def publish_to_marketplace(req: PublishRequest, request: Request):
+    """Publish a strategy with backtest results to the marketplace. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required to publish strategies.")
+
+    strategy_id = str(uuid.uuid4())[:12]
+    doc = {
+        "strategy_id": strategy_id,
+        "author_id": user["_id"],
+        "author_name": user.get("name") or user.get("email", "").split("@")[0],
+        "strategy": req.strategy,
+        "description": req.description,
+        "backtest": {
+            "symbol": req.backtest_symbol.upper(),
+            "years": req.backtest_years,
+            "metrics": req.backtest_metrics,
+        },
+        "views": 0,
+        "clones": 0,
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.marketplace_strategies.insert_one(doc)
+    return {"message": "Strategy published to marketplace", "strategy_id": strategy_id}
+
+
+@router.get("/marketplace/list")
+async def list_marketplace(
+    request: Request,
+    sort: str = Query("newest", regex="^(newest|win_rate|pnl|clones)$"),
+    limit: int = Query(30, ge=1, le=100),
+    skip: int = Query(0, ge=0),
+):
+    """Browse marketplace strategies. Public endpoint (no auth required)."""
+    sort_map = {
+        "newest": ("published_at", -1),
+        "win_rate": ("backtest.metrics.win_rate", -1),
+        "pnl": ("backtest.metrics.total_pnl", -1),
+        "clones": ("clones", -1),
+    }
+    sort_field, sort_dir = sort_map.get(sort, ("published_at", -1))
+
+    strategies = []
+    cursor = db.marketplace_strategies.find(
+        {}, {"_id": 0, "author_id": 0}
+    ).sort(sort_field, sort_dir).skip(skip).limit(limit)
+
+    async for doc in cursor:
+        strategies.append(doc)
+
+    total = await db.marketplace_strategies.count_documents({})
+    return {"strategies": strategies, "total": total}
+
+
+@router.get("/marketplace/{strategy_id}")
+async def get_marketplace_strategy(strategy_id: str, request: Request):
+    """Get full details of a marketplace strategy. Increments view count."""
+    doc = await db.marketplace_strategies.find_one(
+        {"strategy_id": strategy_id},
+        {"_id": 0, "author_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    await db.marketplace_strategies.update_one(
+        {"strategy_id": strategy_id},
+        {"$inc": {"views": 1}}
+    )
+    return doc
+
+
+@router.post("/marketplace/{strategy_id}/clone")
+async def clone_marketplace_strategy(strategy_id: str, request: Request):
+    """Clone a marketplace strategy into the user's saved strategies. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required to clone strategies.")
+
+    source = await db.marketplace_strategies.find_one({"strategy_id": strategy_id})
+    if not source:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Save to user's strategies
+    doc = {
+        "user_id": user["_id"],
+        "name": source["strategy"].get("name", "Cloned Strategy"),
+        "description": source.get("description", ""),
+        "strategy": source["strategy"],
+        "cloned_from": strategy_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.strategies.insert_one(doc)
+
+    # Increment clone counter
+    await db.marketplace_strategies.update_one(
+        {"strategy_id": strategy_id},
+        {"$inc": {"clones": 1}}
+    )
+
+    return {"message": "Strategy cloned to your account", "name": doc["name"]}

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Wand2, Save, Trash2, ChevronDown, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Shield, Clock, Target, Layers, X, RefreshCw, Sparkles, Lock, Zap, FlaskConical } from 'lucide-react';
+import { Wand2, Save, Trash2, ChevronDown, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Shield, Clock, Target, Layers, X, RefreshCw, Sparkles, Lock, Zap, FlaskConical, Store } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -30,6 +30,8 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
   const [backtestYears, setBacktestYears] = useState(3);
   const [backtesting, setBacktesting] = useState(false);
   const [backtestResult, setBacktestResult] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(false);
 
   const fetchSaved = useCallback(async () => {
     try {
@@ -99,6 +101,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
     if (!strategy || !backtestSymbol.trim()) return;
     setBacktesting(true);
     setBacktestResult(null);
+    setPublished(false);
     setError('');
     try {
       const res = await authFetch(`${API}/strategy/backtest`, {
@@ -115,6 +118,35 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
       setError(err.message);
     } finally {
       setBacktesting(false);
+    }
+  };
+
+  const publishToMarketplace = async () => {
+    if (!strategy || !backtestResult) return;
+    if (!isPro) { onSubscribe(); return; }
+    setPublishing(true);
+    setError('');
+    try {
+      const res = await authFetch(`${API}/marketplace/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategy,
+          description,
+          backtest_symbol: backtestResult.symbol,
+          backtest_years: backtestYears,
+          backtest_metrics: backtestResult.metrics,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'Publish failed');
+      }
+      setPublished(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -363,7 +395,37 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
 
               {/* Backtest Results */}
               {backtestResult && (
-                <BacktestResults result={backtestResult} onClose={() => setBacktestResult(null)} />
+                <>
+                  <BacktestResults result={backtestResult} onClose={() => setBacktestResult(null)} />
+                  {/* Publish to Marketplace */}
+                  <Card className="bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border-cyan-800/30 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3" data-testid="publish-section">
+                    <div className="flex items-center gap-2">
+                      <Store className="w-5 h-5 text-cyan-400" />
+                      <div>
+                        <p className="text-white text-sm font-semibold">Share with the community</p>
+                        <p className="text-slate-400 text-[10px]">Publish this backtested strategy to the Marketplace</p>
+                      </div>
+                    </div>
+                    {published ? (
+                      <Badge className="bg-emerald-900/40 text-emerald-400 border-emerald-700/50 text-xs px-3 py-1">Published</Badge>
+                    ) : (
+                      <Button
+                        onClick={publishToMarketplace}
+                        disabled={publishing}
+                        className={`text-xs h-8 rounded-lg px-4 ${isPro ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-slate-700 text-slate-400'}`}
+                        data-testid="publish-marketplace-btn"
+                      >
+                        {!isPro ? (
+                          <><Lock className="w-3 h-3 mr-1" /> Pro Only</>
+                        ) : publishing ? (
+                          'Publishing...'
+                        ) : (
+                          <><Store className="w-3.5 h-3.5 mr-1" /> Publish to Marketplace</>
+                        )}
+                      </Button>
+                    )}
+                  </Card>
+                </>
               )}
             </div>
           )}
