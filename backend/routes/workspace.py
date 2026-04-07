@@ -36,7 +36,7 @@ async def add_to_watchlist(request: Request):
         raise HTTPException(status_code=400, detail="Ticker required")
     # Enforce watchlist cap for free users
     if not is_pro_user(user):
-        doc = await db.watchlists.find_one({"user_id": user["_id"]})
+        doc = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0, "tickers": 1})
         current = doc.get("tickers", []) if doc else []
         if ticker not in current and len(current) >= FREE_WATCHLIST_LIMIT:
             raise HTTPException(status_code=403, detail=f"Free accounts are limited to {FREE_WATCHLIST_LIMIT} watchlist tickers. Upgrade to Pro for unlimited.")

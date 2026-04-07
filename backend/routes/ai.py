@@ -49,7 +49,7 @@ async def chat(chat_request: ChatRequest, request: Request):
                 raise HTTPException(status_code=429, detail=f"Free accounts are limited to {FREE_CHAT_DAILY_LIMIT} AI messages per day. Upgrade to Pro for unlimited.")
             await db.chat_usage.insert_one({"user_id": user["_id"], "date": today, "timestamp": datetime.now(timezone.utc).isoformat()})
 
-        session = await db.chat_sessions.find_one({"session_id": chat_request.sessionId})
+        session = await db.chat_sessions.find_one({"session_id": chat_request.sessionId}, {"_id": 0, "session_id": 1})
         if not session:
             new_session = ChatSession(session_id=chat_request.sessionId)
             session_doc = new_session.dict()
@@ -84,7 +84,7 @@ async def chat(chat_request: ChatRequest, request: Request):
 @router.get("/chat/history/{session_id}")
 async def get_chat_history(session_id: str, request: Request):
     try:
-        session = await db.chat_sessions.find_one({"session_id": session_id})
+        session = await db.chat_sessions.find_one({"session_id": session_id}, {"_id": 0, "messages": 1})
         if not session:
             return {"messages": []}
         messages = session.get("messages", [])
@@ -453,10 +453,11 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
             try:
                 prev = await db.hypothesis_history.find_one(
                     {"user_id": user["_id"], "symbol": symbol.upper()},
+                    {"_id": 0, "verdict": 1},
                     sort=[("searched_at", -1)]
                 )
                 if prev and prev.get("verdict") and prev["verdict"] != hypothesis["verdict"]:
-                    wl = await db.watchlists.find_one({"user_id": user["_id"]})
+                    wl = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0, "tickers": 1})
                     tickers = wl.get("tickers", []) if wl else []
                     await db.notifications.insert_one({
                         "user_id": user["_id"],

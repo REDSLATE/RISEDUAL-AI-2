@@ -154,6 +154,7 @@ async def attach_hypothesis(trade_id: str, request: Request):
     # Find latest hypothesis for this ticker
     hypothesis = await db.hypothesis_history.find_one(
         {"user_id": user["_id"], "ticker": trade["ticker"]},
+        {"_id": 0, "verdict": 1, "confidence": 1, "summary": 1},
         sort=[("created_at", -1)]
     )
     if not hypothesis:

@@ -199,33 +199,34 @@ class GovFilingsService:
         except Exception as e:
             logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
 
-        finnhub_has_data = (
-            finnhub_data.get("congressional_count", 0) > 0 or
-            finnhub_data.get("insider_count", 0) > 0 or
-            finnhub_data.get("earnings_count", 0) > 0
+        finnhub_has_insider = finnhub_data.get("insider_count", 0) > 0
+        finnhub_has_earnings = finnhub_data.get("earnings_count", 0) > 0
+        finnhub_has_congressional = finnhub_data.get("congressional_count", 0) > 0
+
+        # Always fetch Fed announcements (Finnhub doesn't cover this)
+        fed_announcements = await self.get_fed_announcements()
+
+        # Build result using best available source per category
+        insider_trades = (
+            [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])]
+            if finnhub_has_insider
+            else await self.get_sec_filings()
         )
 
-        if finnhub_has_data:
-            # Use Finnhub data as primary
-            fed_announcements = await self.get_fed_announcements()
-            return {
-                'insider_trades': [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])],
-                'insider_count': finnhub_data.get("insider_count", 0),
-                'fed_announcements': fed_announcements,
-                'fed_count': len(fed_announcements),
-                'congressional_trades': finnhub_data.get("congressional_trades", []),
-                'congressional_count': finnhub_data.get("congressional_count", 0),
-                'upcoming_earnings': finnhub_data.get("upcoming_earnings", []),
-                'earnings_count': finnhub_data.get("earnings_count", 0),
-                'company_news_finnhub': finnhub_data.get("company_news", []),
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'source': 'finnhub',
-            }
+        # Congressional: Finnhub free tier returns 403, so always try scraping fallback
+        congressional_trades = (
+            finnhub_data.get("congressional_trades", [])
+            if finnhub_has_congressional
+            else await self.get_congressional_trades()
+        )
 
-        # Fallback to web scraping
-        insider_trades = await self.get_sec_filings()
-        fed_announcements = await self.get_fed_announcements()
-        congressional_trades = await self.get_congressional_trades()
+        upcoming_earnings = finnhub_data.get("upcoming_earnings", []) if finnhub_has_earnings else []
+
+        source_parts = []
+        if finnhub_has_insider or finnhub_has_earnings:
+            source_parts.append("finnhub")
+        if not finnhub_has_congressional or not finnhub_has_insider:
+            source_parts.append("scraping")
 
         return {
             'insider_trades': insider_trades,
@@ -234,6 +235,9 @@ class GovFilingsService:
             'fed_count': len(fed_announcements),
             'congressional_trades': congressional_trades,
             'congressional_count': len(congressional_trades),
+            'upcoming_earnings': upcoming_earnings,
+            'earnings_count': len(upcoming_earnings),
+            'company_news_finnhub': finnhub_data.get("company_news", []),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': 'scraping',
+            'source': '+'.join(source_parts) if source_parts else 'none',
         }

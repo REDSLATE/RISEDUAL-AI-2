@@ -41,12 +41,16 @@ class FinnhubService:
     # ── Congressional Trades ─────────────────────────────────────────────
 
     async def get_congressional_trades(self, symbol: Optional[str] = None) -> List[Dict]:
-        """Fetch recent congressional stock trades from Finnhub."""
+        """Fetch recent congressional stock trades from Finnhub.
+        Note: This endpoint requires a premium Finnhub plan. Returns empty on 403."""
         params = {}
         if symbol:
             params["symbol"] = symbol.upper()
 
         data = await self._get("/stock/congressional-trading", params)
+        if not data:
+            # 403 or other error — free tier doesn't include this endpoint
+            return []
         trades = data.get("data", []) if isinstance(data, dict) else []
 
         results = []
