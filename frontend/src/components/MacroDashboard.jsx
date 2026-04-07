@@ -353,25 +353,33 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
   );
 };
 
+const getMarketStateLabel = (state) => {
+  if (state === 'REGULAR') return 'OPEN';
+  return state || 'CLOSED';
+};
+
+const getMarketStateStyle = (state) => {
+  if (state === 'REGULAR') return 'bg-emerald-900/40 text-emerald-400';
+  if (state === 'PRE') return 'bg-amber-900/40 text-amber-400';
+  return 'bg-slate-700 text-slate-400';
+};
+
+const getMarketCardBg = (isPulsing, isHot, isUp) => {
+  if (isPulsing) return 'ring-2 ring-[#0052FF]/50 animate-pulse';
+  if (isHot) return isUp ? 'bg-emerald-950/15 border-emerald-800/30' : 'bg-red-950/15 border-red-800/30';
+  return 'bg-slate-800/40 border-slate-700/30';
+};
+
 const MarketCard = ({ market, compact, isPulsing }) => {
   const isUp = market.change_percent >= 0;
   const absPct = Math.abs(market.change_percent || 0).toFixed(2);
   const isHot = Math.abs(market.change_percent || 0) >= 2;
 
   return (
-    <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${
-      isPulsing ? 'ring-2 ring-[#0052FF]/50 animate-pulse' :
-      isHot
-        ? isUp ? 'bg-emerald-950/15 border-emerald-800/30' : 'bg-red-950/15 border-red-800/30'
-        : 'bg-slate-800/40 border-slate-700/30'
-    }`} data-testid={`market-card-${market.symbol}`}>
+    <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${getMarketCardBg(isPulsing, isHot, isUp)}`} data-testid={`market-card-${market.symbol}`}>
       <div className="flex items-center justify-between mb-1">
         <span className="text-white text-xs font-semibold truncate">{market.name}</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-          market.market_state === 'REGULAR' ? 'bg-emerald-900/40 text-emerald-400' :
-          market.market_state === 'PRE' ? 'bg-amber-900/40 text-amber-400' :
-          'bg-slate-700 text-slate-400'
-        }`}>{market.market_state === 'REGULAR' ? 'OPEN' : market.market_state || 'CLOSED'}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded ${getMarketStateStyle(market.market_state)}`}>{getMarketStateLabel(market.market_state)}</span>
       </div>
       <div className="flex items-end justify-between">
         <span className="text-white text-lg font-bold tabular-nums">
@@ -390,6 +398,23 @@ const MarketCard = ({ market, compact, isPulsing }) => {
       )}
     </Card>
   );
+};
+
+const getPartyStyle = (party) => {
+  if (party === 'R') return 'bg-red-900/30 text-red-400';
+  if (party === 'D') return 'bg-blue-900/30 text-blue-400';
+  return 'bg-slate-700 text-slate-400';
+};
+
+const getPartyLabel = (party, chamber) => {
+  const label = party || '—';
+  return chamber ? `${label} · ${chamber}` : label;
+};
+
+const getTradeTypeColor = (type) => {
+  const lower = type?.toLowerCase();
+  if (lower === 'buy' || lower === 'purchase') return 'text-emerald-400';
+  return 'text-red-400';
 };
 
 /* ── Congressional Trades Tab ── */
@@ -433,23 +458,15 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
                   <tr key={trade.ticker ? `${trade.representative}-${trade.ticker}-${i}` : i} className="border-b border-slate-800/40 hover:bg-slate-700/20 transition-colors">
                     <td className="px-4 py-2.5 text-white font-medium">{trade.representative || 'N/A'}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        trade.party === 'R' ? 'bg-red-900/30 text-red-400' :
-                        trade.party === 'D' ? 'bg-blue-900/30 text-blue-400' :
-                        'bg-slate-700 text-slate-400'
-                      }`}>
-                        {trade.party === 'R' ? 'R' : trade.party === 'D' ? 'D' : trade.party || '—'}
-                        {trade.chamber ? ` · ${trade.chamber}` : ''}
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${getPartyStyle(trade.party)}`}>
+                        {getPartyLabel(trade.party, trade.chamber)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="text-[#0052FF] font-bold">{trade.ticker || '—'}</span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={`text-xs font-semibold uppercase ${
-                        trade.type?.toLowerCase() === 'buy' || trade.type?.toLowerCase() === 'purchase'
-                          ? 'text-emerald-400' : 'text-red-400'
-                      }`}>{trade.type || '—'}</span>
+                      <span className={`text-xs font-semibold uppercase ${getTradeTypeColor(trade.type)}`}>{trade.type || '—'}</span>
                     </td>
                     <td className="px-4 py-2.5 text-slate-300 text-xs">{trade.amount || '—'}</td>
                     <td className="px-4 py-2.5 text-slate-500 text-xs">{trade.transaction_date || '—'}</td>

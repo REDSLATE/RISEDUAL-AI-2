@@ -1,356 +1,208 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Sparkles, Image, X, BarChart3, Building2, ChevronDown, Lock } from 'lucide-react';
+import React, { useState, useRef, useCallback } from 'react';
+import { MessageSquare, History, X, Plus, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Card } from './ui/card';
-import { Badge } from './ui/badge';
 import { useAuth, authFetch } from '../contexts/AuthContext';
-import { sendChatMessage, researchCompany } from '../services/api';
+import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
 import ChartPatternLibrary from './ChartPatternLibrary';
-import { ResearchCard } from './CompanyResearch';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const TradeGPTChat = ({ onSubscribe }) => {
-  const { user, isPro } = useAuth();
-  const [chatLimit, setChatLimit] = useState({ remaining: 5, used: 0, is_pro: false });
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: 'Hello! I\'m RISEDUAL AI, your AI-powered trading assistant. Ask me anything about stocks, options, market analysis, or trading strategies.\n\nTip: Type /patterns to browse common chart patterns, or upload a screenshot for AI analysis!',
-    },
-  ]);
+const TradeGPTChat = ({ onLimitReached }) => {
+  const { isPro } = useAuth();
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substring(7)}`);
-  const [isOpen, setIsOpen] = useState(false);
-
-  const fetchChatLimit = useCallback(async () => {
-    if (!user) return;
-    try {
-      const res = await authFetch(`${API}/chat/limit`);
-      if (res.ok) setChatLimit(await res.json());
-    } catch (e) { console.error('Chat limit fetch error:', e); }
-  }, [user]);
-
-  useEffect(() => { if (isOpen) fetchChatLimit(); }, [isOpen, fetchChatLimit]);
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showPatterns, setShowPatterns] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [imageBase64, setImageBase64] = useState(null);
-  const fileInputRef = useRef(null);
-  const messagesEndRef = useRef(null);
+  const [copiedId, setCopiedId] = useState(null);
+  const inputRef = useRef(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  useEffect(() => {
-    const handleOpenChat = () => setIsOpen(true);
-    window.addEventListener('risedualai-open-chat', handleOpenChat);
-    return () => window.removeEventListener('risedualai-open-chat', handleOpenChat);
+  const handleCopy = useCallback((idx, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(idx);
+    setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleImageSelect = useCallback((e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      alert('Please upload a JPEG, PNG, or WEBP image.');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      alert('Image must be under 10MB.');
-      return;
-    }
-
+    setSelectedImage(file);
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target.result;
-      setImagePreview(dataUrl);
-      const base64 = dataUrl.split(',')[1];
-      setImageBase64(base64);
-    };
+    reader.onload = (ev) => setImagePreview(ev.target.result);
     reader.readAsDataURL(file);
-    e.target.value = '';
-  };
+  }, []);
 
-  const clearImage = () => {
+  const clearImage = useCallback(() => {
+    setSelectedImage(null);
     setImagePreview(null);
-    setImageBase64(null);
-  };
+  }, []);
 
-  const handlePatternSelect = (pattern) => {
-    const prompt = `Explain the "${pattern.name}" chart pattern in detail. Include: 1) How to identify it, 2) What it signals (${pattern.type}), 3) Entry/exit strategies, 4) Stop-loss placement, 5) Real-world examples of this pattern. Keep it actionable for a trader.`;
+  const handlePatternSelect = useCallback((pattern) => {
+    setInput(`Analyze ${pattern.name} chart pattern: When does it typically form? What's the expected breakout direction and target? Current success rate?`);
+    setShowPatterns(false);
+    inputRef.current?.focus();
+  }, []);
+
+  const sendMessage = useCallback(async () => {
+    const text = input.trim();
+    if (!text && !selectedImage) return;
+
+    const userMessage = { role: 'user', content: text || 'Analyze this chart image', image: imagePreview };
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
-    
-    const userMessage = {
-      role: 'user',
-      content: `Tell me about the ${pattern.name} pattern`,
-    };
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
-
-    sendChatMessage(prompt, sessionId)
-      .then((response) => {
-        setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
-      })
-      .catch(() => {
-        setMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error analyzing that pattern. Please try again.' }]);
-      })
-      .finally(() => setIsLoading(false));
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() && !imageBase64) return;
-
-    // Rate limit check for free users
-    if (user && !isPro && chatLimit.remaining <= 0) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `You've used all ${chatLimit.limit} free messages for today. **Upgrade to Pro** for unlimited AI chat access.` }]);
-      return;
-    }
-
-    // Check for /patterns command
-    if (input.trim().toLowerCase() === '/patterns') {
-      setMessages((prev) => [...prev, 
-        { role: 'user', content: '/patterns' },
-        { role: 'assistant', content: '__PATTERN_LIBRARY__' }
-      ]);
-      setInput('');
-      return;
-    }
-
-    // Check for /research TICKER command
-    const researchMatch = input.trim().match(/^\/research\s+(\w+)$/i);
-    if (researchMatch) {
-      const ticker = researchMatch[1].toUpperCase();
-      setMessages((prev) => [...prev, { role: 'user', content: `/research ${ticker}` }]);
-      setInput('');
-      setIsLoading(true);
-      try {
-        const data = await researchCompany(ticker);
-        setMessages((prev) => [...prev, { role: 'assistant', content: '__RESEARCH__', researchData: data }]);
-      } catch {
-        setMessages((prev) => [...prev, { role: 'assistant', content: `Could not find research data for ${ticker}.` }]);
-      } finally {
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    const userMessage = {
-      role: 'user',
-      content: input || (imageBase64 ? 'Analyze this chart' : ''),
-      image: imagePreview || null,
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    const currentMessage = input || 'Please analyze this chart/image and provide trading insights.';
-    const currentImage = imageBase64;
-
-    setInput('');
-    clearImage();
-    setIsLoading(true);
+    setLoading(true);
 
     try {
-      const response = await sendChatMessage(currentMessage, sessionId, currentImage);
-      setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
-      if (user && !isPro) setChatLimit(prev => ({ ...prev, used: prev.used + 1, remaining: Math.max(0, prev.remaining - 1) }));
-    } catch (error) {
-      if (error?.message?.includes('429') || error?.message?.includes('limited')) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: `You've reached your daily free message limit. **Upgrade to Pro** for unlimited chat.` }]);
-      } else {
-        console.error('Error sending message:', error);
-        setMessages((prev) => [...prev, { role: 'assistant', content: 'I apologize, but I encountered an error. Please try again.' }]);
+      const body = new FormData();
+      body.append('message', text || 'Analyze this chart image');
+      body.append('sessionId', sessionId);
+      if (selectedImage) body.append('image', selectedImage);
+
+      const res = await authFetch(`${API}/chat`, { method: 'POST', body });
+      clearImage();
+
+      if (res.status === 429) {
+        const errData = await res.json().catch(() => ({}));
+        setMessages(prev => [...prev, { role: 'assistant', content: errData.detail || 'Daily free limit reached. Upgrade to Pro for unlimited access.' }]);
+        if (onLimitReached) onLimitReached();
+        return;
       }
+
+      if (!res.ok) throw new Error('Chat request failed');
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response || data.message || 'No response generated.' }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}. Please try again.` }]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [input, selectedImage, imagePreview, sessionId, clearImage, onLimitReached]);
 
-  const renderMessageContent = (message, index) => {
-    if (message.content === '__PATTERN_LIBRARY__') {
-      return <ChartPatternLibrary onSelectPattern={handlePatternSelect} />;
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API}/chat/sessions`);
+      if (res.ok) setChatHistory(await res.json());
+    } catch (err) {
+      console.error('Error loading chat history:', err);
     }
+  }, []);
 
-    if (message.content === '__RESEARCH__' && message.researchData) {
-      return <ResearchCard data={message.researchData} compact={true} />;
+  const loadSession = useCallback(async (sid) => {
+    try {
+      const res = await authFetch(`${API}/chat/history/${sid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSessionId(sid);
+        setMessages(data.messages || []);
+        setShowHistory(false);
+      }
+    } catch (err) {
+      console.error('Error loading session:', err);
     }
+  }, []);
 
-    return (
-      <>
-        {message.image && (
-          <img
-            src={message.image}
-            alt="Uploaded chart"
-            className="rounded mb-2 max-h-40 w-auto"
-            data-testid={`chat-image-${index}`}
-          />
-        )}
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-      </>
-    );
-  };
+  const newChat = useCallback(() => {
+    setSessionId(`s_${Date.now()}`);
+    setMessages([]);
+    setShowHistory(false);
+  }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 max-lg:bottom-20 max-lg:right-3">
-      <div className="mb-4 flex justify-end">
-        <Button
-          data-testid="chat-toggle-btn"
-          className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-full w-14 h-14 shadow-lg hidden lg:flex"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <Sparkles className="w-6 h-6" />
-        </Button>
+    <div className="flex flex-col h-full bg-[#0F172A] rounded-xl border border-slate-700/50 overflow-hidden" data-testid="trade-gpt-chat">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-[#0052FF]/20 rounded-lg flex items-center justify-center">
+            <MessageSquare className="w-4 h-4 text-[#0052FF]" />
+          </div>
+          <div>
+            <h3 className="text-white text-sm font-semibold">RISEDUAL AI Chat</h3>
+            <p className="text-slate-500 text-[10px]">
+              {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
+              {selectedImage && ' | Image attached'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
+            Patterns
+          </Button>
+          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
+            <History className="w-4 h-4" />
+          </Button>
+          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={newChat} data-testid="new-chat">
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
-      {isOpen && <Card
-        data-testid="chat-window"
-        className="w-96 max-lg:w-[calc(100vw-1.5rem)] max-lg:max-w-none h-[500px] max-lg:h-[70vh] bg-slate-900 border-slate-700/50 flex flex-col shadow-2xl z-50 rounded-xl max-lg:fixed max-lg:bottom-20 max-lg:right-3 max-lg:left-3"
-      >
-        <div className="bg-[#0052FF] text-white px-4 py-3 rounded-t-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-white/15 flex items-center justify-center p-0.5">
-                <img src="/logo-ai-avatar.png" alt="AI" className="w-full h-full object-contain brightness-150 drop-shadow-lg" />
-              </div>
-              <h3 className="font-semibold text-lg">RISEDUAL AI</h3>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors" data-testid="chat-minimize-btn">
-              <ChevronDown className="w-5 h-5" />
-            </button>
-          </div>
-          <p className="text-xs text-blue-200 mt-1 flex items-center gap-2">
-              AI Trading Assistant
-              {user && !isPro && (
-                <Badge className="bg-white/20 text-white/80 border-0 text-[10px]">
-                  {chatLimit.remaining}/{chatLimit.limit} msgs left
-                </Badge>
-              )}
-              {isPro && <Badge className="bg-white/20 text-white/80 border-0 text-[10px]">Unlimited</Badge>}
-            </p>
-        </div>
+      {/* Sidebar: History */}
+      {showHistory && (
+        <ChatHistorySidebar
+          history={chatHistory}
+          onSelect={loadSession}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
-          {messages.map((message, index) => (
-            <div
-              key={`msg-${index}-${message.role}`}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`rounded-lg px-4 py-2 ${
-                  message.content === '__PATTERN_LIBRARY__' || message.content === '__RESEARCH__'
-                    ? 'max-w-[95%]'
-                    : 'max-w-[80%]'
-                } ${
-                  message.role === 'user'
-                    ? 'bg-[#0052FF] text-white'
-                    : 'bg-[#1E293B] text-slate-200'
-                }`}
-              >
-                {renderMessageContent(message, index)}
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-[#1E293B] text-slate-200 rounded-lg px-4 py-2">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+      {/* Pattern Library */}
+      {showPatterns && (
+        <div className="border-b border-slate-700/50 max-h-[300px] overflow-y-auto">
+          <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
         </div>
+      )}
 
-        {imagePreview && (
-          <div className="px-4 py-2 border-t border-slate-700" data-testid="image-preview-area">
-            <div className="relative inline-block">
-              <img
-                src={imagePreview}
-                alt="Upload preview"
-                className="h-16 w-auto rounded border border-slate-600"
-                data-testid="image-preview-thumbnail"
-              />
-              <button
-                onClick={clearImage}
-                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center"
-                data-testid="clear-image-btn"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Messages */}
+      <ChatMessages
+        messages={messages}
+        showPatterns={showPatterns}
+        copiedId={copiedId}
+        onCopy={handleCopy}
+      />
 
-        <div className="border-t border-slate-700 p-3">
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => {
-                setMessages((prev) => [...prev, 
-                  { role: 'user', content: '/patterns' },
-                  { role: 'assistant', content: '__PATTERN_LIBRARY__' }
-                ]);
-              }}
-              className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-400 hover:text-blue-400 hover:border-blue-500 transition-colors flex items-center gap-1"
-              data-testid="patterns-shortcut-btn"
-            >
-              <BarChart3 className="w-3 h-3" />
-              /patterns
-            </button>
-            <button
-              onClick={() => setInput('/research ')}
-              className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-400 hover:text-[#0052FF] hover:border-[#0052FF] transition-colors flex items-center gap-1"
-              data-testid="research-shortcut-btn"
-            >
-              <Building2 className="w-3 h-3" />
-              /research
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              data-testid="image-file-input"
-            />
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              variant="outline"
-              size="icon"
-              className="border-slate-600 bg-[#1E293B] hover:bg-[#334155] text-slate-300 shrink-0"
-              title="Upload chart screenshot"
-              data-testid="upload-image-btn"
-            >
-              <Image className="w-4 h-4" />
-            </Button>
-            <Input
-              type="text"
-              placeholder="Ask about stocks, or type /patterns"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              className="flex-1 bg-[#1E293B] border-slate-600 text-white placeholder-slate-500"
-              data-testid="chat-input"
-            />
-            <Button
-              onClick={handleSend}
-              disabled={isLoading || (!input.trim() && !imageBase64)}
-              className="bg-[#0052FF] hover:bg-[#2563EB] text-white"
-              data-testid="chat-send-btn"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </Card>}
+      {/* Input */}
+      <ChatInputArea
+        input={input}
+        setInput={setInput}
+        onSend={sendMessage}
+        loading={loading}
+        imagePreview={imagePreview}
+        onImageSelect={handleImageSelect}
+        onClearImage={clearImage}
+        inputRef={inputRef}
+      />
     </div>
   );
 };
+
+const ChatHistorySidebar = ({ history, onSelect, onClose }) => (
+  <div className="border-b border-slate-700/50 bg-slate-900/50 p-3 max-h-[250px] overflow-y-auto" data-testid="chat-history-sidebar">
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-slate-400 text-xs font-medium">Chat History</span>
+      <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
+    </div>
+    {(!history || history.length === 0) ? (
+      <p className="text-slate-500 text-xs">No previous chats</p>
+    ) : (
+      <div className="space-y-1">
+        {history.map((s) => (
+          <button
+            key={s.session_id}
+            onClick={() => onSelect(s.session_id)}
+            className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors group"
+            data-testid={`session-${s.session_id}`}
+          >
+            <div className="text-white text-xs font-medium truncate">{s.preview || 'Chat Session'}</div>
+            <div className="text-slate-500 text-[10px]">{s.message_count || 0} messages</div>
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 export default TradeGPTChat;

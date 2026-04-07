@@ -75,58 +75,46 @@ def _verdict_color(v: str) -> str:
     return "#F59E0B"
 
 
+def _build_section_rows(items, key_fn, is_pro, max_items=5):
+    """Build table rows for a digest section, blurring non-pro items after first."""
+    html = ""
+    for i, item in enumerate(items[:max_items]):
+        if not is_pro and i >= 1:
+            html += _blurred_row()
+        else:
+            html += key_fn(item)
+    return html
+
+
+def _blurred_row():
+    return """<tr>
+<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
+<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
+</tr>"""
+
+
+def _prediction_row(p):
+    return _row(p['ticker'], f"{p['verdict']} ({p['confidence']}%)", _verdict_color(p['verdict']))
+
+
+def _dark_pool_row(dp):
+    sc = "#10B981" if dp["sentiment"] == "bullish" else "#EF4444" if dp["sentiment"] == "bearish" else "#F59E0B"
+    return _row(dp["ticker"], dp["sentiment"].title(), sc)
+
+
+def _signal_row(s):
+    return _row(s["ticker"], f"{s['signal']} ({s['strength']})")
+
+
 def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
     """Build the digest HTML email. Pro users get full data, free users get teaser."""
     date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
 
-    # Predictions section
-    predictions_html = ""
-    for i, p in enumerate(data.get("predictions", [])[:3]):
-        if not is_pro and i >= 1:
-            predictions_html += """<tr>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
-</tr>"""
-        else:
-            vc = _verdict_color(p["verdict"])
-            predictions_html += _row(
-                f"{p['ticker']}",
-                f"{p['verdict']} ({p['confidence']}%)",
-                vc
-            )
+    predictions_html = _build_section_rows(data.get("predictions", [])[:3], _prediction_row, is_pro, 3)
+    dark_pool_html = _build_section_rows(data.get("dark_pool", [])[:5], _dark_pool_row, is_pro)
+    signals_html = _build_section_rows(data.get("signals", [])[:5], _signal_row, is_pro)
 
-    # Dark pool section
-    dark_pool_html = ""
-    for i, dp in enumerate(data.get("dark_pool", [])[:5]):
-        if not is_pro and i >= 1:
-            dark_pool_html += """<tr>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
-</tr>"""
-        else:
-            sc = "#10B981" if dp["sentiment"] == "bullish" else "#EF4444" if dp["sentiment"] == "bearish" else "#F59E0B"
-            dark_pool_html += _row(dp["ticker"], f"{dp['sentiment'].title()}", sc)
-
-    # Signals section
-    signals_html = ""
-    for i, s in enumerate(data.get("signals", [])[:5]):
-        if not is_pro and i >= 1:
-            signals_html += """<tr>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
-<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
-</tr>"""
-        else:
-            signals_html += _row(s["ticker"], f"{s['signal']} ({s['strength']})")
-
-    upgrade_cta = "" if is_pro else f"""
-<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0052FF20,#6366F120);border-radius:12px;border:1px solid #0052FF40;margin:20px 0;">
-<tr><td style="padding:16px;text-align:center;">
-<p style="color:#0052FF;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Unlock Full Digest</p>
-<p style="color:#94A3B8;font-size:13px;margin:0 0 12px;">Upgrade to Pro to see all predictions, dark pool moves, and signals</p>
-<a href="{APP_URL}" style="display:inline-block;background-color:#0052FF;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;">Upgrade to Pro — $45/mo</a>
-</td></tr>
-</table>"""
-
+    upgrade_cta = "" if is_pro else _upgrade_cta_html()
     no_data_msg = '<tr><td colspan="2" style="padding:12px;color:#64748B;font-size:12px;text-align:center;">No recent data available</td></tr>'
 
     content = f"""
@@ -160,6 +148,17 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
 </table>"""
 
     return _base_email_html(content)
+
+
+def _upgrade_cta_html():
+    return f"""
+<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0052FF20,#6366F120);border-radius:12px;border:1px solid #0052FF40;margin:20px 0;">
+<tr><td style="padding:16px;text-align:center;">
+<p style="color:#0052FF;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Unlock Full Digest</p>
+<p style="color:#94A3B8;font-size:13px;margin:0 0 12px;">Upgrade to Pro to see all predictions, dark pool moves, and signals</p>
+<a href="{APP_URL}" style="display:inline-block;background-color:#0052FF;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;">Upgrade to Pro — $45/mo</a>
+</td></tr>
+</table>"""
 
 
 def _base_email_html(content: str) -> str:

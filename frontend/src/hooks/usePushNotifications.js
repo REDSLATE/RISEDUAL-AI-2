@@ -31,7 +31,6 @@ export function usePushNotifications() {
   }, []);
 
   // Check backend subscription status on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const check = async () => {
       try {
@@ -43,7 +42,7 @@ export function usePushNotifications() {
       } catch (e) { console.error('Push status check failed:', e); }
     };
     check();
-  }, []);
+  }, []); // API and authFetch are stable module-level constants
 
   const subscribe = useCallback(async () => {
     if (!supported) return false;
@@ -73,7 +72,7 @@ export function usePushNotifications() {
       console.error('Push subscribe error:', e);
       return false;
     }
-  }, [supported]);
+  }, [supported]); // API and authFetch are stable module-level constants
 
   const unsubscribe = useCallback(async () => {
     try {
@@ -88,7 +87,7 @@ export function usePushNotifications() {
       console.error('Push unsubscribe error:', e);
       return false;
     }
-  }, []);
+  }, []); // API and authFetch are stable module-level constants
 
   return { permission, subscribed, loading, supported, subscribe, unsubscribe };
 }

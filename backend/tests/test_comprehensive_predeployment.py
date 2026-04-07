@@ -11,11 +11,11 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
     BASE_URL = "http://localhost:8001"
 
-# Test credentials
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-FREE_USER_EMAIL = "freeuser_test@test.com"
-FREE_USER_PASSWORD = "Test1234!"
+# Test credentials from environment (never hardcode secrets)
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "managingdirector@redslateholdings.com")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+FREE_USER_EMAIL = os.environ.get("FREE_USER_EMAIL", "freeuser_test@test.com")
+FREE_USER_PASSWORD = os.environ.get("FREE_USER_PASSWORD", "")
 
 
 class TestAuthEndpoints:

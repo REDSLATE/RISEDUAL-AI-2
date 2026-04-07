@@ -24,8 +24,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
   const [saving, setSaving] = useState(false);
   const [closeForm, setCloseForm] = useState(null);
 
-  // Stable deps: authFetch and API are module-level constants
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // authFetch and API are module-level constants — stable across renders
   const fetchTrades = useCallback(async () => {
     setLoading(true);
     try {
@@ -39,8 +38,6 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
     finally { setLoading(false); }
   }, []);
 
-  // Stable deps: authFetch and API are module-level constants
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchAnalytics = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/journal/analytics`);
@@ -323,6 +320,11 @@ const AnalyticsTab = ({ analytics }) => {
     { label: 'Closed', value: a.closed_trades, color: 'text-white' },
   ];
 
+  const chartTooltipStyle = { backgroundColor: '#1E293B', border: '1px solid #334155', borderRadius: '8px', fontSize: '12px' };
+  const chartLabelStyle = { color: '#94A3B8' };
+  const xAxisTick = { fill: '#64748B', fontSize: 10 };
+  const yAxisTick = { fill: '#64748B', fontSize: 10 };
+
   return (
     <div className="space-y-4">
       {/* Stats Grid */}
@@ -347,11 +349,11 @@ const AnalyticsTab = ({ analytics }) => {
                   <stop offset="95%" stopColor="#0052FF" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="date" tick={{ fill: '#64748B', fontSize: 10 }} tickLine={false} axisLine={false}
+              <XAxis dataKey="date" tick={xAxisTick} tickLine={false} axisLine={false}
                 tickFormatter={v => v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''} />
-              <YAxis tick={{ fill: '#64748B', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
-              <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: '1px solid #334155', borderRadius: '8px', fontSize: '12px' }}
-                labelStyle={{ color: '#94A3B8' }} formatter={(v) => [`$${v.toFixed(2)}`, 'Cumulative P&L']} />
+              <YAxis tick={yAxisTick} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+              <Tooltip contentStyle={chartTooltipStyle}
+                labelStyle={chartLabelStyle} formatter={(v) => [`$${v.toFixed(2)}`, 'Cumulative P&L']} />
               <Area type="monotone" dataKey="cumulative" stroke="#0052FF" fill="url(#pnlGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
@@ -378,24 +380,35 @@ const AnalyticsTab = ({ analytics }) => {
 
       {/* By Ticker */}
       {Object.keys(a.by_ticker).length > 0 && (
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4">
-          <h4 className="text-white text-sm font-semibold mb-2">Performance by Ticker</h4>
-          <div className="space-y-1.5">
-            {Object.entries(a.by_ticker).sort((a, b) => b[1].pnl - a[1].pnl).map(([ticker, data]) => (
-              <div key={ticker} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-white text-sm font-medium">{ticker}</span>
-                  <span className="text-slate-500 text-[10px]">{data.trades} trades ({data.wins}W)</span>
-                </div>
-                <span className={`text-sm font-bold ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <TickerPerformance byTicker={a.by_ticker} />
       )}
     </div>
+  );
+};
+
+const TickerPerformance = ({ byTicker }) => {
+  const sortedEntries = useMemo(() =>
+    Object.entries(byTicker).sort((a, b) => b[1].pnl - a[1].pnl),
+    [byTicker]
+  );
+
+  return (
+    <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4">
+      <h4 className="text-white text-sm font-semibold mb-2">Performance by Ticker</h4>
+      <div className="space-y-1.5">
+        {sortedEntries.map(([ticker, data]) => (
+          <div key={ticker} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-white text-sm font-medium">{ticker}</span>
+              <span className="text-slate-500 text-[10px]">{data.trades} trades ({data.wins}W)</span>
+            </div>
+            <span className={`text-sm font-bold ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 };
 

@@ -1,7 +1,7 @@
 import logging
 import requests
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
 
@@ -102,66 +102,85 @@ class GovFilingsService:
 
     async def get_congressional_trades(self) -> List[Dict]:
         """Scrape congressional stock trades from Capitol Trades"""
+        trades = self._scrape_capitol_trades()
+        if not trades:
+            trades = self._scrape_quiverquant_congress()
+        return trades[:20]
+
+    def _scrape_capitol_trades(self) -> List[Dict]:
+        """Primary: scrape Capitol Trades for congressional trades."""
         trades = []
         try:
             url = 'https://www.capitoltrades.com/trades'
             resp = requests.get(url, headers=self.headers, timeout=15)
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                table = soup.find('table')
-                if table:
-                    rows = table.find_all('tr')[1:21]  # Skip header, get up to 20
-                    for row in rows:
-                        cols = row.find_all('td')
-                        if len(cols) >= 8:
-                            politician_text = cols[0].get_text(strip=True)
-                            issuer_text = cols[1].get_text(strip=True)
-                            trade_type = cols[6].get_text(strip=True)
-                            size = cols[7].get_text(strip=True)
-
-                            # Parse politician info (name + party + chamber)
-                            name = politician_text
-                            party = ''
-                            chamber = ''
-                            if 'Republican' in politician_text:
-                                party = 'R'
-                                name = politician_text.split('Republican')[0].strip()
-                            elif 'Democrat' in politician_text:
-                                party = 'D'
-                                name = politician_text.split('Democrat')[0].strip()
-                            if 'House' in politician_text:
-                                chamber = 'House'
-                            elif 'Senate' in politician_text:
-                                chamber = 'Senate'
-
-                            # Extract ticker from issuer text
-                            ticker_match = re.search(r'([A-Z]{1,5}):[A-Z]{2}', issuer_text)
-                            ticker = ticker_match.group(1) if ticker_match else ''
-                            company = issuer_text.split(ticker)[0].strip() if ticker else issuer_text
-
-                            traded_date = cols[3].get_text(strip=True) if len(cols) > 3 else ''
-                            published = cols[2].get_text(strip=True) if len(cols) > 2 else ''
-
-                            trades.append({
-                                'representative': name,
-                                'ticker': ticker,
-                                'company': company,
-                                'transaction_date': traded_date,
-                                'disclosure_date': published,
-                                'type': trade_type,
-                                'amount': size,
-                                'party': party,
-                                'chamber': chamber,
-                                'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) - {ticker} {size}",
-                            })
+            if resp.status_code != 200:
+                return trades
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            table = soup.find('table')
+            if not table:
+                return trades
+            rows = table.find_all('tr')[1:21]
+            for row in rows:
+                trade = self._parse_capitol_row(row)
+                if trade:
+                    trades.append(trade)
         except Exception as e:
             logger.error(f"Error scraping Capitol Trades: {str(e)}")
+        return trades
 
-        # Fallback: scrape QuiverQuant congress page
-        if not trades:
-            trades = self._scrape_quiverquant_congress()
+    @staticmethod
+    def _parse_capitol_row(row) -> Optional[Dict]:
+        """Parse a single row from Capitol Trades table."""
+        cols = row.find_all('td')
+        if len(cols) < 8:
+            return None
 
-        return trades[:20]
+        politician_text = cols[0].get_text(strip=True)
+        issuer_text = cols[1].get_text(strip=True)
+        trade_type = cols[6].get_text(strip=True)
+        size = cols[7].get_text(strip=True)
+
+        name, party, chamber = GovFilingsService._parse_politician(politician_text)
+        ticker, company = GovFilingsService._parse_issuer(issuer_text)
+
+        return {
+            'representative': name,
+            'ticker': ticker,
+            'company': company,
+            'transaction_date': cols[3].get_text(strip=True) if len(cols) > 3 else '',
+            'disclosure_date': cols[2].get_text(strip=True) if len(cols) > 2 else '',
+            'type': trade_type,
+            'amount': size,
+            'party': party,
+            'chamber': chamber,
+            'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) - {ticker} {size}",
+        }
+
+    @staticmethod
+    def _parse_politician(text: str):
+        """Extract name, party, chamber from politician text."""
+        name = text
+        party = ''
+        chamber = ''
+        if 'Republican' in text:
+            party = 'R'
+            name = text.split('Republican')[0].strip()
+        elif 'Democrat' in text:
+            party = 'D'
+            name = text.split('Democrat')[0].strip()
+        if 'House' in text:
+            chamber = 'House'
+        elif 'Senate' in text:
+            chamber = 'Senate'
+        return name, party, chamber
+
+    @staticmethod
+    def _parse_issuer(text: str):
+        """Extract ticker and company name from issuer text."""
+        ticker_match = re.search(r'([A-Z]{1,5}):[A-Z]{2}', text)
+        ticker = ticker_match.group(1) if ticker_match else ''
+        company = text.split(ticker)[0].strip() if ticker else text
+        return ticker, company
 
     def _scrape_quiverquant_congress(self) -> List[Dict]:
         """Fallback: scrape QuiverQuant congressional trading page"""

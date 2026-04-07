@@ -54,6 +54,38 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
     setFilteredData(filtered);
   };
 
+const getCellContent = (col, row) => {
+  const value = row[col.key];
+  switch (col.key) {
+    case 'contract':
+      return (
+        <span
+          onClick={() => alert(`Viewing details for ${value}\n\nThis will show:\n- Detailed contract info\n- Price history\n- Volume analysis\n- Greeks (for options)`)}
+          className="text-blue-400 font-medium hover:underline cursor-pointer"
+        >
+          {value}
+        </span>
+      );
+    case 'power':
+      return (
+        <div className="flex items-center gap-2">
+          <div className="w-12 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div className={`h-full ${getPowerColor(value)}`} style={{ width: getPowerBarWidth(value) }} />
+          </div>
+          <span className="text-slate-300 text-xs">{value}%</span>
+        </div>
+      );
+    case 'returns':
+      return <span className="text-emerald-400">{value}</span>;
+    case 'sentiment':
+      return <span className="text-red-400">{value}</span>;
+    case 'aiScore':
+      return <span className={value >= 50 ? 'text-emerald-400' : 'text-orange-400'}>{value}</span>;
+    default:
+      return <span className="text-slate-300">{value}</span>;
+  }
+};
+
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
       {/* Header */}
@@ -102,7 +134,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-700">
-              {columns.map((col, index) => (
+              {columns.map((col) => (
                 <th
                   key={col.key || col.label}
                   className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider"
@@ -126,36 +158,9 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
                 key={row.contract || row.symbol || rowIndex}
                 className="border-b border-slate-700 hover:bg-slate-700 transition-colors"
               >
-                {columns.map((col, colIndex) => (
+                {columns.map((col) => (
                   <td key={col.key || col.label} className="py-3 px-3 text-sm">
-                    {col.key === 'contract' ? (
-                      <span 
-                        onClick={() => alert(`Viewing details for ${row[col.key]}\n\nThis will show:\n- Detailed contract info\n- Price history\n- Volume analysis\n- Greeks (for options)`)}
-                        className="text-blue-400 font-medium hover:underline cursor-pointer"
-                      >
-                        {row[col.key]}
-                      </span>
-                    ) : col.key === 'power' ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-12 h-2 bg-slate-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${getPowerColor(row[col.key])}`}
-                            style={{ width: getPowerBarWidth(row[col.key]) }}
-                          />
-                        </div>
-                        <span className="text-slate-300 text-xs">{row[col.key]}%</span>
-                      </div>
-                    ) : col.key === 'returns' ? (
-                      <span className="text-emerald-400">{row[col.key]}</span>
-                    ) : col.key === 'sentiment' ? (
-                      <span className="text-red-400">{row[col.key]}</span>
-                    ) : col.key === 'aiScore' ? (
-                      <span className={row[col.key] >= 50 ? 'text-emerald-400' : 'text-orange-400'}>
-                        {row[col.key]}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">{row[col.key]}</span>
-                    )}
+                    {getCellContent(col, row)}
                   </td>
                 ))}
                 {showTrading && (

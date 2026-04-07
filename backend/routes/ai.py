@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api")
 ai_service = AIService()
 
 FREE_CHAT_DAILY_LIMIT = 5
+VALID_HYPOTHESIS_MODELS = ["gpt-5.2", "claude-sonnet-4.5", "gemini-pro", "consensus"]
 
 
 # Module-level db reference, set by server.py on startup
@@ -321,74 +322,93 @@ async def get_gov_filings():
 @router.get("/market/prediction")
 async def get_market_prediction():
     try:
-        from services.financial_scraping_service import FinancialScrapingService
-        from services.crypto_scraping_service import CryptoScrapingService
-        from services.real_estate_scraping_service import RealEstateScrapingService
-        from services.market_prediction_service import MarketPredictionService
-        from services.world_events_service import WorldEventsService
-        from services.foreign_markets_service import ForeignMarketsService
-        from services.gov_filings_service import GovFilingsService
-
-        financial_scraper = FinancialScrapingService()
-        crypto_scraper = CryptoScrapingService()
-        real_estate_scraper = RealEstateScrapingService()
-        world_events_svc = WorldEventsService()
-        foreign_markets_svc = ForeignMarketsService()
-        gov_filings_svc = GovFilingsService()
-
-        financial_news = await financial_scraper.scrape_financial_news()
-        reddit_sentiment = await financial_scraper.scrape_reddit_sentiment()
-        insider_trades = await financial_scraper.scrape_insider_trades()
-        crypto_data = await crypto_scraper.get_exchange_data()
-        whale_transactions = await crypto_scraper.get_whale_transactions()
-        crypto_sentiment = await crypto_scraper.get_crypto_sentiment()
-        real_estate_data = await real_estate_scraper.scrape_all_real_estate_data()
-        world_events = await world_events_svc.scrape_world_events()
-        foreign_markets = await foreign_markets_svc.get_foreign_markets()
-        gov_filings = await gov_filings_svc.get_all_gov_data()
-
-        all_crypto_data = crypto_data + [crypto_sentiment] + whale_transactions
-
-        prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
-        prediction = await prediction_service.analyze_market(
-            financial_news=financial_news,
-            crypto_data=all_crypto_data,
-            insider_trades=insider_trades,
-            social_sentiment=reddit_sentiment,
-            real_estate_data=real_estate_data,
-            world_events=world_events,
-            foreign_markets=foreign_markets,
-            gov_filings=gov_filings,
-        )
-
-        prediction['real_estate_summary'] = {
-            'housing_health': real_estate_data.get('housing', {}).get('market_health', 'unknown'),
-            'commercial_trend': 'mixed',
-            'data_sources': len(real_estate_data.get('housing', {}).get('sources', [])),
-            'implications': real_estate_data.get('trends', {}).get('market_implications', {})
-        }
-
-        prediction['macro_data'] = {
-            'world_events': {
-                'total': world_events.get('total_events', 0),
-                'high_impact': world_events.get('high_impact_count', 0),
-                'top_sectors': [s['sector'] for s in world_events.get('affected_sectors', [])[:5]],
-            },
-            'foreign_markets': {
-                'correlation_signals': foreign_markets.get('correlation_signals', [])[:5],
-                'total_indices': len(foreign_markets.get('asia', []) + foreign_markets.get('europe', []) + foreign_markets.get('americas', [])),
-            },
-            'gov_filings': {
-                'congressional_trades': gov_filings.get('congressional_count', 0),
-                'fed_announcements': gov_filings.get('fed_count', 0),
-                'insider_trades': gov_filings.get('insider_count', 0),
-            },
-        }
-
+        scrape_results = await _collect_all_scrape_data(include_real_estate=True)
+        prediction = await _run_prediction_model(scrape_results)
+        _enrich_prediction_metadata(prediction, scrape_results)
         return prediction
     except Exception as e:
         logging.error(f"Error generating prediction: {e}")
         raise HTTPException(status_code=500, detail="Error generating market prediction")
+
+
+async def _collect_all_scrape_data(include_real_estate=False):
+    """Collect all scraped macro data from services."""
+    from services.financial_scraping_service import FinancialScrapingService
+    from services.crypto_scraping_service import CryptoScrapingService
+    from services.world_events_service import WorldEventsService
+    from services.foreign_markets_service import ForeignMarketsService
+    from services.gov_filings_service import GovFilingsService
+
+    financial = FinancialScrapingService()
+    crypto = CryptoScrapingService()
+
+    result = {
+        "news": await financial.scrape_financial_news(),
+        "social": await financial.scrape_reddit_sentiment(),
+        "insider_trades": await financial.scrape_insider_trades(),
+        "crypto_data": await crypto.get_exchange_data(),
+        "whale_txns": await crypto.get_whale_transactions(),
+        "crypto_sentiment": await crypto.get_crypto_sentiment(),
+        "world_events": await WorldEventsService().scrape_world_events(),
+        "foreign_markets": await ForeignMarketsService().get_foreign_markets(),
+        "gov_filings": await GovFilingsService().get_all_gov_data(),
+    }
+
+    if include_real_estate:
+        from services.real_estate_scraping_service import RealEstateScrapingService
+        result["real_estate"] = await RealEstateScrapingService().scrape_all_real_estate_data()
+
+    return result
+
+
+async def _run_prediction_model(data):
+    """Run the AI market prediction model on collected data."""
+    from services.market_prediction_service import MarketPredictionService
+
+    all_crypto = data["crypto_data"] + [data["crypto_sentiment"]] + data["whale_txns"]
+    prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
+
+    return await prediction_service.analyze_market(
+        financial_news=data["news"],
+        crypto_data=all_crypto,
+        insider_trades=data["insider_trades"],
+        social_sentiment=data["social"],
+        real_estate_data=data.get("real_estate", {}),
+        world_events=data["world_events"],
+        foreign_markets=data["foreign_markets"],
+        gov_filings=data["gov_filings"],
+    )
+
+
+def _enrich_prediction_metadata(prediction, data):
+    """Add real estate and macro data summaries to prediction response."""
+    re = data.get("real_estate", {})
+    prediction['real_estate_summary'] = {
+        'housing_health': re.get('housing', {}).get('market_health', 'unknown'),
+        'commercial_trend': 'mixed',
+        'data_sources': len(re.get('housing', {}).get('sources', [])),
+        'implications': re.get('trends', {}).get('market_implications', {}),
+    }
+
+    we = data["world_events"]
+    fm = data["foreign_markets"]
+    gf = data["gov_filings"]
+    prediction['macro_data'] = {
+        'world_events': {
+            'total': we.get('total_events', 0),
+            'high_impact': we.get('high_impact_count', 0),
+            'top_sectors': [s['sector'] for s in we.get('affected_sectors', [])[:5]],
+        },
+        'foreign_markets': {
+            'correlation_signals': fm.get('correlation_signals', [])[:5],
+            'total_indices': len(fm.get('asia', []) + fm.get('europe', []) + fm.get('americas', [])),
+        },
+        'gov_filings': {
+            'congressional_trades': gf.get('congressional_count', 0),
+            'fed_announcements': gf.get('fed_count', 0),
+            'insider_trades': gf.get('insider_count', 0),
+        },
+    }
 
 
 # --- AI Hypothesis ---
@@ -397,88 +417,84 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
     user = await get_optional_user(request)
     is_pro = is_pro_user(user)
 
-    # Model access control: free users can only use gpt-5.2
-    VALID_MODELS = ["gpt-5.2", "claude-sonnet-4.5", "gemini-pro", "consensus"]
-    if model not in VALID_MODELS:
+    if model not in VALID_HYPOTHESIS_MODELS:
         model = "gpt-5.2"
     if not is_pro and model != "gpt-5.2":
         raise HTTPException(status_code=403, detail="Premium AI models require a Pro subscription. Free users can use GPT-5.2.")
 
     try:
-        from services.financial_scraping_service import FinancialScrapingService
-        from services.crypto_scraping_service import CryptoScrapingService
-        from services.world_events_service import WorldEventsService
-        from services.foreign_markets_service import ForeignMarketsService
-        from services.gov_filings_service import GovFilingsService
-        from services.multi_model_hypothesis_service import generate_hypothesis
-
-        financial_scraper = FinancialScrapingService()
-        crypto_scraper = CryptoScrapingService()
-        world_events_svc = WorldEventsService()
-        foreign_markets_svc = ForeignMarketsService()
-        gov_filings_svc = GovFilingsService()
-
-        news = await financial_scraper.scrape_financial_news()
-        social = await financial_scraper.scrape_reddit_sentiment()
-        crypto_data = await crypto_scraper.get_exchange_data()
-        world_events = await world_events_svc.scrape_world_events()
-        foreign_markets = await foreign_markets_svc.get_foreign_markets()
-        gov_filings = await gov_filings_svc.get_all_gov_data()
-
-        data = {
-            "news": news, "social": social, "crypto": crypto_data,
-            "world_events": world_events, "foreign_markets": foreign_markets,
-            "gov_filings": gov_filings,
-        }
+        data = await _collect_all_scrape_data()
 
         if not is_pro:
-            return {
-                "symbol": symbol.upper(),
-                "is_pro": False,
-                "teaser": {
-                    "data_sources_count": len(news) + len(social) + len(crypto_data),
-                    "world_events_count": world_events.get("total_events", 0),
-                    "congressional_trades_count": gov_filings.get("congressional_count", 0),
-                    "verdict": "LOCKED",
-                    "summary": f"Our AI has analyzed {len(news)} news articles, {world_events.get('total_events', 0)} world events, and {gov_filings.get('congressional_count', 0)} congressional trades to generate a hypothesis for {symbol.upper()}. Subscribe to Pro to unlock the full analysis.",
-                },
-            }
+            return _build_hypothesis_teaser(symbol, data)
 
+        from services.multi_model_hypothesis_service import generate_hypothesis
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         hypothesis = await generate_hypothesis(api_key, symbol, data, model=model)
         hypothesis["is_pro"] = True
 
-        # Check for verdict change -> generate notification
-        if user and hypothesis.get("verdict"):
-            try:
-                prev = await db.hypothesis_history.find_one(
-                    {"user_id": user["_id"], "symbol": symbol.upper()},
-                    {"_id": 0, "verdict": 1},
-                    sort=[("searched_at", -1)]
-                )
-                if prev and prev.get("verdict") and prev["verdict"] != hypothesis["verdict"]:
-                    wl = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0, "tickers": 1})
-                    tickers = wl.get("tickers", []) if wl else []
-                    await db.notifications.insert_one({
-                        "user_id": user["_id"],
-                        "type": "verdict_change",
-                        "symbol": symbol.upper(),
-                        "old_verdict": prev["verdict"],
-                        "new_verdict": hypothesis["verdict"],
-                        "confidence": hypothesis.get("confidence", 0),
-                        "in_watchlist": symbol.upper() in tickers,
-                        "read": False,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    })
-            except Exception as notif_err:
-                logging.warning(f"Notification creation error: {notif_err}")
-
+        await _track_verdict_change(user, symbol, hypothesis)
         return hypothesis
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Error generating hypothesis for {symbol}: {e}")
         raise HTTPException(status_code=500, detail="Error generating hypothesis")
+
+
+def _build_hypothesis_teaser(symbol: str, data: dict) -> dict:
+    """Build the locked teaser response for free users."""
+    news_count = len(data.get("news", []))
+    social_count = len(data.get("social", []))
+    crypto_count = len(data.get("crypto_data", []))
+    events_count = data.get("world_events", {}).get("total_events", 0)
+    congress_count = data.get("gov_filings", {}).get("congressional_count", 0)
+
+    return {
+        "symbol": symbol.upper(),
+        "is_pro": False,
+        "teaser": {
+            "data_sources_count": news_count + social_count + crypto_count,
+            "world_events_count": events_count,
+            "congressional_trades_count": congress_count,
+            "verdict": "LOCKED",
+            "summary": (
+                f"Our AI has analyzed {news_count} news articles, {events_count} world events, "
+                f"and {congress_count} congressional trades to generate a hypothesis for "
+                f"{symbol.upper()}. Subscribe to Pro to unlock the full analysis."
+            ),
+        },
+    }
+
+
+async def _track_verdict_change(user, symbol: str, hypothesis: dict):
+    """Check if verdict changed and create a notification if so."""
+    if not user or not hypothesis.get("verdict"):
+        return
+    try:
+        prev = await db.hypothesis_history.find_one(
+            {"user_id": user["_id"], "symbol": symbol.upper()},
+            {"_id": 0, "verdict": 1},
+            sort=[("searched_at", -1)]
+        )
+        if not prev or not prev.get("verdict") or prev["verdict"] == hypothesis["verdict"]:
+            return
+
+        wl = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0, "tickers": 1})
+        tickers = wl.get("tickers", []) if wl else []
+        await db.notifications.insert_one({
+            "user_id": user["_id"],
+            "type": "verdict_change",
+            "symbol": symbol.upper(),
+            "old_verdict": prev["verdict"],
+            "new_verdict": hypothesis["verdict"],
+            "confidence": hypothesis.get("confidence", 0),
+            "in_watchlist": symbol.upper() in tickers,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as notif_err:
+        logging.warning(f"Notification creation error: {notif_err}")
 
 
 # --- Scraping Data Endpoints ---

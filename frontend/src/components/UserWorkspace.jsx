@@ -12,6 +12,18 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
 
+const getPushToggleClass = (permission, subscribed) => {
+  if (permission === 'denied') return 'bg-red-900/20 text-red-400 border border-red-800/40 cursor-not-allowed';
+  if (subscribed) return 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40';
+  return 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600';
+};
+
+const PushToggleLabel = ({ permission, subscribed }) => {
+  if (permission === 'denied') return <><BellOff className="w-3.5 h-3.5" /> Blocked</>;
+  if (subscribed) return <><Bell className="w-3.5 h-3.5" /> Enabled</>;
+  return <><BellOff className="w-3.5 h-3.5" /> Enable</>;
+};
+
 const UserWorkspace = ({ onClose, onSubscribe }) => {
   const { user, isPro } = useAuth();
   const [tab, setTab] = useState('watchlist');
@@ -22,8 +34,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
 
-  // Stable deps: API and authFetch are module-level constants
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // authFetch and API are module-level constants — stable across renders
   const fetchWatchlist = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/workspace/watchlist`);
@@ -36,8 +47,6 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
     }
   }, []);
 
-  // Stable deps: authFetch and API are module-level constants
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchHistory = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/workspace/history`);
@@ -162,112 +171,125 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
             <div className="flex items-center justify-center py-12">
               <RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" />
             </div>
-          ) : tab === 'watchlist' ? (
-            <div className="space-y-4">
-              {/* Add Ticker Form */}
-              <form onSubmit={handleAddTicker} className="flex gap-2" data-testid="add-ticker-form">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    placeholder="Add ticker (e.g., AAPL, TSLA)"
-                    value={addTicker}
-                    onChange={e => setAddTicker(e.target.value.toUpperCase())}
-                    className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl"
-                    data-testid="add-ticker-input"
-                  />
-                </div>
-                <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="add-ticker-btn">
-                  <Plus className="w-4 h-4 mr-1" /> Add
-                </Button>
-              </form>
-
-              {/* Watchlist cap indicator for free users */}
-              {!isPro && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
-                  {watchlist.length >= FREE_WATCHLIST_LIMIT && (
-                    <button onClick={onSubscribe} className="text-[#0052FF] hover:underline flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Upgrade for unlimited
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {addError && (
-                <div className="bg-amber-900/20 border border-amber-700/40 rounded-xl px-3 py-2 flex items-center justify-between">
-                  <span className="text-amber-400 text-xs">{addError}</span>
-                  <Button size="sm" className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
-                    Upgrade
-                  </Button>
-                </div>
-              )}
-
-              {/* Watchlist */}
-              {watchlist.length === 0 ? (
-                <div className="text-center py-10">
-                  <Star className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">No tickers in your watchlist yet</p>
-                  <p className="text-slate-500 text-xs mt-1">Add tickers above to start tracking</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {watchlist.map(ticker => (
-                    <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
-                      <span className="text-white font-semibold text-sm">{ticker}</span>
-                      <button
-                        onClick={() => removeTicker(ticker)}
-                        className="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                        data-testid={`remove-ticker-${ticker}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : tab === 'history' ? (
-            <div className="space-y-3">
-              {history.length === 0 ? (
-                <div className="text-center py-10">
-                  <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">No hypothesis history yet</p>
-                  <p className="text-slate-500 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
-                </div>
-              ) : (
-                history.map((h, i) => (
-                  <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
-                    <div className="flex items-center gap-3">
-                      {verdictIcon(h.verdict)}
-                      <div>
-                        <span className="text-white font-semibold text-sm">{h.symbol}</span>
-                        <p className="text-slate-500 text-xs">
-                          {h.searched_at ? new Date(h.searched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {h.verdict && (
-                        <Badge className={`text-[10px] border ${verdictStyle(h.verdict)}`}>
-                          {h.verdict}
-                        </Badge>
-                      )}
-                      {h.confidence > 0 && (
-                        <span className="text-slate-400 text-xs font-mono">{h.confidence}%</span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : tab === 'referrals' ? (
-            <ReferralsTab />
-          ) : null}
+          ) : (
+            <TabContent
+              tab={tab}
+              watchlist={watchlist}
+              history={history}
+              isPro={isPro}
+              addTicker={addTicker}
+              setAddTicker={setAddTicker}
+              addLoading={addLoading}
+              addError={addError}
+              handleAddTicker={handleAddTicker}
+              removeTicker={removeTicker}
+              onSubscribe={onSubscribe}
+            />
+          )}
         </div>
       </div>
     </div>
   );
 };
+
+const TabContent = ({ tab, watchlist, history, isPro, addTicker, setAddTicker, addLoading, addError, handleAddTicker, removeTicker, onSubscribe }) => {
+  if (tab === 'watchlist') return (
+    <WatchlistTab
+      watchlist={watchlist} isPro={isPro} addTicker={addTicker} setAddTicker={setAddTicker}
+      addLoading={addLoading} addError={addError} handleAddTicker={handleAddTicker}
+      removeTicker={removeTicker} onSubscribe={onSubscribe}
+    />
+  );
+  if (tab === 'history') return <HistoryTab history={history} />;
+  if (tab === 'referrals') return <ReferralsTab />;
+  return null;
+};
+
+const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, addError, handleAddTicker, removeTicker, onSubscribe }) => (
+  <div className="space-y-4">
+    <form onSubmit={handleAddTicker} className="flex gap-2" data-testid="add-ticker-form">
+      <div className="relative flex-1">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+        <Input
+          placeholder="Add ticker (e.g., AAPL, TSLA)"
+          value={addTicker}
+          onChange={e => setAddTicker(e.target.value.toUpperCase())}
+          className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl"
+          data-testid="add-ticker-input"
+        />
+      </div>
+      <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="add-ticker-btn">
+        <Plus className="w-4 h-4 mr-1" /> Add
+      </Button>
+    </form>
+    {!isPro && (
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-slate-500">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
+        {watchlist.length >= FREE_WATCHLIST_LIMIT && (
+          <button onClick={onSubscribe} className="text-[#0052FF] hover:underline flex items-center gap-1">
+            <Lock className="w-3 h-3" /> Upgrade for unlimited
+          </button>
+        )}
+      </div>
+    )}
+    {addError && (
+      <div className="bg-amber-900/20 border-amber-700/40 rounded-xl px-3 py-2 flex items-center justify-between border">
+        <span className="text-amber-400 text-xs">{addError}</span>
+        <Button size="sm" className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
+          Upgrade
+        </Button>
+      </div>
+    )}
+    {watchlist.length === 0 ? (
+      <div className="text-center py-10">
+        <Star className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+        <p className="text-slate-400 text-sm">No tickers in your watchlist yet</p>
+        <p className="text-slate-500 text-xs mt-1">Add tickers above to start tracking</p>
+      </div>
+    ) : (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {watchlist.map(ticker => (
+          <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
+            <span className="text-white font-semibold text-sm">{ticker}</span>
+            <button onClick={() => removeTicker(ticker)} className="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" data-testid={`remove-ticker-${ticker}`}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const HistoryTab = ({ history }) => (
+  <div className="space-y-3">
+    {history.length === 0 ? (
+      <div className="text-center py-10">
+        <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+        <p className="text-slate-400 text-sm">No hypothesis history yet</p>
+        <p className="text-slate-500 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
+      </div>
+    ) : (
+      history.map((h, i) => (
+        <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
+          <div className="flex items-center gap-3">
+            {verdictIcon(h.verdict)}
+            <div>
+              <span className="text-white font-semibold text-sm">{h.symbol}</span>
+              <p className="text-slate-500 text-xs">
+                {h.searched_at ? new Date(h.searched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {h.verdict && <Badge className={`text-[10px] border ${verdictStyle(h.verdict)}`}>{h.verdict}</Badge>}
+            {h.confidence > 0 && <span className="text-slate-400 text-xs font-mono">{h.confidence}%</span>}
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+);
 
 const ReferralsTab = () => {
   const [info, setInfo] = useState(null);
@@ -499,22 +521,10 @@ const PushToggle = () => {
         <button
           onClick={handleToggle}
           disabled={toggling || permission === 'denied'}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            permission === 'denied'
-              ? 'bg-red-900/20 text-red-400 border border-red-800/40 cursor-not-allowed'
-              : subscribed
-              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40'
-              : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
-          }`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${getPushToggleClass(permission, subscribed)}`}
           data-testid="push-toggle-btn"
         >
-          {permission === 'denied' ? (
-            <><BellOff className="w-3.5 h-3.5" /> Blocked</>
-          ) : subscribed ? (
-            <><Bell className="w-3.5 h-3.5" /> Enabled</>
-          ) : (
-            <><BellOff className="w-3.5 h-3.5" /> Enable</>
-          )}
+          <PushToggleLabel permission={permission} subscribed={subscribed} />
         </button>
       </div>
     </Card>

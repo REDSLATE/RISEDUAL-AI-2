@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -39,31 +39,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Intentionally empty deps: checkAuth runs once on mount. All referenced
-  // functions (authFetch, tryRefresh, clearTokens) are stable module/component-level refs.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { setUser(false); setLoading(false); return; }
-    try {
-      const res = await authFetch(`${API}/auth/me`);
-      if (res.ok) {
-        setUser(await res.json());
-      } else {
-        // Try refresh
-        const refreshed = await tryRefresh();
-        if (!refreshed) { clearTokens(); setUser(false); }
-      }
-    } catch {
-      setUser(false);
-    } finally {
-      setLoading(false);
-    }
+  const clearTokens = useCallback(() => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
   }, []);
 
-  useEffect(() => { checkAuth(); }, [checkAuth]);
-
-  const tryRefresh = async () => {
+  const tryRefresh = useCallback(async () => {
     const refreshToken = localStorage.getItem('refresh_token');
     if (!refreshToken) return false;
     try {
@@ -82,17 +63,32 @@ export const AuthProvider = ({ children }) => {
       console.error('Token refresh failed:', e);
     }
     return false;
-  };
+  }, []);
 
-  const storeTokens = (data) => {
+  const checkAuth = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) { setUser(false); setLoading(false); return; }
+    try {
+      const res = await authFetch(`${API}/auth/me`);
+      if (res.ok) {
+        setUser(await res.json());
+      } else {
+        const refreshed = await tryRefresh();
+        if (!refreshed) { clearTokens(); setUser(false); }
+      }
+    } catch {
+      setUser(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [tryRefresh, clearTokens]);
+
+  useEffect(() => { checkAuth(); }, [checkAuth]);
+
+  const storeTokens = useCallback((data) => {
     if (data.access_token) localStorage.setItem('access_token', data.access_token);
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-  };
-
-  const clearTokens = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-  };
+  }, []);
 
   const fetchWithRetry = async (url, opts, retries = 3) => {
     for (let i = 0; i <= retries; i++) {
@@ -114,7 +110,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const res = await fetchWithRetry(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -129,9 +125,9 @@ export const AuthProvider = ({ children }) => {
     storeTokens(data);
     setUser(data);
     return data;
-  };
+  }, [storeTokens]);
 
-  const register = async (email, password, name, refCode) => {
+  const register = useCallback(async (email, password, name, refCode) => {
     const body = { email, password, name };
     if (refCode) body.ref_code = refCode;
     const res = await fetchWithRetry(`${API}/auth/register`, {
@@ -148,18 +144,22 @@ export const AuthProvider = ({ children }) => {
     storeTokens(data);
     setUser(data);
     return data;
-  };
+  }, [storeTokens]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await fetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => {});
     clearTokens();
     setUser(false);
-  };
+  }, [clearTokens]);
 
   const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 
+  const contextValue = useMemo(() => ({
+    user, loading, login, register, logout, isPro, checkAuth, authFetch
+  }), [user, loading, login, register, logout, isPro, checkAuth]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isPro, checkAuth, authFetch }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
