@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Wand2, Save, Trash2, ChevronDown, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Shield, Clock, Target, Layers, X, RefreshCw, Sparkles, Lock, Zap } from 'lucide-react';
+import { Wand2, Save, Trash2, ChevronDown, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Shield, Clock, Target, Layers, X, RefreshCw, Sparkles, Lock, Zap, FlaskConical } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import BacktestResults from './BacktestResults';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -88,6 +89,29 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
       await authFetch(`${API}/strategy/${encodeURIComponent(name)}`, { method: 'DELETE' });
       fetchSaved();
     } catch (e) { console.error(e); }
+  };
+
+  const runBacktest = async () => {
+    if (!strategy || !backtestSymbol.trim()) return;
+    setBacktesting(true);
+    setBacktestResult(null);
+    setError('');
+    try {
+      const res = await authFetch(`${API}/strategy/backtest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy, symbol: backtestSymbol.trim(), years: backtestYears }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'Backtest failed');
+      }
+      setBacktestResult(await res.json());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBacktesting(false);
+    }
   };
 
   const toggle = (section) => setExpandedSection(prev => prev === section ? null : section);

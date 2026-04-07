@@ -27,6 +27,12 @@ class StrategySaveRequest(BaseModel):
     description: str
 
 
+class BacktestRequest(BaseModel):
+    strategy: dict
+    symbol: str
+    years: int = 3
+
+
 # --- Generate Strategy ---
 @router.post("/strategy/generate")
 async def generate_strategy_endpoint(req: StrategyRequest, request: Request):
@@ -113,6 +119,29 @@ async def delete_strategy(name: str, request: Request):
         raise HTTPException(status_code=404, detail="Strategy not found")
 
     return {"message": "Strategy deleted"}
+
+
+# --- Backtest Strategy ---
+@router.post("/strategy/backtest")
+async def backtest_strategy(req: BacktestRequest, request: Request):
+    """Run a backtest simulation on a strategy with historical price data."""
+    user = await get_current_user(request)
+
+    if not req.symbol.strip():
+        raise HTTPException(status_code=400, detail="Symbol is required")
+    if req.years < 1 or req.years > 5:
+        raise HTTPException(status_code=400, detail="Timeframe must be 1-5 years")
+
+    try:
+        from services.backtester_service import run_backtest
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        result = await run_backtest(api_key, req.strategy, req.symbol.strip(), req.years)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Backtest error: {e}")
+        raise HTTPException(status_code=500, detail="Backtest simulation failed. Please try again.")
 
 
 # --- Code Quality Score (Admin) ---
