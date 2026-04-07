@@ -16,31 +16,32 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Perplexity-style Company Research with watchlist sync
 - AI Market Predictions (scrapes news, crypto, world events, foreign markets, congressional trades)
 - Multi-Model AI Hypothesis Engine (GPT-5.2, Claude Sonnet 4.5, Gemini Pro, Consensus)
-- **AI Strategy Builder** — Users describe strategies in plain English, GPT-5.2 generates structured logic with indicators, entry/exit rules, risk management. Save/load/delete functionality.
-- **Strategy Backtester** — Simulates AI-generated strategies against historical Alpha Vantage data. Computes technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands), uses AI rule interpretation, and returns metrics (win rate, P&L, Sharpe ratio, max drawdown, buy & hold comparison, monthly breakdown, trade log).
+- **AI Strategy Builder** — Describe strategies in plain English, GPT-5.2 generates structured logic
+- **Strategy Backtester** — Simulates strategies against historical Alpha Vantage data (SMA, EMA, RSI, MACD, Bollinger Bands, AI rule interpretation, win rate, P&L, Sharpe ratio, drawdown, trade log)
+- **Strategy Marketplace** — Publish backtested strategies, browse/search community strategies, clone to your account. Pro-only publish & clone. Sort by win rate, P&L, clones, newest.
 - Macro Intelligence Dashboard (Finnhub earnings, insider trades, congressional data)
 - Stripe subscription gateway ($45/month)
 - JWT Bearer token authentication with referral system
 - Push notifications (VAPID), Daily email digests (Resend)
 - Trading Journal with P&L analytics
-- Admin Panel with Code Quality Score badge (A+/95) and codebase PDF download
+- Admin Panel with Code Quality Score badge (A+/95)
 - Docker + docker-compose configuration for self-hosting
 - Promo system with countdown banners
 
 ## Recent Changes (2026-04-07, Session 4)
 ### Strategy Backtester Completed
-- Wired `BacktestResults.jsx` into `StrategyBuilder.jsx` (state variables, UI form, results rendering)
-- Fixed EMA function to handle NaN-leading arrays (MACD signal line was all-NaN)
-- Fixed timezone-naive vs aware datetime comparison in price fetcher
-- Fixed empty-trades metrics dict missing fields (`buy_hold_pnl`, `winning_trades`, etc.)
-- Fixed condition evaluator to only check variables used in each condition (was blocking on unrelated NaN indicators like sma_200)
-- Changed Alpha Vantage output to "full" for all timeframes (compact was too few data points)
-- Testing: 9/9 backend tests passed (iteration 27)
+- Wired BacktestResults.jsx into StrategyBuilder.jsx
+- Fixed EMA NaN-propagation, timezone comparison, empty-metrics fields, condition evaluator
+- 9/9 backend tests passed (iteration 27)
+
+### Strategy Marketplace Added
+- Backend: POST /api/marketplace/publish, GET /api/marketplace/list, GET /api/marketplace/{id}, POST /api/marketplace/{id}/clone
+- Frontend: StrategyMarketplace.jsx with search, sort (win_rate/pnl/clones/newest), expandable cards
+- Publish button in StrategyBuilder after backtest results
+- Accessible from Strategies dropdown and user profile menu
+- 14/14 backend tests passed (iteration 28)
 
 ## Prioritized Backlog
-### P0 - Done
-- Strategy Backtester (COMPLETED 2026-04-07)
-
 ### P1 - Next
 - Alpaca broker integration (API key entry + Read/Trade) — user wants per-user broker connections
 - Deploy to risedual.ai (Health check passed, Docker ready)
@@ -49,7 +50,10 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Interactive Brokers / TD Ameritrade OAuth
 - Migrate JWT from localStorage to httpOnly cookies
 - Alpha Vantage API tier upgrade (currently free 5/min)
-- Server refactoring (server.py → modular routes)
+- Server refactoring (server.py modular routes)
 
 ## Mocked Features
 - Broker trading execution (Alpaca)
+
+## DB Collections
+- `chat_sessions`, `strategies`, `marketplace_strategies`, `payment_transactions`, `users`
