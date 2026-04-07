@@ -6,7 +6,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ## Architecture
 - Frontend: React + TailwindCSS + Shadcn UI + PWA (Service Worker + Push)
 - Backend: FastAPI + MongoDB (Motor Async) + APScheduler + pywebpush
-- AI: Emergent Integrations (GPT-5.2 via Universal Key)
+- AI: Emergent Integrations (GPT-5.2, Claude Sonnet 4.5, Gemini Pro via Universal Key)
 - Auth: PyJWT + bcrypt (Bearer tokens via localStorage)
 - Payments: Stripe ($45/month or $486/year)
 - Email: Resend (placeholder key)
@@ -70,6 +70,13 @@ All critical and important findings from the code quality audit have been resolv
   - Download: `GET /api/download/codebase-pdf`
   - Admin Panel > Tools tab > "Download Source Code" button
   - Also available at: `/app/RISEDUAL_AI_Complete_Codebase.pdf`
+
+## Multi-Model AI Hypothesis (Added 2026-04-07)
+- **Models Available**: GPT-5.2 (OpenAI), Claude Sonnet 4.5 (Anthropic), Gemini Pro (Google)
+- **Consensus Mode**: Runs all 3 models in parallel, weighted voting (35/35/30), agreement %
+- **Access Control**: Free users → GPT-5.2 only (teaser). Pro users → all models + Consensus
+- **API**: `GET /api/hypothesis/{symbol}?model={gpt-5.2|claude-sonnet-4.5|gemini-pro|consensus}`
+- **Service**: `/app/backend/services/multi_model_hypothesis_service.py`
 
 ## Prioritized Backlog
 ### P1 - Upcoming
