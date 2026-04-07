@@ -60,6 +60,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-flow')}>Options Flow Screener</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('dark-pool')}>Dark Pool Trading</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
+              <DropdownMenuItem className="text-violet-400 hover:text-violet-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-intelligence')} data-testid="nav-intelligence-btn">AI Intelligence Hub</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Market</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

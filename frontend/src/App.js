@@ -29,6 +29,7 @@ import ReferralLeaderboard from './components/ReferralLeaderboard';
 import TradingJournal from './components/TradingJournal';
 import StrategyBuilder from './components/StrategyBuilder';
 import StrategyMarketplace from './components/StrategyMarketplace';
+import AIIntelligence from './components/AIIntelligence';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -85,6 +86,11 @@ function AppContent() {
         {/* AI Investment Hypothesis (Paywalled) */}
         <div id="ai-hypothesis" className="mb-6 sm:mb-8">
           <AIHypothesis onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
+        </div>
+
+        {/* AI Intelligence Hub */}
+        <div id="ai-intelligence" className="mb-6 sm:mb-8">
+          <AIIntelligence onSubscribe={() => setShowSubscription(true)} />
         </div>
 
         <div id="market-prediction" className="mb-6 sm:mb-8"><MarketPrediction /></div>
