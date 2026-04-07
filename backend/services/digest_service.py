@@ -83,7 +83,7 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
     predictions_html = ""
     for i, p in enumerate(data.get("predictions", [])[:3]):
         if not is_pro and i >= 1:
-            predictions_html += f"""<tr>
+            predictions_html += """<tr>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
 </tr>"""
@@ -99,7 +99,7 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
     dark_pool_html = ""
     for i, dp in enumerate(data.get("dark_pool", [])[:5]):
         if not is_pro and i >= 1:
-            dark_pool_html += f"""<tr>
+            dark_pool_html += """<tr>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
 </tr>"""
@@ -111,7 +111,7 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
     signals_html = ""
     for i, s in enumerate(data.get("signals", [])[:5]):
         if not is_pro and i >= 1:
-            signals_html += f"""<tr>
+            signals_html += """<tr>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;filter:blur(4px);">██████</td>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#475569;font-size:12px;text-align:right;filter:blur(4px);">████</td>
 </tr>"""
@@ -223,7 +223,7 @@ async def send_daily_digest(db):
         subject = f"Your Morning Market Briefing — {datetime.now(timezone.utc).strftime('%b %d')}"
 
         try:
-            result = await asyncio.to_thread(resend.Emails.send, {
+            await asyncio.to_thread(resend.Emails.send, {
                 "from": SENDER_EMAIL,
                 "to": [email],
                 "subject": subject,

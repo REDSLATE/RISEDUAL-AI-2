@@ -30,7 +30,7 @@ const TradeGPTChat = ({ onSubscribe }) => {
     try {
       const res = await authFetch(`${API}/chat/limit`);
       if (res.ok) setChatLimit(await res.json());
-    } catch {}
+    } catch (e) { console.error('Chat limit fetch error:', e); }
   }, [user]);
 
   useEffect(() => { if (isOpen) fetchChatLimit(); }, [isOpen, fetchChatLimit]);

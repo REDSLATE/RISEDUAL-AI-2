@@ -19,7 +19,7 @@ const PromoBanner = ({ onSubscribe }) => {
           const data = await res.json();
           if (data.promo) setPromo(data.promo);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { console.error('Promo load error:', e); }
     };
     load();
   }, []);
@@ -30,7 +30,7 @@ const PromoBanner = ({ onSubscribe }) => {
       try {
         const res = await authFetch(`${API}/api/promo/progress`);
         if (res.ok) setProgress(await res.json());
-      } catch (e) { /* ignore */ }
+      } catch (e) { console.error('Promo progress error:', e); }
     };
     loadProgress();
   }, [user, promo]);

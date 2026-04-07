@@ -75,7 +75,7 @@ async def send_push(subscription_info: dict, title: str, body: str, url: str = "
         if hasattr(e, 'response') and e.response and e.response.status_code == 410:
             if db:
                 await db.push_subscriptions.delete_one({"endpoint": subscription_info.get("endpoint")})
-                logger.info(f"Removed expired push subscription")
+                logger.info("Removed expired push subscription")
         return False
     except Exception as e:
         logger.error(f"Push error: {e}")
@@ -123,7 +123,7 @@ async def notify_prediction_flip(db, ticker: str, old_verdict: str, new_verdict:
         db,
         title=f"{emoji} {ticker} Prediction Flipped",
         body=f"{old_verdict} → {new_verdict} ({confidence}% confidence)",
-        url=f"/#predictions",
+        url="/#predictions",
         tag=f"prediction-{ticker}",
         notif_type=NOTIF_PREDICTION_FLIP,
     )

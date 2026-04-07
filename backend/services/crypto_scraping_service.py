@@ -84,8 +84,6 @@ class CryptoScrapingService:
         try:
             # Using Whale Alert API (or similar service)
             # Note: This typically requires an API key
-            url = 'https://api.whale-alert.io/v1/transactions?api_key=demo&min_value=500000&limit=10'
-            
             # For demo purposes, return simulated data
             # In production, use actual API with your key
             

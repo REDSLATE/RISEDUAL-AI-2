@@ -41,7 +41,7 @@ const ReferralLeaderboard = () => {
           const info = await res.json();
           setRefCode(info.code);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { console.error('Leaderboard share check failed:', e); }
     };
     loadCode();
   }, [user]);

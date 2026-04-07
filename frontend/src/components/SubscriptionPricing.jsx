@@ -155,7 +155,7 @@ const SubscriptionPricing = ({ onClose }) => {
               {features.map((feature, index) => {
                 const Icon = feature.icon;
                 return (
-                  <div key={index} className="flex items-center gap-3 text-slate-300">
+                  <div key={`feature-${feature.text}`} className="flex items-center gap-3 text-slate-300">
                     <div className="bg-emerald-900 bg-opacity-30 p-2 rounded-lg">
                       <Icon className="w-5 h-5 text-emerald-400" />
                     </div>

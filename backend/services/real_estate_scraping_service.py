@@ -60,8 +60,7 @@ class RealEstateScrapingService:
         """Scrape Zillow housing market data"""
         try:
             url = 'https://www.zillow.com/research/data/'
-            response = requests.get(url, headers=self.headers, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            requests.get(url, headers=self.headers, timeout=10)
             
             return {
                 'source': 'Zillow',
@@ -77,8 +76,7 @@ class RealEstateScrapingService:
         """Scrape Redfin market data"""
         try:
             url = 'https://www.redfin.com/news/data-center/'
-            response = requests.get(url, headers=self.headers, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            requests.get(url, headers=self.headers, timeout=10)
             
             return {
                 'source': 'Redfin',
@@ -93,7 +91,7 @@ class RealEstateScrapingService:
         """Scrape Realtor.com housing data"""
         try:
             url = 'https://www.realtor.com/research/data/'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            requests.get(url, headers=self.headers, timeout=10)
             
             return {
                 'source': 'Realtor.com',

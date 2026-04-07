@@ -137,7 +137,7 @@ const BrokerConnect = () => {
         <div className="flex flex-wrap gap-2 mb-4">
           {broker.features.map((feature, index) => (
             <span
-              key={index}
+              key={`${broker.name}-${feature}`}
               className="bg-[#1E293B] text-slate-300 text-xs px-2 py-1 rounded"
             >
               {feature}

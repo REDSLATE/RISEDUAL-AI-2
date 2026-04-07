@@ -30,7 +30,8 @@ export function usePushNotifications() {
     setLoading(false);
   }, []);
 
-  // Check backend subscription status
+  // Check backend subscription status on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const check = async () => {
       try {
@@ -39,7 +40,7 @@ export function usePushNotifications() {
           const data = await res.json();
           setSubscribed(data.subscribed);
         }
-      } catch (e) { /* not logged in */ }
+      } catch (e) { console.error('Push status check failed:', e); }
     };
     check();
   }, []);

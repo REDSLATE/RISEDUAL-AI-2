@@ -11,10 +11,10 @@ from datetime import datetime, timedelta
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 FREE_USER_EMAIL = "freeuser_test@test.com"
-FREE_USER_PASSWORD = "Test1234!"
+FREE_USER_PASSWORD = os.environ.get("FREE_USER_PASSWORD", "Test1234!")
 
 # Known active promo ID from context
 ACTIVE_PROMO_ID = "69d0d11e8617ff93a0953ad9"

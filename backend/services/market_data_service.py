@@ -1,10 +1,12 @@
 import os
 import requests
 import logging
+import secrets as _secrets
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+_rng = _secrets.SystemRandom()
 
 class MarketDataService:
     def __init__(self):
@@ -152,20 +154,18 @@ class MarketDataService:
     
     def generate_dark_pool_data(self) -> List[Dict]:
         """Generate dark pool trading data"""
-        import random
-        
         symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'SPY']
         dark_pool_data = []
         
         for symbol in symbols[:8]:
             dark_pool_data.append({
                 'symbol': symbol,
-                'darkPoolVolume': random.randint(500000, 5000000),
-                'totalVolume': random.randint(10000000, 50000000),
-                'darkPoolPercent': round(random.uniform(15, 45), 2),
-                'averagePrice': round(random.uniform(100, 500), 2),
-                'priceChange': round(random.uniform(-5, 5), 2),
-                'sentiment': random.choice(['Bullish', 'Bearish', 'Neutral']),
+                'darkPoolVolume': _rng.randint(500000, 5000000),
+                'totalVolume': _rng.randint(10000000, 50000000),
+                'darkPoolPercent': round(_rng.uniform(15, 45), 2),
+                'averagePrice': round(_rng.uniform(100, 500), 2),
+                'priceChange': round(_rng.uniform(-5, 5), 2),
+                'sentiment': _rng.choice(['Bullish', 'Bearish', 'Neutral']),
                 'timestamp': datetime.now().isoformat()
             })
         
@@ -173,20 +173,17 @@ class MarketDataService:
     
     def generate_mock_options_data(self, data_type: str) -> Dict:
         """Generate realistic mock options data based on type"""
-        # This is a sophisticated mock that will be replaced when options API is available
-        import random
-        
         def generate_contract():
             symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'MRVL']
             types = ['Call', 'Put']
             return {
-                'contract': random.choice(symbols),
-                'price': f"${random.randint(50, 500)} {random.choice(types)}",
-                'returns': f"{random.randint(50, 400)}%",
-                'volOI': round(random.uniform(0.1, 10), 2),
-                'power': random.randint(40, 100),
-                'ivRank': random.randint(20, 80),
-                'aiScore': random.randint(30, 70)
+                'contract': _rng.choice(symbols),
+                'price': f"${_rng.randint(50, 500)} {_rng.choice(types)}",
+                'returns': f"{_rng.randint(50, 400)}%",
+                'volOI': round(_rng.uniform(0.1, 10), 2),
+                'power': _rng.randint(40, 100),
+                'ivRank': _rng.randint(20, 80),
+                'aiScore': _rng.randint(30, 70)
             }
         
         if data_type == 'radar':
@@ -208,7 +205,7 @@ class MarketDataService:
         elif data_type == 'unusual_volume':
             contracts = [generate_contract() for _ in range(3)]
             for contract in contracts:
-                contract['sentiment'] = random.choice(['Bearish', 'Bullish'])
+                contract['sentiment'] = _rng.choice(['Bearish', 'Bullish'])
             return contracts
         
         return {}

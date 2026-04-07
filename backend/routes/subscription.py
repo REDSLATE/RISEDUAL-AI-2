@@ -123,8 +123,9 @@ async def update_subscription(request: Request):
     body = await request.json()
     status = body.get("status", "pro")
     plan = body.get("plan", "monthly")
+    from bson import ObjectId
     await db.users.update_one(
-        {"_id": __import__('bson').ObjectId(user["_id"])},
+        {"_id": ObjectId(user["_id"])},
         {"$set": {
             "subscription_status": status,
             "subscription_plan": plan,

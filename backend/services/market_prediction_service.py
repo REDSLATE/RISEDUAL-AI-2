@@ -202,7 +202,7 @@ Provide your analysis in JSON format with:
             
             if real_estate.get('commercial'):
                 commercial = real_estate['commercial']
-                summary += f"- Commercial RE:\n"
+                summary += "- Commercial RE:\n"
                 summary += f"  Office: {commercial.get('office', {}).get('trend', 'N/A')}\n"
                 summary += f"  Industrial: {commercial.get('industrial', {}).get('trend', 'N/A')}\n"
             
@@ -212,7 +212,7 @@ Provide your analysis in JSON format with:
             
             if real_estate.get('trends'):
                 trends = real_estate['trends']
-                summary += f"- Market Implications:\n"
+                summary += "- Market Implications:\n"
                 implications = trends.get('market_implications', {})
                 summary += f"  Stocks: {implications.get('stocks', 'N/A')}\n"
                 summary += f"  Crypto: {implications.get('crypto', 'N/A')}\n"

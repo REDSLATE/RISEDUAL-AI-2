@@ -166,7 +166,7 @@ async def login(req: LoginRequest, request: Request, response: Response):
     if not user or not verify_password(req.password, user["password_hash"]):
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if user.get("is_active") is False:
+    if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Your account has been deactivated. Contact support.")
     await db.login_attempts.delete_one({"identifier": identifier})
     access = create_access_token(str(user["_id"]), email)
@@ -255,7 +255,7 @@ async def seed_admin():
         logging.warning("ADMIN_PASSWORD not set in .env, skipping admin seed")
         return
     existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
+    if not existing:
         await db.users.insert_one({
             "email": admin_email,
             "password_hash": hash_password(admin_password),
@@ -272,7 +272,7 @@ async def seed_admin():
         logging.warning("OWNER_PASSWORD not set in .env, skipping owner seed")
         return
     existing_owner = await db.users.find_one({"email": OWNER_EMAIL})
-    if existing_owner is None:
+    if not existing_owner:
         await db.users.insert_one({
             "email": OWNER_EMAIL,
             "password_hash": hash_password(OWNER_PASSWORD),

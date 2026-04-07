@@ -73,7 +73,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         authFetch(`${API}/workspace/history/save`, {
           method: 'POST',
           body: JSON.stringify({ symbol: data.symbol || symbol.trim().toUpperCase(), verdict: data.verdict, confidence: data.confidence || 0 }),
-        }).catch(() => {});
+        }).catch((e) => console.error('History save error:', e));
       }
     } catch (err) {
       setError(err.message);
@@ -274,7 +274,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
                 </h3>
                 <ul className="space-y-2">
                   {hypothesis.risks.map((r, i) => (
-                    <li key={i} className="text-slate-300 text-sm flex items-start gap-2">
+                    <li key={`risk-${r.substring(0, 20)}`} className="text-slate-300 text-sm flex items-start gap-2">
                       <span className="text-red-500 mt-1">-</span> {r}
                     </li>
                   ))}

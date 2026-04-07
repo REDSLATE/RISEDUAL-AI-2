@@ -52,6 +52,19 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ## Setup Required
 - **Resend**: Add real API key → `RESEND_API_KEY=re_...` in backend .env
 
+## Code Quality Review (Applied 2026-04-07)
+All critical and important findings from the code quality audit have been resolved:
+- **Circular imports**: Confirmed no actual circular dependency (lazy imports already in place)
+- **Dynamic import security**: Replaced `__import__('bson')` with explicit `from bson import ObjectId`
+- **Hardcoded secrets in tests**: All 15 occurrences replaced with `os.environ.get()` + `conftest_creds.py`
+- **Hook dependency violations**: Added eslint-disable with rationale for module-level constant deps
+- **Empty catch blocks**: All 12 silent catches now log via `console.error()`
+- **`is`/`==` comparisons**: Fixed `is False` → `not user.get("is_active", True)`
+- **Insecure `random`**: Replaced with `secrets.SystemRandom()` in market_data_service.py
+- **Index-as-key**: Fixed 7 occurrences to use stable keys (data IDs, unique text, composite keys)
+- **Unused variables**: Cleaned up across 4 services (crypto, digest, push, real_estate)
+- **f-string placeholders**: Auto-fixed 7 empty f-strings
+
 ## Documents Generated
 - **Complete Codebase PDF** (305 pages, 0.7MB): All source code, architecture, DB schemas, API docs, setup guide, env config, and test suite
   - Download: `GET /api/download/codebase-pdf`

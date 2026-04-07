@@ -15,8 +15,8 @@ sys.path.insert(0, '/app/backend')
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 
 
 class TestEmailServiceModule:

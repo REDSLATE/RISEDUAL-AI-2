@@ -24,6 +24,8 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
   const [saving, setSaving] = useState(false);
   const [closeForm, setCloseForm] = useState(null);
 
+  // Stable deps: authFetch and API are module-level constants
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchTrades = useCallback(async () => {
     setLoading(true);
     try {
@@ -37,6 +39,8 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
     finally { setLoading(false); }
   }, []);
 
+  // Stable deps: authFetch and API are module-level constants
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchAnalytics = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/journal/analytics`);

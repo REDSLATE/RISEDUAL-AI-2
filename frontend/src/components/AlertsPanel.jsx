@@ -133,7 +133,7 @@ const AlertsPanel = ({ onSubscribe }) => {
               /* Pro with notifications */
               <div className="divide-y divide-slate-800/60">
                 {notifications.map((n, i) => (
-                  <div key={i} className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#0052FF]/5' : 'hover:bg-slate-800/40'}`} data-testid={`notification-${i}`}>
+                  <div key={n._id || n.id || `notif-${i}`} className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#0052FF]/5' : 'hover:bg-slate-800/40'}`} data-testid={`notification-${i}`}>
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 flex-shrink-0">
                         {verdictIcon(n.new_verdict)}

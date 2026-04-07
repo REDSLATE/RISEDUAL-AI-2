@@ -52,8 +52,8 @@ class TestReferralInfoAPI:
     def auth_token(self):
         """Get authentication token for owner account"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": os.environ.get("OWNER_EMAIL", ""),
+            "password": os.environ.get("OWNER_PASSWORD", "")
         })
         if response.status_code == 200:
             return response.json().get("access_token")
@@ -106,8 +106,8 @@ class TestSocialShareURLConstruction:
     def auth_token(self):
         """Get authentication token"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": os.environ.get("OWNER_EMAIL", ""),
+            "password": os.environ.get("OWNER_PASSWORD", "")
         })
         if response.status_code == 200:
             return response.json().get("access_token")

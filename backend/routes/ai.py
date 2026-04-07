@@ -102,7 +102,7 @@ async def get_chat_history(session_id: str, request: Request):
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
             messages = [m for m in messages if m.get("timestamp", "9999") >= cutoff]
 
-        return {"messages": messages, "history_limited": user is not None and not is_pro_user(user)}
+        return {"messages": messages, "history_limited": bool(user) and not is_pro_user(user)}
     except Exception as e:
         logging.error(f"Error fetching chat history: {e}")
         raise HTTPException(status_code=500, detail="Error fetching chat history")

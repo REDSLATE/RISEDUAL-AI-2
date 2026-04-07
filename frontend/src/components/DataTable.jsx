@@ -104,7 +104,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
             <tr className="border-b border-slate-700">
               {columns.map((col, index) => (
                 <th
-                  key={index}
+                  key={col.key || col.label}
                   className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider"
                 >
                   <div className="flex items-center gap-1">
@@ -123,11 +123,11 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
           <tbody>
             {filteredData.map((row, rowIndex) => (
               <tr
-                key={rowIndex}
+                key={row.contract || row.symbol || rowIndex}
                 className="border-b border-slate-700 hover:bg-slate-700 transition-colors"
               >
                 {columns.map((col, colIndex) => (
-                  <td key={colIndex} className="py-3 px-3 text-sm">
+                  <td key={col.key || col.label} className="py-3 px-3 text-sm">
                     {col.key === 'contract' ? (
                       <span 
                         onClick={() => alert(`Viewing details for ${row[col.key]}\n\nThis will show:\n- Detailed contract info\n- Price history\n- Volume analysis\n- Greeks (for options)`)}

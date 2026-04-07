@@ -181,7 +181,7 @@ async def get_analytics(request: Request):
     user = await get_current_user(request)
     user_id = user["_id"]
 
-    cursor = db.trades.find({"user_id": user_id})
+    cursor = db.trades.find({"user_id": user_id}).limit(1000)
     trades = []
     async for doc in cursor:
         trades.append(trade_response(doc))

@@ -36,6 +36,8 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
     }
   }, []);
 
+  // Stable deps: authFetch and API are module-level constants
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchHistory = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/workspace/history`);
@@ -415,7 +417,7 @@ const DigestToggle = () => {
           const data = await res.json();
           setSubscribed(data.subscribed);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { console.error('Digest status error:', e); }
       finally { setLoading(false); }
     };
     load();
@@ -427,7 +429,7 @@ const DigestToggle = () => {
       const endpoint = subscribed ? 'opt-out' : 'opt-in';
       const res = await authFetch(`${API}/digest/${endpoint}`, { method: 'POST' });
       if (res.ok) setSubscribed(!subscribed);
-    } catch (e) { /* ignore */ }
+    } catch (e) { console.error('Digest toggle error:', e); }
     finally { setToggling(false); }
   };
 
