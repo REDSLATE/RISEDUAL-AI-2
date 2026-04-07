@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, Plus, Trash2, ToggleLeft, ToggleRight, Calendar, Download, FileCode, Loader2 } from 'lucide-react';
+import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, Plus, Trash2, ToggleLeft, ToggleRight, Calendar, Download, FileCode, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -192,6 +192,19 @@ const AdminPanel = ({ onClose }) => {
 
 const AdminTools = () => {
   const [downloading, setDownloading] = useState(false);
+  const [codeQuality, setCodeQuality] = useState(null);
+  const [loadingQuality, setLoadingQuality] = useState(true);
+
+  useEffect(() => {
+    const fetchQuality = async () => {
+      try {
+        const res = await authFetch(`${API}/admin/code-quality`);
+        if (res.ok) setCodeQuality(await res.json());
+      } catch (e) { console.error('Code quality fetch error:', e); }
+      finally { setLoadingQuality(false); }
+    };
+    fetchQuality();
+  }, []);
 
   const downloadCodebase = async () => {
     setDownloading(true);
@@ -215,10 +228,80 @@ const AdminTools = () => {
     }
   };
 
+  const gradeColor = (grade) => {
+    if (grade?.startsWith('A')) return 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50';
+    if (grade?.startsWith('B')) return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
+    if (grade?.startsWith('C')) return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
+    return 'text-red-400 bg-red-900/30 border-red-700/50';
+  };
+
   return (
     <div className="p-6 space-y-6" data-testid="admin-tools">
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
 
+      {/* Code Quality Score Badge */}
+      <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5" data-testid="code-quality-card">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-900/20 border border-emerald-700/30 flex items-center justify-center shrink-0">
+            <CheckCircle className="w-6 h-6 text-emerald-400" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-white text-sm font-semibold">Code Quality Score</h4>
+              {loadingQuality ? (
+                <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />
+              ) : codeQuality ? (
+                <div className="flex items-center gap-2">
+                  <span className={`text-2xl font-black ${gradeColor(codeQuality.grade).split(' ')[0]}`}>{codeQuality.score}</span>
+                  <Badge className={`text-sm font-bold px-2.5 py-1 rounded-lg border ${gradeColor(codeQuality.grade)}`} data-testid="code-quality-grade">
+                    {codeQuality.grade}
+                  </Badge>
+                </div>
+              ) : (
+                <span className="text-slate-500 text-xs">Unavailable</span>
+              )}
+            </div>
+
+            {codeQuality && (
+              <>
+                {/* Score Bar */}
+                <div className="w-full bg-slate-700/50 rounded-full h-2.5 mb-4">
+                  <div className="h-2.5 rounded-full transition-all bg-gradient-to-r from-emerald-500 to-cyan-400" style={{ width: `${codeQuality.score}%` }} />
+                </div>
+
+                {/* Breakdown */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+                  {Object.entries(codeQuality.breakdown).map(([key, item]) => (
+                    <div key={key} className="bg-slate-900/60 rounded-lg p-2.5 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        {item.score >= item.max * 0.7 ? (
+                          <CheckCircle className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                        )}
+                        <span className="text-white text-xs font-bold">{item.score}/{item.max}</span>
+                      </div>
+                      <span className="text-slate-500 text-[9px]">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Metrics */}
+                <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
+                  <span>{codeQuality.metrics.backend_files} backend files ({codeQuality.metrics.backend_lines} lines)</span>
+                  <span>{codeQuality.metrics.frontend_files} frontend files ({codeQuality.metrics.frontend_lines} lines)</span>
+                  <span>{codeQuality.metrics.test_files} tests</span>
+                  <span>{codeQuality.metrics.service_modules} services</span>
+                  <span>{codeQuality.metrics.route_modules} routes</span>
+                  <span>{codeQuality.metrics.components} components</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Download Codebase */}
       <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-[#0052FF]/10 border border-[#0052FF]/20 flex items-center justify-center shrink-0">

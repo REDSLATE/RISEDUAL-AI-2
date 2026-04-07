@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -136,6 +136,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenJournal} data-testid="nav-journal-btn">
                   <BookOpen className="w-4 h-4 mr-2" /> Trading Journal
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-violet-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenStrategy} data-testid="nav-strategy-btn">
+                  <Wand2 className="w-4 h-4 mr-2" /> Strategy Builder
+                </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -227,6 +230,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-indigo-900/30 text-indigo-400 border-indigo-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenJournal(); setMobileMenuOpen(false); }} data-testid="mobile-journal-btn">
                   <BookOpen className="w-3 h-3 mr-1" /> Journal
+                </Button>
+                <Button variant="outline" size="sm" className="bg-violet-900/30 text-violet-400 border-violet-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenStrategy(); setMobileMenuOpen(false); }} data-testid="mobile-strategy-btn">
+                  <Wand2 className="w-3 h-3 mr-1" /> Strategy
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

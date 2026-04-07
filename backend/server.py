@@ -30,6 +30,7 @@ from routes.promo import router as promo_router, set_db as set_promo_db
 from routes.digest import router as digest_router, set_db as set_digest_db
 from routes.push import router as push_router, set_db as set_push_db
 from routes.journal import router as journal_router, set_db as set_journal_db
+from routes.strategy import router as strategy_router, set_db as set_strategy_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -103,6 +104,7 @@ app.include_router(promo_router)
 app.include_router(digest_router)
 app.include_router(push_router)
 app.include_router(journal_router)
+app.include_router(strategy_router)
 
 # CORS
 app.add_middleware(
@@ -133,6 +135,7 @@ async def startup_event():
     set_digest_db(db)
     set_push_db(db)
     set_journal_db(db)
+    set_strategy_db(db)
 
     # Start daily digest scheduler (6:00 AM UTC)
     try:
