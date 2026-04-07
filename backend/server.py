@@ -3,6 +3,7 @@
 Thin orchestrator: connects MongoDB, registers route modules, handles startup/shutdown.
 """
 from fastapi import FastAPI, APIRouter
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -56,6 +57,18 @@ class StatusCheckCreate(BaseModel):
 @api_router.get("/")
 async def root():
     return {"message": "RISEDUAL AI API - Ready"}
+
+
+@api_router.get("/download/codebase-pdf")
+async def download_codebase_pdf():
+    pdf_path = "/app/RISEDUAL_AI_Complete_Codebase.pdf"
+    if os.path.exists(pdf_path):
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename="RISEDUAL_AI_Complete_Codebase.pdf"
+        )
+    return {"error": "PDF not found"}
 
 
 @api_router.post("/status", response_model=StatusCheck)

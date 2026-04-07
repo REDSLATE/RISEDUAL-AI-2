@@ -52,6 +52,11 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ## Setup Required
 - **Resend**: Add real API key → `RESEND_API_KEY=re_...` in backend .env
 
+## Documents Generated
+- **Complete Codebase PDF** (305 pages, 0.7MB): All source code, architecture, DB schemas, API docs, setup guide, env config, and test suite
+  - Download: `GET /api/download/codebase-pdf`
+  - Also available at: `/app/RISEDUAL_AI_Complete_Codebase.pdf`
+
 ## Prioritized Backlog
 ### P1 - Upcoming
 - Deployment to risedual.ai
