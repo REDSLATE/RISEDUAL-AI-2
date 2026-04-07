@@ -9,6 +9,8 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 - AI: Emergent Integrations (GPT-5.2, Claude Sonnet 4.5, Gemini Pro via Universal Key)
 - Auth: PyJWT + bcrypt (Bearer tokens via localStorage)
 - Payments: Stripe ($45/month or $486/year)
+- Market Data: Alpha Vantage (upgraded paid key - real-time stock/crypto)
+- Macro Data: Finnhub (SEC insider trades, earnings calendar, congressional activity, company news)
 - Email: Resend (placeholder key)
 - Push: Web Push with VAPID keys (configured)
 

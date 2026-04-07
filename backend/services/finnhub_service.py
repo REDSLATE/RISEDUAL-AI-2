@@ -139,8 +139,18 @@ class FinnhubService:
         """Fetch all Finnhub data sources in one call for the prediction engine."""
         congressional = await self.get_congressional_trades(symbol)
         earnings = await self.get_earnings_calendar()
-        insider = await self.get_insider_transactions(symbol) if symbol else []
-        news = await self.get_company_news(symbol) if symbol else []
+
+        # Get insider data for the symbol, or for top tickers if no symbol
+        if symbol:
+            insider = await self.get_insider_transactions(symbol)
+            news = await self.get_company_news(symbol)
+        else:
+            # Fetch insider data for a few major tickers to give the AI context
+            insider = []
+            for tk in ["AAPL", "MSFT", "NVDA"]:
+                insider.extend(await self.get_insider_transactions(tk))
+            insider = insider[:20]
+            news = []
 
         return {
             "congressional_trades": congressional,

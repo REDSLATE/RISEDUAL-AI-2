@@ -199,7 +199,13 @@ class GovFilingsService:
         except Exception as e:
             logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
 
-        if finnhub_data.get("congressional_count", 0) > 0:
+        finnhub_has_data = (
+            finnhub_data.get("congressional_count", 0) > 0 or
+            finnhub_data.get("insider_count", 0) > 0 or
+            finnhub_data.get("earnings_count", 0) > 0
+        )
+
+        if finnhub_has_data:
             # Use Finnhub data as primary
             fed_announcements = await self.get_fed_announcements()
             return {

@@ -85,10 +85,28 @@ def _build_prompt(symbol: str, data: Dict) -> str:
     if gov:
         congress = [f"- {t.get('description','N/A')}" for t in gov.get("congressional_trades", [])[:8]]
         sections.append("CONGRESSIONAL TRADES:\n" + ("\n".join(congress) or "No congressional trades"))
-        insiders = [f"- {t.get('description','N/A')}" for t in gov.get("insider_trades", [])[:5]]
-        sections.append("INSIDER TRADES (SEC):\n" + ("\n".join(insiders) or "No insider filings"))
+
+        # Insider trades (from Finnhub SEC Form 4 filings)
+        insider_list = gov.get("insider_trades", [])
+        if not insider_list:
+            insider_list = [{"description": f"{t.get('name','?')} {t.get('action','?')} {t.get('shares',0)} shares @ ${t.get('price','?')}"} for t in gov.get("insider_transactions", [])[:8]]
+        insiders = [f"- {t.get('description','N/A')}" for t in insider_list[:8]]
+        sections.append("INSIDER TRADES (SEC Form 4):\n" + ("\n".join(insiders) or "No insider filings"))
+
         fed = [f"- {a.get('title','N/A')}" for a in gov.get("fed_announcements", [])[:3]]
         sections.append("FED ANNOUNCEMENTS:\n" + ("\n".join(fed) or "No Fed announcements"))
+
+        # Upcoming earnings from Finnhub
+        earnings = gov.get("upcoming_earnings", [])
+        if earnings:
+            items = [f"- {e.get('symbol','?')} on {e.get('date','?')} (EPS est: {e.get('eps_estimate','N/A')})" for e in earnings[:10]]
+            sections.append("UPCOMING EARNINGS (next 14 days):\n" + "\n".join(items))
+
+        # Company news from Finnhub
+        finnhub_news = gov.get("company_news_finnhub", [])
+        if finnhub_news:
+            items = [f"- [{a.get('source','?')}] {a.get('headline','N/A')}" for a in finnhub_news[:5]]
+            sections.append("COMPANY-SPECIFIC NEWS (Finnhub):\n" + "\n".join(items))
     else:
         sections.append("CONGRESSIONAL TRADES:\nNo data")
 
