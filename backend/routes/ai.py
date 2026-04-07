@@ -6,20 +6,13 @@ from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
-from routes.auth import get_current_user, get_optional_user
+from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
 
 router = APIRouter(prefix="/api")
 ai_service = AIService()
 
 FREE_CHAT_DAILY_LIMIT = 5
 
-
-def is_pro_user(user: dict) -> bool:
-    """Check if user has Pro access (includes 'pro' and 'trial' status)."""
-    if not user:
-        return False
-    status = user.get("subscription_status", "free")
-    return status in ("pro", "trial")
 
 # Module-level db reference, set by server.py on startup
 db = None

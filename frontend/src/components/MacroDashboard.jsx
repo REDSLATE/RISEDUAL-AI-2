@@ -495,7 +495,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
           </h3>
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
             {insider_trades.map((t, i) => (
-              <Card key={i} className="bg-slate-800/40 border-slate-700/30 rounded-xl p-3">
+              <Card key={`insider-${t.company || t.ticker || i}-${i}`} className="bg-slate-800/40 border-slate-700/30 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white text-sm font-medium">{t.company || t.ticker || 'Unknown'}</p>

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime, timezone
 
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user
 
 router = APIRouter(prefix="/api")
 

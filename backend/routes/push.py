@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from bson import ObjectId
 from datetime import datetime, timezone
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user
 
 router = APIRouter(prefix="/api/push")
 

@@ -1,7 +1,7 @@
 """Digest routes: admin trigger, user opt-in/out, preview."""
 import logging
 from fastapi import APIRouter, HTTPException, Request
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user
 from bson import ObjectId
 
 router = APIRouter(prefix="/api/digest")

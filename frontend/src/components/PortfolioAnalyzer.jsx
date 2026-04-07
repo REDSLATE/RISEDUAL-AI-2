@@ -79,7 +79,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
             <>
               <div className="space-y-2">
                 {holdings.map((h, i) => (
-                  <div key={i} className="flex gap-2 items-center">
+                  <div key={`holding-${i}-${h.ticker}`} className="flex gap-2 items-center">
                     <Input placeholder="Ticker" value={h.ticker} onChange={e => updateHolding(i, 'ticker', e.target.value.toUpperCase())} className="bg-slate-800 border-slate-600 text-white rounded-xl w-24" />
                     <Input placeholder="Shares" type="number" value={h.shares} onChange={e => updateHolding(i, 'shares', e.target.value)} className="bg-slate-800 border-slate-600 text-white rounded-xl w-24" />
                     <Input placeholder="Avg Price" type="number" value={h.avg_price} onChange={e => updateHolding(i, 'avg_price', e.target.value)} className="bg-slate-800 border-slate-600 text-white rounded-xl flex-1" />

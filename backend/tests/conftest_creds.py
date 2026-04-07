@@ -18,6 +18,6 @@ ADMIN_EMAIL = _creds["admin_email"]
 ADMIN_PASSWORD = _creds["admin_password"]
 
 FREE_USER_EMAIL = "freeuser_test@test.com"
-FREE_USER_PASSWORD = "Test1234!"
+FREE_USER_PASSWORD = os.environ.get("FREE_USER_PASSWORD", "Test1234!")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")

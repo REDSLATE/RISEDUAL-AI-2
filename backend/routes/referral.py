@@ -5,7 +5,7 @@ import string
 import logging
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user
 
 router = APIRouter(prefix="/api/referral")
 

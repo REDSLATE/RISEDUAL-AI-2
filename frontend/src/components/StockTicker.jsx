@@ -79,7 +79,7 @@ const StockTicker = () => {
     <div className="bg-[#0F172A] border-b border-slate-700 overflow-hidden">
       <div ref={tickerRef} className="flex py-2">
         {duplicatedData.map((stock, index) => (
-          <TickerItem key={index} {...stock} />
+          <TickerItem key={`${stock.symbol}-${index}`} {...stock} />
         ))}
       </div>
     </div>

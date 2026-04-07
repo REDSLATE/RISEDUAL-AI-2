@@ -30,6 +30,7 @@ from routes.promo import router as promo_router, set_db as set_promo_db
 from routes.digest import router as digest_router, set_db as set_digest_db
 from routes.push import router as push_router, set_db as set_push_db
 from routes.journal import router as journal_router, set_db as set_journal_db
+from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -122,6 +123,7 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup_event():
     # Pass db reference to all route modules that need it
+    set_auth_helpers_db(db)
     set_auth_db(db)
     set_ai_db(db)
     set_workspace_db(db)

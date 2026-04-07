@@ -52,7 +52,13 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ## Setup Required
 - **Resend**: Add real API key → `RESEND_API_KEY=re_...` in backend .env
 
-## Code Quality Review (Applied 2026-04-07)
+## Code Quality Review Round 2 (Applied 2026-04-07)
+All critical and important findings resolved:
+- **Circular imports ELIMINATED**: Extracted `services/auth_helpers.py` with `get_current_user`, `get_optional_user`, `is_pro_user`. All 7 route modules now import from auth_helpers instead of routes.auth
+- **Duplicate `is_pro_user` removed**: Consolidated from ai.py, journal.py, workspace.py into single auth_helpers source
+- **Hardcoded secrets in tests**: Fixed remaining 3 occurrences (test_multi_model_hypothesis.py, conftest_creds.py)
+- **Journal analytics refactored**: Split 74-line `get_analytics()` into `_calculate_win_rate()`, `_aggregate_by_ticker()`, `_build_pnl_timeline()`
+- **Index-as-key fixed**: StockTicker, PortfolioAnalyzer, MobileBottomNav, MacroDashboard — all using stable keys
 All critical and important findings from the code quality audit have been resolved:
 - **Circular imports**: Confirmed no actual circular dependency (lazy imports already in place)
 - **Dynamic import security**: Replaced `__import__('bson')` with explicit `from bson import ObjectId`

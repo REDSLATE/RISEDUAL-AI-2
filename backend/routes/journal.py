@@ -5,7 +5,7 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user, is_pro_user
 
 router = APIRouter(prefix="/api/journal")
 
@@ -15,10 +15,6 @@ FREE_TRADE_LIMIT = 5
 def set_db(database):
     global db
     db = database
-
-
-def is_pro_user(user: dict) -> bool:
-    return user.get("subscription_status") in ("pro", "trial")
 
 
 class TradeCreate(BaseModel):
@@ -175,6 +171,50 @@ async def attach_hypothesis(trade_id: str, request: Request):
     return trade_response(updated)
 
 
+def _calculate_win_rate(closed: list) -> dict:
+    """Calculate win/loss statistics from closed trades."""
+    wins = [t for t in closed if t["pnl"] > 0]
+    losses = [t for t in closed if t["pnl"] <= 0]
+    return {
+        "total_pnl": round(sum(t["pnl"] for t in closed), 2),
+        "win_rate": round((len(wins) / len(closed)) * 100, 1) if closed else 0,
+        "avg_gain": round(sum(t["pnl"] for t in wins) / len(wins), 2) if wins else 0,
+        "avg_loss": round(sum(t["pnl"] for t in losses) / len(losses), 2) if losses else 0,
+        "best_trade": max(closed, key=lambda t: t["pnl"]),
+        "worst_trade": min(closed, key=lambda t: t["pnl"]),
+    }
+
+
+def _aggregate_by_ticker(closed: list) -> dict:
+    """Group closed trades by ticker with P&L and win count."""
+    by_ticker = {}
+    for t in closed:
+        tk = t["ticker"]
+        if tk not in by_ticker:
+            by_ticker[tk] = {"pnl": 0, "trades": 0, "wins": 0}
+        by_ticker[tk]["pnl"] = round(by_ticker[tk]["pnl"] + t["pnl"], 2)
+        by_ticker[tk]["trades"] += 1
+        if t["pnl"] > 0:
+            by_ticker[tk]["wins"] += 1
+    return by_ticker
+
+
+def _build_pnl_timeline(closed: list) -> list:
+    """Build cumulative P&L timeline sorted by exit date."""
+    sorted_closed = sorted(closed, key=lambda t: t.get("exit_date") or t.get("entry_date") or "")
+    cumulative = 0
+    timeline = []
+    for t in sorted_closed:
+        cumulative += t["pnl"]
+        timeline.append({
+            "date": t.get("exit_date") or t.get("entry_date", ""),
+            "pnl": round(t["pnl"], 2),
+            "cumulative": round(cumulative, 2),
+            "ticker": t["ticker"],
+        })
+    return timeline
+
+
 @router.get("/analytics")
 async def get_analytics(request: Request):
     """Get trading performance analytics."""
@@ -189,65 +229,28 @@ async def get_analytics(request: Request):
     closed = [t for t in trades if t["status"] == "closed"]
     open_trades = [t for t in trades if t["status"] == "open"]
 
+    empty = {
+        "total_trades": len(trades), "open_trades": len(open_trades), "closed_trades": 0,
+        "total_pnl": 0, "win_rate": 0, "avg_gain": 0, "avg_loss": 0,
+        "best_trade": None, "worst_trade": None, "by_ticker": {}, "pnl_timeline": [],
+    }
     if not closed:
-        return {
-            "total_trades": len(trades),
-            "open_trades": len(open_trades),
-            "closed_trades": 0,
-            "total_pnl": 0,
-            "win_rate": 0,
-            "avg_gain": 0,
-            "avg_loss": 0,
-            "best_trade": None,
-            "worst_trade": None,
-            "by_ticker": {},
-            "pnl_timeline": [],
-        }
+        return empty
 
-    total_pnl = sum(t["pnl"] for t in closed)
-    wins = [t for t in closed if t["pnl"] > 0]
-    losses = [t for t in closed if t["pnl"] <= 0]
-    win_rate = (len(wins) / len(closed)) * 100 if closed else 0
-    avg_gain = sum(t["pnl"] for t in wins) / len(wins) if wins else 0
-    avg_loss = sum(t["pnl"] for t in losses) / len(losses) if losses else 0
-
-    best = max(closed, key=lambda t: t["pnl"])
-    worst = min(closed, key=lambda t: t["pnl"])
-
-    # Performance by ticker
-    by_ticker = {}
-    for t in closed:
-        tk = t["ticker"]
-        if tk not in by_ticker:
-            by_ticker[tk] = {"pnl": 0, "trades": 0, "wins": 0}
-        by_ticker[tk]["pnl"] = round(by_ticker[tk]["pnl"] + t["pnl"], 2)
-        by_ticker[tk]["trades"] += 1
-        if t["pnl"] > 0:
-            by_ticker[tk]["wins"] += 1
-
-    # P&L timeline (cumulative by exit date)
-    sorted_closed = sorted(closed, key=lambda t: t.get("exit_date") or t.get("entry_date") or "")
-    cumulative = 0
-    timeline = []
-    for t in sorted_closed:
-        cumulative += t["pnl"]
-        timeline.append({
-            "date": t.get("exit_date") or t.get("entry_date", ""),
-            "pnl": round(t["pnl"], 2),
-            "cumulative": round(cumulative, 2),
-            "ticker": t["ticker"],
-        })
+    stats = _calculate_win_rate(closed)
+    best = stats["best_trade"]
+    worst = stats["worst_trade"]
 
     return {
         "total_trades": len(trades),
         "open_trades": len(open_trades),
         "closed_trades": len(closed),
-        "total_pnl": round(total_pnl, 2),
-        "win_rate": round(win_rate, 1),
-        "avg_gain": round(avg_gain, 2),
-        "avg_loss": round(avg_loss, 2),
+        "total_pnl": stats["total_pnl"],
+        "win_rate": stats["win_rate"],
+        "avg_gain": stats["avg_gain"],
+        "avg_loss": stats["avg_loss"],
         "best_trade": {"ticker": best["ticker"], "pnl": best["pnl"], "pnl_percent": best["pnl_percent"]},
         "worst_trade": {"ticker": worst["ticker"], "pnl": worst["pnl"], "pnl_percent": worst["pnl_percent"]},
-        "by_ticker": by_ticker,
-        "pnl_timeline": timeline,
+        "by_ticker": _aggregate_by_ticker(closed),
+        "pnl_timeline": _build_pnl_timeline(closed),
     }

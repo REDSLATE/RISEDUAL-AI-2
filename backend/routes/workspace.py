@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Request
 import logging
 from datetime import datetime, timezone
 
-from routes.auth import get_current_user
+from services.auth_helpers import get_current_user, is_pro_user
 
 router = APIRouter(prefix="/api")
 
@@ -13,14 +13,6 @@ db = None
 def set_db(database):
     global db
     db = database
-
-
-def is_pro_user(user: dict) -> bool:
-    """Check if user has Pro access (includes 'pro' and 'trial' status)."""
-    if not user:
-        return False
-    status = user.get("subscription_status", "free")
-    return status in ("pro", "trial")
 
 
 # --- Watchlist ---
