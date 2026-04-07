@@ -21,6 +21,42 @@ class CheckoutRequest(BaseModel):
     plan: str = "monthly"
 
 
+@router.get("/subscription/plans")
+async def get_plans():
+    """Return available subscription plans."""
+    return {
+        "plans": [
+            {
+                "id": "monthly",
+                "name": "Pro Monthly",
+                "price": 45.00,
+                "currency": "usd",
+                "interval": "month",
+                "features": [
+                    "Unlimited AI Chat & Hypothesis",
+                    "All 3 AI Models + Consensus Mode",
+                    "Dark Pool & Congress Data (unblurred)",
+                    "Unlimited Watchlist & Journal",
+                    "PDF Export & Portfolio Analyzer",
+                    "Market Signals & Priority Support",
+                ],
+            },
+            {
+                "id": "annual",
+                "name": "Pro Annual",
+                "price": 486.00,
+                "currency": "usd",
+                "interval": "year",
+                "savings": "Save $54/year",
+                "features": [
+                    "Everything in Pro Monthly",
+                    "2 months free ($54 savings)",
+                ],
+            },
+        ]
+    }
+
+
 @router.post("/subscription/create-checkout-session")
 async def create_checkout_session(request: CheckoutRequest, http_request: Request):
     try:
