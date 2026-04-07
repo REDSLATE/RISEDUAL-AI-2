@@ -55,6 +55,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Full-stack tradi
 ## Documents Generated
 - **Complete Codebase PDF** (305 pages, 0.7MB): All source code, architecture, DB schemas, API docs, setup guide, env config, and test suite
   - Download: `GET /api/download/codebase-pdf`
+  - Admin Panel > Tools tab > "Download Source Code" button
   - Also available at: `/app/RISEDUAL_AI_Complete_Codebase.pdf`
 
 ## Prioritized Backlog

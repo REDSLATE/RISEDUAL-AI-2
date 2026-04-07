@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, Plus, Trash2, ToggleLeft, ToggleRight, Calendar } from 'lucide-react';
+import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, Plus, Trash2, ToggleLeft, ToggleRight, Calendar, Download, FileCode, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -56,6 +56,7 @@ const AdminPanel = ({ onClose }) => {
   const tabs = [
     { id: 'users', label: 'Users', icon: Users },
     { id: 'promos', label: 'Promos', icon: Gift },
+    { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
   return (
@@ -179,10 +180,75 @@ const AdminPanel = ({ onClose }) => {
               </table>
             </div>
           </>
-        ) : (
+        ) : tab === 'promos' ? (
           <PromoManager />
+        ) : (
+          <AdminTools />
         )}
       </div>
+    </div>
+  );
+};
+
+const AdminTools = () => {
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadCodebase = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API}/download/codebase-pdf`);
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'RISEDUAL_AI_Complete_Codebase.pdf';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (e) {
+      console.error('Download error:', e);
+      alert('Failed to download. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6" data-testid="admin-tools">
+      <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
+
+      <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-[#0052FF]/10 border border-[#0052FF]/20 flex items-center justify-center shrink-0">
+            <FileCode className="w-6 h-6 text-[#0052FF]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-white text-sm font-semibold mb-1">Download Complete Source Code</h4>
+            <p className="text-slate-400 text-xs leading-relaxed mb-3">
+              Export the entire RISEDUAL AI codebase as a 305-page PDF. Includes all source code, architecture documentation, database schemas, API reference, environment configuration, setup guide, and the full test suite.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {['Frontend', 'Backend', 'Services', 'Routes', 'Models', 'Tests', 'Config', 'API Docs', 'DB Schemas'].map(tag => (
+                <span key={tag} className="text-[9px] px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-300 border border-slate-600/40">{tag}</span>
+              ))}
+            </div>
+            <Button
+              onClick={downloadCodebase}
+              disabled={downloading}
+              className="bg-[#0052FF] hover:bg-[#2563EB] text-white text-xs h-9 px-4 rounded-xl transition-all"
+              data-testid="download-codebase-btn"
+            >
+              {downloading ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading...</>
+              ) : (
+                <><Download className="w-4 h-4 mr-2" /> Download PDF (0.7 MB)</>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 };
