@@ -107,7 +107,7 @@ function AppContent() {
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <div className="flex items-center justify-center gap-2 mb-1">
-          <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-5 h-5 object-contain brightness-125" />
+          <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-[23px] h-[23px] object-contain brightness-125" />
           <p>RISEDUAL AI - Advanced AI-Powered Trading Platform</p>
         </div>
         <p>Last updated on {new Date().toLocaleString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'UTC' })} UTC</p>
