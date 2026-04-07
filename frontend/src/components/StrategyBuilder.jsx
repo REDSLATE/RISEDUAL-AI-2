@@ -26,6 +26,10 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
   const [showSaved, setShowSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedSection, setExpandedSection] = useState(null);
+  const [backtestSymbol, setBacktestSymbol] = useState('');
+  const [backtestYears, setBacktestYears] = useState(3);
+  const [backtesting, setBacktesting] = useState(false);
+  const [backtestResult, setBacktestResult] = useState(null);
 
   const fetchSaved = useCallback(async () => {
     try {
@@ -307,6 +311,59 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
                     ))}
                   </ul>
                 </Card>
+              )}
+
+              {/* Backtest Section */}
+              <Card className="bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border-cyan-800/30 rounded-xl p-5" data-testid="backtest-section">
+                <div className="flex items-center gap-2 mb-4">
+                  <FlaskConical className="w-5 h-5 text-cyan-400" />
+                  <h4 className="text-white text-sm font-bold">Backtest This Strategy</h4>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="text-slate-400 text-[10px] uppercase tracking-wider mb-1 block">Ticker Symbol</label>
+                    <input
+                      value={backtestSymbol}
+                      onChange={e => setBacktestSymbol(e.target.value.toUpperCase())}
+                      placeholder="e.g. AAPL, TSLA, SPY"
+                      className="w-full bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
+                      data-testid="backtest-symbol-input"
+                    />
+                  </div>
+                  <div className="w-full sm:w-32">
+                    <label className="text-slate-400 text-[10px] uppercase tracking-wider mb-1 block">Timeframe</label>
+                    <select
+                      value={backtestYears}
+                      onChange={e => setBacktestYears(Number(e.target.value))}
+                      className="w-full bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500/60"
+                      data-testid="backtest-years-select"
+                    >
+                      <option value={1}>1 Year</option>
+                      <option value={2}>2 Years</option>
+                      <option value={3}>3 Years</option>
+                      <option value={5}>5 Years</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={runBacktest}
+                      disabled={backtesting || !backtestSymbol.trim()}
+                      className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg h-[38px] px-5 text-sm whitespace-nowrap"
+                      data-testid="run-backtest-btn"
+                    >
+                      {backtesting ? (
+                        <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Running...</>
+                      ) : (
+                        <><FlaskConical className="w-4 h-4 mr-2" /> Run Backtest</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Backtest Results */}
+              {backtestResult && (
+                <BacktestResults result={backtestResult} onClose={() => setBacktestResult(null)} />
               )}
             </div>
           )}

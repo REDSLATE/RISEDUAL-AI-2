@@ -15,7 +15,7 @@ def _fetch_daily_prices(symbol: str, years: int = 3) -> List[Dict]:
     if not api_key:
         raise ValueError("Alpha Vantage API key not configured")
 
-    outputsize = "full" if years > 1 else "compact"
+    outputsize = "full"
     url = "https://www.alphavantage.co/query"
     params = {
         "function": "TIME_SERIES_DAILY",
@@ -30,7 +30,7 @@ def _fetch_daily_prices(symbol: str, years: int = 3) -> List[Dict]:
     if not ts:
         raise ValueError(f"No historical data found for {symbol}. Check if the ticker is valid.")
 
-    cutoff = datetime.now(timezone.utc).replace(year=datetime.now().year - years)
+    cutoff = datetime.now().replace(year=datetime.now().year - years)
     prices = []
     for date_str, bar in sorted(ts.items()):
         dt = datetime.strptime(date_str, "%Y-%m-%d")
@@ -62,9 +62,22 @@ def _ema(closes: np.ndarray, period: int) -> np.ndarray:
     result = np.full_like(closes, np.nan)
     if len(closes) < period:
         return result
+    # Find first non-NaN index
+    valid_start = 0
+    for idx in range(len(closes)):
+        if not np.isnan(closes[idx]):
+            valid_start = idx
+            break
+    else:
+        return result
+    if len(closes) - valid_start < period:
+        return result
     k = 2.0 / (period + 1)
-    result[period - 1] = np.mean(closes[:period])
-    for i in range(period, len(closes)):
+    start = valid_start + period - 1
+    result[start] = np.mean(closes[valid_start:valid_start + period])
+    for i in range(start + 1, len(closes)):
+        if np.isnan(closes[i]):
+            continue
         result[i] = closes[i] * k + result[i - 1] * (1 - k)
     return result
 
@@ -194,11 +207,13 @@ Use Python comparison operators. Reference indicator names exactly as listed. Us
 def _eval_condition(cond: str, ctx: Dict) -> bool:
     """Safely evaluate a single indicator condition string."""
     try:
-        # Replace indicator names with values
-        safe_env = {k: float(v) if not np.isnan(v) else None for k, v in ctx.items() if isinstance(v, (int, float, np.floating))}
-        # Filter out None values — condition can't be evaluated if data missing
+        safe_env = {}
+        for k, v in ctx.items():
+            if isinstance(v, (int, float, np.floating)):
+                safe_env[k] = None if np.isnan(v) else float(v)
+        # Only check variables that appear in this specific condition
         for k, v in safe_env.items():
-            if v is None:
+            if k in cond and v is None:
                 return False
         return bool(eval(cond, {"__builtins__": {}}, safe_env))
     except Exception:
@@ -305,11 +320,19 @@ def _simulate(prices: List[Dict], indicators: Dict, rules: Dict) -> List[Dict]:
 def _calc_metrics(trades: List[Dict], prices: List[Dict]) -> Dict:
     """Calculate performance metrics from the trade log."""
     if not trades:
+        bh_pnl = 0
+        bh_pct = 0
+        if prices:
+            bh_start = prices[0]["close"]
+            bh_end = prices[-1]["close"]
+            bh_pnl = round(bh_end - bh_start, 2)
+            bh_pct = round((bh_end - bh_start) / bh_start * 100, 2) if bh_start else 0
         return {
-            "total_trades": 0, "win_rate": 0, "total_pnl": 0, "avg_pnl": 0,
+            "total_trades": 0, "winning_trades": 0, "losing_trades": 0,
+            "win_rate": 0, "total_pnl": 0, "avg_pnl": 0, "avg_gain": 0, "avg_loss": 0,
             "max_drawdown": 0, "sharpe_ratio": 0, "avg_holding_days": 0,
             "best_trade": None, "worst_trade": None, "monthly": [],
-            "cumulative_pnl": [],
+            "cumulative_pnl": [], "buy_hold_pnl": bh_pnl, "buy_hold_pct": bh_pct,
         }
 
     wins = [t for t in trades if t["pnl"] > 0]
