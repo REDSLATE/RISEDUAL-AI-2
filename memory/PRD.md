@@ -31,7 +31,19 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. It requires real
 15. Full Auth (Register, Login, Brute Force Protection, Forgot/Reset Password)
 16. Admin Panel (Owner-only user management)
 17. PWA Support (Service Worker)
-18. **Real Broker Integrations** — Alpaca, Charles Schwab, Interactive Brokers
+18. **AI War Room** — Unified command center: Composite Signal (AI Score 40% + Earnings 30% + Insiders 30%), Company Overview, Earnings Surprise Tracker, Insider Trade Tracker, AI Score, Pattern Recognition, Quick Brief
+
+## AI War Room
+- **Composite Signal**: Weighted score (0-100) → STRONG BUY/BUY/HOLD/SELL/STRONG SELL
+- **Components**: AI Score (40% weight), Earnings Beat Rate (30%), Insider Buy Ratio (30%)
+- **New Data Sources**: Alpha Vantage EARNINGS + OVERVIEW, Finnhub Insider Transactions
+- **Architecture**: All 6 data fetches fire in parallel via `asyncio.gather`
+- **Paywall**: Pro-only (403 for free users)
+- **Endpoint**: `GET /api/intelligence/war-room/{symbol}`
+
+## Service Worker
+- Removed fetch handler (was causing `postMessage` clone errors with AbortController signals)
+- Kept push notification + notification click handlers only
 
 ## Broker Integration System
 - **Per-user API key storage** — Users enter their own broker credentials
