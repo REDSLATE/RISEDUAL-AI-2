@@ -16,62 +16,40 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Perplexity-style Company Research with watchlist sync
 - AI Market Predictions (scrapes news, crypto, world events, foreign markets, congressional trades)
 - Multi-Model AI Hypothesis Engine (GPT-5.2, Claude Sonnet 4.5, Gemini Pro, Consensus)
-- AI Strategy Builder — Describe strategies in plain English, GPT-5.2 generates structured logic
-- Strategy Backtester — Simulates strategies against historical Alpha Vantage data
-- Strategy Marketplace — Publish, browse, search, clone community strategies (Pro-only)
-- **AI Intelligence Hub**:
-  - AI Stock Scoring (Danelfin-style) — 1-10 scores with tech/fundamental/sentiment breakdown
-  - Pattern Recognition (Tickeron-style) — AI chart pattern detection with confidence scores
-  - Quick Briefs (Prospero-style) — 30-second stock summaries with verdict
-- **Watchlist Intelligence** — Batch AI analysis of entire watchlist in one GPT-5.2 call. Returns per-ticker scores, alerts (oversold/overbought/breakout), top movers, health score. Cached in MongoDB (1hr TTL).
-- Macro Intelligence Dashboard (Finnhub earnings, insider trades, congressional data)
-- Stripe subscription gateway ($45/month)
-- JWT Bearer token authentication with referral system
-- Push notifications (VAPID), Daily email digests (Resend)
-- Trading Journal with P&L analytics
-- Admin Panel with Code Quality Score badge
-- Docker + docker-compose configuration for self-hosting
+- AI Strategy Builder — plain English to structured trading logic
+- Strategy Backtester — historical simulation with technical indicators
+- Strategy Marketplace — publish, browse, search, clone community strategies
+- AI Intelligence Hub:
+  - AI Stock Scoring (Danelfin-style, 1-10 breakdown)
+  - Pattern Recognition (Tickeron-style, confidence %)
+  - Quick Briefs (Prospero-style, 30-second summaries)
+- Watchlist Intelligence — batch AI analysis of entire watchlist, 1hr MongoDB cache
+- **Daily Watchlist Digest Emails** — Enhanced Resend daily digest now includes personalized Watchlist Intelligence section: health score badge, per-ticker AI scores + verdicts, alerts (oversold/overbought/breakout), top movers. Pre-generation scheduler at 5:30 AM UTC, digest emails at 6:00 AM UTC.
+- Macro Intelligence Dashboard (Finnhub earnings, insider, congressional)
+- Stripe subscription ($45/month), JWT auth, referral system
+- Push notifications (VAPID), trading journal, admin panel
+- Docker deployment files
 
-## Recent Changes (2026-04-08, Session 4 continued)
-### Strategy Backtester Completed
-- Fixed EMA NaN-propagation, timezone comparison, empty-metrics, condition evaluator
-- 9/9 tests passed (iteration 27)
+## Scheduled Jobs
+- **5:30 AM UTC** — Pre-generate watchlist intelligence for all users (caches in MongoDB)
+- **6:00 AM UTC** — Send daily digest emails with market data + personalized watchlist intel
 
-### Strategy Marketplace Added
-- Publish/browse/search/clone community strategies
-- 14/14 tests passed (iteration 28)
-
-### AI Intelligence Hub Added
-- AI Stock Scoring, Pattern Recognition, Quick Briefs
-- 8/8 tests passed (iteration 29)
-
-### Watchlist Intelligence Added
-- Batch AI analysis of all watchlist tickers (single GPT-5.2 call)
-- Per-ticker scores, alerts, top movers, health score, 1hr MongoDB cache
-- 8/8 tests passed (iteration 30)
+## Recent Changes (2026-04-08, Session 4)
+- Strategy Backtester completed (iteration 27)
+- Strategy Marketplace added (iteration 28)
+- AI Intelligence Hub added (iteration 29)
+- Watchlist Intelligence added (iteration 30)
+- Daily Watchlist Digest Emails enhanced (iteration 31)
 
 ## Prioritized Backlog
 ### P1 - Next
-- Alpaca broker integration (API key entry + Read/Trade) — user wants per-user broker connections
-- Deploy to risedual.ai (Health check passed, Docker ready)
+- Alpaca broker integration (per-user broker connections)
+- Deploy to risedual.ai
 
 ### P2 - Future
 - Interactive Brokers / TD Ameritrade OAuth
-- Migrate JWT from localStorage to httpOnly cookies
-- Alpha Vantage API tier upgrade (currently free 5/min)
-- Server refactoring (server.py modular routes)
+- Alpha Vantage API tier upgrade
+- Server refactoring
 
 ## Mocked Features
 - Broker trading execution (Alpaca)
-
-## DB Collections
-- chat_sessions, strategies, marketplace_strategies, payment_transactions, users, watchlists, watchlist_intelligence
-
-## Key API Endpoints
-- POST /api/auth/login, /api/auth/register
-- POST /api/chat, GET /api/research/{symbol}
-- POST /api/strategy/generate, /api/strategy/backtest, /api/strategy/save
-- POST /api/marketplace/publish, GET /api/marketplace/list, POST /api/marketplace/{id}/clone
-- GET /api/intelligence/score/{symbol}, /api/intelligence/patterns/{symbol}, /api/intelligence/brief/{symbol}
-- GET /api/intelligence/watchlist
-- POST /api/subscription/create-checkout-session
