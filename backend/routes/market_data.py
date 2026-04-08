@@ -63,7 +63,7 @@ async def get_gov_filings() -> Dict[str, Any]:
 
 # --- Scraping Data Endpoints ---
 @router.get("/market/news")
-async def get_financial_news() -> Dict[str, Any]:
+async def get_financial_news() -> List[Dict[str, Any]]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
