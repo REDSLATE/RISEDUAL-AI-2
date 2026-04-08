@@ -109,7 +109,6 @@ Break down `server.py` entirely into modular `routes/` directory.
 - Additional broker integrations (Webull, Robinhood)
 
 ### P5 - Remaining Code Quality
-- Split monolithic React components (AIHypothesis, StrategyBuilder, AdminPanel, AIIntelligence)
 - Break down high-complexity backend functions (ai_intelligence_service.py)
 
 ## Code Quality Fixes Completed (Apr 2026)
@@ -120,6 +119,9 @@ Break down `server.py` entirely into modular `routes/` directory.
 - **CODE QUALITY**: Extracted helper functions from `_simulate()` and `_calc_metrics()`
 - **CODE QUALITY**: Moved `fetchWithRetry` to module scope in AuthContext.jsx
 - **CODE QUALITY**: Fixed all missing React hook dependencies across 26 audited components (CryptoSection, CryptoTicker, DarkPoolData, StockTicker, CompanyResearch wrapped in useCallback; confirmed all other components already correct)
+- **REFACTORING**: Split AIIntelligence.jsx (438→123 lines) into intelligence/ subdirectory (ScoreView, PatternsView, BriefView)
+- **REFACTORING**: Split MacroDashboard.jsx (555→192 lines) into macro/ subdirectory (WorldEventsTab, ForeignMarketsTab, CongressTab, MacroShared)
+- **REFACTORING**: Split AdminPanel.jsx (530→194 lines) into admin/ subdirectory (AdminTools, PromoManager)
 
 ## Last Updated
 - **Apr 2026**: Code Quality Report fixes — Security patches (eval removal, httpOnly cookies), complexity reduction, error handling, all hook dependencies fixed
