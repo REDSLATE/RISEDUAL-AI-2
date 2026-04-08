@@ -71,7 +71,7 @@ class TestDigestStatusEndpoint:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         assert "subscribed" in data, "Response should contain 'subscribed' field"
-        # Default is subscribed (digest_opt_out is False or not set)
+        # Default is subscribed (digest_opt_out == False or not set)
         print(f"PASSED: /api/digest/status returns subscribed={data['subscribed']}")
 
 

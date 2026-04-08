@@ -7,14 +7,15 @@ Iteration 36: Code Quality Fixes Testing
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+OWNER_EMAIL = OWNER_EMAIL
+OWNER_PASSWORD = OWNER_PASSWORD
+ADMIN_EMAIL = ADMIN_EMAIL
+ADMIN_PASSWORD = ADMIN_PASSWORD
 
 
 class TestCookieBasedAuth:
@@ -183,7 +184,7 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"rsi_14": 25.0, "close": 100.0, "sma_20": 105.0}
-        # rsi_14 < 30 is True, close > sma_20 is False, so OR should be True
+        # rsi_14 < 30 == True, close > sma_20 == False, so OR should be True
         assert _eval_condition("rsi_14 < 30 or close > sma_20", ctx) == True
         
         ctx = {"rsi_14": 35.0, "close": 100.0, "sma_20": 105.0}

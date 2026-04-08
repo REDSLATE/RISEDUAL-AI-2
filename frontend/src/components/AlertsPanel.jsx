@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Bell, X, TrendingUp, TrendingDown, Minus, Lock, Star } from 'lucide-react';
+import { Bell, X, Lock } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import NotificationItem from './alerts/NotificationItem';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -24,7 +26,7 @@ const AlertsPanel = ({ onSubscribe }) => {
         setUnreadCount(data.unread_count || 0);
       }
     } catch (e) {
-      console.error('Notification fetch error:', e);
+      logger.error('Notification fetch error:', e);
     }
   }, [user, isPro]);
 
@@ -42,22 +44,10 @@ const AlertsPanel = ({ onSubscribe }) => {
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (e) {
-      console.error('Mark read error:', e);
+      logger.error('Mark read error:', e);
     } finally {
       setLoading(false);
     }
-  };
-
-  const verdictIcon = (verdict) => {
-    if (verdict === 'BUY') return <TrendingUp className="w-4 h-4 text-emerald-400" />;
-    if (verdict === 'SELL') return <TrendingDown className="w-4 h-4 text-red-400" />;
-    return <Minus className="w-4 h-4 text-amber-400" />;
-  };
-
-  const verdictColor = (verdict) => {
-    if (verdict === 'BUY') return 'text-emerald-400';
-    if (verdict === 'SELL') return 'text-red-400';
-    return 'text-amber-400';
   };
 
   if (!user) return null;
@@ -133,31 +123,7 @@ const AlertsPanel = ({ onSubscribe }) => {
               /* Pro with notifications */
               <div className="divide-y divide-slate-800/60">
                 {notifications.map((n, i) => (
-                  <div key={n._id || n.id || `notif-${i}`} className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#0052FF]/5' : 'hover:bg-slate-800/40'}`} data-testid={`notification-${i}`}>
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex-shrink-0">
-                        {verdictIcon(n.new_verdict)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-white text-sm font-semibold">{n.symbol}</span>
-                          {n.in_watchlist && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
-                          {!n.read && <div className="w-1.5 h-1.5 bg-[#0052FF] rounded-full" />}
-                        </div>
-                        <p className="text-slate-300 text-xs">
-                          Verdict changed: <span className={verdictColor(n.old_verdict)}>{n.old_verdict}</span>
-                          {' → '}
-                          <span className={verdictColor(n.new_verdict)}>{n.new_verdict}</span>
-                        </p>
-                        {n.confidence > 0 && (
-                          <p className="text-slate-500 text-[10px] mt-0.5">Confidence: {n.confidence}%</p>
-                        )}
-                        <p className="text-slate-600 text-[10px] mt-0.5">
-                          {n.created_at ? new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <NotificationItem key={n._id || n.id || `notif-${i}`} notification={n} index={i} />
                 ))}
               </div>
             )}

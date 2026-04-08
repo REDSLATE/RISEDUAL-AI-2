@@ -11,6 +11,7 @@ Focus:
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -28,8 +29,8 @@ class TestHealthAndAuth:
     def test_owner_login(self):
         """POST /api/auth/login with owner credentials returns access_token"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": OWNER_EMAIL,
+            "password": OWNER_PASSWORD
         })
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
@@ -128,8 +129,8 @@ class TestMongoDBProjections:
     def auth_token(self):
         """Get auth token for authenticated requests"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": OWNER_EMAIL,
+            "password": OWNER_PASSWORD
         })
         if response.status_code == 200:
             return response.json().get("access_token")
@@ -178,8 +179,8 @@ class TestHypothesisEndpoint:
     def auth_token(self):
         """Get auth token for authenticated requests"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": OWNER_EMAIL,
+            "password": OWNER_PASSWORD
         })
         if response.status_code == 200:
             return response.json().get("access_token")

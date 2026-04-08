@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { authFetch } from '../../contexts/AuthContext';
+import logger from '../../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -31,7 +32,7 @@ const PromoManager = () => {
         setPromos(data.promos);
       }
     } catch (e) {
-      console.error('Error fetching promos:', e);
+      logger.error('Error fetching promos:', e);
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,7 @@ const PromoManager = () => {
         fetchPromos();
       }
     } catch (e) {
-      console.error('Create promo error:', e);
+      logger.error('Create promo error:', e);
     } finally {
       setCreating(false);
     }
@@ -72,7 +73,7 @@ const PromoManager = () => {
       await authFetch(`${API}/promo/${id}/toggle`, { method: 'PUT' });
       fetchPromos();
     } catch (e) {
-      console.error('Toggle promo error:', e);
+      logger.error('Toggle promo error:', e);
     }
   };
 
@@ -81,7 +82,7 @@ const PromoManager = () => {
       await authFetch(`${API}/promo/${id}`, { method: 'DELETE' });
       fetchPromos();
     } catch (e) {
-      console.error('Delete promo error:', e);
+      logger.error('Delete promo error:', e);
     }
   };
 

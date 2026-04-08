@@ -8,12 +8,13 @@ Tests to verify that code quality refactoring preserved existing functionality:
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+OWNER_EMAIL = OWNER_EMAIL
+OWNER_PASSWORD = OWNER_PASSWORD
 
 
 class TestAuthEndpoints:

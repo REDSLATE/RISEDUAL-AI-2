@@ -8,6 +8,7 @@ import os
 from pymongo import MongoClient
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -16,8 +17,8 @@ MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 DB_NAME = os.environ.get('DB_NAME', 'tradealgo_db')
 
 # Test credentials
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+ADMIN_EMAIL = ADMIN_EMAIL
+ADMIN_PASSWORD = ADMIN_PASSWORD
 TEST_EMAIL_NONEXISTENT = "nonexistent_user_test@example.com"
 
 

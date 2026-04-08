@@ -244,46 +244,68 @@ _BOOL_OPS = {
 
 def _safe_eval_node(node, ctx: Dict):
     """Recursively evaluate an AST node using only whitelisted operations."""
-    if isinstance(node, ast.Expression):
-        return _safe_eval_node(node.body, ctx)
-    if isinstance(node, ast.Constant):
-        if isinstance(node.value, (int, float)):
-            return node.value
-        raise ValueError(f"Unsupported constant: {node.value!r}")
-    if isinstance(node, ast.Name):
-        name = node.id
-        if name not in _ALLOWED_INDICATORS:
-            raise ValueError(f"Unknown indicator: {name}")
-        val = ctx.get(name)
-        if val is None:
-            raise ValueError(f"Indicator {name} is NaN/missing")
-        return val
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+    _NODE_HANDLERS = {
+        ast.Expression: lambda n, c: _safe_eval_node(n.body, c),
+        ast.Constant: lambda n, c: _handle_constant(n),
+        ast.Name: lambda n, c: _handle_name(n, c),
+        ast.UnaryOp: lambda n, c: _handle_unary(n, c),
+        ast.BinOp: lambda n, c: _handle_binop(n, c),
+        ast.Compare: lambda n, c: _handle_compare(n, c),
+        ast.BoolOp: lambda n, c: _handle_boolop(n, c),
+    }
+    handler = _NODE_HANDLERS.get(type(node))
+    if not handler:
+        raise ValueError(f"Unsupported AST node: {type(node).__name__}")
+    return handler(node, ctx)
+
+
+def _handle_constant(node):
+    if isinstance(node.value, (int, float)):
+        return node.value
+    raise ValueError(f"Unsupported constant: {node.value!r}")
+
+
+def _handle_name(node, ctx: Dict):
+    name = node.id
+    if name not in _ALLOWED_INDICATORS:
+        raise ValueError(f"Unknown indicator: {name}")
+    val = ctx.get(name)
+    if val is None:
+        raise ValueError(f"Indicator {name} is NaN/missing")
+    return val
+
+
+def _handle_unary(node, ctx: Dict):
+    if isinstance(node.op, ast.USub):
         return -_safe_eval_node(node.operand, ctx)
-    if isinstance(node, ast.BinOp):
-        op_func = _BIN_OPS.get(type(node.op))
+    raise ValueError(f"Unsupported unary op: {type(node.op).__name__}")
+
+
+def _handle_binop(node, ctx: Dict):
+    op_func = _BIN_OPS.get(type(node.op))
+    if not op_func:
+        raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
+    return op_func(_safe_eval_node(node.left, ctx), _safe_eval_node(node.right, ctx))
+
+
+def _handle_compare(node, ctx: Dict):
+    left = _safe_eval_node(node.left, ctx)
+    for op_node, comparator in zip(node.ops, node.comparators):
+        op_func = _CMP_OPS.get(type(op_node))
         if not op_func:
-            raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
-        left = _safe_eval_node(node.left, ctx)
-        right = _safe_eval_node(node.right, ctx)
-        return op_func(left, right)
-    if isinstance(node, ast.Compare):
-        left = _safe_eval_node(node.left, ctx)
-        for op_node, comparator in zip(node.ops, node.comparators):
-            op_func = _CMP_OPS.get(type(op_node))
-            if not op_func:
-                raise ValueError(f"Unsupported comparison: {type(op_node).__name__}")
-            right = _safe_eval_node(comparator, ctx)
-            if not op_func(left, right):
-                return False
-            left = right
-        return True
-    if isinstance(node, ast.BoolOp):
-        func = _BOOL_OPS.get(type(node.op))
-        if not func:
-            raise ValueError(f"Unsupported bool op: {type(node.op).__name__}")
-        return func(_safe_eval_node(v, ctx) for v in node.values)
-    raise ValueError(f"Unsupported AST node: {type(node).__name__}")
+            raise ValueError(f"Unsupported comparison: {type(op_node).__name__}")
+        right = _safe_eval_node(comparator, ctx)
+        if not op_func(left, right):
+            return False
+        left = right
+    return True
+
+
+def _handle_boolop(node, ctx: Dict):
+    func = _BOOL_OPS.get(type(node.op))
+    if not func:
+        raise ValueError(f"Unsupported bool op: {type(node.op).__name__}")
+    return func(_safe_eval_node(v, ctx) for v in node.values)
 
 
 def _eval_condition(cond: str, ctx: Dict) -> bool:

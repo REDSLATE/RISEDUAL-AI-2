@@ -6,11 +6,12 @@ import pytest
 import requests
 import os
 import time
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Admin credentials from environment
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 

@@ -8,6 +8,7 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import ReferralLeaderboard from './ReferralLeaderboard';
 import SocialShareButtons from './SocialShareButtons';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -43,7 +44,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         setWatchlist(data.tickers || []);
       }
     } catch (e) {
-      console.error('Watchlist fetch error:', e);
+      logger.error('Watchlist fetch error:', e);
     }
   }, []);
 
@@ -55,7 +56,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         setHistory(data.history || []);
       }
     } catch (e) {
-      console.error('History fetch error:', e);
+      logger.error('History fetch error:', e);
     }
   }, []);
 
@@ -85,7 +86,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         setAddError(`Free accounts are limited to ${FREE_WATCHLIST_LIMIT} tickers. Upgrade to Pro for unlimited.`);
       }
     } catch (e) {
-      console.error('Add ticker error:', e);
+      logger.error('Add ticker error:', e);
     } finally {
       setAddLoading(false);
     }
@@ -99,7 +100,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
       });
       await fetchWatchlist();
     } catch (e) {
-      console.error('Remove ticker error:', e);
+      logger.error('Remove ticker error:', e);
     }
   };
 
@@ -302,7 +303,7 @@ const ReferralsTab = () => {
         const res = await authFetch(`${API}/referral/info`);
         if (res.ok) setInfo(await res.json());
       } catch (e) {
-        console.error('Referral info error:', e);
+        logger.error('Referral info error:', e);
       } finally {
         setLoading(false);
       }
@@ -439,7 +440,7 @@ const DigestToggle = () => {
           const data = await res.json();
           setSubscribed(data.subscribed);
         }
-      } catch (e) { console.error('Digest status error:', e); }
+      } catch (e) { logger.error('Digest status error:', e); }
       finally { setLoading(false); }
     };
     load();
@@ -451,7 +452,7 @@ const DigestToggle = () => {
       const endpoint = subscribed ? 'opt-out' : 'opt-in';
       const res = await authFetch(`${API}/digest/${endpoint}`, { method: 'POST' });
       if (res.ok) setSubscribed(!subscribed);
-    } catch (e) { console.error('Digest toggle error:', e); }
+    } catch (e) { logger.error('Digest toggle error:', e); }
     finally { setToggling(false); }
   };
 

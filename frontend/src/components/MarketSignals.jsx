@@ -4,6 +4,7 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -29,7 +30,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
         setSignals(data.signals || []);
       }
     } catch (e) {
-      console.error('Signals fetch error:', e);
+      logger.error('Signals fetch error:', e);
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
         }
       }
     } catch (e) {
-      console.error('Scan error:', e);
+      logger.error('Scan error:', e);
     } finally {
       setScanning(false);
     }

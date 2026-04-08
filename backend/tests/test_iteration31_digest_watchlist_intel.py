@@ -15,6 +15,7 @@ import pytest
 import requests
 import os
 import time
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -30,8 +31,8 @@ class TestDigestWatchlistIntelligence:
             response = requests.post(
                 f"{BASE_URL}/api/auth/login",
                 json={
-                    "email": "managingdirector@redslateholdings.com",
-                    "password": "RedSlate2026!"
+                    "email": OWNER_EMAIL,
+                    "password": OWNER_PASSWORD
                 },
                 timeout=30
             )
@@ -49,8 +50,8 @@ class TestDigestWatchlistIntelligence:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "managingdirector@redslateholdings.com",
-                "password": "RedSlate2026!"
+                "email": OWNER_EMAIL,
+                "password": OWNER_PASSWORD
             },
             timeout=30
         )

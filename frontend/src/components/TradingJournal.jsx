@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -35,7 +36,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         setTrades(data.trades);
         setTradeLimit(data.limit);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
     finally { setLoading(false); }
   }, []);
 
@@ -43,7 +44,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
     try {
       const res = await authFetch(`${API}/journal/analytics`);
       if (res.ok) setAnalytics(await res.json());
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   }, []);
 
   useEffect(() => { fetchTrades(); fetchAnalytics(); }, [fetchTrades, fetchAnalytics]);
@@ -83,7 +84,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         body: JSON.stringify({ exit_price: parseFloat(closeForm.exit_price), exit_date: closeForm.exit_date || new Date().toISOString().split('T')[0] }),
       });
       if (res.ok) { setCloseForm(null); fetchTrades(); fetchAnalytics(); }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   };
 
   const deleteTrade = async (id) => {
@@ -91,7 +92,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
       await authFetch(`${API}/journal/trade/${id}`, { method: 'DELETE' });
       fetchTrades();
       fetchAnalytics();
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   };
 
   const attachHypothesis = async (tradeId) => {
@@ -99,7 +100,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
       const res = await authFetch(`${API}/journal/trade/${tradeId}/attach-hypothesis`, { method: 'POST' });
       if (res.ok) fetchTrades();
       else { const d = await res.json(); alert(d.detail || 'No hypothesis found'); }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   };
 
   const tabs = [

@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -41,7 +42,7 @@ const SubscriptionPricing = ({ onClose }) => {
         throw new Error('No checkout URL received');
       }
     } catch (error) {
-      console.error('Stripe checkout error:', error);
+      logger.error('Stripe checkout error:', error);
       alert('Payment processing error. Please try again.');
       setIsProcessing(false);
     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Eye, TrendingUp, Activity } from 'lucide-react';
 import DataTable from './DataTable';
 import ProBlurWall from './ProBlurWall';
+import logger from '../utils/logger';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -17,7 +18,7 @@ const DarkPoolData = ({ onSubscribe }) => {
         setDarkPoolData(data);
       }
     } catch (error) {
-      console.error('Error fetching dark pool data:', error);
+      logger.error('Error fetching dark pool data:', error);
     } finally {
       setLoading(false);
     }

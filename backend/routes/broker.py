@@ -402,15 +402,30 @@ async def get_pnl_summary(request: Request):
 
     if not connections:
         return {
-            "total_value": 0,
-            "total_pl": 0,
-            "total_pl_pct": 0,
-            "day_pl": 0,
-            "brokers": [],
-            "positions": [],
-            "sector_allocation": [],
+            "total_value": 0, "total_pl": 0, "total_pl_pct": 0,
+            "day_pl": 0, "brokers": [], "positions": [], "sector_allocation": [],
         }
 
+    brokers, all_positions, total_value, total_pl, total_cost = await _fetch_all_broker_data(connections)
+
+    sector_map = _classify_sectors(all_positions)
+    total_pl_pct = round((total_pl / total_cost) * 100, 2) if total_cost > 0 else 0
+    all_positions.sort(key=lambda p: abs(p["unrealized_pl"]), reverse=True)
+
+    return {
+        "total_value": round(total_value, 2),
+        "total_pl": round(total_pl, 2),
+        "total_pl_pct": total_pl_pct,
+        "total_cost_basis": round(total_cost, 2),
+        "brokers": brokers,
+        "positions": all_positions,
+        "sector_allocation": sector_map,
+        "positions_count": len(all_positions),
+    }
+
+
+async def _fetch_all_broker_data(connections: list) -> tuple:
+    """Fetch positions from all broker connections and aggregate data."""
     brokers = []
     all_positions = []
     total_value = 0
@@ -425,35 +440,12 @@ async def get_pnl_summary(request: Request):
 
             broker_value = float(account.get("portfolio_value", account.get("equity", 0))) if account else 0
             broker_cash = float(account.get("cash", 0)) if account else 0
-            broker_pl = 0
+            broker_pl, pos_cost, pos_list = _process_positions(positions, conn["broker_id"])
 
-            for p in (positions or []):
-                qty = float(p.get("qty", 0))
-                avg_entry = float(p.get("avg_entry_price", 0))
-                current = float(p.get("current_price", 0))
-                mkt_val = float(p.get("market_value", 0))
-                unrealized = float(p.get("unrealized_pl", 0))
-                unrealized_pct = float(p.get("unrealized_plpc", 0))
-                cost_basis = qty * avg_entry
-
-                broker_pl += unrealized
-                total_cost += cost_basis
-
-                all_positions.append({
-                    "symbol": p.get("symbol", ""),
-                    "broker": conn["broker_id"],
-                    "qty": qty,
-                    "avg_entry": round(avg_entry, 2),
-                    "current_price": round(current, 2),
-                    "market_value": round(mkt_val, 2),
-                    "unrealized_pl": round(unrealized, 2),
-                    "unrealized_pl_pct": round(unrealized_pct * 100, 2),
-                    "cost_basis": round(cost_basis, 2),
-                    "side": p.get("side", "long"),
-                })
-
+            total_cost += pos_cost
             total_value += broker_value
             total_pl += broker_pl
+            all_positions.extend(pos_list)
 
             brokers.append({
                 "broker_id": conn["broker_id"],
@@ -466,29 +458,41 @@ async def get_pnl_summary(request: Request):
             })
         except Exception as e:
             logger.warning(f"P&L fetch error for {conn['broker_id']}: {e}")
-            brokers.append({
-                "broker_id": conn["broker_id"],
-                "error": str(e),
-            })
+            brokers.append({"broker_id": conn["broker_id"], "error": str(e)})
 
-    # Sector allocation (group positions by rough sector)
-    sector_map = _classify_sectors(all_positions)
+    return brokers, all_positions, total_value, total_pl, total_cost
 
-    total_pl_pct = round((total_pl / total_cost) * 100, 2) if total_cost > 0 else 0
 
-    # Sort positions by absolute P&L (biggest movers first)
-    all_positions.sort(key=lambda p: abs(p["unrealized_pl"]), reverse=True)
+def _process_positions(positions: list, broker_id: str) -> tuple:
+    """Extract and format position data, returning (broker_pl, cost, position_list)."""
+    broker_pl = 0
+    cost = 0
+    result = []
+    for p in (positions or []):
+        qty = float(p.get("qty", 0))
+        avg_entry = float(p.get("avg_entry_price", 0))
+        current = float(p.get("current_price", 0))
+        mkt_val = float(p.get("market_value", 0))
+        unrealized = float(p.get("unrealized_pl", 0))
+        unrealized_pct = float(p.get("unrealized_plpc", 0))
+        cost_basis = qty * avg_entry
 
-    return {
-        "total_value": round(total_value, 2),
-        "total_pl": round(total_pl, 2),
-        "total_pl_pct": total_pl_pct,
-        "total_cost_basis": round(total_cost, 2),
-        "brokers": brokers,
-        "positions": all_positions,
-        "sector_allocation": sector_map,
-        "positions_count": len(all_positions),
-    }
+        broker_pl += unrealized
+        cost += cost_basis
+
+        result.append({
+            "symbol": p.get("symbol", ""),
+            "broker": broker_id,
+            "qty": qty,
+            "avg_entry": round(avg_entry, 2),
+            "current_price": round(current, 2),
+            "market_value": round(mkt_val, 2),
+            "unrealized_pl": round(unrealized, 2),
+            "unrealized_pl_pct": round(unrealized_pct * 100, 2),
+            "cost_basis": round(cost_basis, 2),
+            "side": p.get("side", "long"),
+        })
+    return broker_pl, cost, result
 
 
 def _classify_sectors(positions: list) -> list:

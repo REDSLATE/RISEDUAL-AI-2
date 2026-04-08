@@ -6,13 +6,14 @@ Test Admin Panel and User Workspace APIs
 import pytest
 import requests
 import os
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from environment
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 

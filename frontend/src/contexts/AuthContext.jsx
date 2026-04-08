@@ -8,14 +8,12 @@ export const useAuth = () => useContext(AuthContext);
 
 // Auth uses httpOnly cookies set by the server.
 // credentials: 'include' ensures cookies are sent with every request.
-// Falls back to Bearer token from localStorage for backward compatibility during migration.
 export const authFetch = async (url, options = {}, retries = 3) => {
   const headers = { ...options.headers };
-  // Fallback: if a localStorage token exists (legacy), send it as Bearer
-  const token = localStorage.getItem('access_token');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  
+  if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   for (let i = 0; i <= retries; i++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -35,7 +33,7 @@ export const authFetch = async (url, options = {}, retries = 3) => {
   }
 };
 
-// Plain fetch with retry and credentials — module-level, no React state dependency
+// Plain fetch with retry and credentials
 const fetchWithRetry = async (url, opts, retries = 3) => {
   for (let i = 0; i <= retries; i++) {
     const controller = new AbortController();
@@ -60,15 +58,14 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const clearTokens = useCallback(() => {
-    // Clear legacy localStorage tokens
+  const clearLegacyTokens = useCallback(() => {
+    // One-time cleanup of any legacy localStorage tokens from pre-cookie migration
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   }, []);
 
   const tryRefresh = useCallback(async () => {
     try {
-      // httpOnly cookies are sent automatically with credentials: 'include'
       const res = await fetch(`${API}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,28 +73,23 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({}),
       });
       if (res.ok) {
-        const data = await res.json();
-        // Store in localStorage as fallback for any components using Bearer directly
-        if (data.access_token) localStorage.setItem('access_token', data.access_token);
         const meRes = await authFetch(`${API}/auth/me`);
         if (meRes.ok) { setUser(await meRes.json()); return true; }
       }
-    } catch (e) {
-      console.error('Token refresh failed:', e);
+    } catch {
+      // Refresh failed silently
     }
     return false;
   }, []);
 
   const checkAuth = useCallback(async () => {
     try {
-      // Try authenticating via httpOnly cookies (sent automatically)
       const res = await authFetch(`${API}/auth/me`);
       if (res.ok) {
         setUser(await res.json());
       } else if (res.status === 401) {
-        // Try refresh (cookie-based)
         const refreshed = await tryRefresh();
-        if (!refreshed) { clearTokens(); setUser(false); }
+        if (!refreshed) { clearLegacyTokens(); setUser(false); }
       } else {
         setUser(false);
       }
@@ -106,15 +98,9 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [tryRefresh, clearTokens]);
+  }, [tryRefresh, clearLegacyTokens]);
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
-
-  const storeTokens = useCallback((data) => {
-    // Store in localStorage as fallback (Bearer header for any legacy code paths)
-    if (data.access_token) localStorage.setItem('access_token', data.access_token);
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-  }, []);
 
   const login = useCallback(async (email, password) => {
     const res = await fetchWithRetry(`${API}/auth/login`, {
@@ -128,10 +114,10 @@ export const AuthProvider = ({ children }) => {
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
-    storeTokens(data); // localStorage fallback; primary auth is via httpOnly cookies
+    clearLegacyTokens(); // Ensure no stale localStorage tokens
     setUser(data);
     return data;
-  }, [storeTokens]);
+  }, [clearLegacyTokens]);
 
   const register = useCallback(async (email, password, name, refCode) => {
     const body = { email, password, name };
@@ -147,16 +133,16 @@ export const AuthProvider = ({ children }) => {
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
-    storeTokens(data); // localStorage fallback
+    clearLegacyTokens();
     setUser(data);
     return data;
-  }, [storeTokens]);
+  }, [clearLegacyTokens]);
 
   const logout = useCallback(async () => {
     await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
-    clearTokens();
+    clearLegacyTokens();
     setUser(false);
-  }, [clearTokens]);
+  }, [clearLegacyTokens]);
 
   const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 

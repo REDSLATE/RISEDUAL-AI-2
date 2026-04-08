@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import BacktestResults from './BacktestResults';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -40,7 +41,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
         const data = await res.json();
         setSavedStrategies(data.strategies);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   }, []);
 
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
@@ -94,7 +95,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
     try {
       await authFetch(`${API}/strategy/${encodeURIComponent(name)}`, { method: 'DELETE' });
       fetchSaved();
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
   };
 
   const runBacktest = async () => {

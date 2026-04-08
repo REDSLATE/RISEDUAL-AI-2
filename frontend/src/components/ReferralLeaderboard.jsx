@@ -3,6 +3,7 @@ import { Trophy, Users, Medal, ChevronUp, Flame, Share2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import SocialShareButtons from './SocialShareButtons';
+import logger from '../utils/logger';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -24,7 +25,7 @@ const ReferralLeaderboard = () => {
         const res = await fetch(`${API}/api/referral/leaderboard`);
         if (res.ok) setData(await res.json());
       } catch (e) {
-        console.error('Leaderboard load error:', e);
+        logger.error('Leaderboard load error:', e);
       } finally {
         setLoading(false);
       }
@@ -41,7 +42,7 @@ const ReferralLeaderboard = () => {
           const info = await res.json();
           setRefCode(info.code);
         }
-      } catch (e) { console.error('Leaderboard share check failed:', e); }
+      } catch (e) { logger.error('Leaderboard share check failed:', e); }
     };
     loadCode();
   }, [user]);

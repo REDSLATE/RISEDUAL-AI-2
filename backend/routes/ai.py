@@ -154,7 +154,6 @@ async def scan_for_signals(request: Request):
     if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="Market signals is a Pro feature.")
 
-    # Get user's watchlist
     wl = await db.watchlists.find_one({"user_id": user["_id"]})
     tickers = wl.get("tickers", []) if wl else []
     if not tickers:
@@ -164,44 +163,49 @@ async def scan_for_signals(request: Request):
     market_svc = MarketDataService()
 
     signals_found = []
-    for ticker in tickers[:10]:  # Limit to 10 tickers
+    for ticker in tickers[:10]:
         try:
-            dark_pool = market_svc.generate_dark_pool_data()
-            dp_match = [d for d in dark_pool if d.get("ticker") == ticker]
-            if dp_match and dp_match[0].get("volume", 0) > 500000:
-                sig = {
-                    "user_id": user["_id"],
-                    "ticker": ticker,
-                    "type": "dark_pool_spike",
-                    "title": f"Dark Pool Spike: {ticker}",
-                    "detail": f"Unusual dark pool volume detected ({dp_match[0].get('volume', 0):,} shares)",
-                    "severity": "high",
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
-                }
-                await db.market_signals.insert_one(sig)
-                del sig["user_id"]
-                signals_found.append(sig)
-
-            options = market_svc.generate_mock_options_data('flow')
-            opt_match = [o for o in options if o.get("symbol") == ticker or o.get("contract", "").startswith(ticker)]
-            if opt_match:
-                for o in opt_match[:1]:
-                    sig = {
-                        "user_id": user["_id"],
-                        "ticker": ticker,
-                        "type": "options_flow",
-                        "title": f"Options Activity: {ticker}",
-                        "detail": f"Notable options flow detected — {o.get('side', 'N/A')} {o.get('contract', ticker)}",
-                        "severity": "medium",
-                        "detected_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                    await db.market_signals.insert_one(sig)
-                    del sig["user_id"]
-                    signals_found.append(sig)
+            signals_found.extend(await _scan_dark_pool(market_svc, user["_id"], ticker))
+            signals_found.extend(await _scan_options_flow(market_svc, user["_id"], ticker))
         except Exception as e:
             logging.warning(f"Signal scan error for {ticker}: {e}")
 
     return {"signals": signals_found, "tickers_scanned": len(tickers[:10])}
+
+
+async def _scan_dark_pool(market_svc, user_id: str, ticker: str) -> list:
+    """Check for dark pool volume spikes on a ticker."""
+    dark_pool = market_svc.generate_dark_pool_data()
+    dp_match = [d for d in dark_pool if d.get("ticker") == ticker]
+    if dp_match and dp_match[0].get("volume", 0) > 500000:
+        sig = {
+            "user_id": user_id, "ticker": ticker, "type": "dark_pool_spike",
+            "title": f"Dark Pool Spike: {ticker}",
+            "detail": f"Unusual dark pool volume detected ({dp_match[0].get('volume', 0):,} shares)",
+            "severity": "high", "detected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.market_signals.insert_one(sig)
+        del sig["user_id"]
+        return [sig]
+    return []
+
+
+async def _scan_options_flow(market_svc, user_id: str, ticker: str) -> list:
+    """Check for notable options flow activity on a ticker."""
+    options = market_svc.generate_mock_options_data('flow')
+    opt_match = [o for o in options if o.get("symbol") == ticker or o.get("contract", "").startswith(ticker)]
+    results = []
+    for o in opt_match[:1]:
+        sig = {
+            "user_id": user_id, "ticker": ticker, "type": "options_flow",
+            "title": f"Options Activity: {ticker}",
+            "detail": f"Notable options flow detected — {o.get('side', 'N/A')} {o.get('contract', ticker)}",
+            "severity": "medium", "detected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.market_signals.insert_one(sig)
+        del sig["user_id"]
+        results.append(sig)
+    return results
 
 
 # --- Portfolio Analyzer (Pro Only) ---
@@ -217,7 +221,21 @@ async def analyze_portfolio(request: Request):
     if not holdings:
         raise HTTPException(status_code=400, detail="Please provide at least one holding.")
 
-    # Gather macro data for context
+    prompt, total_value = await _build_portfolio_prompt(holdings)
+
+    try:
+        result = await _run_portfolio_analysis(prompt, user["_id"])
+        result["total_value"] = total_value
+        result["holdings_count"] = len(holdings)
+        result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
+        return result
+    except Exception as e:
+        logging.error(f"Portfolio analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Error analyzing portfolio")
+
+
+async def _build_portfolio_prompt(holdings: list) -> tuple:
+    """Build the AI prompt with holdings and macro context. Returns (prompt, total_value)."""
     from services.world_events_service import WorldEventsService
     from services.foreign_markets_service import ForeignMarketsService
     world_events = await WorldEventsService().scrape_world_events()
@@ -249,30 +267,25 @@ Respond in this EXACT JSON format:
   ],
   "summary": "<2-3 sentence overall assessment>"
 }}"""
+    return prompt, total_value
 
+
+async def _run_portfolio_analysis(prompt: str, user_id: str) -> dict:
+    """Run the LLM analysis and parse the JSON response."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import json
+    llm_key = os.environ.get("EMERGENT_LLM_KEY")
+    llm = LlmChat(
+        api_key=llm_key,
+        session_id=f"portfolio_{user_id}",
+        system_message="You are a professional portfolio analyst. Return ONLY valid JSON."
+    ).with_model("openai", "gpt-5.2")
+    response = await llm.send_message(UserMessage(text=prompt))
+    text = response.strip() if isinstance(response, str) else response
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        import json
-        llm_key = os.environ.get("EMERGENT_LLM_KEY")
-        llm = LlmChat(
-            api_key=llm_key,
-            session_id=f"portfolio_{user['_id']}",
-            system_message="You are a professional portfolio analyst. Return ONLY valid JSON."
-        ).with_model("openai", "gpt-5.2")
-        response = await llm.send_message(UserMessage(text=prompt))
-        text = response.strip() if isinstance(response, str) else response
-        try:
-            result = json.loads(text.strip().strip("```json").strip("```"))
-        except json.JSONDecodeError:
-            result = {"health_score": 50, "summary": text, "suggestions": [], "rebalance_actions": [], "risk_level": "medium", "diversification_grade": "C"}
-
-        result["total_value"] = total_value
-        result["holdings_count"] = len(holdings)
-        result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
-        return result
-    except Exception as e:
-        logging.error(f"Portfolio analysis error: {e}")
-        raise HTTPException(status_code=500, detail="Error analyzing portfolio")
+        return json.loads(text.strip().strip("```json").strip("```"))
+    except json.JSONDecodeError:
+        return {"health_score": 50, "summary": text, "suggestions": [], "rebalance_actions": [], "risk_level": "medium", "diversification_grade": "C"}
 
 
 # --- Company Research ---

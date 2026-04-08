@@ -8,6 +8,7 @@ import { authFetch } from '../contexts/AuthContext';
 import AdminTools from './admin/AdminTools';
 import PromoManager from './admin/PromoManager';
 import CacheMonitor from './admin/CacheMonitor';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -27,7 +28,7 @@ const AdminPanel = ({ onClose }) => {
         setUsers(data.users);
       }
     } catch (e) {
-      console.error('Error fetching users:', e);
+      logger.error('Error fetching users:', e);
     } finally {
       setLoading(false);
     }

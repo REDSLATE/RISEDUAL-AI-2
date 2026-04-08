@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { getTickerData } from '../services/api';
+import logger from '../utils/logger';
 
 const StockTicker = () => {
   const tickerRef = useRef(null);
@@ -13,7 +14,7 @@ const StockTicker = () => {
         setStockData(data);
       }
     } catch (error) {
-      console.error('Failed to fetch ticker data:', error);
+      logger.error('Failed to fetch ticker data:', error);
     } finally {
       setLoading(false);
     }

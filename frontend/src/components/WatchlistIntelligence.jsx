@@ -7,6 +7,23 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Score/severity helper functions to eliminate nested ternaries
+const scoreGradient = (score) =>
+  score >= 70 ? 'from-emerald-600 to-green-600' :
+  score >= 40 ? 'from-amber-600 to-yellow-600' : 'from-red-600 to-rose-600';
+
+const severityBadge = (sev) =>
+  sev === 'high' ? 'bg-red-800/50 text-red-300' :
+  sev === 'medium' ? 'bg-amber-800/50 text-amber-300' : 'bg-slate-700 text-slate-400';
+
+const tickerScoreColor = (score) =>
+  score >= 7 ? 'text-emerald-400 border-emerald-500' :
+  score >= 4 ? 'text-amber-400 border-amber-500' : 'text-red-400 border-red-500';
+
+const verdictBadge = (v) =>
+  v === 'buy' ? 'bg-emerald-900/40 text-emerald-400' :
+  v === 'sell' ? 'bg-red-900/40 text-red-400' : 'bg-amber-900/40 text-amber-400';
+
 const WatchlistIntelligence = ({ onSubscribe }) => {
   const { user, isPro } = useAuth();
   const [data, setData] = useState(null);
@@ -127,7 +144,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
 
 
 const HealthBadge = ({ score }) => {
-  const color = score >= 70 ? 'from-emerald-600 to-green-600' : score >= 40 ? 'from-amber-600 to-yellow-600' : 'from-red-600 to-rose-600';
+  const color = scoreGradient(score);
   return (
     <div className={`bg-gradient-to-r ${color} text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1`} data-testid="wl-health-score">
       <Gauge className="w-3 h-3" />{score}
@@ -175,7 +192,7 @@ const AlertsList = ({ alerts }) => (
         <div key={`alert-${i}`} className={`flex items-center gap-3 p-3 rounded-lg border ${style}`} data-testid={`wl-alert-${i}`}>
           <Badge className="bg-slate-700/60 text-white text-[9px] font-bold shrink-0">{a.symbol}</Badge>
           <span className="text-xs flex-1">{a.message}</span>
-          <Badge className={`text-[8px] capitalize ${a.severity === 'high' ? 'bg-red-800/50 text-red-300' : a.severity === 'medium' ? 'bg-amber-800/50 text-amber-300' : 'bg-slate-700 text-slate-400'}`}>
+          <Badge className={`text-[8px] capitalize ${severityBadge(a.severity)}`}>
             {a.severity}
           </Badge>
         </div>
@@ -218,7 +235,7 @@ const TickerGrid = ({ tickers }) => (
         const q = t.quote || {};
         const tech = t.technicals || {};
         const verdictColors = { buy: 'text-emerald-400', hold: 'text-amber-400', sell: 'text-red-400' };
-        const scoreColor = t.score >= 7 ? 'text-emerald-400 border-emerald-500' : t.score >= 4 ? 'text-amber-400 border-amber-500' : 'text-red-400 border-red-500';
+        const scoreColor = tickerScoreColor(t.score);
         const changePct = q.change_pct || 0;
 
         return (
@@ -232,7 +249,7 @@ const TickerGrid = ({ tickers }) => (
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-white text-sm font-bold">{t.symbol}</span>
-                <Badge className={`text-[8px] uppercase font-bold px-1.5 ${t.verdict === 'buy' ? 'bg-emerald-900/40 text-emerald-400' : t.verdict === 'sell' ? 'bg-red-900/40 text-red-400' : 'bg-amber-900/40 text-amber-400'}`}>
+                <Badge className={`text-[8px] uppercase font-bold px-1.5 ${verdictBadge(t.verdict)}`}>
                   {t.verdict}
                 </Badge>
               </div>

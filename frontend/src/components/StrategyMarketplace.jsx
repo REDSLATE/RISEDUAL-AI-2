@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -34,7 +35,7 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
         setStrategies(data.strategies);
         setTotal(data.total);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
     setLoading(false);
   }, [sort]);
 
@@ -51,7 +52,7 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
         const d = await res.json().catch(() => ({}));
         toast.error(d.detail || 'Clone failed');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
     setCloning(null);
   };
 

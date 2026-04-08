@@ -1,4 +1,5 @@
 """Market data routes: scraping endpoints, macro data, predictions."""
+from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 import os
 import logging
@@ -9,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 db = None
 
-def set_db(database):
+def set_db(database) -> None:
     global db
     db = database
 
 
 # --- World Events & Macro ---
 @router.get("/world-events")
-async def get_world_events():
+async def get_world_events() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.world_events_service import WorldEventsService
@@ -31,7 +32,7 @@ async def get_world_events():
 
 
 @router.get("/foreign-markets")
-async def get_foreign_markets():
+async def get_foreign_markets() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.foreign_markets_service import ForeignMarketsService
@@ -46,7 +47,7 @@ async def get_foreign_markets():
 
 
 @router.get("/gov-filings")
-async def get_gov_filings():
+async def get_gov_filings() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.gov_filings_service import GovFilingsService
@@ -62,7 +63,7 @@ async def get_gov_filings():
 
 # --- Scraping Data Endpoints ---
 @router.get("/market/news")
-async def get_financial_news():
+async def get_financial_news() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -77,7 +78,7 @@ async def get_financial_news():
 
 
 @router.get("/market/social-sentiment")
-async def get_social_sentiment():
+async def get_social_sentiment() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -92,7 +93,7 @@ async def get_social_sentiment():
 
 
 @router.get("/market/insider-trades")
-async def get_insider_trades():
+async def get_insider_trades() -> Dict[str, Any]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -107,7 +108,7 @@ async def get_insider_trades():
 
 
 @router.get("/market/crypto-data")
-async def get_crypto_market_data():
+async def get_crypto_market_data() -> Dict[str, Any]:
     try:
         from services.crypto_scraping_service import CryptoScrapingService
         scraper = CryptoScrapingService()
@@ -122,7 +123,7 @@ async def get_crypto_market_data():
 
 
 @router.get("/market/real-estate")
-async def get_real_estate_data():
+async def get_real_estate_data() -> Dict[str, Any]:
     try:
         from services.real_estate_scraping_service import RealEstateScrapingService
         return await RealEstateScrapingService().scrape_all_real_estate_data()
@@ -133,7 +134,7 @@ async def get_real_estate_data():
 
 # --- Market Prediction ---
 @router.get("/market/prediction")
-async def get_market_prediction():
+async def get_market_prediction() -> Dict[str, Any]:
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
@@ -144,7 +145,7 @@ async def get_market_prediction():
         raise HTTPException(status_code=500, detail="Error generating market prediction")
 
 
-async def _collect_all_scrape_data(include_real_estate=False):
+async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[str, Any]:
     """Collect all scraped macro data from services."""
     from services.financial_scraping_service import FinancialScrapingService
     from services.crypto_scraping_service import CryptoScrapingService
@@ -174,7 +175,7 @@ async def _collect_all_scrape_data(include_real_estate=False):
     return result
 
 
-async def _run_prediction_model(data):
+async def _run_prediction_model(data: Dict[str, Any]) -> Dict[str, Any]:
     """Run the AI market prediction model on collected data."""
     from services.market_prediction_service import MarketPredictionService
 
@@ -193,7 +194,7 @@ async def _run_prediction_model(data):
     )
 
 
-def _enrich_prediction_metadata(prediction, data):
+def _enrich_prediction_metadata(prediction: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
     """Add real estate and macro data summaries to prediction response."""
     re = data.get("real_estate", {})
     prediction['real_estate_summary'] = {

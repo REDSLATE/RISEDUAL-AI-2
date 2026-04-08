@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import ModelSelector from './hypothesis/ModelSelector';
 import HypothesisResults from './hypothesis/HypothesisResults';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -88,7 +89,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         authFetch(`${API}/workspace/history/save`, {
           method: 'POST',
           body: JSON.stringify({ symbol: data.symbol || symbol.trim().toUpperCase(), verdict: data.verdict, confidence: data.confidence || 0 }),
-        }).catch((err) => console.error('History save error:', err));
+        }).catch((err) => logger.error('History save error:', err));
       }
     } catch (err) {
       setError(err.message);

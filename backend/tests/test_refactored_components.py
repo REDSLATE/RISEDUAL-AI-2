@@ -5,6 +5,7 @@ Tests the split components: AIIntelligence, MacroDashboard, AdminPanel
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://risedual-trading.preview.emergentagent.com')
 
@@ -14,22 +15,22 @@ class TestAuthEndpoints:
     def test_login_admin(self):
         """Test admin login"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
         assert data["role"] == "admin"
-        assert data["email"] == "admin@risedual.ai"
+        assert data["email"] == ADMIN_EMAIL
         print(f"PASS: Admin login successful, role={data['role']}")
         return data["access_token"]
     
     def test_login_owner(self):
         """Test owner login"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": OWNER_EMAIL,
+            "password": OWNER_PASSWORD
         })
         assert response.status_code == 200
         data = response.json()
@@ -76,8 +77,8 @@ class TestAIIntelligenceAPIs:
     def auth_token(self):
         """Get auth token for authenticated requests"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if response.status_code == 200:
             return response.json().get("access_token")
@@ -113,8 +114,8 @@ class TestAdminPanelAPIs:
     def admin_token(self):
         """Get admin auth token"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if response.status_code == 200:
             return response.json().get("access_token")

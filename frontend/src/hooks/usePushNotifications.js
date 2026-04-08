@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authFetch } from '../contexts/AuthContext';
+import logger from '../utils/logger';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 const VAPID_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY;
@@ -39,7 +40,7 @@ export function usePushNotifications() {
           const data = await res.json();
           setSubscribed(data.subscribed);
         }
-      } catch (e) { console.error('Push status check failed:', e); }
+      } catch (e) { logger.error('Push status check failed:', e); }
     };
     check();
   }, []); // API and authFetch are stable module-level constants
@@ -69,7 +70,7 @@ export function usePushNotifications() {
       }
       return false;
     } catch (e) {
-      console.error('Push subscribe error:', e);
+      logger.error('Push subscribe error:', e);
       return false;
     }
   }, [supported]); // API and authFetch are stable module-level constants
@@ -84,7 +85,7 @@ export function usePushNotifications() {
       setSubscribed(false);
       return true;
     } catch (e) {
-      console.error('Push unsubscribe error:', e);
+      logger.error('Push unsubscribe error:', e);
       return false;
     }
   }, []); // API and authFetch are stable module-level constants

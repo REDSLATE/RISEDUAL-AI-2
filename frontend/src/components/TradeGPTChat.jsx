@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
 import ChartPatternLibrary from './ChartPatternLibrary';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -95,7 +96,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
       const res = await authFetch(`${API}/chat/sessions`);
       if (res.ok) setChatHistory(await res.json());
     } catch (err) {
-      console.error('Error loading chat history:', err);
+      logger.error('Error loading chat history:', err);
     }
   }, []);
 
@@ -109,7 +110,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
         setShowHistory(false);
       }
     } catch (err) {
-      console.error('Error loading session:', err);
+      logger.error('Error loading session:', err);
     }
   }, []);
 

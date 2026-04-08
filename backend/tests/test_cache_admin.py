@@ -9,14 +9,15 @@ Tests for the new Cache Stats Dashboard feature in Admin Panel:
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+OWNER_EMAIL = OWNER_EMAIL
+OWNER_PASSWORD = OWNER_PASSWORD
+ADMIN_EMAIL = ADMIN_EMAIL
+ADMIN_PASSWORD = ADMIN_PASSWORD
 
 
 class TestCacheAdminEndpoints:
@@ -98,7 +99,7 @@ class TestCacheAdminEndpoints:
         assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
         
         data = res.json()
-        assert data.get("ok") is True, "Response should have ok=True"
+        assert data.get("ok") == True, "Response should have ok=True"
         assert "message" in data, "Response should have message field"
 
     # ==================== ADMIN ACCESS TESTS ====================
@@ -156,7 +157,7 @@ class TestCacheAdminEndpoints:
             assert invalidate_res.status_code == 200, f"Invalidate failed: {invalidate_res.text}"
             
             inv_data = invalidate_res.json()
-            assert inv_data.get("ok") is True
+            assert inv_data.get("ok") == True
             assert inv_data.get("invalidated") == key_to_invalidate
             
             # Verify key was removed

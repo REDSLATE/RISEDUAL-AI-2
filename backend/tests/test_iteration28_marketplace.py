@@ -5,12 +5,13 @@ Tests: publish, list, get, clone endpoints
 import pytest
 import requests
 import os
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+OWNER_EMAIL = OWNER_EMAIL
+OWNER_PASSWORD = OWNER_PASSWORD
 
 
 class TestMarketplaceAuth:

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import WorldEventsTab from './macro/WorldEventsTab';
 import ForeignMarketsTab from './macro/ForeignMarketsTab';
 import CongressTab from './macro/CongressTab';
+import logger from '../utils/logger';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -34,7 +35,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       const res = await fetch(`${BACKEND_URL}/api/${endpoint}`);
       if (res.ok) setter(await res.json());
     } catch (e) {
-      console.error(`Error fetching ${endpoint}:`, e);
+      logger.error(`Error fetching ${endpoint}:`, e);
     } finally {
       setLoading(prev => ({ ...prev, [key]: false }));
     }
@@ -81,7 +82,7 @@ const MacroDashboard = ({ onSubscribe }) => {
         setLastRefresh(new Date());
       }
     } catch (e) {
-      console.error('Error fetching foreign-markets:', e);
+      logger.error('Error fetching foreign-markets:', e);
     } finally {
       setLoading(prev => ({ ...prev, markets: false }));
     }

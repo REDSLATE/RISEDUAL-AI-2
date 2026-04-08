@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bitcoin, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { Card } from './ui/card';
+import logger from '../utils/logger';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -16,7 +17,7 @@ const CryptoSection = () => {
         setCryptos(data);
       }
     } catch (error) {
-      console.error('Error fetching crypto data:', error);
+      logger.error('Error fetching crypto data:', error);
     } finally {
       setLoading(false);
     }

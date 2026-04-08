@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { authFetch } from '../contexts/AuthContext';
+import logger from '../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -195,7 +196,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
         onSync?.(data);
       }
     } catch (err) {
-      console.error('Portfolio sync failed:', err);
+      logger.error('Portfolio sync failed:', err);
       setError(err.message || 'Portfolio sync failed');
       setTimeout(() => setError(''), 4000);
     } finally {
@@ -226,7 +227,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       await authFetch(`${API}/broker/order/${brokerId}/${orderId}`, { method: 'DELETE' });
       fetchData();
     } catch (err) {
-      console.error('Cancel order failed:', err);
+      logger.error('Cancel order failed:', err);
       setError(err.message || 'Failed to cancel order');
       setTimeout(() => setError(''), 4000);
     }
@@ -419,7 +420,7 @@ const BrokerConnect = () => {
         setConnections(data.connections || []);
       }
     } catch (err) {
-      console.error('Fetch connections failed:', err);
+      logger.error('Fetch connections failed:', err);
     }
   }, []);
 
@@ -440,7 +441,7 @@ const BrokerConnect = () => {
       setActiveBroker(null);
       fetchConnections();
     } catch (err) {
-      console.error('Broker disconnect failed:', err);
+      logger.error('Broker disconnect failed:', err);
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { authFetch } from '../../contexts/AuthContext';
+import logger from '../../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -17,7 +18,7 @@ const CacheMonitor = () => {
       const res = await authFetch(`${API}/admin/cache-stats`);
       if (res.ok) setStats(await res.json());
     } catch (e) {
-      console.error('Cache stats error:', e);
+      logger.error('Cache stats error:', e);
     } finally {
       setLoading(false);
     }
@@ -36,7 +37,7 @@ const CacheMonitor = () => {
       const res = await authFetch(`${API}/admin/cache-invalidate/${key}`, { method: 'POST' });
       if (res.ok) await fetchStats();
     } catch (e) {
-      console.error('Invalidate error:', e);
+      logger.error('Invalidate error:', e);
     } finally {
       setActionKey(null);
     }
@@ -48,7 +49,7 @@ const CacheMonitor = () => {
       const res = await authFetch(`${API}/admin/cache-clear`, { method: 'POST' });
       if (res.ok) await fetchStats();
     } catch (e) {
-      console.error('Clear error:', e);
+      logger.error('Clear error:', e);
     } finally {
       setActionKey(null);
     }
@@ -74,8 +75,12 @@ const CacheMonitor = () => {
   };
 
   const hitRate = stats?.hit_rate ?? 0;
-  const hitRateColor = hitRate >= 80 ? 'text-emerald-400' : hitRate >= 50 ? 'text-amber-400' : 'text-red-400';
-  const hitRateBg = hitRate >= 80 ? 'bg-emerald-500' : hitRate >= 50 ? 'bg-amber-500' : 'bg-red-500';
+
+  const rateThreshold = (high, mid, low) =>
+    hitRate >= 80 ? high : hitRate >= 50 ? mid : low;
+
+  const hitRateColor = rateThreshold('text-emerald-400', 'text-amber-400', 'text-red-400');
+  const hitRateBg = rateThreshold('bg-emerald-500', 'bg-amber-500', 'bg-red-500');
 
   return (
     <div className="p-6 space-y-5" data-testid="cache-monitor">

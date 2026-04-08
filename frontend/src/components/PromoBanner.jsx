@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Gift, Clock, ChevronRight, Zap } from 'lucide-react';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import logger from '../utils/logger';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,7 +20,7 @@ const PromoBanner = ({ onSubscribe }) => {
           const data = await res.json();
           if (data.promo) setPromo(data.promo);
         }
-      } catch (e) { console.error('Promo load error:', e); }
+      } catch (e) { logger.error('Promo load error:', e); }
     };
     load();
   }, []);
@@ -30,7 +31,7 @@ const PromoBanner = ({ onSubscribe }) => {
       try {
         const res = await authFetch(`${API}/api/promo/progress`);
         if (res.ok) setProgress(await res.json());
-      } catch (e) { console.error('Promo progress error:', e); }
+      } catch (e) { logger.error('Promo progress error:', e); }
     };
     loadProgress();
   }, [user, promo]);

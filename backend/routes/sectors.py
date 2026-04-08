@@ -1,4 +1,5 @@
 """Sector rotation heatmap route."""
+from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 import logging
 
@@ -7,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/heatmap")
-async def get_sector_heatmap_endpoint():
+async def get_sector_heatmap_endpoint() -> Dict[str, Any]:
     """Return sector rotation heatmap data with multi-period returns (cached 2 min)."""
     try:
         from services.cache import cache

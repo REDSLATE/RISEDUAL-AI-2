@@ -4,6 +4,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { authFetch } from '../../contexts/AuthContext';
+import logger from '../../utils/logger';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -17,7 +18,7 @@ const AdminTools = () => {
       try {
         const res = await authFetch(`${API}/admin/code-quality`);
         if (res.ok) setCodeQuality(await res.json());
-      } catch (e) { console.error('Code quality fetch error:', e); }
+      } catch (e) { logger.error('Code quality fetch error:', e); }
       finally { setLoadingQuality(false); }
     };
     fetchQuality();
@@ -38,7 +39,7 @@ const AdminTools = () => {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (e) {
-      console.error('Download error:', e);
+      logger.error('Download error:', e);
       alert('Failed to download. Please try again.');
     } finally {
       setDownloading(false);

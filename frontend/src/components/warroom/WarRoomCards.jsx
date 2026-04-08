@@ -7,6 +7,18 @@ import {
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 
+// Helper: score → badge CSS class (green/amber/red threshold)
+const scoreBadge = (val, high = 7, mid = 4) =>
+  val >= high ? 'bg-emerald-900/40 text-emerald-400' :
+  val >= mid ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400';
+
+const impactDot = (impact) =>
+  impact === 'positive' ? 'bg-emerald-400' : impact === 'caution' ? 'bg-amber-400' : 'bg-slate-500';
+
+const sentimentBadge = (s) =>
+  s === 'bullish' ? 'bg-emerald-900/40 text-emerald-400' :
+  s === 'bearish' ? 'bg-red-900/40 text-red-400' : 'bg-slate-700 text-slate-400';
+
 const MiniBar = ({ value, max = 100, color = '#0052FF' }) => (
   <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
     <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min((value / max) * 100, 100)}%`, backgroundColor: color }} />
@@ -49,7 +61,7 @@ export const AIScoreCard = ({ aiScore }) => (
     <div className="flex items-center gap-2 mb-3">
       <Brain className="w-4 h-4 text-violet-400" />
       <h3 className="text-white font-semibold text-sm">AI Score</h3>
-      <Badge className={`text-[10px] ${aiScore.overall_score >= 7 ? 'bg-emerald-900/40 text-emerald-400' : aiScore.overall_score >= 4 ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400'}`}>
+      <Badge className={`text-[10px] ${scoreBadge(aiScore.overall_score)}`}>
         {aiScore.overall_score}/10
       </Badge>
     </div>
@@ -72,7 +84,7 @@ export const AIScoreCard = ({ aiScore }) => (
       <div className="mt-3 space-y-1">
         {aiScore.factors.slice(0, 3).map((f) => (
           <div key={f.factor?.substring(0, 30) || Math.random()} className="flex items-start gap-2 text-xs">
-            <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${f.impact === 'positive' ? 'bg-emerald-400' : f.impact === 'caution' ? 'bg-amber-400' : 'bg-slate-500'}`} />
+            <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${impactDot(f.impact)}`} />
             <span className="text-slate-400">{f.factor?.substring(0, 100)}</span>
           </div>
         ))}
@@ -113,7 +125,7 @@ export const EarningsCard = ({ earnings }) => (
         <h3 className="text-white font-semibold text-sm">Earnings Surprise Tracker</h3>
       </div>
       <div className="flex items-center gap-2">
-        <Badge className={`text-[10px] ${earnings.beat_rate >= 75 ? 'bg-emerald-900/40 text-emerald-400' : earnings.beat_rate >= 50 ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400'}`}>
+        <Badge className={`text-[10px] ${scoreBadge(earnings.beat_rate, 75, 50)}`}>
           {earnings.beat_rate}% Beat Rate
         </Badge>
         {earnings.current_streak > 0 && (
@@ -155,7 +167,7 @@ export const InsidersCard = ({ insiders }) => (
         <Users className="w-4 h-4 text-blue-400" />
         <h3 className="text-white font-semibold text-sm">Insider Trade Tracker</h3>
       </div>
-      <Badge className={`text-[10px] ${insiders.net_sentiment === 'bullish' ? 'bg-emerald-900/40 text-emerald-400' : insiders.net_sentiment === 'bearish' ? 'bg-red-900/40 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
+      <Badge className={`text-[10px] ${sentimentBadge(insiders.net_sentiment)}`}>
         {insiders.net_sentiment?.toUpperCase()}
       </Badge>
     </div>
