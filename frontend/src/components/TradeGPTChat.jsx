@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { MessageSquare, History, X, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { MessageSquare, History, X, Plus, Trash2, Minimize2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
@@ -9,6 +9,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const TradeGPTChat = ({ onLimitReached }) => {
   const { isPro } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,13 @@ const TradeGPTChat = ({ onLimitReached }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const inputRef = useRef(null);
+
+  // Listen for the global open-chat event from Navbar
+  useEffect(() => {
+    const handler = () => setIsOpen(true);
+    window.addEventListener('risedualai-open-chat', handler);
+    return () => window.removeEventListener('risedualai-open-chat', handler);
+  }, []);
 
   const handleCopy = useCallback((idx, text) => {
     navigator.clipboard.writeText(text);
@@ -112,70 +120,89 @@ const TradeGPTChat = ({ onLimitReached }) => {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#0F172A] rounded-xl border border-slate-700/50 overflow-hidden" data-testid="trade-gpt-chat">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#0052FF]/20 rounded-lg flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-[#0052FF]" />
-          </div>
-          <div>
-            <h3 className="text-white text-sm font-semibold">RISEDUAL AI Chat</h3>
-            <p className="text-slate-500 text-[10px]">
-              {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
-              {selectedImage && ' | Image attached'}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
-            Patterns
-          </Button>
-          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
-            <History className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={newChat} data-testid="new-chat">
-            <Plus className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Sidebar: History */}
-      {showHistory && (
-        <ChatHistorySidebar
-          history={chatHistory}
-          onSelect={loadSession}
-          onClose={() => setShowHistory(false)}
-        />
+    <>
+      {/* Floating trigger button */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-[#0052FF] hover:bg-[#2563EB] text-white shadow-lg shadow-[#0052FF]/30 flex items-center justify-center transition-all hover:scale-105"
+          data-testid="chat-fab"
+        >
+          <MessageSquare className="w-6 h-6" />
+        </button>
       )}
 
-      {/* Pattern Library */}
-      {showPatterns && (
-        <div className="border-b border-slate-700/50 max-h-[300px] overflow-y-auto">
-          <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
+      {/* Chat panel */}
+      {isOpen && (
+        <div className="fixed bottom-4 right-4 z-50 w-[420px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] rounded-2xl border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden" data-testid="trade-gpt-chat">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-slate-700/50 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[#0052FF]/20 rounded-lg flex items-center justify-center">
+                <MessageSquare className="w-4 h-4 text-[#0052FF]" />
+              </div>
+              <div>
+                <h3 className="text-white text-sm font-semibold">RISEDUAL AI Chat</h3>
+                <p className="text-slate-500 text-[10px]">
+                  {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
+                  {selectedImage && ' | Image attached'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
+                Patterns
+              </Button>
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
+                <History className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={newChat} data-testid="new-chat">
+                <Plus className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setIsOpen(false)} data-testid="chat-close">
+                <Minimize2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Sidebar: History */}
+          {showHistory && (
+            <ChatHistorySidebar
+              history={chatHistory}
+              onSelect={loadSession}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
+
+          {/* Pattern Library */}
+          {showPatterns && (
+            <div className="border-b border-slate-700/50 max-h-[300px] overflow-y-auto flex-shrink-0">
+              <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
+            </div>
+          )}
+
+          {/* Messages */}
+          <ChatMessages
+            messages={messages}
+            showPatterns={showPatterns}
+            copiedId={copiedId}
+            onCopy={handleCopy}
+          />
+
+          {/* Input */}
+          <ChatInputArea
+            input={input}
+            setInput={setInput}
+            onSend={sendMessage}
+            loading={loading}
+            imagePreview={imagePreview}
+            onImageSelect={handleImageSelect}
+            onClearImage={clearImage}
+            inputRef={inputRef}
+          />
         </div>
       )}
-
-      {/* Messages */}
-      <ChatMessages
-        messages={messages}
-        showPatterns={showPatterns}
-        copiedId={copiedId}
-        onCopy={handleCopy}
-      />
-
-      {/* Input */}
-      <ChatInputArea
-        input={input}
-        setInput={setInput}
-        onSend={sendMessage}
-        loading={loading}
-        imagePreview={imagePreview}
-        onImageSelect={handleImageSelect}
-        onClearImage={clearImage}
-        inputRef={inputRef}
-      />
-    </div>
+    </>
   );
 };
 
