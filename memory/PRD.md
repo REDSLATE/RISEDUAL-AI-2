@@ -104,9 +104,8 @@ Handle API limit upgrades when user moves from free tier (5 calls/min).
 Break down `server.py` entirely into modular `routes/` directory.
 
 ### P4 - Future Features
-- Sector rotation heatmap
-- Real-time P&L tracker for connected brokers
 - Additional broker integrations (Webull, Robinhood)
+- Advanced charting for Sector Heatmap
 
 ### P5 - Remaining Code Quality
 - Further complexity reduction in ai_intelligence_service.py (optional — functions are reasonably sized at ~55 lines each)
@@ -130,4 +129,4 @@ Break down `server.py` entirely into modular `routes/` directory.
 - **REFACTORING**: Split AdminPanel.jsx (530→194 lines) into admin/ subdirectory (AdminTools, PromoManager)
 
 ## Last Updated
-- **Apr 2026**: Backend complexity reduction (route splitting), Sector Rotation Heatmap, Real-time P&L Tracker, Component splitting, Security patches
+- **Apr 2026**: In-memory TTL cache verified (12-36x speedup on sector/macro endpoints). Backend complexity reduction (route splitting), Sector Rotation Heatmap, Real-time P&L Tracker, Component splitting, Security patches

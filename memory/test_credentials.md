@@ -14,5 +14,6 @@
 - Subscription: pro
 
 ## Auth Method
-- Bearer token via localStorage
-- POST /api/auth/login → returns access_token + refresh_token
+- httpOnly secure cookies (primary) + localStorage Bearer token (fallback)
+- POST /api/auth/login → sets access_token + refresh_token cookies
+- CORS: credentials: 'include' required on all fetch calls
