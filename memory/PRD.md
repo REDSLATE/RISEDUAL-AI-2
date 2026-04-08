@@ -129,4 +129,4 @@ Break down `server.py` entirely into modular `routes/` directory.
 - **REFACTORING**: Split AdminPanel.jsx (530→194 lines) into admin/ subdirectory (AdminTools, PromoManager)
 
 ## Last Updated
-- **Apr 2026**: In-memory TTL cache verified (12-36x speedup on sector/macro endpoints). Backend complexity reduction (route splitting), Sector Rotation Heatmap, Real-time P&L Tracker, Component splitting, Security patches
+- **Apr 2026**: Added Admin Cache Monitor dashboard (hit rate, requests, keys, uptime, invalidation controls). In-memory TTL cache verified (12-36x speedup on sector/macro endpoints). Backend complexity reduction (route splitting), Sector Rotation Heatmap, Real-time P&L Tracker, Component splitting, Security patches
