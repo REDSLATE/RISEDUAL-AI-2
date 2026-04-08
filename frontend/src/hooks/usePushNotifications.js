@@ -16,6 +16,8 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+const isApiSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
 export function usePushNotifications() {
   const [permission, setPermission] = useState('default');
   const [subscribed, setSubscribed] = useState(false);
@@ -23,30 +25,29 @@ export function usePushNotifications() {
   const [supported, setSupported] = useState(false);
 
   useEffect(() => {
-    const isSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-    setSupported(isSupported);
-    if (isSupported) {
-      setPermission(Notification.permission);
-    }
+    const ok = isApiSupported();
+    setSupported(ok);
+    if (ok) setPermission(Notification.permission);
     setLoading(false);
   }, []);
 
-  // Check backend subscription status on mount
   useEffect(() => {
+    let cancelled = false;
     const check = async () => {
       try {
         const res = await authFetch(`${API}/api/push/status`);
-        if (res.ok) {
+        if (res.ok && !cancelled) {
           const data = await res.json();
           setSubscribed(data.subscribed);
         }
       } catch (e) { logger.error('Push status check failed:', e); }
     };
     check();
-  }, []); // API and authFetch are stable module-level constants
+    return () => { cancelled = true; };
+  }, []);
 
   const subscribe = useCallback(async () => {
-    if (!supported) return false;
+    if (!supported || !isApiSupported()) return false;
     try {
       const perm = await Notification.requestPermission();
       setPermission(perm);
@@ -73,7 +74,7 @@ export function usePushNotifications() {
       logger.error('Push subscribe error:', e);
       return false;
     }
-  }, [supported]); // API and authFetch are stable module-level constants
+  }, [supported]);
 
   const unsubscribe = useCallback(async () => {
     try {
@@ -88,7 +89,7 @@ export function usePushNotifications() {
       logger.error('Push unsubscribe error:', e);
       return false;
     }
-  }, []); // API and authFetch are stable module-level constants
+  }, []);
 
   return { permission, subscribed, loading, supported, subscribe, unsubscribe };
 }

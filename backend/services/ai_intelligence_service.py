@@ -143,6 +143,24 @@ def _parse_llm_json(text: str) -> Dict:
     return json.loads(text)
 
 
+async def _call_llm(api_key: str, prompt: str, session_prefix: str, symbol: str, system_msg: str) -> Dict:
+    """Shared LLM call + JSON parse for all intelligence functions."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    session_id = f"{session_prefix}_{symbol}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+    chat = LlmChat(api_key=api_key, session_id=session_id,
+                    system_message=system_msg).with_model("openai", "gpt-5.2")
+    response = await chat.send_message(UserMessage(text=prompt))
+    return _parse_llm_json(str(response))
+
+
+def _calc_performance(closes: list) -> Dict:
+    """Calculate 1w/1m/3m performance from close prices."""
+    perf_1w = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2) if len(closes) >= 6 else 0
+    perf_1m = round((closes[-1] - closes[-22]) / closes[-22] * 100, 2) if len(closes) >= 22 else 0
+    perf_3m = round((closes[-1] - closes[-66]) / closes[-66] * 100, 2) if len(closes) >= 66 else 0
+    return {"1w": perf_1w, "1m": perf_1m, "3m": perf_3m}
+
+
 # ═══════════════════════════════════════
 # 1. AI STOCK SCORING (Danelfin-style)
 # ═══════════════════════════════════════
@@ -210,8 +228,6 @@ Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sel
 
 async def detect_patterns(api_key: str, symbol: str) -> Dict:
     """Detect chart patterns using AI analysis of price data."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-
     prices = await _fetch_daily(symbol, compact=True)
     if len(prices) < 30:
         raise ValueError(f"Insufficient data for pattern analysis on {symbol}")
@@ -258,11 +274,8 @@ Return ONLY valid JSON:
 
 Pattern types: reversal, continuation, bilateral. Directions: bullish, bearish, neutral. Confidence 0-100. Status: forming, confirmed, breaking_out, failed. Include all patterns you detect — common ones: Head & Shoulders, Double Top/Bottom, Cup & Handle, Bull/Bear Flag, Ascending/Descending Triangle, Wedge, Channel, Pennant, MACD Divergence."""
 
-    session_id = f"pattern_{symbol}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
-    chat = LlmChat(api_key=api_key, session_id=session_id,
-                    system_message="You are an expert technical analyst specializing in chart pattern recognition. Return only JSON.").with_model("openai", "gpt-5.2")
-    response = await chat.send_message(UserMessage(text=prompt))
-    result = _parse_llm_json(str(response))
+    result = await _call_llm(api_key, prompt, "pattern", symbol,
+                              "You are an expert technical analyst specializing in chart pattern recognition. Return only JSON.")
 
     return {
         "symbol": symbol.upper(),
@@ -289,15 +302,13 @@ async def generate_quick_brief(api_key: str, symbol: str) -> Dict:
 
     # Calculate quick stats
     closes = [p["close"] for p in prices]
-    perf_1w = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2) if len(closes) >= 6 else 0
-    perf_1m = round((closes[-1] - closes[-22]) / closes[-22] * 100, 2) if len(closes) >= 22 else 0
-    perf_3m = round((closes[-1] - closes[-66]) / closes[-66] * 100, 2) if len(closes) >= 66 else 0
+    perf = _calc_performance(closes)
 
     prompt = f"""Generate a concise 30-second stock brief for {symbol}.
 
 Data:
 - Price: ${quote['price']}, Today: {quote['change_pct']}%
-- 1W: {perf_1w}%, 1M: {perf_1m}%, 3M: {perf_3m}%
+- 1W: {perf['1w']}%, 1M: {perf['1m']}%, 3M: {perf['3m']}%
 - RSI: {technicals.get('rsi')}, Trend: {technicals.get('trend')}
 - Volume vs avg: {technicals.get('vol_ratio')}x
 - BB Upper/Lower: {technicals.get('bb_upper')}/{technicals.get('bb_lower')}
@@ -322,16 +333,13 @@ Return ONLY valid JSON:
 
 verdict: buy/hold/sell. confidence 0-100. Be concise and actionable. Key metrics max 4 items. Catalysts and risks max 3 each."""
 
-    session_id = f"brief_{symbol}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
-    chat = LlmChat(api_key=api_key, session_id=session_id,
-                    system_message="You are a financial analyst providing quick stock briefs. Return only JSON. Be concise.").with_model("openai", "gpt-5.2")
-    response = await chat.send_message(UserMessage(text=prompt))
-    brief = _parse_llm_json(str(response))
+    brief = await _call_llm(api_key, prompt, "brief", symbol,
+                             "You are a financial analyst providing quick stock briefs. Return only JSON. Be concise.")
 
     return {
         "symbol": symbol.upper(),
         "brief": brief,
-        "performance": {"1w": perf_1w, "1m": perf_1m, "3m": perf_3m},
+        "performance": perf,
         "quote": quote,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

@@ -14,6 +14,6 @@
 - Subscription: pro
 
 ## Auth Method
-- httpOnly secure cookies (primary) + localStorage Bearer token (fallback)
+- httpOnly secure cookies (primary)
 - POST /api/auth/login → sets access_token + refresh_token cookies
 - CORS: credentials: 'include' required on all fetch calls

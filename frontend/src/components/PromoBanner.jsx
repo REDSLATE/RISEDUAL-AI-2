@@ -56,18 +56,18 @@ const PromoBanner = ({ onSubscribe }) => {
     return () => clearInterval(interval);
   }, [promo]);
 
-  // Check localStorage for dismissal
+  // Check sessionStorage for dismissal (non-sensitive UI preference)
   useEffect(() => {
     if (promo) {
       const key = `promo_dismissed_${promo.id}`;
-      if (localStorage.getItem(key) === 'true') setDismissed(true);
+      if (sessionStorage.getItem(key) === 'true') setDismissed(true);
     }
   }, [promo]);
 
   if (!promo || dismissed || timeLeft === 'Expired') return null;
 
   const dismiss = () => {
-    localStorage.setItem(`promo_dismissed_${promo.id}`, 'true');
+    sessionStorage.setItem(`promo_dismissed_${promo.id}`, 'true');
     setDismissed(true);
   };
 

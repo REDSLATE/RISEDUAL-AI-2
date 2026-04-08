@@ -1,10 +1,23 @@
 import os
 import logging
 from typing import Optional, List, Dict
+from dataclasses import dataclass
 import requests
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OrderParams:
+    """Common order parameters across all brokers."""
+    symbol: str
+    qty: float
+    side: str
+    order_type: str = "market"
+    time_in_force: str = "day"
+    limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
 
 
 class AlpacaTradingService:
@@ -40,18 +53,23 @@ class AlpacaTradingService:
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
                     time_in_force: str = "day", limit_price: Optional[float] = None,
                     stop_price: Optional[float] = None) -> Optional[Dict]:
+        order = OrderParams(symbol=symbol, qty=qty, side=side, order_type=order_type,
+                            time_in_force=time_in_force, limit_price=limit_price, stop_price=stop_price)
+        return self._execute_order(order)
+
+    def _execute_order(self, o: OrderParams) -> Optional[Dict]:
         try:
             data = {
-                "symbol": symbol.upper(),
-                "qty": str(qty),
-                "side": side.lower(),
-                "type": order_type.lower(),
-                "time_in_force": time_in_force.lower(),
+                "symbol": o.symbol.upper(),
+                "qty": str(o.qty),
+                "side": o.side.lower(),
+                "type": o.order_type.lower(),
+                "time_in_force": o.time_in_force.lower(),
             }
-            if limit_price:
-                data["limit_price"] = str(limit_price)
-            if stop_price:
-                data["stop_price"] = str(stop_price)
+            if o.limit_price:
+                data["limit_price"] = str(o.limit_price)
+            if o.stop_price:
+                data["stop_price"] = str(o.stop_price)
             r = requests.post(f"{self.base_url}/v2/orders", headers=self.headers, json=data, timeout=10)
             r.raise_for_status()
             return r.json()

@@ -54,14 +54,25 @@ const fetchWithRetry = async (url, opts, retries = 3) => {
   }
 };
 
+// Dev-only logger (mirrors utils/logger.js for context module)
+const isDev = process.env.NODE_ENV === 'development';
+const log = {
+  warn: (...args) => isDev && console.warn(...args),
+  error: (...args) => isDev && console.error(...args),
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const clearLegacyTokens = useCallback(() => {
     // One-time cleanup of any legacy localStorage tokens from pre-cookie migration
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    try {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    } catch {
+      // localStorage may be unavailable (private browsing)
+    }
   }, []);
 
   const tryRefresh = useCallback(async () => {
@@ -76,8 +87,8 @@ export const AuthProvider = ({ children }) => {
         const meRes = await authFetch(`${API}/auth/me`);
         if (meRes.ok) { setUser(await meRes.json()); return true; }
       }
-    } catch {
-      // Refresh failed silently
+    } catch (e) {
+      log.warn('Token refresh failed:', e.message);
     }
     return false;
   }, []);
@@ -93,7 +104,8 @@ export const AuthProvider = ({ children }) => {
       } else {
         setUser(false);
       }
-    } catch {
+    } catch (e) {
+      log.warn('Auth check failed:', e.message);
       setUser(false);
     } finally {
       setLoading(false);
@@ -114,7 +126,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
-    clearLegacyTokens(); // Ensure no stale localStorage tokens
+    clearLegacyTokens();
     setUser(data);
     return data;
   }, [clearLegacyTokens]);
@@ -139,7 +151,11 @@ export const AuthProvider = ({ children }) => {
   }, [clearLegacyTokens]);
 
   const logout = useCallback(async () => {
-    await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    try {
+      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      log.warn('Logout request failed:', e.message);
+    }
     clearLegacyTokens();
     setUser(false);
   }, [clearLegacyTokens]);

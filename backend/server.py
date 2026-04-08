@@ -168,7 +168,16 @@ async def _pregen_watchlist_intel(database):
 
 @app.on_event("startup")
 async def startup_event():
-    # Pass db reference to all route modules that need it
+    _wire_db_to_routes()
+    await _start_schedulers()
+    await create_indexes()
+    await seed_admin()
+    _start_cache_warmup()
+    _write_test_credentials()
+
+
+def _wire_db_to_routes():
+    """Pass db reference to all route modules."""
     set_auth_helpers_db(db)
     set_auth_db(db)
     set_ai_db(db)
@@ -185,7 +194,9 @@ async def startup_event():
     set_market_data_db(db)
     set_admin_db(db)
 
-    # Start daily digest scheduler (6:00 AM UTC) + watchlist pre-gen (5:30 AM UTC)
+
+async def _start_schedulers():
+    """Start APScheduler jobs for daily digest and watchlist pre-generation."""
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from services.digest_service import send_daily_digest
@@ -197,40 +208,36 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Digest scheduler setup failed: {e}")
 
-    await create_indexes()
-    await seed_admin()
 
-    # Cache warm-up: pre-populate expensive endpoints so first user never waits
+def _start_cache_warmup():
+    """Pre-populate expensive API caches so the first user never waits."""
     try:
         from services.cache import cache
         from services.sector_service import get_sector_heatmap
         from services.world_events_service import WorldEventsService
         from services.foreign_markets_service import ForeignMarketsService
 
-        async def _warm_cache():
-            try:
-                await cache.get_or_fetch("sector_heatmap", get_sector_heatmap, ttl=120)
-                logger.info("Cache warm-up: sector_heatmap loaded")
-            except Exception as e:
-                logger.warning(f"Cache warm-up sector_heatmap failed: {e}")
-            try:
-                await cache.get_or_fetch("world_events", WorldEventsService().scrape_world_events, ttl=300)
-                logger.info("Cache warm-up: world_events loaded")
-            except Exception as e:
-                logger.warning(f"Cache warm-up world_events failed: {e}")
-            try:
-                await cache.get_or_fetch("foreign_markets", ForeignMarketsService().get_foreign_markets, ttl=60)
-                logger.info("Cache warm-up: foreign_markets loaded")
-            except Exception as e:
-                logger.warning(f"Cache warm-up foreign_markets failed: {e}")
+        async def _warm():
+            for key, fn, ttl in [
+                ("sector_heatmap", get_sector_heatmap, 120),
+                ("world_events", WorldEventsService().scrape_world_events, 300),
+                ("foreign_markets", ForeignMarketsService().get_foreign_markets, 60),
+            ]:
+                try:
+                    await cache.get_or_fetch(key, fn, ttl=ttl)
+                    logger.info(f"Cache warm-up: {key} loaded")
+                except Exception as e:
+                    logger.warning(f"Cache warm-up {key} failed: {e}")
 
         import asyncio
-        asyncio.create_task(_warm_cache())
+        asyncio.create_task(_warm())
         logger.info("Cache warm-up started in background")
     except Exception as e:
         logger.warning(f"Cache warm-up setup failed: {e}")
 
-    # Write test credentials
+
+def _write_test_credentials():
+    """Write test credentials to memory file for testing agents."""
     creds_path = Path("/app/memory/test_credentials.md")
     creds_path.parent.mkdir(parents=True, exist_ok=True)
     creds_path.write_text(
@@ -243,7 +250,7 @@ async def startup_event():
         f"## Admin\n- Email: {os.environ.get('ADMIN_EMAIL', 'admin@risedual.ai')}\n"
         f"- Password: {os.environ.get('ADMIN_PASSWORD', '')}\n"
         "- Role: admin\n- Subscription: pro\n\n"
-        "## Auth Method\n- httpOnly secure cookies (primary) + localStorage Bearer token (fallback)\n"
+        "## Auth Method\n- httpOnly secure cookies (primary)\n"
         "- POST /api/auth/login → sets access_token + refresh_token cookies\n"
         "- CORS: credentials: 'include' required on all fetch calls\n"
     )
