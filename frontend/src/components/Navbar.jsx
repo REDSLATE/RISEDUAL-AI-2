@@ -61,6 +61,8 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('dark-pool')}>Dark Pool Trading</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
               <DropdownMenuItem className="text-violet-400 hover:text-violet-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-intelligence')} data-testid="nav-intelligence-btn">AI Intelligence Hub</DropdownMenuItem>
+              <DropdownMenuItem className="text-orange-400 hover:text-orange-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('sector-heatmap')} data-testid="nav-sector-heatmap-btn">Sector Heatmap</DropdownMenuItem>
+              <DropdownMenuItem className="text-emerald-400 hover:text-emerald-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('pnl-tracker')} data-testid="nav-pnl-tracker-btn">P&L Tracker</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Market</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -202,6 +204,8 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               { label: 'Market Prediction', id: 'market-prediction' },
               { label: 'Company Research', id: 'company-research' },
               { label: 'Macro Intelligence', id: 'macro-dashboard' },
+              { label: 'Sector Heatmap', id: 'sector-heatmap' },
+              { label: 'P&L Tracker', id: 'pnl-tracker' },
               { label: 'Options Radar', id: 'options-radar' },
               { label: 'Dark Pool', id: 'dark-pool' },
               { label: 'Crypto Market', id: 'crypto' },

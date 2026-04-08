@@ -33,6 +33,8 @@ from routes.journal import router as journal_router, set_db as set_journal_db
 from routes.strategy import router as strategy_router, set_db as set_strategy_db
 from routes.intelligence import router as intelligence_router, set_db as set_intelligence_db
 from routes.broker import router as broker_router, set_db as set_broker_db
+from routes.market_data import router as market_data_router, set_db as set_market_data_db
+from routes.sectors import router as sectors_router
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -109,6 +111,8 @@ app.include_router(journal_router)
 app.include_router(strategy_router)
 app.include_router(intelligence_router)
 app.include_router(broker_router)
+app.include_router(market_data_router)
+app.include_router(sectors_router)
 
 # CORS — allow credentials for httpOnly cookie auth
 _frontend_url = os.environ.get("FRONTEND_URL", "")
@@ -176,6 +180,7 @@ async def startup_event():
     set_strategy_db(db)
     set_intelligence_db(db)
     set_broker_db(db)
+    set_market_data_db(db)
 
     # Start daily digest scheduler (6:00 AM UTC) + watchlist pre-gen (5:30 AM UTC)
     try:

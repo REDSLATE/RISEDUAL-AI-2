@@ -380,3 +380,148 @@ async def portfolio_sync(broker_id: str, request: Request):
         "total_unrealized_pl": total_pl,
         "open_orders": len([o for o in (orders or []) if o.get("status") in ("new", "accepted", "pending_new")]),
     }
+
+
+# ============================================================
+# REAL-TIME P&L TRACKER
+# ============================================================
+
+@router.get("/pnl-summary")
+async def get_pnl_summary(request: Request):
+    """Aggregate real-time P&L across all connected brokers."""
+    user = await _get_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+
+    cursor = db.broker_connections.find(
+        {"user_id": user_id, "is_active": True},
+        {"_id": 0}
+    )
+    connections = []
+    async for c in cursor:
+        connections.append(c)
+
+    if not connections:
+        return {
+            "total_value": 0,
+            "total_pl": 0,
+            "total_pl_pct": 0,
+            "day_pl": 0,
+            "brokers": [],
+            "positions": [],
+            "sector_allocation": [],
+        }
+
+    brokers = []
+    all_positions = []
+    total_value = 0
+    total_pl = 0
+    total_cost = 0
+
+    for conn in connections:
+        try:
+            client = _build_client(conn)
+            account = await asyncio.to_thread(client.get_account)
+            positions = await asyncio.to_thread(client.get_positions)
+
+            broker_value = float(account.get("portfolio_value", account.get("equity", 0))) if account else 0
+            broker_cash = float(account.get("cash", 0)) if account else 0
+            broker_pl = 0
+
+            for p in (positions or []):
+                qty = float(p.get("qty", 0))
+                avg_entry = float(p.get("avg_entry_price", 0))
+                current = float(p.get("current_price", 0))
+                mkt_val = float(p.get("market_value", 0))
+                unrealized = float(p.get("unrealized_pl", 0))
+                unrealized_pct = float(p.get("unrealized_plpc", 0))
+                cost_basis = qty * avg_entry
+
+                broker_pl += unrealized
+                total_cost += cost_basis
+
+                all_positions.append({
+                    "symbol": p.get("symbol", ""),
+                    "broker": conn["broker_id"],
+                    "qty": qty,
+                    "avg_entry": round(avg_entry, 2),
+                    "current_price": round(current, 2),
+                    "market_value": round(mkt_val, 2),
+                    "unrealized_pl": round(unrealized, 2),
+                    "unrealized_pl_pct": round(unrealized_pct * 100, 2),
+                    "cost_basis": round(cost_basis, 2),
+                    "side": p.get("side", "long"),
+                })
+
+            total_value += broker_value
+            total_pl += broker_pl
+
+            brokers.append({
+                "broker_id": conn["broker_id"],
+                "account_id": conn.get("account_id", ""),
+                "paper": conn.get("paper", True),
+                "portfolio_value": round(broker_value, 2),
+                "cash": round(broker_cash, 2),
+                "unrealized_pl": round(broker_pl, 2),
+                "positions_count": len(positions or []),
+            })
+        except Exception as e:
+            logger.warning(f"P&L fetch error for {conn['broker_id']}: {e}")
+            brokers.append({
+                "broker_id": conn["broker_id"],
+                "error": str(e),
+            })
+
+    # Sector allocation (group positions by rough sector)
+    sector_map = _classify_sectors(all_positions)
+
+    total_pl_pct = round((total_pl / total_cost) * 100, 2) if total_cost > 0 else 0
+
+    # Sort positions by absolute P&L (biggest movers first)
+    all_positions.sort(key=lambda p: abs(p["unrealized_pl"]), reverse=True)
+
+    return {
+        "total_value": round(total_value, 2),
+        "total_pl": round(total_pl, 2),
+        "total_pl_pct": total_pl_pct,
+        "total_cost_basis": round(total_cost, 2),
+        "brokers": brokers,
+        "positions": all_positions,
+        "sector_allocation": sector_map,
+        "positions_count": len(all_positions),
+    }
+
+
+def _classify_sectors(positions: list) -> list:
+    """Simple sector classification based on well-known tickers."""
+    sector_lookup = {
+        "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology", "GOOG": "Technology",
+        "AMZN": "Consumer Disc.", "TSLA": "Consumer Disc.", "NKE": "Consumer Disc.",
+        "META": "Communication", "NFLX": "Communication", "DIS": "Communication",
+        "JPM": "Financials", "BAC": "Financials", "GS": "Financials", "V": "Financials",
+        "JNJ": "Healthcare", "UNH": "Healthcare", "PFE": "Healthcare", "ABBV": "Healthcare",
+        "XOM": "Energy", "CVX": "Energy", "COP": "Energy",
+        "PG": "Consumer Staples", "KO": "Consumer Staples", "PEP": "Consumer Staples",
+        "CAT": "Industrials", "BA": "Industrials", "HON": "Industrials",
+        "NVDA": "Technology", "AMD": "Technology", "INTC": "Technology", "CRM": "Technology",
+        "SPY": "Index", "QQQ": "Index", "IWM": "Index", "VOO": "Index",
+    }
+
+    sectors = {}
+    for p in positions:
+        sector = sector_lookup.get(p["symbol"], "Other")
+        if sector not in sectors:
+            sectors[sector] = {"name": sector, "value": 0, "pl": 0, "count": 0}
+        sectors[sector]["value"] += p["market_value"]
+        sectors[sector]["pl"] += p["unrealized_pl"]
+        sectors[sector]["count"] += 1
+
+    total = sum(s["value"] for s in sectors.values())
+    result = []
+    for s in sectors.values():
+        s["pct"] = round((s["value"] / total) * 100, 1) if total > 0 else 0
+        s["value"] = round(s["value"], 2)
+        s["pl"] = round(s["pl"], 2)
+        result.append(s)
+
+    result.sort(key=lambda s: s["value"], reverse=True)
+    return result

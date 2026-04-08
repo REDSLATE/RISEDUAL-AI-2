@@ -33,6 +33,8 @@ import AIWarRoom from './components/AIWarRoom';
 import AIIntelligence from './components/AIIntelligence';
 import WatchlistIntelligence from './components/WatchlistIntelligence';
 import ResetPasswordModal from './components/ResetPasswordModal';
+import SectorHeatmap from './components/SectorHeatmap';
+import PnLTracker from './components/PnLTracker';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -109,6 +111,16 @@ function AppContent() {
         {/* AI Intelligence Hub */}
         <div id="ai-intelligence" className="mb-6 sm:mb-8">
           <AIIntelligence onSubscribe={() => setShowSubscription(true)} />
+        </div>
+
+        {/* Sector Rotation Heatmap */}
+        <div id="sector-heatmap" className="mb-6 sm:mb-8">
+          <SectorHeatmap />
+        </div>
+
+        {/* Real-time P&L Tracker */}
+        <div id="pnl-tracker" className="mb-6 sm:mb-8">
+          <PnLTracker />
         </div>
 
         <div id="market-prediction" className="mb-6 sm:mb-8"><MarketPrediction /></div>
