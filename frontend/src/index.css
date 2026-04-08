@@ -180,3 +180,33 @@ code, .font-mono {
 .animate-shimmer {
   animation: shimmer 3s ease-in-out infinite;
 }
+
+/* Viewport entrance animation */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-enter {
+  animation: fadeSlideUp 0.5s ease-out both;
+}
+.animate-enter-d1 { animation-delay: 0.08s; }
+.animate-enter-d2 { animation-delay: 0.16s; }
+.animate-enter-d3 { animation-delay: 0.24s; }
+.animate-enter-d4 { animation-delay: 0.32s; }
+
+/* Skeleton pulse */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(51,65,85,0.3) 0%, rgba(71,85,105,0.5) 50%, rgba(51,65,85,0.3) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* Scroll-to-top FAB transition */
+.scroll-fab {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Toaster } from './components/ui/sonner';
+import ErrorBoundary from './components/ErrorBoundary';
+import ScrollToTop from './components/ScrollToTop';
+import Footer from './components/Footer';
 import Navbar from './components/Navbar';
 import StockTicker from './components/StockTicker';
 import CryptoTicker from './components/CryptoTicker';
@@ -88,53 +92,50 @@ function AppContent() {
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        <div className="mb-6 sm:mb-8"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
-        
-        {/* Watchlist Intelligence */}
-        <div className="mb-6 sm:mb-8">
+        <div className="mb-6 sm:mb-8 animate-enter"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
+
+        <div className="mb-6 sm:mb-8 animate-enter animate-enter-d1">
           <WatchlistIntelligence onSubscribe={() => setShowSubscription(true)} />
         </div>
 
-        {/* Referral Leaderboard */}
-        <div className="mb-6 sm:mb-8"><ReferralLeaderboard /></div>
+        <div className="mb-6 sm:mb-8 animate-enter animate-enter-d2"><ReferralLeaderboard /></div>
 
-        {/* AI War Room (Unified: Hypothesis + Intelligence + Earnings + Insider Trades) */}
-        <div id="ai-war-room" className="mb-6 sm:mb-8">
+        <div id="ai-war-room" className="mb-6 sm:mb-8 animate-enter">
           <AIWarRoom onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
         </div>
 
-        {/* AI Investment Hypothesis */}
-        <div id="ai-hypothesis" className="mb-6 sm:mb-8">
+        <div id="ai-hypothesis" className="mb-6 sm:mb-8 animate-enter">
           <AIHypothesis onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
         </div>
 
-        {/* AI Intelligence Hub */}
-        <div id="ai-intelligence" className="mb-6 sm:mb-8">
+        <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter">
           <AIIntelligence onSubscribe={() => setShowSubscription(true)} />
         </div>
 
-        {/* Sector Rotation Heatmap */}
-        <div id="sector-heatmap" className="mb-6 sm:mb-8">
+        <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
           <SectorHeatmap />
         </div>
 
-        {/* Real-time P&L Tracker */}
-        <div id="pnl-tracker" className="mb-6 sm:mb-8">
+        <div id="pnl-tracker" className="mb-6 sm:mb-8 animate-enter">
           <PnLTracker />
         </div>
 
-        <div id="market-prediction" className="mb-6 sm:mb-8"><MarketPrediction /></div>
-        <div id="company-research" className="mb-6 sm:mb-8"><CompanyResearch /></div>
-        <div id="macro-dashboard" className="mb-6 sm:mb-8"><MacroDashboard onSubscribe={() => setShowSubscription(true)} /></div>
-        <div id="options-radar"><OptionsRadar /></div>
-        <div id="options-flow"><OptionsFlowScreener /></div>
+        <div id="market-prediction" className="mb-6 sm:mb-8 animate-enter"><MarketPrediction /></div>
+        <div id="company-research" className="mb-6 sm:mb-8 animate-enter"><CompanyResearch /></div>
+        <div id="macro-dashboard" className="mb-6 sm:mb-8 animate-enter"><MacroDashboard onSubscribe={() => setShowSubscription(true)} /></div>
+        <div id="options-radar" className="animate-enter"><OptionsRadar /></div>
+        <div id="options-flow" className="animate-enter"><OptionsFlowScreener /></div>
         <AdditionalSections />
-        <div id="dark-pool"><DarkPoolData onSubscribe={() => setShowSubscription(true)} /></div>
-        <div id="crypto"><CryptoSection /></div>
+        <div id="dark-pool" className="animate-enter"><DarkPoolData onSubscribe={() => setShowSubscription(true)} /></div>
+        <div id="crypto" className="animate-enter"><CryptoSection /></div>
       </main>
+
+      <Footer />
 
       <TradeGPTChat onSubscribe={() => setShowSubscription(true)} />
       <MobileBottomNav onOpenChat={openChat} />
+      <ScrollToTop />
+      <Toaster />
 
       {paymentInfo && <PaymentStatus sessionId={paymentInfo.sessionId} initialStatus={paymentInfo.status} onClose={() => setPaymentInfo(null)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
@@ -147,23 +148,17 @@ function AppContent() {
       {showStrategy && user && <StrategyBuilder onClose={() => setShowStrategy(false)} onSubscribe={() => { setShowStrategy(false); setShowSubscription(true); }} />}
       {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
-
-      <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
-        <div className="flex items-center justify-center gap-2 mb-1">
-          <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-[23px] h-[23px] object-contain brightness-125" />
-          <p>RISEDUAL AI - Advanced AI-Powered Trading Platform</p>
-        </div>
-        <p>Last updated on {new Date().toLocaleString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', timeZone: 'UTC' })} UTC</p>
-      </div>
     </div>
   );
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

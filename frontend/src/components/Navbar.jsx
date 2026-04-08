@@ -18,6 +18,19 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
+  const searchRef = React.useRef(null);
+
+  // Ctrl+K / Cmd+K keyboard shortcut for search
+  React.useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -43,8 +56,11 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
 
           <form onSubmit={handleSearch} className="relative hidden lg:block">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
-              className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#0052FF] rounded-xl" data-testid="search-input" />
+            <Input ref={searchRef} type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
+              className="pl-10 pr-16 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#0052FF] rounded-xl" data-testid="search-input" />
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-slate-700/60 border border-slate-600/50 rounded px-1.5 py-0.5 font-mono pointer-events-none">
+              <span className="text-[9px]">&#8984;</span>K
+            </kbd>
           </form>
         </div>
 

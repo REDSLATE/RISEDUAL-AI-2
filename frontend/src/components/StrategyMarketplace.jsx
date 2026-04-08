@@ -3,6 +3,7 @@ import { Store, TrendingUp, TrendingDown, Target, Award, Copy, Eye, Clock, Arrow
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -48,7 +49,7 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
         fetchStrategies();
       } else {
         const d = await res.json().catch(() => ({}));
-        alert(d.detail || 'Clone failed');
+        toast.error(d.detail || 'Clone failed');
       }
     } catch (e) { console.error(e); }
     setCloning(null);
@@ -114,9 +115,12 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
               <p className="text-slate-400 text-sm">Loading marketplace...</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <Store className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">{searchTerm ? 'No strategies match your search.' : 'No strategies published yet. Be the first!'}</p>
+            <div className="text-center py-16" data-testid="marketplace-empty">
+              <div className="w-14 h-14 bg-slate-800/60 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-700/30">
+                <Store className="w-7 h-7 text-slate-600" />
+              </div>
+              <p className="text-slate-400 text-sm font-medium mb-1">{searchTerm ? 'No matches found' : 'Marketplace is empty'}</p>
+              <p className="text-slate-600 text-xs">{searchTerm ? 'Try a different search term.' : 'Be the first to publish a strategy!'}</p>
             </div>
           ) : (
             <div className="space-y-3" data-testid="marketplace-list">

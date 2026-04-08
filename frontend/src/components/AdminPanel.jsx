@@ -3,6 +3,7 @@ import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, G
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import AdminTools from './admin/AdminTools';
 import PromoManager from './admin/PromoManager';
@@ -41,10 +42,10 @@ const AdminPanel = ({ onClose }) => {
       if (res.ok) fetchUsers();
       else {
         const d = await res.json();
-        alert(d.detail || 'Action failed');
+        toast.error(d.detail || 'Action failed');
       }
     } catch (e) {
-      alert('Action failed');
+      toast.error('Action failed');
     } finally {
       setActionLoading(null);
     }

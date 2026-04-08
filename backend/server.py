@@ -200,6 +200,36 @@ async def startup_event():
     await create_indexes()
     await seed_admin()
 
+    # Cache warm-up: pre-populate expensive endpoints so first user never waits
+    try:
+        from services.cache import cache
+        from services.sector_service import get_sector_heatmap
+        from services.world_events_service import WorldEventsService
+        from services.foreign_markets_service import ForeignMarketsService
+
+        async def _warm_cache():
+            try:
+                await cache.get_or_fetch("sector_heatmap", get_sector_heatmap, ttl=120)
+                logger.info("Cache warm-up: sector_heatmap loaded")
+            except Exception as e:
+                logger.warning(f"Cache warm-up sector_heatmap failed: {e}")
+            try:
+                await cache.get_or_fetch("world_events", WorldEventsService().scrape_world_events, ttl=300)
+                logger.info("Cache warm-up: world_events loaded")
+            except Exception as e:
+                logger.warning(f"Cache warm-up world_events failed: {e}")
+            try:
+                await cache.get_or_fetch("foreign_markets", ForeignMarketsService().get_foreign_markets, ttl=60)
+                logger.info("Cache warm-up: foreign_markets loaded")
+            except Exception as e:
+                logger.warning(f"Cache warm-up foreign_markets failed: {e}")
+
+        import asyncio
+        asyncio.create_task(_warm_cache())
+        logger.info("Cache warm-up started in background")
+    except Exception as e:
+        logger.warning(f"Cache warm-up setup failed: {e}")
+
     # Write test credentials
     creds_path = Path("/app/memory/test_credentials.md")
     creds_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ThumbsUp, ThumbsDown, HelpCircle, Download } from 'lucide-react';
 import { Button } from './ui/button';
+import { toast } from './ui/sonner';
 import FilterPanel from './FilterPanel';
 import QuickTrade from './QuickTrade';
 
@@ -60,7 +61,7 @@ const getCellContent = (col, row) => {
     case 'contract':
       return (
         <span
-          onClick={() => alert(`Viewing details for ${value}\n\nThis will show:\n- Detailed contract info\n- Price history\n- Volume analysis\n- Greeks (for options)`)}
+          onClick={() => toast.info(`Details for ${value}: Contract info, price history, volume analysis, Greeks`)}
           className="text-blue-400 font-medium hover:underline cursor-pointer"
         >
           {value}
@@ -113,13 +114,13 @@ const getCellContent = (col, row) => {
           {showLikes && (
             <>
               <button 
-                onClick={() => alert('Thanks for your feedback!')}
+                onClick={() => toast.success('Thanks for your feedback!')}
                 className="text-slate-500 hover:text-emerald-400 transition-colors"
               >
                 <ThumbsUp className="w-5 h-5" />
               </button>
               <button 
-                onClick={() => alert('Thanks for your feedback! We\'ll improve this.')}
+                onClick={() => toast('Thanks for your feedback! We\'ll improve this.')}
                 className="text-slate-500 hover:text-red-400 transition-colors"
               >
                 <ThumbsDown className="w-5 h-5" />
@@ -180,7 +181,7 @@ const getCellContent = (col, row) => {
           Showing {filteredData.length} of {data.length} results
         </p>
         <button 
-          onClick={() => alert('Full data view coming soon!')}
+          onClick={() => toast.info('Full data view coming soon!')}
           className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
         >
           See more →

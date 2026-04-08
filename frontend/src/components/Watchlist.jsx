@@ -106,10 +106,12 @@ const Watchlist = ({ onSubscribe }) => {
           {/* Watchlist Items */}
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {watchlist.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <Star className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                <p>Your watchlist is empty</p>
-                <p className="text-sm">Add symbols to track them</p>
+              <div className="text-center py-10 text-slate-500" data-testid="watchlist-empty">
+                <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-700/40">
+                  <Star className="w-7 h-7 text-slate-600" />
+                </div>
+                <p className="text-slate-400 text-sm font-medium mb-1">No tickers yet</p>
+                <p className="text-slate-600 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
               </div>
             ) : (
               watchlist.map((item) => (

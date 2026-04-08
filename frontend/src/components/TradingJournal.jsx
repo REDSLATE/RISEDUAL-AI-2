@@ -4,6 +4,7 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
@@ -68,9 +69,9 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         fetchAnalytics();
       } else {
         const d = await res.json();
-        alert(d.detail || 'Failed to log trade');
+        toast.error(d.detail || 'Failed to log trade');
       }
-    } catch (e) { alert('Error logging trade'); }
+    } catch (e) { toast.error('Error logging trade'); }
     finally { setSaving(false); }
   };
 

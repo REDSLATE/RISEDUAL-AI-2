@@ -52,10 +52,23 @@ const SectorHeatmap = () => {
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <RefreshCw className="w-5 h-5 text-[#0052FF] animate-spin mr-3" />
-        <span className="text-slate-400 text-sm">Loading sector data...</span>
-      </div>
+      <Card className="bg-slate-800/40 border-slate-700/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="skeleton w-10 h-10 rounded-xl" />
+          <div>
+            <div className="skeleton w-48 h-5 mb-2" />
+            <div className="skeleton w-32 h-3" />
+          </div>
+        </div>
+        <div className="flex gap-2 mb-5">
+          {[1,2,3,4,5].map(i => <div key={i} className="skeleton w-12 h-7 rounded-lg" />)}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {[1,2,3,4,5,6,7,8].map(i => (
+            <div key={i} className="skeleton h-24 rounded-xl" />
+          ))}
+        </div>
+      </Card>
     );
   }
 

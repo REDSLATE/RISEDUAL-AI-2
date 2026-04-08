@@ -3,6 +3,7 @@ import { Check, Crown, Zap, TrendingUp, Shield, Clock, Star } from 'lucide-react
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
+import { toast } from './ui/sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
