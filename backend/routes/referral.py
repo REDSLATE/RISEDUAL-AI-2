@@ -229,17 +229,25 @@ async def get_referral_leaderboard():
     async for doc in db.referrals.aggregate(pipeline):
         results.append({"user_id": doc["_id"], "referral_count": doc["count"]})
 
-    # Fetch user names for masking
+    # Fetch user names in a single batched query
+    from bson import ObjectId
+    user_ids = [entry["user_id"] for entry in results]
+    # Try both raw and ObjectId formats
+    object_ids = []
+    for uid in user_ids:
+        try:
+            object_ids.append(ObjectId(uid))
+        except Exception:
+            pass
+    all_ids = user_ids + object_ids
+    users_cursor = db.users.find({"_id": {"$in": all_ids}}, {"_id": 1, "name": 1, "email": 1})
+    user_map = {}
+    async for u in users_cursor:
+        user_map[str(u["_id"])] = u
+
     leaderboard = []
     for i, entry in enumerate(results):
-        user = await db.users.find_one({"_id": entry["user_id"]}, {"name": 1, "email": 1})
-        if not user:
-            # Try string ID match
-            from bson import ObjectId
-            try:
-                user = await db.users.find_one({"_id": ObjectId(entry["user_id"])}, {"name": 1, "email": 1})
-            except Exception:
-                pass
+        user = user_map.get(str(entry["user_id"]))
         name = user.get("name", "") if user else ""
         if not name and user:
             name = user.get("email", "").split("@")[0]
