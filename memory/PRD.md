@@ -18,11 +18,12 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Multi-Model AI Hypothesis Engine (GPT-5.2, Claude Sonnet 4.5, Gemini Pro, Consensus)
 - AI Strategy Builder — Describe strategies in plain English, GPT-5.2 generates structured logic
 - Strategy Backtester — Simulates strategies against historical Alpha Vantage data
-- Strategy Marketplace — Publish, browse, search, clone community strategies (Pro-only publish/clone)
-- **AI Intelligence Hub** (NEW):
-  - **AI Stock Scoring** (Danelfin-style) — 1-10 scores with technical/fundamental/sentiment breakdown, recommendation, target range, key factors
-  - **Pattern Recognition** (Tickeron-style) — AI-powered chart pattern detection with confidence scores, support/resistance levels, overall bias
-  - **Quick Briefs** (Prospero-style) — 30-second stock summaries with headline, verdict, key metrics, catalysts, risks, action
+- Strategy Marketplace — Publish, browse, search, clone community strategies (Pro-only)
+- **AI Intelligence Hub**:
+  - AI Stock Scoring (Danelfin-style) — 1-10 scores with tech/fundamental/sentiment breakdown
+  - Pattern Recognition (Tickeron-style) — AI chart pattern detection with confidence scores
+  - Quick Briefs (Prospero-style) — 30-second stock summaries with verdict
+- **Watchlist Intelligence** — Batch AI analysis of entire watchlist in one GPT-5.2 call. Returns per-ticker scores, alerts (oversold/overbought/breakout), top movers, health score. Cached in MongoDB (1hr TTL).
 - Macro Intelligence Dashboard (Finnhub earnings, insider trades, congressional data)
 - Stripe subscription gateway ($45/month)
 - JWT Bearer token authentication with referral system
@@ -31,9 +32,8 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Admin Panel with Code Quality Score badge
 - Docker + docker-compose configuration for self-hosting
 
-## Recent Changes (2026-04-07, Session 4)
+## Recent Changes (2026-04-08, Session 4 continued)
 ### Strategy Backtester Completed
-- Wired BacktestResults.jsx into StrategyBuilder.jsx
 - Fixed EMA NaN-propagation, timezone comparison, empty-metrics, condition evaluator
 - 9/9 tests passed (iteration 27)
 
@@ -42,10 +42,13 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - 14/14 tests passed (iteration 28)
 
 ### AI Intelligence Hub Added
-- 3 new endpoints: /api/intelligence/score, /api/intelligence/patterns, /api/intelligence/brief
-- Uses Alpha Vantage price data + GPT-5.2 analysis
-- Tabbed UI on dashboard with ScoreView, PatternsView, BriefView
+- AI Stock Scoring, Pattern Recognition, Quick Briefs
 - 8/8 tests passed (iteration 29)
+
+### Watchlist Intelligence Added
+- Batch AI analysis of all watchlist tickers (single GPT-5.2 call)
+- Per-ticker scores, alerts, top movers, health score, 1hr MongoDB cache
+- 8/8 tests passed (iteration 30)
 
 ## Prioritized Backlog
 ### P1 - Next
@@ -62,7 +65,7 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - Broker trading execution (Alpaca)
 
 ## DB Collections
-- chat_sessions, strategies, marketplace_strategies, payment_transactions, users
+- chat_sessions, strategies, marketplace_strategies, payment_transactions, users, watchlists, watchlist_intelligence
 
 ## Key API Endpoints
 - POST /api/auth/login, /api/auth/register
@@ -70,4 +73,5 @@ Build a functional clone of TradealgoGPT (TradeAlgo) named RISEDUAL AI with real
 - POST /api/strategy/generate, /api/strategy/backtest, /api/strategy/save
 - POST /api/marketplace/publish, GET /api/marketplace/list, POST /api/marketplace/{id}/clone
 - GET /api/intelligence/score/{symbol}, /api/intelligence/patterns/{symbol}, /api/intelligence/brief/{symbol}
+- GET /api/intelligence/watchlist
 - POST /api/subscription/create-checkout-session
