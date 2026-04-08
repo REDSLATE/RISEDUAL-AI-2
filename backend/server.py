@@ -110,10 +110,20 @@ app.include_router(strategy_router)
 app.include_router(intelligence_router)
 app.include_router(broker_router)
 
-# CORS
+# CORS — allow credentials for httpOnly cookie auth
+_frontend_url = os.environ.get("FRONTEND_URL", "")
+_cors_origins_raw = os.environ.get("CORS_ORIGINS", "*")
+if _cors_origins_raw == "*" and _frontend_url:
+    _cors_origins = [_frontend_url]
+elif _cors_origins_raw == "*":
+    _cors_origins = ["*"]
+else:
+    _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

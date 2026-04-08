@@ -194,7 +194,11 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
         const data = await res.json();
         onSync?.(data);
       }
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      console.error('Portfolio sync failed:', err);
+      setError(err.message || 'Portfolio sync failed');
+      setTimeout(() => setError(''), 4000);
+    } finally {
       setSyncing(false);
     }
   };
@@ -221,7 +225,11 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
     try {
       await authFetch(`${API}/broker/order/${brokerId}/${orderId}`, { method: 'DELETE' });
       fetchData();
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('Cancel order failed:', err);
+      setError(err.message || 'Failed to cancel order');
+      setTimeout(() => setError(''), 4000);
+    }
   };
 
   const fmt = (v) => {
@@ -410,7 +418,9 @@ const BrokerConnect = () => {
         const data = await res.json();
         setConnections(data.connections || []);
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('Fetch connections failed:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -429,7 +439,9 @@ const BrokerConnect = () => {
       await authFetch(`${API}/broker/disconnect/${brokerId}`, { method: 'DELETE' });
       setActiveBroker(null);
       fetchConnections();
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      console.error('Broker disconnect failed:', err);
+    } finally {
       setLoading(false);
     }
   };

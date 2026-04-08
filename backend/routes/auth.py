@@ -37,8 +37,9 @@ def create_refresh_token(user_id: str) -> str:
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=900, path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
+    is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=is_secure, samesite="lax", max_age=900, path="/")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_secure, samesite="lax", max_age=604800, path="/")
 
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
@@ -151,6 +152,7 @@ async def register(req: RegisterRequest, response: Response):
 
     access = create_access_token(str(user_doc["_id"]), email)
     refresh = create_refresh_token(str(user_doc["_id"]))
+    set_auth_cookies(response, access, refresh)
     resp = user_response(user_doc)
     resp["access_token"] = access
     resp["refresh_token"] = refresh
@@ -171,6 +173,7 @@ async def login(req: LoginRequest, request: Request, response: Response):
     await db.login_attempts.delete_one({"identifier": identifier})
     access = create_access_token(str(user["_id"]), email)
     refresh = create_refresh_token(str(user["_id"]))
+    set_auth_cookies(response, access, refresh)
     resp = user_response(user)
     resp["access_token"] = access
     resp["refresh_token"] = refresh
@@ -189,13 +192,15 @@ async def me(request: Request):
 
 @auth_router.post("/refresh")
 async def refresh_token(request: Request, response: Response):
-    # Accept refresh token from body or Authorization header
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-    token = body.get("refresh_token") or ""
+    # Accept refresh token from: cookie > body > Authorization header
+    token = request.cookies.get("refresh_token")
+    if not token:
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        token = body.get("refresh_token") or ""
     if not token:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
@@ -210,6 +215,8 @@ async def refresh_token(request: Request, response: Response):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         access = create_access_token(str(user["_id"]), user["email"])
+        is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
+        response.set_cookie(key="access_token", value=access, httponly=True, secure=is_secure, samesite="lax", max_age=900, path="/")
         return {"access_token": access}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")

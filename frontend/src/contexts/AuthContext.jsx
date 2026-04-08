@@ -6,13 +6,13 @@ const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
-// Auth tokens stored in localStorage by architectural requirement:
-// The Kubernetes ingress enforces wildcard CORS (*), which blocks credentials:include.
-// Bearer token auth via localStorage is the only viable approach in this environment.
-// In a production deployment with a custom domain, migrate to httpOnly cookies.
+// Auth uses httpOnly cookies set by the server.
+// credentials: 'include' ensures cookies are sent with every request.
+// Falls back to Bearer token from localStorage for backward compatibility during migration.
 export const authFetch = async (url, options = {}, retries = 3) => {
-  const token = localStorage.getItem('access_token');
   const headers = { ...options.headers };
+  // Fallback: if a localStorage token exists (legacy), send it as Bearer
+  const token = localStorage.getItem('access_token');
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   
@@ -20,7 +20,7 @@ export const authFetch = async (url, options = {}, retries = 3) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-      const res = await fetch(url, { ...options, headers, signal: controller.signal });
+      const res = await fetch(url, { ...options, headers, credentials: 'include', signal: controller.signal });
       clearTimeout(timeoutId);
       if (res.status === 502 && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));
@@ -35,27 +35,50 @@ export const authFetch = async (url, options = {}, retries = 3) => {
   }
 };
 
+// Plain fetch with retry and credentials — module-level, no React state dependency
+const fetchWithRetry = async (url, opts, retries = 3) => {
+  for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await fetch(url, { ...opts, credentials: 'include', signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.status === 502 && i < retries) {
+        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (i === retries) throw new Error('Network error. Please check your connection and try again.');
+      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const clearTokens = useCallback(() => {
+    // Clear legacy localStorage tokens
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   }, []);
 
   const tryRefresh = useCallback(async () => {
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) return false;
     try {
+      // httpOnly cookies are sent automatically with credentials: 'include'
       const res = await fetch(`${API}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: 'include',
+        body: JSON.stringify({}),
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem('access_token', data.access_token);
+        // Store in localStorage as fallback for any components using Bearer directly
+        if (data.access_token) localStorage.setItem('access_token', data.access_token);
         const meRes = await authFetch(`${API}/auth/me`);
         if (meRes.ok) { setUser(await meRes.json()); return true; }
       }
@@ -66,15 +89,17 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { setUser(false); setLoading(false); return; }
     try {
+      // Try authenticating via httpOnly cookies (sent automatically)
       const res = await authFetch(`${API}/auth/me`);
       if (res.ok) {
         setUser(await res.json());
-      } else {
+      } else if (res.status === 401) {
+        // Try refresh (cookie-based)
         const refreshed = await tryRefresh();
         if (!refreshed) { clearTokens(); setUser(false); }
+      } else {
+        setUser(false);
       }
     } catch {
       setUser(false);
@@ -86,29 +111,10 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
   const storeTokens = useCallback((data) => {
+    // Store in localStorage as fallback (Bearer header for any legacy code paths)
     if (data.access_token) localStorage.setItem('access_token', data.access_token);
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
   }, []);
-
-  const fetchWithRetry = async (url, opts, retries = 3) => {
-    for (let i = 0; i <= retries; i++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      try {
-        const res = await fetch(url, { ...opts, signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.status === 502 && i < retries) {
-          await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-          continue;
-        }
-        return res;
-      } catch (e) {
-        clearTimeout(timeoutId);
-        if (i === retries) throw new Error('Network error. Please check your connection and try again.');
-        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-      }
-    }
-  };
 
   const login = useCallback(async (email, password) => {
     const res = await fetchWithRetry(`${API}/auth/login`, {
@@ -122,7 +128,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
-    storeTokens(data);
+    storeTokens(data); // localStorage fallback; primary auth is via httpOnly cookies
     setUser(data);
     return data;
   }, [storeTokens]);
@@ -141,13 +147,13 @@ export const AuthProvider = ({ children }) => {
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
-    storeTokens(data);
+    storeTokens(data); // localStorage fallback
     setUser(data);
     return data;
   }, [storeTokens]);
 
   const logout = useCallback(async () => {
-    await fetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => {});
+    await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
     clearTokens();
     setUser(false);
   }, [clearTokens]);

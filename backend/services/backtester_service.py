@@ -207,46 +207,165 @@ Use Python comparison operators. Reference indicator names exactly as listed. Us
     return json.loads(text)
 
 
-import re
+import operator
 
-# Whitelist of safe tokens allowed in backtester condition strings
-_SAFE_CONDITION_RE = re.compile(
-    r'^[\s\d\.\+\-\*/<>=!&|()]+$|'  # operators and numbers
-    r'[a-z_][a-z0-9_]*',            # simple identifiers (indicator names)
-    re.IGNORECASE
-)
-_BANNED_TOKENS = {'import', 'exec', 'eval', 'compile', 'open', 'getattr',
-                  'setattr', 'delattr', '__', 'globals', 'locals', 'dir',
-                  'vars', 'type', 'class', 'lambda', 'def', 'return'}
+# ── Safe Expression Evaluator (replaces eval()) ──
+
+_ALLOWED_INDICATORS = frozenset({
+    'close', 'high', 'low', 'volume', 'prev_close',
+    'sma_20', 'sma_50', 'sma_200', 'ema_12', 'ema_26',
+    'rsi_14', 'prev_rsi_14',
+    'macd_line', 'macd_signal', 'macd_hist',
+    'prev_macd_line', 'prev_macd_signal', 'prev_macd_hist',
+    'bb_upper', 'bb_mid', 'bb_lower',
+})
+
+_CMP_OPS = {
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+}
+
+_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+}
+
+_BOOL_OPS = {
+    ast.And: all,
+    ast.Or: any,
+}
+
+
+def _safe_eval_node(node, ctx: Dict):
+    """Recursively evaluate an AST node using only whitelisted operations."""
+    if isinstance(node, ast.Expression):
+        return _safe_eval_node(node.body, ctx)
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)):
+            return node.value
+        raise ValueError(f"Unsupported constant: {node.value!r}")
+    if isinstance(node, ast.Name):
+        name = node.id
+        if name not in _ALLOWED_INDICATORS:
+            raise ValueError(f"Unknown indicator: {name}")
+        val = ctx.get(name)
+        if val is None:
+            raise ValueError(f"Indicator {name} is NaN/missing")
+        return val
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -_safe_eval_node(node.operand, ctx)
+    if isinstance(node, ast.BinOp):
+        op_func = _BIN_OPS.get(type(node.op))
+        if not op_func:
+            raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
+        left = _safe_eval_node(node.left, ctx)
+        right = _safe_eval_node(node.right, ctx)
+        return op_func(left, right)
+    if isinstance(node, ast.Compare):
+        left = _safe_eval_node(node.left, ctx)
+        for op_node, comparator in zip(node.ops, node.comparators):
+            op_func = _CMP_OPS.get(type(op_node))
+            if not op_func:
+                raise ValueError(f"Unsupported comparison: {type(op_node).__name__}")
+            right = _safe_eval_node(comparator, ctx)
+            if not op_func(left, right):
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.BoolOp):
+        func = _BOOL_OPS.get(type(node.op))
+        if not func:
+            raise ValueError(f"Unsupported bool op: {type(node.op).__name__}")
+        return func(_safe_eval_node(v, ctx) for v in node.values)
+    raise ValueError(f"Unsupported AST node: {type(node).__name__}")
 
 
 def _eval_condition(cond: str, ctx: Dict) -> bool:
-    """Safely evaluate a single indicator condition string.
+    """Safely evaluate a trading condition string using AST parsing.
 
-    Security: builtins are disabled, only numeric context variables are exposed,
-    and the condition string is validated against a strict whitelist before eval.
+    Only allows: numeric literals, whitelisted indicator names,
+    comparisons (<, <=, >, >=, ==, !=), arithmetic (+, -, *, /),
+    and boolean operators (and, or).
+    No eval(), no builtins, no function calls, no attribute access.
     """
     if not cond or not isinstance(cond, str):
         return False
-    # Reject any condition containing dangerous tokens
-    cond_lower = cond.lower()
-    if any(tok in cond_lower for tok in _BANNED_TOKENS):
-        logger.warning(f"Rejected unsafe condition: {cond}")
-        return False
+    # Build a safe numeric context (convert NaN to None for early rejection)
+    safe_ctx = {}
+    for k, v in ctx.items():
+        if isinstance(v, (int, float, np.floating)):
+            safe_ctx[k] = None if np.isnan(v) else float(v)
     try:
-        safe_env = {}
-        for k, v in ctx.items():
-            if isinstance(v, (int, float, np.floating)):
-                safe_env[k] = None if np.isnan(v) else float(v)
-        for k, v in safe_env.items():
-            if k in cond and v is None:
-                return False
-        return bool(eval(cond, {"__builtins__": {}}, safe_env))  # noqa: S307 — sandboxed eval
+        tree = ast.parse(cond.strip(), mode='eval')
+        return bool(_safe_eval_node(tree, safe_ctx))
     except Exception:
         return False
 
 
 # ── Simulation Engine ──
+
+def _build_bar_context(indicators: Dict, i: int) -> Dict:
+    """Build the indicator context dict for bar index i."""
+    return {
+        "close": indicators["close"][i],
+        "high": indicators["high"][i],
+        "low": indicators["low"][i],
+        "volume": indicators["volume"][i],
+        "prev_close": indicators["close"][i - 1],
+        "sma_20": indicators["sma_20"][i],
+        "sma_50": indicators["sma_50"][i],
+        "sma_200": indicators["sma_200"][i],
+        "ema_12": indicators["ema_12"][i],
+        "ema_26": indicators["ema_26"][i],
+        "rsi_14": indicators["rsi_14"][i],
+        "prev_rsi_14": indicators["rsi_14"][i - 1],
+        "macd_line": indicators["macd_line"][i],
+        "macd_signal": indicators["macd_signal"][i],
+        "macd_hist": indicators["macd_hist"][i],
+        "prev_macd_line": indicators["macd_line"][i - 1],
+        "prev_macd_signal": indicators["macd_signal"][i - 1],
+        "prev_macd_hist": indicators["macd_hist"][i - 1],
+        "bb_upper": indicators["bb_upper"][i],
+        "bb_mid": indicators["bb_mid"][i],
+        "bb_lower": indicators["bb_lower"][i],
+    }
+
+
+def _check_exit(price: float, entry: float, sl_pct: float, tp_pct: float,
+                exit_conds: List[str], ctx: Dict) -> Optional[str]:
+    """Return exit reason string or None if position should stay open."""
+    pnl_pct = (price - entry) / entry
+    if pnl_pct <= -sl_pct:
+        return "stop_loss"
+    if pnl_pct >= tp_pct:
+        return "take_profit"
+    if exit_conds and all(_eval_condition(c, ctx) for c in exit_conds):
+        return "signal"
+    return None
+
+
+def _record_trade(position: Dict, exit_price: float, exit_date: str,
+                  exit_idx: int, exit_reason: str) -> Dict:
+    """Create a trade record from a position and exit info."""
+    entry = position["entry_price"]
+    pnl_pct = (exit_price - entry) / entry
+    return {
+        "entry_date": position["entry_date"],
+        "exit_date": exit_date,
+        "entry_price": round(entry, 2),
+        "exit_price": round(exit_price, 2),
+        "pnl": round(exit_price - entry, 2),
+        "pnl_pct": round(pnl_pct * 100, 2),
+        "holding_days": exit_idx - position["entry_idx"],
+        "exit_reason": exit_reason,
+    }
+
 
 def _simulate(prices: List[Dict], indicators: Dict, rules: Dict) -> List[Dict]:
     """Run the backtest simulation and return a trade log."""
@@ -256,103 +375,85 @@ def _simulate(prices: List[Dict], indicators: Dict, rules: Dict) -> List[Dict]:
     tp_pct = rules.get("take_profit_pct", 6.0) / 100.0
 
     trades = []
-    position = None  # {entry_price, entry_date, entry_idx}
+    position = None
     n = len(prices)
 
     for i in range(1, n):
-        ctx = {
-            "close": indicators["close"][i],
-            "high": indicators["high"][i],
-            "low": indicators["low"][i],
-            "volume": indicators["volume"][i],
-            "prev_close": indicators["close"][i - 1],
-            "sma_20": indicators["sma_20"][i],
-            "sma_50": indicators["sma_50"][i],
-            "sma_200": indicators["sma_200"][i],
-            "ema_12": indicators["ema_12"][i],
-            "ema_26": indicators["ema_26"][i],
-            "rsi_14": indicators["rsi_14"][i],
-            "prev_rsi_14": indicators["rsi_14"][i - 1],
-            "macd_line": indicators["macd_line"][i],
-            "macd_signal": indicators["macd_signal"][i],
-            "macd_hist": indicators["macd_hist"][i],
-            "prev_macd_line": indicators["macd_line"][i - 1],
-            "prev_macd_signal": indicators["macd_signal"][i - 1],
-            "prev_macd_hist": indicators["macd_hist"][i - 1],
-            "bb_upper": indicators["bb_upper"][i],
-            "bb_mid": indicators["bb_mid"][i],
-            "bb_lower": indicators["bb_lower"][i],
-        }
-
-        # Skip if any core indicator is NaN
+        ctx = _build_bar_context(indicators, i)
         if np.isnan(ctx["rsi_14"]) or np.isnan(ctx["sma_20"]):
             continue
 
         if position is None:
-            # Check entry conditions (all must be true)
             if entry_conds and all(_eval_condition(c, ctx) for c in entry_conds):
-                position = {
-                    "entry_price": prices[i]["close"],
-                    "entry_date": prices[i]["date"],
-                    "entry_idx": i,
-                }
+                position = {"entry_price": prices[i]["close"], "entry_date": prices[i]["date"], "entry_idx": i}
         else:
-            price = prices[i]["close"]
-            entry = position["entry_price"]
-            pnl_pct = (price - entry) / entry
-
-            exit_reason = None
-            if pnl_pct <= -sl_pct:
-                exit_reason = "stop_loss"
-            elif pnl_pct >= tp_pct:
-                exit_reason = "take_profit"
-            elif exit_conds and all(_eval_condition(c, ctx) for c in exit_conds):
-                exit_reason = "signal"
-
-            if exit_reason:
-                trades.append({
-                    "entry_date": position["entry_date"],
-                    "exit_date": prices[i]["date"],
-                    "entry_price": round(entry, 2),
-                    "exit_price": round(price, 2),
-                    "pnl": round(price - entry, 2),
-                    "pnl_pct": round(pnl_pct * 100, 2),
-                    "holding_days": i - position["entry_idx"],
-                    "exit_reason": exit_reason,
-                })
+            reason = _check_exit(prices[i]["close"], position["entry_price"], sl_pct, tp_pct, exit_conds, ctx)
+            if reason:
+                trades.append(_record_trade(position, prices[i]["close"], prices[i]["date"], i, reason))
                 position = None
 
     # Close any open position at last price
     if position:
         last = prices[-1]
-        entry = position["entry_price"]
-        pnl_pct = (last["close"] - entry) / entry
-        trades.append({
-            "entry_date": position["entry_date"],
-            "exit_date": last["date"],
-            "entry_price": round(entry, 2),
-            "exit_price": round(last["close"], 2),
-            "pnl": round(last["close"] - entry, 2),
-            "pnl_pct": round(pnl_pct * 100, 2),
-            "holding_days": len(prices) - 1 - position["entry_idx"],
-            "exit_reason": "open",
-        })
+        trades.append(_record_trade(position, last["close"], last["date"], len(prices) - 1, "open"))
 
     return trades
 
 
 # ── Metrics Calculator ──
 
+def _calc_cumulative_pnl(trades: List[Dict]) -> List[Dict]:
+    """Calculate cumulative P&L series from trades."""
+    cum_pnl = []
+    running = 0.0
+    for t in trades:
+        running += t["pnl"]
+        cum_pnl.append({"date": t["exit_date"], "pnl": round(running, 2)})
+    return cum_pnl
+
+
+def _calc_max_drawdown(trades: List[Dict]) -> float:
+    """Calculate maximum drawdown from peak P&L."""
+    peak = 0.0
+    max_dd = 0.0
+    running = 0.0
+    for t in trades:
+        running += t["pnl"]
+        peak = max(peak, running)
+        max_dd = max(max_dd, peak - running)
+    return max_dd
+
+
+def _calc_monthly_breakdown(trades: List[Dict]) -> List[Dict]:
+    """Aggregate trades into monthly buckets."""
+    monthly = {}
+    for t in trades:
+        month = t["exit_date"][:7]
+        if month not in monthly:
+            monthly[month] = {"month": month, "trades": 0, "pnl": 0, "wins": 0}
+        monthly[month]["trades"] += 1
+        monthly[month]["pnl"] = round(monthly[month]["pnl"] + t["pnl"], 2)
+        if t["pnl"] > 0:
+            monthly[month]["wins"] += 1
+    return sorted(monthly.values(), key=lambda x: x["month"])
+
+
+def _calc_buy_hold(prices: List[Dict]) -> tuple:
+    """Calculate buy & hold return."""
+    if not prices:
+        return 0, 0
+    start = prices[0]["close"]
+    end = prices[-1]["close"]
+    pnl = round(end - start, 2)
+    pct = round((end - start) / start * 100, 2) if start else 0
+    return pnl, pct
+
+
 def _calc_metrics(trades: List[Dict], prices: List[Dict]) -> Dict:
     """Calculate performance metrics from the trade log."""
+    bh_pnl, bh_pct = _calc_buy_hold(prices)
+
     if not trades:
-        bh_pnl = 0
-        bh_pct = 0
-        if prices:
-            bh_start = prices[0]["close"]
-            bh_end = prices[-1]["close"]
-            bh_pnl = round(bh_end - bh_start, 2)
-            bh_pct = round((bh_end - bh_start) / bh_start * 100, 2) if bh_start else 0
         return {
             "total_trades": 0, "winning_trades": 0, "losing_trades": 0,
             "win_rate": 0, "total_pnl": 0, "avg_pnl": 0, "avg_gain": 0, "avg_loss": 0,
@@ -364,79 +465,34 @@ def _calc_metrics(trades: List[Dict], prices: List[Dict]) -> Dict:
     wins = [t for t in trades if t["pnl"] > 0]
     losses = [t for t in trades if t["pnl"] <= 0]
     pnls = [t["pnl"] for t in trades]
-
     total_pnl = sum(pnls)
-    avg_pnl = total_pnl / len(trades)
-    win_rate = round(len(wins) / len(trades) * 100, 1)
 
-    # Cumulative P&L
-    cum_pnl = []
-    running = 0.0
-    for t in trades:
-        running += t["pnl"]
-        cum_pnl.append({"date": t["exit_date"], "pnl": round(running, 2)})
-
-    # Max drawdown
-    peak = 0.0
-    max_dd = 0.0
-    running = 0.0
-    for t in trades:
-        running += t["pnl"]
-        peak = max(peak, running)
-        dd = peak - running
-        max_dd = max(max_dd, dd)
-
-    # Sharpe ratio (annualized, assuming 252 trading days)
+    # Sharpe ratio (annualized)
     if len(pnls) > 1:
         pnl_arr = np.array(pnls)
-        sharpe = (np.mean(pnl_arr) / np.std(pnl_arr)) * np.sqrt(252 / max(1, np.mean([t["holding_days"] for t in trades]))) if np.std(pnl_arr) > 0 else 0
+        avg_hold = max(1, np.mean([t["holding_days"] for t in trades]))
+        sharpe = (np.mean(pnl_arr) / np.std(pnl_arr)) * np.sqrt(252 / avg_hold) if np.std(pnl_arr) > 0 else 0
     else:
         sharpe = 0
-
-    # Monthly breakdown
-    monthly = {}
-    for t in trades:
-        month = t["exit_date"][:7]  # YYYY-MM
-        if month not in monthly:
-            monthly[month] = {"month": month, "trades": 0, "pnl": 0, "wins": 0}
-        monthly[month]["trades"] += 1
-        monthly[month]["pnl"] = round(monthly[month]["pnl"] + t["pnl"], 2)
-        if t["pnl"] > 0:
-            monthly[month]["wins"] += 1
-
-    monthly_list = sorted(monthly.values(), key=lambda x: x["month"])
-
-    # Buy & Hold comparison
-    if prices:
-        bh_start = prices[0]["close"]
-        bh_end = prices[-1]["close"]
-        bh_pnl = round(bh_end - bh_start, 2)
-        bh_pct = round((bh_end - bh_start) / bh_start * 100, 2)
-    else:
-        bh_pnl = 0
-        bh_pct = 0
-
-    best = max(trades, key=lambda t: t["pnl"])
-    worst = min(trades, key=lambda t: t["pnl"])
 
     return {
         "total_trades": len(trades),
         "winning_trades": len(wins),
         "losing_trades": len(losses),
-        "win_rate": win_rate,
+        "win_rate": round(len(wins) / len(trades) * 100, 1),
         "total_pnl": round(total_pnl, 2),
-        "avg_pnl": round(avg_pnl, 2),
+        "avg_pnl": round(total_pnl / len(trades), 2),
         "avg_gain": round(np.mean([t["pnl"] for t in wins]), 2) if wins else 0,
         "avg_loss": round(np.mean([t["pnl"] for t in losses]), 2) if losses else 0,
-        "max_drawdown": round(max_dd, 2),
+        "max_drawdown": round(_calc_max_drawdown(trades), 2),
         "sharpe_ratio": round(float(sharpe), 2),
         "avg_holding_days": round(np.mean([t["holding_days"] for t in trades]), 1),
-        "best_trade": best,
-        "worst_trade": worst,
+        "best_trade": max(trades, key=lambda t: t["pnl"]),
+        "worst_trade": min(trades, key=lambda t: t["pnl"]),
         "buy_hold_pnl": bh_pnl,
         "buy_hold_pct": bh_pct,
-        "monthly": monthly_list,
-        "cumulative_pnl": cum_pnl,
+        "monthly": _calc_monthly_breakdown(trades),
+        "cumulative_pnl": _calc_cumulative_pnl(trades),
     }
 
 
