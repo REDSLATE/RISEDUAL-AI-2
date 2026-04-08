@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import base64
@@ -312,45 +312,33 @@ async def cancel_order(broker_id: str, order_id: str, request: Request):
 
 
 # ============================================================
-# PORTFOLIO SYNC
+# PORTFOLIO SYNC HELPERS
 # ============================================================
 
-@router.get("/portfolio-sync/{broker_id}")
-async def portfolio_sync(broker_id: str, request: Request):
-    """Sync broker positions with RISEDUAL AI's strategy and watchlist system."""
-    user = await _get_user(request)
-    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
-    conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+async def _sync_watchlist(user_id: str, symbols: List[str]) -> None:
+    """Sync position symbols into the user's watchlist."""
+    if not symbols:
+        return
+    existing = await db.watchlists.find_one({"user_id": user_id})
+    if existing:
+        new_symbols = list(set(existing.get("symbols", [])) | set(symbols))
+        await db.watchlists.update_one(
+            {"user_id": user_id},
+            {"$set": {"symbols": new_symbols, "updated_at": datetime.now(timezone.utc)}}
+        )
+    else:
+        await db.watchlists.insert_one({
+            "user_id": user_id,
+            "symbols": symbols,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        })
 
-    account = await asyncio.to_thread(client.get_account)
-    positions = await asyncio.to_thread(client.get_positions)
-    orders = await asyncio.to_thread(client.get_orders, status="all")
 
-    # Build portfolio summary
-    position_symbols = [p.get("symbol", "") for p in (positions or [])]
-    total_value = float(account.get("portfolio_value", account.get("equity", 0))) if account else 0
-    total_pl = sum(float(p.get("unrealized_pl", 0)) for p in (positions or []))
-
-    # Sync symbols to user's watchlist
-    if position_symbols:
-        existing = await db.watchlists.find_one({"user_id": user_id})
-        if existing:
-            current_symbols = set(existing.get("symbols", []))
-            new_symbols = list(current_symbols | set(position_symbols))
-            await db.watchlists.update_one(
-                {"user_id": user_id},
-                {"$set": {"symbols": new_symbols, "updated_at": datetime.now(timezone.utc)}}
-            )
-        else:
-            await db.watchlists.insert_one({
-                "user_id": user_id,
-                "symbols": position_symbols,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
-
-    # Store portfolio snapshot
+async def _store_portfolio_snapshot(
+    user_id: str, broker_id: str, positions: list, total_value: float, total_pl: float
+) -> None:
+    """Persist a portfolio snapshot to the database."""
     await db.portfolio_snapshots.update_one(
         {"user_id": user_id, "broker_id": broker_id},
         {"$set": {
@@ -369,6 +357,34 @@ async def portfolio_sync(broker_id: str, request: Request):
             "synced_at": datetime.now(timezone.utc),
         }},
         upsert=True,
+    )
+
+
+# ============================================================
+# PORTFOLIO SYNC
+# ============================================================
+
+@router.get("/portfolio-sync/{broker_id}")
+async def portfolio_sync(broker_id: str, request: Request):
+    """Sync broker positions with RISEDUAL AI's strategy and watchlist system."""
+    user = await _get_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+    conn = await _get_user_broker(user_id, broker_id)
+    client = _build_client(conn)
+
+    account, positions, orders = await asyncio.gather(
+        asyncio.to_thread(client.get_account),
+        asyncio.to_thread(client.get_positions),
+        asyncio.to_thread(client.get_orders, status="all"),
+    )
+
+    position_symbols = [p.get("symbol", "") for p in (positions or [])]
+    total_value = float(account.get("portfolio_value", account.get("equity", 0))) if account else 0
+    total_pl = sum(float(p.get("unrealized_pl", 0)) for p in (positions or []))
+
+    await asyncio.gather(
+        _sync_watchlist(user_id, position_symbols),
+        _store_portfolio_snapshot(user_id, broker_id, positions, total_value, total_pl),
     )
 
     return {

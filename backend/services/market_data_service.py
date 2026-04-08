@@ -170,41 +170,46 @@ class MarketDataService:
         
         return dark_pool_data
     
+    def _generate_contract(self) -> Dict:
+        """Generate a single mock options contract."""
+        symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'MRVL']
+        return {
+            'contract': _rng.choice(symbols),
+            'price': f"${_rng.randint(50, 500)} {_rng.choice(['Call', 'Put'])}",
+            'returns': f"{_rng.randint(50, 400)}%",
+            'volOI': round(_rng.uniform(0.1, 10), 2),
+            'power': _rng.randint(40, 100),
+            'ivRank': _rng.randint(20, 80),
+            'aiScore': _rng.randint(30, 70),
+        }
+
+    def _generate_contracts(self, count: int) -> List[Dict]:
+        """Generate a list of mock options contracts."""
+        return [self._generate_contract() for _ in range(count)]
+
+    def _generate_contracts_with_sentiment(self, count: int) -> List[Dict]:
+        """Generate contracts with sentiment annotation."""
+        contracts = self._generate_contracts(count)
+        for c in contracts:
+            c['sentiment'] = _rng.choice(['Bearish', 'Bullish'])
+        return contracts
+
     def generate_mock_options_data(self, data_type: str) -> Dict:
-        """Generate realistic mock options data based on type"""
-        def generate_contract():
-            symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'MRVL']
-            types = ['Call', 'Put']
-            return {
-                'contract': _rng.choice(symbols),
-                'price': f"${_rng.randint(50, 500)} {_rng.choice(types)}",
-                'returns': f"{_rng.randint(50, 400)}%",
-                'volOI': round(_rng.uniform(0.1, 10), 2),
-                'power': _rng.randint(40, 100),
-                'ivRank': _rng.randint(20, 80),
-                'aiScore': _rng.randint(30, 70)
-            }
-        
-        if data_type == 'radar':
-            return {
-                'mostActivelyTraded': [generate_contract() for _ in range(4)],
-                'volatilityOpportunities': [generate_contract() for _ in range(4)]
-            }
-        elif data_type == 'flow':
-            return {
-                'mostActivelyTraded': [generate_contract() for _ in range(5)],
-                'dteEdge': [generate_contract() for _ in range(5)],
-                'volatilityLow': [generate_contract() for _ in range(3)],
-                'volatilityHigh': [generate_contract() for _ in range(3)]
-            }
-        elif data_type == 'momentum':
-            return [generate_contract() for _ in range(5)]
-        elif data_type == 'fast_movers':
-            return [generate_contract() for _ in range(5)]
-        elif data_type == 'unusual_volume':
-            contracts = [generate_contract() for _ in range(3)]
-            for contract in contracts:
-                contract['sentiment'] = _rng.choice(['Bearish', 'Bullish'])
-            return contracts
-        
-        return {}
+        """Generate realistic mock options data based on type."""
+        generators = {
+            'radar': lambda: {
+                'mostActivelyTraded': self._generate_contracts(4),
+                'volatilityOpportunities': self._generate_contracts(4),
+            },
+            'flow': lambda: {
+                'mostActivelyTraded': self._generate_contracts(5),
+                'dteEdge': self._generate_contracts(5),
+                'volatilityLow': self._generate_contracts(3),
+                'volatilityHigh': self._generate_contracts(3),
+            },
+            'momentum': lambda: self._generate_contracts(5),
+            'fast_movers': lambda: self._generate_contracts(5),
+            'unusual_volume': lambda: self._generate_contracts_with_sentiment(3),
+        }
+        gen = generators.get(data_type)
+        return gen() if gen else {}

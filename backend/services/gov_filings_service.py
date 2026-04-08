@@ -212,45 +212,54 @@ class GovFilingsService:
             logger.error(f"Error scraping QuiverQuant: {str(e)}")
         return trades
 
-    async def get_all_gov_data(self) -> Dict:
-        # Try Finnhub first (reliable API), fallback to scraping
-        finnhub_data = {}
+    async def _fetch_finnhub_data(self) -> Dict:
+        """Try Finnhub API first (reliable structured data)."""
         try:
             from services.finnhub_service import FinnhubService
             fh = FinnhubService()
             if fh._is_configured():
-                finnhub_data = await fh.get_all_data_for_predictions()
+                return await fh.get_all_data_for_predictions()
         except Exception as e:
             logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
+        return {}
 
-        finnhub_has_insider = finnhub_data.get("insider_count", 0) > 0
-        finnhub_has_earnings = finnhub_data.get("earnings_count", 0) > 0
-        finnhub_has_congressional = finnhub_data.get("congressional_count", 0) > 0
+    async def _resolve_insider_trades(self, finnhub_data: Dict) -> List[Dict]:
+        """Get insider trades from Finnhub or fallback to SEC scraping."""
+        if finnhub_data.get("insider_count", 0) > 0:
+            return [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])]
+        return await self.get_sec_filings()
 
-        # Always fetch Fed announcements (Finnhub doesn't cover this)
-        fed_announcements = await self.get_fed_announcements()
+    async def _resolve_congressional_trades(self, finnhub_data: Dict) -> List[Dict]:
+        """Get congressional trades from Finnhub or fallback to scraping."""
+        if finnhub_data.get("congressional_count", 0) > 0:
+            return finnhub_data.get("congressional_trades", [])
+        return await self.get_congressional_trades()
 
-        # Build result using best available source per category
-        insider_trades = (
-            [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])]
-            if finnhub_has_insider
-            else await self.get_sec_filings()
+    @staticmethod
+    def _determine_source(finnhub_data: Dict) -> str:
+        """Determine which data sources contributed to the result."""
+        parts: List[str] = []
+        if finnhub_data.get("insider_count", 0) > 0 or finnhub_data.get("earnings_count", 0) > 0:
+            parts.append("finnhub")
+        if finnhub_data.get("congressional_count", 0) == 0 or finnhub_data.get("insider_count", 0) == 0:
+            parts.append("scraping")
+        return '+'.join(parts) if parts else 'none'
+
+    async def get_all_gov_data(self) -> Dict:
+        """Aggregate government/institutional data from all available sources."""
+        finnhub_data = await self._fetch_finnhub_data()
+
+        insider_trades, congressional_trades, fed_announcements = await asyncio.gather(
+            self._resolve_insider_trades(finnhub_data),
+            self._resolve_congressional_trades(finnhub_data),
+            self.get_fed_announcements(),
         )
 
-        # Congressional: Finnhub free tier returns 403, so always try scraping fallback
-        congressional_trades = (
-            finnhub_data.get("congressional_trades", [])
-            if finnhub_has_congressional
-            else await self.get_congressional_trades()
+        upcoming_earnings = (
+            finnhub_data.get("upcoming_earnings", [])
+            if finnhub_data.get("earnings_count", 0) > 0
+            else []
         )
-
-        upcoming_earnings = finnhub_data.get("upcoming_earnings", []) if finnhub_has_earnings else []
-
-        source_parts = []
-        if finnhub_has_insider or finnhub_has_earnings:
-            source_parts.append("finnhub")
-        if not finnhub_has_congressional or not finnhub_has_insider:
-            source_parts.append("scraping")
 
         return {
             'insider_trades': insider_trades,
@@ -263,5 +272,5 @@ class GovFilingsService:
             'earnings_count': len(upcoming_earnings),
             'company_news_finnhub': finnhub_data.get("company_news", []),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': '+'.join(source_parts) if source_parts else 'none',
+            'source': self._determine_source(finnhub_data),
         }

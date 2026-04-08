@@ -56,6 +56,14 @@ const BROKERS = [
   },
 ];
 
+// ─── Helpers ───
+
+const ORDER_STATUS_CLASSES = {
+  filled: 'bg-emerald-900/50 text-emerald-400',
+  cancelled: 'bg-slate-700 text-slate-400',
+};
+const getOrderStatusClass = (status) => ORDER_STATUS_CLASSES[status] || 'bg-amber-900/50 text-amber-400';
+
 // ─── Sub-components ───
 
 const ConnectForm = ({ broker, onConnect, onCancel }) => {
@@ -384,7 +392,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge className={`text-[10px] ${o.status === 'filled' ? 'bg-emerald-900/50 text-emerald-400' : o.status === 'cancelled' ? 'bg-slate-700 text-slate-400' : 'bg-amber-900/50 text-amber-400'}`}>
+                <Badge className={`text-[10px] ${getOrderStatusClass(o.status)}`}>
                   {o.status}
                 </Badge>
                 {(o.status === 'new' || o.status === 'accepted' || o.status === 'pending_new') && (
