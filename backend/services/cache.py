@@ -2,7 +2,7 @@
 import asyncio
 import time
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,9 @@ class TTLCache:
     def __init__(self):
         self._store: Dict[str, Dict] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._hits: int = 0
+        self._misses: int = 0
+        self._started_at: float = time.monotonic()
 
     def _get_lock(self, key: str) -> asyncio.Lock:
         if key not in self._locks:
@@ -26,33 +29,26 @@ class TTLCache:
         ttl: int = 120,
         stale_while_revalidate: bool = True,
     ) -> Any:
-        """Return cached value if fresh, otherwise fetch and cache.
-
-        Args:
-            key: Cache key string.
-            fetch_fn: Async callable that returns the data.
-            ttl: Time-to-live in seconds.
-            stale_while_revalidate: If True, return stale data immediately
-                and refresh in the background. If False, wait for fresh data.
-        """
         now = time.monotonic()
         entry = self._store.get(key)
 
         # Cache hit — still fresh
         if entry and (now - entry["ts"]) < ttl:
+            self._hits += 1
             return entry["data"]
 
         # Cache hit but stale — return stale and refresh in background
         if entry and stale_while_revalidate:
+            self._hits += 1
             if not entry.get("refreshing"):
                 entry["refreshing"] = True
                 asyncio.create_task(self._refresh(key, fetch_fn, ttl))
             return entry["data"]
 
-        # Cache miss or stale without revalidate — fetch synchronously
+        # Cache miss — fetch synchronously
+        self._misses += 1
         lock = self._get_lock(key)
         async with lock:
-            # Double-check after acquiring lock
             entry = self._store.get(key)
             if entry and (now - entry["ts"]) < ttl:
                 return entry["data"]
@@ -93,13 +89,28 @@ class TTLCache:
         self._store.clear()
 
     def stats(self) -> Dict:
-        """Return cache statistics."""
+        """Return cache statistics with hit/miss tracking."""
         now = time.monotonic()
+        total = self._hits + self._misses
         entries = []
         for key, entry in self._store.items():
             age = round(now - entry["ts"], 1)
-            entries.append({"key": key, "age_seconds": age, "refreshing": entry.get("refreshing", False)})
-        return {"entries": entries, "total_keys": len(self._store)}
+            data_size = len(str(entry.get("data", "")))
+            entries.append({
+                "key": key,
+                "age_seconds": age,
+                "refreshing": entry.get("refreshing", False),
+                "size_bytes": data_size,
+            })
+        return {
+            "entries": entries,
+            "total_keys": len(self._store),
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": round(self._hits / total * 100, 1) if total else 0,
+            "total_requests": total,
+            "uptime_seconds": round(now - self._started_at, 1),
+        }
 
 
 # Global singleton

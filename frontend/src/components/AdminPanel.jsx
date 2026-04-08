@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, FileCode } from 'lucide-react';
+import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, FileCode, Database } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { authFetch } from '../contexts/AuthContext';
 import AdminTools from './admin/AdminTools';
 import PromoManager from './admin/PromoManager';
+import CacheMonitor from './admin/CacheMonitor';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -57,6 +58,7 @@ const AdminPanel = ({ onClose }) => {
   const tabs = [
     { id: 'users', label: 'Users', icon: Users },
     { id: 'promos', label: 'Promos', icon: Gift },
+    { id: 'cache', label: 'Cache', icon: Database },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -183,6 +185,8 @@ const AdminPanel = ({ onClose }) => {
           </>
         ) : tab === 'promos' ? (
           <PromoManager />
+        ) : tab === 'cache' ? (
+          <CacheMonitor />
         ) : (
           <AdminTools />
         )}

@@ -35,6 +35,7 @@ from routes.intelligence import router as intelligence_router, set_db as set_int
 from routes.broker import router as broker_router, set_db as set_broker_db
 from routes.market_data import router as market_data_router, set_db as set_market_data_db
 from routes.sectors import router as sectors_router
+from routes.admin import router as admin_router, set_db as set_admin_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -113,6 +114,7 @@ app.include_router(intelligence_router)
 app.include_router(broker_router)
 app.include_router(market_data_router)
 app.include_router(sectors_router)
+app.include_router(admin_router)
 
 # CORS — allow credentials for httpOnly cookie auth
 _frontend_url = os.environ.get("FRONTEND_URL", "")
@@ -181,6 +183,7 @@ async def startup_event():
     set_intelligence_db(db)
     set_broker_db(db)
     set_market_data_db(db)
+    set_admin_db(db)
 
     # Start daily digest scheduler (6:00 AM UTC) + watchlist pre-gen (5:30 AM UTC)
     try:
@@ -210,8 +213,9 @@ async def startup_event():
         f"## Admin\n- Email: {os.environ.get('ADMIN_EMAIL', 'admin@risedual.ai')}\n"
         f"- Password: {os.environ.get('ADMIN_PASSWORD', '')}\n"
         "- Role: admin\n- Subscription: pro\n\n"
-        "## Auth Method\n- Bearer token via localStorage\n"
-        "- POST /api/auth/login → returns access_token + refresh_token\n"
+        "## Auth Method\n- httpOnly secure cookies (primary) + localStorage Bearer token (fallback)\n"
+        "- POST /api/auth/login → sets access_token + refresh_token cookies\n"
+        "- CORS: credentials: 'include' required on all fetch calls\n"
     )
 
 
