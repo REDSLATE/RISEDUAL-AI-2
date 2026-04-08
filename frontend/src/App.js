@@ -30,6 +30,7 @@ import TradingJournal from './components/TradingJournal';
 import StrategyBuilder from './components/StrategyBuilder';
 import StrategyMarketplace from './components/StrategyMarketplace';
 import AIIntelligence from './components/AIIntelligence';
+import WatchlistIntelligence from './components/WatchlistIntelligence';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -79,6 +80,11 @@ function AppContent() {
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         <div className="mb-6 sm:mb-8"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
+        
+        {/* Watchlist Intelligence */}
+        <div className="mb-6 sm:mb-8">
+          <WatchlistIntelligence onSubscribe={() => setShowSubscription(true)} />
+        </div>
 
         {/* Referral Leaderboard */}
         <div className="mb-6 sm:mb-8"><ReferralLeaderboard /></div>

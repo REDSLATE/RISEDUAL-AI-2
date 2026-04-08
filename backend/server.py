@@ -31,7 +31,7 @@ from routes.digest import router as digest_router, set_db as set_digest_db
 from routes.push import router as push_router, set_db as set_push_db
 from routes.journal import router as journal_router, set_db as set_journal_db
 from routes.strategy import router as strategy_router, set_db as set_strategy_db
-from routes.intelligence import router as intelligence_router
+from routes.intelligence import router as intelligence_router, set_db as set_intelligence_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -138,6 +138,7 @@ async def startup_event():
     set_push_db(db)
     set_journal_db(db)
     set_strategy_db(db)
+    set_intelligence_db(db)
 
     # Start daily digest scheduler (6:00 AM UTC)
     try:
