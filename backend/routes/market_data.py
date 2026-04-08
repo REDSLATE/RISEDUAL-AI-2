@@ -18,8 +18,13 @@ def set_db(database):
 @router.get("/world-events")
 async def get_world_events():
     try:
+        from services.cache import cache
         from services.world_events_service import WorldEventsService
-        return await WorldEventsService().scrape_world_events()
+        return await cache.get_or_fetch(
+            "world_events",
+            WorldEventsService().scrape_world_events,
+            ttl=300,
+        )
     except Exception as e:
         logger.error(f"Error fetching world events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -28,8 +33,13 @@ async def get_world_events():
 @router.get("/foreign-markets")
 async def get_foreign_markets():
     try:
+        from services.cache import cache
         from services.foreign_markets_service import ForeignMarketsService
-        return await ForeignMarketsService().get_foreign_markets()
+        return await cache.get_or_fetch(
+            "foreign_markets",
+            ForeignMarketsService().get_foreign_markets,
+            ttl=60,
+        )
     except Exception as e:
         logger.error(f"Error fetching foreign markets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -38,8 +48,13 @@ async def get_foreign_markets():
 @router.get("/gov-filings")
 async def get_gov_filings():
     try:
+        from services.cache import cache
         from services.gov_filings_service import GovFilingsService
-        return await GovFilingsService().get_all_gov_data()
+        return await cache.get_or_fetch(
+            "gov_filings",
+            GovFilingsService().get_all_gov_data,
+            ttl=600,
+        )
     except Exception as e:
         logger.error(f"Error fetching gov filings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -49,8 +64,13 @@ async def get_gov_filings():
 @router.get("/market/news")
 async def get_financial_news():
     try:
+        from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
-        return await FinancialScrapingService().scrape_financial_news()
+        return await cache.get_or_fetch(
+            "financial_news",
+            FinancialScrapingService().scrape_financial_news,
+            ttl=300,
+        )
     except Exception as e:
         logger.error(f"Error fetching news: {e}")
         raise HTTPException(status_code=500, detail="Error fetching news")
@@ -59,8 +79,13 @@ async def get_financial_news():
 @router.get("/market/social-sentiment")
 async def get_social_sentiment():
     try:
+        from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
-        return await FinancialScrapingService().scrape_reddit_sentiment()
+        return await cache.get_or_fetch(
+            "social_sentiment",
+            FinancialScrapingService().scrape_reddit_sentiment,
+            ttl=300,
+        )
     except Exception as e:
         logger.error(f"Error fetching social sentiment: {e}")
         raise HTTPException(status_code=500, detail="Error fetching social sentiment")
@@ -69,8 +94,13 @@ async def get_social_sentiment():
 @router.get("/market/insider-trades")
 async def get_insider_trades():
     try:
+        from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
-        return await FinancialScrapingService().scrape_insider_trades()
+        return await cache.get_or_fetch(
+            "insider_trades",
+            FinancialScrapingService().scrape_insider_trades,
+            ttl=300,
+        )
     except Exception as e:
         logger.error(f"Error fetching insider trades: {e}")
         raise HTTPException(status_code=500, detail="Error fetching insider trades")
