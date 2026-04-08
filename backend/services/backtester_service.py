@@ -1,6 +1,7 @@
 """Strategy Backtester Service — simulates trading strategies against historical price data."""
 import os
 import logging
+import asyncio
 import requests
 import numpy as np
 from datetime import datetime, timezone
@@ -420,8 +421,8 @@ async def run_backtest(api_key: str, strategy: Dict, symbol: str, years: int = 3
     """Run a full backtest: fetch data, compute indicators, interpret rules, simulate, return metrics."""
     logger.info(f"Starting backtest for {symbol} ({years}y) with strategy: {strategy.get('name', 'unnamed')}")
 
-    # 1. Fetch historical prices
-    prices = _fetch_daily_prices(symbol, years)
+    # 1. Fetch historical prices (run in thread to avoid blocking event loop)
+    prices = await asyncio.to_thread(_fetch_daily_prices, symbol, years)
     if len(prices) < 50:
         raise ValueError(f"Insufficient historical data for {symbol} ({len(prices)} days). Need at least 50.")
 

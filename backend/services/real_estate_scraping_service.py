@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, List, Optional
@@ -14,6 +15,11 @@ class RealEstateScrapingService:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
+
+    async def _get(self, url, **kwargs):
+        kwargs.setdefault('headers', self.headers)
+        kwargs.setdefault('timeout', 10)
+        return await asyncio.to_thread(requests.get, url, **kwargs)
     
     async def scrape_all_real_estate_data(self) -> Dict:
         """Aggregate all real estate data"""
@@ -60,7 +66,7 @@ class RealEstateScrapingService:
         """Scrape Zillow housing market data"""
         try:
             url = 'https://www.zillow.com/research/data/'
-            requests.get(url, headers=self.headers, timeout=10)
+            await self._get(url)
             
             return {
                 'source': 'Zillow',
@@ -76,7 +82,7 @@ class RealEstateScrapingService:
         """Scrape Redfin market data"""
         try:
             url = 'https://www.redfin.com/news/data-center/'
-            requests.get(url, headers=self.headers, timeout=10)
+            await self._get(url)
             
             return {
                 'source': 'Redfin',
@@ -91,7 +97,7 @@ class RealEstateScrapingService:
         """Scrape Realtor.com housing data"""
         try:
             url = 'https://www.realtor.com/research/data/'
-            requests.get(url, headers=self.headers, timeout=10)
+            await self._get(url)
             
             return {
                 'source': 'Realtor.com',
@@ -171,7 +177,7 @@ class RealEstateScrapingService:
         """Scrape current mortgage rates"""
         try:
             url = 'https://www.mortgagenewsdaily.com/mortgage-rates'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             rates = {

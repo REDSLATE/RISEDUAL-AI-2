@@ -1,6 +1,7 @@
 """AI Intelligence Service — Stock Scoring, Pattern Recognition, Quick Briefs."""
 import os
 import logging
+import asyncio
 import requests
 import numpy as np
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ def _av_key():
     return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 
-def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
+async def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
     """Fetch daily prices from Alpha Vantage."""
     params = {
         "function": "TIME_SERIES_DAILY",
@@ -23,7 +24,7 @@ def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
         "outputsize": "compact" if compact else "full",
         "apikey": _av_key(),
     }
-    resp = requests.get(AV_BASE, params=params, timeout=15)
+    resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=15)
     ts = resp.json().get("Time Series (Daily)", {})
     prices = []
     for d, bar in sorted(ts.items()):
@@ -38,10 +39,10 @@ def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
     return prices
 
 
-def _fetch_quote(symbol: str) -> Dict:
+async def _fetch_quote(symbol: str) -> Dict:
     """Fetch real-time quote."""
     params = {"function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _av_key()}
-    resp = requests.get(AV_BASE, params=params, timeout=10)
+    resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=10)
     gq = resp.json().get("Global Quote", {})
     return {
         "price": float(gq.get("05. price", 0)),
@@ -134,12 +135,12 @@ async def generate_ai_score(api_key: str, symbol: str) -> Dict:
     """Generate a 1-10 AI score with technical, fundamental, and sentiment breakdown."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-    prices = _fetch_daily(symbol, compact=False)
+    prices = await _fetch_daily(symbol, compact=False)
     if not prices:
         raise ValueError(f"No data found for {symbol}")
 
     technicals = _compute_technicals(prices)
-    quote = _fetch_quote(symbol)
+    quote = await _fetch_quote(symbol)
 
     prompt = f"""Analyze {symbol} and provide an AI investment score.
 
@@ -202,7 +203,7 @@ async def detect_patterns(api_key: str, symbol: str) -> Dict:
     """Detect chart patterns using AI analysis of price data."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-    prices = _fetch_daily(symbol, compact=True)
+    prices = await _fetch_daily(symbol, compact=True)
     if len(prices) < 30:
         raise ValueError(f"Insufficient data for pattern analysis on {symbol}")
 
@@ -277,12 +278,12 @@ async def generate_quick_brief(api_key: str, symbol: str) -> Dict:
     """Generate a 30-second stock brief with key metrics and verdict."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-    prices = _fetch_daily(symbol, compact=True)
+    prices = await _fetch_daily(symbol, compact=True)
     if not prices:
         raise ValueError(f"No data found for {symbol}")
 
     technicals = _compute_technicals(prices)
-    quote = _fetch_quote(symbol)
+    quote = await _fetch_quote(symbol)
 
     # Calculate quick stats
     closes = [p["close"] for p in prices]

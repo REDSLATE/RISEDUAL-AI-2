@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, List, Optional
@@ -14,6 +15,11 @@ class FinancialScrapingService:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
+
+    async def _get(self, url, **kwargs):
+        kwargs.setdefault('headers', self.headers)
+        kwargs.setdefault('timeout', 10)
+        return await asyncio.to_thread(requests.get, url, **kwargs)
     
     async def scrape_financial_news(self) -> List[Dict]:
         """Scrape latest financial news from multiple sources"""
@@ -35,7 +41,7 @@ class FinancialScrapingService:
         """Scrape CNBC market news"""
         try:
             url = 'https://www.cnbc.com/markets/'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -58,7 +64,7 @@ class FinancialScrapingService:
         """Scrape Reuters market news"""
         try:
             url = 'https://www.reuters.com/markets/'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -79,7 +85,7 @@ class FinancialScrapingService:
         """Scrape MarketWatch headlines"""
         try:
             url = 'https://www.marketwatch.com/latest-news'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -102,7 +108,7 @@ class FinancialScrapingService:
         """Scrape Fox Business news"""
         try:
             url = 'https://www.foxbusiness.com/markets'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -125,7 +131,7 @@ class FinancialScrapingService:
         """Scrape Wall Street Journal market news"""
         try:
             url = 'https://www.wsj.com/news/markets'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -150,7 +156,7 @@ class FinancialScrapingService:
         """Scrape Bloomberg market news"""
         try:
             url = 'https://www.bloomberg.com/markets'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -175,7 +181,7 @@ class FinancialScrapingService:
         """Scrape One America News (OAN) business news"""
         try:
             url = 'https://www.oann.com/category/business/'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -198,7 +204,7 @@ class FinancialScrapingService:
         """Scrape Epoch Times business news"""
         try:
             url = 'https://www.theepochtimes.com/business'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
@@ -225,7 +231,7 @@ class FinancialScrapingService:
         try:
             # Using Reddit JSON API (no auth needed for public posts)
             url = 'https://www.reddit.com/r/wallstreetbets/hot.json?limit=25'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             data = response.json()
             
             posts = []
@@ -250,7 +256,7 @@ class FinancialScrapingService:
         try:
             # Using OpenInsider.com
             url = 'http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=730&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&page=1'
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             trades = []

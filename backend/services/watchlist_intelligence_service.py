@@ -1,6 +1,7 @@
 """Watchlist Intelligence Service — Batch AI analysis of user's watchlist tickers."""
 import os
 import logging
+import asyncio
 import requests
 import numpy as np
 from datetime import datetime, timezone
@@ -144,8 +145,8 @@ async def generate_watchlist_summary(api_key: str, tickers: List[str], db=None, 
             if age_minutes < 60:
                 return cached.get("data", {})
 
-    # Gather market data for all tickers
-    ticker_data = _gather_ticker_data(tickers)
+    # Gather market data for all tickers (run in thread to avoid blocking)
+    ticker_data = await asyncio.to_thread(_gather_ticker_data, tickers)
 
     # Build ticker summary for AI
     ticker_lines = []

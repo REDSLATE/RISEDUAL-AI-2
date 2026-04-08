@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 import re
 from typing import Dict, List, Optional
@@ -15,13 +16,17 @@ class GovFilingsService:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         }
 
+    async def _get(self, url, **kwargs):
+        kwargs.setdefault('timeout', 10)
+        return await asyncio.to_thread(requests.get, url, **kwargs)
+
     async def get_sec_filings(self, ticker: str = None) -> List[Dict]:
         """Fetch recent SEC EDGAR filings via full-text search API"""
         filings = []
         try:
             # EDGAR EFTS search API for recent Form 4 filings
             url = 'https://efts.sec.gov/LATEST/search-index?q=*&forms=4'
-            resp = requests.get(url, headers={
+            resp = await self._get(url, headers={
                 'User-Agent': 'RISEDUALAI admin@risedual.ai',
                 'Accept': 'application/json',
             }, timeout=10)
@@ -41,16 +46,16 @@ class GovFilingsService:
 
         # Fallback: scrape OpenInsider
         if not filings:
-            filings = self._scrape_openinsider()
+            filings = await self._scrape_openinsider()
 
         return filings[:15]
 
-    def _scrape_openinsider(self) -> List[Dict]:
+    async def _scrape_openinsider(self) -> List[Dict]:
         """Scrape insider trading data from OpenInsider"""
         trades = []
         try:
             url = 'http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=7&fdr=&td=0&tdr=&feession=&teession=&xp=1&vl=&vh=&ocl=&och=&sic1l=&sic1h=&iession1l=&iession1h=&cnt=15'
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp = await self._get(url, headers=self.headers, timeout=10)
             soup = BeautifulSoup(resp.text, 'html.parser')
             table = soup.find('table', class_='tinytable')
             if table:
@@ -80,7 +85,7 @@ class GovFilingsService:
         announcements = []
         try:
             url = 'https://www.federalreserve.gov/feeds/press_all.xml'
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp = await self._get(url, headers=self.headers, timeout=10)
             soup = BeautifulSoup(resp.content, 'xml')
             items = soup.find_all('item')[:10]
             for item in items:
@@ -102,17 +107,17 @@ class GovFilingsService:
 
     async def get_congressional_trades(self) -> List[Dict]:
         """Scrape congressional stock trades from Capitol Trades"""
-        trades = self._scrape_capitol_trades()
+        trades = await self._scrape_capitol_trades()
         if not trades:
-            trades = self._scrape_quiverquant_congress()
+            trades = await self._scrape_quiverquant_congress()
         return trades[:20]
 
-    def _scrape_capitol_trades(self) -> List[Dict]:
+    async def _scrape_capitol_trades(self) -> List[Dict]:
         """Primary: scrape Capitol Trades for congressional trades."""
         trades = []
         try:
             url = 'https://www.capitoltrades.com/trades'
-            resp = requests.get(url, headers=self.headers, timeout=15)
+            resp = await self._get(url, headers=self.headers, timeout=15)
             if resp.status_code != 200:
                 return trades
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -182,12 +187,12 @@ class GovFilingsService:
         company = text.split(ticker)[0].strip() if ticker else text
         return ticker, company
 
-    def _scrape_quiverquant_congress(self) -> List[Dict]:
+    async def _scrape_quiverquant_congress(self) -> List[Dict]:
         """Fallback: scrape QuiverQuant congressional trading page"""
         trades = []
         try:
             url = 'https://www.quiverquant.com/congresstrading/'
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp = await self._get(url, headers=self.headers, timeout=10)
             soup = BeautifulSoup(resp.text, 'html.parser')
             table = soup.find('table')
             if table:

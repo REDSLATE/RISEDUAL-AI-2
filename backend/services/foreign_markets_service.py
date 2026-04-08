@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 from typing import Dict, List
 from bs4 import BeautifulSoup
@@ -80,7 +81,7 @@ class ForeignMarketsService:
 
         all_data = []
         for symbol, name, region in indices + commodities + currencies:
-            quote = self._scrape_yahoo_quote(symbol, name, region)
+            quote = await asyncio.to_thread(self._scrape_yahoo_quote, symbol, name, region)
             all_data.append(quote)
 
         asia = [d for d in all_data if d['region'] == 'Asia']

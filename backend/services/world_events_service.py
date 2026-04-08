@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import requests
 from typing import List, Dict
 from bs4 import BeautifulSoup
@@ -54,7 +55,7 @@ class WorldEventsService:
                 })
         return sorted(affected, key=lambda x: x['impact_score'], reverse=True)
 
-    def _scrape_rss(self, url: str, source_name: str) -> List[Dict]:
+    def _scrape_rss_sync(self, url: str, source_name: str) -> List[Dict]:
         articles = []
         try:
             resp = requests.get(url, headers=self.headers, timeout=10)
@@ -95,7 +96,7 @@ class WorldEventsService:
 
         all_events = []
         for url, name in rss_sources:
-            events = self._scrape_rss(url, name)
+            events = await asyncio.to_thread(self._scrape_rss_sync, url, name)
             all_events.extend(events)
 
         # Deduplicate by title similarity

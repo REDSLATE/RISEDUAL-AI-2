@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import json
 from typing import Dict, Optional
@@ -25,7 +26,7 @@ class CompanyResearchService:
                 'symbol': symbol.upper(),
                 'apikey': self.api_key
             }
-            response = requests.get(self.base_url, params=params, timeout=10)
+            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 

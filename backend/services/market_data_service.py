@@ -1,4 +1,5 @@
 import os
+import asyncio
 import requests
 import logging
 import secrets as _secrets
@@ -42,7 +43,7 @@ class MarketDataService:
                 'apikey': self.api_key
             }
             
-            response = requests.get(self.base_url, params=params, timeout=10)
+            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -107,7 +108,7 @@ class MarketDataService:
                 'apikey': self.api_key
             }
             
-            response = requests.get(self.base_url, params=params, timeout=10)
+            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
