@@ -31,6 +31,7 @@ import StrategyBuilder from './components/StrategyBuilder';
 import StrategyMarketplace from './components/StrategyMarketplace';
 import AIIntelligence from './components/AIIntelligence';
 import WatchlistIntelligence from './components/WatchlistIntelligence';
+import ResetPasswordModal from './components/ResetPasswordModal';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -51,13 +52,18 @@ function AppContent() {
   const [showJournal, setShowJournal] = useState(false);
   const [showStrategy, setShowStrategy] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
+  const [resetToken, setResetToken] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get('payment_status');
     const sessionId = params.get('session_id');
-    if (paymentStatus && sessionId) {
+    const rToken = params.get('reset_token');
+    if (rToken) {
+      setResetToken(rToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (paymentStatus && sessionId) {
       setPaymentInfo({ status: paymentStatus, sessionId });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paymentStatus === 'cancelled') {
@@ -122,6 +128,7 @@ function AppContent() {
       {showJournal && user && <TradingJournal onClose={() => setShowJournal(false)} onSubscribe={() => { setShowJournal(false); setShowSubscription(true); }} />}
       {showStrategy && user && <StrategyBuilder onClose={() => setShowStrategy(false)} onSubscribe={() => { setShowStrategy(false); setShowSubscription(true); }} />}
       {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
+      {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
 
       <div className="text-center py-6 sm:py-8 text-gray-500 text-xs sm:text-sm">
         <div className="flex items-center justify-center gap-2 mb-1">

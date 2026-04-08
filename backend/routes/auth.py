@@ -229,13 +229,21 @@ async def forgot_password(req: ForgotPasswordRequest):
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": False,
     })
-    print(f"[PASSWORD RESET] Token for {email}: {token}")
+    # Send the reset email via Resend
+    try:
+        from services.email_service import send_password_reset_email
+        await send_password_reset_email(email, token)
+    except Exception as e:
+        logging.error(f"Failed to send password reset email: {e}")
     return {"message": "If that email exists, a reset link has been sent."}
 
 @auth_router.post("/reset-password")
 async def reset_password(req: ResetPasswordRequest):
     record = await db.password_reset_tokens.find_one({"token": req.token, "used": False})
-    if not record or record["expires_at"] < datetime.now(timezone.utc):
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    expires_at = record["expires_at"].replace(tzinfo=timezone.utc) if record["expires_at"].tzinfo is None else record["expires_at"]
+    if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     if len(req.new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")

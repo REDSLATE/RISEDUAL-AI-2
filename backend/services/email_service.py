@@ -169,6 +169,55 @@ async def send_reward_earned_email(referrer_email: str, referrer_name: str, refe
         return False
 
 
+def _password_reset_html(reset_url: str) -> str:
+    content = f"""
+<h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;font-weight:600;">Reset Your Password</h2>
+<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
+We received a request to reset your {APP_NAME} password. Click the button below to choose a new one.
+</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
+<tr><td style="background-color:#0052FF;border-radius:10px;padding:14px 32px;">
+<a href="{reset_url}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Reset Password</a>
+</td></tr>
+</table>
+<p style="color:#64748B;font-size:12px;line-height:1.6;margin:0 0 12px;">
+If the button doesn't work, copy and paste this link into your browser:
+</p>
+<p style="color:#0052FF;font-size:12px;word-break:break-all;margin:0 0 20px;">
+<a href="{reset_url}" style="color:#0052FF;text-decoration:underline;">{reset_url}</a>
+</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<p style="color:#F59E0B;font-size:12px;margin:0 0 4px;font-weight:600;">This link expires in 1 hour</p>
+<p style="color:#64748B;font-size:12px;margin:0;">If you didn't request this, you can safely ignore this email.</p>
+</td></tr>
+</table>"""
+    return _base_html(content)
+
+
+async def send_password_reset_email(user_email: str, reset_token: str):
+    """Send a password reset email with a secure link."""
+    frontend_url = os.environ.get('FRONTEND_URL', APP_URL)
+    reset_url = f"{frontend_url}?reset_token={reset_token}"
+    if not _is_configured():
+        logger.info(f"Email skipped (no API key): password reset to {user_email}")
+        logger.info(f"[PASSWORD RESET LINK] {reset_url}")
+        return False
+    try:
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [user_email],
+            "subject": f"Reset Your {APP_NAME} Password",
+            "html": _password_reset_html(reset_url),
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Password reset email sent to {user_email}, id: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {user_email}: {e}")
+        return False
+
+
 async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str):
     """Send welcome email to newly referred user."""
     if not _is_configured():
