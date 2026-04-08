@@ -19,13 +19,13 @@ class MarketDataService:
         return f"{symbol}_{data_type}"
     
     def _is_cache_valid(self, cache_entry: Dict) -> bool:
-        """Check if cache entry is still valid (< 30 seconds old)"""
+        """Check if cache entry is still valid (< 60 seconds old)"""
         if not cache_entry:
             return False
         cache_time = cache_entry.get('timestamp')
         if not cache_time:
             return False
-        return (datetime.now() - cache_time).seconds < 30
+        return (datetime.now() - cache_time).seconds < 60
     
     async def get_quote(self, symbol: str) -> Optional[Dict]:
         """Get real-time quote for a symbol"""
@@ -75,20 +75,19 @@ class MarketDataService:
             return None
     
     async def get_ticker_data(self) -> List[Dict]:
-        """Get ticker data for top stocks"""
+        """Get ticker data for top stocks (parallel fetch, 150 req/min plan)"""
         symbols = ['SPY', 'VOO', 'QQQ', 'IVV', 'VTI', 'VUG', 'VEA']
+        tasks = [self.get_quote(symbol) for symbol in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         ticker_data = []
-        
-        for symbol in symbols:
-            quote = await self.get_quote(symbol)
-            if quote:
+        for quote in results:
+            if isinstance(quote, dict) and quote:
                 ticker_data.append({
                     'symbol': quote['symbol'],
                     'price': quote['price'],
                     'change': quote['change'],
                     'changePercent': quote['changePercent']
                 })
-        
         return ticker_data
     
     async def get_crypto_quote(self, symbol: str, market: str = 'USD') -> Optional[Dict]:
@@ -142,15 +141,14 @@ class MarketDataService:
             return None
     
     async def get_crypto_data(self) -> List[Dict]:
-        """Get top crypto currencies data"""
+        """Get top crypto currencies data (parallel fetch)"""
         cryptos = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE']
+        tasks = [self.get_crypto_quote(crypto) for crypto in cryptos]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         crypto_data = []
-        
-        for crypto in cryptos:
-            quote = await self.get_crypto_quote(crypto)
-            if quote:
+        for quote in results:
+            if isinstance(quote, dict) and quote:
                 crypto_data.append(quote)
-        
         return crypto_data
     
     def generate_dark_pool_data(self) -> List[Dict]:

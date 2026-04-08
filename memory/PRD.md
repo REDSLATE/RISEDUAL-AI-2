@@ -73,6 +73,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. It requires real
 - `POST /api/chat`
 - `POST /api/subscription/create-checkout-session`
 
+## Alpha Vantage Configuration
+- **Plan**: Premium Plus (150 requests/minute) — $999 plan
+- **Parallel fetching**: Stock tickers and crypto quotes fetched concurrently via `asyncio.gather`
+- **Cache TTL**: 60 seconds (prevents redundant API calls within the same minute)
+- **Watchlist throttle**: 1-second pause every 5 tickers (was 13-second pause every 4 for free tier)
+
 ## What's Remaining (Prioritized Backlog)
 
 ### P1 - Deployment

@@ -100,13 +100,10 @@ import time
 
 
 def _gather_ticker_data(tickers: List[str]) -> List[Dict]:
-    """Gather quotes + technicals for each ticker, respecting Alpha Vantage rate limit."""
+    """Gather quotes + technicals for each ticker. Premium plan: 150 req/min."""
     results = []
     for i, ticker in enumerate(tickers[:10]):  # Cap at 10 tickers
         quote = _fetch_quote(ticker)
-        if i > 0 and i % 4 == 0:
-            time.sleep(13)  # Respect 5 calls/min limit
-
         prices = _fetch_daily_compact(ticker)
         technicals = _quick_technicals(prices) if prices else {}
 
@@ -116,8 +113,9 @@ def _gather_ticker_data(tickers: List[str]) -> List[Dict]:
             "technicals": technicals,
         })
 
-        if (i + 1) % 4 == 0 and i < len(tickers) - 1:
-            time.sleep(13)
+        # 150 req/min = 2.5 req/sec. 2 calls per ticker, short pause every few tickers.
+        if (i + 1) % 5 == 0 and i < len(tickers) - 1:
+            time.sleep(1)
 
     return results
 
