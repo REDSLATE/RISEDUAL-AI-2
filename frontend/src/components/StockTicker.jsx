@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { getTickerData } from '../services/api';
 
 const StockTicker = () => {
@@ -6,14 +6,7 @@ const StockTicker = () => {
   const [stockData, setStockData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchTickerData();
-    // Update every 30 seconds
-    const interval = setInterval(fetchTickerData, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchTickerData = async () => {
+  const fetchTickerData = useCallback(async () => {
     try {
       const data = await getTickerData();
       if (data && data.length > 0) {
@@ -24,7 +17,13 @@ const StockTicker = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchTickerData();
+    const interval = setInterval(fetchTickerData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchTickerData]);
 
   useEffect(() => {
     if (stockData.length === 0) return;

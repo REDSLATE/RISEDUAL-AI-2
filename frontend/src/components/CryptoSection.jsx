@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bitcoin, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { Card } from './ui/card';
 
@@ -8,13 +8,7 @@ const CryptoSection = () => {
   const [cryptos, setCryptos] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchCryptoData();
-    const interval = setInterval(fetchCryptoData, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchCryptoData = async () => {
+  const fetchCryptoData = useCallback(async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/crypto/prices`);
       if (response.ok) {
@@ -26,7 +20,13 @@ const CryptoSection = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchCryptoData();
+    const interval = setInterval(fetchCryptoData, 60000);
+    return () => clearInterval(interval);
+  }, [fetchCryptoData]);
 
   if (loading) {
     return (

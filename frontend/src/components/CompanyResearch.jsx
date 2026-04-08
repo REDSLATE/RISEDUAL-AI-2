@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Building2, TrendingUp, BarChart3, Globe, Users, Loader2, ExternalLink, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -177,7 +177,7 @@ const CompanyResearch = () => {
     doSearch(symbol.trim().toUpperCase());
   };
 
-  const doSearch = async (ticker) => {
+  const doSearch = useCallback(async (ticker) => {
     setIsLoading(true);
     setError(null);
     setResearch(null);
@@ -191,7 +191,7 @@ const CompanyResearch = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleNavSearch = (e) => {
@@ -199,7 +199,7 @@ const CompanyResearch = () => {
     };
     window.addEventListener('risedualai-research', handleNavSearch);
     return () => window.removeEventListener('risedualai-research', handleNavSearch);
-  }, []);
+  }, [doSearch]);
 
   const popularTickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA'];
 

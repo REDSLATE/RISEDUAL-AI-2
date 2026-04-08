@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Eye, TrendingUp, Activity } from 'lucide-react';
 import DataTable from './DataTable';
 import ProBlurWall from './ProBlurWall';
@@ -9,13 +9,7 @@ const DarkPoolData = ({ onSubscribe }) => {
   const [darkPoolData, setDarkPoolData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDarkPoolData();
-    const interval = setInterval(fetchDarkPoolData, 120000); // Update every 2 minutes
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchDarkPoolData = async () => {
+  const fetchDarkPoolData = useCallback(async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/dark-pool`);
       if (response.ok) {
@@ -27,7 +21,13 @@ const DarkPoolData = ({ onSubscribe }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchDarkPoolData();
+    const interval = setInterval(fetchDarkPoolData, 120000);
+    return () => clearInterval(interval);
+  }, [fetchDarkPoolData]);
 
   const columns = [
     { key: 'symbol', label: 'Symbol', sortable: true },
