@@ -103,10 +103,14 @@ Handle API limit upgrades when user moves from free tier (5 calls/min).
 ### P3 - Server Refactoring
 Break down `server.py` entirely into modular `routes/` directory.
 
-## Last Updated
-- **Feb 2026**: Implemented Forgot Password flow + Real Broker Integrations (Alpaca, Schwab, IBKR)
-onnected brokers
+### P4 - Future Features
+- Sector rotation heatmap
+- Real-time P&L tracker for connected brokers
 - Additional broker integrations (Webull, Robinhood)
+
+### P5 - Remaining Code Quality
+- Split monolithic React components (AIHypothesis, StrategyBuilder, AdminPanel, AIIntelligence)
+- Break down high-complexity backend functions (ai_intelligence_service.py)
 
 ## Code Quality Fixes Completed (Apr 2026)
 - **SECURITY**: Replaced `eval()` in backtester with AST-based safe expression evaluator
@@ -115,6 +119,7 @@ onnected brokers
 - **CODE QUALITY**: Fixed all empty catch blocks in BrokerConnect.jsx
 - **CODE QUALITY**: Extracted helper functions from `_simulate()` and `_calc_metrics()`
 - **CODE QUALITY**: Moved `fetchWithRetry` to module scope in AuthContext.jsx
+- **CODE QUALITY**: Fixed all missing React hook dependencies across 26 audited components (CryptoSection, CryptoTicker, DarkPoolData, StockTicker, CompanyResearch wrapped in useCallback; confirmed all other components already correct)
 
 ## Last Updated
-- **Apr 2026**: Code Quality Report fixes — Security patches (eval removal, httpOnly cookies), complexity reduction, error handling
+- **Apr 2026**: Code Quality Report fixes — Security patches (eval removal, httpOnly cookies), complexity reduction, error handling, all hook dependencies fixed
