@@ -109,7 +109,13 @@ Break down `server.py` entirely into modular `routes/` directory.
 - Additional broker integrations (Webull, Robinhood)
 
 ### P5 - Remaining Code Quality
-- Break down high-complexity backend functions (ai_intelligence_service.py)
+- Further complexity reduction in ai_intelligence_service.py (optional — functions are reasonably sized at ~55 lines each)
+
+## Completed Features (Apr 2026 — Session 2)
+- **REFACTORING**: Split routes/ai.py (554→374 lines), extracted scraping/prediction endpoints to routes/market_data.py (194 lines)
+- **REFACTORING**: Registered new routes (market_data_router, sectors_router) in server.py
+- **NEW FEATURE**: Sector Rotation Heatmap — S&P 500 sector ETF performance with 5 period toggles (1D/1W/1M/3M/YTD), color-coded tiles sized by S&P weight
+- **NEW FEATURE**: Real-time P&L Tracker — Aggregates positions across all connected brokers, summary cards, positions table, sector allocation chart
 
 ## Code Quality Fixes Completed (Apr 2026)
 - **SECURITY**: Replaced `eval()` in backtester with AST-based safe expression evaluator
@@ -124,4 +130,4 @@ Break down `server.py` entirely into modular `routes/` directory.
 - **REFACTORING**: Split AdminPanel.jsx (530→194 lines) into admin/ subdirectory (AdminTools, PromoManager)
 
 ## Last Updated
-- **Apr 2026**: Code Quality Report fixes — Security patches (eval removal, httpOnly cookies), complexity reduction, error handling, all hook dependencies fixed
+- **Apr 2026**: Backend complexity reduction (route splitting), Sector Rotation Heatmap, Real-time P&L Tracker, Component splitting, Security patches
