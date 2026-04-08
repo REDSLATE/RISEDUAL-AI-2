@@ -55,6 +55,42 @@ async def _fetch_quote(symbol: str) -> Dict:
     }
 
 
+def _ema(arr, period):
+    """Calculate Exponential Moving Average."""
+    if len(arr) < period:
+        return float(np.mean(arr))
+    k = 2.0 / (period + 1)
+    val = float(np.mean(arr[:period]))
+    for v in arr[period:]:
+        val = float(v) * k + val * (1 - k)
+    return val
+
+
+def _calc_rsi(closes, period=14):
+    """Calculate Relative Strength Index."""
+    deltas = np.diff(closes)
+    gains = np.where(deltas > 0, deltas, 0.0)
+    losses = np.where(deltas < 0, -deltas, 0.0)
+    avg_gain = np.mean(gains[-period:])
+    avg_loss = np.mean(losses[-period:])
+    return 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 100
+
+
+def _calc_bollinger(closes, period=20):
+    """Calculate Bollinger Bands."""
+    mid = float(np.mean(closes[-period:]))
+    std = float(np.std(closes[-period:]))
+    return mid, mid + 2 * std, mid - 2 * std
+
+
+def _determine_trend(current, sma_20, sma_50):
+    """Determine trend direction from moving averages."""
+    trend = "bullish" if current > sma_20 else "bearish"
+    if sma_50 and current > sma_50:
+        trend = "strong_bullish" if trend == "bullish" else "neutral"
+    return trend
+
+
 def _compute_technicals(prices: List[Dict]) -> Dict:
     """Compute key technical indicators from price data."""
     if len(prices) < 20:
@@ -62,52 +98,20 @@ def _compute_technicals(prices: List[Dict]) -> Dict:
     closes = np.array([p["close"] for p in prices])
     volumes = np.array([p["volume"] for p in prices], dtype=float)
 
-    # RSI (14)
-    deltas = np.diff(closes)
-    gains = np.where(deltas > 0, deltas, 0.0)
-    losses = np.where(deltas < 0, -deltas, 0.0)
-    avg_gain = np.mean(gains[-14:])
-    avg_loss = np.mean(losses[-14:])
-    rsi = 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 100
-
-    # SMAs
+    current = float(closes[-1])
+    rsi = _calc_rsi(closes)
     sma_20 = float(np.mean(closes[-20:]))
     sma_50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else None
     sma_200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else None
+    macd = _ema(closes, 12) - _ema(closes, 26)
+    bb_mid, bb_upper, bb_lower = _calc_bollinger(closes)
 
-    # MACD
-    def ema(arr, p):
-        if len(arr) < p:
-            return float(np.mean(arr))
-        k = 2.0 / (p + 1)
-        val = float(np.mean(arr[:p]))
-        for v in arr[p:]:
-            val = float(v) * k + val * (1 - k)
-        return val
-
-    ema12 = ema(closes, 12)
-    ema26 = ema(closes, 26)
-    macd = ema12 - ema26
-
-    # Bollinger Bands
-    bb_mid = sma_20
-    bb_std = float(np.std(closes[-20:]))
-    bb_upper = bb_mid + 2 * bb_std
-    bb_lower = bb_mid - 2 * bb_std
-
-    # Volume trend
     avg_vol_20 = float(np.mean(volumes[-20:]))
     vol_ratio = float(volumes[-1] / avg_vol_20) if avg_vol_20 > 0 else 1.0
 
-    # Price position
-    current = float(closes[-1])
-    pct_from_high = ((max(closes[-52 * 5:] if len(closes) >= 260 else closes) - current) / current * 100) if current > 0 else 0
-    pct_from_low = ((current - min(closes[-52 * 5:] if len(closes) >= 260 else closes)) / current * 100) if current > 0 else 0
-
-    # Trend direction
-    trend = "bullish" if current > sma_20 else "bearish"
-    if sma_50 and current > sma_50:
-        trend = "strong_bullish" if trend == "bullish" else "neutral"
+    year_prices = closes[-260:] if len(closes) >= 260 else closes
+    pct_from_high = ((float(max(year_prices)) - current) / current * 100) if current > 0 else 0
+    pct_from_low = ((current - float(min(year_prices))) / current * 100) if current > 0 else 0
 
     return {
         "rsi": round(rsi, 1),
@@ -118,13 +122,25 @@ def _compute_technicals(prices: List[Dict]) -> Dict:
         "bb_upper": round(bb_upper, 2),
         "bb_lower": round(bb_lower, 2),
         "vol_ratio": round(vol_ratio, 2),
-        "trend": trend,
+        "trend": _determine_trend(current, sma_20, sma_50),
         "pct_from_high": round(float(pct_from_high), 1),
         "pct_from_low": round(float(pct_from_low), 1),
         "current_price": round(current, 2),
         "price_5d_ago": round(float(closes[-6]), 2) if len(closes) >= 6 else None,
         "price_20d_ago": round(float(closes[-21]), 2) if len(closes) >= 21 else None,
     }
+
+
+
+def _parse_llm_json(text: str) -> Dict:
+    """Extract and parse JSON from LLM response text."""
+    import json
+    text = str(text).strip()
+    brace_start = text.find("{")
+    brace_end = text.rfind("}")
+    if brace_start >= 0 and brace_end > brace_start:
+        text = text[brace_start:brace_end + 1]
+    return json.loads(text)
 
 
 # ═══════════════════════════════════════
@@ -177,14 +193,7 @@ Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sel
     chat = LlmChat(api_key=api_key, session_id=session_id,
                     system_message="You are an expert quantitative analyst. Return only JSON.").with_model("openai", "gpt-5.2")
     response = await chat.send_message(UserMessage(text=prompt))
-
-    import json
-    text = str(response).strip()
-    brace_start = text.find("{")
-    brace_end = text.rfind("}")
-    if brace_start >= 0 and brace_end > brace_start:
-        text = text[brace_start:brace_end + 1]
-    scores = json.loads(text)
+    scores = _parse_llm_json(str(response))
 
     return {
         "symbol": symbol.upper(),
@@ -253,14 +262,7 @@ Pattern types: reversal, continuation, bilateral. Directions: bullish, bearish, 
     chat = LlmChat(api_key=api_key, session_id=session_id,
                     system_message="You are an expert technical analyst specializing in chart pattern recognition. Return only JSON.").with_model("openai", "gpt-5.2")
     response = await chat.send_message(UserMessage(text=prompt))
-
-    import json
-    text = str(response).strip()
-    brace_start = text.find("{")
-    brace_end = text.rfind("}")
-    if brace_start >= 0 and brace_end > brace_start:
-        text = text[brace_start:brace_end + 1]
-    result = json.loads(text)
+    result = _parse_llm_json(str(response))
 
     return {
         "symbol": symbol.upper(),
@@ -324,14 +326,7 @@ verdict: buy/hold/sell. confidence 0-100. Be concise and actionable. Key metrics
     chat = LlmChat(api_key=api_key, session_id=session_id,
                     system_message="You are a financial analyst providing quick stock briefs. Return only JSON. Be concise.").with_model("openai", "gpt-5.2")
     response = await chat.send_message(UserMessage(text=prompt))
-
-    import json
-    text = str(response).strip()
-    brace_start = text.find("{")
-    brace_end = text.rfind("}")
-    if brace_start >= 0 and brace_end > brace_start:
-        text = text[brace_start:brace_end + 1]
-    brief = json.loads(text)
+    brief = _parse_llm_json(str(response))
 
     return {
         "symbol": symbol.upper(),

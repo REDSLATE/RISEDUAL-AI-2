@@ -202,11 +202,13 @@ class IBKRTradingService:
         self.gateway_url = api_key if api_key.startswith("http") else "https://localhost:5000"
         self.account_id = api_secret
         self.headers = {"Content-Type": "application/json"}
+        # IBKR Client Portal uses self-signed certs; load CA bundle if available
+        self._verify = os.environ.get("IBKR_CA_BUNDLE", True)
 
     def get_account(self) -> Optional[Dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/portfolio/accounts",
-                             headers=self.headers, verify=False, timeout=10)
+                             headers=self.headers, verify=self._verify, timeout=10)
             r.raise_for_status()
             accounts = r.json()
             if isinstance(accounts, list) and accounts:
@@ -226,7 +228,7 @@ class IBKRTradingService:
     def get_positions(self) -> List[Dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/portfolio/{self.account_id}/positions/0",
-                             headers=self.headers, verify=False, timeout=10)
+                             headers=self.headers, verify=self._verify, timeout=10)
             r.raise_for_status()
             positions = []
             for p in r.json():
@@ -261,7 +263,7 @@ class IBKRTradingService:
             if limit_price:
                 data["orders"][0]["price"] = limit_price
             r = requests.post(f"{self.gateway_url}/v1/api/iserver/account/{self.account_id}/orders",
-                              headers=self.headers, json=data, verify=False, timeout=10)
+                              headers=self.headers, json=data, verify=self._verify, timeout=10)
             r.raise_for_status()
             result = r.json()
             return {"id": str(result), "status": "submitted", "symbol": symbol}
@@ -272,7 +274,7 @@ class IBKRTradingService:
     def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/iserver/account/orders",
-                             headers=self.headers, verify=False, timeout=10)
+                             headers=self.headers, verify=self._verify, timeout=10)
             r.raise_for_status()
             return r.json().get("orders", []) if isinstance(r.json(), dict) else r.json()
         except Exception as e:
@@ -283,7 +285,7 @@ class IBKRTradingService:
         try:
             r = requests.delete(
                 f"{self.gateway_url}/v1/api/iserver/account/{self.account_id}/order/{order_id}",
-                headers=self.headers, verify=False, timeout=10)
+                headers=self.headers, verify=self._verify, timeout=10)
             r.raise_for_status()
             return True
         except Exception as e:

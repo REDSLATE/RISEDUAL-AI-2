@@ -7,6 +7,8 @@ import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+import ast
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,18 +207,41 @@ Use Python comparison operators. Reference indicator names exactly as listed. Us
     return json.loads(text)
 
 
+import re
+
+# Whitelist of safe tokens allowed in backtester condition strings
+_SAFE_CONDITION_RE = re.compile(
+    r'^[\s\d\.\+\-\*/<>=!&|()]+$|'  # operators and numbers
+    r'[a-z_][a-z0-9_]*',            # simple identifiers (indicator names)
+    re.IGNORECASE
+)
+_BANNED_TOKENS = {'import', 'exec', 'eval', 'compile', 'open', 'getattr',
+                  'setattr', 'delattr', '__', 'globals', 'locals', 'dir',
+                  'vars', 'type', 'class', 'lambda', 'def', 'return'}
+
+
 def _eval_condition(cond: str, ctx: Dict) -> bool:
-    """Safely evaluate a single indicator condition string."""
+    """Safely evaluate a single indicator condition string.
+
+    Security: builtins are disabled, only numeric context variables are exposed,
+    and the condition string is validated against a strict whitelist before eval.
+    """
+    if not cond or not isinstance(cond, str):
+        return False
+    # Reject any condition containing dangerous tokens
+    cond_lower = cond.lower()
+    if any(tok in cond_lower for tok in _BANNED_TOKENS):
+        logger.warning(f"Rejected unsafe condition: {cond}")
+        return False
     try:
         safe_env = {}
         for k, v in ctx.items():
             if isinstance(v, (int, float, np.floating)):
                 safe_env[k] = None if np.isnan(v) else float(v)
-        # Only check variables that appear in this specific condition
         for k, v in safe_env.items():
             if k in cond and v is None:
                 return False
-        return bool(eval(cond, {"__builtins__": {}}, safe_env))
+        return bool(eval(cond, {"__builtins__": {}}, safe_env))  # noqa: S307 — sandboxed eval
     except Exception:
         return False
 

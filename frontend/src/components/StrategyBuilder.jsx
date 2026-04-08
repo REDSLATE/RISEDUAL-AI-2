@@ -198,9 +198,9 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
 
             {/* Example prompts */}
             <div className="flex flex-wrap gap-1.5">
-              {EXAMPLE_PROMPTS.map((p, i) => (
+              {EXAMPLE_PROMPTS.map((p) => (
                 <button
-                  key={i}
+                  key={p}
                   onClick={() => setDescription(p)}
                   className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700/50 hover:border-violet-600/50 hover:text-violet-300 transition-colors truncate max-w-[250px]"
                   data-testid={`example-prompt-${i}`}
