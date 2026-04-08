@@ -54,9 +54,10 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. It requires real
 - **All broker HTTP calls** use `asyncio.to_thread` to prevent event loop blocking
 
 ## Authentication System
-- JWT-based (localStorage Bearer tokens due to K8s ingress CORS)
+- JWT-based with httpOnly cookies (primary) + localStorage Bearer token (fallback)
+- Cookies: `access_token` (15min, httpOnly, Secure, SameSite=Lax) + `refresh_token` (7 days)
+- CORS configured with `allow_credentials=True` and specific frontend origin
 - Bcrypt password hashing
-- Access tokens (15min) + Refresh tokens (7 days)
 - Brute force protection (5 attempts = 15min lockout)
 - Forgot Password: Email-based reset via Resend with 1-hour expiry tokens
 - Password Reset: Token-based reset with validation (min 6 chars)
@@ -104,3 +105,16 @@ Break down `server.py` entirely into modular `routes/` directory.
 
 ## Last Updated
 - **Feb 2026**: Implemented Forgot Password flow + Real Broker Integrations (Alpaca, Schwab, IBKR)
+onnected brokers
+- Additional broker integrations (Webull, Robinhood)
+
+## Code Quality Fixes Completed (Apr 2026)
+- **SECURITY**: Replaced `eval()` in backtester with AST-based safe expression evaluator
+- **SECURITY**: Migrated auth from localStorage to httpOnly cookies (with localStorage fallback)
+- **SECURITY**: Updated CORS to `allow_credentials=True` with specific origin
+- **CODE QUALITY**: Fixed all empty catch blocks in BrokerConnect.jsx
+- **CODE QUALITY**: Extracted helper functions from `_simulate()` and `_calc_metrics()`
+- **CODE QUALITY**: Moved `fetchWithRetry` to module scope in AuthContext.jsx
+
+## Last Updated
+- **Apr 2026**: Code Quality Report fixes — Security patches (eval removal, httpOnly cookies), complexity reduction, error handling
