@@ -29,6 +29,7 @@ import ReferralLeaderboard from './components/ReferralLeaderboard';
 import TradingJournal from './components/TradingJournal';
 import StrategyBuilder from './components/StrategyBuilder';
 import StrategyMarketplace from './components/StrategyMarketplace';
+import AIWarRoom from './components/AIWarRoom';
 import AIIntelligence from './components/AIIntelligence';
 import WatchlistIntelligence from './components/WatchlistIntelligence';
 import ResetPasswordModal from './components/ResetPasswordModal';
@@ -95,7 +96,12 @@ function AppContent() {
         {/* Referral Leaderboard */}
         <div className="mb-6 sm:mb-8"><ReferralLeaderboard /></div>
 
-        {/* AI Investment Hypothesis (Paywalled) */}
+        {/* AI War Room (Unified: Hypothesis + Intelligence + Earnings + Insider Trades) */}
+        <div id="ai-war-room" className="mb-6 sm:mb-8">
+          <AIWarRoom onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
+        </div>
+
+        {/* AI Investment Hypothesis */}
         <div id="ai-hypothesis" className="mb-6 sm:mb-8">
           <AIHypothesis onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
         </div>

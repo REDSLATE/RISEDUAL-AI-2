@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="1" skipped="0" tests="21" time="553.462" timestamp="2026-04-08T11:32:07.311258+00:00" hostname="agent-env-2eb0cc47-bb53-4d7f-9f83-1098068dc5e0"><testcase classname="backend.tests.test_war_room.TestWarRoomAuthentication" name="test_war_room_requires_auth" time="0.253" /><testcase classname="backend.tests.test_war_room.TestWarRoomAuthentication" name="test_war_room_with_invalid_token" time="0.124" /><testcase classname="backend.tests.test_war_room.TestWarRoomProRequirement" name="test_war_room_accessible_by_owner" time="30.775" /><testcase classname="backend.tests.test_war_room.TestWarRoomProRequirement" name="test_war_room_accessible_by_admin" time="25.996" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_symbol" time="28.009" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_composite_signal" time="28.889" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_composite_breakdown" time="29.744" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_overview" time="26.359" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_52_week_range" time="30.127" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_ai_score" time="27.039" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_earnings" time="28.982" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_earnings_quarterly_breakdown" time="26.182" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_insiders" time="25.282" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_insider_trades_list" time="28.078" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_patterns" time="60.608"><error message="failed on setup with &quot;requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=60)&quot;">/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:534: in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:571: in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:1415: in getresponse
+    response.begin()
+/usr/local/lib/python3.11/http/client.py:330: in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:291: in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/socket.py:718: in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1314: in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1166: in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:644: in send
+    resp = conn.urlopen(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:841: in urlopen
+    retries = retries.increment(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/retry.py:490: in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/util/util.py:39: in reraise
+    raise value
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:787: in urlopen
+    response = self._make_request(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:536: in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:367: in _raise_timeout
+    raise ReadTimeoutError(
+E   urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=60)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_war_room.py:93: in war_room_data
+    response = requests.get(f"{BASE_URL}/api/intelligence/war-room/AAPL", headers=headers, timeout=60)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:73: in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:59: in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:589: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:703: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:690: in send
+    raise ReadTimeout(e, request=request)
+E   requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=60)</error></testcase><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_brief" time="33.733" /><testcase classname="backend.tests.test_war_room.TestWarRoomDataStructure" name="test_war_room_has_generated_at" time="25.476" /><testcase classname="backend.tests.test_war_room.TestExistingEndpointsStillWork" name="test_hypothesis_endpoint_works" time="52.901" /><testcase classname="backend.tests.test_war_room.TestExistingEndpointsStillWork" name="test_intelligence_score_endpoint_works" time="10.102"><error message="failed on setup with &quot;requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=10)&quot;">/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:534: in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:571: in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:1415: in getresponse
+    response.begin()
+/usr/local/lib/python3.11/http/client.py:330: in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:291: in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/socket.py:718: in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1314: in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1166: in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:644: in send
+    resp = conn.urlopen(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:841: in urlopen
+    retries = retries.increment(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/retry.py:490: in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/util/util.py:39: in reraise
+    raise value
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:787: in urlopen
+    response = self._make_request(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:536: in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:367: in _raise_timeout
+    raise ReadTimeoutError(
+E   urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=10)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_war_room.py:223: in owner_token
+    response = requests.post(f"{BASE_URL}/api/auth/login", json={
+/root/.venv/lib/python3.11/site-packages/requests/api.py:115: in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:59: in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:589: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:703: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:690: in send
+    raise ReadTimeout(e, request=request)
+E   requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=10)</error></testcase><testcase classname="backend.tests.test_war_room.TestExistingEndpointsStillWork" name="test_intelligence_patterns_endpoint_works" time="20.407"><failure message="AssertionError: Patterns response missing 'patterns'&#10;assert 'patterns' in {'analysis': {'key_levels': {'resistance': [256.2, 258.9, 262.2, 274.9, 276.1], 'support': [253.2, 250.0, 248.0, 245.5]}, 'overall_bias': 'slightly_bullish', 'patterns': [{'confidence': 66, 'description': 'From the 2026-02-25/26 highs (~276) price sold off and continued to print lower highs into late March, with bounces repeatedly capped near the mid-250s while lows stepped down toward ~245-246, suggesting a short-term downward-sloping channel within a broader uptrend.', 'direction': 'bearish', 'name': 'Descending Channel (short-term)', ...}, {'confidence': 60, 'description': 'After the 2026-03-31 to 2026-04-06 push, the 2026-04-07 pullback created a lower high/low sequence that still sits above the 3/30 low (~245.51). The structure resembles a contracting, downward bias consolidation that often precedes an upside resolution when the primary trend is bullish.', 'direction': 'bullish', 'name': 'Falling Wedge (late-March to early-April)', ...}, {'confidence': 58, 'description': '2026-03-31 closed strongly up (C=253.79) after 2026-03-30 weakness (C=246.63), reclaiming the prior day’s range and initiating the early-April rebound.', 'direction': 'bullish', 'name': 'Bullish Engulfing (...~2026-03-20 and ~2026-03-27 price repeatedly rotated around ~251-253 with support near ~248-249 before breaking lower into 2026-03-30 (C=246.63), indicating a range that resolved downward.', 'direction': 'neutral', 'name': 'Range / Box Consolidation (mid- to late-March)', ...}, {'confidence': 52, 'description': 'A strong rebound from the 2026-03-30 low into 2026-04-06 (C=258.86) was followed by a sharp pullback on 2026-04-07 (C=253.50). If price stabilizes above SMA20 (~253.16) and holds above ~250-251, this can evolve into a flag-like consolidation within a bullish context.', 'direction': 'bullish', 'name': 'Potential Bull Flag (post 2026-03-31 impulse)', ...}], 'volume_analysis': 'Notable distribution days on 2026-02-27 (very high volume on a sharp drop) and 2026-03-20 (high volume selloff) suggest prior supply. The rebound phase into early April occurred on more moderate volume, while 2026-04-07 showed renewed heavier selling (62M), implying overhead supply near 256-262 and making 250-253 a key demand test.'}, 'analyzed_at': '2026-04-08T11:41:06.688139+00:00', 'symbol': 'AAPL', 'technicals': {'bb_lower': 245.37, 'bb_upper': 260.95, 'current_price': 253.5, 'macd': -1.6795, ...}}">backend/tests/test_war_room.py:254: in test_intelligence_patterns_endpoint_works
+    assert "patterns" in data, "Patterns response missing 'patterns'"
+E   AssertionError: Patterns response missing 'patterns'
+E   assert 'patterns' in {'analysis': {'key_levels': {'resistance': [256.2, 258.9, 262.2, 274.9, 276.1], 'support': [253.2, 250.0, 248.0, 245.5]}, 'overall_bias': 'slightly_bullish', 'patterns': [{'confidence': 66, 'description': 'From the 2026-02-25/26 highs (~276) price sold off and continued to print lower highs into late March, with bounces repeatedly capped near the mid-250s while lows stepped down toward ~245-246, suggesting a short-term downward-sloping channel within a broader uptrend.', 'direction': 'bearish', 'name': 'Descending Channel (short-term)', ...}, {'confidence': 60, 'description': 'After the 2026-03-31 to 2026-04-06 push, the 2026-04-07 pullback created a lower high/low sequence that still sits above the 3/30 low (~245.51). The structure resembles a contracting, downward bias consolidation that often precedes an upside resolution when the primary trend is bullish.', 'direction': 'bullish', 'name': 'Falling Wedge (late-March to early-April)', ...}, {'confidence': 58, 'description': '2026-03-31 closed strongly up (C=253.79) after 2026-03-30 weakness (C=246.63), reclaiming the prior day’s range and initiating the early-April rebound.', 'direction': 'bullish', 'name': 'Bullish Engulfing (...~2026-03-20 and ~2026-03-27 price repeatedly rotated around ~251-253 with support near ~248-249 before breaking lower into 2026-03-30 (C=246.63), indicating a range that resolved downward.', 'direction': 'neutral', 'name': 'Range / Box Consolidation (mid- to late-March)', ...}, {'confidence': 52, 'description': 'A strong rebound from the 2026-03-30 low into 2026-04-06 (C=258.86) was followed by a sharp pullback on 2026-04-07 (C=253.50). If price stabilizes above SMA20 (~253.16) and holds above ~250-251, this can evolve into a flag-like consolidation within a bullish context.', 'direction': 'bullish', 'name': 'Potential Bull Flag (post 2026-03-31 impulse)', ...}], 'volume_analysis': 'Notable distribution days on 2026-02-27 (very high volume on a sharp drop) and 2026-03-20 (high volume selloff) suggest prior supply. The rebound phase into early April occurred on more moderate volume, while 2026-04-07 showed renewed heavier selling (62M), implying overhead supply near 256-262 and making 250-253 a key demand test.'}, 'analyzed_at': '2026-04-08T11:41:06.688139+00:00', 'symbol': 'AAPL', 'technicals': {'bb_lower': 245.37, 'bb_upper': 260.95, 'current_price': 253.5, 'macd': -1.6795, ...}}</failure></testcase><testcase classname="backend.tests.test_war_room.TestExistingEndpointsStillWork" name="test_intelligence_brief_endpoint_works" time="14.057" /></testsuite></testsuites>

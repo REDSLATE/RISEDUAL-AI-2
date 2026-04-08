@@ -90,3 +90,30 @@ async def watchlist_intelligence(request: Request, refresh: bool = Query(False))
     except Exception as e:
         logger.error(f"Watchlist intelligence error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate watchlist intelligence. Try again.")
+
+
+
+@router.get("/intelligence/war-room/{symbol}")
+async def war_room(symbol: str, request: Request):
+    """AI War Room — unified command center analysis for a single stock."""
+    user = await get_current_user(request)
+    # Pro check
+    if not user.get("is_pro") and not user.get("role") in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="War Room requires a Pro subscription")
+    try:
+        from services.war_room_service import generate_war_room
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        result = await generate_war_room(symbol.upper(), api_key)
+
+        # Cache for 5 minutes
+        if db is not None:
+            await db.war_room_cache.update_one(
+                {"symbol": symbol.upper()},
+                {"$set": {**result, "cached_at": result["generated_at"]}},
+                upsert=True,
+            )
+
+        return result
+    except Exception as e:
+        logger.error(f"War Room error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="War Room analysis failed. Try again.")
