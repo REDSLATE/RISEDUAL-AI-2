@@ -31,14 +31,23 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. It requires real
 15. Full Auth (Register, Login, Brute Force Protection, Forgot/Reset Password)
 16. Admin Panel (Owner-only user management)
 17. PWA Support (Service Worker)
+18. **Real Broker Integrations** — Alpaca, Charles Schwab, Interactive Brokers
+
+## Broker Integration System
+- **Per-user API key storage** — Users enter their own broker credentials
+- **Encrypted at rest** — Fernet encryption derived from JWT_SECRET
+- **Supported brokers**: Alpaca (recommended, paper+live), Charles Schwab, Interactive Brokers
+- **Features**: Connect/disconnect, account dashboard (balance, cash, equity, buying power), view positions, view orders, place orders (market/limit/stop), cancel orders, portfolio sync to watchlist
+- **Backend routes**: `/api/broker/connect`, `/connections`, `/disconnect/{id}`, `/account/{id}`, `/positions/{id}`, `/orders/{id}`, `/order/{id}`, `/portfolio-sync/{id}`
+- **All broker HTTP calls** use `asyncio.to_thread` to prevent event loop blocking
 
 ## Authentication System
 - JWT-based (localStorage Bearer tokens due to K8s ingress CORS)
 - Bcrypt password hashing
 - Access tokens (15min) + Refresh tokens (7 days)
 - Brute force protection (5 attempts = 15min lockout)
-- **Forgot Password**: Email-based reset via Resend with 1-hour expiry tokens
-- **Password Reset**: Token-based reset with validation (min 6 chars)
+- Forgot Password: Email-based reset via Resend with 1-hour expiry tokens
+- Password Reset: Token-based reset with validation (min 6 chars)
 - Admin seeding on startup (admin + owner accounts)
 
 ## Database Collections
@@ -48,29 +57,32 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. It requires real
 - `strategies`: user_id, name, summary, is_public, clones
 - `password_reset_tokens`: token, user_id, expires_at, used (TTL index)
 - `login_attempts`: identifier, attempts, locked_until
+- `broker_connections`: user_id, broker_id, api_key_enc, api_secret_enc, paper, is_active, account_id
+- `trade_orders`: user_id, broker_id, symbol, side, qty, order_type, status
+- `portfolio_snapshots`: user_id, broker_id, positions[], total_value, synced_at
 
 ## Key API Endpoints
 - `POST /api/auth/login`, `/register`, `/logout`, `/me`, `/refresh`
 - `POST /api/auth/forgot-password`, `/reset-password`
 - `GET /api/auth/admin/users` (owner-only)
+- `POST /api/broker/connect`, `GET /api/broker/connections`, `DELETE /api/broker/disconnect/{id}`
+- `GET /api/broker/account/{id}`, `/positions/{id}`, `/orders/{id}`
+- `POST /api/broker/order/{id}`, `DELETE /api/broker/order/{id}/{order_id}`
+- `GET /api/broker/portfolio-sync/{id}`
 - `GET /api/research/{symbol}`
 - `POST /api/chat`
 - `POST /api/subscription/create-checkout-session`
-- `POST /api/strategy/publish`
 
 ## What's Remaining (Prioritized Backlog)
 
-### P1 - Real Broker Integrations
-Replace mock Alpaca/Interactive Brokers trading endpoints with real authenticated OAuth flows. Users should be able to connect their own brokerage accounts.
-
-### P2 - Deployment
+### P1 - Deployment
 Deploy to user's GoDaddy domain (`risedual.ai`). Determine whether to use Emergent deployment or self-host.
 
-### P3 - Alpha Vantage Upgrade
+### P2 - Alpha Vantage Upgrade
 Handle API limit upgrades when user moves from free tier (5 calls/min).
 
-### P4 - Server Refactoring
+### P3 - Server Refactoring
 Break down `server.py` entirely into modular `routes/` directory.
 
 ## Last Updated
-- **Feb 2026**: Implemented Forgot Password flow (email form, Resend integration, reset token, frontend modals)
+- **Feb 2026**: Implemented Forgot Password flow + Real Broker Integrations (Alpaca, Schwab, IBKR)
