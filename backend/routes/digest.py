@@ -61,13 +61,15 @@ async def preview_digest(request: Request):
     if user.get("role") not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    from services.digest_service import collect_digest_data, build_digest_html
+    from services.digest_service import collect_digest_data, build_digest_html, get_user_watchlist_intel
     data = await collect_digest_data(db)
     is_pro = user.get("subscription_status") in ("pro", "trial")
     name = user.get("name", user.get("email", "").split("@")[0])
-    html = build_digest_html(data, is_pro, name)
+    wl_intel = await get_user_watchlist_intel(db, user.get("_id"))
+    html = build_digest_html(data, is_pro, name, watchlist_intel=wl_intel)
     return {"html": html, "data_summary": {
         "predictions": len(data["predictions"]),
         "dark_pool": len(data["dark_pool"]),
         "signals": len(data["signals"]),
+        "has_watchlist_intel": wl_intel is not None,
     }}

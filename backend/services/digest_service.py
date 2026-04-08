@@ -1,6 +1,7 @@
 """Daily digest email service - collects market data and sends morning briefing."""
 import logging
 import asyncio
+import resend
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -59,6 +60,18 @@ async def collect_digest_data(db) -> Dict:
     return data
 
 
+async def get_user_watchlist_intel(db, user_id) -> Optional[Dict]:
+    """Get cached watchlist intelligence for a user, if available."""
+    try:
+        cache_key = f"wl_intel_{user_id}"
+        cached = await db.watchlist_intelligence.find_one({"cache_key": cache_key}, {"_id": 0})
+        if cached and cached.get("data"):
+            return cached["data"]
+    except Exception as e:
+        logger.warning(f"Digest: error fetching watchlist intel for {user_id}: {e}")
+    return None
+
+
 def _row(label: str, value: str, color: str = "#ffffff") -> str:
     return f"""<tr>
 <td style="padding:8px 12px;border-bottom:1px solid #334155;color:#94A3B8;font-size:12px;">{label}</td>
@@ -106,7 +119,7 @@ def _signal_row(s):
     return _row(s["ticker"], f"{s['signal']} ({s['strength']})")
 
 
-def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
+def build_digest_html(data: Dict, is_pro: bool, user_name: str, watchlist_intel: Optional[Dict] = None) -> str:
     """Build the digest HTML email. Pro users get full data, free users get teaser."""
     date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
 
@@ -117,9 +130,14 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
     upgrade_cta = "" if is_pro else _upgrade_cta_html()
     no_data_msg = '<tr><td colspan="2" style="padding:12px;color:#64748B;font-size:12px;text-align:center;">No recent data available</td></tr>'
 
+    # Build watchlist intelligence section
+    wl_section = _build_watchlist_section(watchlist_intel, is_pro) if watchlist_intel else ""
+
     content = f"""
 <h2 style="color:#ffffff;font-size:20px;margin:0 0 4px;font-weight:600;">Good Morning, {user_name}</h2>
 <p style="color:#64748B;font-size:12px;margin:0 0 20px;">{date_str} — Daily Market Digest</p>
+
+{wl_section}
 
 <!-- AI Predictions -->
 <p style="color:#0052FF;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">AI Market Predictions</p>
@@ -148,6 +166,106 @@ def build_digest_html(data: Dict, is_pro: bool, user_name: str) -> str:
 </table>"""
 
     return _base_email_html(content)
+
+
+def _build_watchlist_section(wl_data: Dict, is_pro: bool) -> str:
+    """Build the Watchlist Intelligence section for the digest email."""
+    summary = wl_data.get("summary", {})
+    tickers = wl_data.get("tickers", [])
+    alerts = wl_data.get("alerts", [])
+    top_movers = wl_data.get("top_movers", [])
+
+    if not tickers:
+        return ""
+
+    health = summary.get("health_score", 0)
+    health_color = "#10B981" if health >= 70 else "#F59E0B" if health >= 40 else "#EF4444"
+
+    # Health Score + Summary
+    html = f"""
+<!-- Watchlist Intelligence -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#7C3AED20,#4F46E520);border-radius:12px;border:1px solid #7C3AED40;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td><p style="color:#A78BFA;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Your Watchlist Intelligence</p>
+<p style="color:#ffffff;font-size:16px;margin:0;font-weight:700;">{summary.get('headline', 'Watchlist Summary')}</p></td>
+<td style="text-align:right;vertical-align:top;">
+<table cellpadding="0" cellspacing="0"><tr>
+<td style="background-color:{health_color};border-radius:8px;padding:6px 12px;">
+<span style="color:#ffffff;font-size:14px;font-weight:700;">{health}</span>
+<span style="color:rgba(255,255,255,0.7);font-size:9px;"> Health</span>
+</td></tr></table></td>
+</tr>
+</table>
+<p style="color:#94A3B8;font-size:12px;margin:8px 0 0;line-height:1.5;">{summary.get('outlook', '')}</p>
+</td></tr></table>
+"""
+
+    # Alerts (high priority first)
+    high_alerts = [a for a in alerts if a.get("severity") == "high"]
+    if high_alerts:
+        alert_rows = ""
+        for a in high_alerts[:3]:
+            alert_rows += f"""<tr>
+<td style="padding:8px 12px;border-bottom:1px solid #334155;">
+<span style="color:#ffffff;font-size:12px;font-weight:600;">{a.get('symbol','')}</span>
+<span style="color:#F59E0B;font-size:10px;"> {a.get('type','').replace('_',' ').upper()}</span>
+</td>
+<td style="padding:8px 12px;border-bottom:1px solid #334155;color:#FCD34D;font-size:11px;">{a.get('message','')}</td>
+</tr>"""
+
+        html += f"""
+<p style="color:#F59E0B;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Watchlist Alerts</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:10px;border:1px solid #F59E0B30;margin-bottom:16px;">
+{alert_rows}
+</table>
+"""
+
+    # Ticker Scores Grid
+    ticker_rows = ""
+    for i, t in enumerate(tickers[:6]):
+        if not is_pro and i >= 2:
+            ticker_rows += _blurred_row()
+            continue
+        score = t.get("score", 0)
+        verdict = (t.get("verdict", "hold") or "hold").upper()
+        score_color = "#10B981" if score >= 7 else "#F59E0B" if score >= 4 else "#EF4444"
+        verdict_color = "#10B981" if verdict == "BUY" else "#EF4444" if verdict == "SELL" else "#F59E0B"
+        one_liner = t.get("one_liner", "")
+        ticker_rows += f"""<tr>
+<td style="padding:10px 12px;border-bottom:1px solid #334155;">
+<span style="color:#ffffff;font-size:13px;font-weight:700;">{t.get('symbol','')}</span>
+<span style="color:{score_color};font-size:13px;font-weight:800;margin-left:8px;">{score}/10</span>
+<span style="display:inline-block;background-color:{verdict_color}20;color:{verdict_color};font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;">{verdict}</span>
+</td>
+<td style="padding:10px 12px;border-bottom:1px solid #334155;color:#94A3B8;font-size:11px;text-align:right;">{one_liner}</td>
+</tr>"""
+
+    html += f"""
+<p style="color:#A78BFA;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Ticker Scores</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:10px;border:1px solid #334155;margin-bottom:16px;">
+{ticker_rows}
+</table>
+"""
+
+    # Top Movers
+    if top_movers:
+        mover_pills = ""
+        for m in top_movers[:3]:
+            pct = m.get("change_pct", 0)
+            mc = "#10B981" if pct >= 0 else "#EF4444"
+            sign = "+" if pct >= 0 else ""
+            mover_pills += f'<td style="padding:4px 8px;"><span style="color:#ffffff;font-size:12px;font-weight:600;">{m.get("symbol","")}</span> <span style="color:{mc};font-size:12px;font-weight:700;">{sign}{pct}%</span></td>'
+
+        html += f"""
+<p style="color:#06B6D4;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Top Movers</p>
+<table cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:10px;border:1px solid #334155;margin-bottom:20px;">
+<tr>{mover_pills}</tr>
+</table>
+"""
+
+    return html
 
 
 def _upgrade_cta_html():
@@ -193,32 +311,38 @@ def _base_email_html(content: str) -> str:
 
 async def send_daily_digest(db):
     """Main entry: collect data, loop through users, send digest emails."""
-    from services.email_service import _is_configured, SENDER_EMAIL, APP_NAME as EMAIL_APP_NAME
-    import resend
+    from services.email_service import _is_configured, SENDER_EMAIL
 
     if not _is_configured():
         logger.info("Daily digest skipped: Resend API key not configured")
         return {"sent": 0, "skipped": True, "reason": "no_api_key"}
 
-    # Collect digest data
+    # Collect generic digest data
     data = await collect_digest_data(db)
     logger.info(f"Digest data collected: {len(data['predictions'])} predictions, {len(data['dark_pool'])} dark pool, {len(data['signals'])} signals")
 
     sent_count = 0
     error_count = 0
+    wl_count = 0
 
     # Get all users who haven't opted out
     cursor = db.users.find(
         {"digest_opt_out": {"$ne": True}, "is_active": {"$ne": False}},
-        {"_id": 0, "email": 1, "name": 1, "subscription_status": 1}
+        {"email": 1, "name": 1, "subscription_status": 1}
     )
 
     async for user in cursor:
         email = user.get("email", "")
         name = user.get("name", email.split("@")[0])
         is_pro = user.get("subscription_status") in ("pro", "trial")
+        user_id = user.get("_id")
 
-        html = build_digest_html(data, is_pro, name)
+        # Get cached watchlist intelligence for this user
+        wl_intel = await get_user_watchlist_intel(db, user_id) if user_id else None
+        if wl_intel and wl_intel.get("tickers"):
+            wl_count += 1
+
+        html = build_digest_html(data, is_pro, name, watchlist_intel=wl_intel)
         subject = f"Your Morning Market Briefing — {datetime.now(timezone.utc).strftime('%b %d')}"
 
         try:
@@ -229,10 +353,10 @@ async def send_daily_digest(db):
                 "html": html,
             })
             sent_count += 1
-            logger.info(f"Digest sent to {email} (pro={is_pro})")
+            logger.info(f"Digest sent to {email} (pro={is_pro}, wl={'yes' if wl_intel else 'no'})")
         except Exception as e:
             error_count += 1
             logger.error(f"Digest send failed for {email}: {e}")
 
-    logger.info(f"Daily digest complete: {sent_count} sent, {error_count} errors")
-    return {"sent": sent_count, "errors": error_count, "skipped": False}
+    logger.info(f"Daily digest complete: {sent_count} sent, {error_count} errors, {wl_count} with watchlist intel")
+    return {"sent": sent_count, "errors": error_count, "skipped": False, "with_watchlist": wl_count}

@@ -124,6 +124,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+
+async def _pregen_watchlist_intel(database):
+    """Pre-generate watchlist intelligence for all users with watchlists (runs 5:30 AM UTC)."""
+    try:
+        import os
+        from services.watchlist_intelligence_service import generate_watchlist_summary
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        count = 0
+        cursor = database.watchlists.find({"tickers": {"$exists": True, "$ne": []}})
+        async for wl_doc in cursor:
+            user_id = wl_doc.get("user_id")
+            tickers = wl_doc.get("tickers", [])
+            if not tickers or not user_id:
+                continue
+            try:
+                await generate_watchlist_summary(api_key, tickers, db=database, user_id=user_id)
+                count += 1
+                logger.info(f"Pre-generated watchlist intel for user {user_id} ({len(tickers)} tickers)")
+            except Exception as e:
+                logger.warning(f"Failed to pre-generate watchlist intel for {user_id}: {e}")
+        logger.info(f"Watchlist intelligence pre-generation complete: {count} users processed")
+    except Exception as e:
+        logger.error(f"Watchlist pre-generation failed: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     # Pass db reference to all route modules that need it
@@ -140,14 +164,15 @@ async def startup_event():
     set_strategy_db(db)
     set_intelligence_db(db)
 
-    # Start daily digest scheduler (6:00 AM UTC)
+    # Start daily digest scheduler (6:00 AM UTC) + watchlist pre-gen (5:30 AM UTC)
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from services.digest_service import send_daily_digest
         scheduler = AsyncIOScheduler()
         scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
+        scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
         scheduler.start()
-        logger.info("Daily digest scheduler started (6:00 AM UTC)")
+        logger.info("Daily digest scheduler started (6:00 AM UTC), watchlist pre-gen (5:30 AM UTC)")
     except Exception as e:
         logger.warning(f"Digest scheduler setup failed: {e}")
 
