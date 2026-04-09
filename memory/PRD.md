@@ -101,7 +101,6 @@ Deploy to user's GoDaddy domain (`risedual.ai`). Determine whether to use Emerge
 Handle API limit upgrades when user moves from free tier (5 calls/min).
 
 ### P3 - Future Features
-- Additional broker integrations (Webull, Robinhood)
 - Advanced charting for Sector Heatmap
 
 ## Completed Features (Apr 2026 — Session 2)

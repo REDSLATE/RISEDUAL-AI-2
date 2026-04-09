@@ -311,6 +311,371 @@ class IBKRTradingService:
             return False
 
 
+class MooMooTradingService:
+    """MooMoo (Futu) — OpenAPI REST trading. Uses App Token from developer portal."""
+
+    def __init__(self, api_key: str, api_secret: str, **kwargs):
+        self.app_token = api_key
+        self.account_id = api_secret
+        self.base_url = "https://openapi.moomoo.com"
+        self.headers = {
+            "Authorization": f"Bearer {self.app_token}",
+            "Content-Type": "application/json",
+        }
+
+    def get_account(self) -> Optional[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/v1/account/list",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            accounts = data.get("data", {}).get("accounts", [])
+            if accounts:
+                acc = accounts[0]
+                return {
+                    "account_number": acc.get("accountId", self.account_id),
+                    "cash": acc.get("cashBalance", 0),
+                    "buying_power": acc.get("buyingPower", 0),
+                    "equity": acc.get("netAssets", 0),
+                    "portfolio_value": acc.get("totalMarketValue", 0),
+                }
+            return {"account_number": self.account_id, "cash": 0, "buying_power": 0, "equity": 0, "portfolio_value": 0}
+        except Exception as e:
+            logger.error(f"MooMoo get_account error: {e}")
+            return None
+
+    def get_positions(self) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/v1/account/{self.account_id}/positions",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            positions = []
+            for p in r.json().get("data", {}).get("positions", []):
+                positions.append({
+                    "symbol": p.get("ticker", {}).get("symbol", ""),
+                    "qty": abs(float(p.get("quantity", 0))),
+                    "side": "long" if float(p.get("quantity", 0)) > 0 else "short",
+                    "avg_entry_price": float(p.get("avgCost", 0)),
+                    "current_price": float(p.get("lastPrice", 0)),
+                    "market_value": float(p.get("marketValue", 0)),
+                    "unrealized_pl": float(p.get("unrealizedPnL", 0)),
+                    "unrealized_plpc": float(p.get("unrealizedPnLPercent", 0)),
+                })
+            return positions
+        except Exception as e:
+            logger.error(f"MooMoo get_positions error: {e}")
+            return []
+
+    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+        try:
+            data = {
+                "accountId": self.account_id,
+                "ticker": {"market": "US", "symbol": symbol.upper()},
+                "side": "BUY" if side.lower() == "buy" else "SELL",
+                "orderType": "MARKET" if order_type == "market" else "LIMIT",
+                "quantity": str(int(qty)),
+                "timeInForce": time_in_force.upper(),
+            }
+            if limit_price and order_type != "market":
+                data["limitPrice"] = str(limit_price)
+            r = requests.post(f"{self.base_url}/v1/trade/order",
+                              headers=self.headers, json=data, timeout=10)
+            r.raise_for_status()
+            result = r.json().get("data", {})
+            return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
+        except Exception as e:
+            logger.error(f"MooMoo place_order error: {e}")
+            return None
+
+    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/v1/account/{self.account_id}/orders",
+                             headers=self.headers, params={"limit": limit}, timeout=10)
+            r.raise_for_status()
+            return r.json().get("data", {}).get("orders", [])
+        except Exception as e:
+            logger.error(f"MooMoo get_orders error: {e}")
+            return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        try:
+            r = requests.delete(f"{self.base_url}/v1/trade/order/{order_id}",
+                                headers=self.headers, timeout=10)
+            r.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"MooMoo cancel_order error: {e}")
+            return False
+
+
+class WebullTradingService:
+    """Webull — REST API trading. Uses Access Token + Device ID."""
+
+    def __init__(self, api_key: str, api_secret: str, **kwargs):
+        self.access_token = api_key
+        self.device_id = api_secret
+        self.trade_url = "https://tradeapi.webullbroker.com/api/trade"
+        self.user_url = "https://userapi.webull.com/api"
+        self.headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "did": self.device_id,
+            "Content-Type": "application/json",
+        }
+        self._account_id = None
+
+    def _get_account_id(self) -> str:
+        if self._account_id:
+            return self._account_id
+        try:
+            r = requests.get(f"{self.trade_url}/account/getSecAccountList/v5",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, list) and data:
+                self._account_id = str(data[0].get("secAccountId", ""))
+            elif isinstance(data, dict):
+                accounts = data.get("data", data.get("accounts", []))
+                if accounts:
+                    self._account_id = str(accounts[0].get("secAccountId", ""))
+        except Exception as e:
+            logger.error(f"Webull get_account_id error: {e}")
+        return self._account_id or ""
+
+    def get_account(self) -> Optional[Dict]:
+        try:
+            acc_id = self._get_account_id()
+            r = requests.get(f"{self.trade_url}/v5/home/{acc_id}",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            return {
+                "account_number": acc_id,
+                "id": acc_id,
+                "cash": float(data.get("cashBalance", data.get("usableCash", 0))),
+                "buying_power": float(data.get("dayBuyingPower", data.get("usableCash", 0))),
+                "equity": float(data.get("netLiquidation", data.get("totalMarketValue", 0))),
+                "portfolio_value": float(data.get("totalMarketValue", data.get("accountMembers", {}).get("totalMarketValue", 0))),
+            }
+        except Exception as e:
+            logger.error(f"Webull get_account error: {e}")
+            return None
+
+    def get_positions(self) -> List[Dict]:
+        try:
+            acc_id = self._get_account_id()
+            r = requests.get(f"{self.trade_url}/v5/home/{acc_id}",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            positions = []
+            for p in r.json().get("positions", []):
+                positions.append({
+                    "symbol": p.get("ticker", {}).get("symbol", p.get("symbol", "")),
+                    "qty": abs(float(p.get("position", p.get("quantity", 0)))),
+                    "side": "long" if float(p.get("position", p.get("quantity", 0))) > 0 else "short",
+                    "avg_entry_price": float(p.get("costPrice", p.get("avgCost", 0))),
+                    "current_price": float(p.get("lastPrice", p.get("marketPrice", 0))),
+                    "market_value": float(p.get("marketValue", 0)),
+                    "unrealized_pl": float(p.get("unrealizedProfitLoss", 0)),
+                    "unrealized_plpc": float(p.get("unrealizedProfitLossRate", 0)),
+                })
+            return positions
+        except Exception as e:
+            logger.error(f"Webull get_positions error: {e}")
+            return []
+
+    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+        try:
+            acc_id = self._get_account_id()
+            data = {
+                "action": side.upper(),
+                "orderType": "MKT" if order_type == "market" else "LMT",
+                "quantity": int(qty),
+                "timeInForce": time_in_force.upper(),
+                "tickerId": symbol.upper(),
+            }
+            if limit_price and order_type != "market":
+                data["lmtPrice"] = float(limit_price)
+            if stop_price:
+                data["auxPrice"] = float(stop_price)
+            r = requests.post(f"{self.trade_url}/order/{acc_id}/place",
+                              headers=self.headers, json=data, timeout=10)
+            r.raise_for_status()
+            result = r.json()
+            return {"id": str(result.get("orderId", "")), "status": "submitted", "symbol": symbol}
+        except Exception as e:
+            logger.error(f"Webull place_order error: {e}")
+            return None
+
+    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+        try:
+            acc_id = self._get_account_id()
+            r = requests.get(f"{self.trade_url}/v2/option/list",
+                             headers=self.headers, params={"secAccountId": acc_id, "count": limit}, timeout=10)
+            r.raise_for_status()
+            return r.json() if isinstance(r.json(), list) else r.json().get("data", [])
+        except Exception as e:
+            logger.error(f"Webull get_orders error: {e}")
+            return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        try:
+            acc_id = self._get_account_id()
+            r = requests.post(f"{self.trade_url}/order/{acc_id}/cancel/{order_id}",
+                              headers=self.headers, timeout=10)
+            r.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Webull cancel_order error: {e}")
+            return False
+
+
+class RobinhoodTradingService:
+    """Robinhood — REST API trading. Uses OAuth Bearer Token."""
+
+    def __init__(self, api_key: str, api_secret: str, **kwargs):
+        self.access_token = api_key
+        self.account_url = api_secret if api_secret.startswith("http") else ""
+        self.base_url = "https://api.robinhood.com"
+        self.headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        self._account_id = None
+        self._account_url = self.account_url or None
+
+    def _get_account_url(self) -> str:
+        if self._account_url:
+            return self._account_url
+        try:
+            r = requests.get(f"{self.base_url}/accounts/",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            results = r.json().get("results", [])
+            if results:
+                self._account_url = results[0].get("url", "")
+                self._account_id = results[0].get("account_number", "")
+            return self._account_url or ""
+        except Exception as e:
+            logger.error(f"Robinhood get_account_url error: {e}")
+            return ""
+
+    def get_account(self) -> Optional[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/accounts/",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            results = r.json().get("results", [])
+            if results:
+                acc = results[0]
+                portfolio_r = requests.get(f"{self.base_url}/portfolios/{acc.get('account_number', '')}/",
+                                           headers=self.headers, timeout=10)
+                portfolio = portfolio_r.json() if portfolio_r.ok else {}
+                return {
+                    "account_number": acc.get("account_number", "N/A"),
+                    "id": acc.get("account_number", ""),
+                    "cash": float(acc.get("cash", 0)),
+                    "buying_power": float(acc.get("buying_power", 0)),
+                    "equity": float(portfolio.get("equity", acc.get("portfolio_cash", 0))),
+                    "portfolio_value": float(portfolio.get("market_value", 0)),
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Robinhood get_account error: {e}")
+            return None
+
+    def get_positions(self) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/positions/?nonzero=true",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            positions = []
+            for p in r.json().get("results", []):
+                qty = float(p.get("quantity", 0))
+                if qty == 0:
+                    continue
+                # Resolve instrument to get symbol
+                symbol = ""
+                instrument_url = p.get("instrument", "")
+                if instrument_url:
+                    try:
+                        instr_r = requests.get(instrument_url, headers=self.headers, timeout=5)
+                        if instr_r.ok:
+                            symbol = instr_r.json().get("symbol", "")
+                    except Exception:
+                        pass
+                positions.append({
+                    "symbol": symbol,
+                    "qty": qty,
+                    "side": "long",
+                    "avg_entry_price": float(p.get("average_buy_price", 0)),
+                    "current_price": 0,
+                    "market_value": 0,
+                    "unrealized_pl": 0,
+                    "unrealized_plpc": 0,
+                })
+            return positions
+        except Exception as e:
+            logger.error(f"Robinhood get_positions error: {e}")
+            return []
+
+    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+        try:
+            # Resolve instrument URL
+            instr_r = requests.get(f"{self.base_url}/instruments/?symbol={symbol.upper()}",
+                                   headers=self.headers, timeout=10)
+            instr_r.raise_for_status()
+            instruments = instr_r.json().get("results", [])
+            if not instruments:
+                return None
+            instrument_url = instruments[0].get("url", "")
+            account_url = self._get_account_url()
+            data = {
+                "account": account_url,
+                "instrument": instrument_url,
+                "symbol": symbol.upper(),
+                "quantity": int(qty),
+                "side": side.lower(),
+                "type": order_type.lower(),
+                "time_in_force": "gfd" if time_in_force == "day" else time_in_force,
+                "trigger": "immediate",
+            }
+            if limit_price:
+                data["price"] = str(limit_price)
+            if stop_price:
+                data["stop_price"] = str(stop_price)
+            r = requests.post(f"{self.base_url}/orders/",
+                              headers=self.headers, json=data, timeout=10)
+            r.raise_for_status()
+            result = r.json()
+            return {"id": result.get("id", ""), "status": result.get("state", "submitted"), "symbol": symbol}
+        except Exception as e:
+            logger.error(f"Robinhood place_order error: {e}")
+            return None
+
+    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/orders/",
+                             headers=self.headers, params={"page_size": limit}, timeout=10)
+            r.raise_for_status()
+            return r.json().get("results", [])
+        except Exception as e:
+            logger.error(f"Robinhood get_orders error: {e}")
+            return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        try:
+            r = requests.post(f"{self.base_url}/orders/{order_id}/cancel/",
+                              headers=self.headers, timeout=10)
+            r.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Robinhood cancel_order error: {e}")
+            return False
+
+
 class BrokerService:
     """Factory for broker clients."""
 
@@ -342,6 +707,33 @@ class BrokerService:
             "has_paper": False,
             "signup_url": "https://www.interactivebrokers.com",
         },
+        "moomoo": {
+            "name": "MooMoo",
+            "class": "MooMooTradingService",
+            "key_label": "App Token",
+            "secret_label": "Account ID",
+            "docs_url": "https://openapi.moomoo.com/docs",
+            "has_paper": True,
+            "signup_url": "https://www.moomoo.com/us/openapi",
+        },
+        "webull": {
+            "name": "Webull",
+            "class": "WebullTradingService",
+            "key_label": "Access Token",
+            "secret_label": "Device ID",
+            "docs_url": "https://www.webull.com/trading-api",
+            "has_paper": True,
+            "signup_url": "https://www.webull.com",
+        },
+        "robinhood": {
+            "name": "Robinhood",
+            "class": "RobinhoodTradingService",
+            "key_label": "OAuth Token",
+            "secret_label": "Account URL (optional)",
+            "docs_url": "https://robinhood.com/us/en/about/api",
+            "has_paper": False,
+            "signup_url": "https://robinhood.com",
+        },
     }
 
     @staticmethod
@@ -359,6 +751,21 @@ class BrokerService:
             )
         elif broker_id == "ibkr":
             return IBKRTradingService(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+            )
+        elif broker_id == "moomoo":
+            return MooMooTradingService(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+            )
+        elif broker_id == "webull":
+            return WebullTradingService(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+            )
+        elif broker_id == "robinhood":
+            return RobinhoodTradingService(
                 api_key=credentials.get("api_key", ""),
                 api_secret=credentials.get("api_secret", ""),
             )
