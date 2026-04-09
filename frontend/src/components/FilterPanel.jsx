@@ -110,7 +110,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
+                  <SelectContent className="bg-[#0F172A] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="all" className="text-white">All</SelectItem>
                     <SelectItem value="bullish" className="text-white">Bullish</SelectItem>
                     <SelectItem value="bearish" className="text-white">Bearish</SelectItem>
@@ -128,7 +128,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
+                  <SelectContent className="bg-[#0F172A] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="today" className="text-white">Today</SelectItem>
                     <SelectItem value="week" className="text-white">This Week</SelectItem>
                     <SelectItem value="month" className="text-white">This Month</SelectItem>

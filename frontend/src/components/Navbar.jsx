@@ -70,7 +70,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="platform-menu">
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
+            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-hypothesis')}>AI Hypothesis</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-radar')}>AI Options Radar</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-flow')}>Options Flow Screener</DropdownMenuItem>
@@ -87,7 +87,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="strategies-menu">
               Strategies <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
+            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('momentum')}>Momentum Close Strength</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('fast-movers')}>Fast Mover Calls</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('unusual-volume')}>Unusual Options Volume</DropdownMenuItem>
@@ -101,7 +101,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="education-menu">
               Education <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
+            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={openChat}>Ask RISEDUAL AI</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('market-prediction')}>Market Analysis</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-radar')}>Options Guide</DropdownMenuItem>
@@ -112,7 +112,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="resources-menu">
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60]">
+            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('company-research')}>Company Research</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('market-prediction')}>AI Market Predictions</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
@@ -137,7 +137,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                   {(user.name || user.email || '?')[0].toUpperCase()}
                 </div>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-slate-800 border-slate-700 z-[60] min-w-[200px]">
+              <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60 min-w-[200px]">
                 <div className="px-3 py-2 border-b border-slate-700">
                   <p className="text-white text-sm font-medium">{user.name || user.email}</p>
                   <p className="text-slate-400 text-xs">{user.email}</p>

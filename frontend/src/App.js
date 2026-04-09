@@ -89,11 +89,11 @@ function AppContent() {
           <AIWarRoom onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
         </div>
 
-        <div id="ai-hypothesis" className="mb-6 sm:mb-8 animate-enter">
+        <div id="ai-hypothesis" className="mb-6 sm:mb-8 animate-enter relative z-20">
           <AIHypothesis onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
         </div>
 
-        <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter">
+        <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter relative z-10">
           <AIIntelligence onSubscribe={() => setShowSubscription(true)} />
         </div>
 
