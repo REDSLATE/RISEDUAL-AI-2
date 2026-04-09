@@ -10,7 +10,7 @@ export const useAuth = () => useContext(AuthContext);
 // credentials: 'include' ensures cookies are sent with every request.
 // NOTE: AbortController.signal removed — causes "postMessage clone" errors
 //       with service workers and deployment proxies. Using Promise.race for timeout.
-export const authFetch = async (url, options = {}, retries = 3) => {
+export const authFetch = async (url, options = {}, retries = 3, timeoutMs = 90000) => {
   const headers = { ...options.headers };
   if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
@@ -20,7 +20,7 @@ export const authFetch = async (url, options = {}, retries = 3) => {
     try {
       const res = await Promise.race([
         fetch(url, { ...options, headers, credentials: 'include' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 30000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), timeoutMs)),
       ]);
       if (res.status === 502 && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));
@@ -35,12 +35,12 @@ export const authFetch = async (url, options = {}, retries = 3) => {
 };
 
 // Plain fetch with retry and credentials
-const fetchWithRetry = async (url, opts, retries = 3) => {
+const fetchWithRetry = async (url, opts, retries = 3, timeoutMs = 90000) => {
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await Promise.race([
         fetch(url, { ...opts, credentials: 'include' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 30000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), timeoutMs)),
       ]);
       if (res.status === 502 && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));

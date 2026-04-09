@@ -47,7 +47,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
       }
       setData(await res.json());
     } catch (err) {
-      if (error !== 'pro_required') setError(err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
