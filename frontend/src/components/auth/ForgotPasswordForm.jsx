@@ -20,7 +20,7 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
       const res = await fetch(`${API}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, origin_url: window.location.origin }),
       });
       if (!res.ok) {
         const data = await res.json();

@@ -195,10 +195,10 @@ If the button doesn't work, copy and paste this link into your browser:
     return _base_html(content)
 
 
-async def send_password_reset_email(user_email: str, reset_token: str):
+async def send_password_reset_email(user_email: str, reset_token: str, origin_url: str = None):
     """Send a password reset email with a secure link."""
-    frontend_url = os.environ.get('FRONTEND_URL', APP_URL)
-    reset_url = f"{frontend_url}?reset_token={reset_token}"
+    base_url = origin_url or os.environ.get('FRONTEND_URL', APP_URL)
+    reset_url = f"{base_url}?reset_token={reset_token}"
     if not _is_configured():
         logger.info(f"Email skipped (no API key): password reset to {user_email}")
         logger.info(f"[PASSWORD RESET LINK] {reset_url}")

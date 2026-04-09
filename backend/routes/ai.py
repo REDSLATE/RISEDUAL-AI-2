@@ -139,7 +139,7 @@ async def get_market_signals(request: Request):
     if not is_pro_user(user):
         return {"signals": [], "is_pro": False}
     cursor = db.market_signals.find(
-        {"user_id": user["_id"]}, {"_id": 0}
+        {"user_id": user["_id"]}, {"_id": 0, "symbol": 1, "signal_type": 1, "direction": 1, "confidence": 1, "detected_at": 1, "message": 1}
     ).sort("detected_at", -1).limit(20)
     signals = []
     async for doc in cursor:

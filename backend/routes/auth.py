@@ -4,6 +4,7 @@ import bcrypt
 import jwt
 import secrets
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
@@ -113,6 +114,7 @@ class LoginRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+    origin_url: Optional[str] = None
 
 class ResetPasswordRequest(BaseModel):
     token: str
@@ -239,7 +241,7 @@ async def forgot_password(req: ForgotPasswordRequest):
     # Send the reset email via Resend
     try:
         from services.email_service import send_password_reset_email
-        await send_password_reset_email(email, token)
+        await send_password_reset_email(email, token, origin_url=req.origin_url)
     except Exception as e:
         logging.error(f"Failed to send password reset email: {e}")
     return {"message": "If that email exists, a reset link has been sent."}
