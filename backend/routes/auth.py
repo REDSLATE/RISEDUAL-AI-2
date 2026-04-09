@@ -39,8 +39,11 @@ def create_refresh_token(user_id: str) -> str:
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=is_secure, samesite="lax", max_age=900, path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_secure, samesite="lax", max_age=604800, path="/")
+    # SameSite=none allows cookies on cross-origin requests (deployed domain ≠ preview domain).
+    # Requires Secure=True (HTTPS). HttpOnly prevents JS access; CSRF mitigated by POST-only mutations.
+    samesite_val = "none" if is_secure else "lax"
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=604800, path="/")
 
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
@@ -226,7 +229,8 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="User not found")
         access = create_access_token(str(user["_id"]), user["email"])
         is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
-        response.set_cookie(key="access_token", value=access, httponly=True, secure=is_secure, samesite="lax", max_age=900, path="/")
+        samesite_val = "none" if is_secure else "lax"
+        response.set_cookie(key="access_token", value=access, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
         return {"access_token": access}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
