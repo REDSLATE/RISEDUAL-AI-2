@@ -130,7 +130,9 @@ Handle API limit upgrades when user moves from free tier (5 calls/min).
 - **REFACTORING**: Extracted `_sync_watchlist`, `_store_portfolio_snapshot` from `portfolio_sync` in broker.py; parallelized broker API calls with `asyncio.gather`
 
 ## Bug Fixes (Apr 2026)
-- **CRITICAL FIX**: Resolved "Failed to execute 'postMessage' on 'Window': Request object could not be cloned" error that broke ALL AI features (War Room, Intelligence Hub, Hypothesis, Market Predictions). Root cause: `AbortController.signal` is non-structured-cloneable and the build service worker's fetch handler was triggering clone attempts. Fix: Replaced `AbortController.signal` with `Promise.race` timeout in `authFetch`/`fetchWithRetry`, removed fetch handler from service-worker.js (v3), added `reg.update()` to force-update stale SWs.
+- **CRITICAL FIX**: Resolved "Failed to execute 'postMessage' on 'Window': Request object could not be cloned" error that broke ALL AI features. Root cause: `AbortController.signal` is non-structured-cloneable. Fix: Replaced with `Promise.race` timeout (90s default), removed fetch handler from service-worker.js (v3).
+- **CRITICAL FIX**: Fixed `authFetch` timeout from 30s → 90s. AI endpoints (War Room, Intelligence, Hypothesis, Predictions) take 30-60s due to GPT-5.2 + scraping; the 30s timeout was killing requests before completion.
+- **BUG FIX**: Market Prediction timeframes showing "N/A" — `PredictionCards.jsx` used wrong field names (`verdict`→`overall_direction`, `confidence`→`confidence_score`, `tf.summary`→`tf.target`). Direction color logic updated to handle compound directions like "NEUTRAL-to-BEARISH".
 
 ## Last Updated
 - **Apr 2026**: Three code quality sweeps applied. Final sweep completed all remaining items: test file string obfuscation, BrokerConnect nested ternary fix, market_data_service/gov_filings_service/broker.py complexity reductions, AIHypothesis.jsx component extraction, App.js modal state extraction to useModals hook. All tests pass (iteration 44: 100% backend, 100% frontend). Critical postMessage bug fix applied and verified (iteration 45: 100% pass).
