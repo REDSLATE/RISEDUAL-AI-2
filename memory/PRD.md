@@ -129,5 +129,8 @@ Handle API limit upgrades when user moves from free tier (5 calls/min).
 - **REFACTORING**: Extracted `_fetch_finnhub_data`, `_resolve_insider_trades`, `_resolve_congressional_trades`, `_determine_source` from `get_all_gov_data` in gov_filings_service.py
 - **REFACTORING**: Extracted `_sync_watchlist`, `_store_portfolio_snapshot` from `portfolio_sync` in broker.py; parallelized broker API calls with `asyncio.gather`
 
+## Bug Fixes (Apr 2026)
+- **CRITICAL FIX**: Resolved "Failed to execute 'postMessage' on 'Window': Request object could not be cloned" error that broke ALL AI features (War Room, Intelligence Hub, Hypothesis, Market Predictions). Root cause: `AbortController.signal` is non-structured-cloneable and the build service worker's fetch handler was triggering clone attempts. Fix: Replaced `AbortController.signal` with `Promise.race` timeout in `authFetch`/`fetchWithRetry`, removed fetch handler from service-worker.js (v3), added `reg.update()` to force-update stale SWs.
+
 ## Last Updated
-- **Apr 2026**: Three code quality sweeps applied. Final sweep completed all remaining items: test file string obfuscation, BrokerConnect nested ternary fix, market_data_service/gov_filings_service/broker.py complexity reductions, AIHypothesis.jsx component extraction, App.js modal state extraction to useModals hook. All tests pass (iteration 44: 100% backend, 100% frontend).
+- **Apr 2026**: Three code quality sweeps applied. Final sweep completed all remaining items: test file string obfuscation, BrokerConnect nested ternary fix, market_data_service/gov_filings_service/broker.py complexity reductions, AIHypothesis.jsx component extraction, App.js modal state extraction to useModals hook. All tests pass (iteration 44: 100% backend, 100% frontend). Critical postMessage bug fix applied and verified (iteration 45: 100% pass).
