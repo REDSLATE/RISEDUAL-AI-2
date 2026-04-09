@@ -41,10 +41,13 @@ import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
 import useModals from './hooks/useModals';
 
-// Register service worker
+// Register service worker & force-update stale ones
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    navigator.serviceWorker.register('/service-worker.js').then((reg) => {
+      // Force check for updates immediately
+      reg.update().catch(() => {});
+    }).catch(() => {});
   });
 }
 

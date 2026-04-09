@@ -1,4 +1,7 @@
-const CACHE_NAME = 'risedualai-v2';
+// Minimal service worker — NO fetch handler.
+// The fetch handler was causing "postMessage: Request object could not be cloned"
+// errors due to AbortController signals being non-structured-cloneable.
+const CACHE_NAME = 'risedualai-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -29,7 +32,7 @@ self.addEventListener('push', (event) => {
     };
     event.waitUntil(self.registration.showNotification(data.title || 'RISEDUAL AI', options));
   } catch (e) {
-    console.error('Push event error:', e);
+    // Silently ignore malformed push data
   }
 });
 

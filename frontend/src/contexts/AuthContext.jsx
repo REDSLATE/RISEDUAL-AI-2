@@ -8,6 +8,8 @@ export const useAuth = () => useContext(AuthContext);
 
 // Auth uses httpOnly cookies set by the server.
 // credentials: 'include' ensures cookies are sent with every request.
+// NOTE: AbortController.signal removed — causes "postMessage clone" errors
+//       with service workers and deployment proxies. Using Promise.race for timeout.
 export const authFetch = async (url, options = {}, retries = 3) => {
   const headers = { ...options.headers };
   if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
@@ -15,18 +17,17 @@ export const authFetch = async (url, options = {}, retries = 3) => {
   }
 
   for (let i = 0; i <= retries; i++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-      const res = await fetch(url, { ...options, headers, credentials: 'include', signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await Promise.race([
+        fetch(url, { ...options, headers, credentials: 'include' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 30000)),
+      ]);
       if (res.status === 502 && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));
         continue;
       }
       return res;
     } catch (e) {
-      clearTimeout(timeoutId);
       if (i === retries) throw e;
       await new Promise(r => setTimeout(r, 1500 * (i + 1)));
     }
@@ -36,18 +37,17 @@ export const authFetch = async (url, options = {}, retries = 3) => {
 // Plain fetch with retry and credentials
 const fetchWithRetry = async (url, opts, retries = 3) => {
   for (let i = 0; i <= retries; i++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-      const res = await fetch(url, { ...opts, credentials: 'include', signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await Promise.race([
+        fetch(url, { ...opts, credentials: 'include' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 30000)),
+      ]);
       if (res.status === 502 && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));
         continue;
       }
       return res;
     } catch (e) {
-      clearTimeout(timeoutId);
       if (i === retries) throw new Error('Network error. Please check your connection and try again.');
       await new Promise(r => setTimeout(r, 1500 * (i + 1)));
     }
