@@ -116,23 +116,33 @@ app.include_router(market_data_router)
 app.include_router(sectors_router)
 app.include_router(admin_router)
 
-# CORS — allow credentials for httpOnly cookie auth
-_frontend_url = os.environ.get("FRONTEND_URL", "")
-_cors_origins_raw = os.environ.get("CORS_ORIGINS", "*")
-if _cors_origins_raw == "*" and _frontend_url:
-    _cors_origins = [_frontend_url]
-elif _cors_origins_raw == "*":
-    _cors_origins = ["*"]
-else:
-    _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+# CORS — dynamic origin reflection for httpOnly cookie auth.
+# The frontend uses getApiBase() so requests are same-origin in production.
+# CORS is still needed for development and edge cases.
+# We reflect the request Origin when credentials are required.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin", "")
+        if request.method == "OPTIONS":
+            from starlette.responses import Response as StarletteResponse
+            resp = StarletteResponse(status_code=204)
+            if origin:
+                resp.headers["Access-Control-Allow-Origin"] = origin
+                resp.headers["Access-Control-Allow-Credentials"] = "true"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+            resp.headers["Access-Control-Max-Age"] = "600"
+            return resp
+        response = await call_next(request)
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
+app.add_middleware(DynamicCORSMiddleware)
 
 # Logging
 logging.basicConfig(
