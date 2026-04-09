@@ -676,6 +676,223 @@ class RobinhoodTradingService:
             return False
 
 
+class PublicTradingService:
+    """Public.com — REST API trading. Uses Bearer Token from developer portal."""
+
+    def __init__(self, api_key: str, api_secret: str, **kwargs):
+        self.access_token = api_key
+        self.account_id = api_secret
+        self.base_url = "https://api.public.com/userapigateway"
+        self.headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+    def get_account(self) -> Optional[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/trading/account",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            return {
+                "account_number": data.get("accountId", self.account_id),
+                "id": data.get("accountId", self.account_id),
+                "cash": float(data.get("cashAvailable", data.get("cash", 0))),
+                "buying_power": float(data.get("buyingPower", data.get("cashAvailable", 0))),
+                "equity": float(data.get("equity", data.get("totalValue", 0))),
+                "portfolio_value": float(data.get("portfolioValue", data.get("equity", 0))),
+            }
+        except Exception as e:
+            logger.error(f"Public get_account error: {e}")
+            return None
+
+    def get_positions(self) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/trading/account",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            positions = []
+            for p in r.json().get("positions", []):
+                positions.append({
+                    "symbol": p.get("symbol", p.get("instrument", {}).get("symbol", "")),
+                    "qty": abs(float(p.get("quantity", 0))),
+                    "side": "long" if float(p.get("quantity", 0)) > 0 else "short",
+                    "avg_entry_price": float(p.get("averageCost", p.get("avgPrice", 0))),
+                    "current_price": float(p.get("currentPrice", p.get("lastPrice", 0))),
+                    "market_value": float(p.get("marketValue", 0)),
+                    "unrealized_pl": float(p.get("unrealizedPnl", 0)),
+                    "unrealized_plpc": float(p.get("unrealizedPnlPercent", 0)),
+                })
+            return positions
+        except Exception as e:
+            logger.error(f"Public get_positions error: {e}")
+            return []
+
+    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+        try:
+            acc_id = self.account_id
+            data = {
+                "symbol": symbol.upper(),
+                "side": side.upper(),
+                "type": order_type.upper(),
+                "quantity": str(qty),
+                "timeInForce": time_in_force.upper(),
+            }
+            if limit_price and order_type != "market":
+                data["limitPrice"] = str(limit_price)
+            if stop_price:
+                data["stopPrice"] = str(stop_price)
+            r = requests.post(f"{self.base_url}/trading/{acc_id}/order",
+                              headers=self.headers, json=data, timeout=10)
+            r.raise_for_status()
+            result = r.json()
+            return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
+        except Exception as e:
+            logger.error(f"Public place_order error: {e}")
+            return None
+
+    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+        try:
+            r = requests.get(f"{self.base_url}/trading/account",
+                             headers=self.headers, timeout=10)
+            r.raise_for_status()
+            return r.json().get("orders", [])[:limit]
+        except Exception as e:
+            logger.error(f"Public get_orders error: {e}")
+            return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        try:
+            r = requests.delete(f"{self.base_url}/trading/{self.account_id}/order/{order_id}",
+                                headers=self.headers, timeout=10)
+            r.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Public cancel_order error: {e}")
+            return False
+
+
+class KrakenTradingService:
+    """Kraken — Crypto exchange REST API. Uses API-Key + API-Sign (HMAC-SHA512)."""
+
+    def __init__(self, api_key: str, api_secret: str, **kwargs):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = "https://api.kraken.com"
+
+    def _sign(self, url_path: str, data: Dict) -> Dict:
+        import hashlib
+        import hmac
+        import base64
+        import urllib.parse
+        import time
+        data["nonce"] = str(int(time.time() * 1000))
+        post_data = urllib.parse.urlencode(data)
+        encoded = (data["nonce"] + post_data).encode()
+        message = url_path.encode() + hashlib.sha256(encoded).digest()
+        mac = hmac.new(base64.b64decode(self.api_secret), message, hashlib.sha512)
+        return {
+            "API-Key": self.api_key,
+            "API-Sign": base64.b64encode(mac.digest()).decode(),
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+    def _private(self, endpoint: str, data: Optional[Dict] = None) -> Dict:
+        data = data or {}
+        path = f"/0/private/{endpoint}"
+        headers = self._sign(path, data)
+        r = requests.post(f"{self.base_url}{path}", headers=headers, data=data, timeout=10)
+        r.raise_for_status()
+        result = r.json()
+        if result.get("error"):
+            logger.warning(f"Kraken API error on {endpoint}: {result['error']}")
+        return result.get("result", {})
+
+    def get_account(self) -> Optional[Dict]:
+        try:
+            balance = self._private("Balance")
+            trade_balance = self._private("TradeBalance")
+            total = sum(float(v) for v in balance.values()) if balance else 0
+            return {
+                "account_number": "kraken",
+                "id": "kraken",
+                "cash": float(trade_balance.get("c", balance.get("ZUSD", 0))),
+                "buying_power": float(trade_balance.get("mf", trade_balance.get("c", 0))),
+                "equity": float(trade_balance.get("e", total)),
+                "portfolio_value": float(trade_balance.get("v", total)),
+            }
+        except Exception as e:
+            logger.error(f"Kraken get_account error: {e}")
+            return None
+
+    def get_positions(self) -> List[Dict]:
+        try:
+            result = self._private("OpenPositions")
+            positions = []
+            for pid, p in result.items():
+                positions.append({
+                    "symbol": p.get("pair", ""),
+                    "qty": abs(float(p.get("vol", 0))),
+                    "side": p.get("type", "long"),
+                    "avg_entry_price": float(p.get("cost", 0)) / max(float(p.get("vol", 1)), 0.001),
+                    "current_price": float(p.get("value", 0)) / max(float(p.get("vol", 1)), 0.001),
+                    "market_value": float(p.get("value", 0)),
+                    "unrealized_pl": float(p.get("net", 0)),
+                    "unrealized_plpc": 0,
+                })
+            return positions
+        except Exception as e:
+            logger.error(f"Kraken get_positions error: {e}")
+            return []
+
+    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+        try:
+            data = {
+                "pair": symbol.upper(),
+                "type": side.lower(),
+                "ordertype": order_type.lower(),
+                "volume": str(qty),
+            }
+            if limit_price and order_type != "market":
+                data["price"] = str(limit_price)
+            if stop_price:
+                data["price2"] = str(stop_price)
+            result = self._private("AddOrder", data)
+            txid = result.get("txid", [""])[0] if isinstance(result.get("txid"), list) else result.get("txid", "")
+            return {"id": txid, "status": "submitted", "symbol": symbol}
+        except Exception as e:
+            logger.error(f"Kraken place_order error: {e}")
+            return None
+
+    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+        try:
+            result = self._private("OpenOrders")
+            orders = []
+            for oid, o in result.get("open", {}).items():
+                orders.append({
+                    "id": oid,
+                    "symbol": o.get("descr", {}).get("pair", ""),
+                    "side": o.get("descr", {}).get("type", ""),
+                    "status": o.get("status", "open"),
+                    "qty": float(o.get("vol", 0)),
+                    "price": float(o.get("descr", {}).get("price", 0)),
+                })
+            return orders[:limit]
+        except Exception as e:
+            logger.error(f"Kraken get_orders error: {e}")
+            return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        try:
+            self._private("CancelOrder", {"txid": order_id})
+            return True
+        except Exception as e:
+            logger.error(f"Kraken cancel_order error: {e}")
+            return False
+
+
 class BrokerService:
     """Factory for broker clients."""
 
@@ -734,6 +951,24 @@ class BrokerService:
             "has_paper": False,
             "signup_url": "https://robinhood.com",
         },
+        "public": {
+            "name": "Public.com",
+            "class": "PublicTradingService",
+            "key_label": "API Token",
+            "secret_label": "Account ID",
+            "docs_url": "https://public.com/api/docs",
+            "has_paper": False,
+            "signup_url": "https://public.com/api",
+        },
+        "kraken": {
+            "name": "Kraken",
+            "class": "KrakenTradingService",
+            "key_label": "API Key",
+            "secret_label": "Private Key (Base64)",
+            "docs_url": "https://docs.kraken.com/api",
+            "has_paper": False,
+            "signup_url": "https://www.kraken.com/features/trading-api",
+        },
     }
 
     @staticmethod
@@ -766,6 +1001,16 @@ class BrokerService:
             )
         elif broker_id == "robinhood":
             return RobinhoodTradingService(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+            )
+        elif broker_id == "public":
+            return PublicTradingService(
+                api_key=credentials.get("api_key", ""),
+                api_secret=credentials.get("api_secret", ""),
+            )
+        elif broker_id == "kraken":
+            return KrakenTradingService(
                 api_key=credentials.get("api_key", ""),
                 api_secret=credentials.get("api_secret", ""),
             )

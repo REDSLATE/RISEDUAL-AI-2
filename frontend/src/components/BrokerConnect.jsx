@@ -93,6 +93,32 @@ const BROKERS = [
     color: '#00C805',
     recommended: false,
   },
+  {
+    id: 'public',
+    name: 'Public.com',
+    description: 'Commission-free stocks, ETFs, options, crypto & bonds with social features',
+    features: ['Commission-Free', 'Options & Crypto', 'Bond Trading', 'Social Feed'],
+    keyLabel: 'API Token',
+    secretLabel: 'Account ID',
+    hasPaper: false,
+    docsUrl: 'https://public.com/api/docs',
+    signupUrl: 'https://public.com/api',
+    color: '#000000',
+    recommended: false,
+  },
+  {
+    id: 'kraken',
+    name: 'Kraken',
+    description: 'Top-tier crypto exchange with advanced trading & staking',
+    features: ['Crypto Exchange', 'Margin Trading', 'Staking', 'Futures'],
+    keyLabel: 'API Key',
+    secretLabel: 'Private Key (Base64)',
+    hasPaper: false,
+    docsUrl: 'https://docs.kraken.com/api',
+    signupUrl: 'https://www.kraken.com/features/trading-api',
+    color: '#7B61FF',
+    recommended: false,
+  },
 ];
 
 // ─── Helpers ───
