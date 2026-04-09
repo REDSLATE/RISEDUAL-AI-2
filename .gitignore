@@ -34,6 +34,7 @@ dist
 
 *token.json*
 *credentials.json*
+memory/test_credentials.md
 
 # Logs and debug files
 npm-debug.log*
@@ -94,3 +95,4 @@ frontend/node_modules/.cache/default-development/11.pack
 frontend/node_modules/.cache/default-development/11.pack
 frontend/node_modules/.cache/default-development/14.pack
 frontend/node_modules/.cache/default-development/17.pack
+frontend/node_modules/.cache/default-development/19.pack
