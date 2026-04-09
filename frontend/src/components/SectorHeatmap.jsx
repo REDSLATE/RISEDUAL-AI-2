@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Grid3x3, TrendingUp, TrendingDown, BarChart3, RefreshCw } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
+import { getApiBase } from '../utils/apiBase';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = getApiBase();
 
 const PERIODS = [
   { key: 'change_1d', label: '1D' },

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { getApiBase } from '../../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
   const [email, setEmail] = useState(initialEmail);

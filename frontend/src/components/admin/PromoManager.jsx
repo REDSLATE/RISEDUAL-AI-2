@@ -6,8 +6,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { authFetch } from '../../contexts/AuthContext';
 import logger from '../../utils/logger';
+import { getApiBase } from '../../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const PromoManager = () => {
   const [promos, setPromos] = useState([]);

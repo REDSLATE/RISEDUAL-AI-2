@@ -7,8 +7,9 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import BacktestResults from './BacktestResults';
 import StrategyPreview from './strategy/StrategyPreview';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const EXAMPLE_PROMPTS = [
   "Buy AAPL when RSI drops below 30 and MACD crosses bullish. Sell when RSI hits 70.",

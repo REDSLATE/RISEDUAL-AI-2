@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const AuthContext = createContext(null);
 
@@ -10,6 +11,23 @@ export const useAuth = () => useContext(AuthContext);
 // credentials: 'include' ensures cookies are sent with every request.
 // NOTE: AbortController.signal removed — causes "postMessage clone" errors
 //       with service workers and deployment proxies. Using Promise.race for timeout.
+// Auto-refresh: on 401, attempts a silent token refresh then retries the original request once.
+let _refreshPromise = null;
+
+async function _silentRefresh() {
+  try {
+    const res = await fetch(`${API}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export const authFetch = async (url, options = {}, retries = 3, timeoutMs = 90000) => {
   const headers = { ...options.headers };
   if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
@@ -20,9 +38,22 @@ export const authFetch = async (url, options = {}, retries = 3, timeoutMs = 9000
     try {
       const res = await Promise.race([
         fetch(url, { ...options, headers, credentials: 'include' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), timeoutMs)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout — the server took too long. Please try again.')), timeoutMs)),
       ]);
-      if (res.status === 502 && i < retries) {
+      // Auto-refresh on 401: attempt silent token refresh and retry once
+      if (res.status === 401 && !url.includes('/auth/')) {
+        if (!_refreshPromise) _refreshPromise = _silentRefresh().finally(() => { _refreshPromise = null; });
+        const refreshed = await _refreshPromise;
+        if (refreshed) {
+          const retryRes = await Promise.race([
+            fetch(url, { ...options, headers, credentials: 'include' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), timeoutMs)),
+          ]);
+          return retryRes;
+        }
+        return res; // refresh failed, return original 401
+      }
+      if ((res.status === 502 || res.status === 504) && i < retries) {
         await new Promise(r => setTimeout(r, 1500 * (i + 1)));
         continue;
       }

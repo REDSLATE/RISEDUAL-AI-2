@@ -1,0 +1,124 @@
+{
+  "summary": "Iteration 47: API Base Fix and Auto-Refresh Token Verification Complete. All 12 backend tests passed. Frontend UI tests verified: Login flow works, AI War Room returns results (SPY: STRONG SELL 28%), AI Intelligence Hub returns AI Score (AAPL: HOLD, score 6), Macro Intelligence page loads with World Events data. No 'Analysis failed' errors observed. No postMessage errors in console.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration47_api_base_fix.py",
+    "/app/test_reports/pytest/iteration47_api_base_fix_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AuthContext.jsx: authFetch auto-refresh on 401 working correctly - silently refreshes token and retries request",
+    "apiBase.js: getApiBase() correctly returns window.location.origin when env URL differs from page origin",
+    "All AI endpoints (War Room, Intelligence Hub, Hypothesis, Market Prediction) returning correct data with no 'Analysis failed' errors",
+    "Error messages are descriptive (e.g., 'Not authenticated', 'Session expired') instead of generic 'Analysis failed'"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration47_api_base_fix.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests passed)",
+    "frontend": "100% (all AI features verified working)"
+  },
+  "test_credentials": {
+    "admin": {
+      "email": "admin@risedual.ai",
+      "password": "RiseDual2026!",
+      "role": "admin",
+      "subscription": "pro"
+    }
+  },
+  "seed_data_creation": "None - used existing seeded accounts",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 47 verified the fix for 'Analysis failed' errors. Key changes: (1) authFetch auto-refreshes expired JWT tokens on 401, (2) getApiBase() returns correct URL matching page origin for deployed environments, (3) All frontend API calls use dynamic base URL. All AI features working: War Room (25s response), Intelligence Hub (8s response), Hypothesis (27s response), Market Prediction (25s response). No postMessage errors observed.",
+  "verified_features": {
+    "backend": {
+      "auth": {
+        "/api/auth/login": "PASS - 200, sets httpOnly cookies",
+        "/api/auth/me": "PASS - 200, returns user data",
+        "/api/auth/refresh": "PASS - 200, returns new access token"
+      },
+      "ai_war_room": {
+        "/api/intelligence/war-room/SPY": "PASS - 200, returns composite verdict STRONG SELL, score 28%, response time 23.7s"
+      },
+      "ai_intelligence_hub": {
+        "/api/intelligence/score/AAPL": "PASS - 200, returns overall_score 6, recommendation HOLD, response time 6.7s",
+        "/api/intelligence/brief/AAPL": "PASS - 200, returns headline and verdict, response time 6.3s",
+        "/api/intelligence/patterns/AAPL": "PASS - 200, returns 4 patterns, overall_bias bullish, response time 13s"
+      },
+      "ai_hypothesis": {
+        "/api/hypothesis/AAPL": "PASS - 200, returns verdict HOLD, confidence 62%, response time 27.4s"
+      },
+      "market_prediction": {
+        "/api/market/prediction": "PASS - 200, returns overall_direction NEUTRAL, confidence_score 56%, response time 25.9s"
+      },
+      "error_handling": {
+        "401_without_auth": "PASS - Returns 401 with descriptive message 'Not authenticated'",
+        "error_messages": "PASS - Error messages are descriptive, not generic 'Analysis failed'"
+      }
+    },
+    "frontend": {
+      "login_flow": {
+        "status": "PASS",
+        "auth_modal_opens": true,
+        "credentials_accepted": true,
+        "cookies_set": true,
+        "pro_badge_visible": true
+      },
+      "ai_war_room_ui": {
+        "status": "PASS",
+        "search_input_works": true,
+        "deploy_analysis_button_works": true,
+        "loading_state_shown": true,
+        "results_displayed": "Composite Signal 28%, STRONG SELL verdict",
+        "no_analysis_failed_error": true,
+        "no_postmessage_errors": true
+      },
+      "ai_intelligence_hub_ui": {
+        "status": "PASS",
+        "tabs_work": ["AI Score", "Patterns", "Quick Brief"],
+        "search_input_works": true,
+        "analyze_button_works": true,
+        "results_displayed": "AAPL: Score 6, HOLD, Technical 7, Fundamental 5, Sentiment 6",
+        "no_analysis_failed_error": true,
+        "no_postmessage_errors": true
+      },
+      "ai_hypothesis_ui": {
+        "status": "PASS",
+        "search_input_works": true,
+        "analyze_button_works": true,
+        "loading_state_shown": true,
+        "no_postmessage_errors": true
+      },
+      "macro_intelligence_page": {
+        "status": "PASS",
+        "world_events_displayed": "30 total, 10 high impact, 7 sectors",
+        "market_prediction_loading": true,
+        "no_analysis_failed_error": true,
+        "no_postmessage_errors": true
+      }
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": ["broker_service.py - all 8 broker integrations are mock"]
+  },
+  "rca_of_the_issue": {
+    "original_bug": "User reported 'Output is still not showing on war room and AI hub' with 'Analysis failed' errors",
+    "root_cause": "On deployed environments, REACT_APP_BACKEND_URL (baked at build time) may point to preview domain instead of deployed domain, causing CORS/cookie issues. Also, expired JWT tokens were not being auto-refreshed.",
+    "fixes_applied": [
+      "1. Added auto-refresh for expired JWT tokens in authFetch - on 401, attempts silent token refresh then retries request",
+      "2. Improved error handling for non-JSON proxy errors (502/504) - retries with exponential backoff",
+      "3. All frontend API calls now use getApiBase() utility which returns window.location.origin when env URL differs from page origin"
+    ],
+    "verification_status": "All fixes verified working. No 'Analysis failed' errors observed. All AI features return correct data."
+  }
+}

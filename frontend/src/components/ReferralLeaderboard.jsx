@@ -4,8 +4,9 @@ import { Card } from './ui/card';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import SocialShareButtons from './SocialShareButtons';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = getApiBase();
 
 const RANK_STYLES = [
   { bg: 'from-amber-500/20 to-yellow-600/10', border: 'border-amber-500/40', icon: 'text-amber-400', text: 'text-amber-300' },

@@ -9,8 +9,9 @@ import ReferralLeaderboard from './ReferralLeaderboard';
 import SocialShareButtons from './SocialShareButtons';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
 
 const getPushToggleClass = (permission, subscribed) => {

@@ -9,8 +9,9 @@ import ModelSelector from './hypothesis/ModelSelector';
 import HypothesisResults from './hypothesis/HypothesisResults';
 import HypothesisLocked from './hypothesis/HypothesisLocked';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const AI_MODELS = [
   { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-emerald-400', bg: 'bg-emerald-900/30', free: true },
@@ -80,9 +81,12 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
     try {
       const modelParam = isPro ? selectedModel : 'gpt-5.2';
       const res = await authFetch(`${API}/hypothesis/${symbol.trim().toUpperCase()}?model=${modelParam}`);
+      if (res.status === 401) throw new Error('Session expired — please log in again.');
+      if (res.status === 502 || res.status === 504) throw new Error('Server is busy — please try again in a moment.');
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to generate hypothesis');
+        let detail;
+        try { detail = (await res.json()).detail; } catch { detail = null; }
+        throw new Error(detail || `Server error (${res.status}). Please try again.`);
       }
       const data = await res.json();
       setHypothesis(data);

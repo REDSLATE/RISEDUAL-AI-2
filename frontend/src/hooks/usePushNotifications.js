@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = getApiBase();
 const VAPID_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY;
 
 function urlBase64ToUint8Array(base64String) {

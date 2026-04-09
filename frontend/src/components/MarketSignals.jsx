@@ -5,8 +5,9 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const severityStyle = (s) => ({
   high: { icon: 'text-red-400', bg: 'border-red-700/40 bg-red-900/10' },

@@ -5,8 +5,9 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const SubscriptionPricing = ({ onClose }) => {
   const [selectedPlan, setSelectedPlan] = useState('annual');

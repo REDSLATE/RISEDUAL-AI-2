@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { X, Gift, Clock, ChevronRight, Zap } from 'lucide-react';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = getApiBase();
 
 const PromoBanner = ({ onSubscribe }) => {
   const [promo, setPromo] = useState(null);

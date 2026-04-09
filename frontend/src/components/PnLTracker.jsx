@@ -5,8 +5,9 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { authFetch } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const PnLTracker = ({ onOpenBroker }) => {
   const { user } = useAuth();

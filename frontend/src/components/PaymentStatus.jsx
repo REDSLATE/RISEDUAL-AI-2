@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const PaymentStatus = ({ sessionId, initialStatus, onClose }) => {
   const [status, setStatus] = useState(initialStatus === 'cancelled' ? 'cancelled' : 'checking');

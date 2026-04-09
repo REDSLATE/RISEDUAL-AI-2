@@ -3,8 +3,9 @@ import { Eye, TrendingUp, Activity } from 'lucide-react';
 import DataTable from './DataTable';
 import ProBlurWall from './ProBlurWall';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = getApiBase();
 
 const DarkPoolData = ({ onSubscribe }) => {
   const [darkPoolData, setDarkPoolData] = useState([]);

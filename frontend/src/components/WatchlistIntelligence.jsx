@@ -4,8 +4,9 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 // Score/severity helper functions to eliminate nested ternaries
 const scoreGradient = (score) =>

@@ -5,8 +5,9 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { PredictionCard, MacroDataSection, RealEstateSection } from './prediction/PredictionCards';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const MarketPrediction = ({ onSubscribe }) => {
   const { isPro } = useAuth();

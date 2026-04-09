@@ -6,8 +6,9 @@ import { Badge } from './ui/badge';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import NotificationItem from './alerts/NotificationItem';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const AlertsPanel = ({ onSubscribe }) => {
   const { user, isPro } = useAuth();

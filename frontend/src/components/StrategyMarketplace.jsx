@@ -6,8 +6,9 @@ import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },

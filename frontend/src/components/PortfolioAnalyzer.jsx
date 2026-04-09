@@ -5,8 +5,9 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const gradeColor = (g) => ({ A: 'text-emerald-400 bg-emerald-900/30', B: 'text-blue-400 bg-blue-900/30', C: 'text-amber-400 bg-amber-900/30', D: 'text-orange-400 bg-orange-900/30', F: 'text-red-400 bg-red-900/30' }[g] || 'text-slate-400 bg-slate-800');
 const riskColor = (r) => ({ low: 'text-emerald-400', medium: 'text-amber-400', high: 'text-orange-400', critical: 'text-red-400' }[r] || 'text-slate-400');
@@ -36,8 +37,14 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
         method: 'POST',
         body: JSON.stringify({ holdings: valid.map(h => ({ ticker: h.ticker.toUpperCase(), shares: parseFloat(h.shares), avg_price: parseFloat(h.avg_price) })) }),
       });
+      if (res.status === 401) throw new Error('Session expired — please log in again.');
       if (res.status === 403) { onSubscribe?.(); return; }
-      if (!res.ok) throw new Error('Analysis failed');
+      if (res.status === 502 || res.status === 504) throw new Error('Server is busy — please try again.');
+      if (!res.ok) {
+        let detail;
+        try { detail = (await res.json()).detail; } catch { detail = null; }
+        throw new Error(detail || `Server error (${res.status}). Please try again.`);
+      }
       setResult(await res.json());
     } catch (e) {
       setError(e.message);

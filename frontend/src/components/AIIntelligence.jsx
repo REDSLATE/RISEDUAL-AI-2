@@ -6,8 +6,9 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import ScoreView from './intelligence/ScoreView';
 import PatternsView from './intelligence/PatternsView';
 import BriefView from './intelligence/BriefView';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const TABS = [
   { id: 'score', label: 'AI Score', icon: Target, color: 'from-violet-600 to-purple-600' },
@@ -32,9 +33,12 @@ const AIIntelligence = ({ onSubscribe }) => {
     const endpoint = { score: 'score', patterns: 'patterns', brief: 'brief' }[tab];
     try {
       const res = await authFetch(`${API}/intelligence/${endpoint}/${symbol.trim().toUpperCase()}`);
+      if (res.status === 401) throw new Error('Session expired — please log in again.');
+      if (res.status === 502 || res.status === 504) throw new Error('Server is busy — please try again in a moment.');
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || 'Analysis failed');
+        let detail;
+        try { detail = (await res.json()).detail; } catch { detail = null; }
+        throw new Error(detail || `Server error (${res.status}). Please try again.`);
       }
       const data = await res.json();
       setResult(data);

@@ -6,8 +6,9 @@ import WorldEventsTab from './macro/WorldEventsTab';
 import ForeignMarketsTab from './macro/ForeignMarketsTab';
 import CongressTab from './macro/CongressTab';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = getApiBase();
 
 const AUTO_REFRESH_MS = 30000; // 30 seconds
 

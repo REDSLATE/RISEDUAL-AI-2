@@ -6,8 +6,9 @@ import { Card } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Label } from './ui/label';
 import axios from 'axios';
+import { getApiBase } from '../utils/apiBase';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = getApiBase();
 
 const QuickTrade = ({ symbol, currentPrice }) => {
   const [isOpen, setIsOpen] = useState(false);

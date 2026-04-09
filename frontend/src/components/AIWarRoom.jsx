@@ -11,8 +11,9 @@ import {
   OverviewCard, AIScoreCard, BriefCard, EarningsCard, InsidersCard,
   ScoreGauge, CompositeBreakdownBar
 } from './warroom/WarRoomCards';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const VERDICT_COLORS = {
   'STRONG BUY': { bg: 'bg-emerald-900/40', text: 'text-emerald-400', border: 'border-emerald-700/50' },
@@ -37,13 +38,13 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
     setData(null);
     try {
       const res = await authFetch(`${API}/intelligence/war-room/${symbol.trim().toUpperCase()}`);
-      if (res.status === 403) {
-        setError('pro_required');
-        return;
-      }
+      if (res.status === 401) throw new Error('Session expired — please log in again.');
+      if (res.status === 403) { setError('pro_required'); return; }
+      if (res.status === 502 || res.status === 504) throw new Error('Server is busy — please try again in a moment.');
       if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || 'Analysis failed');
+        let detail;
+        try { detail = (await res.json()).detail; } catch { detail = null; }
+        throw new Error(detail || `Server error (${res.status}). Please try again.`);
       }
       setData(await res.json());
     } catch (err) {

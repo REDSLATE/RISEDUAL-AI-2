@@ -5,8 +5,9 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
 import ChartPatternLibrary from './ChartPatternLibrary';
 import logger from '../utils/logger';
+import { getApiBase } from '../utils/apiBase';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${getApiBase()}/api`;
 
 const TradeGPTChat = ({ onLimitReached }) => {
   const { isPro } = useAuth();

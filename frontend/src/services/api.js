@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { getApiBase } from '../utils/apiBase';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = getApiBase();
 const API = `${BACKEND_URL}/api`;
 
 // Stock Market APIs
