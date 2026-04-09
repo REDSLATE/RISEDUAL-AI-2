@@ -36,10 +36,12 @@ const SectorHeatmap = () => {
     setError('');
     try {
       const res = await fetch(`${BACKEND_URL}/api/sectors/heatmap`);
-      if (!res.ok) throw new Error('Failed to fetch sector data');
-      setData(await res.json());
+      if (!res.ok) throw new Error(`Server error (${res.status})`);
+      const json = await res.json();
+      if (!json.sectors?.length) throw new Error('No sector data returned');
+      setData(json);
     } catch (e) {
-      setError(e.message);
+      setError(e.message || 'Failed to fetch sector data');
     } finally {
       setLoading(false);
     }
