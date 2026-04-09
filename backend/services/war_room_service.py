@@ -18,34 +18,65 @@ def _fh_key():
 
 
 def fetch_company_overview(symbol: str) -> Dict:
-    """Fetch company fundamentals and sector data from Alpha Vantage."""
+    """Fetch company fundamentals and sector data from Alpha Vantage.
+    Falls back to quote data for ETFs/indices that lack company fundamentals."""
     try:
         r = requests.get("https://www.alphavantage.co/query", params={
             "function": "OVERVIEW", "symbol": symbol, "apikey": _av_key()
         }, timeout=10)
         data = r.json()
-        if not data or "Symbol" not in data:
-            return {}
-        return {
-            "name": data.get("Name", symbol),
-            "sector": data.get("Sector", "N/A"),
-            "industry": data.get("Industry", "N/A"),
-            "market_cap": data.get("MarketCapitalization", "0"),
-            "pe_ratio": data.get("PERatio", "N/A"),
-            "forward_pe": data.get("ForwardPE", "N/A"),
-            "peg_ratio": data.get("PEGRatio", "N/A"),
-            "dividend_yield": data.get("DividendYield", "0"),
-            "beta": data.get("Beta", "N/A"),
-            "52_week_high": data.get("52WeekHigh", "N/A"),
-            "52_week_low": data.get("52WeekLow", "N/A"),
-            "50d_avg": data.get("50DayMovingAverage", "N/A"),
-            "200d_avg": data.get("200DayMovingAverage", "N/A"),
-            "profit_margin": data.get("ProfitMargin", "N/A"),
-            "revenue_growth": data.get("QuarterlyRevenueGrowthYOY", "N/A"),
-            "earnings_growth": data.get("QuarterlyEarningsGrowthYOY", "N/A"),
-            "analyst_target": data.get("AnalystTargetPrice", "N/A"),
-            "analyst_rating": data.get("AnalystRatingStrongBuy", "0"),
-        }
+        if data and "Symbol" in data:
+            return {
+                "name": data.get("Name", symbol),
+                "sector": data.get("Sector", "N/A"),
+                "industry": data.get("Industry", "N/A"),
+                "market_cap": data.get("MarketCapitalization", "0"),
+                "pe_ratio": data.get("PERatio", "N/A"),
+                "forward_pe": data.get("ForwardPE", "N/A"),
+                "peg_ratio": data.get("PEGRatio", "N/A"),
+                "dividend_yield": data.get("DividendYield", "0"),
+                "beta": data.get("Beta", "N/A"),
+                "52_week_high": data.get("52WeekHigh", "N/A"),
+                "52_week_low": data.get("52WeekLow", "N/A"),
+                "50d_avg": data.get("50DayMovingAverage", "N/A"),
+                "200d_avg": data.get("200DayMovingAverage", "N/A"),
+                "profit_margin": data.get("ProfitMargin", "N/A"),
+                "revenue_growth": data.get("QuarterlyRevenueGrowthYOY", "N/A"),
+                "earnings_growth": data.get("QuarterlyEarningsGrowthYOY", "N/A"),
+                "analyst_target": data.get("AnalystTargetPrice", "N/A"),
+                "analyst_rating": data.get("AnalystRatingStrongBuy", "0"),
+            }
+        # Fallback: fetch quote data for ETFs/indices
+        qr = requests.get("https://www.alphavantage.co/query", params={
+            "function": "GLOBAL_QUOTE", "symbol": symbol, "apikey": _av_key()
+        }, timeout=10)
+        q = qr.json().get("Global Quote", {})
+        if q:
+            price = float(q.get("05. price", 0))
+            high = float(q.get("03. high", 0))
+            low = float(q.get("04. low", 0))
+            prev = float(q.get("08. previous close", 0))
+            change_pct = q.get("10. change percent", "0%")
+            return {
+                "name": symbol.upper(),
+                "sector": "ETF / Index",
+                "industry": "Exchange-Traded Fund",
+                "is_etf": True,
+                "price": price,
+                "change_pct": change_pct,
+                "day_high": high,
+                "day_low": low,
+                "prev_close": prev,
+                "market_cap": "N/A",
+                "pe_ratio": "N/A",
+                "beta": "N/A",
+                "52_week_high": "N/A",
+                "52_week_low": "N/A",
+                "profit_margin": "N/A",
+                "revenue_growth": "N/A",
+                "analyst_target": "N/A",
+            }
+        return {}
     except Exception as e:
         logger.error(f"Company overview error for {symbol}: {e}")
         return {}
@@ -180,12 +211,20 @@ async def generate_war_room(symbol: str, api_key: str) -> Dict:
     # Compute composite signal
     scores = score.get("scores", {}) if isinstance(score, dict) else {}
     overall = scores.get("overall_score", 5)
-    beat_rate = earnings.get("beat_rate", 50) if isinstance(earnings, dict) else 50
+    earnings_data = earnings if isinstance(earnings, dict) else {}
+    insiders_data = insiders if isinstance(insiders, dict) else {}
+
+    # For ETFs/symbols with no earnings or insider data, treat missing as neutral (50)
+    # rather than 0 — otherwise the composite unfairly penalizes ETFs/indices.
+    has_earnings = earnings_data.get("total_quarters", 0) > 0
+    has_insiders = len(insiders_data.get("trades", [])) > 0
+    beat_rate = earnings_data.get("beat_rate", 50) if has_earnings else 50
+    insider_ratio = insiders_data.get("buy_ratio", 50) if has_insiders else 50
 
     # Composite signal: weight score (40%), earnings momentum (30%), insider sentiment (30%)
     score_signal = (overall / 10) * 100
     earnings_signal = beat_rate
-    insider_signal = insiders.get("buy_ratio", 50) if isinstance(insiders, dict) else 50
+    insider_signal = insider_ratio
     composite = round(score_signal * 0.4 + earnings_signal * 0.3 + insider_signal * 0.3)
 
     if composite >= 70:

@@ -27,36 +27,49 @@ const MiniBar = ({ value, max = 100, color = '#0052FF' }) => (
   </div>
 );
 
-export const OverviewCard = ({ overview, symbol }) => (
-  <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
-    <div className="flex items-center gap-2 mb-3">
-      <Building2 className="w-4 h-4 text-[#0052FF]" />
-      <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
-      <Badge className="bg-slate-700 text-slate-300 text-[10px]">{overview.sector}</Badge>
-      <Badge className="bg-slate-700/60 text-slate-400 text-[10px]">{overview.industry}</Badge>
-    </div>
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {[
-        { label: 'Market Cap', value: `$${(parseFloat(overview.market_cap || 0) / 1e9).toFixed(0)}B`, icon: DollarSign },
-        { label: 'P/E Ratio', value: overview.pe_ratio || 'N/A', icon: BarChart3 },
-        { label: 'Beta', value: overview.beta || 'N/A', icon: Activity },
-        { label: 'Analyst Target', value: overview.analyst_target ? `$${overview.analyst_target}` : 'N/A', icon: Target },
-        { label: '52W High', value: overview['52_week_high'] ? `$${overview['52_week_high']}` : 'N/A', icon: TrendingUp },
-        { label: '52W Low', value: overview['52_week_low'] ? `$${overview['52_week_low']}` : 'N/A', icon: TrendingDown },
-        { label: 'Profit Margin', value: overview.profit_margin ? `${(parseFloat(overview.profit_margin) * 100).toFixed(1)}%` : 'N/A', icon: Zap },
-        { label: 'Rev Growth', value: overview.revenue_growth ? `${(parseFloat(overview.revenue_growth) * 100).toFixed(1)}%` : 'N/A', icon: ChevronRight },
-      ].map(({ label, value, icon: Icon }) => (
-        <div key={label} className="bg-slate-900/40 rounded-lg p-2.5">
-          <div className="flex items-center gap-1 mb-0.5">
-            <Icon className="w-3 h-3 text-slate-500" />
-            <span className="text-slate-500 text-[10px]">{label}</span>
+export const OverviewCard = ({ overview, symbol }) => {
+  const isEtf = overview.is_etf;
+  const etfMetrics = [
+    { label: 'Price', value: overview.price ? `$${parseFloat(overview.price).toFixed(2)}` : 'N/A', icon: DollarSign },
+    { label: 'Change', value: overview.change_pct || 'N/A', icon: Activity },
+    { label: 'Day High', value: overview.day_high ? `$${parseFloat(overview.day_high).toFixed(2)}` : 'N/A', icon: TrendingUp },
+    { label: 'Day Low', value: overview.day_low ? `$${parseFloat(overview.day_low).toFixed(2)}` : 'N/A', icon: TrendingDown },
+    { label: 'Prev Close', value: overview.prev_close ? `$${parseFloat(overview.prev_close).toFixed(2)}` : 'N/A', icon: BarChart3 },
+    { label: 'Type', value: 'ETF', icon: Building2 },
+  ];
+  const stockMetrics = [
+    { label: 'Market Cap', value: `$${(parseFloat(overview.market_cap || 0) / 1e9).toFixed(0)}B`, icon: DollarSign },
+    { label: 'P/E Ratio', value: overview.pe_ratio || 'N/A', icon: BarChart3 },
+    { label: 'Beta', value: overview.beta || 'N/A', icon: Activity },
+    { label: 'Analyst Target', value: overview.analyst_target ? `$${overview.analyst_target}` : 'N/A', icon: Target },
+    { label: '52W High', value: overview['52_week_high'] ? `$${overview['52_week_high']}` : 'N/A', icon: TrendingUp },
+    { label: '52W Low', value: overview['52_week_low'] ? `$${overview['52_week_low']}` : 'N/A', icon: TrendingDown },
+    { label: 'Profit Margin', value: overview.profit_margin && overview.profit_margin !== 'N/A' ? `${(parseFloat(overview.profit_margin) * 100).toFixed(1)}%` : 'N/A', icon: Zap },
+    { label: 'Rev Growth', value: overview.revenue_growth && overview.revenue_growth !== 'N/A' ? `${(parseFloat(overview.revenue_growth) * 100).toFixed(1)}%` : 'N/A', icon: ChevronRight },
+  ];
+  const metrics = isEtf ? etfMetrics : stockMetrics;
+  return (
+    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
+      <div className="flex items-center gap-2 mb-3">
+        <Building2 className="w-4 h-4 text-[#0052FF]" />
+        <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
+        <Badge className="bg-slate-700 text-slate-300 text-[10px]">{overview.sector || 'N/A'}</Badge>
+        {overview.industry && <Badge className="bg-slate-700/60 text-slate-400 text-[10px]">{overview.industry}</Badge>}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {metrics.map(({ label, value, icon: Icon }) => (
+          <div key={label} className="bg-slate-900/40 rounded-lg p-2.5">
+            <div className="flex items-center gap-1 mb-0.5">
+              <Icon className="w-3 h-3 text-slate-500" />
+              <span className="text-slate-500 text-[10px]">{label}</span>
+            </div>
+            <p className="text-white text-sm font-semibold">{value}</p>
           </div>
-          <p className="text-white text-sm font-semibold">{value}</p>
-        </div>
-      ))}
-    </div>
-  </Card>
-);
+        ))}
+      </div>
+    </Card>
+  );
+};
 
 export const AIScoreCard = ({ aiScore }) => (
   <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-ai-score">
