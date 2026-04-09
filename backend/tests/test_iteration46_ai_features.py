@@ -9,14 +9,9 @@ import pytest
 import requests
 import os
 import time
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
-# Test credentials
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', BASE_URL).rstrip('/')
 
 
 class TestAuth:

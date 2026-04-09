@@ -91,6 +91,19 @@ def _determine_trend(current, sma_20, sma_50):
     return trend
 
 
+def _safe_sma(closes: np.ndarray, period: int):
+    """Return SMA for the given period, or None if insufficient data."""
+    return round(float(np.mean(closes[-period:])), 2) if len(closes) >= period else None
+
+
+def _yearly_range_pcts(closes: np.ndarray, current: float) -> tuple:
+    """Percent from 52-week high and low."""
+    year = closes[-260:] if len(closes) >= 260 else closes
+    pct_high = ((float(max(year)) - current) / current * 100) if current > 0 else 0
+    pct_low = ((current - float(min(year))) / current * 100) if current > 0 else 0
+    return round(float(pct_high), 1), round(float(pct_low), 1)
+
+
 def _compute_technicals(prices: List[Dict]) -> Dict:
     """Compute key technical indicators from price data."""
     if len(prices) < 20:
@@ -100,31 +113,25 @@ def _compute_technicals(prices: List[Dict]) -> Dict:
 
     current = float(closes[-1])
     rsi = _calc_rsi(closes)
-    sma_20 = float(np.mean(closes[-20:]))
-    sma_50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else None
-    sma_200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else None
     macd = _ema(closes, 12) - _ema(closes, 26)
     bb_mid, bb_upper, bb_lower = _calc_bollinger(closes)
 
     avg_vol_20 = float(np.mean(volumes[-20:]))
     vol_ratio = float(volumes[-1] / avg_vol_20) if avg_vol_20 > 0 else 1.0
-
-    year_prices = closes[-260:] if len(closes) >= 260 else closes
-    pct_from_high = ((float(max(year_prices)) - current) / current * 100) if current > 0 else 0
-    pct_from_low = ((current - float(min(year_prices))) / current * 100) if current > 0 else 0
+    pct_from_high, pct_from_low = _yearly_range_pcts(closes, current)
 
     return {
         "rsi": round(rsi, 1),
-        "sma_20": round(sma_20, 2),
-        "sma_50": round(sma_50, 2) if sma_50 else None,
-        "sma_200": round(sma_200, 2) if sma_200 else None,
+        "sma_20": _safe_sma(closes, 20),
+        "sma_50": _safe_sma(closes, 50),
+        "sma_200": _safe_sma(closes, 200),
         "macd": round(macd, 4),
         "bb_upper": round(bb_upper, 2),
         "bb_lower": round(bb_lower, 2),
         "vol_ratio": round(vol_ratio, 2),
-        "trend": _determine_trend(current, sma_20, sma_50),
-        "pct_from_high": round(float(pct_from_high), 1),
-        "pct_from_low": round(float(pct_from_low), 1),
+        "trend": _determine_trend(current, _safe_sma(closes, 20), _safe_sma(closes, 50)),
+        "pct_from_high": pct_from_high,
+        "pct_from_low": pct_from_low,
         "current_price": round(current, 2),
         "price_5d_ago": round(float(closes[-6]), 2) if len(closes) >= 6 else None,
         "price_20d_ago": round(float(closes[-21]), 2) if len(closes) >= 21 else None,

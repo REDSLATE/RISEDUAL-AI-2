@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const BACKEND_URL = getApiBase();
 const API = `${BACKEND_URL}/api`;
@@ -10,7 +11,7 @@ export const getTickerData = async () => {
     const response = await axios.get(`${API}/stocks/ticker`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching ticker data:', error);
+    logger.error('Error fetching ticker data:', error);
     throw error;
   }
 };
@@ -20,7 +21,7 @@ export const getStockQuote = async (symbol) => {
     const response = await axios.get(`${API}/stocks/quote/${symbol}`);
     return response.data;
   } catch (error) {
-    console.error(`Error fetching quote for ${symbol}:`, error);
+    logger.error(`Error fetching quote for ${symbol}:`, error);
     throw error;
   }
 };
@@ -31,7 +32,7 @@ export const getOptionsRadar = async () => {
     const response = await axios.get(`${API}/options/radar`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching options radar:', error);
+    logger.error('Error fetching options radar:', error);
     throw error;
   }
 };
@@ -41,7 +42,7 @@ export const getOptionsFlow = async () => {
     const response = await axios.get(`${API}/options/flow`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching options flow:', error);
+    logger.error('Error fetching options flow:', error);
     throw error;
   }
 };
@@ -51,7 +52,7 @@ export const getMomentumData = async () => {
     const response = await axios.get(`${API}/options/momentum`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching momentum data:', error);
+    logger.error('Error fetching momentum data:', error);
     throw error;
   }
 };
@@ -61,7 +62,7 @@ export const getFastMovers = async () => {
     const response = await axios.get(`${API}/options/fast-movers`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching fast movers:', error);
+    logger.error('Error fetching fast movers:', error);
     throw error;
   }
 };
@@ -71,7 +72,7 @@ export const getUnusualVolume = async () => {
     const response = await axios.get(`${API}/options/unusual-volume`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching unusual volume:', error);
+    logger.error('Error fetching unusual volume:', error);
     throw error;
   }
 };
@@ -82,7 +83,7 @@ export const getCryptoPrices = async () => {
     const response = await axios.get(`${API}/crypto/prices`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching crypto prices:', error);
+    logger.error('Error fetching crypto prices:', error);
     throw error;
   }
 };
@@ -92,7 +93,7 @@ export const getCryptoBySymbol = async (symbol) => {
     const response = await axios.get(`${API}/crypto/${symbol}`);
     return response.data;
   } catch (error) {
-    console.error(`Error fetching crypto ${symbol}:`, error);
+    logger.error(`Error fetching crypto ${symbol}:`, error);
     throw error;
   }
 };
@@ -103,7 +104,7 @@ export const getDarkPoolData = async () => {
     const response = await axios.get(`${API}/dark-pool`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching dark pool data:', error);
+    logger.error('Error fetching dark pool data:', error);
     throw error;
   }
 };
@@ -118,7 +119,7 @@ export const sendChatMessage = async (message, sessionId, imageBase64 = null) =>
     const response = await axios.post(`${API}/chat`, payload);
     return response.data;
   } catch (error) {
-    console.error('Error sending chat message:', error);
+    logger.error('Error sending chat message:', error);
     throw error;
   }
 };
@@ -128,7 +129,7 @@ export const getChatHistory = async (sessionId) => {
     const response = await axios.get(`${API}/chat/history/${sessionId}`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching chat history:', error);
+    logger.error('Error fetching chat history:', error);
     throw error;
   }
 };
@@ -139,7 +140,7 @@ export const researchCompany = async (symbol) => {
     const response = await axios.get(`${API}/research/${symbol}`);
     return response.data;
   } catch (error) {
-    console.error('Error researching company:', error);
+    logger.error('Error researching company:', error);
     throw error;
   }
 };

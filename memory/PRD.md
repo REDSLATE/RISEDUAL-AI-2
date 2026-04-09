@@ -17,6 +17,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **90s fetch timeout**: AI endpoints take 8-50s; do NOT lower below 90s
 - **Dynamic API base URL**: `getApiBase()` in `/app/frontend/src/utils/apiBase.js` resolves to correct domain on any deployment
 - **Auto-refresh JWT**: `authFetch` silently refreshes expired access tokens on 401
+- **Dynamic CORS middleware**: Reflects request Origin for any deployed domain (risedual.ai, preview, etc.)
 
 ## Core Features (All Implemented)
 - Real-time stock & crypto tickers
@@ -35,19 +36,26 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Referral System with Promo Codes
 - Trading Journal, Strategy Builder, Strategy Marketplace
 
+## Code Quality Sweep (April 2026)
+- eval()/exec() verified SAFE (AST-based evaluator, not raw eval)
+- Hook dependencies verified CORRECT (all module-level/global refs intentionally excluded)
+- OrderParams dataclass already in place for broker service
+- Extracted helpers for complex functions (technicals, token refresh)
+- Production console.log replaced with env-aware logger
+- Hardcoded test credentials migrated to conftest_creds
+
 ## Deployment Status
-- Health Check: PASSED (April 2026)
-- All features verified via testing agent (100% pass, iteration 47)
-- "Analysis failed" bug fixed (dynamic API base + auto-refresh JWT)
-- Ready for production deployment to risedual.ai
+- Health Check: PASSED
+- CORS: Dynamic origin reflection for any domain
+- API routing: Dynamic getApiBase() for any deployment
+- All features verified via testing agent (100% pass)
 
 ## Known Limitations
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
-- Reuters RSS feeds may not resolve in certain network environments (gracefully handled)
 
 ## Backlog
-- P0: Re-deploy to risedual.ai with fix for "Analysis failed"
+- P0: Deploy to risedual.ai
 - P1: Connect custom domain risedual.ai via DNS
 - P2: Alpha Vantage API tier upgrade handling
 - P3: Advanced Sector Heatmap charting

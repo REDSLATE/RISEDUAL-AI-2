@@ -102,7 +102,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
     } catch {
-      // localStorage may be unavailable (private browsing)
+      // localStorage may be unavailable (private browsing) — safe to ignore
+      if (process.env.NODE_ENV === 'development') console.warn('localStorage unavailable');
     }
   }, []);
 
@@ -153,7 +154,7 @@ export const AuthProvider = ({ children }) => {
     });
     if (!res.ok) {
       let detail;
-      try { detail = (await res.json()).detail; } catch { detail = `Server error (${res.status}). Please try again.`; }
+      try { detail = (await res.json()).detail; } catch (e) { detail = `Server error (${res.status}). Please try again.`; }
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();
@@ -172,7 +173,7 @@ export const AuthProvider = ({ children }) => {
     });
     if (!res.ok) {
       let detail;
-      try { detail = (await res.json()).detail; } catch { detail = `Server error (${res.status}). Please try again.`; }
+      try { detail = (await res.json()).detail; } catch (e) { detail = `Server error (${res.status}). Please try again.`; }
       throw new Error(formatDetail(detail));
     }
     const data = await res.json();

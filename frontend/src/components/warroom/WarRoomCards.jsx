@@ -12,12 +12,14 @@ const scoreBadge = (val, high = 7, mid = 4) =>
   val >= high ? 'bg-emerald-900/40 text-emerald-400' :
   val >= mid ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400';
 
-const impactDot = (impact) =>
-  impact === 'positive' ? 'bg-emerald-400' : impact === 'caution' ? 'bg-amber-400' : 'bg-slate-500';
+const IMPACT_DOTS = { positive: 'bg-emerald-400', caution: 'bg-amber-400' };
+const impactDot = (impact) => IMPACT_DOTS[impact] || 'bg-slate-500';
 
-const sentimentBadge = (s) =>
-  s === 'bullish' ? 'bg-emerald-900/40 text-emerald-400' :
-  s === 'bearish' ? 'bg-red-900/40 text-red-400' : 'bg-slate-700 text-slate-400';
+const SENTIMENT_BADGES = {
+  bullish: 'bg-emerald-900/40 text-emerald-400',
+  bearish: 'bg-red-900/40 text-red-400',
+};
+const sentimentBadge = (s) => SENTIMENT_BADGES[s] || 'bg-slate-700 text-slate-400';
 
 const MiniBar = ({ value, max = 100, color = '#0052FF' }) => (
   <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">

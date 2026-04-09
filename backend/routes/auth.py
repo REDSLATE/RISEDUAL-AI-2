@@ -192,21 +192,29 @@ async def me(request: Request):
     user = await get_current_user(request)
     return user_response({"_id": user["_id"], **user})
 
+
+async def _extract_refresh_token(request: Request) -> str:
+    """Extract refresh token from cookie, body, or Authorization header."""
+    token = request.cookies.get("refresh_token")
+    if token:
+        return token
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    token = body.get("refresh_token") or ""
+    if token:
+        return token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return ""
+
+
 @auth_router.post("/refresh")
 async def refresh_token(request: Request, response: Response):
-    # Accept refresh token from: cookie > body > Authorization header
-    token = request.cookies.get("refresh_token")
-    if not token:
-        body = {}
-        try:
-            body = await request.json()
-        except Exception:
-            pass
-        token = body.get("refresh_token") or ""
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
+    token = await _extract_refresh_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
     try:
