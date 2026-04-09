@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Star, X, Plus, TrendingUp, TrendingDown, Lock } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Star, X, Plus, TrendingUp, TrendingDown, Lock, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { useAuth } from '../contexts/AuthContext';
+import { getApiBase } from '../utils/apiBase';
 
+const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
 
 const Watchlist = ({ onSubscribe }) => {
@@ -13,11 +15,47 @@ const Watchlist = ({ onSubscribe }) => {
   const [newSymbol, setNewSymbol] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [capWarning, setCapWarning] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch live quotes for all watchlist symbols
+  const fetchQuotes = useCallback(async (symbols) => {
+    if (!symbols.length) return;
+    setRefreshing(true);
+    try {
+      const results = await Promise.allSettled(
+        symbols.map(sym =>
+          fetch(`${API}/stocks/quote/${sym}`).then(r => r.ok ? r.json() : null)
+        )
+      );
+      setWatchlist(prev => {
+        const updated = prev.map((item, i) => {
+          const data = results[i]?.value;
+          if (!data) return item;
+          return {
+            ...item,
+            price: data.price || 0,
+            change: data.change || 0,
+            changePercent: data.changePercent || 0,
+          };
+        });
+        localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
+        return updated;
+      });
+    } catch (e) {
+      /* quote fetch is best-effort */
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('risedualai_watchlist');
     if (saved) {
-      setWatchlist(JSON.parse(saved));
+      const parsed = JSON.parse(saved);
+      setWatchlist(parsed);
+      // Fetch live prices on load
+      const symbols = parsed.map(item => item.symbol);
+      fetchQuotes(symbols);
     }
 
     const handleAdd = (e) => {
@@ -27,13 +65,32 @@ const Watchlist = ({ onSubscribe }) => {
         if (prev.find(item => item.symbol === symbol)) return prev;
         const updated = [...prev, { symbol, addedAt: new Date().toISOString(), price: 0, change: 0, changePercent: 0 }];
         localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
+        // Fetch quote for new symbol
+        fetch(`${API}/stocks/quote/${symbol}`).then(r => r.ok ? r.json() : null).then(data => {
+          if (!data) return;
+          setWatchlist(prev2 => {
+            const up = prev2.map(item => item.symbol === symbol ? { ...item, price: data.price || 0, change: data.change || 0, changePercent: data.changePercent || 0 } : item);
+            localStorage.setItem('risedualai_watchlist', JSON.stringify(up));
+            return up;
+          });
+        }).catch(() => {});
         return updated;
       });
       setIsExpanded(true);
     };
     window.addEventListener('risedualai-add-watchlist', handleAdd);
     return () => window.removeEventListener('risedualai-add-watchlist', handleAdd);
-  }, []);
+  }, [fetchQuotes]);
+
+  // Refresh quotes every 60 seconds when expanded
+  useEffect(() => {
+    if (!isExpanded || !watchlist.length) return;
+    const symbols = watchlist.map(item => item.symbol);
+    const interval = setInterval(() => {
+      fetchQuotes(symbols);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [isExpanded, watchlist, fetchQuotes]);
 
   const addSymbol = () => {
     if (!newSymbol.trim()) return;
@@ -77,6 +134,18 @@ const Watchlist = ({ onSubscribe }) => {
         >
           {isExpanded ? 'Collapse' : 'Expand'}
         </Button>
+        {isExpanded && watchlist.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchQuotes(watchlist.map(item => item.symbol))}
+            disabled={refreshing}
+            className="text-slate-400 hover:text-slate-50 ml-1"
+            data-testid="watchlist-refresh-btn"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
       </div>
 
       {isExpanded && (
