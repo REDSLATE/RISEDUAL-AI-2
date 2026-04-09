@@ -3,20 +3,24 @@ import { TrendingUp, TrendingDown, Activity, Globe, Landmark } from 'lucide-reac
 import { Card } from '../ui/card';
 
 const verdictColor = (v) => {
-  if (v === 'BULLISH') return 'text-emerald-400';
-  if (v === 'BEARISH') return 'text-red-400';
+  if (!v) return 'text-amber-400';
+  const upper = v.toUpperCase();
+  if (upper.includes('BULLISH') || upper === 'UP') return 'text-emerald-400';
+  if (upper.includes('BEARISH') || upper === 'DOWN') return 'text-red-400';
   return 'text-amber-400';
 };
 
 const PredictionCard = ({ prediction }) => {
   if (!prediction) return null;
+  const verdict = prediction.overall_direction || prediction.verdict;
+  const confidence = prediction.confidence_score ?? prediction.confidence;
 
   return (
     <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
-        <span className={`text-sm font-bold ${verdictColor(prediction.verdict)}`}>
-          {prediction.verdict}
+        <span className={`text-sm font-bold ${verdictColor(verdict)}`}>
+          {verdict}
         </span>
       </div>
       <p className="text-slate-300 text-sm leading-relaxed mb-4">{prediction.summary}</p>
@@ -29,16 +33,16 @@ const PredictionCard = ({ prediction }) => {
         </div>
       )}
 
-      {prediction.confidence != null && (
+      {confidence != null && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-slate-400 text-xs">AI Confidence</span>
-            <span className="text-white text-xs font-bold">{prediction.confidence}%</span>
+            <span className="text-white text-xs font-bold">{confidence}%</span>
           </div>
           <div className="w-full bg-slate-700/50 rounded-full h-2">
             <div
               className="h-2 rounded-full transition-all bg-gradient-to-r from-[#0052FF] to-cyan-400"
-              style={{ width: `${prediction.confidence}%` }}
+              style={{ width: `${confidence}%` }}
             />
           </div>
         </div>
@@ -48,16 +52,20 @@ const PredictionCard = ({ prediction }) => {
 };
 
 const TimeframeCard = ({ label, tf }) => {
-  const isUp = tf.direction === 'UP' || tf.direction === 'BULLISH';
-  const Icon = isUp ? TrendingUp : TrendingDown;
+  const dir = (tf.direction || '').toUpperCase();
+  const isUp = dir.includes('BULLISH') || dir === 'UP';
+  const isDown = dir.includes('BEARISH') || dir === 'DOWN';
+  const Icon = isUp ? TrendingUp : isDown ? TrendingDown : Activity;
+  const iconColor = isUp ? 'text-emerald-400' : isDown ? 'text-red-400' : 'text-amber-400';
 
   return (
     <Card className="bg-slate-900/60 border-slate-700/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${isUp ? 'text-emerald-400' : 'text-red-400'}`} />
+        <Icon className={`w-4 h-4 ${iconColor}`} />
         <span className="text-white text-xs font-semibold capitalize">{label.replace('_', ' ')}</span>
       </div>
-      <p className="text-slate-400 text-xs">{tf.summary || tf.outlook || 'N/A'}</p>
+      <p className="text-slate-300 text-[11px] font-medium mb-1">{tf.direction}</p>
+      <p className="text-slate-400 text-xs">{tf.target || tf.summary || tf.outlook || 'N/A'}</p>
     </Card>
   );
 };
