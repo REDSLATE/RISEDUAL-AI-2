@@ -193,6 +193,9 @@ async def query_similar_regimes(
     where_filter = None
     if outcome_filter:
         where_filter = {"outcome": outcome_filter}
+    else:
+        # By default, exclude toxic_lesson entries from general queries
+        where_filter = {"outcome": {"$ne": "toxic_lesson"}}
 
     actual_n = min(n_results, count)
 
@@ -312,13 +315,76 @@ async def get_strategist_context(ticker: str, current_rsi: float = None, n_resul
     return f"{header}\n" + "\n".join(lessons) + f"\n{footer}"
 
 
+
+async def get_toxic_lessons_context(ticker: str, n_results: int = 2) -> str:
+    """Query toxic lessons — high-confidence failures that the AI should avoid repeating.
+
+    Filters for outcome='toxic_lesson' and returns formatted warnings.
+    """
+    if not _collection:
+        return ""
+
+    count = await asyncio.to_thread(_collection.count)
+    if count == 0:
+        return ""
+
+    query_text = f"Ticker {ticker}"
+    actual_n = min(n_results, count)
+
+    try:
+        results = await asyncio.to_thread(
+            _collection.query,
+            query_texts=[query_text],
+            n_results=actual_n,
+            where={"outcome": "toxic_lesson"},
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as e:
+        logger.warning(f"Toxic lessons query failed: {e}")
+        return ""
+
+    if not results or not results.get("documents") or not results["documents"][0]:
+        return ""
+
+    warnings = []
+    for i, doc in enumerate(results["documents"][0]):
+        distance = results["distances"][0][i] if results.get("distances") else 0
+        similarity = round(1 - distance, 4)
+        meta = results["metadatas"][0][i] if results.get("metadatas") else {}
+        warnings.append(
+            f"- FAILED Pattern (sim={similarity:.0%}, {meta.get('symbol', '?')} on "
+            f"{meta.get('date', '?')}, confidence was {meta.get('confidence', '?')}%): {doc}"
+        )
+
+    if not warnings:
+        return ""
+
+    header = f"WARNING — TOXIC PATTERNS for {ticker} (these were HIGH-CONFIDENCE FAILURES):"
+    footer = (
+        "These predictions had high confidence but were WRONG. "
+        "If current conditions resemble these, LOWER your confidence and explain why this time might be different."
+    )
+    return f"{header}\n" + "\n".join(warnings) + f"\n{footer}"
+
+
 async def get_memory_stats() -> Dict:
     """Return stats about the vector memory store."""
     count = await asyncio.to_thread(_collection.count) if _collection else 0
     mongo_count = 0
+    toxic_count = 0
     if _db is not None:
         try:
             mongo_count = await _db.market_memory_log.count_documents({})
+        except Exception:
+            pass
+
+    # Count toxic lessons in ChromaDB
+    if _collection:
+        try:
+            toxic_data = await asyncio.to_thread(
+                _collection.get, where={"outcome": "toxic_lesson"}
+            )
+            toxic_count = len(toxic_data.get("ids", []))
         except Exception:
             pass
 
@@ -336,6 +402,8 @@ async def get_memory_stats() -> Dict:
 
     return {
         "total_episodes": count,
+        "toxic_lessons": toxic_count,
+        "active_episodes": count - toxic_count,
         "mongodb_log_count": mongo_count,
         "collection_name": COLLECTION_NAME,
         "embedding_model": "all-MiniLM-L6-v2 (local)",
@@ -350,13 +418,16 @@ async def get_memory_stats() -> Dict:
 # ──────────────────────────────────────────────
 
 async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: float = 80.0) -> Dict:
-    """Retrain memory by deleting bad patterns and obsolete data.
+    """Retrain memory by re-tagging bad patterns and pruning obsolete data.
 
-    A. Delete Toxic Outliers: High-confidence (>80%) predictions that were WRONG.
-       These poison the memory by teaching the AI to be overconfident in similar bad setups.
+    A. Re-tag Toxic Outliers: High-confidence (>80%) predictions that were WRONG.
+       Instead of deleting, these are re-tagged as 'toxic_lesson' so the AI can
+       retrieve them as negative examples ("what NOT to do").
 
     B. Prune Obsolete Data: Episodes older than `days_to_keep` days.
        Ensures the AI adapts to current market regimes, not stale patterns.
+
+    C. Alert System: Sends email + in-app notifications when toxic spikes are found.
     """
     if not _collection:
         return {"error": "Market Memory not initialized"}
@@ -366,14 +437,14 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         "obsolete_removed": 0,
         "total_before": 0,
         "total_after": 0,
+        "toxic_details": [],
     }
 
     results["total_before"] = await asyncio.to_thread(_collection.count)
     if results["total_before"] == 0:
         return {**results, "status": "empty", "message": "No episodes to clean"}
 
-    # ── A. Delete Toxic Outliers ──
-    # High-confidence failures: outcome='miss' AND confidence > threshold
+    # ── A. Re-tag Toxic Outliers as "toxic_lesson" ──
     try:
         toxic = await asyncio.to_thread(
             _collection.get,
@@ -383,17 +454,40 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
                     {"confidence": {"$gt": toxic_confidence_threshold}},
                 ]
             },
+            include=["metadatas"],
         )
         toxic_ids = toxic.get("ids", [])
+        toxic_metas = toxic.get("metadatas", [])
+
         if toxic_ids:
-            await asyncio.to_thread(_collection.delete, ids=toxic_ids)
+            # Collect details for alerts before re-tagging
+            for i, tid in enumerate(toxic_ids):
+                meta = toxic_metas[i] if i < len(toxic_metas) else {}
+                results["toxic_details"].append({
+                    "id": tid,
+                    "symbol": meta.get("symbol", "?"),
+                    "confidence": meta.get("confidence", 0),
+                    "date": meta.get("date", "?"),
+                })
+
+            # Re-tag as toxic_lesson instead of deleting
+            updated_metas = []
+            for i, tid in enumerate(toxic_ids):
+                meta = toxic_metas[i].copy() if i < len(toxic_metas) else {}
+                meta["outcome"] = "toxic_lesson"
+                updated_metas.append(meta)
+
+            await asyncio.to_thread(
+                _collection.update,
+                ids=toxic_ids,
+                metadatas=updated_metas,
+            )
             results["toxic_removed"] = len(toxic_ids)
-            logger.info(f"Cleanup: Removed {len(toxic_ids)} toxic high-confidence failures")
+            logger.info(f"Cleanup: Re-tagged {len(toxic_ids)} toxic high-confidence failures as 'toxic_lesson'")
     except Exception as e:
         logger.warning(f"Toxic outlier cleanup failed: {e}")
 
     # ── B. Prune Obsolete Data ──
-    # Remove episodes older than cutoff date
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
     try:
         old_data = await asyncio.to_thread(
@@ -422,8 +516,90 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
             logger.warning(f"Cleanup log save failed: {e}")
 
     logger.info(
-        f"Nightly cleanup complete: {results['toxic_removed']} toxic + "
+        f"Nightly cleanup complete: {results['toxic_removed']} toxic re-tagged + "
         f"{results['obsolete_removed']} obsolete removed "
         f"({results['total_before']} -> {results['total_after']} episodes)"
     )
+
+    # ── C. Alert System — Email + In-App Notifications ──
+    if results["toxic_removed"] > 0:
+        await _send_toxic_alerts(results)
+
     return results
+
+
+async def _send_toxic_alerts(cleanup_results: Dict):
+    """Send email and in-app notifications when toxic spikes are detected."""
+    toxic_count = cleanup_results.get("toxic_removed", 0)
+    toxic_details = cleanup_results.get("toxic_details", [])
+
+    # ── 1. Email Alert to admins/owner ──
+    try:
+        from services.email_service import send_toxic_spikes_email
+        import os
+
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        owner_email = os.environ.get("OWNER_EMAIL", "")
+        recipients = list({e for e in [admin_email, owner_email] if e})
+
+        for email in recipients:
+            await send_toxic_spikes_email(
+                recipient_email=email,
+                toxic_count=toxic_count,
+                obsolete_count=cleanup_results.get("obsolete_removed", 0),
+                total_before=cleanup_results.get("total_before", 0),
+                total_after=cleanup_results.get("total_after", 0),
+                spike_details=toxic_details,
+            )
+        logger.info(f"Toxic spikes email alerts sent to {len(recipients)} admin(s)")
+    except Exception as e:
+        logger.error(f"Failed to send toxic spikes email: {e}")
+
+    # ── 2. In-App Notifications for all Pro users ──
+    if _db is None:
+        return
+
+    try:
+        # Build summary of affected tickers
+        affected_tickers = list({d.get("symbol", "?") for d in toxic_details[:20]})
+        ticker_summary = ", ".join(affected_tickers[:5])
+        if len(affected_tickers) > 5:
+            ticker_summary += f" +{len(affected_tickers) - 5} more"
+
+        # Find all Pro users
+        pro_users = []
+        cursor = _db.users.find(
+            {"subscription_status": {"$in": ["pro", "trial"]}},
+            {"_id": 1},
+        )
+        async for user in cursor:
+            pro_users.append(str(user["_id"]))
+
+        if not pro_users:
+            logger.info("No Pro users found for toxic spike notifications")
+            return
+
+        # Batch insert notifications for all Pro users
+        now = datetime.now(timezone.utc).isoformat()
+        notifications = [
+            {
+                "user_id": uid,
+                "type": "toxic_spike",
+                "title": f"Toxic Spikes: {toxic_count} Bad Predictions Detected",
+                "message": f"Nightly cleanup found {toxic_count} high-confidence failures ({ticker_summary}). Re-tagged as negative lessons in memory.",
+                "read": False,
+                "created_at": now,
+                "metadata": {
+                    "toxic_count": toxic_count,
+                    "affected_tickers": affected_tickers,
+                    "total_before": cleanup_results.get("total_before", 0),
+                    "total_after": cleanup_results.get("total_after", 0),
+                },
+            }
+            for uid in pro_users
+        ]
+
+        await _db.notifications.insert_many(notifications)
+        logger.info(f"Toxic spike in-app notifications sent to {len(pro_users)} Pro user(s)")
+    except Exception as e:
+        logger.error(f"Failed to create toxic spike notifications: {e}")

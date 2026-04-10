@@ -99,7 +99,7 @@ async def get_notifications(request: Request):
     if not is_pro_user(user):
         return {"notifications": [], "unread_count": 0, "is_pro": False}
     cursor = db.notifications.find(
-        {"user_id": user["_id"]}, {"_id": 0, "type": 1, "title": 1, "message": 1, "read": 1, "created_at": 1}
+        {"user_id": user["_id"]}, {"_id": 0, "type": 1, "title": 1, "message": 1, "read": 1, "created_at": 1, "metadata": 1, "symbol": 1, "new_verdict": 1, "old_verdict": 1, "confidence": 1, "in_watchlist": 1}
     ).sort("created_at", -1).limit(30)
     notifications = []
     async for doc in cursor:

@@ -218,6 +218,94 @@ async def send_password_reset_email(user_email: str, reset_token: str, origin_ur
         return False
 
 
+def _toxic_spikes_html(toxic_count: int, obsolete_count: int, total_before: int, total_after: int, spike_details: list) -> str:
+    """Email template for Toxic Spikes Alert — sent when nightly cleanup detects bad predictions."""
+    detail_rows = ""
+    for spike in spike_details[:10]:  # Cap at 10 examples
+        detail_rows += f"""<tr>
+<td style="padding:8px 12px;color:#ffffff;font-size:13px;border-bottom:1px solid #334155;">{spike.get('symbol','?')}</td>
+<td style="padding:8px 12px;color:#F87171;font-size:13px;border-bottom:1px solid #334155;">{spike.get('confidence','?')}%</td>
+<td style="padding:8px 12px;color:#94A3B8;font-size:13px;border-bottom:1px solid #334155;">{spike.get('date','?')}</td>
+</tr>"""
+
+    details_table = ""
+    if detail_rows:
+        details_table = f"""
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;border-collapse:collapse;">
+<tr>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Ticker</th>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Confidence</th>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Date</th>
+</tr>
+{detail_rows}
+</table>"""
+
+    content = f"""
+<h2 style="color:#F87171;font-size:20px;margin:0 0 8px;font-weight:600;">Toxic Spikes Detected</h2>
+<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
+The nightly memory cleanup found <strong style="color:#F87171;">{toxic_count} high-confidence failures</strong> in the AI prediction engine. These have been re-tagged as negative lessons so the AI avoids repeating these mistakes.
+</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td style="width:33%;text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Toxic Removed</p>
+<p style="color:#F87171;font-size:22px;margin:0;font-weight:700;">{toxic_count}</p>
+</td>
+<td style="width:33%;text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Obsolete Pruned</p>
+<p style="color:#FBBF24;font-size:22px;margin:0;font-weight:700;">{obsolete_count}</p>
+</td>
+<td style="width:33%;text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Episodes Now</p>
+<p style="color:#10B981;font-size:22px;margin:0;font-weight:700;">{total_after}</p>
+</td>
+</tr>
+</table>
+</td></tr>
+</table>
+{details_table}
+<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 24px;">
+These toxic patterns are preserved in ChromaDB as <strong style="color:#FBBF24;">negative lessons</strong> &mdash; the AI will use them to avoid similar high-confidence errors in the future.
+</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+<tr><td style="background-color:#0052FF;border-radius:10px;padding:12px 28px;">
+<a href="{APP_URL}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">View Memory Dashboard</a>
+</td></tr>
+</table>"""
+    return _base_html(content)
+
+
+async def send_toxic_spikes_email(
+    recipient_email: str,
+    toxic_count: int,
+    obsolete_count: int,
+    total_before: int,
+    total_after: int,
+    spike_details: list = None,
+):
+    """Send toxic spikes alert email after nightly cleanup detects bad predictions."""
+    if not _is_configured():
+        logger.info(f"Email skipped (no API key): toxic spikes alert to {recipient_email}")
+        return False
+    try:
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [recipient_email],
+            "subject": f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected",
+            "html": _toxic_spikes_html(
+                toxic_count, obsolete_count, total_before, total_after, spike_details or []
+            ),
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Toxic spikes alert email sent to {recipient_email}, id: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send toxic spikes email to {recipient_email}: {e}")
+        return False
+
+
 async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str):
     """Send welcome email to newly referred user."""
     if not _is_configured():
