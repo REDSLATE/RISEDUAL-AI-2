@@ -76,6 +76,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **2,973 historical episodes** ingested from 33 symbols
 - New endpoints: `POST /api/accuracy/memory/train` (triggers background task), `GET /api/accuracy/memory/train/status`
 
+### Strategist Context — Win Pattern Injection (April 10, 2026)
+- Added `get_strategist_context()` to `market_memory_service.py`: filters ChromaDB for `outcome='hit'` only
+- All 3 AI crews (War Room, Hypothesis, Market Prediction) now inject win patterns into synthesizer prompts
+- Format: "HISTORICAL WIN PATTERNS for {ticker} (RSI ~{n})" with similarity scores, dates, and actual outcomes
+- Graceful fallback: returns generic patterns if no ticker-specific wins exist
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
