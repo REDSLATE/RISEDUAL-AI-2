@@ -76,6 +76,13 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **2,973 historical episodes** ingested from 33 symbols
 - New endpoints: `POST /api/accuracy/memory/train` (triggers background task), `GET /api/accuracy/memory/train/status`
 
+### Enriched Regime Format (April 10, 2026)
+- Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
+- Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
+- Training fetches 730 days of historical F&G data and tags each snapshot by date
+- Volume delta: % above/below 20-day average volume
+- New endpoint: `GET /api/sentiment/fear-greed` returns live F&G + VIX
+
 ## Broker OAuth 2.0 (April 10, 2026)
 - Added OAuth 2.0 authorization flow for Alpaca (extensible to other brokers)
 - New endpoints: `GET /api/broker/oauth/{broker_id}/status`, `/authorize`, `/callback`
