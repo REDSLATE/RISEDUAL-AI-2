@@ -44,8 +44,9 @@ class MarketPredictionService:
 
         # Query vector memory for similar past market regimes
         memory_context = ""
+        strategist_context = ""
         try:
-            from services.market_memory_service import get_prediction_context
+            from services.market_memory_service import get_prediction_context, get_strategist_context
             current_snapshot = self._build_regime_snapshot(
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 world_events, foreign_markets
@@ -53,6 +54,11 @@ class MarketPredictionService:
             memory_context = await get_prediction_context("MARKET", current_snapshot, n_results=3)
             if memory_context:
                 logger.info(f"Injecting {memory_context.count('Case')} historical regime(s) into prediction prompt")
+
+            # Get win-only patterns for the strategist
+            strategist_context = await get_strategist_context("MARKET", n_results=3)
+            if strategist_context and "No similar" not in strategist_context:
+                logger.info(f"Injecting {strategist_context.count('Win Pattern')} win pattern(s) into strategist")
         except Exception as e:
             logger.warning(f"Memory context fetch skipped: {e}")
 
@@ -62,6 +68,7 @@ class MarketPredictionService:
                 real_estate_data, world_events, foreign_markets, gov_filings,
                 api_key=self.api_key,
                 memory_context=memory_context,
+                strategist_context=strategist_context,
             )
             return result
         except Exception as e:

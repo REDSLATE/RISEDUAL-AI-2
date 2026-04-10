@@ -247,6 +247,71 @@ async def get_prediction_context(symbol: str, current_data: Dict, n_results: int
     return "\n".join(lines)
 
 
+async def get_strategist_context(ticker: str, current_rsi: float = None, n_results: int = 3) -> str:
+    """Query ONLY past accurate predictions with similar conditions.
+
+    Filters for outcome='hit' only — surfaces 'lessons learned' from winning calls.
+    Returns formatted text ready for injection into agent prompts.
+    """
+    if not _collection:
+        return "No similar successful patterns in memory yet."
+
+    count = await asyncio.to_thread(_collection.count)
+    if count == 0:
+        return "No similar successful patterns in memory yet."
+
+    # Build a targeted query emphasizing ticker + RSI
+    query_parts = [f"Ticker {ticker}"]
+    if current_rsi is not None:
+        query_parts.append(f"RSI {current_rsi:.1f}")
+    query_text = " ".join(query_parts)
+
+    # Filter for successful predictions only
+    where_filter = {"outcome": "hit"}
+
+    actual_n = min(n_results, count)
+
+    try:
+        results = await asyncio.to_thread(
+            _collection.query,
+            query_texts=[query_text],
+            n_results=actual_n,
+            where=where_filter,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as e:
+        logger.warning(f"Strategist context query failed: {e}")
+        return "No similar successful patterns in memory yet."
+
+    if not results or not results.get("documents") or not results["documents"][0]:
+        return "No similar successful patterns in memory yet."
+
+    lessons = []
+    for i, doc in enumerate(results["documents"][0]):
+        distance = results["distances"][0][i] if results.get("distances") else 0
+        similarity = round(1 - distance, 4)
+        meta = results["metadatas"][0][i] if results.get("metadatas") else {}
+
+        lessons.append(
+            f"- Win Pattern (sim={similarity:.0%}, {meta.get('symbol', '?')} on "
+            f"{meta.get('date', '?')}): {doc}"
+        )
+
+    if not lessons:
+        return "No similar successful patterns in memory yet."
+
+    header = f"HISTORICAL WIN PATTERNS for {ticker}"
+    if current_rsi is not None:
+        header += f" (RSI ~{current_rsi:.0f})"
+    header += ":"
+    footer = (
+        "These are verified successful predictions in similar market conditions. "
+        "Use them to calibrate confidence — if current conditions mirror a past win, "
+        "explain why the probability is higher."
+    )
+    return f"{header}\n" + "\n".join(lessons) + f"\n{footer}"
+
+
 async def get_memory_stats() -> Dict:
     """Return stats about the vector memory store."""
     count = await asyncio.to_thread(_collection.count) if _collection else 0

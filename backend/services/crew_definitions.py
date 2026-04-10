@@ -50,6 +50,16 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
 
+    # Fetch win patterns for this specific ticker
+    win_context = ""
+    try:
+        from services.market_memory_service import get_strategist_context
+        win_context = await get_strategist_context(symbol, n_results=3)
+        if "No similar" in win_context:
+            win_context = ""
+    except Exception:
+        pass
+
     # Build data context for each agent
     overview_str = json.dumps(overview, indent=1, default=str) if overview else "No company data available"
     earnings_str = json.dumps(earnings, indent=1, default=str) if earnings else "No earnings data"
@@ -68,7 +78,7 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
 
     synth_prompt = f"""Synthesize all three analyses for {symbol} into a final investment verdict.
 
-Output ONLY valid JSON:
+{win_context + chr(10) + chr(10) if win_context else ""}Output ONLY valid JSON:
 {{
   "verdict": "STRONG BUY / BUY / HOLD / SELL / STRONG SELL",
   "composite_score": 0-100,
@@ -140,6 +150,16 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
 
+    # Fetch win patterns for this specific ticker
+    win_context = ""
+    try:
+        from services.market_memory_service import get_strategist_context
+        win_context = await get_strategist_context(symbol, n_results=3)
+        if "No similar" in win_context:
+            win_context = ""
+    except Exception:
+        pass
+
     # Format data sections
     news = _fmt_list(data.get("news", []), "title", "source", limit=8)
     events = json.dumps(data.get("world_events", {}), indent=1, default=str)[:2000]
@@ -161,7 +181,7 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
 
     synth_prompt = f"""Produce a definitive investment hypothesis for {symbol}.
 
-Output ONLY valid JSON:
+{win_context + chr(10) + chr(10) if win_context else ""}Output ONLY valid JSON:
 {{
   "verdict": "BUY / SELL / HOLD",
   "confidence": 0-100,
@@ -228,7 +248,8 @@ PREDICTION_SYNTHESIZER = AgentConfig(
 async def run_prediction_crew(
     financial_news, crypto_data, insider_trades, social_sentiment,
     real_estate_data=None, world_events=None, foreign_markets=None,
-    gov_filings=None, api_key: str = "", memory_context: str = ""
+    gov_filings=None, api_key: str = "", memory_context: str = "",
+    strategist_context: str = ""
 ) -> Dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
@@ -257,7 +278,7 @@ async def run_prediction_crew(
 
     synth_prompt = f"""Produce a definitive market forecast by synthesizing sentiment, macro, and flow analyses.
 
-{memory_context + chr(10) + chr(10) if memory_context else ""}Output ONLY valid JSON:
+{memory_context + chr(10) + chr(10) if memory_context else ""}{strategist_context + chr(10) + chr(10) if strategist_context else ""}Output ONLY valid JSON:
 {
   "overall_direction": "BULLISH / BEARISH / NEUTRAL",
   "confidence_score": 0-100,
