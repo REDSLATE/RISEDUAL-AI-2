@@ -4,12 +4,15 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import base64
 import hashlib
+import requests as http_requests
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,18 @@ def encrypt_value(plaintext: str) -> str:
 
 def decrypt_value(ciphertext: str) -> str:
     return _get_fernet().decrypt(ciphertext.encode()).decode()
+
+
+# --- OAuth Configuration ---
+OAUTH_CONFIGS = {
+    "alpaca": {
+        "authorize_url": "https://app.alpaca.markets/oauth/authorize",
+        "token_url": "https://api.alpaca.markets/oauth/token",
+        "scopes": "account:write trading",
+        "client_id_env": "ALPACA_OAUTH_CLIENT_ID",
+        "client_secret_env": "ALPACA_OAUTH_CLIENT_SECRET",
+    },
+}
 
 
 # --- Request Models ---
@@ -79,6 +94,7 @@ def _build_client(conn: dict):
         "api_key": api_key,
         "api_secret": api_secret,
         "paper": conn.get("paper", True),
+        "oauth": conn.get("auth_method") == "oauth",
     }
     return BrokerService.get_broker_client(broker_id, credentials)
 
@@ -165,6 +181,170 @@ async def disconnect_broker(broker_id: str, request: Request):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Connection not found")
     return {"status": "disconnected", "broker_id": broker_id}
+
+
+# ============================================================
+# OAUTH 2.0 FLOW
+# ============================================================
+
+@router.get("/oauth/{broker_id}/status")
+async def oauth_status(broker_id: str):
+    """Check if OAuth is configured for a broker."""
+    if broker_id not in OAUTH_CONFIGS:
+        return {"available": False, "reason": "OAuth not supported for this broker"}
+    cfg = OAUTH_CONFIGS[broker_id]
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    return {
+        "available": bool(client_id),
+        "broker_id": broker_id,
+        "configured": bool(client_id),
+    }
+
+
+@router.get("/oauth/{broker_id}/authorize")
+async def oauth_authorize(broker_id: str, request: Request):
+    """Start OAuth flow — returns the authorization URL for the frontend to redirect to."""
+    if broker_id not in OAUTH_CONFIGS:
+        raise HTTPException(status_code=400, detail=f"OAuth not supported for {broker_id}")
+
+    cfg = OAUTH_CONFIGS[broker_id]
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    if not client_id:
+        raise HTTPException(status_code=500, detail=f"OAuth not configured for {broker_id}. Set {cfg['client_id_env']} in environment.")
+
+    user = await _get_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+
+    # Generate a CSRF state token
+    state = secrets.token_urlsafe(32)
+    await db.oauth_states.insert_one({
+        "state": state,
+        "user_id": user_id,
+        "broker_id": broker_id,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    # Build redirect URI from the request origin
+    origin = request.headers.get("origin", "")
+    if not origin:
+        referer = request.headers.get("referer", "")
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+    redirect_uri = f"{origin}/api/broker/oauth/{broker_id}/callback"
+
+    authorize_url = (
+        f"{cfg['authorize_url']}?"
+        f"response_type=code&"
+        f"client_id={client_id}&"
+        f"redirect_uri={redirect_uri}&"
+        f"state={state}&"
+        f"scope={cfg['scopes']}"
+    )
+
+    return {"authorize_url": authorize_url, "state": state}
+
+
+@router.get("/oauth/{broker_id}/callback")
+async def oauth_callback(broker_id: str, request: Request, code: str = "", state: str = "", error: str = ""):
+    """Handle OAuth callback — exchange code for tokens and store the connection."""
+    if error:
+        return RedirectResponse(url=f"/?broker_error={error}")
+
+    if broker_id not in OAUTH_CONFIGS:
+        return RedirectResponse(url="/?broker_error=unsupported_broker")
+
+    if not code or not state:
+        return RedirectResponse(url="/?broker_error=missing_code")
+
+    # Validate state token
+    state_doc = await db.oauth_states.find_one_and_delete({"state": state})
+    if not state_doc:
+        return RedirectResponse(url="/?broker_error=invalid_state")
+
+    user_id = state_doc["user_id"]
+    cfg = OAUTH_CONFIGS[broker_id]
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    client_secret = os.environ.get(cfg["client_secret_env"], "")
+
+    # Build redirect URI (must match the authorize call)
+    origin = request.headers.get("origin", "")
+    if not origin:
+        referer = request.headers.get("referer", "")
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            # Reconstruct from request URL
+            origin = str(request.base_url).rstrip("/")
+    redirect_uri = f"{origin}/api/broker/oauth/{broker_id}/callback"
+
+    # Exchange code for access token
+    try:
+        token_resp = await asyncio.to_thread(
+            http_requests.post,
+            cfg["token_url"],
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+            },
+            timeout=15,
+        )
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+    except Exception as e:
+        logger.error(f"OAuth token exchange failed for {broker_id}: {e}")
+        return RedirectResponse(url="/?broker_error=token_exchange_failed")
+
+    access_token = token_data.get("access_token", "")
+    if not access_token:
+        return RedirectResponse(url="/?broker_error=no_access_token")
+
+    # Validate the token by fetching account
+    from services.broker_service import BrokerService
+    credentials = {
+        "api_key": access_token,
+        "api_secret": "oauth",
+        "paper": False,
+        "oauth": True,
+    }
+    try:
+        client = BrokerService.get_broker_client(broker_id, credentials)
+        account = await asyncio.to_thread(client.get_account)
+        if not account:
+            return RedirectResponse(url="/?broker_error=account_fetch_failed")
+    except Exception as e:
+        logger.error(f"OAuth account validation failed: {e}")
+        return RedirectResponse(url="/?broker_error=validation_failed")
+
+    # Store the OAuth connection
+    doc = {
+        "user_id": user_id,
+        "broker_id": broker_id,
+        "api_key_enc": encrypt_value(access_token),
+        "api_secret_enc": encrypt_value("oauth"),
+        "paper": False,
+        "is_active": True,
+        "auth_method": "oauth",
+        "oauth_refresh_token_enc": encrypt_value(token_data.get("refresh_token", "")),
+        "oauth_expires_at": datetime.now(timezone.utc),
+        "account_id": account.get("account_number", account.get("id", "N/A")),
+        "connected_at": datetime.now(timezone.utc),
+        "last_used": datetime.now(timezone.utc),
+    }
+    await db.broker_connections.update_one(
+        {"user_id": user_id, "broker_id": broker_id},
+        {"$set": doc},
+        upsert=True,
+    )
+
+    logger.info(f"OAuth connection established for user {user_id} -> {broker_id}")
+    return RedirectResponse(url=f"/?broker_connected={broker_id}")
 
 
 # ============================================================

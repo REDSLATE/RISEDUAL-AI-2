@@ -21,16 +21,21 @@ class OrderParams:
 
 
 class AlpacaTradingService:
-    """Alpaca — commission-free API-first trading. Supports paper + live."""
+    """Alpaca — commission-free API-first trading. Supports paper + live + OAuth."""
 
-    def __init__(self, api_key: str, api_secret: str, paper: bool = True):
+    def __init__(self, api_key: str, api_secret: str, paper: bool = True, oauth: bool = False):
         self.api_key = api_key
         self.api_secret = api_secret
-        self.base_url = "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
-        self.headers = {
-            "APCA-API-KEY-ID": api_key,
-            "APCA-API-SECRET-KEY": api_secret,
-        }
+        self.oauth = oauth
+        if oauth:
+            self.base_url = "https://api.alpaca.markets"
+            self.headers = {"Authorization": f"Bearer {api_key}"}
+        else:
+            self.base_url = "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
+            self.headers = {
+                "APCA-API-KEY-ID": api_key,
+                "APCA-API-SECRET-KEY": api_secret,
+            }
 
     def get_account(self) -> Optional[Dict]:
         try:
@@ -978,6 +983,7 @@ class BrokerService:
                 api_key=credentials.get("api_key", ""),
                 api_secret=credentials.get("api_secret", ""),
                 paper=credentials.get("paper", True),
+                oauth=credentials.get("oauth", False),
             )
         elif broker_id == "schwab":
             return SchwabTradingService(

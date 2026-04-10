@@ -49,6 +49,7 @@ const getSentimentLabel = (val) => {
 const SectorHeatmap = () => {
   const [data, setData] = useState(null);
   const [sentiment, setSentiment] = useState(null);
+  const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sentimentLoading, setSentimentLoading] = useState(false);
   const [period, setPeriod] = useState('change_1d');
@@ -83,6 +84,11 @@ const SectorHeatmap = () => {
       if (!res.ok) throw new Error(`Sentiment error (${res.status})`);
       const json = await res.json();
       setSentiment(json);
+      // Also fetch history for trend sparklines
+      try {
+        const hRes = await fetch(`${BACKEND_URL}/api/sectors/sentiment/history?limit=20`);
+        if (hRes.ok) setHistory(await hRes.json());
+      } catch { /* history is optional */ }
     } catch (e) {
       console.error('Sentiment fetch failed:', e);
     } finally {
@@ -136,6 +142,28 @@ const SectorHeatmap = () => {
   const sectors = data?.sectors || [];
   const summary = data?.market_summary || {};
   const sentimentData = sentiment?.sectors || {};
+  const sectorTrends = history?.sector_trends || {};
+
+  // Mini SVG sparkline for sentiment trend
+  const Sparkline = ({ points, width = 48, height = 16 }) => {
+    if (!points || points.length < 2) return null;
+    const vals = points.map(p => p.heatmap_value);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = max - min || 1;
+    const step = width / (vals.length - 1);
+    const pathD = vals.map((v, i) => {
+      const x = i * step;
+      const y = height - ((v - min) / range) * height;
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const trending = vals[vals.length - 1] >= vals[0];
+    return (
+      <svg width={width} height={height} className="opacity-70">
+        <path d={pathD} fill="none" stroke={trending ? '#34d399' : '#f87171'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  };
 
   return (
     <div data-testid="sector-heatmap">
@@ -192,6 +220,11 @@ const SectorHeatmap = () => {
             <Badge className={`text-[10px] border-0 ${sentiment.risk_regime === 'risk-on' ? 'bg-emerald-900/50 text-emerald-300' : sentiment.risk_regime === 'risk-off' ? 'bg-red-900/50 text-red-300' : 'bg-slate-700/50 text-slate-300'}`}>
               {sentiment.risk_regime || 'mixed'}
             </Badge>
+            {history && history.snapshots_count > 1 && (
+              <Badge className="bg-slate-700/50 text-slate-400 text-[10px]">
+                {history.snapshots_count} snapshots
+              </Badge>
+            )}
           </div>
           {sentiment.rotation_call && (
             <p className="text-slate-300 text-xs leading-relaxed">{sentiment.rotation_call}</p>
@@ -255,7 +288,12 @@ const SectorHeatmap = () => {
                   <p className="text-xs opacity-80 mb-2">{s.name}</p>
                   <div className="flex items-end justify-between">
                     <span className="text-2xl font-black tabular-nums">{heatVal.toFixed(0)}</span>
-                    <span className="text-[10px] opacity-60 mb-1">/ 100</span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      {sectorTrends[s.symbol] && sectorTrends[s.symbol].length >= 2 && (
+                        <Sparkline points={sectorTrends[s.symbol]} />
+                      )}
+                      <span className="text-[10px] opacity-60">/ 100</span>
+                    </div>
                   </div>
                   {reasoning && (
                     <p className="text-[10px] opacity-60 mt-1 line-clamp-2">{reasoning}</p>

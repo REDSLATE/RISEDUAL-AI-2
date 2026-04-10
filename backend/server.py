@@ -34,7 +34,7 @@ from routes.strategy import router as strategy_router, set_db as set_strategy_db
 from routes.intelligence import router as intelligence_router, set_db as set_intelligence_db
 from routes.broker import router as broker_router, set_db as set_broker_db
 from routes.market_data import router as market_data_router, set_db as set_market_data_db
-from routes.sectors import router as sectors_router
+from routes.sectors import router as sectors_router, set_db as set_sectors_db
 from routes.admin import router as admin_router, set_db as set_admin_db
 from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
 from services.price_provider import set_db as set_price_provider_db
@@ -208,6 +208,7 @@ def _wire_db_to_routes():
     set_admin_db(db)
     set_accuracy_db(db)
     set_price_provider_db(db)
+    set_sectors_db(db)
 
 
 async def _start_schedulers():

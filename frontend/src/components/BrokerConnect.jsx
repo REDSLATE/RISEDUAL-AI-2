@@ -138,7 +138,40 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
   const [paper, setPaper] = useState(true);
   const [showSecret, setShowSecret] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthAvailable, setOauthAvailable] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    // Check OAuth availability for this broker
+    (async () => {
+      try {
+        const res = await authFetch(`${API}/broker/oauth/${broker.id}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setOauthAvailable(data.available);
+        }
+      } catch { /* OAuth not available */ }
+    })();
+  }, [broker.id]);
+
+  const handleOAuth = async () => {
+    setOauthLoading(true);
+    setError('');
+    try {
+      const res = await authFetch(`${API}/broker/oauth/${broker.id}/authorize`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `OAuth init failed (${res.status})`);
+      }
+      const data = await res.json();
+      // Open broker authorization in a new window
+      window.location.href = data.authorize_url;
+    } catch (err) {
+      setError(err.message);
+      setOauthLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -176,6 +209,26 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
       {error && (
         <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-xs p-2.5 rounded-lg mb-3 flex items-start gap-2" data-testid="broker-connect-error">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
+        </div>
+      )}
+
+      {/* OAuth Connect Button */}
+      {oauthAvailable && (
+        <div className="mb-4">
+          <Button onClick={handleOAuth} disabled={oauthLoading}
+            className="w-full bg-gradient-to-r from-[#0052FF] to-[#2563EB] hover:from-[#2563EB] hover:to-[#3B82F6] text-white text-sm rounded-lg py-3 font-semibold"
+            data-testid={`broker-oauth-btn-${broker.id}`}>
+            {oauthLoading ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Redirecting to {broker.name}...</>
+            ) : (
+              <><ExternalLink className="w-4 h-4 mr-2" />Connect with {broker.name} (OAuth)</>
+            )}
+          </Button>
+          <div className="flex items-center gap-3 my-3">
+            <div className="flex-1 h-px bg-slate-700" />
+            <span className="text-slate-500 text-xs">or enter API keys manually</span>
+            <div className="flex-1 h-px bg-slate-700" />
+          </div>
         </div>
       )}
 
@@ -485,6 +538,27 @@ const BrokerConnect = () => {
   const [activeBroker, setActiveBroker] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [oauthMessage, setOauthMessage] = useState(null);
+
+  // Handle OAuth redirect callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connectedBroker = params.get('broker_connected');
+    const brokerError = params.get('broker_error');
+    if (connectedBroker) {
+      setOauthMessage({ type: 'success', text: `Successfully connected ${connectedBroker} via OAuth!` });
+      setIsModalOpen(true);
+      setActiveBroker(connectedBroker);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => setOauthMessage(null), 5000);
+    } else if (brokerError) {
+      setOauthMessage({ type: 'error', text: `Broker connection failed: ${brokerError}` });
+      setIsModalOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => setOauthMessage(null), 8000);
+    }
+  }, []);
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -550,6 +624,12 @@ const BrokerConnect = () => {
             </div>
 
             {/* Connected Summary */}
+            {oauthMessage && (
+              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-emerald-900/20 border-emerald-800/30 text-emerald-400' : 'bg-red-900/20 border-red-800/30 text-red-400'}`}>
+                {oauthMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                <span>{oauthMessage.text}</span>
+              </div>
+            )}
             {connections.length > 0 && (
               <div className="bg-emerald-900/15 border-b border-emerald-800/30 px-5 py-3 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2 text-emerald-400 text-sm">
@@ -603,7 +683,7 @@ const BrokerConnect = () => {
                               <div className="flex items-center gap-2">
                                 <h4 className="text-white font-semibold text-sm">{broker.name}</h4>
                                 {broker.recommended && <Badge className="bg-[#0052FF]/20 text-[#0052FF] text-[10px]">Recommended</Badge>}
-                                {isConnected && <Badge className="bg-emerald-900/40 text-emerald-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />Connected</Badge>}
+                                {isConnected && <Badge className="bg-emerald-900/40 text-emerald-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />{connections.find(c => c.broker_id === broker.id)?.auth_method === 'oauth' ? 'OAuth' : 'Connected'}</Badge>}
                               </div>
                               <p className="text-slate-400 text-xs mt-0.5">{broker.description}</p>
                             </div>
