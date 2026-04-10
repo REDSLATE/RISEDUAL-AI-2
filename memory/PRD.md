@@ -123,6 +123,15 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Auto-triggers after each 24h verification in `verify_pending_predictions()`
 - Manual trigger: `POST /api/accuracy/post-mortem/{prediction_id}`, History: `GET /api/accuracy/post-mortem/history`
 
+### Real-Time SSE Insight Stream (April 10, 2026)
+- `routes/stream.py`: Server-Sent Events endpoint at `GET /api/stream/insights`
+- Pushes live events: `new_verification`, `post_mortem`, `toxic_alert`, `memory_update`
+- In-memory event buffer (max 100 events) with `GET /api/stream/recent` REST fallback
+- Events pushed from: `nightly_cleanup()`, `verify_pending_predictions()`, `run_and_update_post_mortem()`
+- Frontend `LiveInsightsFeed.jsx`: EventSource consumer with LIVE badge, auto-reconnect, collapsible feed
+- Renders verification hits/misses with failure badges, post-mortem reasoning, toxic spike ticker tags
+- Placed after PnL Tracker in the main dashboard layout
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
