@@ -39,6 +39,7 @@ from routes.admin import router as admin_router, set_db as set_admin_db
 from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
 from routes.stream import router as stream_router, set_db as set_stream_db
 from routes.orderflow_stream import router as orderflow_stream_router
+from routes.whale_radar import router as whale_radar_router
 from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
@@ -122,6 +123,7 @@ app.include_router(admin_router)
 app.include_router(accuracy_router)
 app.include_router(stream_router)
 app.include_router(orderflow_stream_router)
+app.include_router(whale_radar_router)
 
 # CORS — dynamic origin reflection for httpOnly cookie auth.
 # The frontend uses getApiBase() so requests are same-origin in production.

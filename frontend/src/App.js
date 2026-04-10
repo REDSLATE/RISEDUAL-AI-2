@@ -41,6 +41,7 @@ import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
+import WhaleRadar from './components/WhaleRadar';
 import MemoryDashboard from './components/MemoryDashboard';
 import useModals from './hooks/useModals';
 
@@ -114,6 +115,9 @@ function AppContent() {
         </div>
         <div id="order-flow" className="mb-6 sm:mb-8 animate-enter">
           <OrderFlowPanel />
+        </div>
+        <div id="whale-radar" className="mb-6 sm:mb-8 animate-enter">
+          <WhaleRadar />
         </div>
 
 
