@@ -140,7 +140,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <img src="/logo-ai-bright.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain" />
+              <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain" />
               <div>
                 <h3 className="text-white text-xs font-semibold leading-tight">RISEDUAL AI</h3>
                 <p className="text-slate-500 text-[9px] leading-tight">

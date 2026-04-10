@@ -13,7 +13,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="text-center">
-          <img src="/logo-ai-bright.png" alt="RISEDUAL AI" className="w-10 h-10 mx-auto mb-3 object-contain" />
+          <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-10 h-10 mx-auto mb-3 object-contain" />
           <h3 className="text-white text-sm font-semibold mb-1">RISEDUAL AI Assistant</h3>
           <p className="text-slate-400 text-xs max-w-xs mx-auto leading-relaxed">
             Stocks, crypto, market trends, technical analysis, or upload a chart for pattern recognition.
@@ -50,7 +50,7 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
   return (
     <div className={`flex gap-2 ${isUser ? 'justify-end' : ''}`} data-testid={`message-${idx}`}>
       {!isUser && (
-        <img src="/logo-ai-bright.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
+        <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
       )}
       <div className={`max-w-[82%] ${isUser ? 'bg-[#0052FF] text-white' : 'bg-slate-800/60 border border-slate-700/40 text-slate-200'} rounded-xl px-3 py-2`}>
         {msg.image && (

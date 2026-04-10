@@ -54,9 +54,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
 
+## UI Updates (April 10, 2026)
+- Compact Chat UI: Reduced panel (400x540px), tighter padding/margins/text throughout
+- Brightened Chat Logo: Programmatically enhanced `logo-ai-bright2.png` (ice-blue, transparent BG, avg brightness 220)
+- Logo used in: chat header, empty state, AI message avatars
+
 ## Backlog
-- P0: Deploy to risedual.ai
-- P1: Connect custom domain risedual.ai via DNS
-- P2: Alpha Vantage API tier upgrade handling
-- P3: Advanced Sector Heatmap charting
-- P4: Real broker OAuth flows
+- P1: Alpha Vantage API tier upgrade handling
+- P2: Advanced Sector Heatmap charting
+- P3: Real broker OAuth flows
