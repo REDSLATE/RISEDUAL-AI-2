@@ -1,13 +1,11 @@
 """Sector Rotation Heatmap service — fetches sector ETF performance data."""
-import os
 import logging
 import asyncio
-import requests
 from typing import Dict, List
 
-logger = logging.getLogger(__name__)
+from services.price_provider import get_quote, get_daily_history
 
-AV_BASE = "https://www.alphavantage.co/query"
+logger = logging.getLogger(__name__)
 
 SECTOR_ETFS = {
     "XLK": {"name": "Technology", "weight": 30},
@@ -24,45 +22,28 @@ SECTOR_ETFS = {
 }
 
 
-def _av_key():
-    return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
-
-
 async def _fetch_etf_quote(symbol: str) -> Dict:
-    """Fetch a single ETF quote from Alpha Vantage."""
-    params = {"function": "GLOBAL_QUOTE", "symbol": symbol, "apikey": _av_key()}
-    try:
-        resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=10)
-        gq = resp.json().get("Global Quote", {})
+    """Fetch a single ETF quote using smart price provider."""
+    quote = await get_quote(symbol)
+    if quote:
         return {
-            "price": float(gq.get("05. price", 0)),
-            "change": float(gq.get("09. change", 0)),
-            "change_pct": float(gq.get("10. change percent", "0").replace("%", "")),
-            "prev_close": float(gq.get("08. previous close", 0)),
-            "high": float(gq.get("03. high", 0)),
-            "low": float(gq.get("04. low", 0)),
-            "volume": int(gq.get("06. volume", 0)),
+            "price": quote["price"],
+            "change": quote["change"],
+            "change_pct": quote["change_pct"],
+            "prev_close": quote.get("prev_close", 0),
+            "high": quote.get("high", 0),
+            "low": quote.get("low", 0),
+            "volume": quote.get("volume", 0),
         }
-    except Exception as e:
-        logger.warning(f"Failed to fetch quote for {symbol}: {e}")
-        return {"price": 0, "change": 0, "change_pct": 0}
+    return {"price": 0, "change": 0, "change_pct": 0}
 
 
 async def _fetch_etf_daily(symbol: str) -> List[Dict]:
-    """Fetch daily time series for calculating multi-period returns."""
-    params = {
-        "function": "TIME_SERIES_DAILY",
-        "symbol": symbol,
-        "outputsize": "compact",
-        "apikey": _av_key(),
-    }
-    try:
-        resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=15)
-        ts = resp.json().get("Time Series (Daily)", {})
-        return [{"date": d, "close": float(v["4. close"])} for d, v in sorted(ts.items())]
-    except Exception as e:
-        logger.warning(f"Failed to fetch daily data for {symbol}: {e}")
-        return []
+    """Fetch daily time series using smart price provider."""
+    history = await get_daily_history(symbol)
+    if history:
+        return [{"date": d["date"], "close": d["close"]} for d in reversed(history)]
+    return []
 
 
 def _calc_returns(prices: List[Dict]) -> Dict:

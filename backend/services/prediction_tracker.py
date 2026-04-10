@@ -14,27 +14,15 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-import requests
+from services.price_provider import get_quote, get_quote_sync
 
 logger = logging.getLogger(__name__)
 
-AV_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
-DIRECTION_BULLISH = {"STRONG BUY", "BUY", "BULLISH"}
-DIRECTION_BEARISH = {"STRONG SELL", "SELL", "BEARISH"}
-DIRECTION_NEUTRAL = {"HOLD", "NEUTRAL"}
-
 
 def _get_current_price(symbol: str) -> Optional[float]:
-    """Fetch current price from Alpha Vantage GLOBAL_QUOTE."""
-    try:
-        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={AV_KEY}"
-        r = requests.get(url, timeout=10)
-        data = r.json().get("Global Quote", {})
-        price = float(data.get("05. price", 0))
-        return price if price > 0 else None
-    except Exception as e:
-        logger.error(f"Price fetch failed for {symbol}: {e}")
-        return None
+    """Fetch current price using smart price provider (AV → yfinance → cache)."""
+    quote = get_quote_sync(symbol)
+    return quote["price"] if quote else None
 
 
 def _evaluate_prediction(direction: str, price_at_prediction: float,

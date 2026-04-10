@@ -2,15 +2,12 @@
 import os
 import logging
 import asyncio
-import requests
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from services.price_provider import get_overview_sync, get_quote_sync
+
 logger = logging.getLogger(__name__)
-
-
-def _av_key():
-    return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 
 def _fh_key():
@@ -18,13 +15,9 @@ def _fh_key():
 
 
 def fetch_company_overview(symbol: str) -> Dict:
-    """Fetch company fundamentals and sector data from Alpha Vantage.
-    Falls back to quote data for ETFs/indices that lack company fundamentals."""
+    """Fetch company fundamentals via smart price provider (AV → yfinance)."""
     try:
-        r = requests.get("https://www.alphavantage.co/query", params={
-            "function": "OVERVIEW", "symbol": symbol, "apikey": _av_key()
-        }, timeout=10)
-        data = r.json()
+        data = get_overview_sync(symbol)
         if data and "Symbol" in data:
             return {
                 "name": data.get("Name", symbol),
@@ -47,26 +40,18 @@ def fetch_company_overview(symbol: str) -> Dict:
                 "analyst_rating": data.get("AnalystRatingStrongBuy", "0"),
             }
         # Fallback: fetch quote data for ETFs/indices
-        qr = requests.get("https://www.alphavantage.co/query", params={
-            "function": "GLOBAL_QUOTE", "symbol": symbol, "apikey": _av_key()
-        }, timeout=10)
-        q = qr.json().get("Global Quote", {})
+        q = get_quote_sync(symbol)
         if q:
-            price = float(q.get("05. price", 0))
-            high = float(q.get("03. high", 0))
-            low = float(q.get("04. low", 0))
-            prev = float(q.get("08. previous close", 0))
-            change_pct = q.get("10. change percent", "0%")
             return {
                 "name": symbol.upper(),
                 "sector": "ETF / Index",
                 "industry": "Exchange-Traded Fund",
                 "is_etf": True,
-                "price": price,
-                "change_pct": change_pct,
-                "day_high": high,
-                "day_low": low,
-                "prev_close": prev,
+                "price": q["price"],
+                "change_pct": f"{q['change_pct']}%",
+                "day_high": q.get("high", 0),
+                "day_low": q.get("low", 0),
+                "prev_close": q.get("prev_close", 0),
                 "market_cap": "N/A",
                 "pe_ratio": "N/A",
                 "beta": "N/A",

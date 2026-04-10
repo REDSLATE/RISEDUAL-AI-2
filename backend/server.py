@@ -37,6 +37,7 @@ from routes.market_data import router as market_data_router, set_db as set_marke
 from routes.sectors import router as sectors_router
 from routes.admin import router as admin_router, set_db as set_admin_db
 from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
+from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -206,6 +207,7 @@ def _wire_db_to_routes():
     set_market_data_db(db)
     set_admin_db(db)
     set_accuracy_db(db)
+    set_price_provider_db(db)
 
 
 async def _start_schedulers():
