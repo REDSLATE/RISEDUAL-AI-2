@@ -31,11 +31,14 @@ const SectorHeatmap = () => {
   const [period, setPeriod] = useState('change_1d');
   const [error, setError] = useState('');
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/sectors/heatmap`);
+      const url = force
+        ? `${BACKEND_URL}/api/sectors/heatmap?force=true`
+        : `${BACKEND_URL}/api/sectors/heatmap`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`Server error (${res.status})`);
       const json = await res.json();
       if (!json.sectors?.length) throw new Error('No sector data returned');
@@ -111,7 +114,7 @@ const SectorHeatmap = () => {
               {p.label}
             </button>
           ))}
-          <button onClick={fetchData} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50 transition-all ml-1" data-testid="refresh-sectors">
+          <button onClick={() => fetchData(true)} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50 transition-all ml-1" title="Force refresh (bypass cache)" data-testid="refresh-sectors">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>

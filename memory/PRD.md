@@ -59,6 +59,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Brightened Chat Logo: Programmatically enhanced `logo-ai-bright2.png` (ice-blue, transparent BG, avg brightness 220)
 - Logo used in: chat header, empty state, AI message avatars
 - Fixed Chat endpoint: Changed from JSON Pydantic body to FormData (Form() + File()) to match frontend multipart uploads
+- Added Force Refresh to Sector Heatmap: Refresh button now bypasses cache (`?force=true`) for instant fresh Alpha Vantage data
 
 ## Backlog
 - P1: Alpha Vantage API tier upgrade handling
