@@ -1,4 +1,4 @@
-// Mock data for TradealgoGPT clone - will be replaced with real API data
+// Mock data for RISEDUAL AI - will be replaced with real API data
 
 export const stockTickerData = [
   { symbol: 'SPY', price: 572.38, change: -8.93, changePercent: -1.31 },
