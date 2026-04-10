@@ -111,3 +111,29 @@ async def training_status(request: Request):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     return _training_status
 
+
+
+@router.post("/memory/cleanup")
+async def trigger_cleanup(request: Request, days: int = 90, threshold: float = 80.0):
+    """Run nightly memory cleanup: remove toxic outliers + obsolete data. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    from services.market_memory_service import nightly_cleanup
+    result = await nightly_cleanup(days_to_keep=days, toxic_confidence_threshold=threshold)
+    return result
+
+
+@router.get("/memory/cleanup/history")
+async def cleanup_history(request: Request):
+    """Get recent cleanup run history. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    if db is None:
+        return {"runs": []}
+    cursor = db.memory_cleanup_log.find({}, {"_id": 0}).sort("run_at", -1).limit(10)
+    runs = []
+    async for doc in cursor:
+        runs.append(doc)
+    return {"runs": runs}

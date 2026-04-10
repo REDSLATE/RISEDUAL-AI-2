@@ -11,7 +11,7 @@ import json
 import logging
 import asyncio
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
 import chromadb
@@ -322,6 +322,18 @@ async def get_memory_stats() -> Dict:
         except Exception:
             pass
 
+    # Get last cleanup info
+    last_cleanup = None
+    if _db is not None:
+        try:
+            doc = await _db.memory_cleanup_log.find_one(
+                {}, {"_id": 0}, sort=[("run_at", -1)]
+            )
+            if doc:
+                last_cleanup = doc
+        except Exception:
+            pass
+
     return {
         "total_episodes": count,
         "mongodb_log_count": mongo_count,
@@ -329,4 +341,89 @@ async def get_memory_stats() -> Dict:
         "embedding_model": "all-MiniLM-L6-v2 (local)",
         "storage_path": CHROMA_DIR,
         "initialized": _collection is not None,
+        "last_cleanup": last_cleanup,
     }
+
+
+# ──────────────────────────────────────────────
+#  NIGHTLY CLEANUP — Prune toxic outliers & obsolete data
+# ──────────────────────────────────────────────
+
+async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: float = 80.0) -> Dict:
+    """Retrain memory by deleting bad patterns and obsolete data.
+
+    A. Delete Toxic Outliers: High-confidence (>80%) predictions that were WRONG.
+       These poison the memory by teaching the AI to be overconfident in similar bad setups.
+
+    B. Prune Obsolete Data: Episodes older than `days_to_keep` days.
+       Ensures the AI adapts to current market regimes, not stale patterns.
+    """
+    if not _collection:
+        return {"error": "Market Memory not initialized"}
+
+    results = {
+        "toxic_removed": 0,
+        "obsolete_removed": 0,
+        "total_before": 0,
+        "total_after": 0,
+    }
+
+    results["total_before"] = await asyncio.to_thread(_collection.count)
+    if results["total_before"] == 0:
+        return {**results, "status": "empty", "message": "No episodes to clean"}
+
+    # ── A. Delete Toxic Outliers ──
+    # High-confidence failures: outcome='miss' AND confidence > threshold
+    try:
+        toxic = await asyncio.to_thread(
+            _collection.get,
+            where={
+                "$and": [
+                    {"outcome": "miss"},
+                    {"confidence": {"$gt": toxic_confidence_threshold}},
+                ]
+            },
+        )
+        toxic_ids = toxic.get("ids", [])
+        if toxic_ids:
+            await asyncio.to_thread(_collection.delete, ids=toxic_ids)
+            results["toxic_removed"] = len(toxic_ids)
+            logger.info(f"Cleanup: Removed {len(toxic_ids)} toxic high-confidence failures")
+    except Exception as e:
+        logger.warning(f"Toxic outlier cleanup failed: {e}")
+
+    # ── B. Prune Obsolete Data ──
+    # Remove episodes older than cutoff date
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
+    try:
+        old_data = await asyncio.to_thread(
+            _collection.get,
+            where={"date": {"$lt": cutoff_date}},
+        )
+        old_ids = old_data.get("ids", [])
+        if old_ids:
+            await asyncio.to_thread(_collection.delete, ids=old_ids)
+            results["obsolete_removed"] = len(old_ids)
+            logger.info(f"Cleanup: Pruned {len(old_ids)} episodes older than {cutoff_date}")
+    except Exception as e:
+        logger.warning(f"Obsolete data cleanup failed: {e}")
+
+    results["total_after"] = await asyncio.to_thread(_collection.count)
+    results["status"] = "complete"
+    results["cutoff_date"] = cutoff_date
+    results["confidence_threshold"] = toxic_confidence_threshold
+    results["run_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Log cleanup to MongoDB
+    if _db is not None:
+        try:
+            await _db.memory_cleanup_log.insert_one(results.copy())
+        except Exception as e:
+            logger.warning(f"Cleanup log save failed: {e}")
+
+    logger.info(
+        f"Nightly cleanup complete: {results['toxic_removed']} toxic + "
+        f"{results['obsolete_removed']} obsolete removed "
+        f"({results['total_before']} -> {results['total_after']} episodes)"
+    )
+    return results

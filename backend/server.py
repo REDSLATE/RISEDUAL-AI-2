@@ -219,17 +219,28 @@ def _wire_db_to_routes():
 
 
 async def _start_schedulers():
-    """Start APScheduler jobs for daily digest and watchlist pre-generation."""
+    """Start APScheduler jobs for daily digest, watchlist pre-gen, and memory cleanup."""
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from services.digest_service import send_daily_digest
         scheduler = AsyncIOScheduler()
         scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
         scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
+        scheduler.add_job(_run_memory_cleanup, 'cron', hour=2, minute=0, id='memory_cleanup')
         scheduler.start()
-        logger.info("Daily digest scheduler started (6:00 AM UTC), watchlist pre-gen (5:30 AM UTC)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00 UTC)")
     except Exception as e:
-        logger.warning(f"Digest scheduler setup failed: {e}")
+        logger.warning(f"Scheduler setup failed: {e}")
+
+
+async def _run_memory_cleanup():
+    """Scheduled nightly memory cleanup task."""
+    try:
+        from services.market_memory_service import nightly_cleanup
+        result = await nightly_cleanup(days_to_keep=90, toxic_confidence_threshold=80.0)
+        logger.info(f"Nightly memory cleanup: {result.get('toxic_removed', 0)} toxic + {result.get('obsolete_removed', 0)} obsolete removed")
+    except Exception as e:
+        logger.warning(f"Memory cleanup failed: {e}")
 
 
 def _start_cache_warmup():
