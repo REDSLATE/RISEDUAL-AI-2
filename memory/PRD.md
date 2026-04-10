@@ -237,6 +237,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Binance global (api.binance.com) geo-blocked from some cloud regions; uses Binance US (api.binance.us) as primary with global as fallback
 - Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
+### Dashboard Terminology Alignment (April 10, 2026)
+- Updated all AI section headers/subtitles to match landing page "Strategist vs Auditor" and "Adversarial AI" terminology
+- AI War Room: "Adversarial AI Command Center — Strategist signals, Auditor validates"
+- AI Investment Hypothesis: "Adversarial AI — Strategist generates thesis, Auditor stress-tests it"
+- AI Intelligence Hub: "Strategist-powered stock scoring, pattern detection, and instant briefs"
+- AI Market Predictions: "Adversarial AI — Strategist predicts, Auditor vetoes weak signals"
+- War Room results: "Strategist vs Auditor" header, "Strategist Bull Case", "Auditor Bear Case", "Strategist Catalysts", "Auditor Risk Flags"
+- Hypothesis results: "Strategist Catalysts", "Auditor Risk Flags", "Strategist & Auditor Breakdown"
+- Navbar Platform dropdown: Added AI War Room (first, red), Order Flow, Whale Radar
+- Mobile nav: Added AI War Room, Order Flow, Whale Radar
+- **Verified (Iteration 72)**: All terminology correct, 100% pass
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
