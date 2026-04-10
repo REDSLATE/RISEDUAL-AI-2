@@ -23,8 +23,17 @@ BINANCE_WS_BASE = "wss://stream.binance.us:9443/ws"
 WALL_MULTIPLIER = 3.0
 SIGNIFICANT_WALL = 5.0
 MAX_HISTORY = 60  # Keep 60 snapshots (~60s at 1s intervals)
+WHALE_INTENSITY_THRESHOLD = 85
+WHALE_COOLDOWN_SECONDS = 300  # Max 1 alert per ticker per 5 min
 
 CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "MATIC", "LINK"}
+
+
+def _ratio_to_intensity(ratio: float) -> int:
+    """Convert volume ratio (vs median) to 0-100 intensity score.
+    ratio 1x = 0, ratio 3x = 30, ratio 10x = ~85, ratio 20x+ = 100."""
+    return min(int(((ratio - 1) / 9.0) * 100), 100) if ratio >= 1 else 0
+
 
 
 def _binance_symbol(ticker: str) -> str:
@@ -40,7 +49,13 @@ class OrderFlowStream:
         self._tasks: Dict[str, asyncio.Task] = {}
         self._prev_snapshot: Dict[str, dict] = {}
         self._history: Dict[str, list] = defaultdict(list)
+        self._whale_cooldowns: Dict[str, datetime] = {}  # "BTC:71800" -> last alert time
         self._lock = asyncio.Lock()
+        self._db = None  # Set by server.py for push notifications
+
+    def set_db(self, db):
+        """Attach MongoDB reference for push notifications."""
+        self._db = db
 
     async def subscribe(self, symbol: str, queue: asyncio.Queue):
         """Add a subscriber queue for a symbol. Starts Binance stream if first."""
@@ -113,31 +128,46 @@ class OrderFlowStream:
         spread = best_ask - best_bid
         spread_pct = (spread / mid_price) * 100 if mid_price > 0 else 0
 
-        # Detect walls
+        # Detect walls with 0-100 intensity
         walls = []
+        whale_candidates = []
         for level in bids:
             ratio = level["value"] / median_val if median_val > 0 else 0
             if ratio >= WALL_MULTIPLIER:
-                walls.append({
+                intensity = _ratio_to_intensity(ratio)
+                wall = {
                     "price": round(level["price"], 2),
                     "qty": round(level["qty"], 6),
                     "value": round(level["value"], 2),
                     "ratio": round(ratio, 1),
+                    "intensity": intensity,
                     "side": "bid",
                     "strength": "major" if ratio >= SIGNIFICANT_WALL else "minor",
-                })
+                }
+                walls.append(wall)
+                if intensity >= WHALE_INTENSITY_THRESHOLD:
+                    whale_candidates.append(wall)
 
         for level in asks:
             ratio = level["value"] / median_val if median_val > 0 else 0
             if ratio >= WALL_MULTIPLIER:
-                walls.append({
+                intensity = _ratio_to_intensity(ratio)
+                wall = {
                     "price": round(level["price"], 2),
                     "qty": round(level["qty"], 6),
                     "value": round(level["value"], 2),
                     "ratio": round(ratio, 1),
+                    "intensity": intensity,
                     "side": "ask",
                     "strength": "major" if ratio >= SIGNIFICANT_WALL else "minor",
-                })
+                }
+                walls.append(wall)
+                if intensity >= WHALE_INTENSITY_THRESHOLD:
+                    whale_candidates.append(wall)
+
+        # Trigger whale alerts for intensity >= 85
+        if whale_candidates:
+            asyncio.ensure_future(self._trigger_whale_alerts(symbol, whale_candidates))
 
         # Compute bias
         total_bid_val = sum(b["value"] for b in bids)
@@ -215,6 +245,30 @@ class OrderFlowStream:
             events.append({"event": "vanished", "price": key[0], "side": key[1]})
 
         return events
+
+    async def _trigger_whale_alerts(self, symbol: str, whale_walls: list):
+        """Send push notifications for whale walls (intensity >= 85), with cooldown."""
+        if not self._db:
+            return
+        now = datetime.now(timezone.utc)
+        for w in whale_walls:
+            key = f"{symbol}:{int(w['price'])}"
+            last = self._whale_cooldowns.get(key)
+            if last and (now - last).total_seconds() < WHALE_COOLDOWN_SECONDS:
+                continue  # Cooldown active
+            self._whale_cooldowns[key] = now
+            try:
+                from services.push_service import notify_whale_wall
+                await notify_whale_wall(
+                    self._db,
+                    ticker=symbol,
+                    side=w["side"],
+                    price=w["price"],
+                    intensity=w["intensity"],
+                )
+                logger.info(f"Whale alert sent: {symbol} {w['side']} wall at ${w['price']} (intensity {w['intensity']})")
+            except Exception as e:
+                logger.warning(f"Whale alert failed: {e}")
 
     def _cache_snapshot(self, symbol: str, snapshot: dict):
         """Store in rolling history buffer."""

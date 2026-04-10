@@ -26,6 +26,11 @@ WALL_MULTIPLIER = 3.0
 SIGNIFICANT_WALL = 5.0
 CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "MATIC", "LINK"}
 
+
+def _ratio_to_intensity(ratio: float) -> int:
+    """Convert volume ratio (vs median) to 0-100 intensity score."""
+    return min(int(((ratio - 1) / 9.0) * 100), 100) if ratio >= 1 else 0
+
 BINANCE_ENDPOINTS = [
     {"depth": "https://api.binance.us/api/v3/depth", "price": "https://api.binance.us/api/v3/ticker/price"},
     {"depth": "https://api.binance.com/api/v3/depth", "price": "https://api.binance.com/api/v3/ticker/price"},
@@ -116,6 +121,7 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
                 "volume": round(level["volume"], 2),
                 "quantity": round(level["qty"], 4),
                 "ratio": round(ratio, 1),
+                "intensity": _ratio_to_intensity(ratio),
                 "type": "support",
                 "strength": "major" if ratio >= SIGNIFICANT_WALL else "minor",
                 "distance_pct": round(distance_pct, 2),
@@ -130,6 +136,7 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
                 "volume": round(level["volume"], 2),
                 "quantity": round(level["qty"], 4),
                 "ratio": round(ratio, 1),
+                "intensity": _ratio_to_intensity(ratio),
                 "type": "resistance",
                 "strength": "major" if ratio >= SIGNIFICANT_WALL else "minor",
                 "distance_pct": round(distance_pct, 2),
@@ -248,6 +255,7 @@ async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m
                 "price": bucket["price"],
                 "volume": bucket["volume"],
                 "ratio": round(ratio, 1),
+                "intensity": _ratio_to_intensity(ratio),
                 "type": wall_type,
                 "strength": "major" if ratio >= SIGNIFICANT_WALL else "minor",
                 "distance_pct": round(distance_pct, 2),

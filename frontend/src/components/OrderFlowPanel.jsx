@@ -17,6 +17,8 @@ const BIAS_STYLES = {
 const WallBar = ({ wall, maxVol }) => {
   const pct = maxVol > 0 ? (wall.volume / maxVol) * 100 : 0;
   const isSupport = wall.type === 'support';
+  const intensity = wall.intensity ?? 0;
+  const intensityColor = intensity >= 85 ? 'text-yellow-400' : intensity >= 50 ? (isSupport ? 'text-emerald-400' : 'text-red-400') : 'text-slate-400';
 
   return (
     <div className="flex items-center gap-2 text-xs" data-testid={`wall-${wall.type}-${wall.price}`}>
@@ -27,16 +29,19 @@ const WallBar = ({ wall, maxVol }) => {
           style={{ width: `${Math.max(pct, 5)}%` }}
         />
         <span className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-300 font-mono">
-          {(wall.volume / 1e6).toFixed(1)}M
+          {wall.volume >= 1e6 ? `${(wall.volume / 1e6).toFixed(1)}M` : wall.volume >= 1e3 ? `${(wall.volume / 1e3).toFixed(0)}K` : wall.volume.toFixed(0)}
         </span>
       </div>
-      <span className={`w-10 text-right font-mono ${isSupport ? 'text-emerald-400' : 'text-red-400'}`}>
-        {wall.ratio}x
+      <span className={`w-8 text-right font-mono text-[10px] ${intensityColor}`} data-testid={`intensity-${wall.price}`}>
+        {intensity}
       </span>
-      <span className={`w-6 text-center text-[10px] px-1 py-0.5 rounded ${wall.strength === 'major'
-        ? (isSupport ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')
-        : 'bg-slate-800 text-slate-500'}`}>
-        {wall.strength === 'major' ? 'M' : 'm'}
+      <span className={`w-5 text-center text-[10px] px-1 py-0.5 rounded ${
+        intensity >= 85
+          ? 'bg-yellow-500/20 text-yellow-400 font-bold'
+          : wall.strength === 'major'
+            ? (isSupport ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')
+            : 'bg-slate-800 text-slate-500'}`}>
+        {intensity >= 85 ? 'W' : wall.strength === 'major' ? 'M' : 'm'}
       </span>
     </div>
   );
@@ -196,7 +201,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 <div className="space-y-1.5" data-testid="wall-list">
                   <div className="flex items-center justify-between text-[10px] text-slate-600 px-0.5">
                     <span>Price Level</span>
-                    <span className="flex gap-4"><span>Volume</span><span>Ratio</span></span>
+                    <span className="flex gap-4"><span>Volume</span><span>Int</span></span>
                   </div>
                   {walls.slice(0, 8).map((w, i) => (
                     <WallBar key={i} wall={w} maxVol={maxVol} />

@@ -213,6 +213,9 @@ def _wire_db_to_routes():
     set_accuracy_db(db)
     set_stream_db(db)
     set_price_provider_db(db)
+    # Wire db to orderflow stream manager for whale alerts
+    from services.orderflow_ws_service import stream_manager
+    stream_manager.set_db(db)
     set_sectors_db(db)
 
     # Initialize Market Memory (ChromaDB vector store)

@@ -169,3 +169,20 @@ async def notify_market_signal(db, signal_type: str, ticker: str, strength: str)
         tag=f"signal-{ticker}",
         notif_type=NOTIF_MARKET_SIGNAL,
     )
+
+
+NOTIF_WHALE_WALL = "whale_wall"
+
+
+async def notify_whale_wall(db, ticker: str, side: str, price: float, intensity: int):
+    """Trigger push for institutional whale wall detection (intensity >= 85)."""
+    label = "Support" if "BID" in side.upper() else "Resistance"
+    emoji = "\u26a0\ufe0f"
+    await broadcast_notification(
+        db,
+        title=f"{emoji} WHALE ALERT: {ticker}",
+        body=f"{label} wall at ${price:,.2f} — Intensity {intensity}/100",
+        url="/#order-flow",
+        tag=f"whale-{ticker}-{int(price)}",
+        notif_type=NOTIF_WHALE_WALL,
+    )

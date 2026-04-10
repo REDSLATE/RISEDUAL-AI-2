@@ -263,7 +263,9 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
                 <span className={`font-mono ${w.side === 'bid' ? 'text-emerald-400' : 'text-red-400'}`}>
                   ${w.price.toLocaleString()}
                 </span>
-                <span className="text-slate-500">{w.ratio}x · {w.strength}</span>
+                <span className="text-slate-500">
+                  {w.intensity != null ? `${w.intensity}/100` : `${w.ratio}x`} · {w.strength}
+                </span>
               </div>
             ))}
           </div>
