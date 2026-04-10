@@ -61,6 +61,14 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Updated `SectorHeatmap.jsx` with AI tab: shows scores (0-100), labels (Bullish/Bearish/Cautious/Neutral), reasoning, rotation call, risk regime
 - Color mapping: 0-25 red → 25-45 orange → 45-55 neutral → 55-75 green → 75-100 strong green
 
+## Market Vector Memory System (April 10, 2026)
+- Built `market_memory_service.py` using ChromaDB + all-MiniLM-L6-v2 (local embeddings, zero API cost)
+- Stores past market regime episodes as vectors: price action, macro data, AI predictions, actual results
+- Before each prediction, queries for top 3 similar historical regimes and injects context into AI prompt
+- Auto-saves verified predictions (hits/misses) from `prediction_tracker.py` as new memory episodes
+- New endpoint: `GET /api/accuracy/memory` (Pro only) returns memory stats
+- Persistent storage at `/app/backend/data/chromadb`
+
 ## Broker OAuth 2.0 (April 10, 2026)
 - Added OAuth 2.0 authorization flow for Alpaca (extensible to other brokers)
 - New endpoints: `GET /api/broker/oauth/{broker_id}/status`, `/authorize`, `/callback`
