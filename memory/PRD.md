@@ -170,6 +170,21 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Renders verification hits/misses with failure badges, post-mortem reasoning, toxic spike ticker tags
 - Placed after PnL Tracker in the main dashboard layout
 
+### VAPID Web Push Whale Alerts (April 10, 2026)
+- Push notifications via `pywebpush` with VAPID keys (configured in `.env`)
+- `notify_whale_wall()` triggers browser push when a wall with intensity >= 85 appears in the live Binance stream
+- 5-minute cooldown per `{ticker}:{price}` to prevent spam
+- `orderflow_ws_service.py` automatically fires whale alerts during SSE streaming
+- Frontend: `usePushNotifications.js` hook, `service-worker.js`, toggle in `UserWorkspace.jsx`
+- Push works even when the browser tab is closed (VAPID standard)
+
+### 0-100 Intensity Scale (April 10, 2026)
+- All order flow walls include `intensity` field: `min(int(((ratio-1)/9)*100), 100)`
+- Applied to: Binance L2 (static + live SSE), yfinance volume profile
+- Frontend: `Int` column, `W` (whale) badge for >= 85, `M` (major) for < 85 + 5x ratio, `m` (minor) for rest
+- Volume display uses K/M suffixes instead of raw decimals
+
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
