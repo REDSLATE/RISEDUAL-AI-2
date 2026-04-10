@@ -76,6 +76,13 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **2,973 historical episodes** ingested from 33 symbols
 - New endpoints: `POST /api/accuracy/memory/train` (triggers background task), `GET /api/accuracy/memory/train/status`
 
+### Nightly Memory Cleanup (April 10, 2026)
+- Added `nightly_cleanup()` to `market_memory_service.py`: deletes toxic outliers (>80% confidence + wrong) and prunes data older than 90 days
+- Scheduled via APScheduler at 2:00 AM UTC in `server.py`
+- Manual endpoints: `POST /api/accuracy/memory/cleanup`, `GET /api/accuracy/memory/cleanup/history`
+- First run removed 55 toxic high-confidence failures (2,974 → 2,919 episodes)
+- `GET /api/accuracy/memory` now includes `last_cleanup` info
+
 ### Strategist Context — Win Pattern Injection (April 10, 2026)
 - Added `get_strategist_context()` to `market_memory_service.py`: filters ChromaDB for `outcome='hit'` only
 - All 3 AI crews (War Room, Hypothesis, Market Prediction) now inject win patterns into synthesizer prompts
