@@ -60,7 +60,7 @@ const AIIntelligence = ({ onSubscribe }) => {
         </div>
         <div>
           <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>AI Intelligence Hub</h2>
-          <p className="text-slate-400 text-xs">AI-powered stock scoring, pattern detection, and instant briefs</p>
+          <p className="text-slate-400 text-xs">Strategist-powered stock scoring, pattern detection, and instant briefs</p>
         </div>
       </div>
 

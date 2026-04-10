@@ -263,7 +263,7 @@ export const CrewInsightsCard = ({ composite }) => {
     <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-crew-insights">
       <div className="flex items-center gap-2 mb-3">
         <Brain className="w-4 h-4 text-violet-400" />
-        <h3 className="text-white font-semibold text-sm">Multi-Agent Analysis</h3>
+        <h3 className="text-white font-semibold text-sm">Strategist vs Auditor</h3>
         <Badge className="bg-violet-900/40 text-violet-400 text-[10px]">{composite.agents_used} Agents</Badge>
         <Badge className="bg-slate-700 text-slate-300 text-[10px]">{composite.confidence}% Confidence</Badge>
       </div>
@@ -275,7 +275,7 @@ export const CrewInsightsCard = ({ composite }) => {
           <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <TrendingUp className="w-3 h-3 text-emerald-400" />
-              <span className="text-emerald-400 text-[10px] font-semibold uppercase">Bull Case</span>
+              <span className="text-emerald-400 text-[10px] font-semibold uppercase">Strategist Bull Case</span>
             </div>
             <p className="text-slate-300 text-xs leading-relaxed">{composite.bull_case}</p>
           </div>
@@ -284,7 +284,7 @@ export const CrewInsightsCard = ({ composite }) => {
           <div className="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <TrendingDown className="w-3 h-3 text-red-400" />
-              <span className="text-red-400 text-[10px] font-semibold uppercase">Bear Case</span>
+              <span className="text-red-400 text-[10px] font-semibold uppercase">Auditor Bear Case</span>
             </div>
             <p className="text-slate-300 text-xs leading-relaxed">{composite.bear_case}</p>
           </div>
@@ -293,7 +293,7 @@ export const CrewInsightsCard = ({ composite }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         {composite.catalysts?.length > 0 && (
           <div>
-            <span className="text-emerald-400 text-[10px] font-semibold uppercase">Catalysts</span>
+            <span className="text-emerald-400 text-[10px] font-semibold uppercase">Strategist Catalysts</span>
             <ul className="mt-1 space-y-0.5">
               {composite.catalysts.map((c, i) => (
                 <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
@@ -306,7 +306,7 @@ export const CrewInsightsCard = ({ composite }) => {
         )}
         {composite.risks?.length > 0 && (
           <div>
-            <span className="text-red-400 text-[10px] font-semibold uppercase">Risks</span>
+            <span className="text-red-400 text-[10px] font-semibold uppercase">Auditor Risk Flags</span>
             <ul className="mt-1 space-y-0.5">
               {composite.risks.map((r, i) => (
                 <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
@@ -337,7 +337,7 @@ export const CrewInsightsCard = ({ composite }) => {
       {composite.agent_analyses?.length > 0 && (
         <details className="mt-3">
           <summary className="text-slate-500 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
-            View individual agent analyses ({composite.agent_analyses.length} agents)
+            View Strategist & Auditor analyses ({composite.agent_analyses.length} agents)
           </summary>
           <div className="mt-2 space-y-2">
             {composite.agent_analyses.map((a, i) => (

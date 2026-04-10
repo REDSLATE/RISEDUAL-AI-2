@@ -114,7 +114,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>AI Investment Hypothesis</h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Multi-model analysis using all scraped macro data</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Adversarial AI — Strategist generates thesis, Auditor stress-tests it</p>
           </div>
         </div>
         {isPro && (
@@ -165,8 +165,8 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             </p>
             <p className="text-slate-400 text-sm">
               {selectedModel === 'consensus'
-                ? 'Multi-agent crew: Macro Economist, Quant Researcher, and Congressional Tracker collaborating'
-                : 'Multi-agent crew analyzing news, world events, congressional trades, and market data'}
+                ? 'Strategist + Auditor: Adversarial dual-signal analysis across macro, quant, and insider data'
+                : 'Strategist generating thesis, Auditor hunting for flaws in the signal'}
             </p>
           </div>
         </Card>

@@ -54,7 +54,7 @@ const MarketPrediction = ({ onSubscribe }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>AI Market Predictions</h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Powered by macro data scraping + AI analysis</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Adversarial AI — Strategist predicts, Auditor vetoes weak signals</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

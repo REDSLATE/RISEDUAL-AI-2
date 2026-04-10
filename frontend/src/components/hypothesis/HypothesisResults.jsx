@@ -47,7 +47,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
             </Badge>
             {hypothesis.multi_agent && (
               <Badge className="text-[9px] bg-violet-900/40 text-violet-400 border-violet-700/50">
-                {hypothesis.agents_used || 4} AI Agents
+                {hypothesis.agents_used || 4} AI Agents — Strategist + Auditor
               </Badge>
             )}
             <Button size="sm" variant="outline" className="border-white/20 text-white/80 hover:bg-white/10 rounded-lg text-[10px] h-7 px-2" onClick={onExport} disabled={exporting} data-testid="export-report-btn">
@@ -91,7 +91,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
       {hypothesis.catalysts?.length > 0 && (
         <Card className="bg-emerald-950/20 border-emerald-800/30 rounded-xl p-5">
           <h3 className="text-emerald-400 font-semibold mb-3 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> Key Catalysts
+            <TrendingUp className="w-4 h-4" /> Strategist Catalysts
           </h3>
           <ul className="space-y-2">
             {hypothesis.catalysts.map((c, i) => (
@@ -105,7 +105,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
       {hypothesis.risks?.length > 0 && (
         <Card className="bg-red-950/20 border-red-800/30 rounded-xl p-5">
           <h3 className="text-red-400 font-semibold mb-3 flex items-center gap-2">
-            <TrendingDown className="w-4 h-4" /> Key Risks
+            <TrendingDown className="w-4 h-4" /> Auditor Risk Flags
           </h3>
           <ul className="space-y-2">
             {hypothesis.risks.map((r, i) => (
@@ -148,13 +148,13 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
       </Card>
     )}
 
-    {/* Multi-Agent Analyses */}
+    {/* Strategist & Auditor Analyses */}
     {hypothesis.agent_analyses?.length > 0 && (
       <Card className="bg-slate-800/50 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
         <details>
           <summary className="flex items-center gap-2 cursor-pointer text-violet-400 font-semibold text-sm hover:text-violet-300 transition-colors">
             <Brain className="w-4 h-4" />
-            Multi-Agent Breakdown ({hypothesis.agent_analyses.length} Agents)
+            Strategist & Auditor Breakdown ({hypothesis.agent_analyses.length} Agents)
           </summary>
           <div className="mt-3 space-y-3">
             {hypothesis.agent_analyses.map((a, i) => (

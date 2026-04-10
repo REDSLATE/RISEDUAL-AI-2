@@ -70,7 +70,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>
               AI War Room
             </h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Unified command center — AI Score + Earnings + Insider Intelligence</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Adversarial AI Command Center — Strategist signals, Auditor validates</p>
           </div>
         </div>
         {isPro && (
@@ -105,7 +105,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
           <Lock className="w-10 h-10 text-amber-400 mx-auto mb-3" />
           <h3 className="text-white font-bold text-lg mb-2">War Room is Pro Only</h3>
-          <p className="text-slate-400 text-sm mb-4">Get full access to AI-powered multi-signal analysis</p>
+          <p className="text-slate-400 text-sm mb-4">Unlock the full Adversarial AI — Strategist + Auditor dual-signal engine</p>
           <div className="flex gap-3 justify-center">
             {!user && <Button onClick={onLogin} className="bg-slate-700 hover:bg-slate-600 text-white rounded-xl">Log In</Button>}
             <Button onClick={onSubscribe} className="bg-gradient-to-r from-red-600 to-amber-500 text-white rounded-xl">
@@ -120,9 +120,9 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
           <Shield className="w-10 h-10 text-amber-400 mx-auto animate-pulse" />
           <p className="text-white font-semibold mt-3">Deploying War Room for {symbol}</p>
-          <p className="text-slate-400 text-sm">Running multi-agent AI crew — Fundamental, Technical, and Sentiment analysts collaborating...</p>
+          <p className="text-slate-400 text-sm">Running Strategist & Auditor — Adversarial dual-signal analysis in progress...</p>
           <div className="flex justify-center gap-6 mt-4">
-            {['Fundamentals', 'Technicals', 'Sentiment', 'Data Feeds', 'Synthesis'].map((s, i) => (
+            {['Strategist', 'Auditor', 'Data Feeds', 'Retraining', 'Synthesis'].map((s, i) => (
               <div key={s} className="text-center">
                 <div className="w-2 h-2 bg-amber-400 rounded-full mx-auto mb-1 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
                 <span className="text-slate-500 text-[10px]">{s}</span>

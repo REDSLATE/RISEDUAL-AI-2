@@ -71,6 +71,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
+              <DropdownMenuItem className="text-red-400 hover:text-red-300 hover:bg-slate-700 cursor-pointer font-medium" onSelect={() => scrollTo('ai-war-room')} data-testid="nav-warroom-btn">AI War Room</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-hypothesis')}>AI Hypothesis</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-radar')}>AI Options Radar</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-flow')}>Options Flow Screener</DropdownMenuItem>
@@ -79,6 +80,8 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-violet-400 hover:text-violet-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-intelligence')} data-testid="nav-intelligence-btn">AI Intelligence Hub</DropdownMenuItem>
               <DropdownMenuItem className="text-orange-400 hover:text-orange-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('sector-heatmap')} data-testid="nav-sector-heatmap-btn">Sector Heatmap</DropdownMenuItem>
               <DropdownMenuItem className="text-emerald-400 hover:text-emerald-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('pnl-tracker')} data-testid="nav-pnl-tracker-btn">P&L Tracker</DropdownMenuItem>
+              <DropdownMenuItem className="text-cyan-400 hover:text-cyan-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('order-flow')} data-testid="nav-orderflow-btn">Order Flow</DropdownMenuItem>
+              <DropdownMenuItem className="text-yellow-400 hover:text-yellow-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('whale-radar')} data-testid="nav-whale-radar-btn">Whale Radar</DropdownMenuItem>
               <DropdownMenuItem className="text-[#0052FF] hover:text-blue-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-btn">Memory Dashboard</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Market</DropdownMenuItem>
             </DropdownMenuContent>
@@ -220,16 +223,18 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           </form>
           <div className="grid grid-cols-2 gap-2">
             {[
+              { label: 'AI War Room', id: 'ai-war-room' },
               { label: 'AI Hypothesis', id: 'ai-hypothesis' },
               { label: 'Market Prediction', id: 'market-prediction' },
               { label: 'Company Research', id: 'company-research' },
               { label: 'Macro Intelligence', id: 'macro-dashboard' },
               { label: 'Sector Heatmap', id: 'sector-heatmap' },
               { label: 'P&L Tracker', id: 'pnl-tracker' },
+              { label: 'Order Flow', id: 'order-flow' },
+              { label: 'Whale Radar', id: 'whale-radar' },
               { label: 'Options Radar', id: 'options-radar' },
               { label: 'Dark Pool', id: 'dark-pool' },
               { label: 'Crypto Market', id: 'crypto' },
-              { label: 'Momentum', id: 'momentum' },
             ].map(item => (
               <button key={item.id} onClick={() => mobileNav(item.id)}
                 className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
