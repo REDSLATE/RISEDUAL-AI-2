@@ -331,3 +331,131 @@ def _fmt_list(items: list, key1: str, key2: str, limit: int = 5) -> str:
         v2 = item.get(key2, "")
         lines.append(f"- {v1}" + (f" ({v2})" if v2 else ""))
     return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────
+#  SECTOR SENTIMENT CREW
+# ──────────────────────────────────────────────
+
+SECTOR_SENTIMENT_AGENTS = [
+    AgentConfig(
+        role="Technical Sector Analyst",
+        goal="Score each S&P 500 sector's technical momentum and trend strength",
+        backstory="Quantitative strategist who built sector rotation models at AQR. You analyze price momentum, mean reversion, and relative strength across all 11 GICS sectors to identify rotation opportunities.",
+        model_name="gpt-4o-mini",
+    ),
+    AgentConfig(
+        role="Macro Sector Strategist",
+        goal="Assess macro tailwinds and headwinds for each sector based on economic conditions",
+        backstory="Chief strategist at a $50B pension fund. You evaluate how interest rates, inflation, GDP growth, and fiscal policy differentially impact each sector. Your sector allocation calls consistently outperform.",
+        model_name="gpt-4o-mini",
+    ),
+    AgentConfig(
+        role="Flow & Sentiment Analyst",
+        goal="Track institutional money flows, ETF fund flows, and market sentiment per sector",
+        backstory="Former ETF market maker who monitors sector ETF creation/redemption flows daily. You see where institutional money is rotating before the price moves.",
+        model_name="gpt-4o-mini",
+    ),
+]
+
+SECTOR_SENTIMENT_SYNTHESIZER = AgentConfig(
+    role="Chief Sector Strategist",
+    goal="Produce a definitive sentiment score (-1.0 to 1.0) for each sector by synthesizing technical, macro, and flow analyses",
+    backstory="CIO running a sector rotation hedge fund with a 15-year track record. You synthesize all signals into precise sector scores that drive $2B in allocation decisions.",
+)
+
+
+def calculate_heatmap_sentiment(agent_results):
+    """Aggregates Multi-Agent scores for the sector heatmap.
+    agent_results: List of floats from [-1.0, 1.0]
+    Returns: 0 to 100 for the UI."""
+    avg_score = sum(agent_results) / len(agent_results)
+    heatmap_value = (avg_score + 1) * 50
+    return round(heatmap_value, 2)
+
+
+async def run_sector_sentiment_crew(sectors_data: list, api_key: str) -> Dict:
+    """Run one multi-agent crew to score ALL sectors at once (4 LLM calls total)."""
+    engine = CrewEngine(api_key)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+
+    # Build a compact sector summary for the agents
+    sector_lines = []
+    for s in sectors_data:
+        sector_lines.append(
+            f"{s['symbol']} ({s['name']}): "
+            f"Price=${s.get('price', 0):.2f}, "
+            f"1D={s.get('change_1d', 0):+.2f}%, "
+            f"1W={s.get('change_1w', 0):+.2f}%, "
+            f"1M={s.get('change_1m', 0):+.2f}%, "
+            f"3M={s.get('change_3m', 0):+.2f}%, "
+            f"YTD={s.get('change_ytd', 0):+.2f}%, "
+            f"Weight={s.get('weight', 0)}%"
+        )
+    sector_summary = "\n".join(sector_lines)
+    symbols_list = ", ".join(s["symbol"] for s in sectors_data)
+
+    tasks = [
+        # Technical Analyst
+        f"Analyze the technical momentum and trend of ALL 11 S&P 500 sector ETFs.\n\nSECTOR DATA:\n{sector_summary}\n\nFor EACH sector, assess: trend strength, momentum, relative performance vs S&P, mean reversion risk. Score each from -1.0 (extremely bearish) to +1.0 (extremely bullish).",
+
+        # Macro Strategist
+        f"Analyze macro conditions affecting ALL 11 S&P 500 sectors.\n\nSECTOR DATA:\n{sector_summary}\n\nConsider: current interest rate environment, inflation trends, economic cycle stage, fiscal policy. Score each sector from -1.0 (strong macro headwinds) to +1.0 (strong macro tailwinds).",
+
+        # Flow Analyst
+        f"Analyze institutional flows and sentiment for ALL 11 S&P 500 sectors.\n\nSECTOR DATA:\n{sector_summary}\n\nAssess: sector rotation direction, ETF flow trends, smart money positioning. Score each sector from -1.0 (heavy outflows/bearish) to +1.0 (heavy inflows/bullish).",
+    ]
+
+    synth_prompt = f"""Synthesize all three analyses and produce a final AI sentiment score for EACH of the 11 S&P 500 sector ETFs.
+
+IMPORTANT: You must score ALL of these sectors: {symbols_list}
+
+For each sector, average the three agent scores (technical, macro, flow) and provide a final consensus score.
+
+Output ONLY valid JSON:
+{{
+  "sectors": {{
+    "XLK": {{"score": 0.65, "label": "Bullish", "reasoning": "Strong momentum + AI spending tailwind"}},
+    "XLF": {{"score": -0.2, "label": "Cautious", "reasoning": "Rate uncertainty weighing on banks"}},
+    ...all 11 sectors...
+  }},
+  "rotation_call": "Brief 1-2 sentence sector rotation recommendation",
+  "risk_regime": "risk-on / risk-off / mixed"
+}}
+
+Score range: -1.0 (extremely bearish) to +1.0 (extremely bullish).
+Labels: Strong Sell (<-0.6), Bearish (-0.6 to -0.2), Cautious (-0.2 to 0.1), Neutral (0.1 to 0.3), Bullish (0.3 to 0.6), Strong Buy (>0.6)."""
+
+    result = await engine.run_parallel_crew(
+        SECTOR_SENTIMENT_AGENTS, tasks, SECTOR_SENTIMENT_SYNTHESIZER, synth_prompt,
+        session_suffix=f"sector_sentiment_{ts}"
+    )
+
+    parsed = _parse_json_output(result["synthesis"])
+
+    # Convert raw scores to heatmap values (0-100) using user's function
+    sentiment_output = {}
+    raw_sectors = parsed.get("sectors", {})
+    for sym, data in raw_sectors.items():
+        raw_score = float(data.get("score", 0))
+        # Clamp to [-1, 1]
+        raw_score = max(-1.0, min(1.0, raw_score))
+        sentiment_output[sym] = {
+            "score": raw_score,
+            "heatmap_value": calculate_heatmap_sentiment([raw_score]),
+            "label": data.get("label", "Neutral"),
+            "reasoning": data.get("reasoning", ""),
+        }
+
+    return {
+        "sectors": sentiment_output,
+        "rotation_call": parsed.get("rotation_call", ""),
+        "risk_regime": parsed.get("risk_regime", "mixed"),
+        "multi_agent": True,
+        "agents_used": len(SECTOR_SENTIMENT_AGENTS) + 1,
+        "agent_analyses": [
+            {"role": a["role"], "summary": a["output"][:500]}
+            for a in result["agent_outputs"]
+        ],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
