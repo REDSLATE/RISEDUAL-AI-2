@@ -5,7 +5,7 @@ import OrderFlowHeatmap from './OrderFlowHeatmap';
 
 const API = `${getApiBase()}/api`;
 
-const CRYPTO_SET = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'AVAX', 'DOT', 'MATIC', 'LINK']);
+const CRYPTO_SET = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'AVAX', 'DOT', 'SHIB', 'LINK']);
 
 const BIAS_STYLES = {
   INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: TrendingUp },

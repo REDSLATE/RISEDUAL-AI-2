@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 WALL_MULTIPLIER = 3.0
 SIGNIFICANT_WALL = 5.0
-CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "MATIC", "LINK"}
+CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "SHIB", "LINK"}
 
 
 def _ratio_to_intensity(ratio: float) -> int:

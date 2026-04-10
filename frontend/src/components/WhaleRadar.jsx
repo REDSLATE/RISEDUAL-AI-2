@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Radio, Zap, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
-const RADAR_TICKERS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'MATIC'];
+const RADAR_TICKERS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'SHIB'];
 const MAX_EVENTS = 30;
 
 const biasIcon = (bias) => {

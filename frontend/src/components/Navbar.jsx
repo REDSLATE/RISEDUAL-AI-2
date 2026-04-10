@@ -242,10 +242,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               </button>
             ))}
           </div>
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             {user ? (
               <>
-                <div className="flex-1 text-sm text-slate-300 flex items-center gap-2 px-3">
+                <div className="w-full text-sm text-slate-300 flex items-center gap-2 px-1 mb-1">
                   <User className="w-4 h-4" /> {user.name || user.email}
                   <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isPro ? 'bg-[#0052FF]/20 text-[#0052FF]' : 'bg-slate-700 text-slate-400'}`}>
                     {isPro ? 'PRO' : 'FREE'}

@@ -12,7 +12,7 @@ from services.orderflow_ws_service import stream_manager, CRYPTO_TICKERS, WHALE_
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
-RADAR_TICKERS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK", "MATIC"]
+RADAR_TICKERS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK", "SHIB"]
 
 
 @router.get("/stream/whale-radar")

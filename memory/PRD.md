@@ -249,6 +249,11 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Mobile nav: Added AI War Room, Order Flow, Whale Radar
 - **Verified (Iteration 72)**: All terminology correct, 100% pass
 
+### Token Swap & Mobile Menu Fix (April 10, 2026)
+- Swapped MATIC → SHIB across all 5 files (orderflow_ws_service, whale_radar, WhaleRadar.jsx, order_flow_service, OrderFlowPanel.jsx)
+- Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
+- Added AI War Room, Order Flow, Whale Radar to mobile nav grid
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)

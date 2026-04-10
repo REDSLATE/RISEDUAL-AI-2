@@ -26,7 +26,7 @@ MAX_HISTORY = 60  # Keep 60 snapshots (~60s at 1s intervals)
 WHALE_INTENSITY_THRESHOLD = 85
 WHALE_COOLDOWN_SECONDS = 300  # Max 1 alert per ticker per 5 min
 
-CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "MATIC", "LINK"}
+CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "SHIB", "LINK"}
 
 
 def _ratio_to_intensity(ratio: float) -> int:
