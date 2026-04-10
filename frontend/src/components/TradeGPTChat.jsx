@@ -136,7 +136,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
       {/* Chat panel — floats above everything including mobile nav */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[400px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[540px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
+        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 flex-shrink-0">
             <div className="flex items-center gap-2">

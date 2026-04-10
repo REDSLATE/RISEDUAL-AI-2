@@ -1,7 +1,9 @@
 """AI routes: chat, hypothesis, research endpoints."""
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile
+from typing import Optional
 import os
 import logging
+import base64
 from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
@@ -39,8 +41,13 @@ async def get_chat_limit(request: Request):
 
 
 # --- AI Chat ---
-@router.post("/chat", response_model=ChatResponse)
-async def chat(chat_request: ChatRequest, request: Request):
+@router.post("/chat")
+async def chat(
+    request: Request,
+    message: str = Form(...),
+    sessionId: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+):
     try:
         # Rate limit for free users
         user = await get_optional_user(request)
@@ -51,31 +58,37 @@ async def chat(chat_request: ChatRequest, request: Request):
                 raise HTTPException(status_code=429, detail=f"Free accounts are limited to {FREE_CHAT_DAILY_LIMIT} AI messages per day. Upgrade to Pro for unlimited.")
             await db.chat_usage.insert_one({"user_id": user["_id"], "date": today, "timestamp": datetime.now(timezone.utc).isoformat()})
 
-        session = await db.chat_sessions.find_one({"session_id": chat_request.sessionId}, {"_id": 0, "session_id": 1})
+        # Process uploaded image to base64
+        image_base64 = None
+        if image and image.filename:
+            content = await image.read()
+            image_base64 = base64.b64encode(content).decode()
+
+        session = await db.chat_sessions.find_one({"session_id": sessionId}, {"_id": 0, "session_id": 1})
         if not session:
-            new_session = ChatSession(session_id=chat_request.sessionId)
+            new_session = ChatSession(session_id=sessionId)
             session_doc = new_session.dict()
             if user:
                 session_doc["user_id"] = user["_id"]
             await db.chat_sessions.insert_one(session_doc)
 
-        ai_response = await ai_service.chat(chat_request.message, chat_request.sessionId, chat_request.image_base64)
+        ai_response = await ai_service.chat(message, sessionId, image_base64)
 
         user_message = ChatMessage(
             role="user",
-            content=chat_request.message,
-            image_base64="[image_attached]" if chat_request.image_base64 else None
+            content=message,
+            image_base64="[image_attached]" if image_base64 else None
         )
         assistant_message = ChatMessage(role="assistant", content=ai_response)
 
         await db.chat_sessions.update_one(
-            {"session_id": chat_request.sessionId},
+            {"session_id": sessionId},
             {
                 "$push": {"messages": {"$each": [user_message.dict(), assistant_message.dict()]}},
                 "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
             }
         )
-        return ChatResponse(response=ai_response, sessionId=chat_request.sessionId)
+        return {"response": ai_response, "sessionId": sessionId}
     except HTTPException:
         raise
     except Exception as e:
