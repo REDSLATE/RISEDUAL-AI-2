@@ -198,6 +198,16 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Crypto tickers get Binance L2 context (walls, spread, bias); stocks get yfinance volume profile context
 - SPY used as macro proxy for market-wide predictions
 
+### Landing Page / Splash (April 10, 2026)
+- `LandingPage.jsx`: Full marketing splash page shown to unauthenticated visitors
+- Branding: **TradeAlgo** (per user request)
+- Sections: Header (sticky glassmorphism nav), Hero, How It Works (Strategist/Auditor/Nightly Retraining), Comparison table (TradeAlgo vs Competitors), Features bento grid, Pricing ($45/mo), Testimonials (3 traders), FAQ accordion, CTA, Footer
+- All CTAs trigger `openRegister()` → auth modal on Sign Up tab
+- Smooth scroll navigation via anchor links
+- Mobile responsive with hamburger menu
+- After login → full trading dashboard
+
+
 
 
 ### Enriched Regime Format (April 10, 2026)
