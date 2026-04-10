@@ -184,6 +184,21 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Frontend: `Int` column, `W` (whale) badge for >= 85, `M` (major) for < 85 + 5x ratio, `m` (minor) for rest
 - Volume display uses K/M suffixes instead of raw decimals
 
+### Multi-Ticker Whale Radar (April 10, 2026)
+- SSE endpoint `GET /api/stream/whale-radar`: Subscribes to 10 crypto pairs (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, DOT, LINK, MATIC) simultaneously via single connection
+- Emits 3 event types: `radar_status` (once, lists tickers), `tick` (every snapshot per ticker), `whale` (only when intensity >= 85 walls detected)
+- Frontend `WhaleRadar.jsx`: 5-column grid with live ticker tiles showing price, bias icon, whale badges, mini pressure bars, wall counts
+- Yellow ring highlights tiles with active whale walls
+- Whale Detections feed at bottom shows real-time whale events with prices and intensity scores
+- Shared Binance connections via `OrderFlowStream` singleton (no duplicate WebSocket connections)
+
+### Order Flow AI Context Injection (Verified April 10, 2026)
+- `get_order_flow_context()` returns formatted text for AI crews
+- Injected into War Room (crew_definitions.py:66-90), Hypothesis, and Prediction Synthesizer crews
+- Crypto tickers get Binance L2 context (walls, spread, bias); stocks get yfinance volume profile context
+- SPY used as macro proxy for market-wide predictions
+
+
 
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
