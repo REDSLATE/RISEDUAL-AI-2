@@ -114,6 +114,15 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - New endpoints: `GET /api/accuracy/failure-modes`, `GET /api/accuracy/failure-breakdown`, `POST /api/accuracy/classify/{id}`
 - Nightly cleanup preserves failure_code when re-tagging toxic entries
 
+### AI-Powered Post-Mortem Analysis (April 10, 2026)
+- `post_mortem_service.py`: when a prediction fails, fetches Finnhub company news + market news, sends to GPT-4o-mini
+- LLM classifies the failure with reasoning + key headline (e.g., "MACRO_SHOCK due to CPI surprise")
+- Upgrades the initial heuristic classification with news-aware AI analysis
+- Stored in MongoDB `predictions.verified_24h.post_mortem` and `post_mortem_log` collection, plus ChromaDB metadata
+- Falls back to heuristic if LLM fails or no API key
+- Auto-triggers after each 24h verification in `verify_pending_predictions()`
+- Manual trigger: `POST /api/accuracy/post-mortem/{prediction_id}`, History: `GET /api/accuracy/post-mortem/history`
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
