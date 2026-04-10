@@ -347,7 +347,7 @@ class TestDirectMongoDBInsertion:
         try:
             from motor.motor_asyncio import AsyncIOMotorClient
             mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-            db_name = os.environ.get("DB_NAME", "tradealgo_db")
+            db_name = os.environ.get("DB_NAME", "risedual_db")
             self.client = AsyncIOMotorClient(mongo_url)
             self.db = self.client[db_name]
             self.has_db = True
@@ -429,7 +429,7 @@ class TestPostMortemCorrectPredictionValidation:
         try:
             from motor.motor_asyncio import AsyncIOMotorClient
             mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-            db_name = os.environ.get("DB_NAME", "tradealgo_db")
+            db_name = os.environ.get("DB_NAME", "risedual_db")
             self.client = AsyncIOMotorClient(mongo_url)
             self.db = self.client[db_name]
             self.has_db = True

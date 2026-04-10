@@ -14,7 +14,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # MongoDB connection for direct token verification
 MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-DB_NAME = os.environ.get('DB_NAME', 'tradealgo_db')
+DB_NAME = os.environ.get('DB_NAME', 'risedual_db')
 
 # Test credentials
 ADMIN_EMAIL = ADMIN_EMAIL
