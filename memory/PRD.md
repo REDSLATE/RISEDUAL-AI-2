@@ -106,6 +106,14 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - AI must explicitly state in its thesis/summary why the current setup is NOT a trap
 - Only assigns high confidence (>70%) when conditions mirror SUCCESS patterns with NO overlap to DANGER patterns
 
+### Failure Mode Classification (April 10, 2026)
+- Auto-classifies WHY predictions fail using price action heuristics in `_classify_failure()`
+- 5 failure modes: TECH_FAKEOUT (stop-loss hunt), MACRO_SHOCK (surprise data), LIQUIDITY_GAP (low volume), REGIME_SHIFT (trend→range), UNKNOWN
+- Stored in both MongoDB `predictions.verified_24h.failure_code` and ChromaDB metadata
+- Veto context shows `[FAILURE_CODE]` tags so AI knows the specific trap type
+- New endpoints: `GET /api/accuracy/failure-modes`, `GET /api/accuracy/failure-breakdown`, `POST /api/accuracy/classify/{id}`
+- Nightly cleanup preserves failure_code when re-tagging toxic entries
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
