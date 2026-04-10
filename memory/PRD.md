@@ -9,7 +9,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **Auth**: httpOnly secure cookies (JWT), 90s fetch timeout for AI endpoints
 - **AI**: Emergent LLM Key (GPT-5.2, Claude Sonnet 4.5, Gemini)
 - **Payments**: Stripe ($45/month Pro subscription)
-- **Market Data**: Alpha Vantage (paid tier), Finnhub
+- **Market Data**: Alpha Vantage (paid tier) with yfinance fallback, Finnhub
 - **Email**: Resend
 
 ## Critical Technical Decisions
@@ -18,6 +18,8 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **Dynamic API base URL**: `getApiBase()` in `/app/frontend/src/utils/apiBase.js` resolves to correct domain on any deployment
 - **Auto-refresh JWT**: `authFetch` silently refreshes expired access tokens on 401
 - **Dynamic CORS middleware**: Reflects request Origin for any deployed domain (risedual.ai, preview, etc.)
+- **No crewai package**: Native thread-safe multi-agent engine (`crew_engine.py`) built using ThreadPoolExecutor + asyncio.to_thread
+- **Unified Price Provider**: All market data fetching goes through `price_provider.py` (AV → yfinance → MongoDB cache). Never call Alpha Vantage directly.
 
 ## Core Features (All Implemented)
 - Real-time stock & crypto tickers
@@ -35,14 +37,16 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Admin Panel with Cache Monitor
 - Referral System with Promo Codes
 - Trading Journal, Strategy Builder, Strategy Marketplace
+- Prediction Accuracy Tracker (Pro feature)
+- Native Multi-Agent AI Crew Engine (War Room, Hypothesis, Predictions)
 
-## Code Quality Sweep (April 2026)
-- eval()/exec() verified SAFE (AST-based evaluator, not raw eval)
-- Hook dependencies verified CORRECT (all module-level/global refs intentionally excluded)
-- OrderParams dataclass already in place for broker service
-- Extracted helpers for complex functions (technicals, token refresh)
-- Production console.log replaced with env-aware logger
-- Hardcoded test credentials migrated to conftest_creds
+## Price Provider Integration (April 10, 2026)
+- Built `price_provider.py`: Smart routing AV → yfinance → MongoDB cache
+- Integrated into ALL backend services:
+  - `sector_service.py`, `war_room_service.py`, `prediction_tracker.py` (done by previous agent)
+  - `ai_intelligence_service.py`, `watchlist_intelligence_service.py`, `company_research_service.py`, `market_data_service.py`, `backtester_service.py` (completed this session)
+- Fixed Motor Database boolean check bug (`if _db is not None:` instead of `if _db:`)
+- Only remaining direct AV calls: Earnings endpoint (war_room), Crypto exchange rate (market_data)
 
 ## Deployment Status
 - Health Check: PASSED
@@ -53,31 +57,10 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 ## Known Limitations
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
-
-## UI Updates (April 10, 2026)
-- Compact Chat UI: Reduced panel to 360x480px on desktop, tighter padding/margins/text throughout
-- Brightened Chat Logo: Programmatically enhanced `logo-ai-bright2.png` (ice-blue, transparent BG, avg brightness 220)
-- Logo used in: chat header, empty state, AI message avatars
-- Fixed Chat endpoint: Changed from JSON Pydantic body to FormData (Form() + File()) to match frontend multipart uploads
-- Added Force Refresh to Sector Heatmap: Refresh button now bypasses cache (`?force=true`) for instant fresh Alpha Vantage data
-
-## Multi-Agent AI Crew Integration (April 10, 2026)
-- Built custom CrewEngine (`crew_engine.py`) — CrewAI-style multi-agent orchestration using Emergent LLM Key
-- 3 specialized agents (gpt-4o-mini) run in parallel via ThreadPoolExecutor + 1 synthesizer (gpt-5.2)
-- **War Room**: Fundamental Analyst + Technical Analyst + Sentiment Analyst → Chief Investment Strategist
-- **Hypothesis**: Macro Economist + Quant Researcher + Congressional Tracker → Chief Hypothesis Architect
-- **Predictions**: News Analyst + Global Macro Strategist + Institutional Flow Analyst → Chief Market Strategist
-- Frontend: CrewInsightsCard, Multi-Agent badges, expandable agent analyses in all 3 features
-
-## Prediction Accuracy Tracker (April 10, 2026)
-- Auto-logs every War Room verdict, Hypothesis call, and Market Prediction with real-time price
-- Verifies at 24h and 1-week timeframes against actual Alpha Vantage prices
-- BUY/BULLISH=correct if price up, SELL/BEARISH=correct if price down, HOLD/NEUTRAL=correct if < 2% move
-- AccuracyBadge component shows rolling hit rate in each feature header (Pro only)
-- Background verification runs hourly; manual trigger via POST /api/accuracy/verify
-- Market predictions use SPY as directional proxy
+- Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
 ## Backlog
-- P1: Alpha Vantage API tier upgrade handling
-- P2: Advanced Sector Heatmap charting
-- P3: Real broker OAuth flows
+- P1: AI Sentiment Heatmap — Update Sector Heatmap colors to reflect AI sentiment scores
+- P2: Broker OAuth — Replace mocked broker endpoints with real authenticated flows
+- P3: Verify risedual.ai production deployment
+- P4: Refactor server.py into separate route modules
