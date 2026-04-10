@@ -171,20 +171,16 @@ def fetch_insider_trades(symbol: str) -> Dict:
 
 
 async def generate_war_room(symbol: str, api_key: str) -> Dict:
-    """Generate a complete War Room analysis for a symbol."""
-    from services.ai_intelligence_service import generate_ai_score, detect_patterns, generate_quick_brief
+    """Generate a complete War Room analysis using multi-agent AI crew."""
+    from services.crew_definitions import run_war_room_crew
 
-    # Fire all data fetches in parallel
+    # Fire all DATA fetches in parallel (no LLM calls yet)
     overview_task = asyncio.to_thread(fetch_company_overview, symbol)
     earnings_task = asyncio.to_thread(fetch_earnings_surprises, symbol)
     insider_task = asyncio.to_thread(fetch_insider_trades, symbol)
-    score_task = generate_ai_score(api_key, symbol)
-    patterns_task = detect_patterns(api_key, symbol)
-    brief_task = generate_quick_brief(api_key, symbol)
 
-    overview, earnings, insiders, score, patterns, brief = await asyncio.gather(
+    overview, earnings, insiders = await asyncio.gather(
         overview_task, earnings_task, insider_task,
-        score_task, patterns_task, brief_task,
         return_exceptions=True,
     )
 
@@ -198,62 +194,51 @@ async def generate_war_room(symbol: str, api_key: str) -> Dict:
     if isinstance(insiders, Exception):
         logger.error(f"War room insiders error: {insiders}")
         insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
-    if isinstance(score, Exception):
-        logger.error(f"War room score error: {score}")
-        score = {"scores": {}}
-    if isinstance(patterns, Exception):
-        logger.error(f"War room patterns error: {patterns}")
-        patterns = {"patterns": []}
-    if isinstance(brief, Exception):
-        logger.error(f"War room brief error: {brief}")
-        brief = {"brief": {}}
 
-    # Compute composite signal
-    scores = score.get("scores", {}) if isinstance(score, dict) else {}
-    overall = scores.get("overall_score", 5)
-    earnings_data = earnings if isinstance(earnings, dict) else {}
-    insiders_data = insiders if isinstance(insiders, dict) else {}
-
-    # For ETFs/symbols with no earnings or insider data, treat missing as neutral (50)
-    # rather than 0 — otherwise the composite unfairly penalizes ETFs/indices.
-    has_earnings = earnings_data.get("total_quarters", 0) > 0
-    has_insiders = len(insiders_data.get("trades", [])) > 0
-    beat_rate = earnings_data.get("beat_rate", 50) if has_earnings else 50
-    insider_ratio = insiders_data.get("buy_ratio", 50) if has_insiders else 50
-
-    # Composite signal: weight score (40%), earnings momentum (30%), insider sentiment (30%)
-    score_signal = (overall / 10) * 100
-    earnings_signal = beat_rate
-    insider_signal = insider_ratio
-    composite = round(score_signal * 0.4 + earnings_signal * 0.3 + insider_signal * 0.3)
-
-    if composite >= 70:
-        composite_verdict = "STRONG BUY"
-    elif composite >= 55:
-        composite_verdict = "BUY"
-    elif composite >= 45:
-        composite_verdict = "HOLD"
-    elif composite >= 30:
-        composite_verdict = "SELL"
-    else:
-        composite_verdict = "STRONG SELL"
+    # Run multi-agent crew (3 parallel agents + 1 synthesizer = ~20s)
+    try:
+        crew_result = await run_war_room_crew(
+            symbol, overview, earnings, insiders, api_key
+        )
+        comp_score = max(0, min(100, int(crew_result.get("composite_score", 50))))
+        verdict = crew_result.get("verdict", "HOLD")
+        composite = {
+            "score": comp_score,
+            "verdict": verdict,
+            "confidence": crew_result.get("confidence", 50),
+            "key_thesis": crew_result.get("key_thesis", ""),
+            "bull_case": crew_result.get("bull_case", ""),
+            "bear_case": crew_result.get("bear_case", ""),
+            "catalysts": crew_result.get("catalysts", []),
+            "risks": crew_result.get("risks", []),
+            "price_target_short": crew_result.get("price_target_short", "N/A"),
+            "price_target_medium": crew_result.get("price_target_medium", "N/A"),
+            "trade_recommendation": crew_result.get("trade_recommendation", ""),
+            "breakdown": {
+                "fundamental_score": crew_result.get("fundamental_score", 50),
+                "technical_score": crew_result.get("technical_score", 50),
+                "sentiment_score": crew_result.get("sentiment_score", 50),
+            },
+            "multi_agent": True,
+            "agents_used": crew_result.get("agents_used", 4),
+            "agent_analyses": crew_result.get("agent_analyses", []),
+        }
+    except Exception as e:
+        logger.error(f"War room crew failed, falling back: {e}")
+        ed = earnings if isinstance(earnings, dict) else {}
+        ind = insiders if isinstance(insiders, dict) else {}
+        br = ed.get("beat_rate", 50) if ed.get("total_quarters", 0) > 0 else 50
+        ir = ind.get("buy_ratio", 50) if len(ind.get("trades", [])) > 0 else 50
+        cs = round(br * 0.5 + ir * 0.5)
+        cv = "STRONG BUY" if cs >= 70 else "BUY" if cs >= 55 else "HOLD" if cs >= 45 else "SELL" if cs >= 30 else "STRONG SELL"
+        composite = {"score": cs, "verdict": cv, "multi_agent": False,
+                     "breakdown": {"earnings_weight": round(br * 0.5), "insider_weight": round(ir * 0.5)}}
 
     return {
         "symbol": symbol.upper(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "overview": overview if isinstance(overview, dict) else {},
-        "ai_score": scores,
-        "patterns": patterns.get("patterns", []) if isinstance(patterns, dict) else [],
-        "brief": brief.get("brief", {}) if isinstance(brief, dict) else {},
         "earnings": earnings if isinstance(earnings, dict) else {},
         "insiders": insiders if isinstance(insiders, dict) else {},
-        "composite": {
-            "score": composite,
-            "verdict": composite_verdict,
-            "breakdown": {
-                "ai_score_weight": round(score_signal * 0.4),
-                "earnings_weight": round(earnings_signal * 0.3),
-                "insider_weight": round(insider_signal * 0.3),
-            },
-        },
+        "composite": composite,
     }

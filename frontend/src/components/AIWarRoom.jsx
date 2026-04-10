@@ -8,8 +8,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import {
-  OverviewCard, AIScoreCard, BriefCard, EarningsCard, InsidersCard,
-  ScoreGauge, CompositeBreakdownBar
+  OverviewCard, EarningsCard, InsidersCard,
+  ScoreGauge, CompositeBreakdownBar, CrewInsightsCard
 } from './warroom/WarRoomCards';
 import { getApiBase } from '../utils/apiBase';
 
@@ -114,9 +114,9 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
           <Shield className="w-10 h-10 text-amber-400 mx-auto animate-pulse" />
           <p className="text-white font-semibold mt-3">Deploying War Room for {symbol}</p>
-          <p className="text-slate-400 text-sm">Scanning earnings, insider trades, technicals, and AI models...</p>
+          <p className="text-slate-400 text-sm">Running multi-agent AI crew — Fundamental, Technical, and Sentiment analysts collaborating...</p>
           <div className="flex justify-center gap-6 mt-4">
-            {['AI Score', 'Earnings', 'Insiders', 'Technicals', 'Brief'].map((s, i) => (
+            {['Fundamentals', 'Technicals', 'Sentiment', 'Data Feeds', 'Synthesis'].map((s, i) => (
               <div key={s} className="text-center">
                 <div className="w-2 h-2 bg-amber-400 rounded-full mx-auto mb-1 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
                 <span className="text-slate-500 text-[10px]">{s}</span>
@@ -149,11 +149,8 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
             <OverviewCard overview={data.overview} symbol={data.symbol} />
           </div>
 
-          {/* Middle: AI Score + Brief */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <AIScoreCard aiScore={data.ai_score} />
-            <BriefCard brief={data.brief} />
-          </div>
+          {/* Middle: Multi-Agent Insights */}
+          <CrewInsightsCard composite={data.composite} />
 
           {/* Bottom: Earnings + Insiders */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

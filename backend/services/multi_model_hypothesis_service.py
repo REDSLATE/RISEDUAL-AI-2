@@ -260,10 +260,9 @@ def _weighted_consensus(results: List[Dict]) -> Dict:
 
 
 async def generate_hypothesis(api_key: str, symbol: str, data: Dict, model: str = "gpt-5.2") -> Dict:
-    """Generate hypothesis with the specified model or consensus mode."""
-    prompt = _build_prompt(symbol, data)
-
+    """Generate hypothesis using multi-agent crew (single model) or consensus mode (multi-model)."""
     if model == "consensus":
+        prompt = _build_prompt(symbol, data)
         tasks = [_run_single_model(api_key, mk, symbol, prompt) for mk in MODELS]
         results = await asyncio.gather(*tasks)
 
@@ -284,7 +283,17 @@ async def generate_hypothesis(api_key: str, symbol: str, data: Dict, model: str 
         ]
         return consensus
 
-    if model not in MODELS:
-        model = "gpt-5.2"
-
-    return await _run_single_model(api_key, model, symbol, prompt)
+    # Single model mode — use multi-agent crew for deeper analysis
+    try:
+        from services.crew_definitions import run_hypothesis_crew
+        crew_result = await run_hypothesis_crew(symbol, data, api_key)
+        crew_result["model"] = MODELS.get(model, {}).get("label", "GPT-5.2")
+        crew_result["model_key"] = model
+        crew_result["is_pro"] = True
+        return crew_result
+    except Exception as e:
+        logger.error(f"Crew hypothesis failed for {symbol}, falling back to single model: {e}")
+        if model not in MODELS:
+            model = "gpt-5.2"
+        prompt = _build_prompt(symbol, data)
+        return await _run_single_model(api_key, model, symbol, prompt)

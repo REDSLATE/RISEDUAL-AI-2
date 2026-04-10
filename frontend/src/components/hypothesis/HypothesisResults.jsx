@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, Minus, BarChart3, Globe, Landmark, Download, Network } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, BarChart3, Globe, Landmark, Download, Network, Brain } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -45,6 +45,11 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
             <Badge className={`text-[9px] border ${currentModel.bg} ${currentModel.color.replace('text-', 'border-').replace('-400', '-700/50')}`} data-testid="model-badge">
               {hypothesis.model || currentModel.label}
             </Badge>
+            {hypothesis.multi_agent && (
+              <Badge className="text-[9px] bg-violet-900/40 text-violet-400 border-violet-700/50">
+                {hypothesis.agents_used || 4} AI Agents
+              </Badge>
+            )}
             <Button size="sm" variant="outline" className="border-white/20 text-white/80 hover:bg-white/10 rounded-lg text-[10px] h-7 px-2" onClick={onExport} disabled={exporting} data-testid="export-report-btn">
               <Download className="w-3 h-3 mr-1" /> Export
             </Button>
@@ -140,6 +145,26 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
           <BarChart3 className="w-4 h-4 text-[#0052FF]" /> Technical Outlook
         </h3>
         <p className="text-slate-300 text-sm">{hypothesis.technical_outlook}</p>
+      </Card>
+    )}
+
+    {/* Multi-Agent Analyses */}
+    {hypothesis.agent_analyses?.length > 0 && (
+      <Card className="bg-slate-800/50 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
+        <details>
+          <summary className="flex items-center gap-2 cursor-pointer text-violet-400 font-semibold text-sm hover:text-violet-300 transition-colors">
+            <Brain className="w-4 h-4" />
+            Multi-Agent Breakdown ({hypothesis.agent_analyses.length} Agents)
+          </summary>
+          <div className="mt-3 space-y-3">
+            {hypothesis.agent_analyses.map((a, i) => (
+              <div key={i} className="bg-slate-900/40 rounded-lg p-3">
+                <span className="text-violet-400 text-xs font-semibold">{a.role}</span>
+                <p className="text-slate-400 text-xs leading-relaxed mt-1">{a.summary}</p>
+              </div>
+            ))}
+          </div>
+        </details>
       </Card>
     )}
   </div>

@@ -43,7 +43,17 @@ Output in JSON format:
 }"""
 
     async def generate_hypothesis(self, symbol: str, data: Dict) -> Dict:
-        """Generate AI hypothesis for a specific ticker"""
+        """Generate AI hypothesis using multi-agent crew."""
+        from services.crew_definitions import run_hypothesis_crew
+        try:
+            result = await run_hypothesis_crew(symbol, data, self.api_key)
+            return result
+        except Exception as e:
+            logger.error(f"Crew hypothesis failed for {symbol}, falling back to single-agent: {e}")
+            return await self._single_agent_hypothesis(symbol, data)
+
+    async def _single_agent_hypothesis(self, symbol: str, data: Dict) -> Dict:
+        """Fallback single-agent hypothesis if crew fails."""
         try:
             chat = LlmChat(api_key=self.api_key, session_id=f"hypothesis_{symbol}", system_message=self.system_message).with_model("openai", "gpt-5.2")
 
@@ -88,6 +98,7 @@ Provide your hypothesis for {symbol.upper()} in JSON format."""
 
             hypothesis = json.loads(text)
             hypothesis['symbol'] = symbol.upper()
+            hypothesis['multi_agent'] = False
             return hypothesis
 
         except json.JSONDecodeError:
@@ -100,9 +111,10 @@ Provide your hypothesis for {symbol.upper()} in JSON format."""
                 "summary": "AI analysis completed but structured parsing failed",
                 "catalysts": [],
                 "risks": [],
+                "multi_agent": False,
             }
         except Exception as e:
-            logger.error(f"Error generating hypothesis for {symbol}: {str(e)}")
+            logger.error(f"Fallback hypothesis error for {symbol}: {str(e)}")
             raise
 
     def _format_news(self, news: list) -> str:

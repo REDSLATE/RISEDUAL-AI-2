@@ -1,6 +1,7 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, Activity, Globe, Landmark } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Globe, Landmark, Brain } from 'lucide-react';
 import { Card } from '../ui/card';
+import { Badge } from '../ui/badge';
 
 const verdictColor = (v) => {
   if (!v) return 'text-amber-400';
@@ -18,7 +19,14 @@ const PredictionCard = ({ prediction }) => {
   return (
     <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
+          {prediction.multi_agent && (
+            <Badge className="bg-violet-900/40 text-violet-400 text-[9px]">
+              {prediction.agents_used || 4} AI Agents
+            </Badge>
+          )}
+        </div>
         <span className={`text-sm font-bold ${verdictColor(verdict)}`}>
           {verdict}
         </span>
@@ -46,6 +54,50 @@ const PredictionCard = ({ prediction }) => {
             />
           </div>
         </div>
+      )}
+
+      {/* Multi-agent crew insights */}
+      {prediction.agent_consensus && (
+        <div className="mt-3 bg-violet-900/15 border border-violet-800/25 rounded-lg p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Brain className="w-3 h-3 text-violet-400" />
+            <span className="text-violet-400 text-[10px] font-semibold uppercase">Agent Consensus</span>
+          </div>
+          <p className="text-slate-300 text-xs">{prediction.agent_consensus}</p>
+        </div>
+      )}
+
+      {(prediction.institutional_flow || prediction.geopolitical_impact) && (
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {prediction.institutional_flow && (
+            <div className="bg-slate-900/40 rounded-lg p-2.5">
+              <span className="text-blue-400 text-[10px] font-semibold">Institutional Flow</span>
+              <p className="text-slate-400 text-xs mt-0.5">{prediction.institutional_flow}</p>
+            </div>
+          )}
+          {prediction.geopolitical_impact && (
+            <div className="bg-slate-900/40 rounded-lg p-2.5">
+              <span className="text-amber-400 text-[10px] font-semibold">Geopolitical Impact</span>
+              <p className="text-slate-400 text-xs mt-0.5">{prediction.geopolitical_impact}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {prediction.agent_analyses?.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-slate-500 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
+            View agent analyses ({prediction.agent_analyses.length} agents)
+          </summary>
+          <div className="mt-2 space-y-2">
+            {prediction.agent_analyses.map((a, i) => (
+              <div key={i} className="bg-slate-900/40 rounded-lg p-2.5">
+                <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
+                <p className="text-slate-400 text-[11px] mt-0.5">{a.summary}</p>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </Card>
   );

@@ -39,7 +39,27 @@ class MarketPredictionService:
                             world_events: Optional[Dict] = None,
                             foreign_markets: Optional[Dict] = None,
                             gov_filings: Optional[Dict] = None) -> Dict:
-        """Comprehensive market analysis using all data sources"""
+        """Comprehensive market analysis using multi-agent crew."""
+        from services.crew_definitions import run_prediction_crew
+        try:
+            result = await run_prediction_crew(
+                financial_news, crypto_data, insider_trades, social_sentiment,
+                real_estate_data, world_events, foreign_markets, gov_filings,
+                api_key=self.api_key
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Crew prediction failed, falling back to single-agent: {e}")
+            return await self._single_agent_prediction(
+                financial_news, crypto_data, insider_trades, social_sentiment,
+                real_estate_data, world_events, foreign_markets, gov_filings
+            )
+
+    async def _single_agent_prediction(self, financial_news, crypto_data,
+                                        insider_trades, social_sentiment,
+                                        real_estate_data=None, world_events=None,
+                                        foreign_markets=None, gov_filings=None) -> Dict:
+        """Fallback single-agent prediction if crew fails."""
         try:
             # Prepare data summary for AI
             data_summary = self._prepare_data_summary(

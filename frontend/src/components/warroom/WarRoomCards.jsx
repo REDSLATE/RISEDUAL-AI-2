@@ -232,18 +232,123 @@ export const ScoreGauge = ({ score, label }) => {
   );
 };
 
-export const CompositeBreakdownBar = ({ breakdown }) => (
-  <div className="mt-3 space-y-1.5 text-left">
-    {[
-      { label: 'AI Score', value: breakdown.ai_score_weight, color: '#0052FF' },
-      { label: 'Earnings', value: breakdown.earnings_weight, color: '#10B981' },
-      { label: 'Insiders', value: breakdown.insider_weight, color: '#F59E0B' },
-    ].map(b => (
-      <div key={b.label} className="flex items-center gap-2">
-        <span className="text-slate-500 text-[10px] w-14">{b.label}</span>
-        <MiniBar value={b.value} max={40} color={b.color} />
-        <span className="text-slate-400 text-[10px] w-6">{b.value}</span>
+export const CompositeBreakdownBar = ({ breakdown }) => {
+  // Support both multi-agent (fundamental/technical/sentiment) and legacy (ai_score/earnings/insider)
+  const bars = breakdown.fundamental_score !== undefined ? [
+    { label: 'Fundamentals', value: breakdown.fundamental_score, color: '#0052FF' },
+    { label: 'Technicals', value: breakdown.technical_score, color: '#10B981' },
+    { label: 'Sentiment', value: breakdown.sentiment_score, color: '#F59E0B' },
+  ] : [
+    { label: 'AI Score', value: breakdown.ai_score_weight, color: '#0052FF' },
+    { label: 'Earnings', value: breakdown.earnings_weight, color: '#10B981' },
+    { label: 'Insiders', value: breakdown.insider_weight, color: '#F59E0B' },
+  ];
+  const maxVal = breakdown.fundamental_score !== undefined ? 100 : 40;
+  return (
+    <div className="mt-3 space-y-1.5 text-left">
+      {bars.map(b => (
+        <div key={b.label} className="flex items-center gap-2">
+          <span className="text-slate-500 text-[10px] w-16">{b.label}</span>
+          <MiniBar value={b.value} max={maxVal} color={b.color} />
+          <span className="text-slate-400 text-[10px] w-6">{b.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export const CrewInsightsCard = ({ composite }) => {
+  if (!composite?.multi_agent) return null;
+  return (
+    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-crew-insights">
+      <div className="flex items-center gap-2 mb-3">
+        <Brain className="w-4 h-4 text-violet-400" />
+        <h3 className="text-white font-semibold text-sm">Multi-Agent Analysis</h3>
+        <Badge className="bg-violet-900/40 text-violet-400 text-[10px]">{composite.agents_used} Agents</Badge>
+        <Badge className="bg-slate-700 text-slate-300 text-[10px]">{composite.confidence}% Confidence</Badge>
       </div>
-    ))}
-  </div>
-);
+      {composite.key_thesis && (
+        <p className="text-slate-300 text-xs leading-relaxed mb-3">{composite.key_thesis}</p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        {composite.bull_case && (
+          <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <TrendingUp className="w-3 h-3 text-emerald-400" />
+              <span className="text-emerald-400 text-[10px] font-semibold uppercase">Bull Case</span>
+            </div>
+            <p className="text-slate-300 text-xs leading-relaxed">{composite.bull_case}</p>
+          </div>
+        )}
+        {composite.bear_case && (
+          <div className="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <TrendingDown className="w-3 h-3 text-red-400" />
+              <span className="text-red-400 text-[10px] font-semibold uppercase">Bear Case</span>
+            </div>
+            <p className="text-slate-300 text-xs leading-relaxed">{composite.bear_case}</p>
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        {composite.catalysts?.length > 0 && (
+          <div>
+            <span className="text-emerald-400 text-[10px] font-semibold uppercase">Catalysts</span>
+            <ul className="mt-1 space-y-0.5">
+              {composite.catalysts.map((c, i) => (
+                <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
+                  <span className="w-1 h-1 bg-emerald-400 rounded-full mt-1.5 flex-shrink-0" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {composite.risks?.length > 0 && (
+          <div>
+            <span className="text-red-400 text-[10px] font-semibold uppercase">Risks</span>
+            <ul className="mt-1 space-y-0.5">
+              {composite.risks.map((r, i) => (
+                <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
+                  <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+      {(composite.price_target_short || composite.price_target_medium) && (
+        <div className="flex gap-3 mb-3">
+          {composite.price_target_short && composite.price_target_short !== 'N/A' && (
+            <Badge className="bg-slate-900/60 text-slate-300 text-[10px]">Short-term: {composite.price_target_short}</Badge>
+          )}
+          {composite.price_target_medium && composite.price_target_medium !== 'N/A' && (
+            <Badge className="bg-slate-900/60 text-slate-300 text-[10px]">Medium-term: {composite.price_target_medium}</Badge>
+          )}
+        </div>
+      )}
+      {composite.trade_recommendation && (
+        <div className="bg-[#0052FF]/10 border border-[#0052FF]/20 rounded-lg p-2.5">
+          <span className="text-[#0052FF] text-[10px] font-semibold uppercase">Trade Setup</span>
+          <p className="text-slate-300 text-xs mt-1">{composite.trade_recommendation}</p>
+        </div>
+      )}
+      {composite.agent_analyses?.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-slate-500 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
+            View individual agent analyses ({composite.agent_analyses.length} agents)
+          </summary>
+          <div className="mt-2 space-y-2">
+            {composite.agent_analyses.map((a, i) => (
+              <div key={i} className="bg-slate-900/40 rounded-lg p-2.5">
+                <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
+                <p className="text-slate-400 text-[11px] leading-relaxed mt-1">{a.summary}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </Card>
+  );
+};

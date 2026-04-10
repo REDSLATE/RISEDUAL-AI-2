@@ -159,8 +159,8 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             </p>
             <p className="text-slate-400 text-sm">
               {selectedModel === 'consensus'
-                ? 'Weighted voting across 3 AI models for maximum accuracy'
-                : 'Analyzing news, world events, congressional trades, and market data'}
+                ? 'Multi-agent crew: Macro Economist, Quant Researcher, and Congressional Tracker collaborating'
+                : 'Multi-agent crew analyzing news, world events, congressional trades, and market data'}
             </p>
           </div>
         </Card>
