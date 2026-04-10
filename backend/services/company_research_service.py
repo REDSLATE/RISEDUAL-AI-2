@@ -1,4 +1,3 @@
-import os
 import asyncio
 import logging
 import json
@@ -6,7 +5,7 @@ from typing import Dict, Optional
 from services.market_data_service import MarketDataService
 from services.financial_scraping_service import FinancialScrapingService
 from services.ai_service import AIService
-import requests
+from services.price_provider import get_overview_sync
 
 logger = logging.getLogger(__name__)
 
@@ -15,21 +14,11 @@ class CompanyResearchService:
         self.market_data = MarketDataService()
         self.scraper = FinancialScrapingService()
         self.ai = AIService()
-        self.api_key = os.environ.get('ALPHA_VANTAGE_API_KEY')
-        self.base_url = 'https://www.alphavantage.co/query'
 
     async def get_company_overview(self, symbol: str) -> Optional[Dict]:
-        """Fetch company fundamentals from Alpha Vantage OVERVIEW endpoint"""
+        """Fetch company fundamentals via smart price provider (AV -> yfinance)."""
         try:
-            params = {
-                'function': 'OVERVIEW',
-                'symbol': symbol.upper(),
-                'apikey': self.api_key
-            }
-            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-
+            data = await asyncio.to_thread(get_overview_sync, symbol)
             if not data or 'Symbol' not in data:
                 return None
 

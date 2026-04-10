@@ -1,57 +1,37 @@
 """AI Intelligence Service — Stock Scoring, Pattern Recognition, Quick Briefs."""
-import os
 import logging
-import asyncio
-import requests
 import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from services.price_provider import get_quote, get_daily_history
+
 logger = logging.getLogger(__name__)
-
-AV_BASE = "https://www.alphavantage.co/query"
-
-
-def _av_key():
-    return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 
 async def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
-    """Fetch daily prices from Alpha Vantage."""
-    params = {
-        "function": "TIME_SERIES_DAILY",
-        "symbol": symbol.upper(),
-        "outputsize": "compact" if compact else "full",
-        "apikey": _av_key(),
-    }
-    resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=15)
-    ts = resp.json().get("Time Series (Daily)", {})
-    prices = []
-    for d, bar in sorted(ts.items()):
-        prices.append({
-            "date": d,
-            "open": float(bar["1. open"]),
-            "high": float(bar["2. high"]),
-            "low": float(bar["3. low"]),
-            "close": float(bar["4. close"]),
-            "volume": int(bar["5. volume"]),
-        })
-    return prices
+    """Fetch daily prices via smart price provider (AV -> yfinance -> cache)."""
+    outputsize = "compact" if compact else "full"
+    history = await get_daily_history(symbol, outputsize)
+    if not history:
+        return []
+    # price_provider returns newest-first; reverse to oldest-first for technicals
+    return list(reversed(history))
 
 
 async def _fetch_quote(symbol: str) -> Dict:
-    """Fetch real-time quote."""
-    params = {"function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _av_key()}
-    resp = await asyncio.to_thread(requests.get, AV_BASE, params=params, timeout=10)
-    gq = resp.json().get("Global Quote", {})
+    """Fetch real-time quote via smart price provider."""
+    quote = await get_quote(symbol)
+    if not quote:
+        return {"price": 0, "change": 0, "change_pct": 0, "volume": 0, "high": 0, "low": 0, "prev_close": 0}
     return {
-        "price": float(gq.get("05. price", 0)),
-        "change": float(gq.get("09. change", 0)),
-        "change_pct": float(gq.get("10. change percent", "0").replace("%", "")),
-        "volume": int(gq.get("06. volume", 0)),
-        "high": float(gq.get("03. high", 0)),
-        "low": float(gq.get("04. low", 0)),
-        "prev_close": float(gq.get("08. previous close", 0)),
+        "price": quote.get("price", 0),
+        "change": quote.get("change", 0),
+        "change_pct": quote.get("change_pct", 0),
+        "volume": quote.get("volume", 0),
+        "high": quote.get("high", 0),
+        "low": quote.get("low", 0),
+        "prev_close": quote.get("prev_close", 0),
     }
 
 

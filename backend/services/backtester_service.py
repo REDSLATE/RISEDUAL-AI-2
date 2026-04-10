@@ -13,40 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 def _fetch_daily_prices(symbol: str, years: int = 3) -> List[Dict]:
-    """Fetch daily historical prices from Alpha Vantage."""
-    api_key = os.environ.get("ALPHA_VANTAGE_API_KEY")
-    if not api_key:
-        raise ValueError("Alpha Vantage API key not configured")
+    """Fetch daily historical prices via smart price provider (AV -> yfinance)."""
+    from services.price_provider import get_daily_history_sync
 
-    outputsize = "full"
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_DAILY",
-        "symbol": symbol.upper(),
-        "outputsize": outputsize,
-        "apikey": api_key,
-    }
-    resp = requests.get(url, params=params, timeout=30)
-    data = resp.json()
-
-    ts = data.get("Time Series (Daily)", {})
-    if not ts:
+    history = get_daily_history_sync(symbol, "full")
+    if not history:
         raise ValueError(f"No historical data found for {symbol}. Check if the ticker is valid.")
+
+    # price_provider returns newest-first; reverse to oldest-first
+    history = list(reversed(history))
 
     cutoff = datetime.now().replace(year=datetime.now().year - years)
     prices = []
-    for date_str, bar in sorted(ts.items()):
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    for bar in history:
+        dt = datetime.strptime(bar["date"], "%Y-%m-%d")
         if dt < cutoff:
             continue
-        prices.append({
-            "date": date_str,
-            "open": float(bar["1. open"]),
-            "high": float(bar["2. high"]),
-            "low": float(bar["3. low"]),
-            "close": float(bar["4. close"]),
-            "volume": int(bar["5. volume"]),
-        })
+        prices.append(bar)
     return prices
 
 

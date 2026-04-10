@@ -98,7 +98,7 @@ async def get_quote(symbol: str) -> Optional[Dict]:
     cache_key = f"quote_{symbol.upper()}"
 
     # Check MongoDB cache first
-    if _db:
+    if _db is not None:
         cached = await _db.price_cache.find_one(
             {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
             {"_id": 0}
@@ -116,7 +116,7 @@ async def get_quote(symbol: str) -> Optional[Dict]:
         quote = await asyncio.to_thread(_yf_quote, symbol)
 
     # Cache successful result
-    if quote and _db:
+    if quote and _db is not None:
         await _db.price_cache.update_one(
             {"key": cache_key},
             {"$set": {
@@ -203,7 +203,7 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
     """
     cache_key = f"daily_{symbol.upper()}_{outputsize}"
 
-    if _db:
+    if _db is not None:
         cached = await _db.price_cache.find_one(
             {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
             {"_id": 0}
@@ -217,7 +217,7 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
         period = "full" if outputsize == "full" else "3mo"
         history = await asyncio.to_thread(_yf_daily, symbol, period)
 
-    if history and _db:
+    if history and _db is not None:
         await _db.price_cache.update_one(
             {"key": cache_key},
             {"$set": {

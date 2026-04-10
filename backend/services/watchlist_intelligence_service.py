@@ -1,38 +1,30 @@
 """Watchlist Intelligence Service — Batch AI analysis of user's watchlist tickers."""
-import os
 import logging
 import asyncio
-import requests
 import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from services.price_provider import get_quote_sync, get_daily_history_sync
+
 logger = logging.getLogger(__name__)
-
-AV_BASE = "https://www.alphavantage.co/query"
-
-
-def _av_key():
-    return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 
 def _fetch_quote(symbol: str) -> Dict:
-    """Fetch real-time quote for a single ticker."""
+    """Fetch real-time quote via smart price provider (AV -> yfinance)."""
     try:
-        params = {"function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _av_key()}
-        resp = requests.get(AV_BASE, params=params, timeout=10)
-        gq = resp.json().get("Global Quote", {})
-        if not gq:
+        quote = get_quote_sync(symbol)
+        if not quote:
             return {"symbol": symbol.upper(), "price": 0, "change": 0, "change_pct": 0, "volume": 0, "error": True}
         return {
             "symbol": symbol.upper(),
-            "price": float(gq.get("05. price", 0)),
-            "change": float(gq.get("09. change", 0)),
-            "change_pct": float(gq.get("10. change percent", "0").replace("%", "")),
-            "volume": int(gq.get("06. volume", 0)),
-            "high": float(gq.get("03. high", 0)),
-            "low": float(gq.get("04. low", 0)),
-            "prev_close": float(gq.get("08. previous close", 0)),
+            "price": quote.get("price", 0),
+            "change": quote.get("change", 0),
+            "change_pct": quote.get("change_pct", 0),
+            "volume": quote.get("volume", 0),
+            "high": quote.get("high", 0),
+            "low": quote.get("low", 0),
+            "prev_close": quote.get("prev_close", 0),
         }
     except Exception as e:
         logger.warning(f"Quote fetch failed for {symbol}: {e}")
@@ -40,19 +32,13 @@ def _fetch_quote(symbol: str) -> Dict:
 
 
 def _fetch_daily_compact(symbol: str) -> List[Dict]:
-    """Fetch compact daily prices (last 100 days)."""
+    """Fetch compact daily prices via smart price provider (AV -> yfinance)."""
     try:
-        params = {"function": "TIME_SERIES_DAILY", "symbol": symbol.upper(), "outputsize": "compact", "apikey": _av_key()}
-        resp = requests.get(AV_BASE, params=params, timeout=15)
-        ts = resp.json().get("Time Series (Daily)", {})
-        prices = []
-        for d, bar in sorted(ts.items()):
-            prices.append({
-                "date": d,
-                "close": float(bar["4. close"]),
-                "volume": int(bar["5. volume"]),
-            })
-        return prices
+        history = get_daily_history_sync(symbol, "compact")
+        if not history:
+            return []
+        # price_provider returns newest-first; reverse to oldest-first for technicals
+        return list(reversed(history))
     except Exception as e:
         logger.warning(f"Daily fetch failed for {symbol}: {e}")
         return []

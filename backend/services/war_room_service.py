@@ -2,10 +2,15 @@
 import os
 import logging
 import asyncio
+import requests
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from services.price_provider import get_overview_sync, get_quote_sync
+
+
+def _av_key():
+    return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 logger = logging.getLogger(__name__)
 

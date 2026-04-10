@@ -6,6 +6,8 @@ import secrets as _secrets
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
+from services.price_provider import get_quote as pp_get_quote
+
 logger = logging.getLogger(__name__)
 _rng = _secrets.SystemRandom()
 
@@ -13,63 +15,22 @@ class MarketDataService:
     def __init__(self):
         self.api_key = os.environ.get('ALPHA_VANTAGE_API_KEY')
         self.base_url = 'https://www.alphavantage.co/query'
-        self.cache = {}  # Simple in-memory cache
-        
-    def _get_cache_key(self, symbol: str, data_type: str) -> str:
-        return f"{symbol}_{data_type}"
-    
-    def _is_cache_valid(self, cache_entry: Dict) -> bool:
-        """Check if cache entry is still valid (< 60 seconds old)"""
-        if not cache_entry:
-            return False
-        cache_time = cache_entry.get('timestamp')
-        if not cache_time:
-            return False
-        return (datetime.now() - cache_time).seconds < 60
     
     async def get_quote(self, symbol: str) -> Optional[Dict]:
-        """Get real-time quote for a symbol"""
-        cache_key = self._get_cache_key(symbol, 'quote')
-        
-        # Check cache first
-        if cache_key in self.cache and self._is_cache_valid(self.cache[cache_key]):
-            logger.info(f"Returning cached quote for {symbol}")
-            return self.cache[cache_key]['data']
-        
+        """Get real-time quote via smart price provider (AV -> yfinance -> cache)."""
         try:
-            params = {
-                'function': 'GLOBAL_QUOTE',
-                'symbol': symbol,
-                'apikey': self.api_key
-            }
-            
-            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'Global Quote' in data and data['Global Quote']:
-                quote = data['Global Quote']
-                result = {
-                    'symbol': quote.get('01. symbol', symbol),
-                    'price': float(quote.get('05. price', 0)),
-                    'change': float(quote.get('09. change', 0)),
-                    'changePercent': float(quote.get('10. change percent', '0').replace('%', '')),
-                    'volume': int(quote.get('06. volume', 0)),
-                    'high': float(quote.get('03. high', 0)),
-                    'low': float(quote.get('04. low', 0))
-                }
-                
-                # Cache the result
-                self.cache[cache_key] = {
-                    'data': result,
-                    'timestamp': datetime.now()
-                }
-                
-                return result
-            else:
-                logger.warning(f"No quote data for {symbol}")
+            quote = await pp_get_quote(symbol)
+            if not quote:
                 return None
-                
+            return {
+                'symbol': quote.get('symbol', symbol),
+                'price': quote.get('price', 0),
+                'change': quote.get('change', 0),
+                'changePercent': quote.get('change_pct', 0),
+                'volume': quote.get('volume', 0),
+                'high': quote.get('high', 0),
+                'low': quote.get('low', 0),
+            }
         except Exception as e:
             logger.error(f"Error fetching quote for {symbol}: {str(e)}")
             return None
