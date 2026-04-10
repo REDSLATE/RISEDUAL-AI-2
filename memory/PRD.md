@@ -55,6 +55,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - API routing: Dynamic getApiBase() for any deployment
 - All features verified via testing agent (100% pass)
 
+## AI Sentiment Heatmap (April 10, 2026)
+- Built multi-agent sector sentiment crew in `crew_definitions.py` (3 analysts + 1 strategist = 4 LLM calls for all 11 sectors)
+- Added `GET /api/sectors/sentiment` endpoint in `routes/sectors.py` (15min cache TTL)
+- Updated `SectorHeatmap.jsx` with AI tab: shows scores (0-100), labels (Bullish/Bearish/Cautious/Neutral), reasoning, rotation call, risk regime
+- Color mapping: 0-25 red → 25-45 orange → 45-55 neutral → 55-75 green → 75-100 strong green
+
 ## Known Limitations
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
