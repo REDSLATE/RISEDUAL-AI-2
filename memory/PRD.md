@@ -147,13 +147,14 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - OAuth status check: `GET /api/broker/oauth/{broker_id}/status` returns configured state
 
 ### Order Flow / Institutional Wall Detection (April 10, 2026)
-- `order_flow_service.py`: Analyzes intraday volume profiles (yfinance 5min bars) to detect institutional walls
+- **Dual-source architecture**: Crypto → Binance L2 Order Book (api.binance.us, fallback api.binance.com); Stocks → yfinance intraday volume profile (5min bars, 2-day lookback)
+- Binance L2 provides real bid/ask depth (500 levels), spread, best bid/ask, and coin quantities
 - Wall = price level with volume >3x median (minor) or >5x (major); classified as support or resistance
-- Institutional bias: INSTITUTIONAL_BID (>65% volume below price), INSTITUTIONAL_ASK (<35%), BALANCED
+- Institutional bias: INSTITUTIONAL_BID (>58% bid volume), INSTITUTIONAL_ASK (<42%), BALANCED
 - `get_order_flow_context()` returns formatted text injected into all 3 AI crews (War Room, Hypothesis, Prediction)
 - Adversarial check updated: "heavy ASK walls = resistance ceiling; heavy BID walls = support floor"
-- Frontend `OrderFlowPanel.jsx`: Volume bars, ticker selector (7 tickers), bias badge, POC, support/resistance counts
-- API: `GET /api/order-flow/{symbol}` (no auth required, crypto auto-converts to -USD)
+- Frontend `OrderFlowPanel.jsx`: Conditional rendering — shows Spread/Bid/Ask/depth for Binance, POC/price range/bars for yfinance. L2 badge for crypto.
+- API: `GET /api/order-flow/{symbol}` (no auth required, smart routing based on CRYPTO_TICKERS set)
 
 - Frontend `LiveInsightsFeed.jsx`: EventSource consumer with LIVE badge, auto-reconnect, collapsible feed
 - Renders verification hits/misses with failure badges, post-mortem reasoning, toxic spike ticker tags
@@ -182,6 +183,7 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 ## Known Limitations
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
+- Binance global (api.binance.com) geo-blocked from some cloud regions; uses Binance US (api.binance.us) as primary with global as fallback
 - Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
 ## Backlog
