@@ -99,6 +99,13 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Format: "HISTORICAL WIN PATTERNS for {ticker} (RSI ~{n})" with similarity scores, dates, and actual outcomes
 - Graceful fallback: returns generic patterns if no ticker-specific wins exist
 
+### Dual-Signal Adversarial AI — Edge vs Veto (April 10, 2026)
+- Added `get_strategist_veto_context()`: queries ChromaDB for `outcome='toxic_lesson'` (past high-confidence failures)
+- All 3 AI crews now inject BOTH success patterns ("Edge") and toxic lessons ("Veto") into synthesizer prompts
+- Adversarial Check logic: if current conditions resemble a DANGER pattern more than a SUCCESS pattern, AI must lower confidence below 50%
+- AI must explicitly state in its thesis/summary why the current setup is NOT a trap
+- Only assigns high confidence (>70%) when conditions mirror SUCCESS patterns with NO overlap to DANGER patterns
+
 ### Enriched Regime Format (April 10, 2026)
 - Added `market_sentiment_service.py`: Fear & Greed Index (Alternative.me API, free) + VIX level (yfinance)
 - Regime snapshots now include structured `{metrics: {rsi, vol_delta, change_1d, trend}, sentiment: {fg_index, fg_label}}`
