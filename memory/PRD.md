@@ -153,8 +153,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Institutional bias: INSTITUTIONAL_BID (>58% bid volume), INSTITUTIONAL_ASK (<42%), BALANCED
 - `get_order_flow_context()` returns formatted text injected into all 3 AI crews (War Room, Hypothesis, Prediction)
 - Adversarial check updated: "heavy ASK walls = resistance ceiling; heavy BID walls = support floor"
-- Frontend `OrderFlowPanel.jsx`: Conditional rendering — shows Spread/Bid/Ask/depth for Binance, POC/price range/bars for yfinance. L2 badge for crypto.
+- Frontend `OrderFlowPanel.jsx`: Conditional rendering — shows Spread/Bid/Ask/depth for Binance, POC/price range/bars for yfinance. L2 badge for crypto. Snapshot/Live tab switcher (Live only for crypto).
 - API: `GET /api/order-flow/{symbol}` (no auth required, smart routing based on CRYPTO_TICKERS set)
+
+### Real-Time Order Flow Heatmap (April 10, 2026)
+- **Live SSE stream** (`GET /api/stream/orderflow/{symbol}`): Backend connects to Binance US WebSocket (`wss://stream.binance.us`) internally, processes L2 depth updates every 1s, and relays to frontend via SSE (K8s-ingress-compatible).
+- `orderflow_ws_service.py`: Singleton `OrderFlowStream` manages shared Binance WS connections per symbol, with auto-reconnect, subscriber management, and rolling 60-snapshot history cache.
+- **Heatmap visualization**: 24 price bins × 60-second rolling window. Log-scaled intensity (np.log1p) with sqrt-compressed RGB colors. Green = bids (support), Red = asks (resistance), Gray = empty bins.
+- **Wall movement detection**: Compares consecutive snapshots to detect wall appearances/vanishes in real time.
+- **Bid/Ask pressure bar**: Real-time ratio visualization with smooth CSS transitions.
+- **Mid-price indicator**: Yellow border separator between bid and ask zones.
+- Frontend `OrderFlowHeatmap.jsx`: EventSource consumer with LIVE badge, auto-reconnect, history pre-load.
+- Live tab only available for crypto tickers (BTC, ETH, SOL, etc.); stocks remain snapshot-only.
 
 - Frontend `LiveInsightsFeed.jsx`: EventSource consumer with LIVE badge, auto-reconnect, collapsible feed
 - Renders verification hits/misses with failure badges, post-mortem reasoning, toxic spike ticker tags
