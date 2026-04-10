@@ -69,6 +69,14 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - **Predictions**: News Analyst + Global Macro Strategist + Institutional Flow Analyst → Chief Market Strategist
 - Frontend: CrewInsightsCard, Multi-Agent badges, expandable agent analyses in all 3 features
 
+## Prediction Accuracy Tracker (April 10, 2026)
+- Auto-logs every War Room verdict, Hypothesis call, and Market Prediction with real-time price
+- Verifies at 24h and 1-week timeframes against actual Alpha Vantage prices
+- BUY/BULLISH=correct if price up, SELL/BEARISH=correct if price down, HOLD/NEUTRAL=correct if < 2% move
+- AccuracyBadge component shows rolling hit rate in each feature header (Pro only)
+- Background verification runs hourly; manual trigger via POST /api/accuracy/verify
+- Market predictions use SPY as directional proxy
+
 ## Backlog
 - P1: Alpha Vantage API tier upgrade handling
 - P2: Advanced Sector Heatmap charting
