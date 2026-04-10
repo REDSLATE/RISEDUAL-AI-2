@@ -61,6 +61,19 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Updated `SectorHeatmap.jsx` with AI tab: shows scores (0-100), labels (Bullish/Bearish/Cautious/Neutral), reasoning, rotation call, risk regime
 - Color mapping: 0-25 red → 25-45 orange → 45-55 neutral → 55-75 green → 75-100 strong green
 
+## Broker OAuth 2.0 (April 10, 2026)
+- Added OAuth 2.0 authorization flow for Alpaca (extensible to other brokers)
+- New endpoints: `GET /api/broker/oauth/{broker_id}/status`, `/authorize`, `/callback`
+- Frontend: OAuth button shown when configured, URL param callback handling, auth method badge
+- `AlpacaTradingService` supports both API key and OAuth bearer token authentication
+- CSRF-protected via `oauth_states` collection with one-time state tokens
+- To enable: Set `ALPACA_OAUTH_CLIENT_ID` and `ALPACA_OAUTH_CLIENT_SECRET` in backend/.env
+
+## Historical Sentiment Tracking (April 10, 2026)
+- Every AI sentiment run is auto-logged to `sentiment_history` collection in MongoDB
+- New endpoint: `GET /api/sectors/sentiment/history?limit=20` returns per-sector trend timeseries
+- Frontend: Sparkline SVGs show sentiment trend per sector tile, snapshot count badge in header
+
 ## Known Limitations
 - Broker integrations are mocked (no real OAuth flows)
 - Finnhub Congressional Trading API returns 403 on free tier (gracefully handled)
