@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { MessageSquare, History, X, Plus, Trash2, Minimize2 } from 'lucide-react';
+import { MessageSquare, History, X, Plus, Minimize2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
@@ -123,46 +123,44 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
   return (
     <>
-      {/* Floating trigger button */}
+      {/* Floating trigger button — above mobile nav */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-[#0052FF] hover:bg-[#2563EB] text-white shadow-lg shadow-[#0052FF]/30 flex items-center justify-center transition-all hover:scale-105"
+          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#0052FF] hover:bg-[#2563EB] text-white shadow-lg shadow-[#0052FF]/30 flex items-center justify-center transition-all hover:scale-105"
           data-testid="chat-fab"
         >
           <MessageSquare className="w-6 h-6" />
         </button>
       )}
 
-      {/* Chat panel */}
+      {/* Chat panel — floats above everything including mobile nav */}
       {isOpen && (
-        <div className="fixed bottom-4 right-4 z-50 w-[420px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] rounded-2xl border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden" data-testid="trade-gpt-chat">
+        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[400px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[540px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-slate-700/50 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#0052FF]/20 rounded-lg flex items-center justify-center">
-                <MessageSquare className="w-4 h-4 text-[#0052FF]" />
-              </div>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <img src="/logo-ai-bright.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain" />
               <div>
-                <h3 className="text-white text-sm font-semibold">RISEDUAL AI Chat</h3>
-                <p className="text-slate-500 text-[10px]">
+                <h3 className="text-white text-xs font-semibold leading-tight">RISEDUAL AI</h3>
+                <p className="text-slate-500 text-[9px] leading-tight">
                   {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
-                  {selectedImage && ' | Image attached'}
+                  {selectedImage && ' · Image'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
+            <div className="flex items-center gap-0.5">
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 px-2 text-[11px]" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
                 Patterns
               </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
-                <History className="w-4 h-4" />
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
+                <History className="w-3.5 h-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={newChat} data-testid="new-chat">
-                <Plus className="w-4 h-4" />
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={newChat} data-testid="new-chat">
+                <Plus className="w-3.5 h-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-8" onClick={() => setIsOpen(false)} data-testid="chat-close">
-                <Minimize2 className="w-4 h-4" />
+              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={() => setIsOpen(false)} data-testid="chat-close">
+                <Minimize2 className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>
@@ -178,7 +176,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
           {/* Pattern Library */}
           {showPatterns && (
-            <div className="border-b border-slate-700/50 max-h-[300px] overflow-y-auto flex-shrink-0">
+            <div className="border-b border-slate-700/50 max-h-[240px] overflow-y-auto flex-shrink-0">
               <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
             </div>
           )}
@@ -209,24 +207,24 @@ const TradeGPTChat = ({ onLimitReached }) => {
 };
 
 const ChatHistorySidebar = ({ history, onSelect, onClose }) => (
-  <div className="border-b border-slate-700/50 bg-slate-900/50 p-3 max-h-[250px] overflow-y-auto" data-testid="chat-history-sidebar">
-    <div className="flex items-center justify-between mb-2">
-      <span className="text-slate-400 text-xs font-medium">Chat History</span>
+  <div className="border-b border-slate-700/50 bg-slate-900/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-slate-400 text-[11px] font-medium">Chat History</span>
       <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
     </div>
     {(!history || history.length === 0) ? (
-      <p className="text-slate-500 text-xs">No previous chats</p>
+      <p className="text-slate-500 text-[11px]">No previous chats</p>
     ) : (
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {history.map((s) => (
           <button
             key={s.session_id}
             onClick={() => onSelect(s.session_id)}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors group"
+            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors group"
             data-testid={`session-${s.session_id}`}
           >
-            <div className="text-white text-xs font-medium truncate">{s.preview || 'Chat Session'}</div>
-            <div className="text-slate-500 text-[10px]">{s.message_count || 0} messages</div>
+            <div className="text-white text-[11px] font-medium truncate">{s.preview || 'Chat Session'}</div>
+            <div className="text-slate-500 text-[9px]">{s.message_count || 0} messages</div>
           </button>
         ))}
       </div>
