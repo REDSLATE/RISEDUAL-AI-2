@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { PredictionCard, MacroDataSection, RealEstateSection } from './prediction/PredictionCards';
+import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
@@ -57,6 +58,7 @@ const MarketPrediction = ({ onSubscribe }) => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isPro && <AccuracyBadge feature="market_prediction" />}
           {lastUpdated && <span className="text-slate-500 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={fetchPrediction} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh

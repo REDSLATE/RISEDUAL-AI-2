@@ -11,6 +11,7 @@ import {
   OverviewCard, EarningsCard, InsidersCard,
   ScoreGauge, CompositeBreakdownBar, CrewInsightsCard
 } from './warroom/WarRoomCards';
+import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
@@ -72,7 +73,12 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
             <p className="text-slate-400 text-xs sm:text-sm">Unified command center — AI Score + Earnings + Insider Intelligence</p>
           </div>
         </div>
-        {isPro && <Badge className="bg-gradient-to-r from-red-600 to-amber-500 text-white border-0">PRO</Badge>}
+        {isPro && (
+          <div className="flex items-center gap-2">
+            <AccuracyBadge feature="war_room" />
+            <Badge className="bg-gradient-to-r from-red-600 to-amber-500 text-white border-0">PRO</Badge>
+          </div>
+        )}
       </div>
 
       {/* Search */}

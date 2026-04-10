@@ -8,6 +8,7 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import ModelSelector from './hypothesis/ModelSelector';
 import HypothesisResults from './hypothesis/HypothesisResults';
 import HypothesisLocked from './hypothesis/HypothesisLocked';
+import AccuracyBadge from './AccuracyBadge';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -116,7 +117,12 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             <p className="text-slate-400 text-xs sm:text-sm">Multi-model analysis using all scraped macro data</p>
           </div>
         </div>
-        {isPro && <Badge className="bg-gradient-to-r from-[#0052FF] to-cyan-500 text-white border-0">PRO</Badge>}
+        {isPro && (
+          <div className="flex items-center gap-2">
+            <AccuracyBadge feature="hypothesis" />
+            <Badge className="bg-gradient-to-r from-[#0052FF] to-cyan-500 text-white border-0">PRO</Badge>
+          </div>
+        )}
       </div>
 
       {/* Model Selector */}

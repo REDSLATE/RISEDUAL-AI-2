@@ -336,6 +336,19 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
         hypothesis = await generate_hypothesis(api_key, symbol, data, model=model)
         hypothesis["is_pro"] = True
 
+        # Log prediction for accuracy tracking
+        if hypothesis.get("verdict") and db:
+            try:
+                from services.prediction_tracker import log_prediction
+                await log_prediction(
+                    db, "hypothesis", symbol.upper(),
+                    hypothesis["verdict"],
+                    hypothesis.get("confidence", 0),
+                    user_id=str(user.get("_id", ""))
+                )
+            except Exception as track_err:
+                logging.warning(f"Prediction tracking failed: {track_err}")
+
         await _track_verdict_change(user, symbol, hypothesis)
         return hypothesis
     except HTTPException:

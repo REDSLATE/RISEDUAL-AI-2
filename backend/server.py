@@ -36,6 +36,7 @@ from routes.broker import router as broker_router, set_db as set_broker_db
 from routes.market_data import router as market_data_router, set_db as set_market_data_db
 from routes.sectors import router as sectors_router
 from routes.admin import router as admin_router, set_db as set_admin_db
+from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # MongoDB connection
@@ -115,6 +116,7 @@ app.include_router(broker_router)
 app.include_router(market_data_router)
 app.include_router(sectors_router)
 app.include_router(admin_router)
+app.include_router(accuracy_router)
 
 # CORS — dynamic origin reflection for httpOnly cookie auth.
 # The frontend uses getApiBase() so requests are same-origin in production.
@@ -203,6 +205,7 @@ def _wire_db_to_routes():
     set_broker_db(db)
     set_market_data_db(db)
     set_admin_db(db)
+    set_accuracy_db(db)
 
 
 async def _start_schedulers():
@@ -242,6 +245,20 @@ def _start_cache_warmup():
         import asyncio
         asyncio.create_task(_warm())
         logger.info("Cache warm-up started in background")
+
+        # Start periodic prediction verification (every 60 minutes)
+        async def _verify_loop():
+            while True:
+                await asyncio.sleep(3600)
+                try:
+                    from services.prediction_tracker import verify_pending_predictions
+                    await verify_pending_predictions(db)
+                    logger.info("Prediction verification cycle complete")
+                except Exception as ve:
+                    logger.warning(f"Prediction verification failed: {ve}")
+
+        asyncio.create_task(_verify_loop())
+        logger.info("Prediction verification scheduler started")
     except Exception as e:
         logger.warning(f"Cache warm-up setup failed: {e}")
 

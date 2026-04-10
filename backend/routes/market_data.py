@@ -1,6 +1,6 @@
 """Market data routes: scraping endpoints, macro data, predictions."""
 from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 import os
 import logging
 from datetime import datetime, timezone
@@ -134,11 +134,28 @@ async def get_real_estate_data() -> Dict[str, Any]:
 
 # --- Market Prediction ---
 @router.get("/market/prediction")
-async def get_market_prediction() -> Dict[str, Any]:
+async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
         _enrich_prediction_metadata(prediction, scrape_results)
+
+        # Log prediction for accuracy tracking (uses SPY as market proxy)
+        if prediction.get("overall_direction"):
+            try:
+                from services.prediction_tracker import log_market_prediction
+                from services.auth_helpers import get_optional_user
+                user = await get_optional_user(request)
+                uid = str(user.get("_id", "")) if user else None
+                await log_market_prediction(
+                    request.app.state.db,
+                    prediction["overall_direction"],
+                    prediction.get("confidence_score", 0),
+                    user_id=uid
+                )
+            except Exception as track_err:
+                logger.warning(f"Prediction tracking failed: {track_err}")
+
         return prediction
     except Exception as e:
         logger.error(f"Error generating prediction: {e}")

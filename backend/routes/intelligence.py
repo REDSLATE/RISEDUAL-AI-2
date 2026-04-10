@@ -105,6 +105,21 @@ async def war_room(symbol: str, request: Request):
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         result = await generate_war_room(symbol.upper(), api_key)
 
+        # Log prediction for accuracy tracking
+        composite = result.get("composite", {})
+        if composite.get("verdict") and db is not None:
+            try:
+                from services.prediction_tracker import log_prediction
+                await log_prediction(
+                    db, "war_room", symbol.upper(),
+                    composite["verdict"],
+                    composite.get("confidence", 0),
+                    composite.get("score", 0),
+                    user_id=str(user.get("_id", ""))
+                )
+            except Exception as track_err:
+                logger.warning(f"Prediction tracking failed: {track_err}")
+
         # Cache for 5 minutes
         if db is not None:
             await db.war_room_cache.update_one(
