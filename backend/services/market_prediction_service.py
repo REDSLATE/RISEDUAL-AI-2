@@ -39,26 +39,72 @@ class MarketPredictionService:
                             world_events: Optional[Dict] = None,
                             foreign_markets: Optional[Dict] = None,
                             gov_filings: Optional[Dict] = None) -> Dict:
-        """Comprehensive market analysis using multi-agent crew."""
+        """Comprehensive market analysis using multi-agent crew + vector memory."""
         from services.crew_definitions import run_prediction_crew
+
+        # Query vector memory for similar past market regimes
+        memory_context = ""
+        try:
+            from services.market_memory_service import get_prediction_context
+            current_snapshot = self._build_regime_snapshot(
+                financial_news, crypto_data, insider_trades, social_sentiment,
+                world_events, foreign_markets
+            )
+            memory_context = await get_prediction_context("MARKET", current_snapshot, n_results=3)
+            if memory_context:
+                logger.info(f"Injecting {memory_context.count('Case')} historical regime(s) into prediction prompt")
+        except Exception as e:
+            logger.warning(f"Memory context fetch skipped: {e}")
+
         try:
             result = await run_prediction_crew(
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 real_estate_data, world_events, foreign_markets, gov_filings,
-                api_key=self.api_key
+                api_key=self.api_key,
+                memory_context=memory_context,
             )
             return result
         except Exception as e:
             logger.error(f"Crew prediction failed, falling back to single-agent: {e}")
             return await self._single_agent_prediction(
                 financial_news, crypto_data, insider_trades, social_sentiment,
-                real_estate_data, world_events, foreign_markets, gov_filings
+                real_estate_data, world_events, foreign_markets, gov_filings,
+                memory_context=memory_context,
             )
+
+    def _build_regime_snapshot(self, news, crypto, trades, social, world_events, foreign_markets) -> Dict:
+        """Build a compact regime description from current market data for memory queries."""
+        snapshot = {}
+        # Derive simple sentiment from news
+        pos = neg = 0
+        for item in (news or [])[:10]:
+            title = item.get('title', '').lower()
+            pos += sum(1 for w in ['surge', 'gain', 'rally', 'rise', 'bull'] if w in title)
+            neg += sum(1 for w in ['fall', 'drop', 'crash', 'decline', 'bear'] if w in title)
+        if pos > neg:
+            snapshot["news_sentiment"] = f"Positive ({pos} bullish vs {neg} bearish headlines)"
+        elif neg > pos:
+            snapshot["news_sentiment"] = f"Negative ({neg} bearish vs {pos} bullish headlines)"
+        else:
+            snapshot["news_sentiment"] = "Mixed/Neutral"
+
+        # Crypto pulse
+        if crypto:
+            snapshot["macro_context"] = f"{len(crypto)} crypto signals tracked"
+
+        # World events summary
+        if world_events:
+            high = world_events.get('high_impact_events', [])
+            if high:
+                snapshot["macro_context"] = f"{len(high)} high-impact world events"
+
+        return snapshot
 
     async def _single_agent_prediction(self, financial_news, crypto_data,
                                         insider_trades, social_sentiment,
                                         real_estate_data=None, world_events=None,
-                                        foreign_markets=None, gov_filings=None) -> Dict:
+                                        foreign_markets=None, gov_filings=None,
+                                        memory_context="") -> Dict:
         """Fallback single-agent prediction if crew fails."""
         try:
             # Prepare data summary for AI
@@ -66,6 +112,10 @@ class MarketPredictionService:
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 real_estate_data, world_events, foreign_markets, gov_filings
             )
+
+            # Inject historical memory context
+            if memory_context:
+                data_summary += f"\n\n{memory_context}"
             
             # Get AI analysis
             chat = LlmChat(

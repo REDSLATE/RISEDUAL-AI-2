@@ -51,3 +51,14 @@ async def trigger_verification(request: Request):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     await verify_pending_predictions(db)
     return {"status": "verification_complete"}
+
+
+@router.get("/memory")
+async def memory_stats(request: Request):
+    """Get vector memory stats — how many market regimes are stored. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    from services.market_memory_service import get_memory_stats
+    stats = await get_memory_stats()
+    return stats

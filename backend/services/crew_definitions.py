@@ -228,7 +228,7 @@ PREDICTION_SYNTHESIZER = AgentConfig(
 async def run_prediction_crew(
     financial_news, crypto_data, insider_trades, social_sentiment,
     real_estate_data=None, world_events=None, foreign_markets=None,
-    gov_filings=None, api_key: str = ""
+    gov_filings=None, api_key: str = "", memory_context: str = ""
 ) -> Dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
@@ -255,9 +255,9 @@ async def run_prediction_crew(
         f"Analyze institutional flows.\n\nINSIDER TRADES:\n{trades_str}\n\nCONGRESSIONAL & GOV:\n{gov_str}\n\nProvide: smart money direction, notable positioning changes, dark pool signal, and conviction level.",
     ]
 
-    synth_prompt = """Produce a definitive market forecast by synthesizing sentiment, macro, and flow analyses.
+    synth_prompt = f"""Produce a definitive market forecast by synthesizing sentiment, macro, and flow analyses.
 
-Output ONLY valid JSON:
+{memory_context + chr(10) + chr(10) if memory_context else ""}Output ONLY valid JSON:
 {
   "overall_direction": "BULLISH / BEARISH / NEUTRAL",
   "confidence_score": 0-100,

@@ -18,6 +18,11 @@ from services.price_provider import get_quote, get_quote_sync
 
 logger = logging.getLogger(__name__)
 
+# Direction classification constants
+DIRECTION_BULLISH = {"BUY", "BULLISH", "LONG", "UP"}
+DIRECTION_BEARISH = {"SELL", "BEARISH", "SHORT", "DOWN"}
+DIRECTION_NEUTRAL = {"HOLD", "NEUTRAL", "WAIT"}
+
 
 def _get_current_price(symbol: str) -> Optional[float]:
     """Fetch current price using smart price provider (AV → yfinance → cache)."""
@@ -107,6 +112,23 @@ async def verify_pending_predictions(db):
             }}}
         )
         logger.info(f"Verified 24h: {pred['symbol']} {pred['direction']} — {'CORRECT' if correct else 'WRONG'}")
+
+        # Auto-save verified prediction to vector memory
+        try:
+            from services.market_memory_service import save_regime, _collection
+            if _collection is not None:
+                regime = {
+                    "symbol": pred["symbol"],
+                    "date": pred.get("timestamp", "")[:10],
+                    "price": pred["price_at_prediction"],
+                    "prediction": pred["direction"],
+                    "confidence": pred.get("confidence", 0),
+                    "actual_result": f"{'rose' if price_now > pred['price_at_prediction'] else 'fell'} to ${price_now:.2f}",
+                    "outcome": "hit" if correct else "miss",
+                }
+                await save_regime(regime)
+        except Exception as e:
+            logger.warning(f"Memory save skipped for {pred['symbol']}: {e}")
 
     # Find predictions needing 1-week verification
     pending_1w = db.predictions.find({
