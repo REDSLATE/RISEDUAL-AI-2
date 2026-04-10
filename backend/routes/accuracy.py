@@ -59,6 +59,59 @@ async def trigger_verification(request: Request):
     return {"status": "verification_complete"}
 
 
+@router.post("/post-mortem/{prediction_id}")
+async def run_post_mortem_endpoint(prediction_id: str, request: Request):
+    """Run AI-powered post-mortem analysis on a failed prediction. Pro only.
+
+    Fetches news context for the ticker, sends to GPT-4o-mini for classification,
+    and updates both MongoDB and ChromaDB with the AI-classified failure mode.
+    """
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    pred = await db.predictions.find_one({"prediction_id": prediction_id}, {"_id": 0})
+    if not pred:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    # Check if prediction has been verified and was wrong
+    v24h = pred.get("verified_24h")
+    if not v24h:
+        raise HTTPException(status_code=400, detail="Prediction hasn't been verified yet")
+    if v24h.get("correct"):
+        raise HTTPException(status_code=400, detail="Prediction was correct — no post-mortem needed")
+
+    price_now = v24h.get("price", 0)
+    heuristic_code = v24h.get("failure_code", "UNKNOWN")
+
+    from services.post_mortem_service import run_and_update_post_mortem
+    result = await run_and_update_post_mortem(db, pred, price_now, heuristic_code)
+
+    return {
+        "prediction_id": prediction_id,
+        "failure_code": result.get("failure_code", "UNKNOWN"),
+        "reasoning": result.get("reasoning", ""),
+        "key_headline": result.get("key_headline"),
+        "source": result.get("source", "heuristic"),
+        "heuristic_code": heuristic_code,
+    }
+
+
+@router.get("/post-mortem/history")
+async def post_mortem_history(request: Request, limit: int = 20):
+    """Get recent AI post-mortem results. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    cursor = db.post_mortem_log.find({}, {"_id": 0}).sort("run_at", -1).limit(limit)
+    results = []
+    async for doc in cursor:
+        results.append(doc)
+    return {"post_mortems": results, "count": len(results)}
+
+
+
 @router.get("/failure-modes")
 async def get_failure_modes(request: Request):
     """Get available failure mode categories."""

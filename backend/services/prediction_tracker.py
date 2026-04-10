@@ -193,6 +193,14 @@ async def verify_pending_predictions(db):
         except Exception as e:
             logger.warning(f"Memory save skipped for {pred['symbol']}: {e}")
 
+        # Run AI post-mortem for wrong predictions (upgrades heuristic with news context)
+        if not correct and failure_code:
+            try:
+                from services.post_mortem_service import run_and_update_post_mortem
+                await run_and_update_post_mortem(db, pred, price_now, failure_code)
+            except Exception as e:
+                logger.warning(f"AI post-mortem skipped for {pred['symbol']}: {e}")
+
     # Find predictions needing 1-week verification
     pending_1w = db.predictions.find({
         "verified_1w": None,
