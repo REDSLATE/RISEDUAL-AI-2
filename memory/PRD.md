@@ -77,11 +77,21 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - New endpoints: `POST /api/accuracy/memory/train` (triggers background task), `GET /api/accuracy/memory/train/status`
 
 ### Nightly Memory Cleanup (April 10, 2026)
-- Added `nightly_cleanup()` to `market_memory_service.py`: deletes toxic outliers (>80% confidence + wrong) and prunes data older than 90 days
+- `nightly_cleanup()` in `market_memory_service.py`: **re-tags** toxic outliers (>80% confidence + wrong) as `toxic_lesson` and prunes data older than 90 days
 - Scheduled via APScheduler at 2:00 AM UTC in `server.py`
 - Manual endpoints: `POST /api/accuracy/memory/cleanup`, `GET /api/accuracy/memory/cleanup/history`
-- First run removed 55 toxic high-confidence failures (2,974 → 2,919 episodes)
-- `GET /api/accuracy/memory` now includes `last_cleanup` info
+- `GET /api/accuracy/memory` includes `last_cleanup`, `toxic_lessons`, and `active_episodes` counts
+- Fixed ChromaDB date comparison: obsolete data pruning now uses Python-side string comparison (ChromaDB `$lt` only works with numbers)
+
+### Toxic Spikes Alert System (April 10, 2026)
+- When `nightly_cleanup()` detects high-confidence failures, triggers BOTH email and in-app alerts
+- **Email alerts** via Resend (`send_toxic_spikes_email`) sent to admin + owner with summary table of affected tickers
+- **In-app notifications** created for all Pro users in MongoDB `notifications` collection (type=`toxic_spike`)
+- Frontend `NotificationItem.jsx` renders toxic spike alerts with red AlertTriangle icon, ticker tags, and red border
+- Toxic episodes are **re-tagged** in ChromaDB as `outcome='toxic_lesson'` instead of deleted — preserved as negative lessons
+- New function `get_toxic_lessons_context()` allows AI to query toxic patterns and learn "what NOT to do"
+- General queries (`query_similar_regimes`) auto-exclude `toxic_lesson` entries
+- Notification `user_id` stored as string (matching `get_current_user()` format)
 
 ### Strategist Context — Win Pattern Injection (April 10, 2026)
 - Added `get_strategist_context()` to `market_memory_service.py`: filters ChromaDB for `outcome='hit'` only
@@ -115,7 +125,7 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
 ## Backlog
-- P1: AI Sentiment Heatmap — Update Sector Heatmap colors to reflect AI sentiment scores
-- P2: Broker OAuth — Replace mocked broker endpoints with real authenticated flows
-- P3: Verify risedual.ai production deployment
-- P4: Refactor server.py into separate route modules
+- P1: Memory Dashboard UI — Frontend view for Pro users to visualize ChromaDB episodes, cleanup history, toxic spikes
+- P2: Broker OAuth — Secure admin inputs for Alpaca OAuth Client ID/Secret
+- P3: Refactor server.py into separate route modules
+- P4: Verify risedual.ai production deployment

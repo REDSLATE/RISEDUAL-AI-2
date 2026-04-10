@@ -490,13 +490,23 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
     # ── B. Prune Obsolete Data ──
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
     try:
-        old_data = await asyncio.to_thread(
+        # ChromaDB $lt only works on numeric values, so fetch all and filter by date in Python
+        all_data = await asyncio.to_thread(
             _collection.get,
-            where={"date": {"$lt": cutoff_date}},
+            include=["metadatas"],
         )
-        old_ids = old_data.get("ids", [])
+        all_ids = all_data.get("ids", [])
+        all_metas = all_data.get("metadatas", [])
+        old_ids = [
+            all_ids[i]
+            for i in range(len(all_ids))
+            if i < len(all_metas) and all_metas[i].get("date", "9999") < cutoff_date
+        ]
         if old_ids:
-            await asyncio.to_thread(_collection.delete, ids=old_ids)
+            # Delete in batches of 500 to avoid ChromaDB limits
+            for batch_start in range(0, len(old_ids), 500):
+                batch = old_ids[batch_start:batch_start + 500]
+                await asyncio.to_thread(_collection.delete, ids=batch)
             results["obsolete_removed"] = len(old_ids)
             logger.info(f"Cleanup: Pruned {len(old_ids)} episodes older than {cutoff_date}")
     except Exception as e:
