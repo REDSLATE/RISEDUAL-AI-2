@@ -61,6 +61,14 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Fixed Chat endpoint: Changed from JSON Pydantic body to FormData (Form() + File()) to match frontend multipart uploads
 - Added Force Refresh to Sector Heatmap: Refresh button now bypasses cache (`?force=true`) for instant fresh Alpha Vantage data
 
+## Multi-Agent AI Crew Integration (April 10, 2026)
+- Built custom CrewEngine (`crew_engine.py`) — CrewAI-style multi-agent orchestration using Emergent LLM Key
+- 3 specialized agents (gpt-4o-mini) run in parallel via ThreadPoolExecutor + 1 synthesizer (gpt-5.2)
+- **War Room**: Fundamental Analyst + Technical Analyst + Sentiment Analyst → Chief Investment Strategist
+- **Hypothesis**: Macro Economist + Quant Researcher + Congressional Tracker → Chief Hypothesis Architect
+- **Predictions**: News Analyst + Global Macro Strategist + Institutional Flow Analyst → Chief Market Strategist
+- Frontend: CrewInsightsCard, Multi-Agent badges, expandable agent analyses in all 3 features
+
 ## Backlog
 - P1: Alpha Vantage API tier upgrade handling
 - P2: Advanced Sector Heatmap charting

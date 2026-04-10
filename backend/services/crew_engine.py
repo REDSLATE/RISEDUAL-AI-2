@@ -6,6 +6,12 @@ analyzes data from its expertise area, and a final synthesizer agent
 combines all findings into a consensus output.
 
 Pattern: Data → Agent1 → Agent2 → Agent3 → Synthesizer → Final Output
+
+Thread Safety:
+- run_parallel_crew uses ThreadPoolExecutor with asyncio.run() per thread
+- Each thread gets its own event loop, LlmChat instance, and HTTP session
+- No shared mutable state: api_key is copied as a string, no DB connections
+- LlmChat is instantiated fresh per agent call (no connection pool sharing)
 """
 
 import os
@@ -17,6 +23,8 @@ from dataclasses import dataclass
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 logger = logging.getLogger(__name__)
+
+_MAX_PARALLEL_AGENTS = 4
 
 
 @dataclass
@@ -37,47 +45,68 @@ class TaskResult:
     success: bool
 
 
+def _run_agent_sync(api_key: str, role: str, goal: str, backstory: str,
+                    model_provider: str, model_name: str,
+                    task_prompt: str, prior_context: str,
+                    session_suffix: str) -> TaskResult:
+    """
+    Thread-safe, self-contained agent execution.
+
+    This function is designed to run inside a ThreadPoolExecutor worker.
+    It creates its own event loop (via asyncio.run) and its own LlmChat
+    instance — no shared mutable state with the calling thread.
+    """
+    system_message = (
+        f"You are a {role}.\n"
+        f"Your goal: {goal}\n"
+        f"Background: {backstory}\n\n"
+        "Be specific, cite data points, and be concise. "
+        "Output your analysis as structured text with clear sections."
+    )
+
+    full_prompt = task_prompt
+    if prior_context:
+        full_prompt = (
+            "PREVIOUS AGENT FINDINGS (use these to inform your analysis):\n"
+            f"{prior_context}\n\n"
+            "YOUR TASK:\n"
+            f"{task_prompt}"
+        )
+
+    async def _call():
+        session_id = f"crew_{role.replace(' ', '_')}_{session_suffix}"
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=session_id,
+            system_message=system_message
+        ).with_model(model_provider, model_name)
+        return await chat.send_message(UserMessage(text=full_prompt))
+
+    try:
+        response = asyncio.run(_call())
+        text = response.strip() if isinstance(response, str) else str(response).strip()
+        return TaskResult(agent_role=role, output=text, success=True)
+    except Exception as e:
+        logger.error(f"Agent '{role}' failed: {e}")
+        return TaskResult(agent_role=role, output=f"Agent error: {e}", success=False)
+
+
 class CrewEngine:
-    """Orchestrates multiple AI agents in sequence, passing context forward."""
+    """Orchestrates multiple AI agents in sequence or parallel."""
 
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.environ.get("EMERGENT_LLM_KEY", "")
+        self._api_key = api_key or os.environ.get("EMERGENT_LLM_KEY", "")
 
     async def _run_agent(self, agent: AgentConfig, task_prompt: str,
                          prior_context: str = "", session_suffix: str = "") -> TaskResult:
-        """Execute a single agent's task with optional prior context from other agents."""
-        system_message = (
-            f"You are a {agent.role}.\n"
-            f"Your goal: {agent.goal}\n"
-            f"Background: {agent.backstory}\n\n"
-            "Be specific, cite data points, and be concise. "
-            "Output your analysis as structured text with clear sections."
+        """Execute a single agent on the current event loop (used by synthesizer)."""
+        return _run_agent_sync(
+            api_key=self._api_key,
+            role=agent.role, goal=agent.goal, backstory=agent.backstory,
+            model_provider=agent.model_provider, model_name=agent.model_name,
+            task_prompt=task_prompt, prior_context=prior_context,
+            session_suffix=session_suffix,
         )
-
-        full_prompt = task_prompt
-        if prior_context:
-            full_prompt = (
-                "PREVIOUS AGENT FINDINGS (use these to inform your analysis):\n"
-                f"{prior_context}\n\n"
-                "YOUR TASK:\n"
-                f"{task_prompt}"
-            )
-
-        try:
-            session_id = f"crew_{agent.role.replace(' ', '_')}_{session_suffix}"
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=session_id,
-                system_message=system_message
-            ).with_model(agent.model_provider, agent.model_name)
-
-            response = await chat.send_message(UserMessage(text=full_prompt))
-            text = response.strip() if isinstance(response, str) else str(response).strip()
-            return TaskResult(agent_role=agent.role, output=text, success=True)
-
-        except Exception as e:
-            logger.error(f"Agent '{agent.role}' failed: {e}")
-            return TaskResult(agent_role=agent.role, output=f"Agent error: {e}", success=False)
 
     async def run_crew(self, agents: List[AgentConfig], tasks: List[str],
                        synthesizer: AgentConfig, synth_prompt: str,
@@ -85,31 +114,30 @@ class CrewEngine:
         """
         Run a sequential crew: each agent gets the accumulated context
         from all prior agents, then a synthesizer combines everything.
-
-        Args:
-            agents: List of specialized agents
-            tasks: List of task prompts (one per agent)
-            synthesizer: Final agent that combines all findings
-            synth_prompt: Synthesis task prompt template
-            session_suffix: Unique suffix for session tracking
-        Returns:
-            Dict with individual agent outputs and final synthesis
         """
         accumulated_context = ""
         agent_results = []
 
-        # Run agents sequentially — each sees prior findings
         for agent, task in zip(agents, tasks):
-            result = await self._run_agent(
-                agent, task, accumulated_context, session_suffix
+            result = await asyncio.to_thread(
+                _run_agent_sync,
+                api_key=self._api_key,
+                role=agent.role, goal=agent.goal, backstory=agent.backstory,
+                model_provider=agent.model_provider, model_name=agent.model_name,
+                task_prompt=task, prior_context=accumulated_context,
+                session_suffix=session_suffix,
             )
             agent_results.append(result)
             if result.success:
                 accumulated_context += f"\n\n--- {agent.role} Analysis ---\n{result.output}"
 
-        # Synthesizer combines all findings
-        synth_result = await self._run_agent(
-            synthesizer, synth_prompt, accumulated_context, session_suffix
+        synth_result = await asyncio.to_thread(
+            _run_agent_sync,
+            api_key=self._api_key,
+            role=synthesizer.role, goal=synthesizer.goal, backstory=synthesizer.backstory,
+            model_provider=synthesizer.model_provider, model_name=synthesizer.model_name,
+            task_prompt=synth_prompt, prior_context=accumulated_context,
+            session_suffix=session_suffix,
         )
 
         return {
@@ -126,25 +154,34 @@ class CrewEngine:
                                 synthesizer: AgentConfig, synth_prompt: str,
                                 session_suffix: str = "") -> Dict:
         """
-        Run agents in parallel using thread pool (since LLM calls may block),
-        then synthesize. Faster but agents don't see each other's output.
+        Run agents in parallel using thread pool, then synthesize.
+
+        Thread safety: Each worker thread runs _run_agent_sync which:
+        - Creates its own asyncio event loop via asyncio.run()
+        - Instantiates a fresh LlmChat (own HTTP session)
+        - Receives only immutable/copied arguments (strings)
+        - Never touches shared DB connections or mutable state
         """
         import concurrent.futures
 
         loop = asyncio.get_event_loop()
+        api_key = self._api_key  # Copy immutable ref for closure
 
-        # Use a thread pool to run agents truly in parallel
-        def _run_sync(agent, task):
-            return asyncio.run(self._run_agent(agent, task, "", session_suffix))
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(agents)) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(agents), _MAX_PARALLEL_AGENTS)) as pool:
             futures = [
-                loop.run_in_executor(pool, _run_sync, agent, task)
+                loop.run_in_executor(
+                    pool,
+                    _run_agent_sync,
+                    api_key,
+                    agent.role, agent.goal, agent.backstory,
+                    agent.model_provider, agent.model_name,
+                    task, "",
+                    session_suffix,
+                )
                 for agent, task in zip(agents, tasks)
             ]
             agent_results = await asyncio.gather(*futures, return_exceptions=True)
 
-        # Handle exceptions
         clean_results = []
         accumulated_context = ""
         for i, r in enumerate(agent_results):
@@ -156,9 +193,14 @@ class CrewEngine:
             if tr.success:
                 accumulated_context += f"\n\n--- {tr.agent_role} Analysis ---\n{tr.output}"
 
-        # Synthesizer combines all parallel findings
-        synth_result = await self._run_agent(
-            synthesizer, synth_prompt, accumulated_context, session_suffix
+        # Synthesizer runs on its own thread (not blocking the main loop)
+        synth_result = await asyncio.to_thread(
+            _run_agent_sync,
+            api_key=self._api_key,
+            role=synthesizer.role, goal=synthesizer.goal, backstory=synthesizer.backstory,
+            model_provider=synthesizer.model_provider, model_name=synthesizer.model_name,
+            task_prompt=synth_prompt, prior_context=accumulated_context,
+            session_suffix=session_suffix,
         )
 
         return {
