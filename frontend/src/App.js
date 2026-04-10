@@ -43,6 +43,7 @@ import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
 import MemoryDashboard from './components/MemoryDashboard';
+import LandingPage from './components/LandingPage';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -72,6 +73,18 @@ function AppContent() {
     openLogin, openRegister, openChat,
   } = useModals();
   const { user } = useAuth();
+
+  // Show landing page for unauthenticated users
+  if (!user) {
+    return (
+      <div>
+        <LandingPage onGetStarted={openRegister} />
+        <Toaster />
+        {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
+        {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
