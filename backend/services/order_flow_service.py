@@ -26,8 +26,10 @@ WALL_MULTIPLIER = 3.0
 SIGNIFICANT_WALL = 5.0
 CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "MATIC", "LINK"}
 
-BINANCE_DEPTH_URL = "https://api.binance.com/api/v3/depth"
-BINANCE_PRICE_URL = "https://api.binance.com/api/v3/ticker/price"
+BINANCE_ENDPOINTS = [
+    {"depth": "https://api.binance.us/api/v3/depth", "price": "https://api.binance.us/api/v3/ticker/price"},
+    {"depth": "https://api.binance.com/api/v3/depth", "price": "https://api.binance.com/api/v3/ticker/price"},
+]
 
 
 def _is_crypto(ticker: str) -> bool:
@@ -52,41 +54,38 @@ def _yf_symbol(ticker: str) -> str:
 # ─────────────────────────────────────────────────────────
 
 async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
-    """Fetch Binance L2 order book and detect institutional walls from real bids/asks."""
+    """Fetch Binance L2 order book and detect institutional walls from real bids/asks.
+    Tries Binance US first, then Binance global as fallback."""
     symbol = _binance_symbol(ticker)
 
-    try:
-        depth_resp, price_resp = await asyncio.gather(
-            asyncio.to_thread(
-                requests.get, BINANCE_DEPTH_URL,
-                {"params": {"symbol": symbol, "limit": limit}, "timeout": 10}
-            ),
-            asyncio.to_thread(
-                requests.get, BINANCE_PRICE_URL,
-                {"params": {"symbol": symbol}, "timeout": 5}
-            ),
-        )
-    except Exception as e:
-        logger.warning(f"Binance API error for {ticker}: {e}")
-        return {"error": str(e), "walls": [], "source": "binance"}
+    depth_data = None
+    price_data = None
 
-    # Parse responses - handle both direct and keyword argument patterns
-    try:
-        if hasattr(depth_resp, 'json'):
-            depth_data = depth_resp.json()
-        else:
-            depth_data = requests.get(BINANCE_DEPTH_URL, params={"symbol": symbol, "limit": limit}, timeout=10).json()
+    for ep in BINANCE_ENDPOINTS:
+        try:
+            depth_resp, price_resp = await asyncio.gather(
+                asyncio.to_thread(
+                    lambda url=ep["depth"]: requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=10)
+                ),
+                asyncio.to_thread(
+                    lambda url=ep["price"]: requests.get(url, params={"symbol": symbol}, timeout=5)
+                ),
+            )
+            d = depth_resp.json()
+            p = price_resp.json()
+            # Check for error responses (geo-block returns {"code": 0, "msg": "..."})
+            if "code" in d or not d.get("bids"):
+                logger.info(f"Binance endpoint {ep['depth']} blocked/empty for {symbol}, trying next")
+                continue
+            depth_data = d
+            price_data = p
+            break
+        except Exception as e:
+            logger.info(f"Binance endpoint {ep['depth']} failed for {symbol}: {e}")
+            continue
 
-        if hasattr(price_resp, 'json'):
-            price_data = price_resp.json()
-        else:
-            price_data = requests.get(BINANCE_PRICE_URL, params={"symbol": symbol}, timeout=5).json()
-    except Exception as e:
-        logger.warning(f"Binance response parse error for {ticker}: {e}")
-        return {"error": str(e), "walls": [], "source": "binance"}
-
-    if "code" in depth_data:
-        return {"error": depth_data.get("msg", "Unknown error"), "walls": [], "source": "binance"}
+    if not depth_data or not price_data:
+        return {"error": "All Binance endpoints unavailable", "walls": [], "source": "binance"}
 
     bids = depth_data.get("bids", [])
     asks = depth_data.get("asks", [])
@@ -99,7 +98,7 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
     bid_levels = [{"price": float(b[0]), "volume": float(b[0]) * float(b[1]), "qty": float(b[1])} for b in bids]
     ask_levels = [{"price": float(a[0]), "volume": float(a[0]) * float(a[1]), "qty": float(a[1])} for a in asks]
 
-    all_volumes = [l["volume"] for l in bid_levels + ask_levels]
+    all_volumes = [lv["volume"] for lv in bid_levels + ask_levels]
     median_vol = float(np.median(all_volumes)) if all_volumes else 0
 
     if median_vol <= 0:
@@ -141,8 +140,8 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
     # Summary
     support_walls = [w for w in walls if w["type"] == "support"]
     resistance_walls = [w for w in walls if w["type"] == "resistance"]
-    total_bid_vol = sum(l["volume"] for l in bid_levels)
-    total_ask_vol = sum(l["volume"] for l in ask_levels)
+    total_bid_vol = sum(lv["volume"] for lv in bid_levels)
+    total_ask_vol = sum(lv["volume"] for lv in ask_levels)
 
     if total_bid_vol + total_ask_vol > 0:
         bid_ratio = total_bid_vol / (total_bid_vol + total_ask_vol)

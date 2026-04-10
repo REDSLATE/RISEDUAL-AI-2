@@ -90,7 +90,14 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {data && <span className="text-slate-500 text-xs">{ticker} ${data.current_price}</span>}
+          {data && (
+            <span className="flex items-center gap-1.5 text-slate-500 text-xs">
+              {data.source === 'binance_l2' && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/20" data-testid="source-binance">L2</span>
+              )}
+              {ticker} ${data.current_price}
+            </span>
+          )}
           {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
         </div>
       </button>
@@ -132,8 +139,14 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
               {/* Summary stats */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
-                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">POC</p>
-                  <p className="text-white text-sm font-bold">${data.point_of_control?.price.toFixed(2)}</p>
+                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">
+                    {data.source === 'binance_l2' ? 'Spread' : 'POC'}
+                  </p>
+                  <p className="text-white text-sm font-bold">
+                    {data.source === 'binance_l2'
+                      ? `${data.spread?.pct?.toFixed(3) ?? '—'}%`
+                      : `$${data.point_of_control?.price?.toFixed(2) ?? '—'}`}
+                  </p>
                 </div>
                 <div className="text-center">
                   <p className="text-slate-500 text-[10px] uppercase tracking-wider">Support</p>
@@ -158,11 +171,21 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 </div>
               )}
 
-              {/* Price range bar */}
+              {/* Price range / depth info */}
               <div className="text-[10px] text-slate-600 flex justify-between">
-                <span>L: ${data.price_range?.low.toFixed(2)}</span>
-                <span>{data.total_bars} bars ({data.period}/{data.interval})</span>
-                <span>H: ${data.price_range?.high.toFixed(2)}</span>
+                {data.source === 'binance_l2' ? (
+                  <>
+                    <span>Bid: ${data.spread?.best_bid?.toFixed(2) ?? '—'}</span>
+                    <span>{data.depth_levels} depth levels · {data.total_bids}B/{data.total_asks}A</span>
+                    <span>Ask: ${data.spread?.best_ask?.toFixed(2) ?? '—'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>L: ${data.price_range?.low?.toFixed(2) ?? '—'}</span>
+                    <span>{data.total_bars ?? 0} bars ({data.period}/{data.interval})</span>
+                    <span>H: ${data.price_range?.high?.toFixed(2) ?? '—'}</span>
+                  </>
+                )}
               </div>
             </div>
           )}
