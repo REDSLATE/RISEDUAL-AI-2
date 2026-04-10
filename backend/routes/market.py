@@ -110,3 +110,17 @@ async def get_dark_pool():
     except Exception as e:
         logging.error(f"Error fetching dark pool data: {e}")
         raise HTTPException(status_code=500, detail="Error fetching dark pool data")
+
+
+# --- Sentiment Indicators ---
+@router.get("/sentiment/fear-greed")
+async def get_fear_greed():
+    """Get current Fear & Greed Index + VIX level."""
+    try:
+        from services.market_sentiment_service import get_fear_greed_index, get_vix_level
+        fg = await get_fear_greed_index()
+        vix = await get_vix_level()
+        return {"fear_greed": fg, "vix": vix}
+    except Exception as e:
+        logging.error(f"Error fetching sentiment: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching sentiment data")

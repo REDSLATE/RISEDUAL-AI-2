@@ -74,7 +74,8 @@ class MarketPredictionService:
 
     def _build_regime_snapshot(self, news, crypto, trades, social, world_events, foreign_markets) -> Dict:
         """Build a compact regime description from current market data for memory queries."""
-        snapshot = {}
+        snapshot = {"metrics": {}, "sentiment": {}}
+
         # Derive simple sentiment from news
         pos = neg = 0
         for item in (news or [])[:10]:
@@ -82,21 +83,31 @@ class MarketPredictionService:
             pos += sum(1 for w in ['surge', 'gain', 'rally', 'rise', 'bull'] if w in title)
             neg += sum(1 for w in ['fall', 'drop', 'crash', 'decline', 'bear'] if w in title)
         if pos > neg:
-            snapshot["news_sentiment"] = f"Positive ({pos} bullish vs {neg} bearish headlines)"
+            snapshot["sentiment"]["news"] = f"Positive ({pos} bullish vs {neg} bearish headlines)"
         elif neg > pos:
-            snapshot["news_sentiment"] = f"Negative ({neg} bearish vs {pos} bullish headlines)"
+            snapshot["sentiment"]["news"] = f"Negative ({neg} bearish vs {pos} bullish headlines)"
         else:
-            snapshot["news_sentiment"] = "Mixed/Neutral"
+            snapshot["sentiment"]["news"] = "Mixed/Neutral"
 
         # Crypto pulse
         if crypto:
             snapshot["macro_context"] = f"{len(crypto)} crypto signals tracked"
 
-        # World events summary
+        # World events
         if world_events:
             high = world_events.get('high_impact_events', [])
             if high:
                 snapshot["macro_context"] = f"{len(high)} high-impact world events"
+
+        # Live Fear & Greed (non-blocking best-effort)
+        try:
+            import asyncio
+            from services.market_sentiment_service import get_fear_greed_index
+            fg = asyncio.get_event_loop().run_until_complete(get_fear_greed_index()) if not asyncio.get_event_loop().is_running() else {"value": 50, "classification": "Neutral"}
+            snapshot["sentiment"]["fg_index"] = fg.get("value", 50)
+            snapshot["sentiment"]["fg_label"] = fg.get("classification", "Neutral")
+        except Exception:
+            snapshot["sentiment"]["fg_index"] = 50
 
         return snapshot
 

@@ -69,6 +69,13 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - New endpoint: `GET /api/accuracy/memory` (Pro only) returns memory stats
 - Persistent storage at `/app/backend/data/chromadb`
 
+### Memory Training (Bulk Bootstrap)
+- Built `memory_training_service.py`: fetches 2yr daily data for 33 symbols (mega-cap stocks + sector/market ETFs)
+- Calculates RSI (14), SMA(20/50) trend, volume signals every 5 trading days
+- Tags each regime with actual 5-day forward outcome (hit/miss/neutral)
+- **2,973 historical episodes** ingested from 33 symbols
+- New endpoints: `POST /api/accuracy/memory/train` (triggers background task), `GET /api/accuracy/memory/train/status`
+
 ## Broker OAuth 2.0 (April 10, 2026)
 - Added OAuth 2.0 authorization flow for Alpaca (extensible to other brokers)
 - New endpoints: `GET /api/broker/oauth/{broker_id}/status`, `/authorize`, `/callback`

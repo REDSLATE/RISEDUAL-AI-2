@@ -62,3 +62,52 @@ async def memory_stats(request: Request):
     from services.market_memory_service import get_memory_stats
     stats = await get_memory_stats()
     return stats
+
+
+# ── Training state (module-level for single-process visibility) ──
+_training_task = None
+_training_status = {"status": "idle"}
+
+
+@router.post("/memory/train")
+async def start_memory_training(request: Request):
+    """Bulk-ingest 2 years of historical market regimes into vector memory.
+    Runs as a background task. Pro/Admin only."""
+    global _training_task, _training_status
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    if _training_task and not _training_task.done():
+        return {"status": "already_running", "progress": _training_status}
+
+    import asyncio
+    from services.memory_training_service import run_memory_training
+
+    async def _progress_cb(update):
+        _training_status.update(update)
+
+    _training_status = {"status": "running", "started_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+
+    async def _run():
+        global _training_status
+        try:
+            result = await run_memory_training(db, progress_callback=_progress_cb)
+            _training_status = {**result, "status": "complete"}
+        except Exception as e:
+            logger.error(f"Training task error: {e}")
+            _training_status["status"] = "error"
+            _training_status["error"] = str(e)
+
+    _training_task = asyncio.create_task(_run())
+    return {"status": "started", "message": "Memory training started in background. Check /api/accuracy/memory/train/status for progress."}
+
+
+@router.get("/memory/train/status")
+async def training_status(request: Request):
+    """Check the status of the memory training background task. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    return _training_status
+

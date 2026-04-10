@@ -41,28 +41,69 @@ def init_memory(mongo_db=None):
 
 
 def _regime_to_text(regime: Dict) -> str:
-    """Convert a market regime dict into a natural-language description for embedding."""
+    """Convert a market regime dict into a natural-language description for embedding.
+    
+    Supports both flat keys and structured {metrics, sentiment} format.
+    """
     lines = []
-    if regime.get("symbol"):
-        lines.append(f"Symbol: {regime['symbol']}")
+    # Core identity
+    if regime.get("symbol") or regime.get("ticker"):
+        lines.append(f"Ticker: {regime.get('symbol') or regime.get('ticker')}")
     if regime.get("price"):
         lines.append(f"Price: ${regime['price']:.2f}")
-    if regime.get("change_1d") is not None:
-        lines.append(f"1D Change: {regime['change_1d']:+.2f}%")
-    if regime.get("change_1w") is not None:
-        lines.append(f"1W Change: {regime['change_1w']:+.2f}%")
-    if regime.get("rsi"):
-        lines.append(f"RSI: {regime['rsi']:.1f}")
-    if regime.get("trend"):
-        lines.append(f"Trend: {regime['trend']}")
-    if regime.get("volume_signal"):
-        lines.append(f"Volume: {regime['volume_signal']}")
+
+    # Structured metrics (new format)
+    metrics = regime.get("metrics", {})
+    sentiment = regime.get("sentiment", {})
+
+    # Price changes — flat or nested
+    change_1d = regime.get("change_1d") or metrics.get("change_1d")
+    change_1w = regime.get("change_1w") or metrics.get("change_1w")
+    if change_1d is not None:
+        lines.append(f"1D Change: {change_1d:+.2f}%")
+    if change_1w is not None:
+        lines.append(f"1W Change: {change_1w:+.2f}%")
+
+    # RSI
+    rsi = regime.get("rsi") or metrics.get("rsi")
+    if rsi is not None:
+        lines.append(f"RSI: {rsi:.1f}")
+
+    # Volume delta
+    vol_delta = regime.get("vol_delta") or metrics.get("vol_delta")
+    if vol_delta is not None:
+        lines.append(f"Vol_Delta: {vol_delta:+.0%}" if isinstance(vol_delta, float) else f"Vol_Delta: {vol_delta}")
+
+    # Trend
+    if regime.get("trend") or metrics.get("trend"):
+        lines.append(f"Trend: {regime.get('trend') or metrics.get('trend')}")
+
+    # Volume signal
+    if regime.get("volume_signal") or metrics.get("volume_signal"):
+        lines.append(f"Volume: {regime.get('volume_signal') or metrics.get('volume_signal')}")
+
+    # Sector
     if regime.get("sector"):
         lines.append(f"Sector: {regime['sector']}")
+
+    # Sentiment — Fear & Greed
+    fg_index = regime.get("fg_index") or sentiment.get("fg_index")
+    fg_label = regime.get("fg_label") or sentiment.get("fg_label")
+    if fg_index is not None:
+        lines.append(f"Fear_Greed: {fg_index}" + (f" ({fg_label})" if fg_label else ""))
+
+    # VIX
+    vix = regime.get("vix") or sentiment.get("vix")
+    if vix:
+        lines.append(f"VIX: {vix}")
+
+    # Macro / news
     if regime.get("macro_context"):
         lines.append(f"Macro: {regime['macro_context']}")
-    if regime.get("news_sentiment"):
-        lines.append(f"News Sentiment: {regime['news_sentiment']}")
+    if regime.get("news_sentiment") or sentiment.get("news"):
+        lines.append(f"News Sentiment: {regime.get('news_sentiment') or sentiment.get('news')}")
+
+    # Prediction + outcome
     if regime.get("prediction"):
         lines.append(f"AI Prediction: {regime['prediction']}")
     if regime.get("confidence"):
@@ -71,6 +112,7 @@ def _regime_to_text(regime: Dict) -> str:
         lines.append(f"Actual Result: {regime['actual_result']}")
     if regime.get("outcome"):
         lines.append(f"Outcome: {regime['outcome']}")
+
     return " | ".join(lines) if lines else json.dumps(regime)
 
 
