@@ -19,7 +19,8 @@ const Header = ({ onGetStarted }) => {
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <a href="#" className="text-lg font-bold text-white tracking-tight">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">TradeAlgo</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
+          <span className="text-slate-400 text-sm ml-1">AI</span>
         </a>
         <nav className="hidden md:flex items-center gap-8">
           {NAV_ITEMS.map(n => (
@@ -61,7 +62,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
         {' '}Signals
       </h1>
       <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-        TradeAlgo deploys dual models&mdash;<span className="text-teal-400 font-medium">Strategist</span> generates signals,{' '}
+        RISEDUAL AI deploys dual models&mdash;<span className="text-teal-400 font-medium">Strategist</span> generates signals,{' '}
         <span className="text-cyan-400 font-medium">Auditor</span> kills bad ones. Triple SSE streams, nightly retraining, GPT-5.2 post-mortems.{' '}
         <span className="text-white font-semibold">$45/month.</span> No contracts.
       </p>
@@ -95,7 +96,7 @@ const HowItWorks = () => (
     <div className="max-w-6xl mx-auto px-4 sm:px-6">
       <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-4">The Adversarial Advantage</h2>
       <p className="text-sm text-slate-400 text-center max-w-xl mx-auto mb-16">
-        Traditional AI fails because it learns from its own mistakes. TradeAlgo uses two competing models that challenge each other.
+        Traditional AI fails because it learns from its own mistakes. RISEDUAL AI uses two competing models that challenge each other.
       </p>
       <div className="grid md:grid-cols-3 gap-6">
         {[
@@ -153,15 +154,17 @@ const Comparison = () => {
   return (
     <section className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-comparison">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">TradeAlgo vs THE OLD GUARD</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">
+          RISEDUAL AI vs <span className="line-through decoration-red-500 decoration-2 text-slate-500">TradeAlgoGPT</span>
+        </h2>
         <p className="text-sm text-slate-400 text-center mb-12">Stop paying institutional prices for retail-grade signals.</p>
         <div className="rounded-xl border border-slate-800/60 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-slate-800/60 bg-slate-900/60">
                 <th className="text-left text-slate-500 font-medium px-4 py-3">Intelligence Specs</th>
-                <th className="text-center text-teal-400 font-semibold px-4 py-3">TradeAlgo</th>
-                <th className="text-center text-slate-500 font-medium px-4 py-3">Others</th>
+                <th className="text-center text-teal-400 font-semibold px-4 py-3">RISEDUAL AI</th>
+                <th className="text-center px-4 py-3"><span className="line-through decoration-red-500 decoration-2 text-slate-600">TradeAlgoGPT</span></th>
               </tr>
             </thead>
             <tbody>
@@ -179,7 +182,7 @@ const Comparison = () => {
           {[
             { icon: <Shield className="w-4 h-4 text-teal-400" />, title: 'The Auditor Veto', desc: 'Hunts for TECH_FAKEOUT and LIQUIDITY_GAP to kill bad trades.' },
             { icon: <Brain className="w-4 h-4 text-cyan-400" />, title: 'Pruned Memories', desc: 'Prunes toxic data nightly in ChromaDB for evolving accuracy.' },
-            { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $45, get full War Room access in under 60 seconds.' },
+            { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $45, get full RISEDUAL AI War Room access in under 60 seconds.' },
           ].map(c => (
             <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-900/30">
               <div className="mb-2">{c.icon}</div>
@@ -229,12 +232,12 @@ const Pricing = ({ onGetStarted }) => (
       <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Simple, Transparent Pricing</h2>
       <p className="text-sm text-slate-400 text-center mb-14">No hidden fees. No annual contracts. Cancel anytime.</p>
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-        {/* TradeAlgo */}
+        {/* RISEDUAL AI */}
         <div className="relative p-6 rounded-xl border-2 border-teal-500/40 bg-slate-900/60">
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[10px] text-white font-bold uppercase tracking-wider">
             Recommended
           </div>
-          <h3 className="text-sm font-bold text-white mb-1">TradeAlgo</h3>
+          <h3 className="text-sm font-bold text-white mb-1">RISEDUAL AI</h3>
           <div className="flex items-baseline gap-1 mb-4">
             <span className="text-3xl font-bold text-white">$45</span>
             <span className="text-xs text-slate-400">/month</span>
@@ -262,8 +265,8 @@ const Pricing = ({ onGetStarted }) => (
         </div>
         {/* Others */}
         <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-900/30 opacity-60">
-          <div className="text-[10px] text-slate-600 font-medium uppercase tracking-wider mb-2">The Old Guard</div>
-          <h3 className="text-sm font-bold text-slate-400 mb-1">Competitors</h3>
+          <div className="text-[10px] text-slate-600 font-medium uppercase tracking-wider mb-2"><span className="line-through decoration-red-500/60 decoration-1">The Old Guard</span></div>
+          <h3 className="text-sm font-bold text-slate-400 mb-1"><span className="line-through decoration-red-500 decoration-2">TradeAlgoGPT</span></h3>
           <div className="flex items-baseline gap-1 mb-4">
             <span className="text-3xl font-bold text-slate-500">$99-$416</span>
             <span className="text-xs text-slate-600">/month</span>
@@ -303,7 +306,7 @@ const Testimonials = () => {
       img: 'https://images.unsplash.com/photo-1632087060431-4db51169e621?w=80&h=80&fit=crop&crop=face',
     },
     {
-      quote: 'I was paying $299/month elsewhere. TradeAlgo is 5x cheaper and actually catches the fake breakouts they missed.',
+      quote: 'I was paying $299/month elsewhere. RISEDUAL AI is 5x cheaper and actually catches the fake breakouts they missed.',
       name: 'Sarah Williams', role: 'Algorithmic Trader', stat: 'Saved $3,048/yr',
       img: 'https://images.pexels.com/photos/5831265/pexels-photo-5831265.jpeg?w=80&h=80&fit=crop',
     },
@@ -317,7 +320,7 @@ const Testimonials = () => {
     <section className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-testimonials">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Trusted by Winning Traders</h2>
-        <p className="text-sm text-slate-400 text-center mb-14">Real results from real traders using TradeAlgo.</p>
+        <p className="text-sm text-slate-400 text-center mb-14">Real results from real traders using RISEDUAL AI.</p>
         <div className="grid md:grid-cols-3 gap-6">
           {testimonials.map(t => (
             <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-900/30">
@@ -347,9 +350,9 @@ const Testimonials = () => {
 const FAQ = () => {
   const [open, setOpen] = useState(null);
   const items = [
-    { q: 'What makes TradeAlgo different from other trading signals?', a: 'TradeAlgo uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
+    { q: 'What makes RISEDUAL AI different from other trading signals?', a: 'RISEDUAL AI uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
     { q: 'How does the nightly retraining work?', a: 'Every night, GPT-5.2 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
-    { q: 'Do I need to sign an annual contract?', a: 'No. TradeAlgo is $45/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure.' },
+    { q: 'Do I need to sign an annual contract?', a: 'No. RISEDUAL AI is $45/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure.' },
     { q: 'What markets and assets do you cover?', a: 'US stocks (S&P 500, NASDAQ), major cryptocurrencies (BTC, ETH, SOL, etc.), options flow, dark pool data, and macro indicators including sector heatmaps and congressional trading activity.' },
     { q: 'Is there a free trial?', a: 'Yes. You can start with a 7-day free trial that gives you full access to the War Room, AI agents, Whale Radar, and all real-time data streams.' },
     { q: 'How accurate are the signals?', a: 'Our adversarial system has achieved a verified 68-73% win rate across backtested periods. The Auditor\'s veto mechanism kills approximately 40% of signals before they reach you, significantly reducing false positives.' },
@@ -358,7 +361,7 @@ const FAQ = () => {
     <section id="faq" className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-faq">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
         <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Frequently Asked Questions</h2>
-        <p className="text-sm text-slate-400 text-center mb-14">Everything you need to know about TradeAlgo.</p>
+        <p className="text-sm text-slate-400 text-center mb-14">Everything you need to know about RISEDUAL AI.</p>
         <div className="space-y-3">
           {items.map((item, i) => (
             <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-900/30 overflow-hidden">
@@ -414,7 +417,7 @@ const CTA = ({ onGetStarted }) => (
 const LandingFooter = () => (
   <footer className="border-t border-white/5 py-8">
     <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <span className="text-xs text-slate-600">&copy; {new Date().getFullYear()} TradeAlgo. All rights reserved.</span>
+      <span className="text-xs text-slate-600">&copy; {new Date().getFullYear()} RISEDUAL AI. All rights reserved.</span>
       <div className="flex items-center gap-6 text-xs text-slate-600">
         <a href="#" className="hover:text-slate-400 transition-colors">Privacy</a>
         <a href="#" className="hover:text-slate-400 transition-colors">Terms</a>
