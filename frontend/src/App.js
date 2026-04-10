@@ -39,6 +39,7 @@ import WatchlistIntelligence from './components/WatchlistIntelligence';
 import ResetPasswordModal from './components/ResetPasswordModal';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
+import LiveInsightsFeed from './components/LiveInsightsFeed';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -103,6 +104,10 @@ function AppContent() {
 
         <div id="pnl-tracker" className="mb-6 sm:mb-8 animate-enter">
           <PnLTracker />
+        </div>
+
+        <div id="live-insights" className="mb-6 sm:mb-8 animate-enter">
+          <LiveInsightsFeed />
         </div>
 
         <div id="market-prediction" className="mb-6 sm:mb-8 animate-enter"><MarketPrediction /></div>

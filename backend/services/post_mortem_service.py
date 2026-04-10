@@ -261,4 +261,18 @@ async def run_and_update_post_mortem(
         except Exception as e:
             logger.warning(f"Post-mortem log save failed: {e}")
 
+    # Push to SSE stream
+    try:
+        from routes.stream import push_event
+        push_event("post_mortem", {
+            "ticker": prediction.get("symbol"),
+            "failure_code": code,
+            "heuristic_code": heuristic_code,
+            "reasoning": reason,
+            "key_headline": result.get("key_headline"),
+            "source": result.get("source", "heuristic"),
+        })
+    except Exception:
+        pass
+
     return result

@@ -547,9 +547,22 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         f"({results['total_before']} -> {results['total_after']} episodes)"
     )
 
-    # ── C. Alert System — Email + In-App Notifications ──
+    # ── C. Alert System — Email + In-App Notifications + SSE Stream ──
     if results["toxic_removed"] > 0:
         await _send_toxic_alerts(results)
+        # Push to SSE stream
+        try:
+            from routes.stream import push_event
+            affected = list({d.get("symbol", "?") for d in results.get("toxic_details", [])})
+            push_event("toxic_alert", {
+                "toxic_count": results["toxic_removed"],
+                "obsolete_removed": results["obsolete_removed"],
+                "affected_tickers": affected,
+                "total_before": results["total_before"],
+                "total_after": results["total_after"],
+            })
+        except Exception:
+            pass
 
     return results
 

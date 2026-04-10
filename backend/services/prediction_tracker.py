@@ -174,6 +174,21 @@ async def verify_pending_predictions(db):
             f"{'CORRECT' if correct else f'WRONG ({failure_code})'}"
         )
 
+        # Push to SSE stream
+        try:
+            from routes.stream import push_event
+            push_event("new_verification", {
+                "ticker": pred["symbol"],
+                "direction": pred["direction"],
+                "confidence": pred.get("confidence", 0),
+                "correct": correct,
+                "failure_code": failure_code,
+                "price_at": pred["price_at_prediction"],
+                "price_now": price_now,
+            })
+        except Exception:
+            pass
+
         # Auto-save verified prediction to vector memory
         try:
             from services.market_memory_service import save_regime, _collection
