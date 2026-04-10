@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -79,6 +79,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-violet-400 hover:text-violet-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-intelligence')} data-testid="nav-intelligence-btn">AI Intelligence Hub</DropdownMenuItem>
               <DropdownMenuItem className="text-orange-400 hover:text-orange-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('sector-heatmap')} data-testid="nav-sector-heatmap-btn">Sector Heatmap</DropdownMenuItem>
               <DropdownMenuItem className="text-emerald-400 hover:text-emerald-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('pnl-tracker')} data-testid="nav-pnl-tracker-btn">P&L Tracker</DropdownMenuItem>
+              <DropdownMenuItem className="text-[#0052FF] hover:text-blue-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-btn">Memory Dashboard</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Market</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -163,6 +164,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-cyan-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMarketplace} data-testid="nav-marketplace-menu-btn">
                   <Store className="w-4 h-4 mr-2" /> Marketplace
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-[#0052FF] hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-menu-btn">
+                  <Database className="w-4 h-4 mr-2" /> Memory Dashboard
                 </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
@@ -265,6 +269,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-cyan-900/30 text-cyan-400 border-cyan-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenMarketplace(); setMobileMenuOpen(false); }} data-testid="mobile-marketplace-btn">
                   <Store className="w-3 h-3 mr-1" /> Marketplace
+                </Button>
+                <Button variant="outline" size="sm" className="bg-blue-900/30 text-[#0052FF] border-blue-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenMemory(); setMobileMenuOpen(false); }} data-testid="mobile-memory-btn">
+                  <Database className="w-3 h-3 mr-1" /> Memory
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

@@ -40,6 +40,7 @@ import ResetPasswordModal from './components/ResetPasswordModal';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
+import MemoryDashboard from './components/MemoryDashboard';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -64,6 +65,7 @@ function AppContent() {
     showJournal, setShowJournal,
     showStrategy, setShowStrategy,
     showMarketplace, setShowMarketplace,
+    showMemory, setShowMemory,
     resetToken, setResetToken,
     openLogin, openRegister, openChat,
   } = useModals();
@@ -73,7 +75,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#0F172A] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -137,6 +139,7 @@ function AppContent() {
       {showJournal && user && <TradingJournal onClose={() => setShowJournal(false)} onSubscribe={() => { setShowJournal(false); setShowSubscription(true); }} />}
       {showStrategy && user && <StrategyBuilder onClose={() => setShowStrategy(false)} onSubscribe={() => { setShowStrategy(false); setShowSubscription(true); }} />}
       {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
+      {showMemory && user && <MemoryDashboard onClose={() => setShowMemory(false)} onSubscribe={() => { setShowMemory(false); setShowSubscription(true); }} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
     </div>
   );

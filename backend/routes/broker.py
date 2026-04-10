@@ -187,13 +187,33 @@ async def disconnect_broker(broker_id: str, request: Request):
 # OAUTH 2.0 FLOW
 # ============================================================
 
+async def _get_oauth_credentials(broker_id: str) -> tuple:
+    """Get OAuth client ID and secret — checks DB first, then env vars."""
+    cfg = OAUTH_CONFIGS.get(broker_id)
+    if not cfg:
+        return "", ""
+
+    # 1. Check DB for admin-configured credentials
+    if db is not None:
+        try:
+            doc = await db.broker_oauth_config.find_one({"broker_id": broker_id})
+            if doc and doc.get("client_id") and doc.get("client_secret_enc"):
+                return doc["client_id"], decrypt_value(doc["client_secret_enc"])
+        except Exception as e:
+            logger.warning(f"DB OAuth config lookup failed for {broker_id}: {e}")
+
+    # 2. Fall back to environment variables
+    client_id = os.environ.get(cfg["client_id_env"], "")
+    client_secret = os.environ.get(cfg["client_secret_env"], "")
+    return client_id, client_secret
+
+
 @router.get("/oauth/{broker_id}/status")
 async def oauth_status(broker_id: str):
     """Check if OAuth is configured for a broker."""
     if broker_id not in OAUTH_CONFIGS:
         return {"available": False, "reason": "OAuth not supported for this broker"}
-    cfg = OAUTH_CONFIGS[broker_id]
-    client_id = os.environ.get(cfg["client_id_env"], "")
+    client_id, _ = await _get_oauth_credentials(broker_id)
     return {
         "available": bool(client_id),
         "broker_id": broker_id,
@@ -208,9 +228,9 @@ async def oauth_authorize(broker_id: str, request: Request):
         raise HTTPException(status_code=400, detail=f"OAuth not supported for {broker_id}")
 
     cfg = OAUTH_CONFIGS[broker_id]
-    client_id = os.environ.get(cfg["client_id_env"], "")
+    client_id, _ = await _get_oauth_credentials(broker_id)
     if not client_id:
-        raise HTTPException(status_code=500, detail=f"OAuth not configured for {broker_id}. Set {cfg['client_id_env']} in environment.")
+        raise HTTPException(status_code=500, detail=f"OAuth not configured for {broker_id}. Admin must set credentials in Settings.")
 
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
@@ -265,8 +285,7 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
 
     user_id = state_doc["user_id"]
     cfg = OAUTH_CONFIGS[broker_id]
-    client_id = os.environ.get(cfg["client_id_env"], "")
-    client_secret = os.environ.get(cfg["client_secret_env"], "")
+    client_id, client_secret = await _get_oauth_credentials(broker_id)
 
     # Build redirect URI (must match the authorize call)
     origin = request.headers.get("origin", "")
