@@ -40,6 +40,7 @@ import ResetPasswordModal from './components/ResetPasswordModal';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
+import OrderFlowPanel from './components/OrderFlowPanel';
 import MemoryDashboard from './components/MemoryDashboard';
 import useModals from './hooks/useModals';
 
@@ -111,6 +112,10 @@ function AppContent() {
         <div id="live-insights" className="mb-6 sm:mb-8 animate-enter">
           <LiveInsightsFeed />
         </div>
+        <div id="order-flow" className="mb-6 sm:mb-8 animate-enter">
+          <OrderFlowPanel />
+        </div>
+
 
         <div id="market-prediction" className="mb-6 sm:mb-8 animate-enter"><MarketPrediction /></div>
         <div id="company-research" className="mb-6 sm:mb-8 animate-enter"><CompanyResearch /></div>

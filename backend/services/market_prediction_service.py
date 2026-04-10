@@ -68,6 +68,16 @@ class MarketPredictionService:
         except Exception as e:
             logger.warning(f"Memory context fetch skipped: {e}")
 
+        # Fetch order flow for market-level prediction (use SPY as proxy)
+        order_flow_context = ""
+        try:
+            from services.order_flow_service import get_order_flow_context
+            order_flow_context = await get_order_flow_context("SPY")
+            if order_flow_context:
+                logger.info("Injecting SPY order flow into market prediction")
+        except Exception as e:
+            logger.warning(f"Order flow fetch skipped: {e}")
+
         try:
             result = await run_prediction_crew(
                 financial_news, crypto_data, insider_trades, social_sentiment,
@@ -76,6 +86,7 @@ class MarketPredictionService:
                 memory_context=memory_context,
                 strategist_context=strategist_context,
                 veto_context=veto_context,
+                order_flow_context=order_flow_context,
             )
             return result
         except Exception as e:

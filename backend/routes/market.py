@@ -124,3 +124,20 @@ async def get_fear_greed():
     except Exception as e:
         logging.error(f"Error fetching sentiment: {e}")
         raise HTTPException(status_code=500, detail="Error fetching sentiment data")
+
+
+# --- Order Flow / Institutional Walls ---
+@router.get("/order-flow/{symbol}")
+async def get_order_flow(symbol: str):
+    """Get volume profile and institutional wall detection for a symbol."""
+    try:
+        from services.order_flow_service import get_volume_profile
+        result = await get_volume_profile(symbol)
+        if result.get("error"):
+            return {"walls": [], "summary": {}, "error": result["error"]}
+        # Strip the full profile from the response to keep payload light
+        result.pop("profile", None)
+        return result
+    except Exception as e:
+        logging.error(f"Order flow error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching order flow data")

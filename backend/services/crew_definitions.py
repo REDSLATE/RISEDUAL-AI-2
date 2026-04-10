@@ -53,12 +53,18 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
     # Fetch win patterns for this specific ticker
     win_context = ""
     veto_context = ""
+    order_flow_context = ""
     try:
         from services.market_memory_service import get_strategist_context, get_strategist_veto_context
         win_context = await get_strategist_context(symbol, n_results=3)
         if "No similar" in win_context:
             win_context = ""
         veto_context = await get_strategist_veto_context(symbol, n_results=2)
+    except Exception:
+        pass
+    try:
+        from services.order_flow_service import get_order_flow_context
+        order_flow_context = await get_order_flow_context(symbol)
     except Exception:
         pass
 
@@ -80,6 +86,8 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
 
     # Build dual-signal memory injection
     memory_injection = ""
+    if order_flow_context:
+        memory_injection += f"### INSTITUTIONAL ORDER FLOW:\n{order_flow_context}\n\n"
     if win_context:
         memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{win_context}\n\n"
     if veto_context:
@@ -92,7 +100,8 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
             "you MUST lower the composite_score and confidence below 50, regardless of how bullish indicators look.\n"
             "3. Only assign confidence above 70% if the setup mirrors a SUCCESS pattern AND has NO significant "
             "overlaps with DANGER patterns.\n"
-            "4. In your key_thesis, explicitly state why this is NOT a trap.\n\n"
+            "4. If institutional walls show heavy RESISTANCE above current price, reduce upside targets.\n"
+            "5. In your key_thesis, explicitly state why this is NOT a trap.\n\n"
         )
 
     synth_prompt = f"""Synthesize all three analyses for {symbol} into a final investment verdict.
@@ -172,12 +181,18 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
     # Fetch win patterns for this specific ticker
     win_context = ""
     veto_context = ""
+    order_flow_context = ""
     try:
         from services.market_memory_service import get_strategist_context, get_strategist_veto_context
         win_context = await get_strategist_context(symbol, n_results=3)
         if "No similar" in win_context:
             win_context = ""
         veto_context = await get_strategist_veto_context(symbol, n_results=2)
+    except Exception:
+        pass
+    try:
+        from services.order_flow_service import get_order_flow_context
+        order_flow_context = await get_order_flow_context(symbol)
     except Exception:
         pass
 
@@ -202,6 +217,8 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
 
     # Build dual-signal memory injection
     memory_injection = ""
+    if order_flow_context:
+        memory_injection += f"### INSTITUTIONAL ORDER FLOW:\n{order_flow_context}\n\n"
     if win_context:
         memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{win_context}\n\n"
     if veto_context:
@@ -214,7 +231,8 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
             "you MUST issue a HOLD or SELL verdict with confidence below 50.\n"
             "3. Only assign confidence above 70% if the setup mirrors a SUCCESS pattern AND has NO "
             "overlaps with DANGER patterns.\n"
-            "4. In your thesis, explicitly state why this is NOT a trap.\n\n"
+            "4. Factor in institutional walls: heavy resistance above → lower upside targets; heavy support below → reduce downside risk.\n"
+            "5. In your thesis, explicitly state why this is NOT a trap.\n\n"
         )
 
     synth_prompt = f"""Produce a definitive investment hypothesis for {symbol}.
@@ -287,7 +305,8 @@ async def run_prediction_crew(
     financial_news, crypto_data, insider_trades, social_sentiment,
     real_estate_data=None, world_events=None, foreign_markets=None,
     gov_filings=None, api_key: str = "", memory_context: str = "",
-    strategist_context: str = "", veto_context: str = ""
+    strategist_context: str = "", veto_context: str = "",
+    order_flow_context: str = ""
 ) -> Dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
@@ -318,11 +337,13 @@ async def run_prediction_crew(
     memory_injection = ""
     if memory_context:
         memory_injection += f"{memory_context}\n\n"
+    if order_flow_context:
+        memory_injection += f"### INSTITUTIONAL ORDER FLOW:\n{order_flow_context}\n\n"
     if strategist_context and "No similar" not in strategist_context:
         memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{strategist_context}\n\n"
     if veto_context:
         memory_injection += f"### PREVIOUS TRAPS & FAILURES (The 'Veto'):\n{veto_context}\n\n"
-    if strategist_context or veto_context:
+    if strategist_context or veto_context or order_flow_context:
         memory_injection += (
             "ADVERSARIAL CHECK:\n"
             "1. Compare the current market setup against both SUCCESS and DANGER pattern lists.\n"
@@ -330,6 +351,7 @@ async def run_prediction_crew(
             "set confidence_score below 50 and overall_direction to NEUTRAL or BEARISH.\n"
             "3. Only assign confidence above 70% if conditions mirror SUCCESS patterns with NO "
             "overlap to DANGER patterns.\n"
+            "4. Factor institutional walls: heavy ASK walls = resistance ceiling; heavy BID walls = support floor.\n"
             "4. In your summary, explicitly state why the current market is NOT a trap.\n\n"
         )
 
