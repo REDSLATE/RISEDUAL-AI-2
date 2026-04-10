@@ -128,6 +128,24 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Pushes live events: `new_verification`, `post_mortem`, `toxic_alert`, `memory_update`
 - In-memory event buffer (max 100 events) with `GET /api/stream/recent` REST fallback
 - Events pushed from: `nightly_cleanup()`, `verify_pending_predictions()`, `run_and_update_post_mortem()`
+
+### Memory Dashboard UI (April 10, 2026)
+- `MemoryDashboard.jsx`: Pro-only modal with 4 tabs (Overview, Cleanup, Failures, Post-Mortem)
+- Overview: Stat cards (Total Episodes, Active, Toxic Lessons, Hit Rate), Memory Health panel (ChromaDB, Collection, Mongo, Last Cleanup)
+- Cleanup: Timeline of cleanup runs with toxic/obsolete badges, expandable toxic details, "Run Now" button
+- Failures: Color-coded failure mode breakdown with progress bars + reference guide
+- Post-Mortem: AI classification results with reasoning, key headlines, heuristic vs AI comparison
+- Accessible from Navbar Platform dropdown and Pro user menu
+- Non-Pro users see upgrade wall with Lock icon
+
+### Broker OAuth Admin (April 10, 2026)
+- Owner-only admin panel tab to configure Alpaca OAuth Client ID/Secret
+- Credentials encrypted with AES-256 (Fernet) before MongoDB storage
+- `BrokerOAuthConfig.jsx`: Configure/Update/Delete UI with password input, eye toggle, preview
+- Backend reads DB credentials first, falls back to env vars (`_get_oauth_credentials()`)
+- Endpoints: `GET/POST/DELETE /api/admin/broker-oauth/{broker_id}`
+- OAuth status check: `GET /api/broker/oauth/{broker_id}/status` returns configured state
+
 - Frontend `LiveInsightsFeed.jsx`: EventSource consumer with LIVE badge, auto-reconnect, collapsible feed
 - Renders verification hits/misses with failure badges, post-mortem reasoning, toxic spike ticker tags
 - Placed after PnL Tracker in the main dashboard layout
@@ -158,7 +176,5 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 - Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
 ## Backlog
-- P1: Memory Dashboard UI — Frontend view for Pro users to visualize ChromaDB episodes, cleanup history, toxic spikes
-- P2: Broker OAuth — Secure admin inputs for Alpaca OAuth Client ID/Secret
 - P3: Refactor server.py into separate route modules
 - P4: Verify risedual.ai production deployment
