@@ -52,11 +52,13 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
 
     # Fetch win patterns for this specific ticker
     win_context = ""
+    veto_context = ""
     try:
-        from services.market_memory_service import get_strategist_context
+        from services.market_memory_service import get_strategist_context, get_strategist_veto_context
         win_context = await get_strategist_context(symbol, n_results=3)
         if "No similar" in win_context:
             win_context = ""
+        veto_context = await get_strategist_veto_context(symbol, n_results=2)
     except Exception:
         pass
 
@@ -76,9 +78,26 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
         f"Analyze insider and institutional activity for {symbol}.\n\nINSIDER TRADES:\n{insiders_str}\n\nAssess: insider buy/sell ratio, notable transactions, smart money direction, and a sentiment score 0-100.",
     ]
 
+    # Build dual-signal memory injection
+    memory_injection = ""
+    if win_context:
+        memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{win_context}\n\n"
+    if veto_context:
+        memory_injection += f"### PREVIOUS TRAPS & FAILURES (The 'Veto'):\n{veto_context}\n\n"
+    if memory_injection:
+        memory_injection += (
+            "ADVERSARIAL CHECK:\n"
+            "1. Compare the current setup against both lists.\n"
+            "2. If the current setup is MORE similar to a 'DANGER' pattern than a 'SUCCESS' pattern, "
+            "you MUST lower the composite_score and confidence below 50, regardless of how bullish indicators look.\n"
+            "3. Only assign confidence above 70% if the setup mirrors a SUCCESS pattern AND has NO significant "
+            "overlaps with DANGER patterns.\n"
+            "4. In your key_thesis, explicitly state why this is NOT a trap.\n\n"
+        )
+
     synth_prompt = f"""Synthesize all three analyses for {symbol} into a final investment verdict.
 
-{win_context + chr(10) + chr(10) if win_context else ""}Output ONLY valid JSON:
+{memory_injection}Output ONLY valid JSON:
 {{
   "verdict": "STRONG BUY / BUY / HOLD / SELL / STRONG SELL",
   "composite_score": 0-100,
@@ -152,11 +171,13 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
 
     # Fetch win patterns for this specific ticker
     win_context = ""
+    veto_context = ""
     try:
-        from services.market_memory_service import get_strategist_context
+        from services.market_memory_service import get_strategist_context, get_strategist_veto_context
         win_context = await get_strategist_context(symbol, n_results=3)
         if "No similar" in win_context:
             win_context = ""
+        veto_context = await get_strategist_veto_context(symbol, n_results=2)
     except Exception:
         pass
 
@@ -179,9 +200,26 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
         f"Track smart money for {symbol}.\n\nCONGRESSIONAL TRADES:\n{gov}\n\nProvide: notable insider/congressional activity, institutional positioning signals, and conviction level.",
     ]
 
+    # Build dual-signal memory injection
+    memory_injection = ""
+    if win_context:
+        memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{win_context}\n\n"
+    if veto_context:
+        memory_injection += f"### PREVIOUS TRAPS & FAILURES (The 'Veto'):\n{veto_context}\n\n"
+    if memory_injection:
+        memory_injection += (
+            "ADVERSARIAL CHECK:\n"
+            "1. Compare the current setup against both lists.\n"
+            "2. If the current setup is MORE similar to a 'DANGER' pattern than a 'SUCCESS' pattern, "
+            "you MUST issue a HOLD or SELL verdict with confidence below 50.\n"
+            "3. Only assign confidence above 70% if the setup mirrors a SUCCESS pattern AND has NO "
+            "overlaps with DANGER patterns.\n"
+            "4. In your thesis, explicitly state why this is NOT a trap.\n\n"
+        )
+
     synth_prompt = f"""Produce a definitive investment hypothesis for {symbol}.
 
-{win_context + chr(10) + chr(10) if win_context else ""}Output ONLY valid JSON:
+{memory_injection}Output ONLY valid JSON:
 {{
   "verdict": "BUY / SELL / HOLD",
   "confidence": 0-100,
@@ -249,7 +287,7 @@ async def run_prediction_crew(
     financial_news, crypto_data, insider_trades, social_sentiment,
     real_estate_data=None, world_events=None, foreign_markets=None,
     gov_filings=None, api_key: str = "", memory_context: str = "",
-    strategist_context: str = ""
+    strategist_context: str = "", veto_context: str = ""
 ) -> Dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
@@ -276,17 +314,36 @@ async def run_prediction_crew(
         f"Analyze institutional flows.\n\nINSIDER TRADES:\n{trades_str}\n\nCONGRESSIONAL & GOV:\n{gov_str}\n\nProvide: smart money direction, notable positioning changes, dark pool signal, and conviction level.",
     ]
 
+    # Build dual-signal memory injection for prediction crew
+    memory_injection = ""
+    if memory_context:
+        memory_injection += f"{memory_context}\n\n"
+    if strategist_context and "No similar" not in strategist_context:
+        memory_injection += f"### PROVEN SUCCESS PATTERNS (The 'Edge'):\n{strategist_context}\n\n"
+    if veto_context:
+        memory_injection += f"### PREVIOUS TRAPS & FAILURES (The 'Veto'):\n{veto_context}\n\n"
+    if strategist_context or veto_context:
+        memory_injection += (
+            "ADVERSARIAL CHECK:\n"
+            "1. Compare the current market setup against both SUCCESS and DANGER pattern lists.\n"
+            "2. If the current setup is MORE similar to a 'DANGER' pattern than a 'SUCCESS' pattern, "
+            "set confidence_score below 50 and overall_direction to NEUTRAL or BEARISH.\n"
+            "3. Only assign confidence above 70% if conditions mirror SUCCESS patterns with NO "
+            "overlap to DANGER patterns.\n"
+            "4. In your summary, explicitly state why the current market is NOT a trap.\n\n"
+        )
+
     synth_prompt = f"""Produce a definitive market forecast by synthesizing sentiment, macro, and flow analyses.
 
-{memory_context + chr(10) + chr(10) if memory_context else ""}{strategist_context + chr(10) + chr(10) if strategist_context else ""}Output ONLY valid JSON:
-{
+{memory_injection}Output ONLY valid JSON:
+{{
   "overall_direction": "BULLISH / BEARISH / NEUTRAL",
   "confidence_score": 0-100,
-  "timeframes": {
-    "intraday": {"direction": "...", "target": "..."},
-    "short_term": {"direction": "...", "target": "..."},
-    "medium_term": {"direction": "...", "target": "..."}
-  },
+  "timeframes": {{
+    "intraday": {{"direction": "...", "target": "..."}},
+    "short_term": {{"direction": "...", "target": "..."}},
+    "medium_term": {{"direction": "...", "target": "..."}}
+  }},
   "key_signals": ["signal1", "signal2", "signal3", "signal4", "signal5"],
   "risk_factors": ["risk1", "risk2", "risk3"],
   "crypto_outlook": "...",
@@ -295,7 +352,7 @@ async def run_prediction_crew(
   "institutional_flow": "Summary of smart money positioning",
   "agent_consensus": "Did all agents agree or were there conflicts?",
   "summary": "3-sentence executive summary"
-}"""
+}}"""
 
     result = await engine.run_parallel_crew(
         PREDICTION_AGENTS, tasks, PREDICTION_SYNTHESIZER, synth_prompt,

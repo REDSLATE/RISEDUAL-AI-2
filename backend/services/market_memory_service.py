@@ -316,10 +316,11 @@ async def get_strategist_context(ticker: str, current_rsi: float = None, n_resul
 
 
 
-async def get_toxic_lessons_context(ticker: str, n_results: int = 2) -> str:
+async def get_strategist_veto_context(ticker: str, current_rsi: float = None, n_results: int = 2) -> str:
     """Query toxic lessons — high-confidence failures that the AI should avoid repeating.
 
     Filters for outcome='toxic_lesson' and returns formatted warnings.
+    This is the 'Veto' signal: if current conditions look like a past trap, lower confidence.
     """
     if not _collection:
         return ""
@@ -328,7 +329,10 @@ async def get_toxic_lessons_context(ticker: str, n_results: int = 2) -> str:
     if count == 0:
         return ""
 
-    query_text = f"Ticker {ticker}"
+    query_parts = [f"Ticker {ticker}"]
+    if current_rsi is not None:
+        query_parts.append(f"RSI {current_rsi:.1f}")
+    query_text = " ".join(query_parts)
     actual_n = min(n_results, count)
 
     try:

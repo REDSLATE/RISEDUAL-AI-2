@@ -45,8 +45,9 @@ class MarketPredictionService:
         # Query vector memory for similar past market regimes
         memory_context = ""
         strategist_context = ""
+        veto_context = ""
         try:
-            from services.market_memory_service import get_prediction_context, get_strategist_context
+            from services.market_memory_service import get_prediction_context, get_strategist_context, get_strategist_veto_context
             current_snapshot = self._build_regime_snapshot(
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 world_events, foreign_markets
@@ -59,6 +60,11 @@ class MarketPredictionService:
             strategist_context = await get_strategist_context("MARKET", n_results=3)
             if strategist_context and "No similar" not in strategist_context:
                 logger.info(f"Injecting {strategist_context.count('Win Pattern')} win pattern(s) into strategist")
+
+            # Get toxic lessons for adversarial veto
+            veto_context = await get_strategist_veto_context("MARKET", n_results=2)
+            if veto_context:
+                logger.info(f"Injecting {veto_context.count('FAILED Pattern')} veto pattern(s) into strategist")
         except Exception as e:
             logger.warning(f"Memory context fetch skipped: {e}")
 
@@ -69,6 +75,7 @@ class MarketPredictionService:
                 api_key=self.api_key,
                 memory_context=memory_context,
                 strategist_context=strategist_context,
+                veto_context=veto_context,
             )
             return result
         except Exception as e:
