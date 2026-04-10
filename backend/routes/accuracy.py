@@ -1,7 +1,13 @@
 """Prediction accuracy tracking routes (Pro only)."""
 from fastapi import APIRouter, HTTPException, Request
 from services.auth_helpers import get_current_user, is_pro_user
-from services.prediction_tracker import get_all_feature_stats, get_recent_predictions, verify_pending_predictions, get_accuracy_stats
+from services.prediction_tracker import (
+    get_all_feature_stats, get_recent_predictions,
+    verify_pending_predictions, get_accuracy_stats, FAILURE_MODES,
+)
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/accuracy", tags=["accuracy"])
 
@@ -51,6 +57,108 @@ async def trigger_verification(request: Request):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     await verify_pending_predictions(db)
     return {"status": "verification_complete"}
+
+
+@router.get("/failure-modes")
+async def get_failure_modes(request: Request):
+    """Get available failure mode categories."""
+    await get_current_user(request)
+    return {"failure_modes": FAILURE_MODES}
+
+
+@router.post("/classify/{prediction_id}")
+async def classify_failure(prediction_id: str, request: Request):
+    """Manually classify a prediction failure. Pro only.
+
+    Body: {"failure_code": "TECH_FAKEOUT" | "MACRO_SHOCK" | "LIQUIDITY_GAP" | "REGIME_SHIFT" | "UNKNOWN"}
+    """
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    body = await request.json()
+    code = body.get("failure_code", "UNKNOWN").upper()
+    if code not in FAILURE_MODES:
+        raise HTTPException(status_code=400, detail=f"Invalid failure_code. Must be one of: {list(FAILURE_MODES.keys())}")
+
+    # Update MongoDB prediction
+    pred = await db.predictions.find_one({"prediction_id": prediction_id}, {"_id": 0})
+    if not pred:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    reason = FAILURE_MODES[code]
+    update_fields = {}
+    if pred.get("verified_24h") and not pred["verified_24h"].get("correct"):
+        update_fields["verified_24h.failure_code"] = code
+        update_fields["verified_24h.failure_reason"] = reason
+    if pred.get("verified_1w") and not pred["verified_1w"].get("correct"):
+        update_fields["verified_1w.failure_code"] = code
+        update_fields["verified_1w.failure_reason"] = reason
+
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="Prediction was not a failure or hasn't been verified yet")
+
+    await db.predictions.update_one(
+        {"prediction_id": prediction_id},
+        {"$set": update_fields}
+    )
+
+    # Also update ChromaDB metadata if the episode exists
+    try:
+        from services.market_memory_service import _collection
+        if _collection:
+            import asyncio
+            import hashlib
+            doc_id = hashlib.md5(
+                f"{pred['symbol']}|{pred.get('timestamp', '')[:10]}|{pred.get('price_at_prediction', '')}".encode()
+            ).hexdigest()
+            existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
+            if existing and existing.get("ids"):
+                meta = existing["metadatas"][0].copy() if existing.get("metadatas") else {}
+                meta["failure_code"] = code
+                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])
+                logger.info(f"Updated ChromaDB failure_code for {pred['symbol']}: {code}")
+    except Exception as e:
+        logger.warning(f"ChromaDB failure classification update failed: {e}")
+
+    return {
+        "prediction_id": prediction_id,
+        "failure_code": code,
+        "failure_reason": reason,
+        "message": f"Classified as {code}",
+    }
+
+
+@router.get("/failure-breakdown")
+async def failure_breakdown(request: Request):
+    """Get breakdown of failure modes across all wrong predictions. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+
+    pipeline = [
+        {"$match": {"verified_24h.correct": False}},
+        {"$group": {
+            "_id": "$verified_24h.failure_code",
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"count": -1}},
+    ]
+    breakdown = {}
+    async for doc in db.predictions.aggregate(pipeline):
+        code = doc["_id"] or "UNCLASSIFIED"
+        breakdown[code] = {
+            "count": doc["count"],
+            "description": FAILURE_MODES.get(code, "Pre-classification prediction"),
+        }
+
+    total_failures = sum(v["count"] for v in breakdown.values())
+    return {
+        "total_failures": total_failures,
+        "breakdown": breakdown,
+        "failure_modes": FAILURE_MODES,
+    }
+
 
 
 @router.get("/memory")

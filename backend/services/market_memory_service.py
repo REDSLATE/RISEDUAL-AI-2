@@ -112,6 +112,10 @@ def _regime_to_text(regime: Dict) -> str:
         lines.append(f"Actual Result: {regime['actual_result']}")
     if regime.get("outcome"):
         lines.append(f"Outcome: {regime['outcome']}")
+    if regime.get("failure_code"):
+        lines.append(f"Failure Mode: {regime['failure_code']}")
+    if regime.get("failure_reason"):
+        lines.append(f"Failure Reason: {regime['failure_reason']}")
 
     return " | ".join(lines) if lines else json.dumps(regime)
 
@@ -148,6 +152,10 @@ async def save_regime(regime: Dict) -> str:
         "outcome": regime.get("outcome", "pending"),
         "confidence": float(regime.get("confidence", 0)),
     }
+
+    # Store failure classification if present
+    if regime.get("failure_code"):
+        metadata["failure_code"] = regime["failure_code"]
 
     # ChromaDB auto-embeds using built-in model
     await asyncio.to_thread(
@@ -355,8 +363,11 @@ async def get_strategist_veto_context(ticker: str, current_rsi: float = None, n_
         distance = results["distances"][0][i] if results.get("distances") else 0
         similarity = round(1 - distance, 4)
         meta = results["metadatas"][0][i] if results.get("metadatas") else {}
+        failure_tag = ""
+        if meta.get("failure_code"):
+            failure_tag = f" [{meta['failure_code']}]"
         warnings.append(
-            f"- FAILED Pattern (sim={similarity:.0%}, {meta.get('symbol', '?')} on "
+            f"- FAILED Pattern{failure_tag} (sim={similarity:.0%}, {meta.get('symbol', '?')} on "
             f"{meta.get('date', '?')}, confidence was {meta.get('confidence', '?')}%): {doc}"
         )
 
@@ -472,6 +483,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
                     "symbol": meta.get("symbol", "?"),
                     "confidence": meta.get("confidence", 0),
                     "date": meta.get("date", "?"),
+                    "failure_code": meta.get("failure_code", "UNKNOWN"),
                 })
 
             # Re-tag as toxic_lesson instead of deleting

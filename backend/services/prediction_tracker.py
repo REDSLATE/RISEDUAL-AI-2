@@ -4,7 +4,8 @@ Prediction Accuracy Tracker — Logs predictions, verifies outcomes, calculates 
 Flow:
 1. After each AI analysis, log the prediction (symbol, direction, price, timestamp)
 2. Background task checks 24h and 1-week outcomes via Alpha Vantage
-3. API returns rolling accuracy stats per feature (Pro only)
+3. Auto-classifies failure mode when predictions are wrong
+4. API returns rolling accuracy stats per feature (Pro only)
 """
 
 import os
@@ -22,6 +23,51 @@ logger = logging.getLogger(__name__)
 DIRECTION_BULLISH = {"BUY", "BULLISH", "LONG", "UP"}
 DIRECTION_BEARISH = {"SELL", "BEARISH", "SHORT", "DOWN"}
 DIRECTION_NEUTRAL = {"HOLD", "NEUTRAL", "WAIT"}
+
+# ── Failure Mode Classification ──
+FAILURE_MODES = {
+    "TECH_FAKEOUT": "Indicators were bullish but price reversed immediately (Stop-loss hunt).",
+    "MACRO_SHOCK": "Unexpected news/data (CPI, Fed, etc.) invalidated the setup.",
+    "LIQUIDITY_GAP": "Low volume caused slippage or erratic price spikes.",
+    "REGIME_SHIFT": "Market shifted from trending to range-bound unexpectedly.",
+    "UNKNOWN": "Price moved against prediction without clear technical or news trigger.",
+}
+
+
+def _classify_failure(direction: str, price_at: float, price_now: float,
+                      volume_ratio: float = None) -> str:
+    """Auto-classify why a prediction failed based on price action heuristics.
+
+    Returns one of: TECH_FAKEOUT, LIQUIDITY_GAP, REGIME_SHIFT, UNKNOWN.
+    (MACRO_SHOCK requires external news data and is set manually or via AI.)
+    """
+    if price_at <= 0 or price_now <= 0:
+        return "UNKNOWN"
+
+    pct_change = abs((price_now - price_at) / price_at * 100)
+    direction_upper = direction.upper()
+
+    # Large, violent move (>=5%) — likely a macro shock or liquidity gap
+    if pct_change >= 5.0:
+        if volume_ratio is not None and volume_ratio < 0.5:
+            return "LIQUIDITY_GAP"
+        return "MACRO_SHOCK"
+
+    # HOLD/NEUTRAL predicted stability but price moved significantly (>2%)
+    if direction_upper in DIRECTION_NEUTRAL and pct_change > 2.0:
+        return "MACRO_SHOCK"
+
+    # Small move (<1%) but wrong direction — regime shift (range-bound market)
+    if pct_change < 1.0:
+        return "REGIME_SHIFT"
+
+    # Moderate reversal (1-5%) — classic technical fakeout
+    if direction_upper in DIRECTION_BULLISH and price_now < price_at:
+        return "TECH_FAKEOUT"
+    if direction_upper in DIRECTION_BEARISH and price_now > price_at:
+        return "TECH_FAKEOUT"
+
+    return "UNKNOWN"
 
 
 def _get_current_price(symbol: str) -> Optional[float]:
@@ -103,15 +149,30 @@ async def verify_pending_predictions(db):
         if price_now is None:
             continue
         correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now)
+
+        # Classify failure mode if prediction was wrong
+        failure_reason = "N/A"
+        failure_code = None
+        if not correct:
+            failure_code = _classify_failure(
+                pred["direction"], pred["price_at_prediction"], price_now
+            )
+            failure_reason = FAILURE_MODES.get(failure_code, FAILURE_MODES["UNKNOWN"])
+
         await db.predictions.update_one(
             {"prediction_id": pred["prediction_id"]},
             {"$set": {"verified_24h": {
                 "price": price_now,
                 "correct": correct,
                 "verified_at": now.isoformat(),
+                "failure_code": failure_code,
+                "failure_reason": failure_reason,
             }}}
         )
-        logger.info(f"Verified 24h: {pred['symbol']} {pred['direction']} — {'CORRECT' if correct else 'WRONG'}")
+        logger.info(
+            f"Verified 24h: {pred['symbol']} {pred['direction']} — "
+            f"{'CORRECT' if correct else f'WRONG ({failure_code})'}"
+        )
 
         # Auto-save verified prediction to vector memory
         try:
@@ -125,6 +186,8 @@ async def verify_pending_predictions(db):
                     "confidence": pred.get("confidence", 0),
                     "actual_result": f"{'rose' if price_now > pred['price_at_prediction'] else 'fell'} to ${price_now:.2f}",
                     "outcome": "hit" if correct else "miss",
+                    "failure_code": failure_code if not correct else None,
+                    "failure_reason": failure_reason if not correct else None,
                 }
                 await save_regime(regime)
         except Exception as e:
@@ -143,15 +206,30 @@ async def verify_pending_predictions(db):
         if price_now is None:
             continue
         correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now)
+
+        # Classify failure mode if prediction was wrong
+        failure_reason = "N/A"
+        failure_code = None
+        if not correct:
+            failure_code = _classify_failure(
+                pred["direction"], pred["price_at_prediction"], price_now
+            )
+            failure_reason = FAILURE_MODES.get(failure_code, FAILURE_MODES["UNKNOWN"])
+
         await db.predictions.update_one(
             {"prediction_id": pred["prediction_id"]},
             {"$set": {"verified_1w": {
                 "price": price_now,
                 "correct": correct,
                 "verified_at": now.isoformat(),
+                "failure_code": failure_code,
+                "failure_reason": failure_reason,
             }}}
         )
-        logger.info(f"Verified 1w: {pred['symbol']} {pred['direction']} — {'CORRECT' if correct else 'WRONG'}")
+        logger.info(
+            f"Verified 1w: {pred['symbol']} {pred['direction']} — "
+            f"{'CORRECT' if correct else f'WRONG ({failure_code})'}"
+        )
 
 
 async def get_accuracy_stats(db, feature: Optional[str] = None) -> Dict:

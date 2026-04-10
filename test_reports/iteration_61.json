@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 61: Failure Mode Classification System Testing Complete. All 25 backend tests passed (100%). Verified: (1) _classify_failure() correctly classifies all 6 test cases (BUY -6% → MACRO_SHOCK, BUY -1.5% → TECH_FAKEOUT, SELL +1.2% → TECH_FAKEOUT, BUY -0.5% → REGIME_SHIFT, BUY -7% low_vol → LIQUIDITY_GAP, HOLD +5% → MACRO_SHOCK), (2) GET /api/accuracy/failure-modes returns all 5 categories, (3) GET /api/accuracy/failure-breakdown returns proper structure (empty since no verified wrong predictions), (4) POST /api/accuracy/classify/{id} validates prediction existence and failure_code, (5) save_regime() stores failure_code in ChromaDB metadata, (6) _regime_to_text() includes 'Failure Mode:' and 'Failure Reason:' lines, (7) get_strategist_veto_context() includes [FAILURE_CODE] tag in warnings, (8) nightly_cleanup preserves failure_code when re-tagging toxic entries.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration61_failure_mode_classification.py",
+    "/app/test_reports/pytest/iteration61_failure_mode_classification_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_classify_failure() correctly implements heuristic-based classification: >=5% move → MACRO_SHOCK (or LIQUIDITY_GAP if low volume), <1% move → REGIME_SHIFT, 1-5% reversal → TECH_FAKEOUT",
+    "FAILURE_MODES dict contains all 5 categories with descriptive explanations",
+    "GET /api/accuracy/failure-modes requires auth but not Pro (any logged-in user can view)",
+    "GET /api/accuracy/failure-breakdown requires Pro subscription and returns aggregated failure stats",
+    "POST /api/accuracy/classify/{id} updates both MongoDB (verified_24h/verified_1w.failure_code) and ChromaDB metadata",
+    "save_regime() correctly adds failure_code to ChromaDB metadata when present in regime dict",
+    "_regime_to_text() includes 'Failure Mode:' and 'Failure Reason:' lines when failure_code/failure_reason present",
+    "get_strategist_veto_context() formats failure_code as [FAILURE_CODE] tag in warning lines",
+    "nightly_cleanup() uses meta.copy() to preserve existing metadata (including failure_code) when re-tagging toxic entries",
+    "verify_pending_predictions() auto-classifies failures using _classify_failure() and passes failure_code to save_regime()"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration61_failure_mode_classification.py"
+  ],
+  "success_rate": {
+    "backend": "100% (25/25 tests passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": {
+    "admin": {
+      "email": "admin@risedual.ai",
+      "password": "RiseDual2026!",
+      "role": "admin",
+      "subscription": "pro"
+    }
+  },
+  "seed_data_creation": "TEST_FAIL_61 (miss with failure_code=MACRO_SHOCK) and TEST_TOXIC_FC (toxic_lesson with failure_code=TECH_FAKEOUT) added to ChromaDB for testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 61 verified the Failure Mode Classification system. Key findings: (1) _classify_failure() uses price action heuristics to auto-classify failures into 5 categories (TECH_FAKEOUT, MACRO_SHOCK, LIQUIDITY_GAP, REGIME_SHIFT, UNKNOWN), (2) All 3 API endpoints work correctly (failure-modes, failure-breakdown, classify/{id}), (3) ChromaDB metadata correctly stores failure_code, (4) Veto context shows [FAILURE_CODE] tag when present (e.g., '[TECH_FAKEOUT]'), (5) Test data: TEST_FAIL_61 (miss), TEST_TOXIC_FC (toxic_lesson with TECH_FAKEOUT), TEST_TOXIC_1/2 (toxic_lesson without failure_code - pre-feature). Memory stats: ~397 total episodes, 3 toxic_lessons.",
+  "verified_features": {
+    "failure_mode_classification": {
+      "_classify_failure_function": "PASS - All 6 test cases correctly classified",
+      "FAILURE_MODES_dict": "PASS - Contains all 5 categories with descriptions",
+      "GET_failure_modes_endpoint": "PASS - Returns all 5 categories",
+      "GET_failure_breakdown_endpoint": "PASS - Returns proper structure (total_failures=0, empty breakdown)",
+      "POST_classify_endpoint": "PASS - Validates prediction existence and failure_code",
+      "save_regime_failure_code": "PASS - Stores failure_code in ChromaDB metadata",
+      "_regime_to_text_failure_lines": "PASS - Includes 'Failure Mode:' and 'Failure Reason:' lines",
+      "veto_context_failure_tag": "PASS - Shows [FAILURE_CODE] tag in warnings",
+      "nightly_cleanup_preserves_failure_code": "PASS - Uses meta.copy() to preserve metadata",
+      "verify_predictions_auto_classify": "PASS - Calls _classify_failure and passes to save_regime"
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "Tests use direct Python imports and API calls - no mocked APIs"
+  }
+}
