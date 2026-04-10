@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, ChevronDown, ChevronUp, Radio } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
+import OrderFlowHeatmap from './OrderFlowHeatmap';
 
 const API = `${getApiBase()}/api`;
+
+const CRYPTO_SET = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'AVAX', 'DOT', 'MATIC', 'LINK']);
 
 const BIAS_STYLES = {
   INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: TrendingUp },
@@ -44,6 +47,9 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [ticker, setTicker] = useState(symbol);
+  const [tab, setTab] = useState('snapshot'); // 'snapshot' | 'live'
+
+  const isCrypto = CRYPTO_SET.has(ticker.toUpperCase());
 
   const fetchFlow = useCallback(async (sym) => {
     setLoading(true);
@@ -118,13 +124,40 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 </button>
               ))}
             </div>
-            <button onClick={() => fetchFlow(ticker)} disabled={loading}
-              className="ml-auto text-slate-500 hover:text-white transition-colors"
-              data-testid="flow-refresh">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+            {/* View tabs */}
+            <div className="flex gap-1 ml-auto mr-2">
+              <button onClick={() => setTab('snapshot')}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  tab === 'snapshot' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                data-testid="tab-snapshot">
+                Snapshot
+              </button>
+              {isCrypto && (
+                <button onClick={() => setTab('live')}
+                  className={`text-[10px] px-2 py-1 rounded transition-colors flex items-center gap-1 ${
+                    tab === 'live' ? 'bg-[#0052FF] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                  data-testid="tab-live">
+                  <Radio className="w-3 h-3" />
+                  Live
+                </button>
+              )}
+            </div>
+            {tab === 'snapshot' && (
+              <button onClick={() => fetchFlow(ticker)} disabled={loading}
+                className="text-slate-500 hover:text-white transition-colors"
+                data-testid="flow-refresh">
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
           </div>
 
+          {/* Live Heatmap Tab */}
+          {tab === 'live' && isCrypto ? (
+            <div className="px-4 py-3">
+              <OrderFlowHeatmap symbol={ticker} />
+            </div>
+          ) : (
+          <>
           {loading ? (
             <div className="py-8 flex justify-center">
               <RefreshCw className="w-5 h-5 text-[#0052FF] animate-spin" />
@@ -188,6 +221,8 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 )}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}
