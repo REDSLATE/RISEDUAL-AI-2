@@ -42,11 +42,12 @@ Build a functional clone of TradealgoGPT named **RISEDUAL AI**. Requires real ma
 
 ## Price Provider Integration (April 10, 2026)
 - Built `price_provider.py`: Smart routing AV → yfinance → MongoDB cache
-- Integrated into ALL backend services:
+- Integrated into ALL backend services (stocks + crypto):
   - `sector_service.py`, `war_room_service.py`, `prediction_tracker.py` (done by previous agent)
   - `ai_intelligence_service.py`, `watchlist_intelligence_service.py`, `company_research_service.py`, `market_data_service.py`, `backtester_service.py` (completed this session)
+- Added crypto fallback: AV `CURRENCY_EXCHANGE_RATE` → yfinance `{TICKER}-USD` → MongoDB cache
 - Fixed Motor Database boolean check bug (`if _db is not None:` instead of `if _db:`)
-- Only remaining direct AV calls: Earnings endpoint (war_room), Crypto exchange rate (market_data)
+- Only remaining direct AV call: Earnings endpoint in war_room_service.py
 
 ## Deployment Status
 - Health Check: PASSED

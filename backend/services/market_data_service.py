@@ -1,20 +1,17 @@
-import os
 import asyncio
-import requests
 import logging
 import secrets as _secrets
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from services.price_provider import get_quote as pp_get_quote
+from services.price_provider import get_quote as pp_get_quote, get_crypto_quote as pp_get_crypto_quote
 
 logger = logging.getLogger(__name__)
 _rng = _secrets.SystemRandom()
 
 class MarketDataService:
     def __init__(self):
-        self.api_key = os.environ.get('ALPHA_VANTAGE_API_KEY')
-        self.base_url = 'https://www.alphavantage.co/query'
+        pass
     
     async def get_quote(self, symbol: str) -> Optional[Dict]:
         """Get real-time quote via smart price provider (AV -> yfinance -> cache)."""
@@ -52,51 +49,12 @@ class MarketDataService:
         return ticker_data
     
     async def get_crypto_quote(self, symbol: str, market: str = 'USD') -> Optional[Dict]:
-        """Get crypto quote from Alpha Vantage"""
-        cache_key = self._get_cache_key(f"crypto_{symbol}", 'quote')
-        
-        # Check cache first
-        if cache_key in self.cache and self._is_cache_valid(self.cache[cache_key]):
-            logger.info(f"Returning cached crypto quote for {symbol}")
-            return self.cache[cache_key]['data']
-        
+        """Get crypto quote via smart price provider (AV -> yfinance -> cache)."""
         try:
-            params = {
-                'function': 'CURRENCY_EXCHANGE_RATE',
-                'from_currency': symbol,
-                'to_currency': market,
-                'apikey': self.api_key
-            }
-            
-            response = await asyncio.to_thread(requests.get, self.base_url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'Realtime Currency Exchange Rate' in data:
-                rate = data['Realtime Currency Exchange Rate']
-                current_price = float(rate.get('5. Exchange Rate', 0))
-                
-                # Get previous close to calculate change (simplified)
-                result = {
-                    'symbol': symbol,
-                    'price': current_price,
-                    'change': 0,  # Alpha Vantage doesn't provide direct change for crypto
-                    'changePercent': 0,
-                    'market': market,
-                    'lastUpdate': rate.get('6. Last Refreshed', '')
-                }
-                
-                # Cache the result
-                self.cache[cache_key] = {
-                    'data': result,
-                    'timestamp': datetime.now()
-                }
-                
-                return result
-            else:
-                logger.warning(f"No crypto quote data for {symbol}")
+            quote = await pp_get_crypto_quote(symbol)
+            if not quote:
                 return None
-                
+            return quote
         except Exception as e:
             logger.error(f"Error fetching crypto quote for {symbol}: {str(e)}")
             return None

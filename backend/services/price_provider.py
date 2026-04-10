@@ -297,3 +297,107 @@ def get_overview_sync(symbol: str) -> Optional[Dict]:
         logger.info(f"AV overview failed for {symbol}, trying yfinance")
         data = _yf_overview(symbol)
     return data
+
+
+# ──────────────────────────────────────────────
+#  CRYPTO QUOTE (BTC, ETH, SOL, etc.)
+# ──────────────────────────────────────────────
+
+def _av_crypto(symbol: str, market: str = "USD") -> Optional[Dict]:
+    """Fetch crypto exchange rate from Alpha Vantage."""
+    try:
+        r = requests.get(AV_BASE, params={
+            "function": "CURRENCY_EXCHANGE_RATE",
+            "from_currency": symbol.upper(),
+            "to_currency": market,
+            "apikey": _av_key(),
+        }, timeout=10)
+        data = r.json()
+        rate = data.get("Realtime Currency Exchange Rate", {})
+        price = float(rate.get("5. Exchange Rate", 0))
+        if price <= 0:
+            return None
+        return {
+            "symbol": symbol.upper(),
+            "price": round(price, 2),
+            "change": 0,
+            "changePercent": 0,
+            "market": market,
+            "lastUpdate": rate.get("6. Last Refreshed", ""),
+            "source": "alpha_vantage",
+        }
+    except Exception as e:
+        logger.warning(f"AV crypto failed for {symbol}: {e}")
+        return None
+
+
+def _yf_crypto(symbol: str) -> Optional[Dict]:
+    """Fetch crypto price from yfinance using {TICKER}-USD mapping."""
+    try:
+        yf_ticker = f"{symbol.upper()}-USD"
+        data = yf.Ticker(yf_ticker)
+        price = float(data.fast_info.get("lastPrice", 0) or data.fast_info.get("last_price", 0))
+        if price <= 0:
+            return None
+        prev = float(data.fast_info.get("previousClose", 0) or data.fast_info.get("previous_close", 0))
+        change = round(price - prev, 2) if prev > 0 else 0
+        change_pct = round((change / prev * 100), 2) if prev > 0 else 0
+        return {
+            "symbol": symbol.upper(),
+            "price": round(price, 2),
+            "change": change,
+            "changePercent": change_pct,
+            "market": "USD",
+            "lastUpdate": "",
+            "source": "yfinance",
+        }
+    except Exception as e:
+        logger.warning(f"yfinance crypto failed for {symbol}: {e}")
+        return None
+
+
+async def get_crypto_quote(symbol: str) -> Optional[Dict]:
+    """Smart crypto quote: AV → yfinance → MongoDB cache."""
+    cache_key = f"crypto_{symbol.upper()}"
+
+    # Check MongoDB cache first
+    if _db is not None:
+        cached = await _db.price_cache.find_one(
+            {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
+            {"_id": 0}
+        )
+        if cached and cached.get("data", {}).get("price", 0) > 0:
+            cached["data"]["source"] = "cache"
+            return cached["data"]
+
+    # 1. Try Alpha Vantage
+    quote = await asyncio.to_thread(_av_crypto, symbol)
+
+    # 2. Fallback: yfinance
+    if not quote:
+        logger.info(f"AV crypto failed for {symbol}, trying yfinance")
+        quote = await asyncio.to_thread(_yf_crypto, symbol)
+
+    # Cache successful result (5 min TTL)
+    if quote and _db is not None:
+        await _db.price_cache.update_one(
+            {"key": cache_key},
+            {"$set": {
+                "key": cache_key,
+                "data": quote,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+
+    return quote
+
+
+def get_crypto_quote_sync(symbol: str) -> Optional[Dict]:
+    """Synchronous crypto quote: AV → yfinance."""
+    quote = _av_crypto(symbol)
+    if not quote:
+        logger.info(f"AV crypto failed for {symbol}, trying yfinance (sync)")
+        quote = _yf_crypto(symbol)
+    return quote
