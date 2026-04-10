@@ -200,12 +200,13 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 
 ### Landing Page / Splash (April 10, 2026)
 - `LandingPage.jsx`: Full marketing splash page shown to unauthenticated visitors
-- Branding: **TradeAlgo** (per user request)
-- Sections: Header (sticky glassmorphism nav), Hero, How It Works (Strategist/Auditor/Nightly Retraining), Comparison table (TradeAlgo vs Competitors), Features bento grid, Pricing ($45/mo), Testimonials (3 traders), FAQ accordion, CTA, Footer
+- Branding: **RISEDUAL AI** is the main product; **TradeAlgoGPT** shown with red strikethrough (`line-through decoration-red-500`) as competitor
+- Sections: Header (sticky glassmorphism nav), Hero, How It Works (Strategist/Auditor/Nightly Retraining), Comparison table (RISEDUAL AI vs ~~TradeAlgoGPT~~), Features bento grid, Pricing ($45/mo), Testimonials (3 traders), FAQ accordion, CTA, Footer
 - All CTAs trigger `openRegister()` → auth modal on Sign Up tab
 - Smooth scroll navigation via anchor links
 - Mobile responsive with hamburger menu
 - After login → full trading dashboard
+- **Verified (Iteration 71)**: All branding correct, auth flow works, 100% pass
 
 
 
@@ -237,5 +238,6 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Crypto prices may return empty when AV rate-limited (no yfinance fallback for crypto exchange rates)
 
 ## Backlog
+- P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
+- P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
 - P3: Refactor server.py into separate route modules
-- P4: Verify risedual.ai production deployment
