@@ -243,7 +243,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
             <div className="flex items-center gap-2">
               {t.side === 'buy' ? <TrendingUp className="w-4 h-4 text-lime-400" /> : <TrendingDown className="w-4 h-4 text-orange-400" />}
               <span className="text-white font-semibold text-sm">{t.ticker}</span>
-              <Badge className={`text-[9px] ${t.side === 'buy' ? 'bg-lime-900/30 text-lime-400 border-emerald-700/50' : 'bg-orange-900/30 text-orange-400 border-red-700/50'}`}>
+              <Badge className={`text-[9px] ${t.side === 'buy' ? 'bg-lime-700 text-lime-400 border-emerald-700/50' : 'bg-orange-800 text-orange-400 border-red-700/50'}`}>
                 {t.side.toUpperCase()}
               </Badge>
               <Badge className={`text-[9px] ${t.status === 'closed' ? 'bg-slate-700 text-slate-400' : 'bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30'}`}>
@@ -280,7 +280,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
                     className="bg-slate-900 border-slate-600 text-white text-xs h-7 w-28 rounded-lg" />
                   <Input type="date" value={closeForm.exit_date || ''} onChange={e => setCloseForm({...closeForm, exit_date: e.target.value})}
                     className="bg-slate-900 border-slate-600 text-white text-xs h-7 w-32 rounded-lg" />
-                  <Button size="sm" className="text-[10px] h-7 px-2 bg-emerald-600 text-white" onClick={() => onClose(t.id)}>Close</Button>
+                  <Button size="sm" className="text-[10px] h-7 px-2 bg-green-600 text-white" onClick={() => onClose(t.id)}>Close</Button>
                   <Button size="sm" variant="ghost" className="text-[10px] h-7 px-2 text-slate-400" onClick={() => setCloseForm(null)}>Cancel</Button>
                 </div>
               ) : (

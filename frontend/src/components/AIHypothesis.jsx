@@ -15,8 +15,8 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const AI_MODELS = [
-  { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-lime-400', bg: 'bg-lime-900/30', free: true },
-  { key: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5', provider: 'Anthropic', icon: Brain, color: 'text-orange-400', bg: 'bg-orange-900/30', free: false },
+  { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-lime-400', bg: 'bg-lime-700', free: true },
+  { key: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5', provider: 'Anthropic', icon: Brain, color: 'text-orange-400', bg: 'bg-orange-800', free: false },
   { key: 'gemini-pro', label: 'Gemini Pro', provider: 'Google', icon: Cpu, color: 'text-blue-400', bg: 'bg-blue-900/30', free: false },
   { key: 'consensus', label: 'Consensus Mode', provider: 'All 3 Models', icon: Network, color: 'text-violet-300', bg: 'bg-violet-900/30', free: false },
 ];
@@ -172,7 +172,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         </Card>
       )}
 
-      {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
+      {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
       {/* Locked State (Free User) */}
       {hypothesis && !hypothesis.is_pro && (

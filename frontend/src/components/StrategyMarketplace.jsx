@@ -158,7 +158,7 @@ const StrategyCard = ({ item, expanded, onToggle, onClone, cloning, isPro, isLog
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-white text-sm font-bold truncate">{item.strategy?.name || 'Unnamed Strategy'}</h3>
             <Badge className="bg-slate-700/60 text-slate-300 border-slate-600 text-[9px]">{item.backtest?.symbol}</Badge>
-            <Badge className={`text-[9px] px-2 ${profitable ? 'bg-lime-900/30 text-lime-400 border-emerald-700/40' : 'bg-orange-900/30 text-orange-400 border-red-700/40'}`}>
+            <Badge className={`text-[9px] px-2 ${profitable ? 'bg-lime-700 text-lime-400 border-emerald-700/40' : 'bg-orange-800 text-orange-400 border-red-700/40'}`}>
               {profitable ? 'PROFITABLE' : 'LOSS'}
             </Badge>
           </div>

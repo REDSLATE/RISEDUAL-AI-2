@@ -23,7 +23,7 @@ const WorldEventsTab = ({ data, loading }) => {
           <div className="flex flex-wrap gap-2">
             {affected_sectors.map((s) => (
               <div key={s.sector} className="flex items-center gap-2 bg-slate-900/60 border border-slate-400/25 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
-                <div className={`w-2 h-2 rounded-full ${s.avg_impact >= 75 ? 'bg-red-500' : s.avg_impact >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                <div className={`w-2 h-2 rounded-full ${s.avg_impact >= 75 ? 'bg-red-500' : s.avg_impact >= 50 ? 'bg-amber-500' : 'bg-green-500'}`} />
                 <span className="text-white text-xs font-medium">{s.sector}</span>
                 <span className={`text-xs font-bold ${s.avg_impact >= 75 ? 'text-orange-400' : s.avg_impact >= 50 ? 'text-amber-300' : 'text-lime-400'}`}>{s.avg_impact}</span>
                 <div className="flex gap-1 ml-1">

@@ -35,7 +35,7 @@ const BacktestResults = ({ result, onClose }) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className={`text-xs font-bold px-3 py-1 ${m.total_pnl >= 0 ? 'bg-lime-900/40 text-lime-400 border-emerald-700/50' : 'bg-orange-900/40 text-orange-400 border-red-700/50'}`} data-testid="backtest-verdict">
+            <Badge className={`text-xs font-bold px-3 py-1 ${m.total_pnl >= 0 ? 'bg-lime-600 text-lime-400 border-emerald-700/50' : 'bg-orange-700 text-orange-400 border-red-700/50'}`} data-testid="backtest-verdict">
               {m.total_pnl >= 0 ? 'PROFITABLE' : 'UNPROFITABLE'}
             </Badge>
           </div>
@@ -110,7 +110,7 @@ const BacktestResults = ({ result, onClose }) => {
                 <span className="text-lime-400 text-xs">Avg +${m.avg_gain?.toFixed(2) || '0'}</span>
               </div>
               <div className="w-full bg-slate-700/50 rounded-full h-2">
-                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${m.win_rate}%` }} />
+                <div className="h-2 rounded-full bg-green-500" style={{ width: `${m.win_rate}%` }} />
               </div>
             </div>
             <div className="flex-1">
@@ -193,7 +193,7 @@ const BacktestResults = ({ result, onClose }) => {
       {/* Best / Worst Trade */}
       {m.best_trade && m.worst_trade && (
         <div className="grid grid-cols-2 gap-3">
-          <Card className="bg-lime-950/20 border-lime-700/30 rounded-xl p-4">
+          <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-4">
             <p className="text-[10px] text-slate-400 mb-1">Best Trade</p>
             <p className="text-lime-400 text-lg font-bold">+${m.best_trade.pnl} ({m.best_trade.pnl_pct}%)</p>
             <p className="text-slate-400 text-[10px]">{m.best_trade.entry_date} — {m.best_trade.holding_days}d hold</p>
@@ -218,8 +218,8 @@ const BacktestResults = ({ result, onClose }) => {
 const ExitReasonBadge = ({ reason }) => {
   const styles = {
     signal: 'bg-blue-900/30 text-blue-400 border-blue-700/40',
-    stop_loss: 'bg-orange-900/30 text-orange-400 border-red-700/40',
-    take_profit: 'bg-lime-900/30 text-lime-400 border-emerald-700/40',
+    stop_loss: 'bg-orange-800 text-orange-400 border-red-700/40',
+    take_profit: 'bg-lime-700 text-lime-400 border-emerald-700/40',
     open: 'bg-amber-900/30 text-amber-300 border-amber-700/40',
   };
   const labels = { signal: 'Signal', stop_loss: 'Stop Loss', take_profit: 'Take Profit', open: 'Still Open' };

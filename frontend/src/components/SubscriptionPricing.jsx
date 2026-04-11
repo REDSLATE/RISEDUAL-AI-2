@@ -108,7 +108,7 @@ const SubscriptionPricing = ({ onClose }) => {
               onClick={() => setSelectedPlan('annual')}
               data-testid="plan-annual"
             >
-              <Badge className="absolute -top-2.5 right-4 bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-0.5">
+              <Badge className="absolute -top-2.5 right-4 bg-green-600 text-white font-bold text-[10px] px-2.5 py-0.5">
                 SAVE 10%
               </Badge>
               <div className="flex items-center gap-3 mb-4">

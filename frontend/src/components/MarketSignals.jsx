@@ -110,7 +110,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-white text-sm font-semibold">{sig.ticker}</span>
-                              <Badge className={`text-[10px] border-0 ${sig.severity === 'high' ? 'bg-orange-900/40 text-orange-400' : 'bg-amber-900/40 text-amber-300'}`}>{sig.severity?.toUpperCase()}</Badge>
+                              <Badge className={`text-[10px] border-0 ${sig.severity === 'high' ? 'bg-orange-700 text-orange-400' : 'bg-amber-900/40 text-amber-300'}`}>{sig.severity?.toUpperCase()}</Badge>
                             </div>
                             <p className="text-white text-xs font-medium">{sig.title}</p>
                             <p className="text-slate-400 text-[11px] mt-0.5">{sig.detail}</p>

@@ -116,7 +116,7 @@ const BrokerOAuthConfig = () => {
                 <div className="flex items-center gap-2">
                   {config.configured ? (
                     <>
-                      <span className="text-[10px] bg-emerald-500/10 text-lime-400 border border-emerald-500/20 rounded-full px-2 py-0.5 flex items-center gap-1">
+                      <span className="text-[10px] bg-green-500/10 text-lime-400 border border-emerald-500/20 rounded-full px-2 py-0.5 flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" /> Configured
                       </span>
                       <span className="text-slate-400 text-[10px] font-mono">{config.client_id_preview}</span>
@@ -138,7 +138,7 @@ const BrokerOAuthConfig = () => {
                   </Button>
                   {config.configured && (
                     <Button size="sm" variant="outline" onClick={() => handleDelete(brokerId)}
-                      className="text-xs bg-transparent border-orange-700/50 text-orange-400 hover:bg-orange-900/20 h-7"
+                      className="text-xs bg-transparent border-orange-700/50 text-orange-400 hover:bg-orange-900 h-7"
                       data-testid={`broker-delete-${brokerId}`}>
                       <Trash2 className="w-3 h-3" />
                     </Button>

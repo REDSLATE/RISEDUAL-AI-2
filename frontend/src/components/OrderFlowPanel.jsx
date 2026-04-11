@@ -8,7 +8,7 @@ const API = `${getApiBase()}/api`;
 const CRYPTO_SET = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'AVAX', 'DOT', 'SHIB', 'LINK']);
 
 const BIAS_STYLES = {
-  INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-lime-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: TrendingUp },
+  INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-lime-400', bg: 'bg-green-500/10 border-emerald-500/20', icon: TrendingUp },
   INSTITUTIONAL_ASK: { label: 'Institutional Selling', color: 'text-orange-400', bg: 'bg-red-500/10 border-red-500/20', icon: TrendingDown },
   BALANCED: { label: 'Balanced Flow', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20', icon: Minus },
   NO_DATA: { label: 'No Data', color: 'text-slate-400', bg: 'bg-slate-700/45 border-slate-400/30', icon: Activity },
@@ -25,7 +25,7 @@ const WallBar = ({ wall, maxVol }) => {
       <span className="text-slate-400 w-16 text-right font-mono">${wall.price.toFixed(2)}</span>
       <div className="flex-1 h-4 bg-slate-900 rounded-sm overflow-hidden relative">
         <div
-          className={`h-full rounded-sm ${isSupport ? 'bg-emerald-500/40' : 'bg-red-500/40'}`}
+          className={`h-full rounded-sm ${isSupport ? 'bg-green-500/40' : 'bg-red-500/40'}`}
           style={{ width: `${Math.max(pct, 5)}%` }}
         />
         <span className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-300 font-mono">
@@ -39,7 +39,7 @@ const WallBar = ({ wall, maxVol }) => {
         intensity >= 85
           ? 'bg-yellow-500/20 text-yellow-300 font-bold'
           : wall.strength === 'major'
-            ? (isSupport ? 'bg-emerald-500/20 text-lime-400' : 'bg-red-500/20 text-orange-400')
+            ? (isSupport ? 'bg-green-500/20 text-lime-400' : 'bg-red-500/20 text-orange-400')
             : 'bg-slate-800 text-slate-400'}`}>
         {intensity >= 85 ? 'W' : wall.strength === 'major' ? 'M' : 'm'}
       </span>

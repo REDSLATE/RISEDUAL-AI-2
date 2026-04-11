@@ -9,7 +9,7 @@ import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
 
-const gradeColor = (g) => ({ A: 'text-lime-400 bg-lime-900/30', B: 'text-blue-400 bg-blue-900/30', C: 'text-amber-300 bg-amber-900/30', D: 'text-orange-400 bg-orange-900/30', F: 'text-orange-400 bg-orange-900/30' }[g] || 'text-slate-400 bg-slate-800');
+const gradeColor = (g) => ({ A: 'text-lime-400 bg-lime-700', B: 'text-blue-400 bg-blue-900/30', C: 'text-amber-300 bg-amber-900/30', D: 'text-orange-400 bg-orange-800', F: 'text-orange-400 bg-orange-800' }[g] || 'text-slate-400 bg-slate-800');
 const riskColor = (r) => ({ low: 'text-lime-400', medium: 'text-amber-300', high: 'text-orange-400', critical: 'text-orange-400' }[r] || 'text-slate-400');
 
 const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
@@ -142,7 +142,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                       <div key={`reb-${i}`} className="flex items-center gap-2 bg-slate-700/40 rounded-lg px-3 py-2 text-xs">
                         {a.action === 'buy' ? <TrendingUp className="w-3.5 h-3.5 text-lime-400" /> : a.action === 'sell' ? <TrendingDown className="w-3.5 h-3.5 text-orange-400" /> : <Minus className="w-3.5 h-3.5 text-amber-300" />}
                         <span className="text-white font-semibold">{a.ticker}</span>
-                        <Badge className={`text-[10px] border ${a.action === 'buy' ? 'text-lime-400 bg-lime-900/30 border-emerald-700/50' : a.action === 'sell' ? 'text-orange-400 bg-orange-900/30 border-red-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'}`}>{a.action?.toUpperCase()}</Badge>
+                        <Badge className={`text-[10px] border ${a.action === 'buy' ? 'text-lime-400 bg-lime-700 border-emerald-700/50' : a.action === 'sell' ? 'text-orange-400 bg-orange-800 border-red-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'}`}>{a.action?.toUpperCase()}</Badge>
                         <span className="text-slate-400 flex-1">{a.reason}</span>
                       </div>
                     ))}

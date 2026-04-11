@@ -15,8 +15,8 @@ const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
 
 const getPushToggleClass = (permission, subscribed) => {
-  if (permission === 'denied') return 'bg-orange-900/20 text-orange-400 border border-orange-700/40 cursor-not-allowed';
-  if (subscribed) return 'bg-lime-900/30 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40';
+  if (permission === 'denied') return 'bg-orange-900 text-orange-400 border border-orange-700/40 cursor-not-allowed';
+  if (subscribed) return 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40';
   return 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600';
 };
 
@@ -112,8 +112,8 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
   };
 
   const verdictStyle = (v) => {
-    if (v === 'BUY') return 'text-lime-400 bg-lime-900/30 border-emerald-700/50';
-    if (v === 'SELL') return 'text-orange-400 bg-orange-900/30 border-red-700/50';
+    if (v === 'BUY') return 'text-lime-400 bg-lime-700 border-emerald-700/50';
+    if (v === 'SELL') return 'text-orange-400 bg-orange-800 border-red-700/50';
     return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
   };
 
@@ -352,7 +352,7 @@ const ReferralsTab = () => {
           />
           <Button
             onClick={copyLink}
-            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#3DE8D9] hover:bg-[#7AEEE0]'} text-white`}
+            className={`rounded-xl px-4 text-sm ${copied ? 'bg-green-600' : 'bg-[#3DE8D9] hover:bg-[#7AEEE0]'} text-white`}
             data-testid="copy-referral-btn"
           >
             {copied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
@@ -403,7 +403,7 @@ const ReferralsTab = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className={`text-[10px] border ${
-                    ref.status === 'completed' ? 'text-lime-400 bg-lime-900/30 border-emerald-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'
+                    ref.status === 'completed' ? 'text-lime-400 bg-lime-700 border-emerald-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'
                   }`}>
                     {ref.status === 'completed' ? 'Subscribed' : 'Pending'}
                   </Badge>
@@ -476,7 +476,7 @@ const DigestToggle = () => {
           disabled={toggling}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             subscribed
-              ? 'bg-lime-900/30 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+              ? 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
               : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
           }`}
           data-testid="digest-toggle-btn"

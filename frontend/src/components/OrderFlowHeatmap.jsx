@@ -20,7 +20,7 @@ const WallEvent = ({ event }) => {
   return (
     <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md border ${
       appeared
-        ? (isBid ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400')
+        ? (isBid ? 'bg-green-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400')
         : 'bg-slate-700/45 border-slate-400/30 text-slate-400'
     }`} data-testid={`wall-event-${event.event}`}>
       {appeared ? <Zap className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
@@ -167,7 +167,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border ${
-            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
+            connected ? 'bg-green-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
           }`} data-testid="ws-status">
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
             {connected ? 'LIVE' : 'CONNECTING'}
@@ -196,7 +196,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       {/* Bid/Ask pressure bar */}
       {latest && (
         <div className="h-2 rounded-full overflow-hidden flex bg-slate-900" data-testid="pressure-bar">
-          <div className="bg-emerald-500/60 transition-all duration-700" style={{ width: `${latest.bid_pct}%` }} />
+          <div className="bg-green-500/60 transition-all duration-700" style={{ width: `${latest.bid_pct}%` }} />
           <div className="bg-red-500/60 transition-all duration-700" style={{ width: `${100 - latest.bid_pct}%` }} />
         </div>
       )}
@@ -258,7 +258,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
           <div className="grid grid-cols-2 gap-1">
             {latest.walls.slice(0, 6).map((w, i) => (
               <div key={i} className={`flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
-                w.side === 'bid' ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'
+                w.side === 'bid' ? 'border-emerald-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'
               }`}>
                 <span className={`font-mono ${w.side === 'bid' ? 'text-lime-400' : 'text-orange-400'}`}>
                   ${w.price.toLocaleString()}

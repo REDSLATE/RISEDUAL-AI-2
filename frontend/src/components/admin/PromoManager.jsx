@@ -162,7 +162,7 @@ const PromoManager = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-white text-sm font-medium truncate">{p.title}</p>
-                    {isLive && <Badge className="text-[9px] bg-lime-900/30 text-lime-400 border-emerald-700/50 animate-pulse">LIVE</Badge>}
+                    {isLive && <Badge className="text-[9px] bg-lime-700 text-lime-400 border-emerald-700/50 animate-pulse">LIVE</Badge>}
                     {isExpired && <Badge className="text-[9px] bg-slate-700 text-slate-400">EXPIRED</Badge>}
                     {!p.is_active && !isExpired && <Badge className="text-[9px] bg-amber-900/30 text-amber-300 border-amber-700/50">PAUSED</Badge>}
                   </div>

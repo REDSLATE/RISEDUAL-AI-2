@@ -16,24 +16,24 @@ const PERIODS = [
 ];
 
 const getHeatColor = (val) => {
-  if (val >= 3) return 'bg-lime-500 text-white';
-  if (val >= 1.5) return 'bg-lime-600/80 text-white';
-  if (val >= 0.5) return 'bg-lime-700/60 text-lime-100';
-  if (val >= 0) return 'bg-lime-900/40 text-lime-300';
-  if (val >= -0.5) return 'bg-orange-900/40 text-orange-300';
-  if (val >= -1.5) return 'bg-orange-600/60 text-orange-100';
-  if (val >= -3) return 'bg-red-500/80 text-white';
-  return 'bg-red-500 text-white';
+  if (val >= 3) return 'bg-green-500 text-white';
+  if (val >= 1.5) return 'bg-lime-500 text-white';
+  if (val >= 0.5) return 'bg-lime-400 text-gray-900';
+  if (val >= 0) return 'bg-yellow-400 text-gray-900';
+  if (val >= -0.5) return 'bg-yellow-500 text-gray-900';
+  if (val >= -1.5) return 'bg-orange-500 text-white';
+  if (val >= -3) return 'bg-red-500 text-white';
+  return 'bg-red-600 text-white';
 };
 
 const getSentimentColor = (val) => {
-  if (val >= 75) return 'bg-lime-500 text-white';
-  if (val >= 62) return 'bg-lime-600/80 text-white';
-  if (val >= 55) return 'bg-lime-700/60 text-lime-100';
-  if (val >= 45) return 'bg-slate-600/50 text-slate-200';
-  if (val >= 38) return 'bg-orange-600/60 text-orange-200';
-  if (val >= 25) return 'bg-red-500/80 text-red-100';
-  return 'bg-red-500 text-white';
+  if (val >= 75) return 'bg-green-500 text-white';
+  if (val >= 62) return 'bg-lime-500 text-white';
+  if (val >= 55) return 'bg-lime-400 text-gray-900';
+  if (val >= 45) return 'bg-yellow-400 text-gray-900';
+  if (val >= 38) return 'bg-orange-500 text-white';
+  if (val >= 25) return 'bg-red-500 text-white';
+  return 'bg-red-600 text-white';
 };
 
 const getSentimentLabel = (val) => {
@@ -135,7 +135,7 @@ const SectorHeatmap = () => {
 
   if (error) {
     return (
-      <div className="bg-orange-900/20 border border-orange-700/40 rounded-xl p-4 text-orange-400 text-sm">{error}</div>
+      <div className="bg-orange-900 border border-orange-700/40 rounded-xl p-4 text-orange-400 text-sm">{error}</div>
     );
   }
 
@@ -217,7 +217,7 @@ const SectorHeatmap = () => {
             <Badge className="bg-purple-900/50 text-purple-300 border-purple-700/50 text-[10px]">
               {sentiment.agents_used || 4} agents
             </Badge>
-            <Badge className={`text-[10px] border-0 ${sentiment.risk_regime === 'risk-on' ? 'bg-lime-900/50 text-lime-300' : sentiment.risk_regime === 'risk-off' ? 'bg-orange-900/50 text-orange-300' : 'bg-slate-700/50 text-slate-300'}`}>
+            <Badge className={`text-[10px] border-0 ${sentiment.risk_regime === 'risk-on' ? 'bg-lime-600 text-lime-300' : sentiment.risk_regime === 'risk-off' ? 'bg-orange-700 text-orange-300' : 'bg-slate-700/50 text-slate-300'}`}>
               {sentiment.risk_regime || 'mixed'}
             </Badge>
             {history && history.snapshots_count > 1 && (
@@ -245,7 +245,7 @@ const SectorHeatmap = () => {
 
       {!isAI && summary.best_sector && summary.worst_sector && (
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <Card className="bg-lime-950/20 border-lime-700/30 rounded-xl p-3 flex items-center gap-3">
+          <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-3 flex items-center gap-3">
             <TrendingUp className="w-5 h-5 text-lime-400" />
             <div>
               <p className="text-slate-400 text-[10px] uppercase">Best Sector</p>
@@ -348,10 +348,10 @@ const SectorHeatmap = () => {
                 <div className="w-3 h-3 rounded bg-slate-600/50" /><span>45-55</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-emerald-600/70" /><span>55-75</span>
+                <div className="w-3 h-3 rounded bg-green-600" /><span>55-75</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-emerald-500/90" /><span>75-100</span>
+                <div className="w-3 h-3 rounded bg-green-500" /><span>75-100</span>
               </div>
             </div>
             <span className="flex items-center gap-1"><Brain className="w-3 h-3" /> AI Sentiment Score (0-100)</span>
@@ -360,16 +360,16 @@ const SectorHeatmap = () => {
           <>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-red-500/90" /><span>-3%+</span>
+                <div className="w-3 h-3 rounded bg-red-600" /><span>-3%+</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-orange-900/30" /><span>-0.5%</span>
+                <div className="w-3 h-3 rounded bg-orange-500" /><span>-0.5%</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-lime-900/30" /><span>+0.5%</span>
+                <div className="w-3 h-3 rounded bg-yellow-400" /><span>+0.5%</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-emerald-500/90" /><span>+3%+</span>
+                <div className="w-3 h-3 rounded bg-green-500" /><span>+3%+</span>
               </div>
             </div>
             <span>Tile size ~ S&P 500 sector weight</span>

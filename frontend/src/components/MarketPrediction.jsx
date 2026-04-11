@@ -84,7 +84,7 @@ const MarketPrediction = ({ onSubscribe }) => {
         ))}
       </div>
 
-      {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
+      {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
       {/* Loading */}
       {loading && !prediction && (

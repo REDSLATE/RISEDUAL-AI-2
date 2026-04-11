@@ -17,11 +17,11 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const VERDICT_COLORS = {
-  'STRONG BUY': { bg: 'bg-lime-900/40', text: 'text-lime-400', border: 'border-emerald-700/50' },
-  'BUY': { bg: 'bg-lime-900/30', text: 'text-lime-400', border: 'border-emerald-700/40' },
+  'STRONG BUY': { bg: 'bg-lime-600', text: 'text-lime-400', border: 'border-emerald-700/50' },
+  'BUY': { bg: 'bg-lime-700', text: 'text-lime-400', border: 'border-emerald-700/40' },
   'HOLD': { bg: 'bg-amber-900/30', text: 'text-amber-300', border: 'border-amber-700/40' },
-  'SELL': { bg: 'bg-orange-900/30', text: 'text-orange-400', border: 'border-red-700/40' },
-  'STRONG SELL': { bg: 'bg-orange-900/40', text: 'text-orange-400', border: 'border-red-700/50' },
+  'SELL': { bg: 'bg-orange-800', text: 'text-orange-400', border: 'border-red-700/40' },
+  'STRONG SELL': { bg: 'bg-orange-700', text: 'text-orange-400', border: 'border-red-700/50' },
 };
 
 const AIWarRoom = ({ onSubscribe, onLogin }) => {
@@ -134,7 +134,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
 
       {/* Error */}
       {error && error !== 'pro_required' && (
-        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg flex items-center gap-2">
+        <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
         </div>
       )}

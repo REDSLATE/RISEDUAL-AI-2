@@ -141,7 +141,7 @@ const MacroDashboard = ({ onSubscribe }) => {
             onClick={() => setAutoRefresh(prev => !prev)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
               autoRefresh
-                ? 'bg-lime-900/30 border-emerald-700/50 text-lime-400'
+                ? 'bg-lime-700 border-emerald-700/50 text-lime-400'
                 : 'bg-slate-800 border-slate-400/30 text-slate-400'
             }`}
             data-testid="auto-refresh-toggle"

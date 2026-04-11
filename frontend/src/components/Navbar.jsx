@@ -282,17 +282,17 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                   onClick={() => { onOpenMemory(); setMobileMenuOpen(false); }} data-testid="mobile-memory-btn">
                   <Database className="w-3 h-3 mr-1" /> Memory
                 </Button>
-                <Button variant="outline" size="sm" className="bg-lime-900/30 text-lime-400 border-lime-700/50 rounded-xl text-xs"
+                <Button variant="outline" size="sm" className="bg-lime-700 text-lime-400 border-lime-700/50 rounded-xl text-xs"
                   onClick={() => { onOpenPaperTrading(); setMobileMenuOpen(false); }} data-testid="mobile-paper-trading-btn">
                   <LineChart className="w-3 h-3 mr-1" /> Paper Trade
                 </Button>
                 {user.role === 'owner' && (
-                  <Button variant="outline" size="sm" className="bg-orange-900/30 text-orange-400 border-orange-700/50 rounded-xl text-xs"
+                  <Button variant="outline" size="sm" className="bg-orange-800 text-orange-400 border-orange-700/50 rounded-xl text-xs"
                     onClick={() => { onOpenAdmin(); setMobileMenuOpen(false); }} data-testid="mobile-admin-btn">
                     <Crown className="w-3 h-3 mr-1" /> Admin
                   </Button>
                 )}
-                <Button variant="outline" size="sm" className="bg-orange-900/30 text-orange-400 border-orange-700/50 rounded-xl text-xs"
+                <Button variant="outline" size="sm" className="bg-orange-800 text-orange-400 border-orange-700/50 rounded-xl text-xs"
                   onClick={() => { logout(); setMobileMenuOpen(false); }}>
                   Log Out
                 </Button>

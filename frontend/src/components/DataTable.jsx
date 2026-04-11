@@ -10,7 +10,7 @@ const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilte
   const [filters, setFilters] = useState(null);
 
   const getPowerColor = (power) => {
-    if (power >= 80) return 'bg-emerald-500';
+    if (power >= 80) return 'bg-green-500';
     if (power >= 60) return 'bg-yellow-500';
     return 'bg-orange-500';
   };

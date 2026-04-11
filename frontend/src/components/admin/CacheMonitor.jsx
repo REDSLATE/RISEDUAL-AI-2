@@ -81,7 +81,7 @@ const CacheMonitor = () => {
     hitRate >= 80 ? high : hitRate >= 50 ? mid : low;
 
   const hitRateColor = rateThreshold('text-lime-400', 'text-amber-300', 'text-orange-400');
-  const hitRateBg = rateThreshold('bg-emerald-500', 'bg-amber-500', 'bg-red-500');
+  const hitRateBg = rateThreshold('bg-green-500', 'bg-amber-500', 'bg-red-500');
 
   return (
     <div className="p-6 space-y-5" data-testid="cache-monitor">
@@ -157,7 +157,7 @@ const CacheMonitor = () => {
           </Button>
           <Button size="sm" variant="outline" onClick={clearAll}
             disabled={actionKey === '__all__' || !stats?.total_keys}
-            className="text-[10px] h-7 px-2 bg-orange-900/30 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
+            className="text-[10px] h-7 px-2 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
             data-testid="cache-clear-all-btn">
             <Trash2 className="w-3 h-3 mr-1" />
             Clear All
@@ -193,14 +193,14 @@ const CacheMonitor = () => {
                     {e.refreshing ? (
                       <Badge className="text-[9px] bg-amber-900/40 text-amber-300 border-amber-800">Refreshing</Badge>
                     ) : (
-                      <Badge className="text-[9px] bg-lime-900/40 text-lime-400 border-lime-700">Fresh</Badge>
+                      <Badge className="text-[9px] bg-lime-600 text-lime-400 border-lime-700">Fresh</Badge>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <Button size="sm" variant="ghost"
                       onClick={() => invalidateKey(e.key)}
                       disabled={actionKey === e.key}
-                      className="text-[10px] h-6 px-2 text-orange-400 hover:text-orange-300 hover:bg-orange-900/20"
+                      className="text-[10px] h-6 px-2 text-orange-400 hover:text-orange-300 hover:bg-orange-900"
                       data-testid={`cache-invalidate-${e.key}`}>
                       <Trash2 className="w-3 h-3" />
                     </Button>

@@ -130,7 +130,7 @@ const MacroDataSection = ({ macroData }) => {
   const gf = macroData.gov_filings || {};
 
   const cards = [
-    { icon: Globe, color: 'text-lime-400', bgColor: 'bg-lime-900/20 border-lime-700/30', title: 'World Events', values: [
+    { icon: Globe, color: 'text-lime-400', bgColor: 'bg-lime-800 border-lime-700/30', title: 'World Events', values: [
       { label: 'Total Events', value: we.total || 0 },
       { label: 'High Impact', value: we.high_impact || 0 },
     ], extra: we.top_sectors?.length > 0 ? `Sectors: ${we.top_sectors.join(', ')}` : null },

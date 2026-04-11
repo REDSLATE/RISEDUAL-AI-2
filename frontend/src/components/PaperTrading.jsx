@@ -80,7 +80,7 @@ const PaperTrading = ({ onClose }) => {
   };
 
   const pnlColor = (val) => val > 0 ? 'text-lime-400' : val < 0 ? 'text-orange-400' : 'text-slate-400';
-  const pnlBg = (val) => val > 0 ? 'bg-lime-900/20 border-lime-700/30' : val < 0 ? 'bg-orange-900/20 border-orange-700/30' : 'bg-slate-700/45 border-slate-400/30/40';
+  const pnlBg = (val) => val > 0 ? 'bg-lime-800 border-lime-700/30' : val < 0 ? 'bg-orange-900 border-orange-700/30' : 'bg-slate-700/45 border-slate-400/30/40';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="paper-trading-modal">
@@ -204,7 +204,7 @@ const PaperTrading = ({ onClose }) => {
                   {/* Side Toggle */}
                   <div className="flex gap-2">
                     <button onClick={() => setSide('BUY')}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-emerald-500/20 text-lime-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-400/25'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-green-500/20 text-lime-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-400/25'}`}
                       data-testid="paper-buy-toggle">
                       <ArrowUpRight className="w-4 h-4 inline mr-1" /> BUY
                     </button>
@@ -236,7 +236,7 @@ const PaperTrading = ({ onClose }) => {
                   </div>
                   {/* Execute */}
                   <Button onClick={executeTrade} disabled={tradeLoading || !symbol.trim() || !qty}
-                    className={`w-full rounded-lg py-2.5 font-semibold ${side === 'BUY' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'} text-white`}
+                    className={`w-full rounded-lg py-2.5 font-semibold ${side === 'BUY' ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'} text-white`}
                     data-testid="paper-execute-btn">
                     {tradeLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
                     {side} {symbol || '...'} {qty ? `x ${qty}` : ''}
@@ -266,7 +266,7 @@ const PaperTrading = ({ onClose }) => {
               {trades.length > 0 ? trades.map((t, i) => (
                 <Card key={i} className="bg-slate-700/35 border-slate-400/30/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-lime-900/40' : 'bg-orange-900/40'}`}>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-lime-600' : 'bg-orange-700'}`}>
                       {t.side === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-lime-400" /> : <ArrowDownRight className="w-4 h-4 text-orange-400" />}
                     </div>
                     <div>

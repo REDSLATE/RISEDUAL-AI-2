@@ -6,7 +6,7 @@ import { Badge } from '../ui/badge';
 const BriefView = ({ data }) => {
   const b = data.brief;
   const verdictStyles = {
-    buy: { bg: 'bg-emerald-500', border: 'border-emerald-700/50', text: 'text-lime-400', glow: 'from-emerald-950/40 to-green-950/40' },
+    buy: { bg: 'bg-green-500', border: 'border-emerald-700/50', text: 'text-lime-400', glow: 'from-emerald-950/40 to-green-950/40' },
     hold: { bg: 'bg-amber-500', border: 'border-amber-700/50', text: 'text-amber-300', glow: 'from-amber-950/40 to-yellow-950/40' },
     sell: { bg: 'bg-red-500', border: 'border-red-700/50', text: 'text-orange-400', glow: 'from-red-950/40 to-rose-950/40' },
   };

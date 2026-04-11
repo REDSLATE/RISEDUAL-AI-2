@@ -48,10 +48,10 @@ const AdminTools = () => {
   };
 
   const gradeColor = (grade) => {
-    if (grade?.startsWith('A')) return 'text-lime-400 bg-lime-900/30 border-emerald-700/50';
+    if (grade?.startsWith('A')) return 'text-lime-400 bg-lime-700 border-emerald-700/50';
     if (grade?.startsWith('B')) return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
     if (grade?.startsWith('C')) return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
-    return 'text-orange-400 bg-orange-900/30 border-red-700/50';
+    return 'text-orange-400 bg-orange-800 border-red-700/50';
   };
 
   return (
@@ -60,7 +60,7 @@ const AdminTools = () => {
 
       <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-lime-900/20 border border-emerald-700/30 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-lime-800 border border-emerald-700/30 flex items-center justify-center shrink-0">
             <CheckCircle className="w-6 h-6 text-lime-400" />
           </div>
           <div className="flex-1">

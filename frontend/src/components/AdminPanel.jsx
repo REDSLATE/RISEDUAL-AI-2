@@ -135,7 +135,7 @@ const AdminPanel = ({ onClose }) => {
                       </td>
                       <td className="px-4 py-3">
                         <Badge className={`text-[10px] ${
-                          u.role === 'owner' ? 'bg-orange-900/40 text-orange-400 border-orange-700' :
+                          u.role === 'owner' ? 'bg-orange-700 text-orange-400 border-orange-700' :
                           u.role === 'admin' ? 'bg-blue-900/40 text-blue-400 border-blue-800' :
                           'bg-slate-700 text-slate-400'
                         }`}>{u.role}</Badge>
@@ -167,13 +167,13 @@ const AdminPanel = ({ onClose }) => {
                               </Button>
                             )}
                             {u.is_active !== false ? (
-                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-orange-900/30 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
+                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
                                 disabled={actionLoading === `${u._id}-deactivate`}
                                 onClick={() => doAction(u._id, 'deactivate')}>
                                 <UserX className="w-3 h-3 mr-1" /> Disable
                               </Button>
                             ) : (
-                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-lime-900/30 text-lime-400 border-lime-700/50 hover:bg-emerald-800/40"
+                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-lime-700 text-lime-400 border-lime-700/50 hover:bg-emerald-800/40"
                                 disabled={actionLoading === `${u._id}-activate`}
                                 onClick={() => doAction(u._id, 'activate')}>
                                 <UserCheck className="w-3 h-3 mr-1" /> Enable

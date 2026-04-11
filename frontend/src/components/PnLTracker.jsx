@@ -60,7 +60,7 @@ const PnLTracker = ({ onOpenBroker }) => {
 
   if (error) {
     return (
-      <Card className="bg-orange-900/20 border-orange-700/40 rounded-xl p-4">
+      <Card className="bg-orange-900 border-orange-700/40 rounded-xl p-4">
         <div className="flex items-center gap-2 text-orange-400 text-sm">
           <AlertTriangle className="w-4 h-4" />
           {error}
@@ -145,7 +145,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                       {b.paper && <Badge className="bg-amber-900/30 text-amber-300 text-[9px] border-amber-700/50">PAPER</Badge>}
                     </div>
                     {b.error ? (
-                      <Badge className="bg-orange-900/30 text-orange-400 text-[9px]">Error</Badge>
+                      <Badge className="bg-orange-800 text-orange-400 text-[9px]">Error</Badge>
                     ) : (
                       <span className="text-slate-400 text-[10px]">{b.positions_count} positions</span>
                     )}
@@ -195,7 +195,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                       <tr key={`${p.symbol}-${p.broker}-${i}`} className="border-b border-slate-600/30/40 hover:bg-slate-700/20 transition-colors" data-testid={`position-row-${p.symbol}`}>
                         <td className="px-4 py-2.5">
                           <span className="text-[#3DE8D9] font-bold">{p.symbol}</span>
-                          {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-orange-900/30 text-orange-400">SHORT</Badge>}
+                          {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-orange-800 text-orange-400">SHORT</Badge>}
                         </td>
                         <td className="px-4 py-2.5 text-right text-white tabular-nums">{p.qty}</td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">${p.avg_entry.toFixed(2)}</td>

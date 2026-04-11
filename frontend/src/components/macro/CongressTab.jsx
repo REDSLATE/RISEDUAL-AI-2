@@ -112,7 +112,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
 };
 
 const getPartyStyle = (party) => {
-  if (party === 'R') return 'bg-orange-900/30 text-orange-400';
+  if (party === 'R') return 'bg-orange-800 text-orange-400';
   if (party === 'D') return 'bg-blue-900/30 text-blue-400';
   return 'bg-slate-700 text-slate-400';
 };

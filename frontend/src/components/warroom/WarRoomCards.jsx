@@ -9,15 +9,15 @@ import { Badge } from '../ui/badge';
 
 // Helper: score → badge CSS class (green/amber/red threshold)
 const scoreBadge = (val, high = 7, mid = 4) =>
-  val >= high ? 'bg-lime-900/40 text-lime-400' :
-  val >= mid ? 'bg-amber-900/40 text-amber-300' : 'bg-orange-900/40 text-orange-400';
+  val >= high ? 'bg-lime-600 text-lime-400' :
+  val >= mid ? 'bg-amber-900/40 text-amber-300' : 'bg-orange-700 text-orange-400';
 
 const IMPACT_DOTS = { positive: 'bg-emerald-400', caution: 'bg-amber-400' };
 const impactDot = (impact) => IMPACT_DOTS[impact] || 'bg-slate-500';
 
 const SENTIMENT_BADGES = {
-  bullish: 'bg-lime-900/40 text-lime-400',
-  bearish: 'bg-orange-900/40 text-orange-400',
+  bullish: 'bg-lime-600 text-lime-400',
+  bearish: 'bg-orange-700 text-orange-400',
 };
 const sentimentBadge = (s) => SENTIMENT_BADGES[s] || 'bg-slate-700 text-slate-400';
 
@@ -144,7 +144,7 @@ export const EarningsCard = ({ earnings }) => (
           {earnings.beat_rate}% Beat Rate
         </Badge>
         {earnings.current_streak > 0 && (
-          <Badge className="bg-lime-900/30 text-lime-400 text-[10px]">{earnings.current_streak}Q Streak</Badge>
+          <Badge className="bg-lime-700 text-lime-400 text-[10px]">{earnings.current_streak}Q Streak</Badge>
         )}
       </div>
     </div>
@@ -155,7 +155,7 @@ export const EarningsCard = ({ earnings }) => (
         return (
           <div key={q.date} className="flex-1 flex flex-col items-center justify-end h-full">
             <div
-              className={`w-full rounded-t transition-all ${q.beat ? 'bg-emerald-500/70' : 'bg-red-500/70'}`}
+              className={`w-full rounded-t transition-all ${q.beat ? 'bg-green-500/70' : 'bg-red-500/70'}`}
               style={{ height: `${h}%` }}
               title={`${q.date}: ${q.beat ? 'Beat' : 'Miss'} by ${surprise.toFixed(1)}%`}
             />
@@ -169,7 +169,7 @@ export const EarningsCard = ({ earnings }) => (
       ))}
     </div>
     <div className="flex items-center gap-3 mt-2 text-[10px]">
-      <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500/70 rounded-sm" /> Beat</span>
+      <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500/70 rounded-sm" /> Beat</span>
       <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500/70 rounded-sm" /> Miss</span>
     </div>
   </Card>
@@ -191,8 +191,8 @@ export const InsidersCard = ({ insiders }) => (
         <span className="text-lime-400">Buys ({insiders.buy_ratio}%)</span>
         <span className="text-orange-400">Sells ({100 - insiders.buy_ratio}%)</span>
       </div>
-      <div className="w-full h-2.5 bg-orange-900/40 rounded-full overflow-hidden">
-        <div className="h-full bg-emerald-500/70 rounded-full transition-all duration-700" style={{ width: `${insiders.buy_ratio}%` }} />
+      <div className="w-full h-2.5 bg-orange-700 rounded-full overflow-hidden">
+        <div className="h-full bg-green-500/70 rounded-full transition-all duration-700" style={{ width: `${insiders.buy_ratio}%` }} />
       </div>
     </div>
     <div className="space-y-1.5 max-h-36 overflow-y-auto">
@@ -272,7 +272,7 @@ export const CrewInsightsCard = ({ composite }) => {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         {composite.bull_case && (
-          <div className="bg-lime-900/20 border border-lime-700/30 rounded-lg p-3">
+          <div className="bg-lime-800 border border-lime-700/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <TrendingUp className="w-3 h-3 text-lime-400" />
               <span className="text-lime-400 text-[10px] font-semibold uppercase">Strategist Bull Case</span>
@@ -281,7 +281,7 @@ export const CrewInsightsCard = ({ composite }) => {
           </div>
         )}
         {composite.bear_case && (
-          <div className="bg-orange-900/20 border border-orange-700/30 rounded-lg p-3">
+          <div className="bg-orange-900 border border-orange-700/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <TrendingDown className="w-3 h-3 text-orange-400" />
               <span className="text-orange-400 text-[10px] font-semibold uppercase">Auditor Bear Case</span>

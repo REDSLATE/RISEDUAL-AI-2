@@ -8,9 +8,9 @@ const PatternsView = ({ data }) => {
   const dirColors = { bullish: 'text-lime-400', bearish: 'text-orange-400', neutral: 'text-amber-300' };
   const statusStyles = {
     forming: 'bg-amber-900/30 text-amber-300 border-amber-700/40',
-    confirmed: 'bg-lime-900/30 text-lime-400 border-emerald-700/40',
+    confirmed: 'bg-lime-700 text-lime-400 border-emerald-700/40',
     breaking_out: 'bg-cyan-900/30 text-cyan-400 border-cyan-700/40',
-    failed: 'bg-orange-900/30 text-orange-400 border-red-700/40',
+    failed: 'bg-orange-800 text-orange-400 border-red-700/40',
   };
 
   return (
@@ -37,7 +37,7 @@ const PatternsView = ({ data }) => {
             <p className="text-orange-400 text-[10px] uppercase tracking-wider mb-2 font-medium">Resistance</p>
             <div className="flex gap-2 flex-wrap">
               {(a.key_levels.resistance || []).map((l, i) => (
-                <Badge key={`r-${i}`} className="bg-orange-900/30 text-orange-300 border-red-700/40 text-sm font-mono">${l}</Badge>
+                <Badge key={`r-${i}`} className="bg-orange-800 text-orange-300 border-red-700/40 text-sm font-mono">${l}</Badge>
               ))}
             </div>
           </Card>
@@ -45,7 +45,7 @@ const PatternsView = ({ data }) => {
             <p className="text-lime-400 text-[10px] uppercase tracking-wider mb-2 font-medium">Support</p>
             <div className="flex gap-2 flex-wrap">
               {(a.key_levels.support || []).map((l, i) => (
-                <Badge key={`s-${i}`} className="bg-lime-900/30 text-lime-300 border-emerald-700/40 text-sm font-mono">${l}</Badge>
+                <Badge key={`s-${i}`} className="bg-lime-700 text-lime-300 border-emerald-700/40 text-sm font-mono">${l}</Badge>
               ))}
             </div>
           </Card>
@@ -87,7 +87,7 @@ const ConfidenceMeter = ({ confidence }) => {
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${confidence >= 70 ? 'bg-emerald-500' : confidence >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${confidence}%` }} />
+        <div className={`h-full rounded-full ${confidence >= 70 ? 'bg-green-500' : confidence >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${confidence}%` }} />
       </div>
       <span className={`text-[10px] font-bold ${color}`}>{confidence}%</span>
     </div>

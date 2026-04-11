@@ -125,7 +125,7 @@ const BROKERS = [
 // ─── Helpers ───
 
 const ORDER_STATUS_CLASSES = {
-  filled: 'bg-lime-900/50 text-lime-400',
+  filled: 'bg-lime-600 text-lime-400',
   cancelled: 'bg-slate-700 text-slate-400',
 };
 const getOrderStatusClass = (status) => ORDER_STATUS_CLASSES[status] || 'bg-amber-900/50 text-amber-300';
@@ -207,7 +207,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
       </div>
 
       {error && (
-        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg mb-3 flex items-start gap-2" data-testid="broker-connect-error">
+        <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg mb-3 flex items-start gap-2" data-testid="broker-connect-error">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
         </div>
       )}
@@ -377,7 +377,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
   return (
     <div className="space-y-4" data-testid={`broker-dashboard-${brokerId}`}>
       {error && (
-        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg flex items-start gap-2">
+        <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg flex items-start gap-2">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
         </div>
       )}
@@ -411,10 +411,10 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
           {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}Sync Portfolio
         </Button>
         <Button size="sm" onClick={() => setOrderForm({ symbol: '', quantity: 1, side: 'buy', order_type: 'market', time_in_force: 'day' })}
-          className="bg-emerald-600/20 hover:bg-emerald-600/30 text-lime-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
+          className="bg-green-600/20 hover:bg-green-600/30 text-lime-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
           <ArrowUpDown className="w-3 h-3 mr-1" />New Order
         </Button>
-        <Button size="sm" onClick={onDisconnect} className="bg-orange-900/20 hover:bg-orange-900/30 text-orange-400 text-xs rounded-lg border border-orange-700/30 ml-auto" data-testid="broker-disconnect-btn">
+        <Button size="sm" onClick={onDisconnect} className="bg-orange-900 hover:bg-orange-800 text-orange-400 text-xs rounded-lg border border-orange-700/30 ml-auto" data-testid="broker-disconnect-btn">
           <Trash2 className="w-3 h-3 mr-1" />Disconnect
         </Button>
       </div>
@@ -450,7 +450,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
               onChange={e => setOrderForm(p => ({ ...p, limit_price: parseFloat(e.target.value) || null }))}
               className="bg-slate-900 border-slate-600 text-white text-sm rounded-lg" />
           )}
-          <Button type="submit" className={`w-full text-sm rounded-lg ${orderForm.side === 'buy' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'} text-white`}
+          <Button type="submit" className={`w-full text-sm rounded-lg ${orderForm.side === 'buy' ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'} text-white`}
             data-testid="order-submit-btn">
             {orderForm.side === 'buy' ? 'Buy' : 'Sell'} {orderForm.symbol || '...'}
           </Button>
@@ -502,7 +502,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
           ) : orders.slice(0, 20).map((o, i) => (
             <div key={o.id || i} className="bg-slate-700/40 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-lime-900/50 text-lime-400' : 'bg-orange-900/50 text-orange-400'}`}>
+                <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-lime-600 text-lime-400' : 'bg-orange-700 text-orange-400'}`}>
                   {o.side?.toUpperCase()}
                 </Badge>
                 <div>
@@ -625,7 +625,7 @@ const BrokerConnect = () => {
 
             {/* Connected Summary */}
             {oauthMessage && (
-              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-lime-900/20 border-lime-700/30 text-lime-400' : 'bg-orange-900/20 border-orange-700/30 text-orange-400'}`}>
+              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-lime-800 border-lime-700/30 text-lime-400' : 'bg-orange-900 border-orange-700/30 text-orange-400'}`}>
                 {oauthMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 <span>{oauthMessage.text}</span>
               </div>
@@ -683,7 +683,7 @@ const BrokerConnect = () => {
                               <div className="flex items-center gap-2">
                                 <h4 className="text-white font-semibold text-sm">{broker.name}</h4>
                                 {broker.recommended && <Badge className="bg-[#3DE8D9]/20 text-[#3DE8D9] text-[10px]">Recommended</Badge>}
-                                {isConnected && <Badge className="bg-lime-900/40 text-lime-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />{connections.find(c => c.broker_id === broker.id)?.auth_method === 'oauth' ? 'OAuth' : 'Connected'}</Badge>}
+                                {isConnected && <Badge className="bg-lime-600 text-lime-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />{connections.find(c => c.broker_id === broker.id)?.auth_method === 'oauth' ? 'OAuth' : 'Connected'}</Badge>}
                               </div>
                               <p className="text-slate-300 text-xs mt-0.5">{broker.description}</p>
                             </div>

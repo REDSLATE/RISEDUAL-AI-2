@@ -94,7 +94,7 @@ const WhaleRadar = () => {
           <Radio className="w-4 h-4 text-yellow-300" />
           <h3 className="text-white text-sm font-semibold tracking-tight">Whale Radar</h3>
           <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${
-            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
+            connected ? 'bg-green-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
           }`} data-testid="radar-status">
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
             {connected ? 'SCANNING' : 'CONNECTING'}
@@ -129,7 +129,7 @@ const WhaleRadar = () => {
             </div>
             {/* Mini pressure bar */}
             <div className="h-1 rounded-full overflow-hidden flex bg-slate-800 mt-1.5">
-              <div className="bg-emerald-500/50 transition-all duration-700" style={{ width: `${t.bid_pct || 50}%` }} />
+              <div className="bg-green-500/50 transition-all duration-700" style={{ width: `${t.bid_pct || 50}%` }} />
               <div className="bg-red-500/50 transition-all duration-700" style={{ width: `${100 - (t.bid_pct || 50)}%` }} />
             </div>
             <div className="flex justify-between mt-1 text-[9px]">
@@ -159,7 +159,7 @@ const WhaleRadar = () => {
                   {ev.walls?.slice(0, 3).map((w, i) => (
                     <span key={i} className={`px-1.5 py-0.5 rounded border ${
                       w.side === 'bid'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400'
+                        ? 'bg-green-500/10 border-emerald-500/20 text-lime-400'
                         : 'bg-red-500/10 border-red-500/20 text-orange-400'
                     }`}>
                       ${w.price?.toLocaleString()} <span className="text-yellow-300">{w.intensity}</span>

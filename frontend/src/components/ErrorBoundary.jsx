@@ -21,7 +21,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="min-h-screen bg-[#060E1F] flex items-center justify-center p-6" data-testid="error-boundary">
           <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-orange-900/30 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-orange-700/40">
+            <div className="w-16 h-16 bg-orange-800 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-orange-700/40">
               <AlertTriangle className="w-8 h-8 text-orange-400" />
             </div>
             <h1 className="text-white text-2xl font-bold mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>Something went wrong</h1>

@@ -51,7 +51,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="reset-close-btn">
             <X className="w-5 h-5" />
           </button>
-          <div className="w-14 h-14 rounded-full bg-lime-900/30 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
+          <div className="w-14 h-14 rounded-full bg-lime-700 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-7 h-7 text-lime-400" />
           </div>
           <h2 className="text-white text-xl font-bold mb-2">Password Reset!</h2>
@@ -79,7 +79,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
         <p className="text-slate-300 text-sm mb-6">Choose a strong password for your account.</p>
 
         {error && (
-          <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4 flex items-start gap-2" data-testid="reset-error">
+          <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4 flex items-start gap-2" data-testid="reset-error">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>

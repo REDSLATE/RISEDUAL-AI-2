@@ -100,7 +100,7 @@ const AIIntelligence = ({ onSubscribe }) => {
         </Button>
       </div>
 
-      {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4">{error}</div>}
+      {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4">{error}</div>}
 
       {loading && (
         <div className="text-center py-12">

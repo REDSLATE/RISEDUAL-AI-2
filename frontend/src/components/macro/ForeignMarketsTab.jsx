@@ -27,7 +27,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
                   ? <TrendingUp className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
                   : <TrendingDown className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
                 <span className="text-slate-300">{sig.signal}</span>
-                <Badge className={`ml-auto text-[10px] ${sig.severity === 'high' ? 'bg-orange-900/40 text-orange-400 border-orange-700' : 'bg-amber-900/40 text-amber-300 border-amber-800'}`}>
+                <Badge className={`ml-auto text-[10px] ${sig.severity === 'high' ? 'bg-orange-700 text-orange-400 border-orange-700' : 'bg-amber-900/40 text-amber-300 border-amber-800'}`}>
                   {sig.severity}
                 </Badge>
               </div>
@@ -77,7 +77,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
 
 const getMarketStateLabel = (state) => state === 'REGULAR' ? 'OPEN' : (state || 'CLOSED');
 const getMarketStateStyle = (state) => {
-  if (state === 'REGULAR') return 'bg-lime-900/40 text-lime-400';
+  if (state === 'REGULAR') return 'bg-lime-600 text-lime-400';
   if (state === 'PRE') return 'bg-amber-900/40 text-amber-300';
   return 'bg-slate-700 text-slate-400';
 };
@@ -109,7 +109,7 @@ const MarketCard = ({ market, compact, isPulsing }) => {
       </div>
       {!compact && (
         <div className="mt-2 w-full bg-slate-700/40 rounded-full h-1">
-          <div className={`h-1 rounded-full ${isUp ? 'bg-emerald-500' : 'bg-red-500'}`}
+          <div className={`h-1 rounded-full ${isUp ? 'bg-green-500' : 'bg-red-500'}`}
             style={{ width: `${Math.min(Math.abs(market.change_percent || 0) * 10, 100)}%` }} />
         </div>
       )}

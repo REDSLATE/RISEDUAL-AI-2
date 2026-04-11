@@ -203,7 +203,7 @@ const LiveInsightsFeed = () => {
             <h3 className="text-white text-sm font-semibold tracking-wide">Live Insights Feed</h3>
           </div>
           {connected && (
-            <span className="text-[10px] bg-emerald-500/10 text-lime-400 border border-emerald-500/20 rounded-full px-2 py-0.5">
+            <span className="text-[10px] bg-green-500/10 text-lime-400 border border-emerald-500/20 rounded-full px-2 py-0.5">
               LIVE
             </span>
           )}

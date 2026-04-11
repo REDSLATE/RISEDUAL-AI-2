@@ -22,8 +22,8 @@ const tickerScoreColor = (score) =>
   score >= 4 ? 'text-amber-300 border-amber-500' : 'text-orange-400 border-red-500';
 
 const verdictBadge = (v) =>
-  v === 'buy' ? 'bg-lime-900/40 text-lime-400' :
-  v === 'sell' ? 'bg-orange-900/40 text-orange-400' : 'bg-amber-900/40 text-amber-300';
+  v === 'buy' ? 'bg-lime-600 text-lime-400' :
+  v === 'sell' ? 'bg-orange-700 text-orange-400' : 'bg-amber-900/40 text-amber-300';
 
 const WatchlistIntelligence = ({ onSubscribe }) => {
   const { user, isPro } = useAuth();
@@ -106,7 +106,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           )}
 
           {error && (
-            <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>
+            <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>
           )}
 
           {data && !loading && (
@@ -184,7 +184,7 @@ const AlertsList = ({ alerts }) => (
     </p>
     {alerts.map((a, i) => {
       const severityColors = {
-        high: 'bg-orange-900/30 border-orange-700/40 text-orange-300',
+        high: 'bg-orange-800 border-orange-700/40 text-orange-300',
         medium: 'bg-amber-900/30 border-amber-800/40 text-amber-300',
         low: 'bg-slate-800/60 border-slate-400/30/40 text-slate-300',
       };
@@ -212,7 +212,7 @@ const TopMovers = ({ movers }) => (
       {movers.map((m, i) => {
         const positive = (m.change_pct || 0) >= 0;
         return (
-          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-lime-950/20 border-lime-700/30' : 'bg-red-950/20 border-orange-700/30'}`}>
+          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-lime-900 border-lime-700/30' : 'bg-red-950/20 border-orange-700/30'}`}>
             <span className="text-white text-xs font-bold">{m.symbol}</span>
             <span className={`text-xs font-semibold ${positive ? 'text-lime-400' : 'text-orange-400'}`}>
               {positive ? '+' : ''}{m.change_pct?.toFixed(1)}%

@@ -44,9 +44,9 @@ const AccuracyBadge = ({ feature, className = '' }) => {
     return null;
   }
 
-  const color = displayAcc >= 60 ? 'text-lime-400 border-lime-700/40 bg-lime-900/20'
+  const color = displayAcc >= 60 ? 'text-lime-400 border-lime-700/40 bg-lime-800'
     : displayAcc >= 50 ? 'text-amber-300 border-amber-800/40 bg-amber-900/20'
-    : 'text-orange-400 border-orange-700/40 bg-orange-900/20';
+    : 'text-orange-400 border-orange-700/40 bg-orange-900';
 
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${color} ${className}`} data-testid={`accuracy-badge-${feature}`} title={`Based on ${total} verified predictions (${timeframe})`}>

@@ -5,8 +5,8 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 
 const verdictColor = (v) => {
-  if (v === 'BUY') return 'text-lime-400 bg-lime-900/30 border-emerald-700/50';
-  if (v === 'SELL') return 'text-orange-400 bg-orange-900/30 border-red-700/50';
+  if (v === 'BUY') return 'text-lime-400 bg-lime-700 border-emerald-700/50';
+  if (v === 'SELL') return 'text-orange-400 bg-orange-800 border-red-700/50';
   return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
 };
 
@@ -89,7 +89,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
     {/* Catalysts & Risks */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {hypothesis.catalysts?.length > 0 && (
-        <Card className="bg-lime-950/20 border-lime-700/30 rounded-xl p-5">
+        <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-5">
           <h3 className="text-lime-400 font-semibold mb-3 flex items-center gap-2">
             <TrendingUp className="w-4 h-4" /> Strategist Catalysts
           </h3>

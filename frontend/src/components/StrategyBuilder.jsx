@@ -227,7 +227,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
             </Button>
           </div>
 
-          {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
+          {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
           {/* Strategy Results */}
           {strategy && !strategy.error && (
@@ -296,7 +296,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
                       </div>
                     </div>
                     {published ? (
-                      <Badge className="bg-lime-900/40 text-lime-400 border-emerald-700/50 text-xs px-3 py-1">Published</Badge>
+                      <Badge className="bg-lime-600 text-lime-400 border-emerald-700/50 text-xs px-3 py-1">Published</Badge>
                     ) : (
                       <Button
                         onClick={publishToMarketplace}

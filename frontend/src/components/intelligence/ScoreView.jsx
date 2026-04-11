@@ -5,7 +5,7 @@ import { Badge } from '../ui/badge';
 
 const ScoreView = ({ data }) => {
   const s = data.scores;
-  const recColors = { buy: 'bg-emerald-500', hold: 'bg-amber-500', sell: 'bg-red-500' };
+  const recColors = { buy: 'bg-green-500', hold: 'bg-amber-500', sell: 'bg-red-500' };
 
   return (
     <div className="space-y-4" data-testid="score-results">
