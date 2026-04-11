@@ -249,6 +249,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Mobile nav: Added AI War Room, Order Flow, Whale Radar
 - **Verified (Iteration 72)**: All terminology correct, 100% pass
 
+### Portfolio Agent with AI Tool Calling (April 11, 2026)
+- Upgraded from keyword-injection to proper **agentic tool calling** using GPT-5.2 function calling via LiteLLM + Emergent proxy
+- Backend: `portfolio_agent.py` — 4 tools: `get_portfolio_snapshot`, `get_position_detail`, `get_trade_history`, `get_watchlist_news`
+- AI decides which tools to call based on user query (up to 5 iterations)
+- Falls back to context injection if tool calling fails
+- Non-portfolio queries + image uploads bypass the agent, use standard AI service
+- Architecture inspired by user-provided `portfolio-tools.js` starter kit (OpenAI/Anthropic tool calling patterns)
+- **Verified (Iteration 74)**: 100% pass rate (18/18 backend, all frontend)
+
 ### Paper Trading System (April 11, 2026)
 - Backend: `paper_trading_service.py` + `routes/paper_trading.py`
 - MongoDB collections: `paper_portfolios` (user portfolios), `paper_trades` (trade history)
