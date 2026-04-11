@@ -5,7 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 
 const CollapsibleSection = ({ title, icon, section, expanded, toggle, children }) => (
-  <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
+  <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl overflow-hidden">
     <button
       onClick={() => toggle(section)}
       className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-600/30/80 transition-colors"
@@ -22,7 +22,7 @@ const CollapsibleSection = ({ title, icon, section, expanded, toggle, children }
 );
 
 const RuleCard = ({ rule, index, color }) => (
-  <div className={`bg-slate-900/60 rounded-lg p-3 border border-${color}-800/20`}>
+  <div className={`bg-slate-800/50 rounded-lg p-3 border border-${color}-800/20`}>
     <div className="flex items-center gap-2 mb-1">
       <span className={`w-5 h-5 rounded-full bg-${color}-900/40 text-${color}-400 text-[10px] flex items-center justify-center font-bold`}>{index + 1}</span>
       <span className="text-white text-sm font-medium">{rule.condition}</span>
@@ -64,7 +64,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
       <CollapsibleSection title="Technical Indicators" icon={<Target className="w-4 h-4 text-blue-400" />} section="indicators" expanded={expanded} toggle={toggle}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {strategy.indicators.map((ind, i) => (
-            <div key={`ind-${i}`} className="bg-slate-900/60 rounded-lg p-3 border border-slate-400/30/30">
+            <div key={`ind-${i}`} className="bg-slate-800/50 rounded-lg p-3 border border-slate-400/30/30">
               <div className="flex items-center gap-2">
                 <span className="text-white text-sm font-semibold">{ind.name}</span>
                 {ind.period && <Badge className="bg-blue-900/30 text-blue-400 border-blue-800/40 text-[9px]">Period: {ind.period}</Badge>}
@@ -103,7 +103,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
       <CollapsibleSection title="Risk Management" icon={<Shield className="w-4 h-4 text-amber-300" />} section="risk" expanded={expanded} toggle={toggle}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {Object.entries(strategy.risk_management).map(([key, value]) => (
-            <div key={key} className="bg-slate-900/60 rounded-lg p-3 border border-slate-400/30/30">
+            <div key={key} className="bg-slate-800/50 rounded-lg p-3 border border-slate-400/30/30">
               <span className="text-slate-400 text-[10px] uppercase tracking-wider">{key.replace(/_/g, ' ')}</span>
               <p className="text-white text-sm font-semibold mt-0.5">{String(value)}</p>
             </div>
@@ -115,7 +115,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
     {/* Market Conditions & Notes */}
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {strategy.market_conditions && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-[#3DE8D9]" />
             <span className="text-slate-300 text-xs font-medium uppercase">Market Conditions</span>
@@ -124,7 +124,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
         </Card>
       )}
       {strategy.backtesting_notes && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Target className="w-4 h-4 text-violet-300" />
             <span className="text-slate-300 text-xs font-medium uppercase">Backtesting Notes</span>

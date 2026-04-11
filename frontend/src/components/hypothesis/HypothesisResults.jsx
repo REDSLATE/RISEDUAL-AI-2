@@ -68,11 +68,11 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Price Targets */}
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+      <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
         <h3 className="text-slate-300 text-xs font-medium uppercase mb-2">Short-Term Target (1-2 weeks)</h3>
         <p className="text-white text-lg font-bold">{hypothesis.price_target_short || 'N/A'}</p>
       </Card>
-      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+      <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
         <h3 className="text-slate-300 text-xs font-medium uppercase mb-2">Medium-Term Target (1-3 months)</h3>
         <p className="text-white text-lg font-bold">{hypothesis.price_target_medium || 'N/A'}</p>
       </Card>
@@ -80,7 +80,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Thesis */}
     {hypothesis.thesis && (
-      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+      <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-3">Investment Thesis</h3>
         <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">{hypothesis.thesis}</p>
       </Card>
@@ -140,7 +140,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Technical Outlook */}
     {hypothesis.technical_outlook && (
-      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+      <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-[#3DE8D9]" /> Technical Outlook
         </h3>
@@ -150,7 +150,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Strategist & Auditor Analyses */}
     {hypothesis.agent_analyses?.length > 0 && (
-      <Card className="bg-slate-700/45 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
+      <Card className="bg-slate-700/60 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
         <details>
           <summary className="flex items-center gap-2 cursor-pointer text-violet-300 font-semibold text-sm hover:text-violet-300 transition-colors">
             <Brain className="w-4 h-4" />
@@ -171,7 +171,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 );
 
 const ConsensusBreakdown = ({ results, models }) => (
-  <Card className="bg-slate-700/45 border-violet-800/30 rounded-xl p-5" data-testid="consensus-breakdown">
+  <Card className="bg-slate-700/60 border-violet-800/30 rounded-xl p-5" data-testid="consensus-breakdown">
     <h3 className="text-violet-300 font-semibold mb-4 flex items-center gap-2">
       <Network className="w-4 h-4" /> Individual Model Verdicts
     </h3>
@@ -180,7 +180,7 @@ const ConsensusBreakdown = ({ results, models }) => (
         const modelDef = models.find(m => m.key === r.model_key) || models[0];
         const ModelIcon = modelDef.icon;
         return (
-          <div key={r.model_key} className="bg-slate-900/60 border border-slate-400/30/40 rounded-xl p-4">
+          <div key={r.model_key} className="bg-slate-800/50 border border-slate-400/30/40 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <ModelIcon className={`w-4 h-4 ${modelDef.color}`} />
               <span className="text-white text-xs font-medium">{r.model}</span>

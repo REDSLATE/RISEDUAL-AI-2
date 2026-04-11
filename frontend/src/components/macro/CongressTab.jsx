@@ -18,7 +18,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
       </div>
 
       {congressional_trades.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-slate-400/30/40">
             <h3 className="text-white text-sm font-semibold flex items-center gap-2">
               <Landmark className="w-4 h-4 text-violet-300" /> Recent Congressional Stock Trades
@@ -70,7 +70,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
           </h3>
           <div className="space-y-2">
             {fed_announcements.map((ann) => (
-              <Card key={ann.title || ann.date} className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-3 hover:border-slate-600 transition-all">
+              <Card key={ann.title || ann.date} className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-3 hover:border-slate-600 transition-all">
                 <p className="text-white text-sm font-medium leading-snug">{ann.title}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <Clock className="w-3 h-3 text-slate-400" />
@@ -94,7 +94,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
           </h3>
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
             {insider_trades.map((t, i) => (
-              <Card key={`insider-${t.company || t.ticker || i}-${i}`} className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-3">
+              <Card key={`insider-${t.company || t.ticker || i}-${i}`} className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white text-sm font-medium">{t.company || t.ticker || 'Unknown'}</p>

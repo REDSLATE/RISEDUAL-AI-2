@@ -87,7 +87,7 @@ const AdminTools = () => {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
                   {Object.entries(codeQuality.breakdown).map(([key, item]) => (
-                    <div key={key} className="bg-slate-900/60 rounded-lg p-2.5 text-center">
+                    <div key={key} className="bg-slate-800/50 rounded-lg p-2.5 text-center">
                       <div className="flex items-center justify-center gap-1 mb-0.5">
                         {item.score >= item.max * 0.7 ? (
                           <CheckCircle className="w-3 h-3 text-lime-400" />

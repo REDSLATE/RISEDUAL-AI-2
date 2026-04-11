@@ -51,7 +51,7 @@ const ScoreView = ({ data }) => {
       </div>
 
       {s.factors?.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-4">
           <h4 className="text-white text-sm font-semibold mb-3">Key Factors</h4>
           <div className="space-y-2">
             {s.factors.map((f, i) => (

@@ -4,7 +4,7 @@ const Footer = () => {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-slate-600/30/60 bg-[#0B1120]" data-testid="app-footer">
+    <footer className="border-t border-slate-600/30/60 bg-[#111C30]" data-testid="app-footer">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mb-8">
           {/* Brand */}

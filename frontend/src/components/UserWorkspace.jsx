@@ -460,7 +460,7 @@ const DigestToggle = () => {
   if (loading) return null;
 
   return (
-    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
+    <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center">
@@ -507,7 +507,7 @@ const PushToggle = () => {
   };
 
   return (
-    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4" data-testid="push-toggle">
+    <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-4" data-testid="push-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">

@@ -17,7 +17,7 @@ const PredictionCard = ({ prediction }) => {
   const confidence = prediction.confidence_score ?? prediction.confidence;
 
   return (
-    <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-6" data-testid="prediction-main-card">
+    <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
@@ -111,7 +111,7 @@ const TimeframeCard = ({ label, tf }) => {
   const iconColor = isUp ? 'text-lime-400' : isDown ? 'text-orange-400' : 'text-amber-300';
 
   return (
-    <Card className="bg-slate-900/60 border-slate-400/30/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
+    <Card className="bg-slate-800/50 border-slate-400/30/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${iconColor}`} />
         <span className="text-white text-xs font-semibold capitalize">{label.replace('_', ' ')}</span>
@@ -176,7 +176,7 @@ const RealEstateSection = ({ realEstate }) => {
   };
 
   return (
-    <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5" data-testid="real-estate-section">
+    <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5" data-testid="real-estate-section">
       <h3 className="text-white text-sm font-semibold mb-3">Real Estate Outlook</h3>
       <div className="grid grid-cols-2 gap-3">
         <div>

@@ -190,7 +190,7 @@ const LiveInsightsFeed = () => {
   const misses = verifications.filter(e => !e.data.correct).length;
 
   return (
-    <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl overflow-hidden" data-testid="live-insights-feed">
+    <div className="bg-[#111C30] border border-slate-800/60 rounded-xl overflow-hidden" data-testid="live-insights-feed">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}

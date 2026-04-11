@@ -50,14 +50,14 @@ const ReferralLeaderboard = () => {
 
   if (loading) {
     return (
-      <Card className="bg-[#060E1F]/80 border-slate-400/30/40 rounded-2xl p-6" data-testid="leaderboard-loading">
+      <Card className="bg-[#0F1A2E]/80 border-slate-400/30/40 rounded-2xl p-6" data-testid="leaderboard-loading">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-300" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
         </div>
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={`skel-${i}`} className="h-12 bg-slate-700/45 rounded-xl animate-pulse" />
+            <div key={`skel-${i}`} className="h-12 bg-slate-700/60 rounded-xl animate-pulse" />
           ))}
         </div>
       </Card>
@@ -66,7 +66,7 @@ const ReferralLeaderboard = () => {
 
   if (!data || data.leaderboard.length === 0) {
     return (
-      <Card className="bg-[#060E1F]/80 border-slate-400/30/40 rounded-2xl p-6" data-testid="leaderboard-empty">
+      <Card className="bg-[#0F1A2E]/80 border-slate-400/30/40 rounded-2xl p-6" data-testid="leaderboard-empty">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-300" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
@@ -80,7 +80,7 @@ const ReferralLeaderboard = () => {
   }
 
   return (
-    <Card className="bg-[#060E1F]/80 border-slate-400/30/40 rounded-2xl p-5" data-testid="referral-leaderboard">
+    <Card className="bg-[#0F1A2E]/80 border-slate-400/30/40 rounded-2xl p-5" data-testid="referral-leaderboard">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center">
@@ -104,7 +104,7 @@ const ReferralLeaderboard = () => {
               data-testid={`leaderboard-rank-${entry.rank}`}
             >
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900/60">
+                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-slate-800/50">
                   {i < 3 ? (
                     <Medal className={`w-4 h-4 ${style.icon}`} />
                   ) : (

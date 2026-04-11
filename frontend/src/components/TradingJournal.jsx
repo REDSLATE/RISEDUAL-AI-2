@@ -266,7 +266,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
           </div>
           {t.notes && <p className="text-slate-300 text-xs mt-1 italic">"{t.notes}"</p>}
           {t.hypothesis && (
-            <div className="mt-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-400/30/30">
+            <div className="mt-2 bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-400/30/30">
               <p className="text-[10px] text-slate-400 mb-0.5">AI Hypothesis</p>
               <p className="text-xs text-white font-medium">{t.hypothesis.verdict} ({t.hypothesis.confidence}%)</p>
               {t.hypothesis.summary && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{t.hypothesis.summary}</p>}
@@ -400,7 +400,7 @@ const TickerPerformance = ({ byTicker }) => {
       <h4 className="text-white text-sm font-semibold mb-2">Performance by Ticker</h4>
       <div className="space-y-1.5">
         {sortedEntries.map(([ticker, data]) => (
-          <div key={ticker} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
+          <div key={ticker} className="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2">
             <div className="flex items-center gap-2">
               <span className="text-white text-sm font-medium">{ticker}</span>
               <span className="text-slate-400 text-[10px]">{data.trades} trades ({data.wins}W)</span>

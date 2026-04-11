@@ -240,7 +240,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               { label: 'Crypto Market', id: 'crypto' },
             ].map(item => (
               <button key={item.id} onClick={() => mobileNav(item.id)}
-                className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/45 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
+                className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
                 {item.label}
               </button>
             ))}

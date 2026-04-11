@@ -458,7 +458,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-700/40 rounded-lg p-0.5">
+      <div className="flex gap-1 bg-slate-700/60 rounded-lg p-0.5">
         {[
           { id: 'positions', label: 'Positions', icon: TrendingUp, count: positions.length },
           { id: 'orders', label: 'Orders', icon: FileText, count: orders.length },
@@ -478,7 +478,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
           {positions.length === 0 ? (
             <p className="text-slate-300 text-sm text-center py-6">No open positions</p>
           ) : positions.map((p, i) => (
-            <div key={`${p.symbol}-${i}`} className="bg-slate-700/40 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={`${p.symbol}-${i}`} className="bg-slate-700/60 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
               <div>
                 <span className="text-white font-semibold text-sm">{p.symbol}</span>
                 <span className="text-slate-300 text-xs ml-2">{p.qty} shares</span>
@@ -500,7 +500,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
           {orders.length === 0 ? (
             <p className="text-slate-300 text-sm text-center py-6">No orders</p>
           ) : orders.slice(0, 20).map((o, i) => (
-            <div key={o.id || i} className="bg-slate-700/40 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={o.id || i} className="bg-slate-700/60 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-lime-600 text-lime-400' : 'bg-orange-700 text-orange-400'}`}>
                   {o.side?.toUpperCase()}
@@ -672,7 +672,7 @@ const BrokerConnect = () => {
                     const isConnected = connectedIds.includes(broker.id);
                     const isConnecting = connectingBroker === broker.id;
                     return (
-                      <div key={broker.id} className={`bg-slate-700/40 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-400/30/30 hover:border-slate-600'}`}
+                      <div key={broker.id} className={`bg-slate-700/60 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-400/30/30 hover:border-slate-600'}`}
                         data-testid={`broker-card-${broker.id}`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
@@ -708,7 +708,7 @@ const BrokerConnect = () => {
                         {/* Feature tags */}
                         <div className="flex flex-wrap gap-1.5 mt-3">
                           {broker.features.map(f => (
-                            <span key={f} className="bg-slate-900/60 text-slate-400 text-[10px] px-2 py-0.5 rounded">{f}</span>
+                            <span key={f} className="bg-slate-800/50 text-slate-400 text-[10px] px-2 py-0.5 rounded">{f}</span>
                           ))}
                         </div>
 
@@ -724,7 +724,7 @@ const BrokerConnect = () => {
 
               {/* How it works */}
               {!activeBroker && (
-                <div className="p-4 bg-slate-700/35 border border-slate-400/30/30 rounded-xl">
+                <div className="p-4 bg-slate-700/55 border border-slate-400/30/30 rounded-xl">
                   <h3 className="text-white font-semibold text-sm mb-2">How it works</h3>
                   <ol className="text-slate-300 text-xs space-y-1 list-decimal list-inside">
                     <li>Sign up with your broker and get your API keys from their developer portal</li>

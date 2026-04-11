@@ -329,7 +329,7 @@ const SavedStrategiesDrawer = ({ strategies, onLoad, onDelete }) => (
     <h4 className="text-white text-sm font-semibold mb-3">Saved Strategies</h4>
     {strategies.length === 0 ? (
       <div className="text-center py-6" data-testid="no-saved-strategies">
-        <div className="w-10 h-10 bg-slate-900/60 rounded-xl flex items-center justify-center mx-auto mb-2 border border-slate-400/30/30">
+        <div className="w-10 h-10 bg-slate-800/50 rounded-xl flex items-center justify-center mx-auto mb-2 border border-slate-400/30/30">
           <Target className="w-5 h-5 text-slate-400" />
         </div>
         <p className="text-slate-300 text-xs">No saved strategies yet.</p>
@@ -338,7 +338,7 @@ const SavedStrategiesDrawer = ({ strategies, onLoad, onDelete }) => (
     ) : (
       <div className="space-y-2 max-h-[200px] overflow-y-auto">
         {strategies.map((s) => (
-          <div key={s.name} className="flex items-center justify-between bg-slate-900/60 border border-slate-400/30/30 rounded-lg px-3 py-2.5 group">
+          <div key={s.name} className="flex items-center justify-between bg-slate-800/50 border border-slate-400/30/30 rounded-lg px-3 py-2.5 group">
             <button className="flex-1 text-left" onClick={() => onLoad(s)} data-testid={`load-strategy-${s.name}`}>
               <span className="text-white text-sm font-medium">{s.strategy?.name || s.name}</span>
               <p className="text-slate-400 text-[10px] truncate max-w-[300px]">{s.description}</p>

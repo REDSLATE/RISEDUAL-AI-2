@@ -21,7 +21,7 @@ const WallEvent = ({ event }) => {
     <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md border ${
       appeared
         ? (isBid ? 'bg-green-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400')
-        : 'bg-slate-700/45 border-slate-400/30 text-slate-400'
+        : 'bg-slate-700/60 border-slate-400/30 text-slate-400'
     }`} data-testid={`wall-event-${event.event}`}>
       {appeared ? <Zap className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
       <span className="font-mono">${event.price?.toLocaleString()}</span>
@@ -203,7 +203,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
 
       {/* Heatmap Grid */}
       {grid.length > 0 ? (
-        <div className="relative overflow-hidden rounded-lg border border-slate-400/30/60 bg-slate-700/40" ref={heatmapRef}>
+        <div className="relative overflow-hidden rounded-lg border border-slate-400/30/60 bg-slate-700/60" ref={heatmapRef}>
           <div className="overflow-x-hidden">
             <div className="min-w-full">
               {grid.map((row, ri) => {

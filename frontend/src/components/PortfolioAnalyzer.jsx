@@ -123,7 +123,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                 </Card>
               </div>
 
-              {result.summary && <p className="text-slate-300 text-sm bg-slate-700/40 rounded-xl p-3 border border-slate-400/30/30">{result.summary}</p>}
+              {result.summary && <p className="text-slate-300 text-sm bg-slate-700/60 rounded-xl p-3 border border-slate-400/30/30">{result.summary}</p>}
 
               {result.suggestions?.length > 0 && (
                 <div>
@@ -139,7 +139,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                   <h4 className="text-white text-sm font-semibold mb-2 flex items-center gap-1"><Shield className="w-4 h-4 text-blue-400" /> Rebalance Actions</h4>
                   <div className="space-y-1">
                     {result.rebalance_actions.map((a, i) => (
-                      <div key={`reb-${i}`} className="flex items-center gap-2 bg-slate-700/40 rounded-lg px-3 py-2 text-xs">
+                      <div key={`reb-${i}`} className="flex items-center gap-2 bg-slate-700/60 rounded-lg px-3 py-2 text-xs">
                         {a.action === 'buy' ? <TrendingUp className="w-3.5 h-3.5 text-lime-400" /> : a.action === 'sell' ? <TrendingDown className="w-3.5 h-3.5 text-orange-400" /> : <Minus className="w-3.5 h-3.5 text-amber-300" />}
                         <span className="text-white font-semibold">{a.ticker}</span>
                         <Badge className={`text-[10px] border ${a.action === 'buy' ? 'text-lime-400 bg-lime-700 border-emerald-700/50' : a.action === 'sell' ? 'text-orange-400 bg-orange-800 border-red-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'}`}>{a.action?.toUpperCase()}</Badge>

@@ -170,7 +170,7 @@ const CacheMonitor = () => {
         <div className="overflow-x-auto rounded-xl border border-slate-400/30/40">
           <table className="w-full text-sm" data-testid="cache-entries-table">
             <thead>
-              <tr className="border-b border-slate-400/30/40 bg-slate-700/40">
+              <tr className="border-b border-slate-400/30/40 bg-slate-700/60">
                 <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Key</th>
                 <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Age</th>
                 <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Size</th>
@@ -211,7 +211,7 @@ const CacheMonitor = () => {
           </table>
         </div>
       ) : !loading ? (
-        <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-8 text-center">
           <Database className="w-8 h-8 text-slate-400 mx-auto mb-2" />
           <p className="text-slate-300 text-sm">No cached entries. Endpoints will populate on first request.</p>
         </Card>

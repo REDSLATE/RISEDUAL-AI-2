@@ -88,7 +88,7 @@ const getCellContent = (col, row) => {
 };
 
   return (
-    <div className="bg-slate-700/45 rounded-xl border border-slate-400/25 p-6">
+    <div className="bg-slate-700/60 rounded-xl border border-slate-400/25 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>

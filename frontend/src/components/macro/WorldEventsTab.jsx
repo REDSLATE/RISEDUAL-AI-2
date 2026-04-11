@@ -18,11 +18,11 @@ const WorldEventsTab = ({ data, loading }) => {
       </div>
 
       {affected_sectors.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 p-4 rounded-xl">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 p-4 rounded-xl">
           <h3 className="text-white text-sm font-semibold mb-3">Sector Impact Map</h3>
           <div className="flex flex-wrap gap-2">
             {affected_sectors.map((s) => (
-              <div key={s.sector} className="flex items-center gap-2 bg-slate-900/60 border border-slate-400/25 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
+              <div key={s.sector} className="flex items-center gap-2 bg-slate-800/50 border border-slate-400/25 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
                 <div className={`w-2 h-2 rounded-full ${s.avg_impact >= 75 ? 'bg-red-500' : s.avg_impact >= 50 ? 'bg-amber-500' : 'bg-green-500'}`} />
                 <span className="text-white text-xs font-medium">{s.sector}</span>
                 <span className={`text-xs font-bold ${s.avg_impact >= 75 ? 'text-orange-400' : s.avg_impact >= 50 ? 'text-amber-300' : 'text-lime-400'}`}>{s.avg_impact}</span>
@@ -64,7 +64,7 @@ const WorldEventsTab = ({ data, loading }) => {
 
 const EventCard = ({ event, isHighImpact }) => (
   <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${
-    isHighImpact ? 'bg-red-500/20 border-red-900/40' : 'bg-slate-700/40 border-slate-400/30/30'
+    isHighImpact ? 'bg-red-500/20 border-red-900/40' : 'bg-slate-700/60 border-slate-400/30/30'
   }`}>
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">

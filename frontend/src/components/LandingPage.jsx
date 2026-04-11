@@ -161,7 +161,7 @@ const Comparison = () => {
         <div className="rounded-xl border border-slate-800/60 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-slate-600/30/60 bg-slate-900/60">
+              <tr className="border-b border-slate-600/30/60 bg-slate-800/50">
                 <th className="text-left text-slate-400 font-medium px-4 py-3">Intelligence Specs</th>
                 <th className="text-center text-teal-400 font-semibold px-4 py-3">RISEDUAL AI</th>
                 <th className="text-center px-4 py-3"><span className="line-through decoration-red-500 decoration-2 text-slate-400">TradeAlgoGPT</span></th>
@@ -184,7 +184,7 @@ const Comparison = () => {
             { icon: <Brain className="w-4 h-4 text-cyan-400" />, title: 'Pruned Memories', desc: 'Prunes toxic data nightly in ChromaDB for evolving accuracy.' },
             { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $45, get full RISEDUAL AI War Room access in under 60 seconds.' },
           ].map(c => (
-            <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-800/40">
+            <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-800/55">
               <div className="mb-2">{c.icon}</div>
               <h4 className="text-xs font-semibold text-white mb-1">{c.title}</h4>
               <p className="text-[10px] text-slate-400 leading-relaxed">{c.desc}</p>
@@ -213,7 +213,7 @@ const Features = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Every feature is designed to give you an unfair advantage in volatile markets.</p>
         <div className="grid md:grid-cols-3 gap-4">
           {features.map(f => (
-            <div key={f.title} className={`p-6 rounded-xl border border-slate-800/50 bg-slate-800/40 hover:border-teal-500/20 transition-colors group ${f.span || ''}`}>
+            <div key={f.title} className={`p-6 rounded-xl border border-slate-800/50 bg-slate-800/55 hover:border-teal-500/20 transition-colors group ${f.span || ''}`}>
               <div className="text-teal-400 mb-3 group-hover:scale-110 transition-transform">{f.icon}</div>
               <h3 className="text-sm font-semibold text-white mb-2">{f.title}</h3>
               <p className="text-xs text-slate-400 leading-relaxed">{f.desc}</p>
@@ -233,7 +233,7 @@ const Pricing = ({ onGetStarted }) => (
       <p className="text-sm text-slate-400 text-center mb-14">No hidden fees. No annual contracts. Cancel anytime.</p>
       <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
         {/* RISEDUAL AI */}
-        <div className="relative p-6 rounded-xl border-2 border-teal-500/40 bg-slate-900/60">
+        <div className="relative p-6 rounded-xl border-2 border-teal-500/40 bg-slate-800/50">
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[10px] text-white font-bold uppercase tracking-wider">
             Recommended
           </div>
@@ -264,7 +264,7 @@ const Pricing = ({ onGetStarted }) => (
           </button>
         </div>
         {/* Others */}
-        <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/40 opacity-60">
+        <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/55 opacity-60">
           <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-2"><span className="line-through decoration-red-500/60 decoration-1">The Old Guard</span></div>
           <h3 className="text-sm font-bold text-slate-400 mb-1"><span className="line-through decoration-red-500 decoration-2">TradeAlgoGPT</span></h3>
           <div className="flex items-baseline gap-1 mb-4">
@@ -323,7 +323,7 @@ const Testimonials = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Real results from real traders using RISEDUAL AI.</p>
         <div className="grid md:grid-cols-3 gap-6">
           {testimonials.map(t => (
-            <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/40">
+            <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/55">
               <div className="flex gap-1 mb-4">
                 {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-teal-400 text-teal-400" />)}
               </div>
@@ -364,7 +364,7 @@ const FAQ = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Everything you need to know about RISEDUAL AI.</p>
         <div className="space-y-3">
           {items.map((item, i) => (
-            <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-800/40 overflow-hidden">
+            <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-800/55 overflow-hidden">
               <button
                 onClick={() => setOpen(open === i ? null : i)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left"

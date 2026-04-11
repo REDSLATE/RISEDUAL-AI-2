@@ -157,7 +157,7 @@ const HealthBadge = ({ score }) => {
 const SummaryCard = ({ summary }) => {
   if (!summary) return null;
   return (
-    <Card className="bg-gradient-to-r from-violet-950/30 to-indigo-950/30 border-violet-800/30 rounded-xl p-4" data-testid="wl-summary">
+    <Card className="bg-gradient-to-r from-violet-950/50 to-indigo-950/40 border-violet-800/30 rounded-xl p-4" data-testid="wl-summary">
       <h4 className="text-white text-sm font-bold mb-1">{summary.headline}</h4>
       <p className="text-slate-300 text-xs mb-3">{summary.outlook}</p>
       <div className="flex gap-3 flex-wrap">
@@ -240,7 +240,7 @@ const TickerGrid = ({ tickers }) => (
         const changePct = q.change_pct || 0;
 
         return (
-          <Card key={`ticker-${i}`} className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
+          <Card key={`ticker-${i}`} className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
             {/* Score Circle */}
             <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 ${scoreColor}`}>
               <span className={`text-sm font-black ${scoreColor.split(' ')[0]}`}>{t.score}</span>

@@ -32,7 +32,7 @@ const CryptoSection = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#060E1F] rounded-xl border border-slate-400/25 p-6">
+      <div className="bg-[#0F1A2E] rounded-xl border border-slate-400/25 p-6">
         <div className="text-slate-400">Loading crypto data...</div>
       </div>
     );
@@ -54,7 +54,7 @@ const CryptoSection = () => {
       {/* Crypto Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {cryptos.map((crypto) => (
-          <Card key={crypto.symbol} className="bg-[#060E1F] border-slate-400/30 p-4 hover:border-slate-600 transition-colors">
+          <Card key={crypto.symbol} className="bg-[#0F1A2E] border-slate-400/30 p-4 hover:border-slate-600 transition-colors">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
@@ -104,7 +104,7 @@ const CryptoSection = () => {
 
       {/* Market Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-slate-700/45 border border-slate-400/25 rounded-xl p-4">
+        <div className="bg-slate-700/60 border border-slate-400/25 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-5 h-5 text-lime-400" />
             <h3 className="text-white font-semibold">Market Overview</h3>
@@ -114,7 +114,7 @@ const CryptoSection = () => {
           </p>
         </div>
         
-        <div className="bg-slate-700/45 border border-slate-400/25 rounded-xl p-4">
+        <div className="bg-slate-700/60 border border-slate-400/25 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Bitcoin className="w-5 h-5 text-orange-400" />
             <h3 className="text-white font-semibold">Trading Insights</h3>

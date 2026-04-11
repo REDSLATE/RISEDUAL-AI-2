@@ -16,7 +16,7 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
   return (
     <div className="space-y-5" data-testid="foreign-markets-tab">
       {data.correlation_signals?.length > 0 && (
-        <Card className="bg-gradient-to-r from-amber-950/30 to-orange-950/20 border-amber-800/40 p-4 rounded-xl">
+        <Card className="bg-gradient-to-r from-amber-950/50 to-orange-950/40 border-amber-800/40 p-4 rounded-xl">
           <h3 className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
             <Zap className="w-3.5 h-3.5" /> Pre-Market Correlation Signals
           </h3>
@@ -84,7 +84,7 @@ const getMarketStateStyle = (state) => {
 const getMarketCardBg = (isPulsing, isHot, isUp) => {
   if (isPulsing) return 'ring-2 ring-[#3DE8D9]/50 animate-pulse';
   if (isHot) return isUp ? 'bg-green-500/20 border-lime-700/30' : 'bg-red-500/15 border-orange-700/30';
-  return 'bg-slate-700/40 border-slate-400/30/30';
+  return 'bg-slate-700/60 border-slate-400/30/30';
 };
 
 const MarketCard = ({ market, compact, isPulsing }) => {
@@ -108,7 +108,7 @@ const MarketCard = ({ market, compact, isPulsing }) => {
         </div>
       </div>
       {!compact && (
-        <div className="mt-2 w-full bg-slate-700/40 rounded-full h-1">
+        <div className="mt-2 w-full bg-slate-700/60 rounded-full h-1">
           <div className={`h-1 rounded-full ${isUp ? 'bg-green-500' : 'bg-red-500'}`}
             style={{ width: `${Math.min(Math.abs(market.change_percent || 0) * 10, 100)}%` }} />
         </div>

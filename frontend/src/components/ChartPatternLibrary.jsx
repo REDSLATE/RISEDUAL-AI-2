@@ -134,7 +134,7 @@ const PatternCard = ({ pattern, onClick }) => (
 );
 
 const ChartPatternLibrary = ({ onSelectPattern }) => (
-  <div className="bg-[#060E1F] rounded-xl p-3 border border-slate-400/30" data-testid="pattern-library">
+  <div className="bg-[#0F1A2E] rounded-xl p-3 border border-slate-400/30" data-testid="pattern-library">
     <div className="flex items-center gap-2 mb-3">
       <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
       <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">Chart Pattern Library</p>

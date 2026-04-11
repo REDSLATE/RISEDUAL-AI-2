@@ -42,7 +42,7 @@ const PnLTracker = ({ onOpenBroker }) => {
 
   if (!user) {
     return (
-      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
+      <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-8 text-center">
         <Briefcase className="w-10 h-10 text-slate-400 mx-auto mb-3" />
         <p className="text-slate-300 text-sm">Login to view your portfolio P&L</p>
       </Card>
@@ -92,7 +92,7 @@ const PnLTracker = ({ onOpenBroker }) => {
       </div>
 
       {!hasPositions ? (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-8 text-center">
           <Briefcase className="w-12 h-12 text-slate-400 mx-auto mb-4" />
           <p className="text-white text-lg font-semibold mb-2">No Positions Found</p>
           <p className="text-slate-300 text-sm mb-4">Connect a broker and open positions to track your P&L</p>
@@ -138,7 +138,7 @@ const PnLTracker = ({ onOpenBroker }) => {
           {data.brokers?.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {data.brokers.map(b => (
-                <Card key={b.broker_id} className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
+                <Card key={b.broker_id} className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-white text-sm font-semibold capitalize">{b.broker_id}</span>
@@ -169,7 +169,7 @@ const PnLTracker = ({ onOpenBroker }) => {
           )}
 
           {/* Positions Table */}
-          <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
+          <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl overflow-hidden">
             <div className="p-4 border-b border-slate-400/30/40 flex items-center justify-between">
               <h3 className="text-white text-sm font-semibold">Open Positions</h3>
               <span className="text-slate-400 text-[10px]">{data.positions?.length || 0} positions</span>
@@ -220,7 +220,7 @@ const PnLTracker = ({ onOpenBroker }) => {
 
           {/* Sector Allocation */}
           {data.sector_allocation?.length > 0 && (
-            <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
+            <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-4">
               <h3 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
                 <PieChart className="w-4 h-4 text-violet-300" /> Sector Allocation
               </h3>
@@ -228,7 +228,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                 {data.sector_allocation.map(s => (
                   <div key={s.name} className="flex items-center gap-3" data-testid={`sector-alloc-${s.name}`}>
                     <span className="text-slate-300 text-xs w-28 truncate">{s.name}</span>
-                    <div className="flex-1 bg-slate-700/40 rounded-full h-2">
+                    <div className="flex-1 bg-slate-700/60 rounded-full h-2">
                       <div
                         className="h-2 rounded-full bg-gradient-to-r from-[#3DE8D9] to-violet-500"
                         style={{ width: `${Math.min(s.pct, 100)}%` }}
@@ -251,11 +251,11 @@ const PnLTracker = ({ onOpenBroker }) => {
 
 const SummaryCard = ({ label, value, sub, icon, accent }) => {
   const accents = {
-    blue: 'from-blue-950/30 to-blue-900/10 border-blue-800/30',
-    green: 'from-emerald-950/30 to-emerald-900/10 border-lime-700/30',
-    red: 'from-red-950/30 to-red-900/10 border-orange-700/30',
-    amber: 'from-amber-950/30 to-amber-900/10 border-amber-800/30',
-    violet: 'from-violet-950/30 to-violet-900/10 border-violet-800/30',
+    blue: 'from-blue-950/50 to-blue-900/30 border-blue-800/40',
+    green: 'from-emerald-950/50 to-emerald-900/30 border-lime-700/40',
+    red: 'from-red-950/50 to-red-900/30 border-orange-700/40',
+    amber: 'from-amber-950/50 to-amber-900/30 border-amber-800/40',
+    violet: 'from-violet-950/50 to-violet-900/30 border-violet-800/40',
   };
   return (
     <Card className={`bg-gradient-to-br ${accents[accent] || ''} rounded-xl p-4`}>

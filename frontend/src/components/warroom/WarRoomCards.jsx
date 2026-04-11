@@ -49,7 +49,7 @@ export const OverviewCard = ({ overview, symbol }) => {
   ];
   const metrics = isEtf ? etfMetrics : stockMetrics;
   return (
-    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
+    <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
       <div className="flex items-center gap-2 mb-3">
         <Building2 className="w-4 h-4 text-[#3DE8D9]" />
         <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
@@ -72,7 +72,7 @@ export const OverviewCard = ({ overview, symbol }) => {
 };
 
 export const AIScoreCard = ({ aiScore }) => (
-  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-ai-score">
+  <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-ai-score">
     <div className="flex items-center gap-2 mb-3">
       <Brain className="w-4 h-4 text-violet-300" />
       <h3 className="text-white font-semibold text-sm">AI Score</h3>
@@ -109,7 +109,7 @@ export const AIScoreCard = ({ aiScore }) => (
 );
 
 export const BriefCard = ({ brief }) => (
-  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-brief">
+  <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-brief">
     <div className="flex items-center gap-2 mb-3">
       <Zap className="w-4 h-4 text-amber-300" />
       <h3 className="text-white font-semibold text-sm">Intelligence Brief</h3>
@@ -121,7 +121,7 @@ export const BriefCard = ({ brief }) => (
         {brief.key_levels && (
           <div className="flex flex-wrap gap-2">
             {Object.entries(brief.key_levels).map(([k, v]) => (
-              <Badge key={k} className="bg-slate-900/60 text-slate-300 text-[10px]">
+              <Badge key={k} className="bg-slate-800/50 text-slate-300 text-[10px]">
                 {k}: {typeof v === 'number' ? `$${v}` : v}
               </Badge>
             ))}
@@ -133,7 +133,7 @@ export const BriefCard = ({ brief }) => (
 );
 
 export const EarningsCard = ({ earnings }) => (
-  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-earnings">
+  <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-earnings">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <Target className="w-4 h-4 text-lime-400" />
@@ -176,7 +176,7 @@ export const EarningsCard = ({ earnings }) => (
 );
 
 export const InsidersCard = ({ insiders }) => (
-  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-insiders">
+  <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-insiders">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <Users className="w-4 h-4 text-blue-400" />
@@ -260,7 +260,7 @@ export const CompositeBreakdownBar = ({ breakdown }) => {
 export const CrewInsightsCard = ({ composite }) => {
   if (!composite?.multi_agent) return null;
   return (
-    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-crew-insights">
+    <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-crew-insights">
       <div className="flex items-center gap-2 mb-3">
         <Brain className="w-4 h-4 text-violet-300" />
         <h3 className="text-white font-semibold text-sm">Strategist vs Auditor</h3>
@@ -321,10 +321,10 @@ export const CrewInsightsCard = ({ composite }) => {
       {(composite.price_target_short || composite.price_target_medium) && (
         <div className="flex gap-3 mb-3">
           {composite.price_target_short && composite.price_target_short !== 'N/A' && (
-            <Badge className="bg-slate-900/60 text-slate-300 text-[10px]">Short-term: {composite.price_target_short}</Badge>
+            <Badge className="bg-slate-800/50 text-slate-300 text-[10px]">Short-term: {composite.price_target_short}</Badge>
           )}
           {composite.price_target_medium && composite.price_target_medium !== 'N/A' && (
-            <Badge className="bg-slate-900/60 text-slate-300 text-[10px]">Medium-term: {composite.price_target_medium}</Badge>
+            <Badge className="bg-slate-800/50 text-slate-300 text-[10px]">Medium-term: {composite.price_target_medium}</Badge>
           )}
         </div>
       )}

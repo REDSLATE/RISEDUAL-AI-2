@@ -55,7 +55,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* P&L Curve */}
       {m.cumulative_pnl?.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">Cumulative P&L</h4>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={m.cumulative_pnl}>
@@ -78,7 +78,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Buy & Hold Comparison + Win/Loss */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
           <h4 className="text-slate-300 text-xs font-medium uppercase mb-3">Strategy vs Buy & Hold</h4>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -101,7 +101,7 @@ const BacktestResults = ({ result, onClose }) => {
           </div>
         </Card>
 
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
           <h4 className="text-slate-300 text-xs font-medium uppercase mb-3">Win / Loss Breakdown</h4>
           <div className="flex items-center gap-4">
             <div className="flex-1">
@@ -128,7 +128,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Monthly Breakdown */}
       {m.monthly?.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">Monthly Performance</h4>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={m.monthly}>
@@ -149,7 +149,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Trade Log */}
       {result.trades?.length > 0 && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">
             Trade Log ({result.total_trades_generated > 50 ? `Last 50 of ${result.total_trades_generated}` : result.trades.length} trades)
           </h4>
@@ -207,7 +207,7 @@ const BacktestResults = ({ result, onClose }) => {
       )}
 
       {/* Disclaimer */}
-      <div className="flex items-start gap-2 text-slate-400 text-[10px] bg-slate-700/35 rounded-lg p-3">
+      <div className="flex items-start gap-2 text-slate-400 text-[10px] bg-slate-700/55 rounded-lg p-3">
         <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
         <span>Past performance does not guarantee future results. This backtest uses simplified assumptions (single position, no slippage, no commissions). Use as directional guidance only.</span>
       </div>

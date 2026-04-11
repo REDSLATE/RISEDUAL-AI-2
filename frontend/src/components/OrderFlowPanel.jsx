@@ -11,7 +11,7 @@ const BIAS_STYLES = {
   INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-lime-400', bg: 'bg-green-500/10 border-emerald-500/20', icon: TrendingUp },
   INSTITUTIONAL_ASK: { label: 'Institutional Selling', color: 'text-orange-400', bg: 'bg-red-500/10 border-red-500/20', icon: TrendingDown },
   BALANCED: { label: 'Balanced Flow', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20', icon: Minus },
-  NO_DATA: { label: 'No Data', color: 'text-slate-400', bg: 'bg-slate-700/45 border-slate-400/30', icon: Activity },
+  NO_DATA: { label: 'No Data', color: 'text-slate-400', bg: 'bg-slate-700/60 border-slate-400/30', icon: Activity },
 };
 
 const WallBar = ({ wall, maxVol }) => {
@@ -83,7 +83,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
   const maxVol = walls.length > 0 ? Math.max(...walls.map(w => w.volume)) : 0;
 
   return (
-    <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl overflow-hidden" data-testid="order-flow-panel">
+    <div className="bg-[#111C30] border border-slate-800/60 rounded-xl overflow-hidden" data-testid="order-flow-panel">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -122,7 +122,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 <button key={t} onClick={() => setTicker(t)}
                   className={`text-[10px] px-2 py-1 rounded transition-colors ${ticker === t
                     ? 'bg-[#3DE8D9] text-white'
-                    : 'bg-slate-700/45 text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    : 'bg-slate-700/60 text-slate-400 hover:text-white hover:bg-slate-700'}`}
                   data-testid={`flow-ticker-${t}`}
                 >
                   {t}

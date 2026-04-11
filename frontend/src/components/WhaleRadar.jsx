@@ -104,7 +104,7 @@ const WhaleRadar = () => {
       </div>
 
       {/* Ticker Grid */}
-      <div className="grid grid-cols-5 gap-px bg-slate-700/35 p-px" data-testid="radar-grid">
+      <div className="grid grid-cols-5 gap-px bg-slate-700/55 p-px" data-testid="radar-grid">
         {tickerList.map(t => (
           <div key={t.ticker}
             className={`px-3 py-2.5 bg-slate-900/80 hover:bg-slate-600/30/60 transition-colors ${

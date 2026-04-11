@@ -201,7 +201,7 @@ const StrategyCard = ({ item, expanded, onToggle, onClone, cloning, isPro, isLog
           {/* Strategy Details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {item.strategy?.entry_rules?.length > 0 && (
-              <div className="bg-slate-900/60 rounded-lg p-3 border border-slate-400/30/30">
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-400/30/30">
                 <p className="text-lime-400 text-[10px] uppercase tracking-wider mb-1.5 font-medium">Entry Rules</p>
                 {item.strategy.entry_rules.map((r, i) => (
                   <p key={`e-${i}`} className="text-slate-300 text-xs mb-0.5">- {r.condition}</p>
@@ -209,7 +209,7 @@ const StrategyCard = ({ item, expanded, onToggle, onClone, cloning, isPro, isLog
               </div>
             )}
             {item.strategy?.exit_rules?.length > 0 && (
-              <div className="bg-slate-900/60 rounded-lg p-3 border border-slate-400/30/30">
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-400/30/30">
                 <p className="text-orange-400 text-[10px] uppercase tracking-wider mb-1.5 font-medium">Exit Rules</p>
                 {item.strategy.exit_rules.map((r, i) => (
                   <p key={`x-${i}`} className="text-slate-300 text-xs mb-0.5">- {r.condition}</p>
@@ -267,14 +267,14 @@ const QuickStat = ({ icon: Icon, label, value, color }) => (
 );
 
 const MobileStat = ({ label, value, color }) => (
-  <div className="bg-slate-900/60 rounded-lg p-2 text-center border border-slate-400/30/30">
+  <div className="bg-slate-800/50 rounded-lg p-2 text-center border border-slate-400/30/30">
     <p className={`text-sm font-bold ${color}`}>{value}</p>
     <p className="text-slate-400 text-[9px]">{label}</p>
   </div>
 );
 
 const MetricBox = ({ label, value }) => (
-  <div className="bg-slate-900/60 rounded-lg p-2.5 text-center border border-slate-400/30/30">
+  <div className="bg-slate-800/50 rounded-lg p-2.5 text-center border border-slate-400/30/30">
     <p className="text-white text-sm font-semibold">{value}</p>
     <p className="text-slate-400 text-[9px]">{label}</p>
   </div>

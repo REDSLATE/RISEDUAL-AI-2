@@ -16,7 +16,7 @@ const FAILURE_COLORS = {
 };
 
 const StatCard = ({ icon: Icon, label, value, sub, color = 'text-white' }) => (
-  <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-4" data-testid={`stat-${label.toLowerCase().replace(/\s/g, '-')}`}>
+  <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-4" data-testid={`stat-${label.toLowerCase().replace(/\s/g, '-')}`}>
     <div className="flex items-center gap-2 mb-2">
       <Icon className={`w-4 h-4 ${color}`} />
       <span className="text-slate-300 text-xs uppercase tracking-wider">{label}</span>
@@ -45,7 +45,7 @@ const OverviewTab = ({ stats, accuracy }) => {
         <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#3DE8D9]" />
       </div>
 
-      <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-5">
+      <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-5">
         <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
           <Shield className="w-4 h-4 text-[#3DE8D9]" /> Memory Health
         </h4>
@@ -58,7 +58,7 @@ const OverviewTab = ({ stats, accuracy }) => {
       </div>
 
       {stats.last_cleanup && (
-        <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-5">
+        <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-400" /> Last Cleanup Summary
           </h4>
@@ -122,7 +122,7 @@ const CleanupRunCard = ({ run }) => {
   const hasObsolete = run.obsolete_removed > 0;
 
   return (
-    <div className={`bg-[#0B1120] border rounded-xl overflow-hidden ${hasToxic ? 'border-red-500/30' : 'border-slate-800/60'}`}>
+    <div className={`bg-[#111C30] border rounded-xl overflow-hidden ${hasToxic ? 'border-red-500/30' : 'border-slate-600/30'}`}>
       <button onClick={() => setExpanded(!expanded)} className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-slate-600/30/20 transition-colors">
         <div className="flex items-center gap-3">
           <Clock className="w-4 h-4 text-slate-400" />
@@ -169,7 +169,7 @@ const FailureTab = ({ breakdown, modes }) => {
       <h4 className="text-white text-sm font-semibold">Failure Mode Breakdown</h4>
 
       {total === 0 ? (
-        <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-8 text-center">
+        <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-8 text-center">
           <BarChart3 className="w-8 h-8 text-slate-700 mx-auto mb-3" />
           <p className="text-slate-300 text-sm">No verified failures yet</p>
           <p className="text-slate-300 text-xs mt-1">Failure analysis begins once predictions are verified at 24h</p>
@@ -188,7 +188,7 @@ const FailureTab = ({ breakdown, modes }) => {
                   </div>
                   <span className={`text-sm font-bold ${colors.text}`}>{pct.toFixed(0)}%</span>
                 </div>
-                <div className="w-full bg-slate-700/45 rounded-full h-1.5 mb-2">
+                <div className="w-full bg-slate-700/60 rounded-full h-1.5 mb-2">
                   <div className={`h-1.5 rounded-full ${colors.bar}`} style={{ width: `${pct}%` }} />
                 </div>
                 <p className="text-slate-300 text-xs">{info.description}</p>
@@ -198,7 +198,7 @@ const FailureTab = ({ breakdown, modes }) => {
         </div>
       )}
 
-      <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-4">
+      <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-4">
         <h5 className="text-slate-300 text-xs uppercase tracking-wider mb-3">Failure Mode Reference</h5>
         <div className="space-y-2">
           {Object.entries(modes || {}).map(([code, desc]) => (
@@ -218,7 +218,7 @@ const PostMortemTab = ({ postMortems }) => (
     <h4 className="text-white text-sm font-semibold">AI Post-Mortem Results</h4>
 
     {postMortems.length === 0 ? (
-      <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-8 text-center">
+      <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-8 text-center">
         <Brain className="w-8 h-8 text-slate-700 mx-auto mb-3" />
         <p className="text-slate-300 text-sm">No post-mortems completed yet</p>
         <p className="text-slate-300 text-xs mt-1">AI post-mortem runs automatically when predictions fail at 24h verification</p>
@@ -228,7 +228,7 @@ const PostMortemTab = ({ postMortems }) => (
         {postMortems.map((pm, i) => {
           const colors = FAILURE_COLORS[pm.failure_code] || FAILURE_COLORS.UNKNOWN;
           return (
-            <div key={i} className={`bg-[#0B1120] border ${colors.border} rounded-xl p-4`}>
+            <div key={i} className={`bg-[#111C30] border ${colors.border} rounded-xl p-4`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Brain className={`w-4 h-4 ${colors.text}`} />
@@ -310,7 +310,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
   if (!isPro) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="memory-dashboard">
-        <Card className="bg-[#060E1F] border-slate-800 max-w-md w-full p-8 text-center">
+        <Card className="bg-[#0F1A2E] border-slate-800 max-w-md w-full p-8 text-center">
           <Lock className="w-10 h-10 text-slate-400 mx-auto mb-4" />
           <h3 className="text-white text-lg font-semibold mb-2">Memory Dashboard</h3>
           <p className="text-slate-300 text-sm mb-6">Visualize AI memory episodes, cleanup history, and failure analysis. Available for Pro users.</p>
@@ -325,7 +325,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="memory-dashboard">
-      <div className="bg-[#060E1F] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
+      <div className="bg-[#0F1A2E] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-600/30">
           <div className="flex items-center gap-3">

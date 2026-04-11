@@ -111,7 +111,7 @@ const SectorHeatmap = () => {
 
   if (loading && !data) {
     return (
-      <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
+      <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
         <div className="flex items-center gap-3 mb-5">
           <div className="skeleton w-10 h-10 rounded-xl" />
           <div>

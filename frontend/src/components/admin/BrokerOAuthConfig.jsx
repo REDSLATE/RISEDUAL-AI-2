@@ -102,7 +102,7 @@ const BrokerOAuthConfig = () => {
           const isEditing = editingBroker === brokerId;
 
           return (
-            <div key={brokerId} className={`bg-[#0B1120] border rounded-xl overflow-hidden ${config.configured ? 'border-emerald-500/30' : 'border-slate-800/60'}`}
+            <div key={brokerId} className={`bg-[#111C30] border rounded-xl overflow-hidden ${config.configured ? 'border-emerald-500/30' : 'border-slate-800/60'}`}
               data-testid={`broker-config-${brokerId}`}>
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">

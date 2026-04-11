@@ -99,7 +99,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
       {/* Trading Modal */}
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-          <Card className="bg-slate-700/45 border-slate-400/25 rounded-xl p-6 w-full max-w-md">
+          <Card className="bg-slate-700/60 border-slate-400/25 rounded-xl p-6 w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white text-xl font-bold">

@@ -19,7 +19,7 @@ const formatMarketCap = (value) => {
 const formatRevenue = (value) => formatMarketCap(value);
 
 const MetricCard = ({ label, value, prefix = '' }) => (
-  <div className="bg-slate-700/45 rounded-lg p-3">
+  <div className="bg-slate-700/60 rounded-lg p-3">
     <p className="text-slate-300 text-xs mb-1">{label}</p>
     <p className="text-white font-semibold text-sm">{prefix}{value || 'N/A'}</p>
   </div>
@@ -58,7 +58,7 @@ const ResearchCard = ({ data, compact = false }) => {
   };
 
   return (
-    <Card className="bg-slate-700/35 border-slate-400/25 rounded-xl overflow-hidden" data-testid="research-card">
+    <Card className="bg-slate-700/55 border-slate-400/25 rounded-xl overflow-hidden" data-testid="research-card">
       {/* Header */}
       <div className="px-5 py-4 border-b border-slate-400/25 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -149,7 +149,7 @@ const ResearchCard = ({ data, compact = false }) => {
 
           {/* Sources */}
           {data.sources && data.sources.length > 0 && (
-            <div className="px-5 py-3 border-t border-slate-400/25 bg-slate-800/40">
+            <div className="px-5 py-3 border-t border-slate-400/25 bg-slate-700/50">
               <p className="text-xs text-slate-400 mb-2 font-medium">Sources ({data.sources.length})</p>
               <div className="flex flex-wrap gap-2">
                 {data.sources.map((source) => (
@@ -227,7 +227,7 @@ const CompanyResearch = () => {
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
             placeholder="Enter ticker symbol (e.g. AAPL, TSLA, MSFT)..."
-            className="pl-10 bg-slate-700/45 border-slate-400/25 text-white placeholder-slate-500 rounded-xl"
+            className="pl-10 bg-slate-700/60 border-slate-400/25 text-white placeholder-slate-500 rounded-xl"
             data-testid="research-input"
           />
         </div>

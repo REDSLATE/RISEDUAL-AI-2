@@ -119,7 +119,7 @@ const Watchlist = ({ onSubscribe }) => {
   };
 
   return (
-    <Card className="bg-slate-700/45 border-slate-400/25 rounded-xl p-4">
+    <Card className="bg-slate-700/60 border-slate-400/25 rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />

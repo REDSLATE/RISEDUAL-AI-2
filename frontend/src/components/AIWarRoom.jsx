@@ -102,7 +102,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
 
       {/* Pro Lock */}
       {error === 'pro_required' && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-8 text-center">
           <Lock className="w-10 h-10 text-amber-300 mx-auto mb-3" />
           <h3 className="text-white font-bold text-lg mb-2">War Room is Pro Only</h3>
           <p className="text-slate-300 text-sm mb-4">Unlock the full Adversarial AI — Strategist + Auditor dual-signal engine</p>
@@ -117,7 +117,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
 
       {/* Loading */}
       {loading && (
-        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-8 text-center">
           <Shield className="w-10 h-10 text-amber-300 mx-auto animate-pulse" />
           <p className="text-white font-semibold mt-3">Deploying War Room for {symbol}</p>
           <p className="text-slate-300 text-sm">Running Strategist & Auditor — Adversarial dual-signal analysis in progress...</p>
