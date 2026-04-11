@@ -28,12 +28,10 @@ const getHeatColor = (val) => {
 
 const getSentimentColor = (val) => {
   if (val >= 75) return 'bg-green-500 text-white';
-  if (val >= 62) return 'bg-lime-500 text-white';
-  if (val >= 55) return 'bg-lime-400 text-gray-900';
-  if (val >= 45) return 'bg-yellow-400 text-gray-900';
-  if (val >= 38) return 'bg-orange-500 text-white';
-  if (val >= 25) return 'bg-red-500 text-white';
-  return 'bg-red-600 text-white';
+  if (val >= 55) return 'bg-green-600 text-white';
+  if (val >= 45) return 'bg-gray-500 text-white';
+  if (val >= 25) return 'bg-orange-500 text-white';
+  return 'bg-red-500 text-white';
 };
 
 const getSentimentLabel = (val) => {
@@ -339,13 +337,13 @@ const SectorHeatmap = () => {
           <>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-red-500/90" /><span>0-25</span>
+                <div className="w-3 h-3 rounded bg-red-500" /><span>0-25</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-orange-800/50" /><span>25-45</span>
+                <div className="w-3 h-3 rounded bg-orange-500" /><span>25-45</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-slate-600/50" /><span>45-55</span>
+                <div className="w-3 h-3 rounded bg-gray-500" /><span>45-55</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded bg-green-600" /><span>55-75</span>
