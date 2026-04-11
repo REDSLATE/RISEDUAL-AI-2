@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, FileCode, Database, Key } from 'lucide-react';
+import { Users, Shield, ShieldOff, Crown, UserCheck, UserX, RefreshCw, Search, Gift, FileCode, Database, Key, Film } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,6 +9,7 @@ import AdminTools from './admin/AdminTools';
 import PromoManager from './admin/PromoManager';
 import CacheMonitor from './admin/CacheMonitor';
 import BrokerOAuthConfig from './admin/BrokerOAuthConfig';
+import MediaManager from './admin/MediaManager';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -64,6 +65,7 @@ const AdminPanel = ({ onClose }) => {
     { id: 'promos', label: 'Promos', icon: Gift },
     { id: 'broker', label: 'Broker', icon: Key },
     { id: 'cache', label: 'Cache', icon: Database },
+    { id: 'media', label: 'Media', icon: Film },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -194,6 +196,8 @@ const AdminPanel = ({ onClose }) => {
           <BrokerOAuthConfig />
         ) : tab === 'cache' ? (
           <CacheMonitor />
+        ) : tab === 'media' ? (
+          <MediaManager />
         ) : (
           <AdminTools />
         )}

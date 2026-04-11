@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Zap, Shield, BarChart3, Radio, Brain, LineChart,
   Check, X, ArrowRight, ChevronDown, Menu, X as XIcon,
-  Star, TrendingUp, Clock, Users
+  Star, TrendingUp, Clock, Users, Play
 } from 'lucide-react';
+import { getApiBase } from '../utils/apiBase';
 
 const NAV_ITEMS = [
   { label: 'How It Works', href: '#how-it-works' },
@@ -90,6 +91,41 @@ const Hero = ({ onGetStarted, onScroll }) => (
     </div>
   </section>
 );
+
+/* ─── Commercial Video ─── */
+const API_BASE = getApiBase();
+const CommercialVideo = () => {
+  const [video, setVideo] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/media/landing-video`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.has_video) setVideo(d); })
+      .catch(() => {});
+  }, []);
+
+  if (!video) return null;
+
+  return (
+    <section className="py-16 sm:py-24 border-t border-white/5" data-testid="landing-commercial">
+      <div className="max-w-4xl mx-auto px-4 text-center">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-teal-500/20 bg-teal-500/5 text-teal-400 text-xs font-medium mb-6">
+          <Play className="w-3.5 h-3.5" /> See RISEDUAL AI in Action
+        </div>
+        <div className="rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-900/60 shadow-2xl shadow-teal-900/10">
+          <video
+            src={`${API_BASE}/api/media/file/${video.file_id}`}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full aspect-video bg-black"
+            data-testid="landing-video-player"
+          />
+        </div>
+      </div>
+    </section>
+  );
+};
 
 /* ─── How It Works ─── */
 const HowItWorks = () => (
@@ -440,6 +476,7 @@ const LandingPage = ({ onGetStarted }) => {
     <div className="min-h-screen bg-slate-950 text-white" data-testid="landing-page">
       <Header onGetStarted={onGetStarted} />
       <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} />
+      <CommercialVideo />
       <HowItWorks />
       <Comparison />
       <Features />

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response, 
 from services.storage_service import MediaService, get_object, init_storage
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["media"])
 
 
 @router.post("/media/upload")
