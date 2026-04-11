@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -171,6 +171,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-[#0052FF] hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-menu-btn">
                   <Database className="w-4 h-4 mr-2" /> Memory Dashboard
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-emerald-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPaperTrading} data-testid="nav-paper-trading-btn">
+                  <LineChart className="w-4 h-4 mr-2" /> Paper Trading
+                </DropdownMenuItem>
                 {user.role === 'owner' && (
                   <DropdownMenuItem className="text-red-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -278,6 +281,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <Button variant="outline" size="sm" className="bg-blue-900/30 text-[#0052FF] border-blue-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenMemory(); setMobileMenuOpen(false); }} data-testid="mobile-memory-btn">
                   <Database className="w-3 h-3 mr-1" /> Memory
+                </Button>
+                <Button variant="outline" size="sm" className="bg-emerald-900/30 text-emerald-400 border-emerald-800/50 rounded-xl text-xs"
+                  onClick={() => { onOpenPaperTrading(); setMobileMenuOpen(false); }} data-testid="mobile-paper-trading-btn">
+                  <LineChart className="w-3 h-3 mr-1" /> Paper Trade
                 </Button>
                 {user.role === 'owner' && (
                   <Button variant="outline" size="sm" className="bg-red-900/30 text-red-400 border-red-800/50 rounded-xl text-xs"

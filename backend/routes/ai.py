@@ -4,15 +4,25 @@ from typing import Optional
 import os
 import logging
 import base64
+import re
 from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
+from services.paper_trading_service import get_portfolio_context
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
 from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
 from routes.market_data import _collect_all_scrape_data
 
 router = APIRouter(prefix="/api")
 ai_service = AIService()
+
+# Keywords that trigger portfolio context injection
+PORTFOLIO_KEYWORDS = re.compile(
+    r'\b(portfolio|positions?|holdings?|p&l|pnl|profit|loss|unrealized|'
+    r'my stocks?|my trades?|my shares?|how am i doing|trade history|'
+    r'paper trad|buy|sell|cash balance|equity|cost basis)\b',
+    re.IGNORECASE
+)
 
 FREE_CHAT_DAILY_LIMIT = 5
 VALID_HYPOTHESIS_MODELS = ["gpt-5.2", "claude-sonnet-4.5", "gemini-pro", "consensus"]
@@ -72,7 +82,17 @@ async def chat(
                 session_doc["user_id"] = user["_id"]
             await db.chat_sessions.insert_one(session_doc)
 
-        ai_response = await ai_service.chat(message, sessionId, image_base64)
+        # Inject portfolio context if message is portfolio-related
+        enriched_message = message
+        if user and PORTFOLIO_KEYWORDS.search(message):
+            try:
+                ctx = await get_portfolio_context(user["_id"])
+                if ctx:
+                    enriched_message = f"{message}\n\n[PORTFOLIO CONTEXT — real-time data from user's paper trading account]\n{ctx}"
+            except Exception as e:
+                logging.warning(f"Failed to inject portfolio context: {e}")
+
+        ai_response = await ai_service.chat(enriched_message, sessionId, image_base64)
 
         user_message = ChatMessage(
             role="user",
