@@ -312,7 +312,25 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Landing page already aligned (uses Tailwind `teal-400/500`)
 - **Verified (Iteration 76)**: 100% pass, all components + mobile verified
 
+### Card Background Brightness Fix (April 11, 2026)
+- User reported "the boxes are too dark" — card backgrounds blended into `#060E1F` body
+- Brightened 30+ component files systematically:
+  - `bg-[#0B1120]` → `bg-[#111C30]` (container backgrounds)
+  - `bg-[#060E1F]` → `bg-[#0F1A2E]` (card-level backgrounds, not body/nav)
+  - `bg-slate-700/40-45` → `bg-slate-700/60` (all card surfaces)
+  - `bg-slate-700/35` → `bg-slate-700/55` (secondary surfaces)
+  - `bg-slate-900/60` → `bg-slate-800/50` (inner metric boxes, badges)
+  - `bg-slate-800/40` → `bg-slate-800/55` (landing page cards)
+  - StatCard gradients: `/30` opacities → `/50` (MacroShared + PnLTracker)
+  - ForeignMarketsTab correlation signals: gradient opacity boosted
+  - WatchlistIntelligence summary: gradient opacity boosted
+  - MemoryDashboard borders: `slate-800/60` → `slate-600/30`
+- Body background stays `#060E1F`; cards now clearly "float" above it
+- **Verified (Iteration 79)**: 100% pass, all sections desktop + mobile (390px) confirmed visible
+
 ## Backlog
+- P1: Fix Gov Filings Scraper 403 Error (congressional trades API)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
+- P2: Integrate macro scraping data (world events, foreign markets, gov filings) into AI predictions
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
 - P3: Refactor server.py into separate route modules
