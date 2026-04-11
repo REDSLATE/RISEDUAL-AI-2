@@ -362,6 +362,16 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Backend: `POST /api/chat/tts` (text→MP3 base64) + `POST /api/chat/stt` (audio upload→text)
 - **Verified (Iteration 82)**: 100% pass (8/8 backend, all frontend controls)
 
+
+### Broker API Key Vault + Role-Based Execution (April 11, 2026)
+- All users can connect their own broker API keys (Alpaca, Schwab, IBKR, MooMoo, Webull, Robinhood, Public, Kraken) for read-only portfolio sync
+- Only the **owner** account (`managingdirector@redslateholdings.com`) has live trade execution privileges
+- Backend: `_is_execution_allowed()` checks `user.role == 'owner'` — gates `POST /order` and `DELETE /order` with 403
+- New endpoint: `GET /api/broker/execution-status` returns `{execution_allowed, mode}` for the current user
+- Frontend: `AccountDashboard` shows "LIVE TRADING" (lime badge) for owner, "READ ONLY" (amber badge) for others
+- "New Order" button and order form only visible to owner; cancel order buttons also owner-only
+- Read-only endpoints (account, positions, orders, portfolio-sync) remain accessible to all authenticated users
+- **Verified (Iteration 84)**: 100% pass (16/16 backend, all frontend)
 ### Media Upload / Object Storage System (April 11, 2026)
 - Built media upload system using Emergent Object Storage (`emergentintegrations`)
 - Backend: `storage_service.py` (init, put, get) + `routes/media.py` (6 endpoints)
@@ -376,5 +386,4 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
-- P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
-- P3: Refactor server.py into separate route modules
+- P2: Refactor server.py into separate route modules
