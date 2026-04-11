@@ -293,18 +293,21 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
   const [syncing, setSyncing] = useState(false);
   const [orderForm, setOrderForm] = useState(null);
   const [error, setError] = useState('');
+  const [canExecute, setCanExecute] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [accRes, posRes, ordRes] = await Promise.all([
+      const [accRes, posRes, ordRes, execRes] = await Promise.all([
         authFetch(`${API}/broker/account/${brokerId}`),
         authFetch(`${API}/broker/positions/${brokerId}`),
         authFetch(`${API}/broker/orders/${brokerId}?status=all`),
+        authFetch(`${API}/broker/execution-status`),
       ]);
       if (accRes.ok) setAccount(await accRes.json());
       if (posRes.ok) { const d = await posRes.json(); setPositions(d.positions || []); }
       if (ordRes.ok) { const d = await ordRes.json(); setOrders(d.orders || []); }
+      if (execRes.ok) { const d = await execRes.json(); setCanExecute(d.execution_allowed); }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -404,23 +407,28 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
 
       {/* Action bar */}
       <div className="flex items-center gap-2 flex-wrap">
+        <Badge className={`text-[10px] ${canExecute ? 'bg-lime-900/50 text-lime-400 border-lime-700/40' : 'bg-amber-900/50 text-amber-300 border-amber-700/40'}`} data-testid="broker-mode-badge">
+          {canExecute ? 'LIVE TRADING' : 'READ ONLY'}
+        </Badge>
         <Button size="sm" onClick={fetchData} className="bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-lg" data-testid="broker-refresh-btn">
           <RefreshCw className="w-3 h-3 mr-1" />Refresh
         </Button>
         <Button size="sm" onClick={handleSync} disabled={syncing} className="bg-[#3DE8D9]/20 hover:bg-[#3DE8D9]/30 text-[#3DE8D9] text-xs rounded-lg border border-[#3DE8D9]/30" data-testid="broker-sync-btn">
           {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}Sync Portfolio
         </Button>
-        <Button size="sm" onClick={() => setOrderForm({ symbol: '', quantity: 1, side: 'buy', order_type: 'market', time_in_force: 'day' })}
-          className="bg-green-600/20 hover:bg-green-600/30 text-lime-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
-          <ArrowUpDown className="w-3 h-3 mr-1" />New Order
-        </Button>
+        {canExecute && (
+          <Button size="sm" onClick={() => setOrderForm({ symbol: '', quantity: 1, side: 'buy', order_type: 'market', time_in_force: 'day' })}
+            className="bg-green-600/20 hover:bg-green-600/30 text-lime-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
+            <ArrowUpDown className="w-3 h-3 mr-1" />New Order
+          </Button>
+        )}
         <Button size="sm" onClick={onDisconnect} className="bg-orange-900 hover:bg-orange-800 text-orange-400 text-xs rounded-lg border border-orange-700/30 ml-auto" data-testid="broker-disconnect-btn">
           <Trash2 className="w-3 h-3 mr-1" />Disconnect
         </Button>
       </div>
 
-      {/* Order Form */}
-      {orderForm && (
+      {/* Order Form — owner only */}
+      {canExecute && orderForm && (
         <form onSubmit={handlePlaceOrder} className="bg-slate-800/60 border border-slate-600/50 rounded-xl p-4 space-y-3" data-testid="order-form">
           <div className="flex items-center justify-between">
             <h4 className="text-white font-semibold text-sm">Place Order</h4>
@@ -514,7 +522,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
                 <Badge className={`text-[10px] ${getOrderStatusClass(o.status)}`}>
                   {o.status}
                 </Badge>
-                {(o.status === 'new' || o.status === 'accepted' || o.status === 'pending_new') && (
+                {canExecute && (o.status === 'new' || o.status === 'accepted' || o.status === 'pending_new') && (
                   <button onClick={() => handleCancelOrder(o.id)} className="text-orange-400 hover:text-orange-300 text-xs" data-testid={`cancel-order-${o.id}`}>
                     Cancel
                   </button>

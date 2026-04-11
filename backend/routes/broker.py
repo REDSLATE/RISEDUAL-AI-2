@@ -73,6 +73,12 @@ async def _get_user(request: Request) -> dict:
     return await get_current_user(request)
 
 
+async def _is_execution_allowed(request: Request) -> bool:
+    """Only the owner account can execute live trades. All others are read-only."""
+    user = await _get_user(request)
+    return user.get("role") == "owner"
+
+
 # --- Helper: get user's broker credentials from DB ---
 async def _get_user_broker(user_id: str, broker_id: str) -> dict:
     conn = await db.broker_connections.find_one(
@@ -102,6 +108,13 @@ def _build_client(conn: dict):
 # ============================================================
 # BROKER CONNECTION CRUD
 # ============================================================
+
+@router.get("/execution-status")
+async def execution_status(request: Request):
+    """Check if the current user has live trade execution privileges."""
+    allowed = await _is_execution_allowed(request)
+    return {"execution_allowed": allowed, "mode": "live" if allowed else "read_only"}
+
 
 @router.post("/connect")
 async def connect_broker(req: ConnectBrokerRequest, request: Request):
@@ -428,7 +441,9 @@ async def get_positions(broker_id: str, request: Request):
 
 @router.post("/order/{broker_id}")
 async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
-    """Place a trade order through a connected broker."""
+    """Place a trade order through a connected broker. Owner-only."""
+    if not await _is_execution_allowed(request):
+        raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts. Your connection is read-only.")
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
@@ -499,7 +514,9 @@ async def get_orders(broker_id: str, request: Request, status: str = "all"):
 
 @router.delete("/order/{broker_id}/{order_id}")
 async def cancel_order(broker_id: str, order_id: str, request: Request):
-    """Cancel a pending order."""
+    """Cancel a pending order. Owner-only."""
+    if not await _is_execution_allowed(request):
+        raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts.")
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
