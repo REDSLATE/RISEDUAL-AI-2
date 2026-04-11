@@ -1,13 +1,15 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { MessageSquare, History, X, Plus, Minimize2 } from 'lucide-react';
+import { MessageSquare, History, X, Plus, Minimize2, Volume2, VolumeX, Mic } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
-import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
+import { ChatMessages, ChatInputArea, VoiceSelector } from './chat/ChatComponents';
 import ChartPatternLibrary from './ChartPatternLibrary';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
+
+const VOICE_MAP = { female: 'nova', male: 'onyx' };
 
 const TradeGPTChat = ({ onLimitReached }) => {
   const { isPro } = useAuth();
@@ -22,6 +24,9 @@ const TradeGPTChat = ({ onLimitReached }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [voiceMode, setVoiceMode] = useState(null); // null | 'female' | 'male'
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioRef = useRef(null);
   const inputRef = useRef(null);
 
   // Listen for the global open-chat event from Navbar
@@ -57,6 +62,39 @@ const TradeGPTChat = ({ onLimitReached }) => {
     inputRef.current?.focus();
   }, []);
 
+  // TTS: play AI response aloud
+  const playTTS = useCallback(async (text) => {
+    if (!voiceMode) return;
+    try {
+      setIsSpeaking(true);
+      // Strip markdown formatting for cleaner speech
+      const clean = text.replace(/[#*_`\[\]()>~|]/g, '').replace(/\n{2,}/g, '. ').substring(0, 4096);
+      const res = await authFetch(`${API}/chat/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean, voice: VOICE_MAP[voiceMode] }),
+      });
+      if (!res.ok) throw new Error('TTS failed');
+      const data = await res.json();
+      const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+      audioRef.current = audio;
+      audio.onended = () => setIsSpeaking(false);
+      audio.onerror = () => setIsSpeaking(false);
+      await audio.play();
+    } catch (err) {
+      logger.error('TTS error:', err);
+      setIsSpeaking(false);
+    }
+  }, [voiceMode]);
+
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setIsSpeaking(false);
+  }, []);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text && !selectedImage) return;
@@ -84,13 +122,16 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
       if (!res.ok) throw new Error('Chat request failed');
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response || data.message || 'No response generated.' }]);
+      const aiText = data.response || data.message || 'No response generated.';
+      setMessages(prev => [...prev, { role: 'assistant', content: aiText }]);
+      // Speak the response if voice is enabled
+      if (voiceMode) playTTS(aiText);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}. Please try again.` }]);
     } finally {
       setLoading(false);
     }
-  }, [input, selectedImage, imagePreview, sessionId, clearImage, onLimitReached]);
+  }, [input, selectedImage, imagePreview, sessionId, clearImage, onLimitReached, voiceMode, playTTS]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -150,6 +191,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
               </div>
             </div>
             <div className="flex items-center gap-0.5">
+              <VoiceSelector voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} onStopSpeaking={stopSpeaking} />
               <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 px-2 text-[11px]" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
                 Patterns
               </Button>
@@ -199,6 +241,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
             onImageSelect={handleImageSelect}
             onClearImage={clearImage}
             inputRef={inputRef}
+            apiBase={API}
           />
         </div>
       )}

@@ -434,3 +434,76 @@ async def _track_verdict_change(user, symbol: str, hypothesis: dict):
         })
     except Exception as notif_err:
         logging.warning(f"Notification creation error: {notif_err}")
+
+
+# ─── Voice: Text-to-Speech ───
+@router.post("/chat/tts")
+async def text_to_speech(request: Request):
+    """Convert text to speech using OpenAI TTS via Emergent."""
+    try:
+        body = await request.json()
+        text = body.get("text", "")
+        voice = body.get("voice", "nova")  # nova=female, onyx=male
+        if not text:
+            raise HTTPException(status_code=400, detail="No text provided")
+
+        # Truncate to TTS limit (4096 chars)
+        text = text[:4096]
+
+        from emergentintegrations.llm.openai import OpenAITextToSpeech
+        tts = OpenAITextToSpeech(api_key=os.getenv("EMERGENT_LLM_KEY"))
+        audio_base64 = await tts.generate_speech_base64(
+            text=text,
+            model="tts-1",
+            voice=voice,
+            response_format="mp3",
+            speed=1.0,
+        )
+        return {"audio": audio_base64, "format": "mp3", "voice": voice}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"TTS error: {e}")
+        raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
+
+
+# ─── Voice: Speech-to-Text ───
+@router.post("/chat/stt")
+async def speech_to_text(audio: UploadFile = File(...)):
+    """Transcribe audio to text using OpenAI Whisper via Emergent."""
+    try:
+        audio_bytes = await audio.read()
+        if len(audio_bytes) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Audio file too large (max 25MB)")
+
+        import tempfile
+        suffix = ".webm"
+        if audio.filename:
+            if audio.filename.endswith(".wav"):
+                suffix = ".wav"
+            elif audio.filename.endswith(".mp3"):
+                suffix = ".mp3"
+            elif audio.filename.endswith(".m4a"):
+                suffix = ".m4a"
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        from emergentintegrations.llm.openai import OpenAISpeechToText
+        stt = OpenAISpeechToText(api_key=os.getenv("EMERGENT_LLM_KEY"))
+        with open(tmp_path, "rb") as f:
+            response = await stt.transcribe(
+                file=f,
+                model="whisper-1",
+                response_format="json",
+                language="en",
+            )
+
+        os.unlink(tmp_path)
+        return {"text": response.text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"STT error: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")

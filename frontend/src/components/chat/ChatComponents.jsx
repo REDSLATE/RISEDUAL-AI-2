@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { User, Copy, Check, ImageIcon } from 'lucide-react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { authFetch } from '../../contexts/AuthContext';
 
 const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
   const endRef = useRef(null);
@@ -84,8 +85,37 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
   );
 };
 
-const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImageSelect, onClearImage, inputRef }) => {
+const VoiceSelector = ({ voiceMode, setVoiceMode, isSpeaking, onStopSpeaking }) => {
+  const cycle = () => {
+    if (isSpeaking) { onStopSpeaking(); return; }
+    const order = [null, 'female', 'male'];
+    const idx = order.indexOf(voiceMode);
+    setVoiceMode(order[(idx + 1) % order.length]);
+  };
+
+  const label = voiceMode === 'female' ? 'F' : voiceMode === 'male' ? 'M' : '';
+  const color = isSpeaking ? 'text-[#3DE8D9] animate-pulse' : voiceMode ? 'text-[#3DE8D9]' : 'text-slate-400';
+  const Icon = voiceMode ? Volume2 : VolumeX;
+
+  return (
+    <button
+      onClick={cycle}
+      className={`relative h-7 px-1.5 flex items-center gap-0.5 rounded-md hover:bg-slate-700/50 transition-colors ${color}`}
+      title={isSpeaking ? 'Stop speaking' : voiceMode ? `Voice: ${voiceMode} (click to change)` : 'Voice off (click to enable)'}
+      data-testid="voice-toggle"
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label && <span className="text-[9px] font-bold">{label}</span>}
+    </button>
+  );
+};
+
+const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImageSelect, onClearImage, inputRef, apiBase }) => {
   const fileRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -93,6 +123,58 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
       onSend();
     }
   };
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        if (blob.size < 1000) return; // too short
+
+        setIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          formData.append('audio', blob, 'recording.webm');
+          const res = await authFetch(`${apiBase}/chat/stt`, {
+            method: 'POST',
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text) {
+              setInput(prev => prev ? `${prev} ${data.text}` : data.text);
+              inputRef.current?.focus();
+            }
+          }
+        } catch (err) {
+          console.error('STT error:', err);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+    }
+  }, [apiBase, setInput, inputRef]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  }, []);
 
   return (
     <div className="border-t border-slate-400/25 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
@@ -111,6 +193,21 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
           data-testid="chat-image-upload"
         >
           <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={isTranscribing}
+          className={`flex-shrink-0 w-8 h-8 border rounded-lg flex items-center justify-center transition-colors ${
+            isRecording
+              ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse'
+              : isTranscribing
+              ? 'bg-slate-800 border-slate-400/25 text-amber-400 animate-pulse'
+              : 'bg-slate-800 border-slate-400/25 text-slate-400 hover:text-white hover:border-slate-600'
+          }`}
+          title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+          data-testid="chat-mic-btn"
+        >
+          {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
         </button>
         <input
           type="file"
@@ -148,4 +245,4 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
   );
 };
 
-export { ChatMessages, ChatInputArea };
+export { ChatMessages, ChatInputArea, VoiceSelector };
