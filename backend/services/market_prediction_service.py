@@ -297,6 +297,19 @@ Provide your analysis in JSON format with:
                 summary += "\nFEDERAL RESERVE ANNOUNCEMENTS:\n"
                 for fa in fed[:3]:
                     summary += f"- {fa.get('title', 'N/A')}\n"
+            # Corporate Lobbying (from imported dataset)
+            lobby = gov_filings.get('lobbying_top_spenders', [])
+            if lobby:
+                summary += "\nTOP CORPORATE LOBBYING SPENDERS:\n"
+                for lb in lobby[:5]:
+                    summary += f"- {lb.get('ticker', 'N/A')}: ${lb.get('total_amount', 0):,} ({lb.get('filing_count', 0)} filings) — {lb.get('latest_issue', '')[:60]}\n"
+
+        # Fear & Greed Index
+        if hasattr(self, '_fear_greed') and self._fear_greed:
+            fg = self._fear_greed
+            summary += f"\nFEAR & GREED INDEX:\n"
+            summary += f"- Current: {fg.get('current', {}).get('value', 'N/A')} ({fg.get('current', {}).get('label', 'N/A')})\n"
+            summary += f"- 7-day avg: {fg.get('avg_7d', 'N/A')} | 30-day avg: {fg.get('avg_30d', 'N/A')}\n"
         
         # Real estate data
         if real_estate:

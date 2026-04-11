@@ -1,20 +1,31 @@
-import React from 'react';
-import { Landmark, Shield, BarChart3, Clock, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Landmark, Shield, BarChart3, Clock, ChevronRight, DollarSign, Building2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import ProBlurWall from '../ProBlurWall';
 import { StatCard, LoadingState } from './MacroShared';
+import axios from 'axios';
+import { getApiBase } from '../../utils/apiBase';
+
+const API_BASE = `${getApiBase()}/api`;
 
 const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
+  const [lobbyData, setLobbyData] = useState(null);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/lobbying`).then(r => setLobbyData(r.data)).catch(() => {});
+  }, []);
+
   if (loading || !data) return <LoadingState text="Fetching government filings..." />;
 
   const { congressional_trades = [], fed_announcements = [], insider_trades = [] } = data;
 
   return (
     <div className="space-y-5" data-testid="congress-tab">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={<Landmark className="w-4 h-4 text-violet-300" />} label="Congressional Trades" value={data.congressional_count || 0} accent="violet" />
         <StatCard icon={<Shield className="w-4 h-4 text-blue-400" />} label="Fed Announcements" value={data.fed_count || 0} accent="blue" />
         <StatCard icon={<BarChart3 className="w-4 h-4 text-lime-400" />} label="SEC Insider Filings" value={data.insider_count || 0} accent="emerald" />
+        <StatCard icon={<DollarSign className="w-4 h-4 text-amber-300" />} label="Lobbying Filings" value={lobbyData?.total_filings || 0} accent="red" />
       </div>
 
       {congressional_trades.length > 0 && (
@@ -106,6 +117,45 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
             ))}
           </div>
         </div>
+      )}
+      {lobbyData && lobbyData.top_spenders && lobbyData.top_spenders.length > 0 && (
+        <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-400/30/40">
+            <h3 className="text-white text-sm font-semibold flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-amber-300" /> Top Corporate Lobbying Spenders
+            </h3>
+          </div>
+          <ProBlurWall freeRowCount={5} onSubscribe={onSubscribe} label="Lobbying Data">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="lobbying-table">
+              <thead>
+                <tr className="border-b border-slate-400/30/40">
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Ticker</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Client</th>
+                  <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Total Spent</th>
+                  <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Filings</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5 hidden sm:table-cell">Latest Issue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lobbyData.top_spenders.map((s, i) => (
+                  <tr key={`lobby-${s.ticker}-${i}`} className="border-b border-slate-600/30/40 hover:bg-slate-700/20 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <span className="text-[#3DE8D9] font-bold">{s.ticker}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-white text-xs max-w-[180px] truncate">{s.client}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className="text-amber-300 font-semibold text-xs">${(s.total_amount / 1e6).toFixed(1)}M</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-300 text-xs">{s.filing_count}</td>
+                    <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[200px] truncate hidden sm:table-cell">{s.latest_issue}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          </ProBlurWall>
+        </Card>
       )}
     </div>
   );

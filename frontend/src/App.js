@@ -39,6 +39,7 @@ import WatchlistIntelligence from './components/WatchlistIntelligence';
 import ResetPasswordModal from './components/ResetPasswordModal';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
+import FearGreedGauge from './components/FearGreedGauge';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
@@ -118,7 +119,14 @@ function AppContent() {
         </div>
 
         <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
-          <SectorHeatmap />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="lg:col-span-3">
+              <SectorHeatmap />
+            </div>
+            <div className="lg:col-span-1">
+              <FearGreedGauge />
+            </div>
+          </div>
         </div>
 
         <div id="pnl-tracker" className="mb-6 sm:mb-8 animate-enter">

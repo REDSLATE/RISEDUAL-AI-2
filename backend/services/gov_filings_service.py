@@ -215,12 +215,15 @@ class GovFilingsService:
 
     async def get_all_gov_data(self) -> Dict:
         """Aggregate government/institutional data from all available sources."""
+        from services.lobbying_service import LobbyingService
+
         finnhub_data = await self._fetch_finnhub_data()
 
-        insider_trades, congressional_trades, fed_announcements = await asyncio.gather(
+        insider_trades, congressional_trades, fed_announcements, lobbying = await asyncio.gather(
             self._resolve_insider_trades(finnhub_data),
             self._resolve_congressional_trades(finnhub_data),
             self.get_fed_announcements(),
+            LobbyingService().get_top_spenders(10),
         )
 
         upcoming_earnings = (
@@ -238,6 +241,8 @@ class GovFilingsService:
             'congressional_count': len(congressional_trades),
             'upcoming_earnings': upcoming_earnings,
             'earnings_count': len(upcoming_earnings),
+            'lobbying_top_spenders': lobbying,
+            'lobbying_count': len(lobbying),
             'company_news_finnhub': finnhub_data.get("company_news", []),
             'timestamp': datetime.now(timezone.utc).isoformat(),
             'source': self._determine_source(finnhub_data),

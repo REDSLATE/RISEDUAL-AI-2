@@ -62,6 +62,56 @@ async def get_gov_filings() -> Dict[str, Any]:
 
 
 # --- Scraping Data Endpoints ---
+
+# --- Lobbying Data ---
+@router.get("/lobbying")
+async def get_lobbying_summary() -> Dict[str, Any]:
+    """Get lobbying data summary with top spenders and recent filings."""
+    try:
+        from services.lobbying_service import LobbyingService
+        return await LobbyingService().get_summary()
+    except Exception as e:
+        logger.error(f"Error fetching lobbying data: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching lobbying data")
+
+
+@router.get("/lobbying/ticker/{ticker}")
+async def get_lobbying_by_ticker(ticker: str) -> Dict[str, Any]:
+    """Get lobbying activity for a specific stock ticker."""
+    try:
+        from services.lobbying_service import LobbyingService
+        filings = await LobbyingService().get_lobbying_by_ticker(ticker)
+        return {"ticker": ticker.upper(), "filings": filings, "count": len(filings)}
+    except Exception as e:
+        logger.error(f"Error fetching lobbying for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching lobbying data")
+
+
+@router.get("/lobbying/top-spenders")
+async def get_top_lobby_spenders() -> Dict[str, Any]:
+    """Get top corporate lobbying spenders."""
+    try:
+        from services.lobbying_service import LobbyingService
+        spenders = await LobbyingService().get_top_spenders(20)
+        return {"top_spenders": spenders}
+    except Exception as e:
+        logger.error(f"Error fetching top spenders: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching top spenders")
+
+
+# --- Fear & Greed Index ---
+@router.get("/fear-greed")
+async def get_fear_greed() -> Dict[str, Any]:
+    """Get current Fear & Greed index + historical data."""
+    try:
+        from services.fear_greed_service import FearGreedService
+        return await FearGreedService().get_full_summary()
+    except Exception as e:
+        logger.error(f"Error fetching fear & greed: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching fear & greed")
+
+
+# --- Scraping Data Endpoints (News, Social, Insider) ---
 @router.get("/market/news")
 async def get_financial_news() -> List[Dict[str, Any]]:
     try:
@@ -185,6 +235,14 @@ async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[st
         "gov_filings": await GovFilingsService().get_all_gov_data(),
     }
 
+    # Fear & Greed Index
+    try:
+        from services.fear_greed_service import FearGreedService
+        result["fear_greed"] = await FearGreedService().get_full_summary()
+    except Exception as e:
+        logger.warning(f"Fear & Greed fetch failed: {e}")
+        result["fear_greed"] = None
+
     if include_real_estate:
         from services.real_estate_scraping_service import RealEstateScrapingService
         result["real_estate"] = await RealEstateScrapingService().scrape_all_real_estate_data()
@@ -198,6 +256,10 @@ async def _run_prediction_model(data: Dict[str, Any]) -> Dict[str, Any]:
 
     all_crypto = data["crypto_data"] + [data["crypto_sentiment"]] + data["whale_txns"]
     prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
+
+    # Attach fear & greed data so the prompt builder can use it
+    if data.get("fear_greed"):
+        prediction_service._fear_greed = data["fear_greed"]
 
     return await prediction_service.analyze_market(
         financial_news=data["news"],
@@ -238,5 +300,16 @@ def _enrich_prediction_metadata(prediction: Dict[str, Any], data: Dict[str, Any]
             'congressional_trades': gf.get('congressional_count', 0),
             'fed_announcements': gf.get('fed_count', 0),
             'insider_trades': gf.get('insider_count', 0),
+            'lobbying_spenders': gf.get('lobbying_count', 0),
         },
     }
+
+    # Fear & Greed
+    fg = data.get("fear_greed")
+    if fg:
+        prediction['fear_greed'] = {
+            'current': fg.get('current', {}).get('value'),
+            'label': fg.get('current', {}).get('label'),
+            'avg_7d': fg.get('avg_7d'),
+            'avg_30d': fg.get('avg_30d'),
+        }
