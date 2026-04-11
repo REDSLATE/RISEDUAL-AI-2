@@ -9,7 +9,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
     <div className="relative" data-testid="model-selector">
       <button
         onClick={() => setShowPicker(!showPicker)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-800/70 border border-slate-500/30 rounded-xl hover:border-slate-600 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-800/70 border border-slate-400/25 rounded-xl hover:border-slate-600 transition-colors"
         data-testid="model-selector-trigger"
       >
         <div className="flex items-center gap-3">
@@ -21,7 +21,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
               {currentModel.label}
               {currentModel.key === 'consensus' && <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">3 MODELS</Badge>}
             </div>
-            <div className="text-slate-400 text-xs">{currentModel.provider}</div>
+            <div className="text-slate-300 text-xs">{currentModel.provider}</div>
           </div>
         </div>
         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showPicker ? 'rotate-180' : ''}`} />
@@ -41,7 +41,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
                   setShowPicker(false);
                 }}
                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 transition-colors ${
-                  selectedModel === m.key ? 'bg-[#35D6C8]/10 border-l-2 border-[#35D6C8]' : 'border-l-2 border-transparent hover:bg-slate-700/40'
+                  selectedModel === m.key ? 'bg-[#3DE8D9]/10 border-l-2 border-[#3DE8D9]' : 'border-l-2 border-transparent hover:bg-slate-700/40'
                 } ${locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 data-testid={`model-option-${m.key}`}
                 disabled={locked}
@@ -57,7 +57,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
                         <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">BEST ACCURACY</Badge>
                       )}
                     </div>
-                    <div className="text-slate-400 text-xs">{m.provider}</div>
+                    <div className="text-slate-300 text-xs">{m.provider}</div>
                   </div>
                 </div>
                 <ModelBadge free={m.free} locked={locked} />
@@ -66,7 +66,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
           })}
           {!isPro && (
             <div className="px-4 py-2.5 bg-[#0B1120] border-t border-slate-600">
-              <button onClick={onSubscribe} className="text-[#35D6C8] text-xs font-medium hover:underline flex items-center gap-1" data-testid="model-upgrade-btn">
+              <button onClick={onSubscribe} className="text-[#3DE8D9] text-xs font-medium hover:underline flex items-center gap-1" data-testid="model-upgrade-btn">
                 <Zap className="w-3 h-3" /> Upgrade to Pro to unlock all models + Consensus Mode
               </button>
             </div>
@@ -80,7 +80,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
 const ModelBadge = ({ free, locked }) => {
   if (free) return <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-[9px]">FREE</Badge>;
   if (locked) return <Lock className="w-4 h-4 text-slate-400" />;
-  return <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30 text-[9px]">PRO</Badge>;
+  return <Badge className="bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30 text-[9px]">PRO</Badge>;
 };
 
 export default ModelSelector;

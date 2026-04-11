@@ -18,8 +18,8 @@ const ProBlurWall = ({ children, freeRowCount = 3, onSubscribe, label = "Full Da
             <Lock className="w-6 h-6 text-slate-400" />
           </div>
           <p className="text-white font-semibold text-sm mb-1">Upgrade to See {label}</p>
-          <p className="text-slate-400 text-xs mb-3">First {freeRowCount} rows are free. Get full access with Pro.</p>
-          <Button className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl text-sm" onClick={onSubscribe} data-testid="blur-wall-upgrade">
+          <p className="text-slate-300 text-xs mb-3">First {freeRowCount} rows are free. Get full access with Pro.</p>
+          <Button className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl text-sm" onClick={onSubscribe} data-testid="blur-wall-upgrade">
             Upgrade to Pro
           </Button>
         </div>

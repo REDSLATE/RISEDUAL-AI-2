@@ -6,9 +6,9 @@ import { Badge } from '../ui/badge';
 const BriefView = ({ data }) => {
   const b = data.brief;
   const verdictStyles = {
-    buy: { bg: 'bg-emerald-500', border: 'border-emerald-700/50', text: 'text-emerald-400', glow: 'from-emerald-950/40 to-green-950/40' },
-    hold: { bg: 'bg-amber-500', border: 'border-amber-700/50', text: 'text-amber-400', glow: 'from-amber-950/40 to-yellow-950/40' },
-    sell: { bg: 'bg-red-500', border: 'border-red-700/50', text: 'text-red-400', glow: 'from-red-950/40 to-rose-950/40' },
+    buy: { bg: 'bg-emerald-500', border: 'border-emerald-700/50', text: 'text-lime-400', glow: 'from-emerald-950/40 to-green-950/40' },
+    hold: { bg: 'bg-amber-500', border: 'border-amber-700/50', text: 'text-amber-300', glow: 'from-amber-950/40 to-yellow-950/40' },
+    sell: { bg: 'bg-red-500', border: 'border-red-700/50', text: 'text-orange-400', glow: 'from-red-950/40 to-rose-950/40' },
   };
   const vs = verdictStyles[b.verdict] || verdictStyles.hold;
 
@@ -28,7 +28,7 @@ const BriefView = ({ data }) => {
             <p className="text-slate-300 text-sm">{b.brief}</p>
           </div>
           <div className="text-right shrink-0">
-            <div className="w-14 h-14 rounded-full border-4 border-slate-500/40 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full border-4 border-slate-400/30 flex items-center justify-center">
               <span className={`text-lg font-black ${vs.text}`}>{b.confidence}</span>
             </div>
             <p className="text-slate-400 text-[8px] mt-0.5">Confidence</p>
@@ -39,9 +39,9 @@ const BriefView = ({ data }) => {
       {b.key_metrics?.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {b.key_metrics.map((m, i) => {
-            const sentColor = m.sentiment === 'positive' ? 'text-emerald-400' : m.sentiment === 'negative' ? 'text-red-400' : 'text-amber-400';
+            const sentColor = m.sentiment === 'positive' ? 'text-lime-400' : m.sentiment === 'negative' ? 'text-orange-400' : 'text-amber-300';
             return (
-              <Card key={`m-${i}`} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
+              <Card key={`m-${i}`} className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
                 <p className={`text-base font-bold ${sentColor}`}>{m.value}</p>
                 <p className="text-slate-400 text-[9px]">{m.label}</p>
               </Card>
@@ -56,8 +56,8 @@ const BriefView = ({ data }) => {
           { label: '1 Month', val: data.performance?.['1m'] },
           { label: '3 Months', val: data.performance?.['3m'] },
         ].map(p => (
-          <Card key={p.label} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
-            <p className={`text-sm font-bold ${(p.val || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+          <Card key={p.label} className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
+            <p className={`text-sm font-bold ${(p.val || 0) >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
               {(p.val || 0) >= 0 ? '+' : ''}{p.val || 0}%
             </p>
             <p className="text-slate-400 text-[9px]">{p.label}</p>
@@ -67,10 +67,10 @@ const BriefView = ({ data }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {b.catalysts?.length > 0 && (
-          <Card className="bg-emerald-950/15 border-emerald-800/25 rounded-xl p-4">
+          <Card className="bg-emerald-950/15 border-lime-700/25 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-400 text-xs font-semibold uppercase">Catalysts</span>
+              <TrendingUp className="w-4 h-4 text-lime-400" />
+              <span className="text-lime-400 text-xs font-semibold uppercase">Catalysts</span>
             </div>
             <ul className="space-y-1">
               {b.catalysts.map((c, i) => (
@@ -82,10 +82,10 @@ const BriefView = ({ data }) => {
           </Card>
         )}
         {b.risks?.length > 0 && (
-          <Card className="bg-red-950/15 border-red-800/25 rounded-xl p-4">
+          <Card className="bg-red-950/15 border-orange-700/25 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4 text-red-400" />
-              <span className="text-red-400 text-xs font-semibold uppercase">Risks</span>
+              <AlertTriangle className="w-4 h-4 text-orange-400" />
+              <span className="text-orange-400 text-xs font-semibold uppercase">Risks</span>
             </div>
             <ul className="space-y-1">
               {b.risks.map((r, i) => (
@@ -99,10 +99,10 @@ const BriefView = ({ data }) => {
       </div>
 
       {b.action && (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            <Shield className="w-4 h-4 text-[#35D6C8]" />
-            <span className="text-[#35D6C8] text-xs font-semibold uppercase">Suggested Action</span>
+            <Shield className="w-4 h-4 text-[#3DE8D9]" />
+            <span className="text-[#3DE8D9] text-xs font-semibold uppercase">Suggested Action</span>
           </div>
           <p className="text-slate-200 text-sm">{b.action}</p>
         </Card>

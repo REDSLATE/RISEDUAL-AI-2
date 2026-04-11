@@ -15,14 +15,14 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
         <div className="text-center">
           <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-10 h-10 mx-auto mb-3 object-contain" />
           <h3 className="text-white text-sm font-semibold mb-1">RISEDUAL AI Assistant</h3>
-          <p className="text-slate-400 text-xs max-w-xs mx-auto leading-relaxed">
+          <p className="text-slate-300 text-xs max-w-xs mx-auto leading-relaxed">
             Stocks, crypto, market trends, technical analysis, or upload a chart for pattern recognition.
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5 justify-center">
             {['What is AAPL doing today?', 'Analyze BTC chart patterns', 'Best sector rotation?'].map(q => (
               <button
                 key={q}
-                className="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border border-slate-500/30"
+                className="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border border-slate-400/25"
                 data-testid={`suggestion-${q.slice(0, 10)}`}
               >
                 {q}
@@ -52,7 +52,7 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
       {!isUser && (
         <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
       )}
-      <div className={`max-w-[82%] ${isUser ? 'bg-[#35D6C8] text-white' : 'bg-slate-800/60 border border-slate-500/40/40 text-slate-200'} rounded-xl px-3 py-2`}>
+      <div className={`max-w-[82%] ${isUser ? 'bg-[#3DE8D9] text-white' : 'bg-slate-800/60 border border-slate-400/30/40 text-slate-200'} rounded-xl px-3 py-2`}>
         {msg.image && (
           <div className="mb-1.5">
             <img src={msg.image} alt="Uploaded" className="max-w-[200px] rounded-lg border border-slate-600/50" />
@@ -95,18 +95,18 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
   };
 
   return (
-    <div className="border-t border-slate-500/30 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
+    <div className="border-t border-slate-400/25 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
       {imagePreview && (
-        <div className="mb-2 flex items-center gap-2 bg-slate-700/35 rounded-lg p-1.5">
+        <div className="mb-2 flex items-center gap-2 bg-slate-700/45 rounded-lg p-1.5">
           <img src={imagePreview} alt="Preview" className="h-10 rounded border border-slate-600" />
           <span className="text-slate-400 text-[11px]">Image attached</span>
-          <button onClick={onClearImage} className="text-red-400 text-[11px] hover:text-red-300 ml-auto">Remove</button>
+          <button onClick={onClearImage} className="text-orange-400 text-[11px] hover:text-orange-300 ml-auto">Remove</button>
         </div>
       )}
       <div className="flex gap-1.5 items-end">
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex-shrink-0 w-8 h-8 bg-slate-800 border border-slate-500/30 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
+          className="flex-shrink-0 w-8 h-8 bg-slate-800 border border-slate-400/25 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
           title="Upload chart image"
           data-testid="chat-image-upload"
         >
@@ -125,14 +125,14 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask about stocks, crypto, charts..."
-          className="flex-1 bg-slate-800 border border-slate-500/30 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#35D6C8] min-h-[34px] max-h-[100px]"
+          className="flex-1 bg-slate-800 border border-slate-400/25 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#3DE8D9] min-h-[34px] max-h-[100px]"
           rows={1}
           data-testid="chat-input"
         />
         <button
           onClick={onSend}
           disabled={loading || (!input.trim() && !imagePreview)}
-          className="flex-shrink-0 w-8 h-8 bg-[#35D6C8] hover:bg-[#67E3D3] rounded-lg flex items-center justify-center text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-shrink-0 w-8 h-8 bg-[#3DE8D9] hover:bg-[#7AEEE0] rounded-lg flex items-center justify-center text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="chat-send"
         >
           {loading ? (

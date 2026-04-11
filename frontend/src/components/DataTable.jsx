@@ -77,18 +77,18 @@ const getCellContent = (col, row) => {
         </div>
       );
     case 'returns':
-      return <span className="text-emerald-400">{value}</span>;
+      return <span className="text-lime-400">{value}</span>;
     case 'sentiment':
-      return <span className="text-red-400">{value}</span>;
+      return <span className="text-orange-400">{value}</span>;
     case 'aiScore':
-      return <span className={value >= 50 ? 'text-emerald-400' : 'text-orange-400'}>{value}</span>;
+      return <span className={value >= 50 ? 'text-lime-400' : 'text-orange-400'}>{value}</span>;
     default:
       return <span className="text-slate-300">{value}</span>;
   }
 };
 
   return (
-    <div className="bg-slate-700/35 rounded-xl border border-slate-500/30 p-6">
+    <div className="bg-slate-700/45 rounded-xl border border-slate-400/25 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -97,7 +97,7 @@ const getCellContent = (col, row) => {
             <HelpCircle className="w-4 h-4 text-slate-400" />
           </div>
           {subtitle && (
-            <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
+            <p className="text-slate-300 text-sm mt-1">{subtitle}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -115,13 +115,13 @@ const getCellContent = (col, row) => {
             <>
               <button 
                 onClick={() => toast.success('Thanks for your feedback!')}
-                className="text-slate-400 hover:text-emerald-400 transition-colors"
+                className="text-slate-400 hover:text-lime-400 transition-colors"
               >
                 <ThumbsUp className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => toast('Thanks for your feedback! We\'ll improve this.')}
-                className="text-slate-400 hover:text-red-400 transition-colors"
+                className="text-slate-400 hover:text-orange-400 transition-colors"
               >
                 <ThumbsDown className="w-5 h-5" />
               </button>
@@ -134,11 +134,11 @@ const getCellContent = (col, row) => {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-500/40">
+            <tr className="border-b border-slate-400/30">
               {columns.map((col) => (
                 <th
                   key={col.key || col.label}
-                  className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider"
+                  className="text-left py-3 px-3 text-slate-300 text-xs font-medium uppercase tracking-wider"
                 >
                   <div className="flex items-center gap-1">
                     {col.label}
@@ -147,7 +147,7 @@ const getCellContent = (col, row) => {
                 </th>
               ))}
               {showTrading && (
-                <th className="text-left py-3 px-3 text-slate-400 text-xs font-medium uppercase tracking-wider">
+                <th className="text-left py-3 px-3 text-slate-300 text-xs font-medium uppercase tracking-wider">
                   QUICK TRADE
                 </th>
               )}
@@ -157,7 +157,7 @@ const getCellContent = (col, row) => {
             {filteredData.map((row, rowIndex) => (
               <tr
                 key={row.contract || row.symbol || rowIndex}
-                className="border-b border-slate-500/40 hover:bg-slate-700 transition-colors"
+                className="border-b border-slate-400/30 hover:bg-slate-700 transition-colors"
               >
                 {columns.map((col) => (
                   <td key={col.key || col.label} className="py-3 px-3 text-sm">
@@ -177,7 +177,7 @@ const getCellContent = (col, row) => {
 
       {/* Results Info */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-slate-400 text-sm">
+        <p className="text-slate-300 text-sm">
           Showing {filteredData.length} of {data.length} results
         </p>
         <button 

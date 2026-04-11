@@ -55,7 +55,7 @@ const StockTicker = () => {
       <div className="inline-flex items-center gap-2 px-4 whitespace-nowrap">
         <span className="text-white font-medium">{symbol}</span>
         <span className="text-slate-300 text-sm">{price.toFixed(2)}</span>
-        <span className={`text-sm ${isNegative ? 'text-red-400' : 'text-emerald-400'}`}>
+        <span className={`text-sm ${isNegative ? 'text-orange-400' : 'text-lime-400'}`}>
           {change.toFixed(2)} ({changePercent.toFixed(2)}%)
         </span>
       </div>
@@ -64,9 +64,9 @@ const StockTicker = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#0A2A63] border-b border-slate-500/40 overflow-hidden">
+      <div className="bg-[#060E1F] border-b border-slate-400/30 overflow-hidden">
         <div className="flex py-2 px-6">
-          <span className="text-slate-400 text-sm">Loading market data...</span>
+          <span className="text-slate-300 text-sm">Loading market data...</span>
         </div>
       </div>
     );
@@ -76,7 +76,7 @@ const StockTicker = () => {
   const duplicatedData = [...stockData, ...stockData, ...stockData];
 
   return (
-    <div className="bg-[#0A2A63] border-b border-slate-500/40 overflow-hidden">
+    <div className="bg-[#060E1F] border-b border-slate-400/30 overflow-hidden">
       <div ref={tickerRef} className="flex py-2">
         {duplicatedData.map((stock, index) => (
           <TickerItem key={`${stock.symbol}-${index}`} {...stock} />

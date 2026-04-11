@@ -125,10 +125,10 @@ const BROKERS = [
 // ─── Helpers ───
 
 const ORDER_STATUS_CLASSES = {
-  filled: 'bg-emerald-900/50 text-emerald-400',
+  filled: 'bg-lime-900/50 text-lime-400',
   cancelled: 'bg-slate-700 text-slate-400',
 };
-const getOrderStatusClass = (status) => ORDER_STATUS_CLASSES[status] || 'bg-amber-900/50 text-amber-400';
+const getOrderStatusClass = (status) => ORDER_STATUS_CLASSES[status] || 'bg-amber-900/50 text-amber-300';
 
 // ─── Sub-components ───
 
@@ -200,14 +200,14 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
     <div className="bg-slate-800/60 border border-slate-600/50 rounded-xl p-5 mt-3">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-white font-semibold text-sm flex items-center gap-2">
-          <Link2 className="w-4 h-4 text-[#35D6C8]" />
+          <Link2 className="w-4 h-4 text-[#3DE8D9]" />
           Connect {broker.name}
         </h4>
         <button onClick={onCancel} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-xs p-2.5 rounded-lg mb-3 flex items-start gap-2" data-testid="broker-connect-error">
+        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg mb-3 flex items-start gap-2" data-testid="broker-connect-error">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
         </div>
       )}
@@ -216,7 +216,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
       {oauthAvailable && (
         <div className="mb-4">
           <Button onClick={handleOAuth} disabled={oauthLoading}
-            className="w-full bg-gradient-to-r from-[#35D6C8] to-[#67E3D3] hover:from-[#67E3D3] hover:to-[#3B82F6] text-white text-sm rounded-lg py-3 font-semibold"
+            className="w-full bg-gradient-to-r from-[#3DE8D9] to-[#7AEEE0] hover:from-[#7AEEE0] hover:to-[#3B82F6] text-white text-sm rounded-lg py-3 font-semibold"
             data-testid={`broker-oauth-btn-${broker.id}`}>
             {oauthLoading ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Redirecting to {broker.name}...</>
@@ -226,7 +226,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
           </Button>
           <div className="flex items-center gap-3 my-3">
             <div className="flex-1 h-px bg-slate-700" />
-            <span className="text-slate-400 text-xs">or enter API keys manually</span>
+            <span className="text-slate-300 text-xs">or enter API keys manually</span>
             <div className="flex-1 h-px bg-slate-700" />
           </div>
         </div>
@@ -234,7 +234,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="text-slate-400 text-xs mb-1 block">{broker.keyLabel}</label>
+          <label className="text-slate-300 text-xs mb-1 block">{broker.keyLabel}</label>
           <Input
             value={apiKey} onChange={e => setApiKey(e.target.value)}
             placeholder={`Enter your ${broker.keyLabel}`}
@@ -243,7 +243,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
           />
         </div>
         <div className="relative">
-          <label className="text-slate-400 text-xs mb-1 block">{broker.secretLabel}</label>
+          <label className="text-slate-300 text-xs mb-1 block">{broker.secretLabel}</label>
           <Input
             type={showSecret ? 'text' : 'password'}
             value={apiSecret} onChange={e => setApiSecret(e.target.value)}
@@ -260,7 +260,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
         {broker.hasPaper && (
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={paper} onChange={e => setPaper(e.target.checked)}
-              className="rounded bg-slate-700 border-slate-500 text-[#35D6C8] focus:ring-[#35D6C8]"
+              className="rounded bg-slate-700 border-slate-500 text-[#3DE8D9] focus:ring-[#3DE8D9]"
               data-testid={`broker-paper-toggle-${broker.id}`}
             />
             <span className="text-slate-300 text-sm">Paper Trading (simulated)</span>
@@ -269,7 +269,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
 
         <div className="flex gap-2 pt-1">
           <Button type="submit" disabled={loading}
-            className="flex-1 bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-sm rounded-lg"
+            className="flex-1 bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white text-sm rounded-lg"
             data-testid={`broker-connect-submit-${broker.id}`}>
             {loading ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Connecting...</> : <>Connect<ArrowRight className="w-3.5 h-3.5 ml-1.5" /></>}
           </Button>
@@ -368,7 +368,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 text-[#35D6C8] animate-spin" />
+        <Loader2 className="w-6 h-6 text-[#3DE8D9] animate-spin" />
         <span className="text-slate-400 ml-2 text-sm">Loading account...</span>
       </div>
     );
@@ -377,7 +377,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
   return (
     <div className="space-y-4" data-testid={`broker-dashboard-${brokerId}`}>
       {error && (
-        <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-xs p-2.5 rounded-lg flex items-start gap-2">
+        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-xs p-2.5 rounded-lg flex items-start gap-2">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
         </div>
       )}
@@ -387,14 +387,14 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Portfolio', value: fmt(account.portfolio_value), icon: Briefcase, color: 'text-white' },
-            { label: 'Cash', value: fmt(account.cash), icon: DollarSign, color: 'text-emerald-400' },
-            { label: 'Buying Power', value: fmt(account.buying_power), icon: Wallet, color: 'text-[#35D6C8]' },
-            { label: 'Equity', value: fmt(account.equity), icon: BarChart3, color: 'text-amber-400' },
+            { label: 'Cash', value: fmt(account.cash), icon: DollarSign, color: 'text-lime-400' },
+            { label: 'Buying Power', value: fmt(account.buying_power), icon: Wallet, color: 'text-[#3DE8D9]' },
+            { label: 'Equity', value: fmt(account.equity), icon: BarChart3, color: 'text-amber-300' },
           ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="bg-slate-800/60 border border-slate-500/40/30 rounded-xl p-3">
+            <div key={label} className="bg-slate-800/60 border border-slate-400/30/30 rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Icon className={`w-3.5 h-3.5 ${color}`} />
-                <span className="text-slate-400 text-xs">{label}</span>
+                <span className="text-slate-300 text-xs">{label}</span>
               </div>
               <p className={`text-base font-bold ${color}`} data-testid={`account-${label.toLowerCase().replace(' ', '-')}`}>{value}</p>
             </div>
@@ -407,14 +407,14 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
         <Button size="sm" onClick={fetchData} className="bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-lg" data-testid="broker-refresh-btn">
           <RefreshCw className="w-3 h-3 mr-1" />Refresh
         </Button>
-        <Button size="sm" onClick={handleSync} disabled={syncing} className="bg-[#35D6C8]/20 hover:bg-[#35D6C8]/30 text-[#35D6C8] text-xs rounded-lg border border-[#35D6C8]/30" data-testid="broker-sync-btn">
+        <Button size="sm" onClick={handleSync} disabled={syncing} className="bg-[#3DE8D9]/20 hover:bg-[#3DE8D9]/30 text-[#3DE8D9] text-xs rounded-lg border border-[#3DE8D9]/30" data-testid="broker-sync-btn">
           {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}Sync Portfolio
         </Button>
         <Button size="sm" onClick={() => setOrderForm({ symbol: '', quantity: 1, side: 'buy', order_type: 'market', time_in_force: 'day' })}
-          className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
+          className="bg-emerald-600/20 hover:bg-emerald-600/30 text-lime-400 text-xs rounded-lg border border-emerald-600/30" data-testid="broker-new-order-btn">
           <ArrowUpDown className="w-3 h-3 mr-1" />New Order
         </Button>
-        <Button size="sm" onClick={onDisconnect} className="bg-red-900/20 hover:bg-red-900/30 text-red-400 text-xs rounded-lg border border-red-800/30 ml-auto" data-testid="broker-disconnect-btn">
+        <Button size="sm" onClick={onDisconnect} className="bg-orange-900/20 hover:bg-orange-900/30 text-orange-400 text-xs rounded-lg border border-orange-700/30 ml-auto" data-testid="broker-disconnect-btn">
           <Trash2 className="w-3 h-3 mr-1" />Disconnect
         </Button>
       </div>
@@ -458,13 +458,13 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-700/30 rounded-lg p-0.5">
+      <div className="flex gap-1 bg-slate-700/40 rounded-lg p-0.5">
         {[
           { id: 'positions', label: 'Positions', icon: TrendingUp, count: positions.length },
           { id: 'orders', label: 'Orders', icon: FileText, count: orders.length },
         ].map(({ id, label, icon: Icon, count }) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-md transition-all ${tab === id ? 'bg-[#35D6C8] text-white' : 'text-slate-400 hover:text-white'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-md transition-all ${tab === id ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`}
             data-testid={`broker-tab-${id}`}>
             <Icon className="w-3.5 h-3.5" />{label}
             {count > 0 && <Badge className="bg-slate-600/50 text-[10px] px-1.5">{count}</Badge>}
@@ -476,16 +476,16 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       {tab === 'positions' && (
         <div className="space-y-2">
           {positions.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-6">No open positions</p>
+            <p className="text-slate-300 text-sm text-center py-6">No open positions</p>
           ) : positions.map((p, i) => (
-            <div key={`${p.symbol}-${i}`} className="bg-slate-700/30 border border-slate-500/40/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={`${p.symbol}-${i}`} className="bg-slate-700/40 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
               <div>
                 <span className="text-white font-semibold text-sm">{p.symbol}</span>
-                <span className="text-slate-400 text-xs ml-2">{p.qty} shares</span>
+                <span className="text-slate-300 text-xs ml-2">{p.qty} shares</span>
               </div>
               <div className="text-right">
                 <p className="text-white text-sm font-medium">{fmt(p.market_value)}</p>
-                <p className={`text-xs font-medium ${p.unrealized_pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className={`text-xs font-medium ${p.unrealized_pl >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
                   {p.unrealized_pl >= 0 ? '+' : ''}{fmt(p.unrealized_pl)} ({(p.unrealized_plpc * 100).toFixed(2)}%)
                 </p>
               </div>
@@ -498,16 +498,16 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       {tab === 'orders' && (
         <div className="space-y-2">
           {orders.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-6">No orders</p>
+            <p className="text-slate-300 text-sm text-center py-6">No orders</p>
           ) : orders.slice(0, 20).map((o, i) => (
-            <div key={o.id || i} className="bg-slate-700/30 border border-slate-500/40/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={o.id || i} className="bg-slate-700/40 border border-slate-400/30/30 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
+                <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-lime-900/50 text-lime-400' : 'bg-orange-900/50 text-orange-400'}`}>
                   {o.side?.toUpperCase()}
                 </Badge>
                 <div>
                   <span className="text-white font-semibold text-sm">{o.symbol}</span>
-                  <span className="text-slate-400 text-xs ml-2">{o.qty} @ {o.type}</span>
+                  <span className="text-slate-300 text-xs ml-2">{o.qty} @ {o.type}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -515,7 +515,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
                   {o.status}
                 </Badge>
                 {(o.status === 'new' || o.status === 'accepted' || o.status === 'pending_new') && (
-                  <button onClick={() => handleCancelOrder(o.id)} className="text-red-400 hover:text-red-300 text-xs" data-testid={`cancel-order-${o.id}`}>
+                  <button onClick={() => handleCancelOrder(o.id)} className="text-orange-400 hover:text-orange-300 text-xs" data-testid={`cancel-order-${o.id}`}>
                     Cancel
                   </button>
                 )}
@@ -600,19 +600,19 @@ const BrokerConnect = () => {
   return (
     <>
       <Button onClick={() => setIsModalOpen(true)}
-        className="bg-[#35D6C8] hover:bg-[#67E3D3]" data-testid="broker-connect-trigger">
+        className="bg-[#3DE8D9] hover:bg-[#7AEEE0]" data-testid="broker-connect-trigger">
         <Building2 className="w-4 h-4 mr-2" />Connect Broker
         {connectedIds.length > 0 && <Badge className="ml-2 bg-green-600">{connectedIds.length}</Badge>}
       </Button>
 
       {isModalOpen && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="broker-modal">
-          <div className="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-500/30">
+          <div className="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-400/25">
             {/* Header */}
-            <div className="border-b border-slate-500/40 p-5 flex items-start justify-between flex-shrink-0">
+            <div className="border-b border-slate-400/30 p-5 flex items-start justify-between flex-shrink-0">
               <div>
                 <h2 className="text-white text-xl font-bold mb-1">Connect Your Broker</h2>
-                <p className="text-slate-400 text-sm">Link your brokerage to trade directly from RISEDUAL AI</p>
+                <p className="text-slate-300 text-sm">Link your brokerage to trade directly from RISEDUAL AI</p>
                 <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
                   <Shield className="w-3.5 h-3.5" />
                   <span>Encrypted storage &middot; Keys never leave our server &middot; Disconnect anytime</span>
@@ -625,19 +625,19 @@ const BrokerConnect = () => {
 
             {/* Connected Summary */}
             {oauthMessage && (
-              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-emerald-900/20 border-emerald-800/30 text-emerald-400' : 'bg-red-900/20 border-red-800/30 text-red-400'}`}>
+              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-lime-900/20 border-lime-700/30 text-lime-400' : 'bg-orange-900/20 border-orange-700/30 text-orange-400'}`}>
                 {oauthMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 <span>{oauthMessage.text}</span>
               </div>
             )}
             {connections.length > 0 && (
-              <div className="bg-emerald-900/15 border-b border-emerald-800/30 px-5 py-3 flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-2 text-emerald-400 text-sm">
+              <div className="bg-emerald-900/15 border-b border-lime-700/30 px-5 py-3 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2 text-lime-400 text-sm">
                   <CheckCircle className="w-4 h-4" />
                   <span className="font-medium">{connections.length} broker{connections.length > 1 ? 's' : ''} connected</span>
                 </div>
                 {syncResult && (
-                  <span className="text-emerald-300/70 text-xs">{syncResult.symbols_synced?.length || 0} symbols synced to watchlist</span>
+                  <span className="text-lime-300/70 text-xs">{syncResult.symbols_synced?.length || 0} symbols synced to watchlist</span>
                 )}
               </div>
             )}
@@ -656,7 +656,7 @@ const BrokerConnect = () => {
                     </div>
                     <h3 className="text-white font-bold text-lg">{BROKERS.find(b => b.id === activeBroker)?.name}</h3>
                     {connections.find(c => c.broker_id === activeBroker)?.paper && (
-                      <Badge className="bg-amber-900/40 text-amber-400 text-[10px]">Paper Trading</Badge>
+                      <Badge className="bg-amber-900/40 text-amber-300 text-[10px]">Paper Trading</Badge>
                     )}
                   </div>
                   <AccountDashboard
@@ -672,7 +672,7 @@ const BrokerConnect = () => {
                     const isConnected = connectedIds.includes(broker.id);
                     const isConnecting = connectingBroker === broker.id;
                     return (
-                      <div key={broker.id} className={`bg-slate-700/30 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-500/40/30 hover:border-slate-600'}`}
+                      <div key={broker.id} className={`bg-slate-700/40 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-400/30/30 hover:border-slate-600'}`}
                         data-testid={`broker-card-${broker.id}`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
@@ -682,16 +682,16 @@ const BrokerConnect = () => {
                             <div>
                               <div className="flex items-center gap-2">
                                 <h4 className="text-white font-semibold text-sm">{broker.name}</h4>
-                                {broker.recommended && <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] text-[10px]">Recommended</Badge>}
-                                {isConnected && <Badge className="bg-emerald-900/40 text-emerald-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />{connections.find(c => c.broker_id === broker.id)?.auth_method === 'oauth' ? 'OAuth' : 'Connected'}</Badge>}
+                                {broker.recommended && <Badge className="bg-[#3DE8D9]/20 text-[#3DE8D9] text-[10px]">Recommended</Badge>}
+                                {isConnected && <Badge className="bg-lime-900/40 text-lime-400 text-[10px] flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" />{connections.find(c => c.broker_id === broker.id)?.auth_method === 'oauth' ? 'OAuth' : 'Connected'}</Badge>}
                               </div>
-                              <p className="text-slate-400 text-xs mt-0.5">{broker.description}</p>
+                              <p className="text-slate-300 text-xs mt-0.5">{broker.description}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
                             {isConnected ? (
                               <Button size="sm" onClick={() => setActiveBroker(broker.id)}
-                                className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-xs rounded-lg"
+                                className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white text-xs rounded-lg"
                                 data-testid={`broker-open-${broker.id}`}>
                                 <BarChart3 className="w-3 h-3 mr-1" />Dashboard
                               </Button>
@@ -724,9 +724,9 @@ const BrokerConnect = () => {
 
               {/* How it works */}
               {!activeBroker && (
-                <div className="p-4 bg-slate-700/25 border border-slate-500/40/30 rounded-xl">
+                <div className="p-4 bg-slate-700/35 border border-slate-400/30/30 rounded-xl">
                   <h3 className="text-white font-semibold text-sm mb-2">How it works</h3>
-                  <ol className="text-slate-400 text-xs space-y-1 list-decimal list-inside">
+                  <ol className="text-slate-300 text-xs space-y-1 list-decimal list-inside">
                     <li>Sign up with your broker and get your API keys from their developer portal</li>
                     <li>Enter your API credentials above — they are encrypted at rest</li>
                     <li>View your account, manage positions, and execute trades from RISEDUAL AI</li>

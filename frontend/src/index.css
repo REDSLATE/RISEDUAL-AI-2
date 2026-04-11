@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-    --brand-navy: #0A2A63;
-    --brand-navy-light: #12345A;
+    --brand-navy: #060E1F;
+    --brand-navy-light: #0C1A33;
     --brand-deep-blue: #155F85;
-    --brand-teal: #35D6C8;
-    --brand-teal-light: #67E3D3;
+    --brand-teal: #3DE8D9;
+    --brand-teal-light: #7AEEE0;
 }
 
 html,

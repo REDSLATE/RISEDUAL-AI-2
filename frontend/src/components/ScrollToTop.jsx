@@ -15,7 +15,7 @@ const ScrollToTop = () => {
   return (
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      className="fixed bottom-20 lg:bottom-6 left-4 z-40 w-10 h-10 bg-slate-800/90 backdrop-blur-sm border border-slate-500/30 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700 scroll-fab shadow-lg"
+      className="fixed bottom-20 lg:bottom-6 left-4 z-40 w-10 h-10 bg-slate-800/90 backdrop-blur-sm border border-slate-400/25 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-700 scroll-fab shadow-lg"
       data-testid="scroll-to-top-btn"
       aria-label="Scroll to top"
     >

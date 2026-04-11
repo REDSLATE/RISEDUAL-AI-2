@@ -12,29 +12,29 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
   return (
     <div className="space-y-5" data-testid="congress-tab">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-        <StatCard icon={<Landmark className="w-4 h-4 text-violet-400" />} label="Congressional Trades" value={data.congressional_count || 0} accent="violet" />
+        <StatCard icon={<Landmark className="w-4 h-4 text-violet-300" />} label="Congressional Trades" value={data.congressional_count || 0} accent="violet" />
         <StatCard icon={<Shield className="w-4 h-4 text-blue-400" />} label="Fed Announcements" value={data.fed_count || 0} accent="blue" />
-        <StatCard icon={<BarChart3 className="w-4 h-4 text-emerald-400" />} label="SEC Insider Filings" value={data.insider_count || 0} accent="emerald" />
+        <StatCard icon={<BarChart3 className="w-4 h-4 text-lime-400" />} label="SEC Insider Filings" value={data.insider_count || 0} accent="emerald" />
       </div>
 
       {congressional_trades.length > 0 && (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-slate-500/40/40">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-400/30/40">
             <h3 className="text-white text-sm font-semibold flex items-center gap-2">
-              <Landmark className="w-4 h-4 text-violet-400" /> Recent Congressional Stock Trades
+              <Landmark className="w-4 h-4 text-violet-300" /> Recent Congressional Stock Trades
             </h3>
           </div>
           <ProBlurWall freeRowCount={3} onSubscribe={onSubscribe} label="Congressional Trades">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 overflow-hidden" style={{maxHeight: isPro ? 'none' : '320px'}}>
             <table className="w-full text-sm" data-testid="congress-trades-table">
               <thead>
-                <tr className="border-b border-slate-500/40/40">
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Representative</th>
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Party</th>
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Ticker</th>
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Type</th>
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Amount</th>
-                  <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Date</th>
+                <tr className="border-b border-slate-400/30/40">
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Representative</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Party</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Ticker</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Type</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Amount</th>
+                  <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -47,13 +47,13 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className="text-[#35D6C8] font-bold">{trade.ticker || '\u2014'}</span>
+                      <span className="text-[#3DE8D9] font-bold">{trade.ticker || '\u2014'}</span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs font-semibold uppercase ${getTradeTypeColor(trade.type)}`}>{trade.type || '\u2014'}</span>
                     </td>
                     <td className="px-4 py-2.5 text-slate-300 text-xs">{trade.amount || '\u2014'}</td>
-                    <td className="px-4 py-2.5 text-slate-400 text-xs">{trade.transaction_date || '\u2014'}</td>
+                    <td className="px-4 py-2.5 text-slate-300 text-xs">{trade.transaction_date || '\u2014'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -70,13 +70,13 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
           </h3>
           <div className="space-y-2">
             {fed_announcements.map((ann) => (
-              <Card key={ann.title || ann.date} className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-3 hover:border-slate-600 transition-all">
+              <Card key={ann.title || ann.date} className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-3 hover:border-slate-600 transition-all">
                 <p className="text-white text-sm font-medium leading-snug">{ann.title}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <Clock className="w-3 h-3 text-slate-400" />
                   <span className="text-[10px] text-slate-400">{ann.date}</span>
                   {ann.url && (
-                    <a href={ann.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[10px] text-[#35D6C8] hover:underline flex items-center gap-1">
+                    <a href={ann.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[10px] text-[#3DE8D9] hover:underline flex items-center gap-1">
                       View <ChevronRight className="w-3 h-3" />
                     </a>
                   )}
@@ -90,17 +90,17 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
       {insider_trades.length > 0 && (
         <div>
           <h3 className="text-slate-300 text-sm font-semibold mb-3 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-emerald-400" /> SEC Insider Filings
+            <BarChart3 className="w-4 h-4 text-lime-400" /> SEC Insider Filings
           </h3>
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
             {insider_trades.map((t, i) => (
-              <Card key={`insider-${t.company || t.ticker || i}-${i}`} className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-3">
+              <Card key={`insider-${t.company || t.ticker || i}-${i}`} className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-white text-sm font-medium">{t.company || t.ticker || 'Unknown'}</p>
-                    <p className="text-slate-400 text-xs mt-0.5">{t.description}</p>
+                    <p className="text-slate-300 text-xs mt-0.5">{t.description}</p>
                   </div>
-                  <span className="text-slate-400 text-xs">{t.filed_date}</span>
+                  <span className="text-slate-300 text-xs">{t.filed_date}</span>
                 </div>
               </Card>
             ))}
@@ -112,7 +112,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
 };
 
 const getPartyStyle = (party) => {
-  if (party === 'R') return 'bg-red-900/30 text-red-400';
+  if (party === 'R') return 'bg-orange-900/30 text-orange-400';
   if (party === 'D') return 'bg-blue-900/30 text-blue-400';
   return 'bg-slate-700 text-slate-400';
 };
@@ -122,8 +122,8 @@ const getPartyLabel = (party, chamber) => {
 };
 const getTradeTypeColor = (type) => {
   const lower = type?.toLowerCase();
-  if (lower === 'buy' || lower === 'purchase') return 'text-emerald-400';
-  return 'text-red-400';
+  if (lower === 'buy' || lower === 'purchase') return 'text-lime-400';
+  return 'text-orange-400';
 };
 
 export default CongressTab;

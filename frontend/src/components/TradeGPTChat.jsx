@@ -127,7 +127,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white shadow-lg shadow-[#35D6C8]/30 flex items-center justify-center transition-all hover:scale-105"
+          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white shadow-lg shadow-[#3DE8D9]/30 flex items-center justify-center transition-all hover:scale-105"
           data-testid="chat-fab"
         >
           <MessageSquare className="w-6 h-6" />
@@ -136,9 +136,9 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
       {/* Chat panel — floats above everything including mobile nav */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0A2A63] lg:rounded-2xl border-t lg:border border-slate-500/30 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
+        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#060E1F] lg:rounded-2xl border-t lg:border border-slate-400/25 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-500/30 flex-shrink-0">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-400/25 flex-shrink-0">
             <div className="flex items-center gap-2">
               <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain" />
               <div>
@@ -176,7 +176,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
           {/* Pattern Library */}
           {showPatterns && (
-            <div className="border-b border-slate-500/30 max-h-[240px] overflow-y-auto flex-shrink-0">
+            <div className="border-b border-slate-400/25 max-h-[240px] overflow-y-auto flex-shrink-0">
               <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
             </div>
           )}
@@ -207,7 +207,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 };
 
 const ChatHistorySidebar = ({ history, onSelect, onClose }) => (
-  <div className="border-b border-slate-500/30 bg-slate-900/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
+  <div className="border-b border-slate-400/25 bg-slate-900/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
     <div className="flex items-center justify-between mb-1.5">
       <span className="text-slate-400 text-[11px] font-medium">Chat History</span>
       <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-3 h-3" /></button>

@@ -47,18 +47,18 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
   if (success) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="reset-password-modal">
-        <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative text-center">
+        <div className="bg-slate-900 rounded-2xl border border-slate-400/25 w-full max-w-md p-6 relative text-center">
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="reset-close-btn">
             <X className="w-5 h-5" />
           </button>
-          <div className="w-14 h-14 rounded-full bg-emerald-900/30 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-7 h-7 text-emerald-400" />
+          <div className="w-14 h-14 rounded-full bg-lime-900/30 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-7 h-7 text-lime-400" />
           </div>
           <h2 className="text-white text-xl font-bold mb-2">Password Reset!</h2>
-          <p className="text-slate-400 text-sm mb-6">Your password has been successfully updated. You can now log in with your new password.</p>
+          <p className="text-slate-300 text-sm mb-6">Your password has been successfully updated. You can now log in with your new password.</p>
           <Button
             onClick={onLoginClick}
-            className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
+            className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-5 rounded-xl"
             data-testid="reset-login-btn"
           >
             Log In
@@ -70,16 +70,16 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="reset-password-modal">
-      <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative">
+      <div className="bg-slate-900 rounded-2xl border border-slate-400/25 w-full max-w-md p-6 relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="reset-close-btn">
           <X className="w-5 h-5" />
         </button>
 
         <h2 className="text-white text-xl font-bold mb-1">Set New Password</h2>
-        <p className="text-slate-400 text-sm mb-6">Choose a strong password for your account.</p>
+        <p className="text-slate-300 text-sm mb-6">Choose a strong password for your account.</p>
 
         {error && (
-          <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg mb-4 flex items-start gap-2" data-testid="reset-error">
+          <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4 flex items-start gap-2" data-testid="reset-error">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
@@ -115,11 +115,11 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
               data-testid="reset-confirm-input"
             />
           </div>
-          <p className="text-slate-400 text-xs">Minimum 6 characters</p>
+          <p className="text-slate-300 text-xs">Minimum 6 characters</p>
           <Button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
+            className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-5 rounded-xl"
             data-testid="reset-submit-btn"
           >
             {loading ? 'Resetting...' : 'Reset Password'}

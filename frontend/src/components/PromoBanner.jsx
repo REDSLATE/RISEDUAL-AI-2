@@ -79,7 +79,7 @@ const PromoBanner = ({ onSubscribe }) => {
 
   return (
     <div className="sticky top-0 z-40 w-full" data-testid="promo-banner">
-      <div className="bg-gradient-to-r from-[#35D6C8] via-indigo-600 to-purple-600 px-4 py-2.5 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#3DE8D9] via-indigo-600 to-purple-600 px-4 py-2.5 relative overflow-hidden">
         {/* Animated background shimmer */}
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer" />
 
@@ -121,7 +121,7 @@ const PromoBanner = ({ onSubscribe }) => {
             {!user && (
               <button
                 onClick={onSubscribe}
-                className="flex items-center gap-1 bg-white text-[#35D6C8] text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-white/90 transition-all"
+                className="flex items-center gap-1 bg-white text-[#3DE8D9] text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-white/90 transition-all"
                 data-testid="promo-cta"
               >
                 Get Started <ChevronRight className="w-3 h-3" />

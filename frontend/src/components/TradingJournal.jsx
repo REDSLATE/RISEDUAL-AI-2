@@ -111,20 +111,20 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="trading-journal">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-500/30">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-400/25">
         {/* Header */}
-        <div className="p-5 border-b border-slate-500/40 flex items-center justify-between">
+        <div className="p-5 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-indigo-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#3DE8D9] to-indigo-600 rounded-xl flex items-center justify-center">
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-white text-lg font-bold">Trading Journal</h2>
-              <p className="text-slate-400 text-xs">{trades.length} trade{trades.length !== 1 ? 's' : ''} logged{tradeLimit > 0 ? ` (${tradeLimit - trades.length} remaining)` : ''}</p>
+              <p className="text-slate-300 text-xs">{trades.length} trade{trades.length !== 1 ? 's' : ''} logged{tradeLimit > 0 ? ` (${tradeLimit - trades.length} remaining)` : ''}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-8" onClick={() => setShowForm(!showForm)} data-testid="new-trade-btn"
+            <Button size="sm" className="bg-[#3DE8D9] text-white text-xs h-8" onClick={() => setShowForm(!showForm)} data-testid="new-trade-btn"
               disabled={tradeLimit > 0 && trades.length >= tradeLimit}>
               <Plus className="w-3.5 h-3.5 mr-1" /> Log Trade
             </Button>
@@ -133,11 +133,11 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-500/30 px-4">
+        <div className="flex border-b border-slate-400/25 px-4">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} data-testid={`journal-tab-${t.id}`}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
-                tab === t.id ? 'text-[#35D6C8] border-[#35D6C8]' : 'text-slate-400 border-transparent hover:text-slate-300'
+                tab === t.id ? 'text-[#3DE8D9] border-[#3DE8D9]' : 'text-slate-400 border-transparent hover:text-slate-300'
               }`}>
               <t.icon className="w-4 h-4" /> {t.label}
             </button>
@@ -148,15 +148,15 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
           {/* Trade limit warning */}
           {tradeLimit > 0 && trades.length >= tradeLimit && (
             <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-800/40 rounded-xl px-4 py-2.5 mb-4" data-testid="trade-limit-warning">
-              <Lock className="w-4 h-4 text-amber-400" />
+              <Lock className="w-4 h-4 text-amber-300" />
               <p className="text-amber-300 text-xs flex-1">Free limit reached ({tradeLimit} trades). Upgrade to Pro for unlimited.</p>
-              <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-7 px-3" onClick={onSubscribe}>Upgrade</Button>
+              <Button size="sm" className="bg-[#3DE8D9] text-white text-xs h-7 px-3" onClick={onSubscribe}>Upgrade</Button>
             </div>
           )}
 
           {/* New Trade Form */}
           {showForm && (
-            <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4 mb-4 space-y-3" data-testid="trade-form">
+            <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4 mb-4 space-y-3" data-testid="trade-form">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-slate-400 text-[10px] block mb-1">Ticker</label>
@@ -206,7 +206,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
               </div>
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" className="text-xs h-8 bg-slate-700 text-slate-300 border-slate-600" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button size="sm" className="text-xs h-8 bg-[#35D6C8] text-white" onClick={createTrade} disabled={saving || !form.ticker || !form.entry_price || !form.quantity} data-testid="trade-submit">
+                <Button size="sm" className="text-xs h-8 bg-[#3DE8D9] text-white" onClick={createTrade} disabled={saving || !form.ticker || !form.entry_price || !form.quantity} data-testid="trade-submit">
                   {saving ? 'Saving...' : 'Log Trade'}
                 </Button>
               </div>
@@ -226,33 +226,33 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
 };
 
 const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, setCloseForm }) => {
-  if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-[#3DE8D9] animate-spin" /></div>;
   if (trades.length === 0) return (
     <div className="text-center py-12">
       <BookOpen className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-      <p className="text-slate-400 text-sm">No trades logged yet</p>
-      <p className="text-slate-400 text-xs mt-1">Click "Log Trade" to start tracking your performance</p>
+      <p className="text-slate-300 text-sm">No trades logged yet</p>
+      <p className="text-slate-300 text-xs mt-1">Click "Log Trade" to start tracking your performance</p>
     </div>
   );
 
   return (
     <div className="space-y-2 max-h-[400px] overflow-y-auto">
       {trades.map(t => (
-        <div key={t.id} className="bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`trade-${t.id}`}>
+        <div key={t.id} className="bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-4 py-3" data-testid={`trade-${t.id}`}>
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              {t.side === 'buy' ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
+              {t.side === 'buy' ? <TrendingUp className="w-4 h-4 text-lime-400" /> : <TrendingDown className="w-4 h-4 text-orange-400" />}
               <span className="text-white font-semibold text-sm">{t.ticker}</span>
-              <Badge className={`text-[9px] ${t.side === 'buy' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-700/50' : 'bg-red-900/30 text-red-400 border-red-700/50'}`}>
+              <Badge className={`text-[9px] ${t.side === 'buy' ? 'bg-lime-900/30 text-lime-400 border-emerald-700/50' : 'bg-orange-900/30 text-orange-400 border-red-700/50'}`}>
                 {t.side.toUpperCase()}
               </Badge>
-              <Badge className={`text-[9px] ${t.status === 'closed' ? 'bg-slate-700 text-slate-400' : 'bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30'}`}>
+              <Badge className={`text-[9px] ${t.status === 'closed' ? 'bg-slate-700 text-slate-400' : 'bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30'}`}>
                 {t.status.toUpperCase()}
               </Badge>
             </div>
             <div className="flex items-center gap-1.5">
               {t.status === 'closed' && (
-                <span className={`text-sm font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-sm font-bold ${t.pnl >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
                   {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)} ({t.pnl_percent >= 0 ? '+' : ''}{t.pnl_percent.toFixed(1)}%)
                 </span>
               )}
@@ -264,9 +264,9 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
             <span>Qty: {t.quantity}</span>
             <span>{t.entry_date}</span>
           </div>
-          {t.notes && <p className="text-slate-400 text-xs mt-1 italic">"{t.notes}"</p>}
+          {t.notes && <p className="text-slate-300 text-xs mt-1 italic">"{t.notes}"</p>}
           {t.hypothesis && (
-            <div className="mt-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-500/40/30">
+            <div className="mt-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-400/30/30">
               <p className="text-[10px] text-slate-400 mb-0.5">AI Hypothesis</p>
               <p className="text-xs text-white font-medium">{t.hypothesis.verdict} ({t.hypothesis.confidence}%)</p>
               {t.hypothesis.summary && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{t.hypothesis.summary}</p>}
@@ -294,7 +294,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
                 <Paperclip className="w-3 h-3 mr-1" /> Attach AI Hypothesis
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2 text-red-400 hover:text-red-300 ml-auto" onClick={() => onDelete(t.id)}>
+            <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2 text-orange-400 hover:text-orange-300 ml-auto" onClick={() => onDelete(t.id)}>
               <Trash2 className="w-3 h-3" />
             </Button>
           </div>
@@ -308,18 +308,18 @@ const AnalyticsTab = ({ analytics }) => {
   if (!analytics || analytics.closed_trades === 0) return (
     <div className="text-center py-12">
       <BarChart3 className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-      <p className="text-slate-400 text-sm">No closed trades yet</p>
-      <p className="text-slate-400 text-xs mt-1">Close some trades to see your performance analytics</p>
+      <p className="text-slate-300 text-sm">No closed trades yet</p>
+      <p className="text-slate-300 text-xs mt-1">Close some trades to see your performance analytics</p>
     </div>
   );
 
   const a = analytics;
   const stats = [
-    { label: 'Total P&L', value: `$${a.total_pnl.toFixed(2)}`, color: a.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'Win Rate', value: `${a.win_rate}%`, color: a.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'Avg Gain', value: `$${a.avg_gain.toFixed(2)}`, color: 'text-emerald-400' },
-    { label: 'Avg Loss', value: `$${a.avg_loss.toFixed(2)}`, color: 'text-red-400' },
-    { label: 'Open', value: a.open_trades, color: 'text-[#35D6C8]' },
+    { label: 'Total P&L', value: `$${a.total_pnl.toFixed(2)}`, color: a.total_pnl >= 0 ? 'text-lime-400' : 'text-orange-400' },
+    { label: 'Win Rate', value: `${a.win_rate}%`, color: a.win_rate >= 50 ? 'text-lime-400' : 'text-orange-400' },
+    { label: 'Avg Gain', value: `$${a.avg_gain.toFixed(2)}`, color: 'text-lime-400' },
+    { label: 'Avg Loss', value: `$${a.avg_loss.toFixed(2)}`, color: 'text-orange-400' },
+    { label: 'Open', value: a.open_trades, color: 'text-[#3DE8D9]' },
     { label: 'Closed', value: a.closed_trades, color: 'text-white' },
   ];
 
@@ -333,7 +333,7 @@ const AnalyticsTab = ({ analytics }) => {
       {/* Stats Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {stats.map(s => (
-          <Card key={s.label} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
+          <Card key={s.label} className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
             <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
             <p className="text-slate-400 text-[10px]">{s.label}</p>
           </Card>
@@ -342,14 +342,14 @@ const AnalyticsTab = ({ analytics }) => {
 
       {/* P&L Timeline Chart */}
       {a.pnl_timeline.length > 0 && (
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4">
           <h4 className="text-white text-sm font-semibold mb-3">Cumulative P&L</h4>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={a.pnl_timeline}>
               <defs>
                 <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#35D6C8" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#35D6C8" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#3DE8D9" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3DE8D9" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis dataKey="date" tick={xAxisTick} tickLine={false} axisLine={false}
@@ -357,7 +357,7 @@ const AnalyticsTab = ({ analytics }) => {
               <YAxis tick={yAxisTick} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
               <Tooltip contentStyle={chartTooltipStyle}
                 labelStyle={chartLabelStyle} formatter={(v) => [`$${v.toFixed(2)}`, 'Cumulative P&L']} />
-              <Area type="monotone" dataKey="cumulative" stroke="#35D6C8" fill="url(#pnlGrad)" strokeWidth={2} />
+              <Area type="monotone" dataKey="cumulative" stroke="#3DE8D9" fill="url(#pnlGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
@@ -368,15 +368,15 @@ const AnalyticsTab = ({ analytics }) => {
         {a.best_trade && (
           <Card className="bg-emerald-900/10 border-emerald-700/30 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 mb-1">Best Trade</p>
-            <p className="text-emerald-400 text-lg font-bold">{a.best_trade.ticker}</p>
-            <p className="text-emerald-300 text-xs">+${a.best_trade.pnl.toFixed(2)} ({a.best_trade.pnl_percent > 0 ? '+' : ''}{a.best_trade.pnl_percent.toFixed(1)}%)</p>
+            <p className="text-lime-400 text-lg font-bold">{a.best_trade.ticker}</p>
+            <p className="text-lime-300 text-xs">+${a.best_trade.pnl.toFixed(2)} ({a.best_trade.pnl_percent > 0 ? '+' : ''}{a.best_trade.pnl_percent.toFixed(1)}%)</p>
           </Card>
         )}
         {a.worst_trade && (
           <Card className="bg-red-900/10 border-red-700/30 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 mb-1">Worst Trade</p>
-            <p className="text-red-400 text-lg font-bold">{a.worst_trade.ticker}</p>
-            <p className="text-red-300 text-xs">${a.worst_trade.pnl.toFixed(2)} ({a.worst_trade.pnl_percent.toFixed(1)}%)</p>
+            <p className="text-orange-400 text-lg font-bold">{a.worst_trade.ticker}</p>
+            <p className="text-orange-300 text-xs">${a.worst_trade.pnl.toFixed(2)} ({a.worst_trade.pnl_percent.toFixed(1)}%)</p>
           </Card>
         )}
       </div>
@@ -396,7 +396,7 @@ const TickerPerformance = ({ byTicker }) => {
   );
 
   return (
-    <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4">
+    <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4">
       <h4 className="text-white text-sm font-semibold mb-2">Performance by Ticker</h4>
       <div className="space-y-1.5">
         {sortedEntries.map(([ticker, data]) => (
@@ -405,7 +405,7 @@ const TickerPerformance = ({ byTicker }) => {
               <span className="text-white text-sm font-medium">{ticker}</span>
               <span className="text-slate-400 text-[10px]">{data.trades} trades ({data.wins}W)</span>
             </div>
-            <span className={`text-sm font-bold ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`text-sm font-bold ${data.pnl >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
               {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}
             </span>
           </div>

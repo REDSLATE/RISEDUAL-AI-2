@@ -5,8 +5,8 @@ import { getApiBase } from '../utils/apiBase';
 const BACKEND_URL = getApiBase();
 
 const FAILURE_LABELS = {
-  TECH_FAKEOUT: { label: 'Fakeout', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
-  MACRO_SHOCK: { label: 'Macro Shock', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' },
+  TECH_FAKEOUT: { label: 'Fakeout', color: 'text-amber-300', bg: 'bg-amber-500/10 border-amber-500/20' },
+  MACRO_SHOCK: { label: 'Macro Shock', color: 'text-orange-400', bg: 'bg-red-500/10 border-red-500/20' },
   LIQUIDITY_GAP: { label: 'Liquidity', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' },
   REGIME_SHIFT: { label: 'Regime Shift', color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
   UNKNOWN: { label: 'Unknown', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20' },
@@ -15,12 +15,12 @@ const FAILURE_LABELS = {
 const EventIcon = ({ type, correct }) => {
   if (type === 'new_verification') {
     return correct
-      ? <CheckCircle className="w-4 h-4 text-emerald-400" />
-      : <XCircle className="w-4 h-4 text-red-400" />;
+      ? <CheckCircle className="w-4 h-4 text-lime-400" />
+      : <XCircle className="w-4 h-4 text-orange-400" />;
   }
-  if (type === 'post_mortem') return <Brain className="w-4 h-4 text-[#35D6C8]" />;
-  if (type === 'toxic_alert') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-  if (type === 'memory_update') return <Zap className="w-4 h-4 text-amber-400" />;
+  if (type === 'post_mortem') return <Brain className="w-4 h-4 text-[#3DE8D9]" />;
+  if (type === 'toxic_alert') return <AlertTriangle className="w-4 h-4 text-orange-400" />;
+  if (type === 'memory_update') return <Zap className="w-4 h-4 text-amber-300" />;
   return <Activity className="w-4 h-4 text-slate-400" />;
 };
 
@@ -49,12 +49,12 @@ const VerificationEvent = ({ data }) => (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
         <span className="text-white text-sm font-semibold">{data.ticker}</span>
-        <span className={`text-xs ${data.correct ? 'text-emerald-400' : 'text-red-400'}`}>
+        <span className={`text-xs ${data.correct ? 'text-lime-400' : 'text-orange-400'}`}>
           {data.correct ? 'HIT' : 'MISS'}
         </span>
         {!data.correct && data.failure_code && <FailureBadge code={data.failure_code} />}
       </div>
-      <p className="text-slate-400 text-xs mt-0.5">
+      <p className="text-slate-300 text-xs mt-0.5">
         {data.direction} @ ${data.price_at?.toFixed(2)} {'\u2192'} ${data.price_now?.toFixed(2)}
         {data.confidence > 0 && <span className="text-slate-400 ml-1">({data.confidence}% conf)</span>}
       </p>
@@ -68,11 +68,11 @@ const PostMortemEvent = ({ data }) => (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
         <span className="text-white text-sm font-semibold">{data.ticker}</span>
-        <span className="text-[#35D6C8] text-xs">Post-Mortem</span>
+        <span className="text-[#3DE8D9] text-xs">Post-Mortem</span>
         {data.failure_code && <FailureBadge code={data.failure_code} />}
       </div>
       {data.reasoning && (
-        <p className="text-slate-400 text-xs mt-0.5 line-clamp-2">{data.reasoning}</p>
+        <p className="text-slate-300 text-xs mt-0.5 line-clamp-2">{data.reasoning}</p>
       )}
       {data.key_headline && data.key_headline !== 'None' && (
         <p className="text-slate-400 text-[10px] mt-0.5 italic truncate">"{data.key_headline}"</p>
@@ -86,13 +86,13 @@ const ToxicAlertEvent = ({ data }) => (
     <EventIcon type="toxic_alert" />
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
-        <span className="text-red-400 text-sm font-semibold">Toxic Spikes</span>
-        <span className="text-red-400/70 text-xs">{data.toxic_count} detected</span>
+        <span className="text-orange-400 text-sm font-semibold">Toxic Spikes</span>
+        <span className="text-orange-400/70 text-xs">{data.toxic_count} detected</span>
       </div>
       {data.affected_tickers?.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">
           {data.affected_tickers.slice(0, 4).map(t => (
-            <span key={t} className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 rounded px-1.5 py-0.5">{t}</span>
+            <span key={t} className="text-[10px] bg-red-500/10 text-orange-400 border border-red-500/20 rounded px-1.5 py-0.5">{t}</span>
           ))}
           {data.affected_tickers.length > 4 && (
             <span className="text-[10px] text-slate-400">+{data.affected_tickers.length - 4}</span>
@@ -199,11 +199,11 @@ const LiveInsightsFeed = () => {
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Radio className={`w-4 h-4 ${connected ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+            <Radio className={`w-4 h-4 ${connected ? 'text-lime-400 animate-pulse' : 'text-slate-400'}`} />
             <h3 className="text-white text-sm font-semibold tracking-wide">Live Insights Feed</h3>
           </div>
           {connected && (
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">
+            <span className="text-[10px] bg-emerald-500/10 text-lime-400 border border-emerald-500/20 rounded-full px-2 py-0.5">
               LIVE
             </span>
           )}
@@ -212,9 +212,9 @@ const LiveInsightsFeed = () => {
         <div className="flex items-center gap-3">
           {verifications.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-emerald-400">{hits}H</span>
+              <span className="text-lime-400">{hits}H</span>
               <span className="text-slate-400">/</span>
-              <span className="text-red-400">{misses}M</span>
+              <span className="text-orange-400">{misses}M</span>
             </div>
           )}
           {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
@@ -227,7 +227,7 @@ const LiveInsightsFeed = () => {
           {events.length === 0 ? (
             <div className="py-8 text-center">
               <Activity className="w-6 h-6 text-slate-700 mx-auto mb-2" />
-              <p className="text-slate-400 text-xs">Waiting for new predictions and verifications...</p>
+              <p className="text-slate-300 text-xs">Waiting for new predictions and verifications...</p>
               <p className="text-slate-700 text-[10px] mt-1">Events stream in real-time as predictions are verified</p>
             </div>
           ) : (

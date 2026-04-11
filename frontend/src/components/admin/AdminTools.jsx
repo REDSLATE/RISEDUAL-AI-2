@@ -48,20 +48,20 @@ const AdminTools = () => {
   };
 
   const gradeColor = (grade) => {
-    if (grade?.startsWith('A')) return 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50';
+    if (grade?.startsWith('A')) return 'text-lime-400 bg-lime-900/30 border-emerald-700/50';
     if (grade?.startsWith('B')) return 'text-blue-400 bg-blue-900/30 border-blue-700/50';
-    if (grade?.startsWith('C')) return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
-    return 'text-red-400 bg-red-900/30 border-red-700/50';
+    if (grade?.startsWith('C')) return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
+    return 'text-orange-400 bg-orange-900/30 border-red-700/50';
   };
 
   return (
     <div className="p-6 space-y-6" data-testid="admin-tools">
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
 
-      <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-5" data-testid="code-quality-card">
+      <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-900/20 border border-emerald-700/30 flex items-center justify-center shrink-0">
-            <CheckCircle className="w-6 h-6 text-emerald-400" />
+          <div className="w-12 h-12 rounded-xl bg-lime-900/20 border border-emerald-700/30 flex items-center justify-center shrink-0">
+            <CheckCircle className="w-6 h-6 text-lime-400" />
           </div>
           <div className="flex-1">
             <div className="flex items-center justify-between mb-3">
@@ -76,7 +76,7 @@ const AdminTools = () => {
                   </Badge>
                 </div>
               ) : (
-                <span className="text-slate-400 text-xs">Unavailable</span>
+                <span className="text-slate-300 text-xs">Unavailable</span>
               )}
             </div>
 
@@ -90,9 +90,9 @@ const AdminTools = () => {
                     <div key={key} className="bg-slate-900/60 rounded-lg p-2.5 text-center">
                       <div className="flex items-center justify-center gap-1 mb-0.5">
                         {item.score >= item.max * 0.7 ? (
-                          <CheckCircle className="w-3 h-3 text-emerald-400" />
+                          <CheckCircle className="w-3 h-3 text-lime-400" />
                         ) : (
-                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                          <AlertCircle className="w-3 h-3 text-amber-300" />
                         )}
                         <span className="text-white text-xs font-bold">{item.score}/{item.max}</span>
                       </div>
@@ -114,14 +114,14 @@ const AdminTools = () => {
         </div>
       </Card>
 
-      <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-5">
+      <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#35D6C8]/10 border border-[#35D6C8]/20 flex items-center justify-center shrink-0">
-            <FileCode className="w-6 h-6 text-[#35D6C8]" />
+          <div className="w-12 h-12 rounded-xl bg-[#3DE8D9]/10 border border-[#3DE8D9]/20 flex items-center justify-center shrink-0">
+            <FileCode className="w-6 h-6 text-[#3DE8D9]" />
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-white text-sm font-semibold mb-1">Download Complete Source Code</h4>
-            <p className="text-slate-400 text-xs leading-relaxed mb-3">
+            <p className="text-slate-300 text-xs leading-relaxed mb-3">
               Export the entire RISEDUAL AI codebase as a 305-page PDF. Includes all source code, architecture documentation, database schemas, API reference, environment configuration, setup guide, and the full test suite.
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -132,7 +132,7 @@ const AdminTools = () => {
             <Button
               onClick={downloadCodebase}
               disabled={downloading}
-              className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-xs h-9 px-4 rounded-xl transition-all"
+              className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white text-xs h-9 px-4 rounded-xl transition-all"
               data-testid="download-codebase-btn"
             >
               {downloading ? (

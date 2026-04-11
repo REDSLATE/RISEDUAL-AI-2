@@ -17,9 +17,9 @@ const AuthForm = ({ tab, onSubmit, error, loading, refCode }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-testid="auth-form">
       {tab === 'register' && refCode && (
-        <div className="bg-emerald-900/20 border border-emerald-700/40 rounded-xl px-3 py-2 flex items-center gap-2" data-testid="referral-banner">
-          <Gift className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          <p className="text-emerald-300 text-xs">You've been referred! Sign up to get a <strong>7-day free Pro trial</strong>.</p>
+        <div className="bg-lime-900/20 border border-emerald-700/40 rounded-xl px-3 py-2 flex items-center gap-2" data-testid="referral-banner">
+          <Gift className="w-4 h-4 text-lime-400 flex-shrink-0" />
+          <p className="text-lime-300 text-xs">You've been referred! Sign up to get a <strong>7-day free Pro trial</strong>.</p>
         </div>
       )}
       {tab === 'register' && (
@@ -45,13 +45,13 @@ const AuthForm = ({ tab, onSubmit, error, loading, refCode }) => {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg" data-testid="auth-error">
+        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg" data-testid="auth-error">
           {error}
         </div>
       )}
 
       <Button type="submit" disabled={loading}
-        className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
+        className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-5 rounded-xl"
         data-testid="auth-submit-btn">
         {loading ? 'Please wait...' : tab === 'login' ? 'Log In' : 'Create Account'}
       </Button>

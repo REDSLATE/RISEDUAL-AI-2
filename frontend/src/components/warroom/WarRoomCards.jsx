@@ -9,19 +9,19 @@ import { Badge } from '../ui/badge';
 
 // Helper: score → badge CSS class (green/amber/red threshold)
 const scoreBadge = (val, high = 7, mid = 4) =>
-  val >= high ? 'bg-emerald-900/40 text-emerald-400' :
-  val >= mid ? 'bg-amber-900/40 text-amber-400' : 'bg-red-900/40 text-red-400';
+  val >= high ? 'bg-lime-900/40 text-lime-400' :
+  val >= mid ? 'bg-amber-900/40 text-amber-300' : 'bg-orange-900/40 text-orange-400';
 
 const IMPACT_DOTS = { positive: 'bg-emerald-400', caution: 'bg-amber-400' };
 const impactDot = (impact) => IMPACT_DOTS[impact] || 'bg-slate-500';
 
 const SENTIMENT_BADGES = {
-  bullish: 'bg-emerald-900/40 text-emerald-400',
-  bearish: 'bg-red-900/40 text-red-400',
+  bullish: 'bg-lime-900/40 text-lime-400',
+  bearish: 'bg-orange-900/40 text-orange-400',
 };
 const sentimentBadge = (s) => SENTIMENT_BADGES[s] || 'bg-slate-700 text-slate-400';
 
-const MiniBar = ({ value, max = 100, color = '#35D6C8' }) => (
+const MiniBar = ({ value, max = 100, color = '#3DE8D9' }) => (
   <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
     <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min((value / max) * 100, 100)}%`, backgroundColor: color }} />
   </div>
@@ -49,9 +49,9 @@ export const OverviewCard = ({ overview, symbol }) => {
   ];
   const metrics = isEtf ? etfMetrics : stockMetrics;
   return (
-    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
+    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
       <div className="flex items-center gap-2 mb-3">
-        <Building2 className="w-4 h-4 text-[#35D6C8]" />
+        <Building2 className="w-4 h-4 text-[#3DE8D9]" />
         <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
         <Badge className="bg-slate-700 text-slate-300 text-[10px]">{overview.sector || 'N/A'}</Badge>
         {overview.industry && <Badge className="bg-slate-700/60 text-slate-400 text-[10px]">{overview.industry}</Badge>}
@@ -72,9 +72,9 @@ export const OverviewCard = ({ overview, symbol }) => {
 };
 
 export const AIScoreCard = ({ aiScore }) => (
-  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-ai-score">
+  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-ai-score">
     <div className="flex items-center gap-2 mb-3">
-      <Brain className="w-4 h-4 text-violet-400" />
+      <Brain className="w-4 h-4 text-violet-300" />
       <h3 className="text-white font-semibold text-sm">AI Score</h3>
       <Badge className={`text-[10px] ${scoreBadge(aiScore.overall_score)}`}>
         {aiScore.overall_score}/10
@@ -82,7 +82,7 @@ export const AIScoreCard = ({ aiScore }) => (
     </div>
     <div className="space-y-2.5">
       {[
-        { label: 'Technical', score: aiScore.technical_score || 0, color: '#35D6C8' },
+        { label: 'Technical', score: aiScore.technical_score || 0, color: '#3DE8D9' },
         { label: 'Fundamental', score: aiScore.fundamental_score || 0, color: '#10B981' },
         { label: 'Sentiment', score: aiScore.sentiment_score || 0, color: '#F59E0B' },
       ].map(s => (
@@ -109,15 +109,15 @@ export const AIScoreCard = ({ aiScore }) => (
 );
 
 export const BriefCard = ({ brief }) => (
-  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-brief">
+  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-brief">
     <div className="flex items-center gap-2 mb-3">
-      <Zap className="w-4 h-4 text-amber-400" />
+      <Zap className="w-4 h-4 text-amber-300" />
       <h3 className="text-white font-semibold text-sm">Intelligence Brief</h3>
     </div>
     {brief && (
       <div className="space-y-3">
         <p className="text-white font-medium text-sm">{brief.headline || 'No headline'}</p>
-        <p className="text-slate-400 text-xs leading-relaxed">{brief.summary || brief.analysis || ''}</p>
+        <p className="text-slate-300 text-xs leading-relaxed">{brief.summary || brief.analysis || ''}</p>
         {brief.key_levels && (
           <div className="flex flex-wrap gap-2">
             {Object.entries(brief.key_levels).map(([k, v]) => (
@@ -133,10 +133,10 @@ export const BriefCard = ({ brief }) => (
 );
 
 export const EarningsCard = ({ earnings }) => (
-  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-earnings">
+  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-earnings">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
-        <Target className="w-4 h-4 text-emerald-400" />
+        <Target className="w-4 h-4 text-lime-400" />
         <h3 className="text-white font-semibold text-sm">Earnings Surprise Tracker</h3>
       </div>
       <div className="flex items-center gap-2">
@@ -144,7 +144,7 @@ export const EarningsCard = ({ earnings }) => (
           {earnings.beat_rate}% Beat Rate
         </Badge>
         {earnings.current_streak > 0 && (
-          <Badge className="bg-emerald-900/30 text-emerald-400 text-[10px]">{earnings.current_streak}Q Streak</Badge>
+          <Badge className="bg-lime-900/30 text-lime-400 text-[10px]">{earnings.current_streak}Q Streak</Badge>
         )}
       </div>
     </div>
@@ -176,7 +176,7 @@ export const EarningsCard = ({ earnings }) => (
 );
 
 export const InsidersCard = ({ insiders }) => (
-  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-insiders">
+  <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-insiders">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <Users className="w-4 h-4 text-blue-400" />
@@ -188,10 +188,10 @@ export const InsidersCard = ({ insiders }) => (
     </div>
     <div className="mb-3">
       <div className="flex justify-between text-[10px] mb-1">
-        <span className="text-emerald-400">Buys ({insiders.buy_ratio}%)</span>
-        <span className="text-red-400">Sells ({100 - insiders.buy_ratio}%)</span>
+        <span className="text-lime-400">Buys ({insiders.buy_ratio}%)</span>
+        <span className="text-orange-400">Sells ({100 - insiders.buy_ratio}%)</span>
       </div>
-      <div className="w-full h-2.5 bg-red-900/40 rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-orange-900/40 rounded-full overflow-hidden">
         <div className="h-full bg-emerald-500/70 rounded-full transition-all duration-700" style={{ width: `${insiders.buy_ratio}%` }} />
       </div>
     </div>
@@ -235,11 +235,11 @@ export const ScoreGauge = ({ score, label }) => {
 export const CompositeBreakdownBar = ({ breakdown }) => {
   // Support both multi-agent (fundamental/technical/sentiment) and legacy (ai_score/earnings/insider)
   const bars = breakdown.fundamental_score !== undefined ? [
-    { label: 'Fundamentals', value: breakdown.fundamental_score, color: '#35D6C8' },
+    { label: 'Fundamentals', value: breakdown.fundamental_score, color: '#3DE8D9' },
     { label: 'Technicals', value: breakdown.technical_score, color: '#10B981' },
     { label: 'Sentiment', value: breakdown.sentiment_score, color: '#F59E0B' },
   ] : [
-    { label: 'AI Score', value: breakdown.ai_score_weight, color: '#35D6C8' },
+    { label: 'AI Score', value: breakdown.ai_score_weight, color: '#3DE8D9' },
     { label: 'Earnings', value: breakdown.earnings_weight, color: '#10B981' },
     { label: 'Insiders', value: breakdown.insider_weight, color: '#F59E0B' },
   ];
@@ -260,11 +260,11 @@ export const CompositeBreakdownBar = ({ breakdown }) => {
 export const CrewInsightsCard = ({ composite }) => {
   if (!composite?.multi_agent) return null;
   return (
-    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-crew-insights">
+    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5" data-testid="warroom-crew-insights">
       <div className="flex items-center gap-2 mb-3">
-        <Brain className="w-4 h-4 text-violet-400" />
+        <Brain className="w-4 h-4 text-violet-300" />
         <h3 className="text-white font-semibold text-sm">Strategist vs Auditor</h3>
-        <Badge className="bg-violet-900/40 text-violet-400 text-[10px]">{composite.agents_used} Agents</Badge>
+        <Badge className="bg-violet-800/40 text-violet-300 text-[10px]">{composite.agents_used} Agents</Badge>
         <Badge className="bg-slate-700 text-slate-300 text-[10px]">{composite.confidence}% Confidence</Badge>
       </div>
       {composite.key_thesis && (
@@ -272,19 +272,19 @@ export const CrewInsightsCard = ({ composite }) => {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         {composite.bull_case && (
-          <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-3">
+          <div className="bg-lime-900/20 border border-lime-700/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
-              <TrendingUp className="w-3 h-3 text-emerald-400" />
-              <span className="text-emerald-400 text-[10px] font-semibold uppercase">Strategist Bull Case</span>
+              <TrendingUp className="w-3 h-3 text-lime-400" />
+              <span className="text-lime-400 text-[10px] font-semibold uppercase">Strategist Bull Case</span>
             </div>
             <p className="text-slate-300 text-xs leading-relaxed">{composite.bull_case}</p>
           </div>
         )}
         {composite.bear_case && (
-          <div className="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+          <div className="bg-orange-900/20 border border-orange-700/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
-              <TrendingDown className="w-3 h-3 text-red-400" />
-              <span className="text-red-400 text-[10px] font-semibold uppercase">Auditor Bear Case</span>
+              <TrendingDown className="w-3 h-3 text-orange-400" />
+              <span className="text-orange-400 text-[10px] font-semibold uppercase">Auditor Bear Case</span>
             </div>
             <p className="text-slate-300 text-xs leading-relaxed">{composite.bear_case}</p>
           </div>
@@ -293,10 +293,10 @@ export const CrewInsightsCard = ({ composite }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         {composite.catalysts?.length > 0 && (
           <div>
-            <span className="text-emerald-400 text-[10px] font-semibold uppercase">Strategist Catalysts</span>
+            <span className="text-lime-400 text-[10px] font-semibold uppercase">Strategist Catalysts</span>
             <ul className="mt-1 space-y-0.5">
               {composite.catalysts.map((c, i) => (
-                <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
+                <li key={i} className="text-slate-300 text-xs flex items-start gap-1.5">
                   <span className="w-1 h-1 bg-emerald-400 rounded-full mt-1.5 flex-shrink-0" />
                   {c}
                 </li>
@@ -306,10 +306,10 @@ export const CrewInsightsCard = ({ composite }) => {
         )}
         {composite.risks?.length > 0 && (
           <div>
-            <span className="text-red-400 text-[10px] font-semibold uppercase">Auditor Risk Flags</span>
+            <span className="text-orange-400 text-[10px] font-semibold uppercase">Auditor Risk Flags</span>
             <ul className="mt-1 space-y-0.5">
               {composite.risks.map((r, i) => (
-                <li key={i} className="text-slate-400 text-xs flex items-start gap-1.5">
+                <li key={i} className="text-slate-300 text-xs flex items-start gap-1.5">
                   <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
                   {r}
                 </li>
@@ -329,8 +329,8 @@ export const CrewInsightsCard = ({ composite }) => {
         </div>
       )}
       {composite.trade_recommendation && (
-        <div className="bg-[#35D6C8]/10 border border-[#35D6C8]/20 rounded-lg p-2.5">
-          <span className="text-[#35D6C8] text-[10px] font-semibold uppercase">Trade Setup</span>
+        <div className="bg-[#3DE8D9]/10 border border-[#3DE8D9]/20 rounded-lg p-2.5">
+          <span className="text-[#3DE8D9] text-[10px] font-semibold uppercase">Trade Setup</span>
           <p className="text-slate-300 text-xs mt-1">{composite.trade_recommendation}</p>
         </div>
       )}
@@ -342,7 +342,7 @@ export const CrewInsightsCard = ({ composite }) => {
           <div className="mt-2 space-y-2">
             {composite.agent_analyses.map((a, i) => (
               <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
-                <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
+                <span className="text-violet-300 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] leading-relaxed mt-1">{a.summary}</p>
               </div>
             ))}

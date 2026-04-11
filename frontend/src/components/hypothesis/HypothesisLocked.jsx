@@ -4,10 +4,10 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 
 const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
-  <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden" data-testid="hypothesis-locked">
+  <Card className="relative bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden" data-testid="hypothesis-locked">
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-2 text-white font-semibold text-lg">
-        <Sparkles className="w-5 h-5 text-[#35D6C8]" />
+        <Sparkles className="w-5 h-5 text-[#3DE8D9]" />
         AI Hypothesis Ready for {hypothesis.symbol}
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -17,12 +17,12 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
           <p className="text-slate-400 text-[10px]">Data Points</p>
         </div>
         <div className="bg-slate-900/60 rounded-lg p-3 text-center">
-          <Globe className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
+          <Globe className="w-4 h-4 text-lime-400 mx-auto mb-1" />
           <p className="text-white text-lg font-bold">{hypothesis.teaser.world_events_count}</p>
           <p className="text-slate-400 text-[10px]">World Events</p>
         </div>
         <div className="bg-slate-900/60 rounded-lg p-3 text-center">
-          <Landmark className="w-4 h-4 text-violet-400 mx-auto mb-1" />
+          <Landmark className="w-4 h-4 text-violet-300 mx-auto mb-1" />
           <p className="text-white text-lg font-bold">{hypothesis.teaser.congressional_trades_count}</p>
           <p className="text-slate-400 text-[10px]">Congress Trades</p>
         </div>
@@ -32,7 +32,7 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
       <div className="blur-md select-none pointer-events-none" aria-hidden="true">
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <span className="text-3xl font-bold text-emerald-400">BUY</span>
+            <span className="text-3xl font-bold text-lime-400">BUY</span>
             <span className="text-slate-400">|</span>
             <span className="text-white text-xl font-semibold">Confidence: 78%</span>
           </div>
@@ -40,16 +40,16 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
         </div>
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm rounded-b-xl">
-        <Lock className="w-8 h-8 text-[#35D6C8] mb-3" />
+        <Lock className="w-8 h-8 text-[#3DE8D9] mb-3" />
         <p className="text-white font-semibold text-lg mb-1">Unlock Full AI Hypothesis</p>
-        <p className="text-slate-400 text-sm text-center max-w-xs mb-4">{hypothesis.teaser.summary}</p>
+        <p className="text-slate-300 text-sm text-center max-w-xs mb-4">{hypothesis.teaser.summary}</p>
         <div className="flex gap-3">
           {!user && (
             <Button onClick={onLogin} className="bg-slate-700 hover:bg-slate-600 text-white rounded-xl" data-testid="hypothesis-login-btn">
               Log In
             </Button>
           )}
-          <Button onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="hypothesis-subscribe-btn">
+          <Button onClick={onSubscribe} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl" data-testid="hypothesis-subscribe-btn">
             <Zap className="w-4 h-4 mr-2" /> Subscribe to Pro
           </Button>
         </div>

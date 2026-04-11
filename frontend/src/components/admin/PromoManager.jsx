@@ -93,13 +93,13 @@ const PromoManager = () => {
     <div className="p-4 space-y-4" data-testid="promo-manager">
       <div className="flex items-center justify-between">
         <h3 className="text-white text-sm font-semibold">Promo Campaigns</h3>
-        <Button size="sm" className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-xs h-8" onClick={() => setShowCreate(!showCreate)} data-testid="create-promo-btn">
+        <Button size="sm" className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white text-xs h-8" onClick={() => setShowCreate(!showCreate)} data-testid="create-promo-btn">
           <Plus className="w-3.5 h-3.5 mr-1" /> New Campaign
         </Button>
       </div>
 
       {showCreate && (
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4 space-y-3" data-testid="promo-create-form">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4 space-y-3" data-testid="promo-create-form">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-slate-400 text-[10px] block mb-1">Title</label>
@@ -136,7 +136,7 @@ const PromoManager = () => {
           </div>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" className="text-xs h-8 bg-slate-700 text-slate-300 border-slate-600" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button size="sm" className="text-xs h-8 bg-[#35D6C8] text-white" onClick={createPromo} disabled={creating || !form.title || !form.end_date} data-testid="promo-submit-btn">
+            <Button size="sm" className="text-xs h-8 bg-[#3DE8D9] text-white" onClick={createPromo} disabled={creating || !form.title || !form.end_date} data-testid="promo-submit-btn">
               {creating ? 'Creating...' : 'Create Campaign'}
             </Button>
           </div>
@@ -144,12 +144,12 @@ const PromoManager = () => {
       )}
 
       {loading ? (
-        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin" /></div>
+        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-[#3DE8D9] animate-spin" /></div>
       ) : promos.length === 0 ? (
         <div className="text-center py-8">
           <Gift className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">No promo campaigns yet</p>
-          <p className="text-slate-400 text-xs mt-1">Create your first campaign to drive referrals</p>
+          <p className="text-slate-300 text-sm">No promo campaigns yet</p>
+          <p className="text-slate-300 text-xs mt-1">Create your first campaign to drive referrals</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -158,25 +158,25 @@ const PromoManager = () => {
             const isLive = p.is_active && new Date(p.start_date) <= now && new Date(p.end_date) >= now;
             const isExpired = new Date(p.end_date) < now;
             return (
-              <div key={p.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`promo-item-${p.id}`}>
+              <div key={p.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-4 py-3" data-testid={`promo-item-${p.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-white text-sm font-medium truncate">{p.title}</p>
-                    {isLive && <Badge className="text-[9px] bg-emerald-900/30 text-emerald-400 border-emerald-700/50 animate-pulse">LIVE</Badge>}
+                    {isLive && <Badge className="text-[9px] bg-lime-900/30 text-lime-400 border-emerald-700/50 animate-pulse">LIVE</Badge>}
                     {isExpired && <Badge className="text-[9px] bg-slate-700 text-slate-400">EXPIRED</Badge>}
-                    {!p.is_active && !isExpired && <Badge className="text-[9px] bg-amber-900/30 text-amber-400 border-amber-700/50">PAUSED</Badge>}
+                    {!p.is_active && !isExpired && <Badge className="text-[9px] bg-amber-900/30 text-amber-300 border-amber-700/50">PAUSED</Badge>}
                   </div>
-                  <p className="text-slate-400 text-xs truncate">{p.message}</p>
+                  <p className="text-slate-300 text-xs truncate">{p.message}</p>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-slate-400 text-[10px] flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(p.start_date)} - {formatDate(p.end_date)}</span>
-                    <span className="text-[#35D6C8] text-[10px] font-medium">{p.referral_target} refs = {p.reward_months} months</span>
+                    <span className="text-[#3DE8D9] text-[10px] font-medium">{p.referral_target} refs = {p.reward_months} months</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 ml-3">
                   <button onClick={() => togglePromo(p.id)} className="text-slate-400 hover:text-white transition-colors" title={p.is_active ? 'Pause' : 'Activate'} data-testid={`promo-toggle-${p.id}`}>
-                    {p.is_active ? <ToggleRight className="w-6 h-6 text-emerald-400" /> : <ToggleLeft className="w-6 h-6" />}
+                    {p.is_active ? <ToggleRight className="w-6 h-6 text-lime-400" /> : <ToggleLeft className="w-6 h-6" />}
                   </button>
-                  <button onClick={() => deletePromo(p.id)} className="text-slate-400 hover:text-red-400 transition-colors" title="Delete" data-testid={`promo-delete-${p.id}`}>
+                  <button onClick={() => deletePromo(p.id)} className="text-slate-400 hover:text-orange-400 transition-colors" title="Delete" data-testid={`promo-delete-${p.id}`}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

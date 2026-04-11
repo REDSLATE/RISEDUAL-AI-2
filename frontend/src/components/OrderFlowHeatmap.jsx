@@ -20,8 +20,8 @@ const WallEvent = ({ event }) => {
   return (
     <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md border ${
       appeared
-        ? (isBid ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400')
-        : 'bg-slate-700/35 border-slate-500/40 text-slate-400'
+        ? (isBid ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400')
+        : 'bg-slate-700/45 border-slate-400/30 text-slate-400'
     }`} data-testid={`wall-event-${event.event}`}>
       {appeared ? <Zap className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
       <span className="font-mono">${event.price?.toLocaleString()}</span>
@@ -159,7 +159,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
     return { bins: binList, grid: gridData };
   }, [snapshots]);
 
-  const biasColor = latest?.bias === 'INSTITUTIONAL_BID' ? 'text-emerald-400' : latest?.bias === 'INSTITUTIONAL_ASK' ? 'text-red-400' : 'text-slate-400';
+  const biasColor = latest?.bias === 'INSTITUTIONAL_BID' ? 'text-lime-400' : latest?.bias === 'INSTITUTIONAL_ASK' ? 'text-orange-400' : 'text-slate-400';
 
   return (
     <div className="space-y-3" data-testid="orderflow-heatmap">
@@ -167,7 +167,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border ${
-            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'
+            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
           }`} data-testid="ws-status">
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
             {connected ? 'LIVE' : 'CONNECTING'}
@@ -185,9 +185,9 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
           <div className="flex items-center gap-3 text-[10px]">
             <span className={biasColor}>{latest.bias?.replace('_', ' ')}</span>
             <span className="text-slate-400">
-              Bids: <span className="text-emerald-400 font-mono">${(latest.bid_total / 1000).toFixed(0)}K</span>
+              Bids: <span className="text-lime-400 font-mono">${(latest.bid_total / 1000).toFixed(0)}K</span>
               {' / '}
-              Asks: <span className="text-red-400 font-mono">${(latest.ask_total / 1000).toFixed(0)}K</span>
+              Asks: <span className="text-orange-400 font-mono">${(latest.ask_total / 1000).toFixed(0)}K</span>
             </span>
           </div>
         )}
@@ -203,7 +203,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
 
       {/* Heatmap Grid */}
       {grid.length > 0 ? (
-        <div className="relative overflow-hidden rounded-lg border border-slate-500/40/60 bg-slate-700/30" ref={heatmapRef}>
+        <div className="relative overflow-hidden rounded-lg border border-slate-400/30/60 bg-slate-700/40" ref={heatmapRef}>
           <div className="overflow-x-hidden">
             <div className="min-w-full">
               {grid.map((row, ri) => {
@@ -260,7 +260,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
               <div key={i} className={`flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
                 w.side === 'bid' ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'
               }`}>
-                <span className={`font-mono ${w.side === 'bid' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`font-mono ${w.side === 'bid' ? 'text-lime-400' : 'text-orange-400'}`}>
                   ${w.price.toLocaleString()}
                 </span>
                 <span className="text-slate-400">

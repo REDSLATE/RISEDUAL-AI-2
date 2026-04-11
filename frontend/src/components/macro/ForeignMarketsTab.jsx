@@ -17,17 +17,17 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
     <div className="space-y-5" data-testid="foreign-markets-tab">
       {data.correlation_signals?.length > 0 && (
         <Card className="bg-gradient-to-r from-amber-950/30 to-orange-950/20 border-amber-800/40 p-4 rounded-xl">
-          <h3 className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+          <h3 className="text-amber-300 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
             <Zap className="w-3.5 h-3.5" /> Pre-Market Correlation Signals
           </h3>
           <div className="space-y-1">
             {data.correlation_signals.slice(0, 4).map((sig, i) => (
               <div key={sig.signal || i} className="flex items-center gap-2 text-sm">
                 {sig.change_percent > 0
-                  ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  : <TrendingDown className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+                  ? <TrendingUp className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                  : <TrendingDown className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
                 <span className="text-slate-300">{sig.signal}</span>
-                <Badge className={`ml-auto text-[10px] ${sig.severity === 'high' ? 'bg-red-900/40 text-red-400 border-red-800' : 'bg-amber-900/40 text-amber-400 border-amber-800'}`}>
+                <Badge className={`ml-auto text-[10px] ${sig.severity === 'high' ? 'bg-orange-900/40 text-orange-400 border-orange-700' : 'bg-amber-900/40 text-amber-300 border-amber-800'}`}>
                   {sig.severity}
                 </Badge>
               </div>
@@ -77,14 +77,14 @@ const ForeignMarketsTab = ({ data, loading, changedSymbols = new Set() }) => {
 
 const getMarketStateLabel = (state) => state === 'REGULAR' ? 'OPEN' : (state || 'CLOSED');
 const getMarketStateStyle = (state) => {
-  if (state === 'REGULAR') return 'bg-emerald-900/40 text-emerald-400';
-  if (state === 'PRE') return 'bg-amber-900/40 text-amber-400';
+  if (state === 'REGULAR') return 'bg-lime-900/40 text-lime-400';
+  if (state === 'PRE') return 'bg-amber-900/40 text-amber-300';
   return 'bg-slate-700 text-slate-400';
 };
 const getMarketCardBg = (isPulsing, isHot, isUp) => {
-  if (isPulsing) return 'ring-2 ring-[#35D6C8]/50 animate-pulse';
-  if (isHot) return isUp ? 'bg-emerald-950/15 border-emerald-800/30' : 'bg-red-950/15 border-red-800/30';
-  return 'bg-slate-700/30 border-slate-500/40/30';
+  if (isPulsing) return 'ring-2 ring-[#3DE8D9]/50 animate-pulse';
+  if (isHot) return isUp ? 'bg-emerald-950/15 border-lime-700/30' : 'bg-red-950/15 border-orange-700/30';
+  return 'bg-slate-700/40 border-slate-400/30/30';
 };
 
 const MarketCard = ({ market, compact, isPulsing }) => {
@@ -102,7 +102,7 @@ const MarketCard = ({ market, compact, isPulsing }) => {
         <span className="text-white text-lg font-bold tabular-nums">
           {market.price ? (market.region === 'Currency' ? market.price.toFixed(4) : market.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})) : 'N/A'}
         </span>
-        <div className={`flex items-center gap-1 text-xs font-semibold ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>
+        <div className={`flex items-center gap-1 text-xs font-semibold ${isUp ? 'text-lime-400' : 'text-orange-400'}`}>
           {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
           {isUp ? '+' : '-'}{absPct}%
         </div>

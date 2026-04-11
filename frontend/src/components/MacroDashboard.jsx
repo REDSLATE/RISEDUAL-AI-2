@@ -124,12 +124,12 @@ const MacroDashboard = ({ onSubscribe }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-violet-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#3DE8D9] to-violet-600 rounded-xl flex items-center justify-center">
             <Globe className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>Macro Intelligence</h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Real-time world events, foreign markets & government activity</p>
+            <p className="text-slate-300 text-xs sm:text-sm">Real-time world events, foreign markets & government activity</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -141,8 +141,8 @@ const MacroDashboard = ({ onSubscribe }) => {
             onClick={() => setAutoRefresh(prev => !prev)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
               autoRefresh
-                ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400'
-                : 'bg-slate-800 border-slate-500/40 text-slate-400'
+                ? 'bg-lime-900/30 border-emerald-700/50 text-lime-400'
+                : 'bg-slate-800 border-slate-400/30 text-slate-400'
             }`}
             data-testid="auto-refresh-toggle"
           >
@@ -153,7 +153,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 bg-slate-800/60 p-1 rounded-xl border border-slate-500/30" data-testid="macro-tabs">
+      <div className="flex gap-1 bg-slate-800/60 p-1 rounded-xl border border-slate-400/25" data-testid="macro-tabs">
         {TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -164,7 +164,7 @@ const MacroDashboard = ({ onSubscribe }) => {
               data-testid={`macro-tab-${tab.id}`}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-[#35D6C8] text-white shadow-lg shadow-blue-500/20'
+                  ? 'bg-[#3DE8D9] text-white shadow-lg shadow-blue-500/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
               }`}
             >

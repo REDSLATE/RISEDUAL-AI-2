@@ -8,17 +8,17 @@ const API = `${getApiBase()}/api`;
 const CRYPTO_SET = new Set(['BTC', 'ETH', 'SOL', 'DOGE', 'ADA', 'XRP', 'AVAX', 'DOT', 'SHIB', 'LINK']);
 
 const BIAS_STYLES = {
-  INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: TrendingUp },
-  INSTITUTIONAL_ASK: { label: 'Institutional Selling', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20', icon: TrendingDown },
+  INSTITUTIONAL_BID: { label: 'Institutional Buying', color: 'text-lime-400', bg: 'bg-emerald-500/10 border-emerald-500/20', icon: TrendingUp },
+  INSTITUTIONAL_ASK: { label: 'Institutional Selling', color: 'text-orange-400', bg: 'bg-red-500/10 border-red-500/20', icon: TrendingDown },
   BALANCED: { label: 'Balanced Flow', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20', icon: Minus },
-  NO_DATA: { label: 'No Data', color: 'text-slate-400', bg: 'bg-slate-700/35 border-slate-500/40', icon: Activity },
+  NO_DATA: { label: 'No Data', color: 'text-slate-400', bg: 'bg-slate-700/45 border-slate-400/30', icon: Activity },
 };
 
 const WallBar = ({ wall, maxVol }) => {
   const pct = maxVol > 0 ? (wall.volume / maxVol) * 100 : 0;
   const isSupport = wall.type === 'support';
   const intensity = wall.intensity ?? 0;
-  const intensityColor = intensity >= 85 ? 'text-yellow-400' : intensity >= 50 ? (isSupport ? 'text-emerald-400' : 'text-red-400') : 'text-slate-400';
+  const intensityColor = intensity >= 85 ? 'text-yellow-300' : intensity >= 50 ? (isSupport ? 'text-lime-400' : 'text-orange-400') : 'text-slate-400';
 
   return (
     <div className="flex items-center gap-2 text-xs" data-testid={`wall-${wall.type}-${wall.price}`}>
@@ -37,9 +37,9 @@ const WallBar = ({ wall, maxVol }) => {
       </span>
       <span className={`w-5 text-center text-[10px] px-1 py-0.5 rounded ${
         intensity >= 85
-          ? 'bg-yellow-500/20 text-yellow-400 font-bold'
+          ? 'bg-yellow-500/20 text-yellow-300 font-bold'
           : wall.strength === 'major'
-            ? (isSupport ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')
+            ? (isSupport ? 'bg-emerald-500/20 text-lime-400' : 'bg-red-500/20 text-orange-400')
             : 'bg-slate-800 text-slate-400'}`}>
         {intensity >= 85 ? 'W' : wall.strength === 'major' ? 'M' : 'm'}
       </span>
@@ -91,7 +91,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
         data-testid="order-flow-toggle"
       >
         <div className="flex items-center gap-3">
-          <Activity className="w-4 h-4 text-[#35D6C8]" />
+          <Activity className="w-4 h-4 text-[#3DE8D9]" />
           <h3 className="text-white text-sm font-semibold tracking-wide">Order Flow</h3>
           {data && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${biasStyle.bg} ${biasStyle.color}`}>
@@ -102,9 +102,9 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
         </div>
         <div className="flex items-center gap-2">
           {data && (
-            <span className="flex items-center gap-1.5 text-slate-400 text-xs">
+            <span className="flex items-center gap-1.5 text-slate-300 text-xs">
               {data.source === 'binance_l2' && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/20" data-testid="source-binance">L2</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-300 border border-yellow-500/20" data-testid="source-binance">L2</span>
               )}
               {ticker} ${data.current_price}
             </span>
@@ -121,8 +121,8 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
               {['SPY', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'BTC', 'ETH'].map(t => (
                 <button key={t} onClick={() => setTicker(t)}
                   className={`text-[10px] px-2 py-1 rounded transition-colors ${ticker === t
-                    ? 'bg-[#35D6C8] text-white'
-                    : 'bg-slate-700/35 text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    ? 'bg-[#3DE8D9] text-white'
+                    : 'bg-slate-700/45 text-slate-400 hover:text-white hover:bg-slate-700'}`}
                   data-testid={`flow-ticker-${t}`}
                 >
                   {t}
@@ -140,7 +140,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
               {isCrypto && (
                 <button onClick={() => setTab('live')}
                   className={`text-[10px] px-2 py-1 rounded transition-colors flex items-center gap-1 ${
-                    tab === 'live' ? 'bg-[#35D6C8] text-white' : 'text-slate-400 hover:text-slate-300'}`}
+                    tab === 'live' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-slate-300'}`}
                   data-testid="tab-live">
                   <Radio className="w-3 h-3" />
                   Live
@@ -165,12 +165,12 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
           <>
           {loading ? (
             <div className="py-8 flex justify-center">
-              <RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin" />
+              <RefreshCw className="w-5 h-5 text-[#3DE8D9] animate-spin" />
             </div>
           ) : !data ? (
             <div className="py-8 text-center">
               <Activity className="w-6 h-6 text-slate-700 mx-auto mb-2" />
-              <p className="text-slate-400 text-xs">No order flow data available</p>
+              <p className="text-slate-300 text-xs">No order flow data available</p>
             </div>
           ) : (
             <div className="px-4 py-3 space-y-4">
@@ -188,11 +188,11 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                 </div>
                 <div className="text-center">
                   <p className="text-slate-400 text-[10px] uppercase tracking-wider">Support</p>
-                  <p className="text-emerald-400 text-sm font-bold">{supportWalls.length}</p>
+                  <p className="text-lime-400 text-sm font-bold">{supportWalls.length}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-slate-400 text-[10px] uppercase tracking-wider">Resistance</p>
-                  <p className="text-red-400 text-sm font-bold">{resistanceWalls.length}</p>
+                  <p className="text-orange-400 text-sm font-bold">{resistanceWalls.length}</p>
                 </div>
               </div>
 

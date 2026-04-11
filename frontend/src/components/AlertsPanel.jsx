@@ -58,12 +58,12 @@ const AlertsPanel = ({ onSubscribe }) => {
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#0A2A63] border border-slate-500/40 rounded-full p-3 hover:bg-slate-600/30 transition-colors"
+        className="relative bg-[#060E1F] border border-slate-400/30 rounded-full p-3 hover:bg-slate-600/30 transition-colors"
         data-testid="alerts-bell"
       >
         <Bell className="w-5 h-5 text-white" />
         {isPro && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-[#35D6C8] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-[#3DE8D9] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -76,14 +76,14 @@ const AlertsPanel = ({ onSubscribe }) => {
 
       {/* Panel */}
       {isOpen && (
-        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-500/30 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
-          <div className="border-b border-slate-500/40 p-4 flex items-center justify-between">
+        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-400/25 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
+          <div className="border-b border-slate-400/30 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-white font-semibold text-sm">AI Alerts</h3>
               {isPro && unreadCount > 0 && (
-                <Badge className="bg-[#35D6C8] text-white text-[10px] px-1.5 py-0">{unreadCount} new</Badge>
+                <Badge className="bg-[#3DE8D9] text-white text-[10px] px-1.5 py-0">{unreadCount} new</Badge>
               )}
-              {isPro && <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-0 text-[10px]">PRO</Badge>}
+              {isPro && <Badge className="bg-[#3DE8D9]/20 text-[#3DE8D9] border-0 text-[10px]">PRO</Badge>}
             </div>
             <div className="flex items-center gap-1">
               {isPro && notifications.length > 0 && (
@@ -106,10 +106,10 @@ const AlertsPanel = ({ onSubscribe }) => {
                   <Lock className="w-7 h-7 text-slate-400" />
                 </div>
                 <h4 className="text-white font-semibold mb-1">Pro AI Alerts</h4>
-                <p className="text-slate-400 text-xs leading-relaxed mb-4">
+                <p className="text-slate-300 text-xs leading-relaxed mb-4">
                   Get notified when our AI detects a verdict change on your watchlist tickers. Never miss a BUY→SELL flip.
                 </p>
-                <Button className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl text-sm w-full" onClick={() => { onSubscribe?.(); setIsOpen(false); }} data-testid="alerts-upgrade-btn">
+                <Button className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl text-sm w-full" onClick={() => { onSubscribe?.(); setIsOpen(false); }} data-testid="alerts-upgrade-btn">
                   Upgrade to Pro
                 </Button>
               </div>
@@ -117,8 +117,8 @@ const AlertsPanel = ({ onSubscribe }) => {
               /* Pro but no notifications */
               <div className="text-center py-8 px-4">
                 <Bell className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-                <p className="text-slate-400 text-sm">No alerts yet</p>
-                <p className="text-slate-400 text-xs mt-1">You'll be notified when AI detects a verdict change on your watchlist tickers</p>
+                <p className="text-slate-300 text-sm">No alerts yet</p>
+                <p className="text-slate-300 text-xs mt-1">You'll be notified when AI detects a verdict change on your watchlist tickers</p>
               </div>
             ) : (
               /* Pro with notifications */

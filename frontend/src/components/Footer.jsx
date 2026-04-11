@@ -13,7 +13,7 @@ const Footer = () => {
               <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain brightness-125" />
               <span className="text-white font-bold text-lg" style={{ fontFamily: 'Manrope, sans-serif' }}>RISEDUAL AI</span>
             </div>
-            <p className="text-slate-400 text-xs leading-relaxed max-w-[220px]">
+            <p className="text-slate-300 text-xs leading-relaxed max-w-[220px]">
               AI-powered trading intelligence. Real-time market data, multi-model analysis, and actionable signals.
             </p>
           </div>
@@ -62,9 +62,9 @@ const Footer = () => {
           <div>
             <h4 className="text-slate-300 text-xs font-semibold uppercase tracking-wider mb-3">Legal</h4>
             <ul className="space-y-2">
-              <li><span className="text-slate-400 text-xs">Terms of Service</span></li>
-              <li><span className="text-slate-400 text-xs">Privacy Policy</span></li>
-              <li><span className="text-slate-400 text-xs">Risk Disclosure</span></li>
+              <li><span className="text-slate-300 text-xs">Terms of Service</span></li>
+              <li><span className="text-slate-300 text-xs">Privacy Policy</span></li>
+              <li><span className="text-slate-300 text-xs">Risk Disclosure</span></li>
             </ul>
           </div>
         </div>

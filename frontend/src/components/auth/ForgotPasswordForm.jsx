@@ -37,14 +37,14 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
   if (sent) {
     return (
       <div className="text-center" data-testid="forgot-success">
-        <div className="w-14 h-14 rounded-full bg-emerald-900/30 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="w-7 h-7 text-emerald-400" />
+        <div className="w-14 h-14 rounded-full bg-lime-900/30 border border-emerald-700/40 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle className="w-7 h-7 text-lime-400" />
         </div>
         <h2 className="text-white text-xl font-bold mb-2">Check your email</h2>
-        <p className="text-slate-400 text-sm mb-2">
+        <p className="text-slate-300 text-sm mb-2">
           If an account exists for <span className="text-white font-medium">{email}</span>, we've sent a password reset link.
         </p>
-        <p className="text-slate-400 text-xs mb-6">The link expires in 1 hour.</p>
+        <p className="text-slate-300 text-xs mb-6">The link expires in 1 hour.</p>
         <Button onClick={onBack}
           className="w-full bg-slate-800 hover:bg-slate-700 text-white font-semibold py-5 rounded-xl border border-slate-600"
           data-testid="forgot-back-to-login-btn">
@@ -62,10 +62,10 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
         <ArrowLeft className="w-4 h-4" /> Back to login
       </button>
       <h2 className="text-white text-xl font-bold mb-1">Reset your password</h2>
-      <p className="text-slate-400 text-sm mb-6">Enter your email and we'll send you a link to reset your password.</p>
+      <p className="text-slate-300 text-sm mb-6">Enter your email and we'll send you a link to reset your password.</p>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg mb-4" data-testid="auth-error">
+        <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg mb-4" data-testid="auth-error">
           {error}
         </div>
       )}
@@ -77,7 +77,7 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
             className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl" data-testid="forgot-email-input" />
         </div>
         <Button type="submit" disabled={loading}
-          className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
+          className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-5 rounded-xl"
           data-testid="forgot-submit-btn">
           {loading ? 'Sending...' : 'Send Reset Link'}
         </Button>

@@ -80,51 +80,51 @@ const CacheMonitor = () => {
   const rateThreshold = (high, mid, low) =>
     hitRate >= 80 ? high : hitRate >= 50 ? mid : low;
 
-  const hitRateColor = rateThreshold('text-emerald-400', 'text-amber-400', 'text-red-400');
+  const hitRateColor = rateThreshold('text-lime-400', 'text-amber-300', 'text-orange-400');
   const hitRateBg = rateThreshold('bg-emerald-500', 'bg-amber-500', 'bg-red-500');
 
   return (
     <div className="p-6 space-y-5" data-testid="cache-monitor">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid="cache-hit-rate">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-hit-rate">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="w-4 h-4 text-[#35D6C8]" />
-            <span className="text-slate-400 text-xs">Hit Rate</span>
+            <Zap className="w-4 h-4 text-[#3DE8D9]" />
+            <span className="text-slate-300 text-xs">Hit Rate</span>
           </div>
           <p className={`text-2xl font-black ${hitRateColor}`}>
             {loading ? '—' : `${hitRate}%`}
           </p>
         </Card>
 
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid="cache-total-requests">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-total-requests">
           <div className="flex items-center gap-2 mb-2">
             <BarChart3 className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400 text-xs">Requests</span>
+            <span className="text-slate-300 text-xs">Requests</span>
           </div>
           <p className="text-2xl font-black text-white">
             {loading ? '—' : (stats?.total_requests ?? 0).toLocaleString()}
           </p>
           <div className="flex gap-2 mt-1 text-[10px]">
-            <span className="text-emerald-400">{stats?.hits ?? 0} hits</span>
-            <span className="text-red-400">{stats?.misses ?? 0} misses</span>
+            <span className="text-lime-400">{stats?.hits ?? 0} hits</span>
+            <span className="text-orange-400">{stats?.misses ?? 0} misses</span>
           </div>
         </Card>
 
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid="cache-keys-count">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-keys-count">
           <div className="flex items-center gap-2 mb-2">
             <Database className="w-4 h-4 text-purple-400" />
-            <span className="text-slate-400 text-xs">Cached Keys</span>
+            <span className="text-slate-300 text-xs">Cached Keys</span>
           </div>
           <p className="text-2xl font-black text-white">
             {loading ? '—' : stats?.total_keys ?? 0}
           </p>
         </Card>
 
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid="cache-uptime">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-uptime">
           <div className="flex items-center gap-2 mb-2">
-            <Server className="w-4 h-4 text-amber-400" />
-            <span className="text-slate-400 text-xs">Uptime</span>
+            <Server className="w-4 h-4 text-amber-300" />
+            <span className="text-slate-300 text-xs">Uptime</span>
           </div>
           <p className="text-2xl font-black text-white">
             {loading ? '—' : formatUptime(stats?.uptime_seconds ?? 0)}
@@ -150,14 +150,14 @@ const CacheMonitor = () => {
         <h3 className="text-white text-sm font-semibold">Active Cache Entries</h3>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={fetchStats}
-            className="text-[10px] h-7 px-2 bg-slate-800 border-slate-500/40 text-white"
+            className="text-[10px] h-7 px-2 bg-slate-800 border-slate-400/30 text-white"
             data-testid="cache-refresh-btn">
             <RefreshCw className={`w-3 h-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <Button size="sm" variant="outline" onClick={clearAll}
             disabled={actionKey === '__all__' || !stats?.total_keys}
-            className="text-[10px] h-7 px-2 bg-red-900/30 text-red-400 border-red-800/50 hover:bg-red-800/40"
+            className="text-[10px] h-7 px-2 bg-orange-900/30 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
             data-testid="cache-clear-all-btn">
             <Trash2 className="w-3 h-3 mr-1" />
             Clear All
@@ -167,20 +167,20 @@ const CacheMonitor = () => {
 
       {/* Entries Table */}
       {stats?.entries?.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-500/40/40">
+        <div className="overflow-x-auto rounded-xl border border-slate-400/30/40">
           <table className="w-full text-sm" data-testid="cache-entries-table">
             <thead>
-              <tr className="border-b border-slate-500/40/40 bg-slate-700/30">
-                <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Key</th>
-                <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Age</th>
-                <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Size</th>
-                <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Status</th>
-                <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Action</th>
+              <tr className="border-b border-slate-400/30/40 bg-slate-700/40">
+                <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Key</th>
+                <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Age</th>
+                <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Size</th>
+                <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Status</th>
+                <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Action</th>
               </tr>
             </thead>
             <tbody>
               {stats.entries.map(e => (
-                <tr key={e.key} className="border-b border-slate-600/30/40 hover:bg-slate-700/25">
+                <tr key={e.key} className="border-b border-slate-600/30/40 hover:bg-slate-700/35">
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
                       <Clock className="w-3 h-3 text-slate-400 shrink-0" />
@@ -191,16 +191,16 @@ const CacheMonitor = () => {
                   <td className="px-4 py-2.5 text-slate-300 text-xs">{formatBytes(e.size_bytes)}</td>
                   <td className="px-4 py-2.5">
                     {e.refreshing ? (
-                      <Badge className="text-[9px] bg-amber-900/40 text-amber-400 border-amber-800">Refreshing</Badge>
+                      <Badge className="text-[9px] bg-amber-900/40 text-amber-300 border-amber-800">Refreshing</Badge>
                     ) : (
-                      <Badge className="text-[9px] bg-emerald-900/40 text-emerald-400 border-emerald-800">Fresh</Badge>
+                      <Badge className="text-[9px] bg-lime-900/40 text-lime-400 border-lime-700">Fresh</Badge>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <Button size="sm" variant="ghost"
                       onClick={() => invalidateKey(e.key)}
                       disabled={actionKey === e.key}
-                      className="text-[10px] h-6 px-2 text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                      className="text-[10px] h-6 px-2 text-orange-400 hover:text-orange-300 hover:bg-orange-900/20"
                       data-testid={`cache-invalidate-${e.key}`}>
                       <Trash2 className="w-3 h-3" />
                     </Button>
@@ -211,9 +211,9 @@ const CacheMonitor = () => {
           </table>
         </div>
       ) : !loading ? (
-        <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-8 text-center">
           <Database className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-slate-400 text-sm">No cached entries. Endpoints will populate on first request.</p>
+          <p className="text-slate-300 text-sm">No cached entries. Endpoints will populate on first request.</p>
         </Card>
       ) : null}
     </div>

@@ -51,7 +51,7 @@ const ScoreView = ({ data }) => {
       </div>
 
       {s.factors?.length > 0 && (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
           <h4 className="text-white text-sm font-semibold mb-3">Key Factors</h4>
           <div className="space-y-2">
             {s.factors.map((f, i) => (
@@ -72,13 +72,13 @@ const ScoreView = ({ data }) => {
 
 const ScoreBar = ({ label, score, color }) => {
   const colors = {
-    violet: { bg: 'bg-violet-500', track: 'bg-violet-900/30', text: 'text-violet-400' },
+    violet: { bg: 'bg-violet-500', track: 'bg-violet-900/30', text: 'text-violet-300' },
     blue: { bg: 'bg-blue-500', track: 'bg-blue-900/30', text: 'text-blue-400' },
-    amber: { bg: 'bg-amber-500', track: 'bg-amber-900/30', text: 'text-amber-400' },
+    amber: { bg: 'bg-amber-500', track: 'bg-amber-900/30', text: 'text-amber-300' },
   };
   const c = colors[color];
   return (
-    <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3">
+    <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-slate-400 text-[10px] uppercase tracking-wider">{label}</span>
         <span className={`text-lg font-bold ${c.text}`}>{score}</span>
@@ -91,9 +91,9 @@ const ScoreBar = ({ label, score, color }) => {
 };
 
 const ImpactIcon = ({ impact }) => {
-  if (impact === 'positive') return <ArrowUp className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />;
-  if (impact === 'negative') return <ArrowDown className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />;
-  return <Minus className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />;
+  if (impact === 'positive') return <ArrowUp className="w-4 h-4 text-lime-400 mt-0.5 shrink-0" />;
+  if (impact === 'negative') return <ArrowDown className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />;
+  return <Minus className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />;
 };
 
 export default ScoreView;

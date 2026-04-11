@@ -6,14 +6,14 @@ const RADAR_TICKERS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT',
 const MAX_EVENTS = 30;
 
 const biasIcon = (bias) => {
-  if (bias === 'INSTITUTIONAL_BID') return <TrendingUp className="w-3 h-3 text-emerald-400" />;
-  if (bias === 'INSTITUTIONAL_ASK') return <TrendingDown className="w-3 h-3 text-red-400" />;
+  if (bias === 'INSTITUTIONAL_BID') return <TrendingUp className="w-3 h-3 text-lime-400" />;
+  if (bias === 'INSTITUTIONAL_ASK') return <TrendingDown className="w-3 h-3 text-orange-400" />;
   return <Minus className="w-3 h-3 text-slate-400" />;
 };
 
 const biasColor = (bias) => {
-  if (bias === 'INSTITUTIONAL_BID') return 'text-emerald-400';
-  if (bias === 'INSTITUTIONAL_ASK') return 'text-red-400';
+  if (bias === 'INSTITUTIONAL_BID') return 'text-lime-400';
+  if (bias === 'INSTITUTIONAL_ASK') return 'text-orange-400';
   return 'text-slate-400';
 };
 
@@ -91,10 +91,10 @@ const WhaleRadar = () => {
       {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-slate-600/30/30">
         <div className="flex items-center gap-2">
-          <Radio className="w-4 h-4 text-yellow-400" />
+          <Radio className="w-4 h-4 text-yellow-300" />
           <h3 className="text-white text-sm font-semibold tracking-tight">Whale Radar</h3>
           <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${
-            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'
+            connected ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400' : 'bg-red-500/10 border-red-500/20 text-orange-400'
           }`} data-testid="radar-status">
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
             {connected ? 'SCANNING' : 'CONNECTING'}
@@ -104,7 +104,7 @@ const WhaleRadar = () => {
       </div>
 
       {/* Ticker Grid */}
-      <div className="grid grid-cols-5 gap-px bg-slate-700/25 p-px" data-testid="radar-grid">
+      <div className="grid grid-cols-5 gap-px bg-slate-700/35 p-px" data-testid="radar-grid">
         {tickerList.map(t => (
           <div key={t.ticker}
             className={`px-3 py-2.5 bg-slate-900/80 hover:bg-slate-600/30/60 transition-colors ${
@@ -116,7 +116,7 @@ const WhaleRadar = () => {
               <span className="text-white text-xs font-bold">{t.ticker}</span>
               <div className="flex items-center gap-1">
                 {t.whale_count > 0 && (
-                  <span className="text-yellow-400 text-[9px] font-bold flex items-center gap-0.5" data-testid={`whale-badge-${t.ticker}`}>
+                  <span className="text-yellow-300 text-[9px] font-bold flex items-center gap-0.5" data-testid={`whale-badge-${t.ticker}`}>
                     <Zap className="w-2.5 h-2.5" />
                     {t.whale_count}
                   </span>
@@ -146,9 +146,9 @@ const WhaleRadar = () => {
       {whaleEvents.length > 0 && (
         <div className="border-t border-slate-600/30/30">
           <div className="px-4 py-2 flex items-center gap-2">
-            <AlertTriangle className="w-3 h-3 text-yellow-400" />
+            <AlertTriangle className="w-3 h-3 text-yellow-300" />
             <span className="text-[10px] text-slate-400 uppercase tracking-wider">Whale Detections</span>
-            <span className="text-[10px] text-yellow-400 font-mono">{whaleEvents.length}</span>
+            <span className="text-[10px] text-yellow-300 font-mono">{whaleEvents.length}</span>
           </div>
           <div className="max-h-36 overflow-y-auto px-4 pb-3 space-y-1">
             {whaleEvents.slice(0, 10).map(ev => (
@@ -159,10 +159,10 @@ const WhaleRadar = () => {
                   {ev.walls?.slice(0, 3).map((w, i) => (
                     <span key={i} className={`px-1.5 py-0.5 rounded border ${
                       w.side === 'bid'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                        : 'bg-red-500/10 border-red-500/20 text-red-400'
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-lime-400'
+                        : 'bg-red-500/10 border-red-500/20 text-orange-400'
                     }`}>
-                      ${w.price?.toLocaleString()} <span className="text-yellow-400">{w.intensity}</span>
+                      ${w.price?.toLocaleString()} <span className="text-yellow-300">{w.intensity}</span>
                     </span>
                   ))}
                 </div>

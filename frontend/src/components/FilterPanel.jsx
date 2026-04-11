@@ -49,7 +49,7 @@ const FilterPanel = ({ onFilterChange }) => {
 
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <Card className="bg-slate-700/35 border-slate-500/30 rounded-xl p-6 w-full max-w-md">
+          <Card className="bg-slate-700/45 border-slate-400/25 rounded-xl p-6 w-full max-w-md">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-white text-lg font-semibold">Filter Options</h3>
@@ -110,7 +110,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0A2A63] border-slate-600 shadow-2xl shadow-black/60">
+                  <SelectContent className="bg-[#060E1F] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="all" className="text-white">All</SelectItem>
                     <SelectItem value="bullish" className="text-white">Bullish</SelectItem>
                     <SelectItem value="bearish" className="text-white">Bearish</SelectItem>
@@ -128,7 +128,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0A2A63] border-slate-600 shadow-2xl shadow-black/60">
+                  <SelectContent className="bg-[#060E1F] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="today" className="text-white">Today</SelectItem>
                     <SelectItem value="week" className="text-white">This Week</SelectItem>
                     <SelectItem value="month" className="text-white">This Month</SelectItem>
@@ -149,7 +149,7 @@ const FilterPanel = ({ onFilterChange }) => {
               </Button>
               <Button
                 onClick={() => setIsOpen(false)}
-                className="flex-1 bg-[#35D6C8] hover:bg-[#67E3D3]"
+                className="flex-1 bg-[#3DE8D9] hover:bg-[#7AEEE0]"
               >
                 Apply Filters
               </Button>

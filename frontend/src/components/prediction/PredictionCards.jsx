@@ -4,11 +4,11 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 
 const verdictColor = (v) => {
-  if (!v) return 'text-amber-400';
+  if (!v) return 'text-amber-300';
   const upper = v.toUpperCase();
-  if (upper.includes('BULLISH') || upper === 'UP') return 'text-emerald-400';
-  if (upper.includes('BEARISH') || upper === 'DOWN') return 'text-red-400';
-  return 'text-amber-400';
+  if (upper.includes('BULLISH') || upper === 'UP') return 'text-lime-400';
+  if (upper.includes('BEARISH') || upper === 'DOWN') return 'text-orange-400';
+  return 'text-amber-300';
 };
 
 const PredictionCard = ({ prediction }) => {
@@ -17,12 +17,12 @@ const PredictionCard = ({ prediction }) => {
   const confidence = prediction.confidence_score ?? prediction.confidence;
 
   return (
-    <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-6" data-testid="prediction-main-card">
+    <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
           {prediction.multi_agent && (
-            <Badge className="bg-violet-900/40 text-violet-400 text-[9px]">
+            <Badge className="bg-violet-800/40 text-violet-300 text-[9px]">
               {prediction.agents_used || 4} AI Agents
             </Badge>
           )}
@@ -44,12 +44,12 @@ const PredictionCard = ({ prediction }) => {
       {confidence != null && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-slate-400 text-xs">AI Confidence</span>
+            <span className="text-slate-300 text-xs">AI Confidence</span>
             <span className="text-white text-xs font-bold">{confidence}%</span>
           </div>
           <div className="w-full bg-slate-700/50 rounded-full h-2">
             <div
-              className="h-2 rounded-full transition-all bg-gradient-to-r from-[#35D6C8] to-cyan-400"
+              className="h-2 rounded-full transition-all bg-gradient-to-r from-[#3DE8D9] to-cyan-400"
               style={{ width: `${confidence}%` }}
             />
           </div>
@@ -60,8 +60,8 @@ const PredictionCard = ({ prediction }) => {
       {prediction.agent_consensus && (
         <div className="mt-3 bg-violet-900/15 border border-violet-800/25 rounded-lg p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Brain className="w-3 h-3 text-violet-400" />
-            <span className="text-violet-400 text-[10px] font-semibold uppercase">Agent Consensus</span>
+            <Brain className="w-3 h-3 text-violet-300" />
+            <span className="text-violet-300 text-[10px] font-semibold uppercase">Agent Consensus</span>
           </div>
           <p className="text-slate-300 text-xs">{prediction.agent_consensus}</p>
         </div>
@@ -72,13 +72,13 @@ const PredictionCard = ({ prediction }) => {
           {prediction.institutional_flow && (
             <div className="bg-slate-800/50 rounded-lg p-2.5">
               <span className="text-blue-400 text-[10px] font-semibold">Institutional Flow</span>
-              <p className="text-slate-400 text-xs mt-0.5">{prediction.institutional_flow}</p>
+              <p className="text-slate-300 text-xs mt-0.5">{prediction.institutional_flow}</p>
             </div>
           )}
           {prediction.geopolitical_impact && (
             <div className="bg-slate-800/50 rounded-lg p-2.5">
-              <span className="text-amber-400 text-[10px] font-semibold">Geopolitical Impact</span>
-              <p className="text-slate-400 text-xs mt-0.5">{prediction.geopolitical_impact}</p>
+              <span className="text-amber-300 text-[10px] font-semibold">Geopolitical Impact</span>
+              <p className="text-slate-300 text-xs mt-0.5">{prediction.geopolitical_impact}</p>
             </div>
           )}
         </div>
@@ -92,7 +92,7 @@ const PredictionCard = ({ prediction }) => {
           <div className="mt-2 space-y-2">
             {prediction.agent_analyses.map((a, i) => (
               <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
-                <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
+                <span className="text-violet-300 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] mt-0.5">{a.summary}</p>
               </div>
             ))}
@@ -108,16 +108,16 @@ const TimeframeCard = ({ label, tf }) => {
   const isUp = dir.includes('BULLISH') || dir === 'UP';
   const isDown = dir.includes('BEARISH') || dir === 'DOWN';
   const Icon = isUp ? TrendingUp : isDown ? TrendingDown : Activity;
-  const iconColor = isUp ? 'text-emerald-400' : isDown ? 'text-red-400' : 'text-amber-400';
+  const iconColor = isUp ? 'text-lime-400' : isDown ? 'text-orange-400' : 'text-amber-300';
 
   return (
-    <Card className="bg-slate-900/60 border-slate-500/40/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
+    <Card className="bg-slate-900/60 border-slate-400/30/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${iconColor}`} />
         <span className="text-white text-xs font-semibold capitalize">{label.replace('_', ' ')}</span>
       </div>
       <p className="text-slate-300 text-[11px] font-medium mb-1">{tf.direction}</p>
-      <p className="text-slate-400 text-xs">{tf.target || tf.summary || tf.outlook || 'N/A'}</p>
+      <p className="text-slate-300 text-xs">{tf.target || tf.summary || tf.outlook || 'N/A'}</p>
     </Card>
   );
 };
@@ -130,7 +130,7 @@ const MacroDataSection = ({ macroData }) => {
   const gf = macroData.gov_filings || {};
 
   const cards = [
-    { icon: Globe, color: 'text-emerald-400', bgColor: 'bg-emerald-900/20 border-emerald-800/30', title: 'World Events', values: [
+    { icon: Globe, color: 'text-lime-400', bgColor: 'bg-lime-900/20 border-lime-700/30', title: 'World Events', values: [
       { label: 'Total Events', value: we.total || 0 },
       { label: 'High Impact', value: we.high_impact || 0 },
     ], extra: we.top_sectors?.length > 0 ? `Sectors: ${we.top_sectors.join(', ')}` : null },
@@ -138,7 +138,7 @@ const MacroDataSection = ({ macroData }) => {
       { label: 'Indices Tracked', value: fm.total_indices || 0 },
       { label: 'Correlation Signals', value: fm.correlation_signals?.length || 0 },
     ], extra: null },
-    { icon: Landmark, color: 'text-violet-400', bgColor: 'bg-violet-900/20 border-violet-800/30', title: 'Government Filings', values: [
+    { icon: Landmark, color: 'text-violet-300', bgColor: 'bg-violet-900/20 border-violet-800/30', title: 'Government Filings', values: [
       { label: 'Congressional Trades', value: gf.congressional_trades || 0 },
       { label: 'Fed Announcements', value: gf.fed_announcements || 0 },
       { label: 'Insider Trades', value: gf.insider_trades || 0 },
@@ -155,7 +155,7 @@ const MacroDataSection = ({ macroData }) => {
           </div>
           {values.map(v => (
             <div key={v.label} className="flex items-center justify-between mb-1">
-              <span className="text-slate-400 text-xs">{v.label}</span>
+              <span className="text-slate-300 text-xs">{v.label}</span>
               <span className="text-white text-sm font-bold">{v.value}</span>
             </div>
           ))}
@@ -170,24 +170,24 @@ const RealEstateSection = ({ realEstate }) => {
   if (!realEstate) return null;
 
   const healthColor = (h) => {
-    if (h === 'healthy' || h === 'growing') return 'text-emerald-400';
-    if (h === 'declining' || h === 'weak') return 'text-red-400';
-    return 'text-amber-400';
+    if (h === 'healthy' || h === 'growing') return 'text-lime-400';
+    if (h === 'declining' || h === 'weak') return 'text-orange-400';
+    return 'text-amber-300';
   };
 
   return (
-    <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5" data-testid="real-estate-section">
+    <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-5" data-testid="real-estate-section">
       <h3 className="text-white text-sm font-semibold mb-3">Real Estate Outlook</h3>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <span className="text-slate-400 text-xs block">Housing Market</span>
+          <span className="text-slate-300 text-xs block">Housing Market</span>
           <span className={`text-sm font-bold capitalize ${healthColor(realEstate.housing_health)}`}>
             {realEstate.housing_health || 'N/A'}
           </span>
         </div>
         <div>
-          <span className="text-slate-400 text-xs block">Commercial</span>
-          <span className="text-amber-400 text-sm font-bold capitalize">
+          <span className="text-slate-300 text-xs block">Commercial</span>
+          <span className="text-amber-300 text-sm font-bold capitalize">
             {realEstate.commercial_trend || 'N/A'}
           </span>
         </div>

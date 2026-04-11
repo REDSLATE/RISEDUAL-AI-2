@@ -49,17 +49,17 @@ const MarketPrediction = ({ onSubscribe }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#3DE8D9] to-cyan-500 rounded-xl flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>AI Market Predictions</h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Adversarial AI — Strategist predicts, Auditor vetoes weak signals</p>
+            <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist predicts, Auditor vetoes weak signals</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {isPro && <AccuracyBadge feature="market_prediction" />}
-          {lastUpdated && <span className="text-slate-400 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
+          {lastUpdated && <span className="text-slate-300 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={fetchPrediction} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
@@ -67,15 +67,15 @@ const MarketPrediction = ({ onSubscribe }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-500/30 pb-1">
+      <div className="flex gap-2 border-b border-slate-400/25 pb-1">
         {tabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-lg transition-colors ${
               activeTab === tab.key
-                ? 'bg-slate-800 text-[#35D6C8] border-b-2 border-[#35D6C8]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/35'
+                ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-700/45'
             }`}
             data-testid={`tab-${tab.key}`}
           >
@@ -84,15 +84,15 @@ const MarketPrediction = ({ onSubscribe }) => {
         ))}
       </div>
 
-      {error && <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg">{error}</div>}
+      {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
       {/* Loading */}
       {loading && !prediction && (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-12 text-center">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-12 text-center">
           <div className="animate-pulse space-y-3">
-            <Sparkles className="w-8 h-8 text-[#35D6C8] mx-auto animate-spin" />
+            <Sparkles className="w-8 h-8 text-[#3DE8D9] mx-auto animate-spin" />
             <p className="text-white font-medium">Scraping macro data & generating predictions...</p>
-            <p className="text-slate-400 text-sm">Analyzing news, crypto, world events, congress, and foreign markets</p>
+            <p className="text-slate-300 text-sm">Analyzing news, crypto, world events, congress, and foreign markets</p>
           </div>
         </Card>
       )}
@@ -132,7 +132,7 @@ const MarketPrediction = ({ onSubscribe }) => {
 const LockedMacro = ({ macroData, onSubscribe }) => {
   const gf = macroData?.gov_filings || {};
   return (
-    <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
+    <Card className="relative bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
       <div className="p-6 space-y-3">
         <p className="text-white font-semibold">Macro Intelligence Summary</p>
         <div className="grid grid-cols-3 gap-3">
@@ -156,17 +156,17 @@ const LockedMacro = ({ macroData, onSubscribe }) => {
 };
 
 const LockedSection = ({ label, onSubscribe }) => (
-  <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden p-6 min-h-[150px]">
+  <Card className="relative bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden p-6 min-h-[150px]">
     <LockedOverlay label={label} onSubscribe={onSubscribe} />
   </Card>
 );
 
 const LockedOverlay = ({ label, onSubscribe }) => (
   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-    <Lock className="w-8 h-8 text-[#35D6C8] mb-3" />
+    <Lock className="w-8 h-8 text-[#3DE8D9] mb-3" />
     <p className="text-white font-semibold mb-1">Unlock {label}</p>
-    <p className="text-slate-400 text-xs text-center mb-3">Full analysis available with Pro subscription</p>
-    <Button size="sm" onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="prediction-subscribe-btn">
+    <p className="text-slate-300 text-xs text-center mb-3">Full analysis available with Pro subscription</p>
+    <Button size="sm" onClick={onSubscribe} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl" data-testid="prediction-subscribe-btn">
       <Zap className="w-3 h-3 mr-1" /> Upgrade to Pro
     </Button>
   </div>

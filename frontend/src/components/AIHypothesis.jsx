@@ -15,10 +15,10 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const AI_MODELS = [
-  { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-emerald-400', bg: 'bg-emerald-900/30', free: true },
+  { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-lime-400', bg: 'bg-lime-900/30', free: true },
   { key: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5', provider: 'Anthropic', icon: Brain, color: 'text-orange-400', bg: 'bg-orange-900/30', free: false },
   { key: 'gemini-pro', label: 'Gemini Pro', provider: 'Google', icon: Cpu, color: 'text-blue-400', bg: 'bg-blue-900/30', free: false },
-  { key: 'consensus', label: 'Consensus Mode', provider: 'All 3 Models', icon: Network, color: 'text-violet-400', bg: 'bg-violet-900/30', free: false },
+  { key: 'consensus', label: 'Consensus Mode', provider: 'All 3 Models', icon: Network, color: 'text-violet-300', bg: 'bg-violet-900/30', free: false },
 ];
 
 const AIHypothesis = ({ onSubscribe, onLogin }) => {
@@ -109,18 +109,18 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#3DE8D9] to-cyan-500 rounded-xl flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>AI Investment Hypothesis</h2>
-            <p className="text-slate-400 text-xs sm:text-sm">Adversarial AI — Strategist generates thesis, Auditor stress-tests it</p>
+            <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist generates thesis, Auditor stress-tests it</p>
           </div>
         </div>
         {isPro && (
           <div className="flex items-center gap-2">
             <AccuracyBadge feature="hypothesis" />
-            <Badge className="bg-gradient-to-r from-[#35D6C8] to-cyan-500 text-white border-0">PRO</Badge>
+            <Badge className="bg-gradient-to-r from-[#3DE8D9] to-cyan-500 text-white border-0">PRO</Badge>
           </div>
         )}
       </div>
@@ -148,14 +148,14 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             data-testid="hypothesis-search"
           />
         </div>
-        <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl px-6" data-testid="hypothesis-submit">
+        <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-6" data-testid="hypothesis-submit">
           {loading ? (selectedModel === 'consensus' ? 'Running 3 Models...' : 'Analyzing...') : 'Analyze'}
         </Button>
       </form>
 
       {/* Loading */}
       {loading && (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
           <div className="animate-pulse space-y-3">
             <currentModel.icon className={`w-8 h-8 ${currentModel.color} mx-auto animate-spin`} />
             <p className="text-white font-medium">
@@ -163,7 +163,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
                 ? `Running GPT-5.2, Claude Sonnet 4.5, and Gemini Pro on ${symbol.toUpperCase()}...`
                 : `${currentModel.label} is analyzing ${symbol.toUpperCase()}...`}
             </p>
-            <p className="text-slate-400 text-sm">
+            <p className="text-slate-300 text-sm">
               {selectedModel === 'consensus'
                 ? 'Strategist + Auditor: Adversarial dual-signal analysis across macro, quant, and insider data'
                 : 'Strategist generating thesis, Auditor hunting for flaws in the signal'}
@@ -172,7 +172,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         </Card>
       )}
 
-      {error && <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg">{error}</div>}
+      {error && <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
       {/* Locked State (Free User) */}
       {hypothesis && !hypothesis.is_pro && (

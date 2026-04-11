@@ -119,12 +119,12 @@ const Watchlist = ({ onSubscribe }) => {
   };
 
   return (
-    <Card className="bg-slate-700/35 border-slate-500/30 rounded-xl p-4">
+    <Card className="bg-slate-700/45 border-slate-400/25 rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
           <h3 className="text-white font-semibold">My Watchlist</h3>
-          <span className="text-slate-400 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
+          <span className="text-slate-300 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
         </div>
         <Button
           variant="ghost"
@@ -160,15 +160,15 @@ const Watchlist = ({ onSubscribe }) => {
               className="bg-[#1E293B] border-slate-600 text-white"
               data-testid="watchlist-input"
             />
-            <Button onClick={addSymbol} className="bg-[#35D6C8] hover:bg-[#67E3D3]" data-testid="watchlist-add-btn">
+            <Button onClick={addSymbol} className="bg-[#3DE8D9] hover:bg-[#7AEEE0]" data-testid="watchlist-add-btn">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
           {capWarning && (
             <div className="flex items-center gap-2 mb-3 bg-amber-900/20 border border-amber-800/40 rounded-lg px-3 py-2" data-testid="watchlist-cap-warning">
-              <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
               <p className="text-amber-300 text-xs flex-1">{capWarning}</p>
-              {onSubscribe && <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
+              {onSubscribe && <Button size="sm" className="bg-[#3DE8D9] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
             </div>
           )}
 
@@ -176,11 +176,11 @@ const Watchlist = ({ onSubscribe }) => {
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {watchlist.length === 0 ? (
               <div className="text-center py-10 text-slate-400" data-testid="watchlist-empty">
-                <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-500/40/40">
+                <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-400/30/40">
                   <Star className="w-7 h-7 text-slate-400" />
                 </div>
-                <p className="text-slate-400 text-sm font-medium mb-1">No tickers yet</p>
-                <p className="text-slate-400 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
+                <p className="text-slate-300 text-sm font-medium mb-1">No tickers yet</p>
+                <p className="text-slate-300 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
               </div>
             ) : (
               watchlist.map((item) => (
@@ -192,7 +192,7 @@ const Watchlist = ({ onSubscribe }) => {
                     <span className="text-white font-medium">{item.symbol}</span>
                     {item.changePercent !== 0 && (
                       <div className={`flex items-center gap-1 text-sm ${
-                        item.changePercent >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        item.changePercent >= 0 ? 'text-lime-400' : 'text-orange-400'
                       }`}>
                         {item.changePercent >= 0 ? (
                           <TrendingUp className="w-3 h-3" />
@@ -209,7 +209,7 @@ const Watchlist = ({ onSubscribe }) => {
                     )}
                     <button
                       onClick={() => removeSymbol(item.symbol)}
-                      className="text-slate-400 hover:text-red-400 transition-colors"
+                      className="text-slate-400 hover:text-orange-400 transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>

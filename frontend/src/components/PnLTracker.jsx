@@ -42,9 +42,9 @@ const PnLTracker = ({ onOpenBroker }) => {
 
   if (!user) {
     return (
-      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
+      <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
         <Briefcase className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">Login to view your portfolio P&L</p>
+        <p className="text-slate-300 text-sm">Login to view your portfolio P&L</p>
       </Card>
     );
   }
@@ -52,16 +52,16 @@ const PnLTracker = ({ onOpenBroker }) => {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-16">
-        <RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin mr-3" />
-        <span className="text-slate-400 text-sm">Loading portfolio...</span>
+        <RefreshCw className="w-5 h-5 text-[#3DE8D9] animate-spin mr-3" />
+        <span className="text-slate-300 text-sm">Loading portfolio...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="bg-red-900/20 border-red-800/40 rounded-xl p-4">
-        <div className="flex items-center gap-2 text-red-400 text-sm">
+      <Card className="bg-orange-900/20 border-orange-700/40 rounded-xl p-4">
+        <div className="flex items-center gap-2 text-orange-400 text-sm">
           <AlertTriangle className="w-4 h-4" />
           {error}
         </div>
@@ -81,23 +81,23 @@ const PnLTracker = ({ onOpenBroker }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>P&L Tracker</h2>
-            <p className="text-slate-400 text-xs">Real-time portfolio performance across brokers</p>
+            <p className="text-slate-300 text-xs">Real-time portfolio performance across brokers</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchPnL} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30 transition-all" data-testid="refresh-pnl">
+          <button onClick={fetchPnL} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-400/25 transition-all" data-testid="refresh-pnl">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
       {!hasPositions ? (
-        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-8 text-center">
           <Briefcase className="w-12 h-12 text-slate-400 mx-auto mb-4" />
           <p className="text-white text-lg font-semibold mb-2">No Positions Found</p>
-          <p className="text-slate-400 text-sm mb-4">Connect a broker and open positions to track your P&L</p>
+          <p className="text-slate-300 text-sm mb-4">Connect a broker and open positions to track your P&L</p>
           {onOpenBroker && (
-            <Button onClick={onOpenBroker} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="connect-broker-btn">
+            <Button onClick={onOpenBroker} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl" data-testid="connect-broker-btn">
               <ExternalLink className="w-4 h-4 mr-2" /> Connect Broker
             </Button>
           )}
@@ -109,27 +109,27 @@ const PnLTracker = ({ onOpenBroker }) => {
             <SummaryCard
               label="Portfolio Value"
               value={`$${(data.total_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-              icon={<Briefcase className="w-4 h-4 text-[#35D6C8]" />}
+              icon={<Briefcase className="w-4 h-4 text-[#3DE8D9]" />}
               accent="blue"
             />
             <SummaryCard
               label="Unrealized P&L"
               value={`${isUp ? '+' : ''}$${(data.total_pl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
               sub={`${isUp ? '+' : ''}${data.total_pl_pct || 0}%`}
-              icon={isUp ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
+              icon={isUp ? <TrendingUp className="w-4 h-4 text-lime-400" /> : <TrendingDown className="w-4 h-4 text-orange-400" />}
               accent={isUp ? 'green' : 'red'}
             />
             <SummaryCard
               label="Cost Basis"
               value={`$${(data.total_cost_basis || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-              icon={<DollarSign className="w-4 h-4 text-amber-400" />}
+              icon={<DollarSign className="w-4 h-4 text-amber-300" />}
               accent="amber"
             />
             <SummaryCard
               label="Positions"
               value={data.positions_count || 0}
               sub={`${data.brokers?.length || 0} broker${(data.brokers?.length || 0) !== 1 ? 's' : ''}`}
-              icon={<PieChart className="w-4 h-4 text-violet-400" />}
+              icon={<PieChart className="w-4 h-4 text-violet-300" />}
               accent="violet"
             />
           </div>
@@ -138,27 +138,27 @@ const PnLTracker = ({ onOpenBroker }) => {
           {data.brokers?.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {data.brokers.map(b => (
-                <Card key={b.broker_id} className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
+                <Card key={b.broker_id} className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-white text-sm font-semibold capitalize">{b.broker_id}</span>
-                      {b.paper && <Badge className="bg-amber-900/30 text-amber-400 text-[9px] border-amber-700/50">PAPER</Badge>}
+                      {b.paper && <Badge className="bg-amber-900/30 text-amber-300 text-[9px] border-amber-700/50">PAPER</Badge>}
                     </div>
                     {b.error ? (
-                      <Badge className="bg-red-900/30 text-red-400 text-[9px]">Error</Badge>
+                      <Badge className="bg-orange-900/30 text-orange-400 text-[9px]">Error</Badge>
                     ) : (
                       <span className="text-slate-400 text-[10px]">{b.positions_count} positions</span>
                     )}
                   </div>
                   {b.error ? (
-                    <p className="text-red-400 text-xs">{b.error}</p>
+                    <p className="text-orange-400 text-xs">{b.error}</p>
                   ) : (
                     <div className="flex items-end justify-between">
                       <div>
                         <p className="text-white text-lg font-bold tabular-nums">${(b.portfolio_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                         <p className="text-slate-400 text-[10px]">Cash: ${(b.cash || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                       </div>
-                      <span className={`text-sm font-bold ${(b.unrealized_pl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <span className={`text-sm font-bold ${(b.unrealized_pl || 0) >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
                         {(b.unrealized_pl || 0) >= 0 ? '+' : ''}${(b.unrealized_pl || 0).toFixed(2)}
                       </span>
                     </div>
@@ -169,23 +169,23 @@ const PnLTracker = ({ onOpenBroker }) => {
           )}
 
           {/* Positions Table */}
-          <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-500/40/40 flex items-center justify-between">
+          <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-slate-400/30/40 flex items-center justify-between">
               <h3 className="text-white text-sm font-semibold">Open Positions</h3>
               <span className="text-slate-400 text-[10px]">{data.positions?.length || 0} positions</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="positions-table">
                 <thead>
-                  <tr className="border-b border-slate-500/40/30">
-                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Symbol</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Qty</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Avg Entry</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Current</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Mkt Value</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">P&L</th>
-                    <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">P&L %</th>
-                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Broker</th>
+                  <tr className="border-b border-slate-400/30/30">
+                    <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Symbol</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Qty</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Avg Entry</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Current</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">Mkt Value</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">P&L</th>
+                    <th className="text-right text-slate-300 text-xs font-medium px-4 py-2.5">P&L %</th>
+                    <th className="text-left text-slate-300 text-xs font-medium px-4 py-2.5">Broker</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -194,21 +194,21 @@ const PnLTracker = ({ onOpenBroker }) => {
                     return (
                       <tr key={`${p.symbol}-${p.broker}-${i}`} className="border-b border-slate-600/30/40 hover:bg-slate-700/20 transition-colors" data-testid={`position-row-${p.symbol}`}>
                         <td className="px-4 py-2.5">
-                          <span className="text-[#35D6C8] font-bold">{p.symbol}</span>
-                          {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-red-900/30 text-red-400">SHORT</Badge>}
+                          <span className="text-[#3DE8D9] font-bold">{p.symbol}</span>
+                          {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-orange-900/30 text-orange-400">SHORT</Badge>}
                         </td>
                         <td className="px-4 py-2.5 text-right text-white tabular-nums">{p.qty}</td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">${p.avg_entry.toFixed(2)}</td>
                         <td className="px-4 py-2.5 text-right text-white tabular-nums">${p.current_price.toFixed(2)}</td>
                         <td className="px-4 py-2.5 text-right text-slate-300 tabular-nums">${p.market_value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                        <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${posUp ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${posUp ? 'text-lime-400' : 'text-orange-400'}`}>
                           {posUp ? '+' : ''}${p.unrealized_pl.toFixed(2)}
                         </td>
-                        <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${posUp ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${posUp ? 'text-lime-400' : 'text-orange-400'}`}>
                           {posUp ? '+' : ''}{p.unrealized_pl_pct.toFixed(2)}%
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className="text-slate-400 text-xs capitalize">{p.broker}</span>
+                          <span className="text-slate-300 text-xs capitalize">{p.broker}</span>
                         </td>
                       </tr>
                     );
@@ -220,22 +220,22 @@ const PnLTracker = ({ onOpenBroker }) => {
 
           {/* Sector Allocation */}
           {data.sector_allocation?.length > 0 && (
-            <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
+            <Card className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-4">
               <h3 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
-                <PieChart className="w-4 h-4 text-violet-400" /> Sector Allocation
+                <PieChart className="w-4 h-4 text-violet-300" /> Sector Allocation
               </h3>
               <div className="space-y-2">
                 {data.sector_allocation.map(s => (
                   <div key={s.name} className="flex items-center gap-3" data-testid={`sector-alloc-${s.name}`}>
                     <span className="text-slate-300 text-xs w-28 truncate">{s.name}</span>
-                    <div className="flex-1 bg-slate-700/30 rounded-full h-2">
+                    <div className="flex-1 bg-slate-700/40 rounded-full h-2">
                       <div
-                        className="h-2 rounded-full bg-gradient-to-r from-[#35D6C8] to-violet-500"
+                        className="h-2 rounded-full bg-gradient-to-r from-[#3DE8D9] to-violet-500"
                         style={{ width: `${Math.min(s.pct, 100)}%` }}
                       />
                     </div>
                     <span className="text-slate-400 text-[10px] w-10 text-right">{s.pct}%</span>
-                    <span className={`text-[10px] font-semibold w-16 text-right ${s.pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] font-semibold w-16 text-right ${s.pl >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
                       {s.pl >= 0 ? '+' : ''}${s.pl.toFixed(0)}
                     </span>
                   </div>
@@ -252,8 +252,8 @@ const PnLTracker = ({ onOpenBroker }) => {
 const SummaryCard = ({ label, value, sub, icon, accent }) => {
   const accents = {
     blue: 'from-blue-950/30 to-blue-900/10 border-blue-800/30',
-    green: 'from-emerald-950/30 to-emerald-900/10 border-emerald-800/30',
-    red: 'from-red-950/30 to-red-900/10 border-red-800/30',
+    green: 'from-emerald-950/30 to-emerald-900/10 border-lime-700/30',
+    red: 'from-red-950/30 to-red-900/10 border-orange-700/30',
     amber: 'from-amber-950/30 to-amber-900/10 border-amber-800/30',
     violet: 'from-violet-950/30 to-violet-900/10 border-violet-800/30',
   };

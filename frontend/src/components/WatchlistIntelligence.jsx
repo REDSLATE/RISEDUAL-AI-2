@@ -14,16 +14,16 @@ const scoreGradient = (score) =>
   score >= 40 ? 'from-amber-600 to-yellow-600' : 'from-red-600 to-rose-600';
 
 const severityBadge = (sev) =>
-  sev === 'high' ? 'bg-red-800/50 text-red-300' :
+  sev === 'high' ? 'bg-red-800/50 text-orange-300' :
   sev === 'medium' ? 'bg-amber-800/50 text-amber-300' : 'bg-slate-700 text-slate-400';
 
 const tickerScoreColor = (score) =>
-  score >= 7 ? 'text-emerald-400 border-emerald-500' :
-  score >= 4 ? 'text-amber-400 border-amber-500' : 'text-red-400 border-red-500';
+  score >= 7 ? 'text-lime-400 border-emerald-500' :
+  score >= 4 ? 'text-amber-300 border-amber-500' : 'text-orange-400 border-red-500';
 
 const verdictBadge = (v) =>
-  v === 'buy' ? 'bg-emerald-900/40 text-emerald-400' :
-  v === 'sell' ? 'bg-red-900/40 text-red-400' : 'bg-amber-900/40 text-amber-400';
+  v === 'buy' ? 'bg-lime-900/40 text-lime-400' :
+  v === 'sell' ? 'bg-orange-900/40 text-orange-400' : 'bg-amber-900/40 text-amber-300';
 
 const WatchlistIntelligence = ({ onSubscribe }) => {
   const { user, isPro } = useAuth();
@@ -54,7 +54,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
   if (!user) return null;
 
   return (
-    <Card className="bg-slate-900/80 border-slate-500/30 rounded-2xl overflow-hidden" data-testid="watchlist-intelligence">
+    <Card className="bg-slate-900/80 border-slate-400/25 rounded-2xl overflow-hidden" data-testid="watchlist-intelligence">
       {/* Header */}
       <button
         onClick={() => data ? setExpanded(e => !e) : generate(false)}
@@ -86,7 +86,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           {!data && !loading && !error && (
             <div className="text-center py-8">
               <Brain className="w-10 h-10 text-slate-700 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm mb-3">Analyze your entire watchlist with one click</p>
+              <p className="text-slate-300 text-sm mb-3">Analyze your entire watchlist with one click</p>
               <Button
                 onClick={() => generate(false)}
                 className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl px-6"
@@ -100,13 +100,13 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           {loading && (
             <div className="text-center py-8">
               <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">Analyzing your watchlist...</p>
+              <p className="text-slate-300 text-sm">Analyzing your watchlist...</p>
               <p className="text-slate-400 text-[10px] mt-1">Fetching quotes, computing technicals, running AI</p>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-900/30 border border-red-800/50 text-red-400 text-sm p-3 rounded-lg">{error}</div>
+            <div className="bg-orange-900/30 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>
           )}
 
           {data && !loading && (
@@ -129,7 +129,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
                   onClick={() => generate(true)}
                   disabled={loading}
                   variant="outline"
-                  className="text-slate-400 border-slate-500/40 hover:text-white text-xs rounded-xl"
+                  className="text-slate-400 border-slate-400/30 hover:text-white text-xs rounded-xl"
                   data-testid="wl-intel-refresh-btn"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Analysis
@@ -161,9 +161,9 @@ const SummaryCard = ({ summary }) => {
       <h4 className="text-white text-sm font-bold mb-1">{summary.headline}</h4>
       <p className="text-slate-300 text-xs mb-3">{summary.outlook}</p>
       <div className="flex gap-3 flex-wrap">
-        <MiniStat label="Bullish" value={summary.bullish_count || 0} color="text-emerald-400" />
-        <MiniStat label="Bearish" value={summary.bearish_count || 0} color="text-red-400" />
-        <MiniStat label="Neutral" value={summary.neutral_count || 0} color="text-amber-400" />
+        <MiniStat label="Bullish" value={summary.bullish_count || 0} color="text-lime-400" />
+        <MiniStat label="Bearish" value={summary.bearish_count || 0} color="text-orange-400" />
+        <MiniStat label="Neutral" value={summary.neutral_count || 0} color="text-amber-300" />
       </div>
     </Card>
   );
@@ -180,13 +180,13 @@ const MiniStat = ({ label, value, color }) => (
 const AlertsList = ({ alerts }) => (
   <div className="space-y-2" data-testid="wl-alerts">
     <p className="text-slate-400 text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5">
-      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> Alerts
+      <AlertTriangle className="w-3.5 h-3.5 text-amber-300" /> Alerts
     </p>
     {alerts.map((a, i) => {
       const severityColors = {
-        high: 'bg-red-900/30 border-red-800/40 text-red-300',
+        high: 'bg-orange-900/30 border-orange-700/40 text-orange-300',
         medium: 'bg-amber-900/30 border-amber-800/40 text-amber-300',
-        low: 'bg-slate-800/60 border-slate-500/40/40 text-slate-300',
+        low: 'bg-slate-800/60 border-slate-400/30/40 text-slate-300',
       };
       const style = severityColors[a.severity] || severityColors.low;
       return (
@@ -212,9 +212,9 @@ const TopMovers = ({ movers }) => (
       {movers.map((m, i) => {
         const positive = (m.change_pct || 0) >= 0;
         return (
-          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-red-950/20 border-red-800/30'}`}>
+          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-lime-950/20 border-lime-700/30' : 'bg-red-950/20 border-orange-700/30'}`}>
             <span className="text-white text-xs font-bold">{m.symbol}</span>
-            <span className={`text-xs font-semibold ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`text-xs font-semibold ${positive ? 'text-lime-400' : 'text-orange-400'}`}>
               {positive ? '+' : ''}{m.change_pct?.toFixed(1)}%
             </span>
             {m.reason && <span className="text-slate-400 text-[9px] hidden sm:inline">— {m.reason}</span>}
@@ -229,18 +229,18 @@ const TopMovers = ({ movers }) => (
 const TickerGrid = ({ tickers }) => (
   <div data-testid="wl-ticker-grid">
     <p className="text-slate-400 text-[10px] uppercase tracking-wider font-medium mb-2 flex items-center gap-1.5">
-      <Target className="w-3.5 h-3.5 text-violet-400" /> Ticker Scores
+      <Target className="w-3.5 h-3.5 text-violet-300" /> Ticker Scores
     </p>
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
       {tickers.map((t, i) => {
         const q = t.quote || {};
         const tech = t.technicals || {};
-        const verdictColors = { buy: 'text-emerald-400', hold: 'text-amber-400', sell: 'text-red-400' };
+        const verdictColors = { buy: 'text-lime-400', hold: 'text-amber-300', sell: 'text-orange-400' };
         const scoreColor = tickerScoreColor(t.score);
         const changePct = q.change_pct || 0;
 
         return (
-          <Card key={`ticker-${i}`} className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
+          <Card key={`ticker-${i}`} className="bg-slate-700/45 border-slate-400/30/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
             {/* Score Circle */}
             <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 ${scoreColor}`}>
               <span className={`text-sm font-black ${scoreColor.split(' ')[0]}`}>{t.score}</span>
@@ -260,7 +260,7 @@ const TickerGrid = ({ tickers }) => (
             {/* Price */}
             <div className="text-right shrink-0">
               <p className="text-white text-xs font-semibold">${q.price?.toFixed(2) || '—'}</p>
-              <p className={`text-[10px] font-medium ${changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className={`text-[10px] font-medium ${changePct >= 0 ? 'text-lime-400' : 'text-orange-400'}`}>
                 {changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%
               </p>
             </div>

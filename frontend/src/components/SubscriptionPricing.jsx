@@ -51,7 +51,7 @@ const SubscriptionPricing = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-500/30 relative" data-testid="subscription-modal">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-400/25 relative" data-testid="subscription-modal">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -62,7 +62,7 @@ const SubscriptionPricing = ({ onClose }) => {
         </button>
 
         {/* Header */}
-        <div className="p-8 pt-2 text-center border-b border-slate-500/40">
+        <div className="p-8 pt-2 text-center border-b border-slate-400/30">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Crown className="w-8 h-8 text-yellow-500" />
             <h2 className="text-3xl font-bold text-white">Upgrade to Premium</h2>
@@ -77,33 +77,33 @@ const SubscriptionPricing = ({ onClose }) => {
             <Card
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'monthly'
-                  ? 'bg-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
-                  : 'bg-slate-700/30 border-slate-500/30 hover:border-slate-600'
+                  ? 'bg-slate-800/80 border-[#3DE8D9] shadow-lg shadow-blue-500/10'
+                  : 'bg-slate-700/40 border-slate-400/25 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('monthly')}
               data-testid="plan-monthly"
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  selectedPlan === 'monthly' ? 'border-[#35D6C8]' : 'border-slate-600'
+                  selectedPlan === 'monthly' ? 'border-[#3DE8D9]' : 'border-slate-600'
                 }`}>
-                  {selectedPlan === 'monthly' && <div className="w-2.5 h-2.5 rounded-full bg-[#35D6C8]" />}
+                  {selectedPlan === 'monthly' && <div className="w-2.5 h-2.5 rounded-full bg-[#3DE8D9]" />}
                 </div>
                 <span className="text-white font-semibold text-lg">Monthly</span>
               </div>
               <div className="mb-1">
                 <span className="text-4xl font-bold text-white">$45</span>
-                <span className="text-slate-400 text-sm">/month</span>
+                <span className="text-slate-300 text-sm">/month</span>
               </div>
-              <p className="text-slate-400 text-xs">Billed monthly. Cancel anytime.</p>
+              <p className="text-slate-300 text-xs">Billed monthly. Cancel anytime.</p>
             </Card>
 
             {/* Annual */}
             <Card
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'annual'
-                  ? 'bg-gradient-to-br from-[#35D6C8]/15 to-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
-                  : 'bg-slate-700/30 border-slate-500/30 hover:border-slate-600'
+                  ? 'bg-gradient-to-br from-[#3DE8D9]/15 to-slate-800/80 border-[#3DE8D9] shadow-lg shadow-blue-500/10'
+                  : 'bg-slate-700/40 border-slate-400/25 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('annual')}
               data-testid="plan-annual"
@@ -113,18 +113,18 @@ const SubscriptionPricing = ({ onClose }) => {
               </Badge>
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  selectedPlan === 'annual' ? 'border-[#35D6C8]' : 'border-slate-600'
+                  selectedPlan === 'annual' ? 'border-[#3DE8D9]' : 'border-slate-600'
                 }`}>
-                  {selectedPlan === 'annual' && <div className="w-2.5 h-2.5 rounded-full bg-[#35D6C8]" />}
+                  {selectedPlan === 'annual' && <div className="w-2.5 h-2.5 rounded-full bg-[#3DE8D9]" />}
                 </div>
                 <span className="text-white font-semibold text-lg">Annual</span>
                 <Star className="w-4 h-4 text-yellow-500" />
               </div>
               <div className="mb-1">
                 <span className="text-4xl font-bold text-white">$40.50</span>
-                <span className="text-slate-400 text-sm">/month</span>
+                <span className="text-slate-300 text-sm">/month</span>
               </div>
-              <p className="text-slate-400 text-xs">
+              <p className="text-slate-300 text-xs">
                 $486/year <span className="line-through text-slate-400">$540</span>
               </p>
             </Card>
@@ -135,7 +135,7 @@ const SubscriptionPricing = ({ onClose }) => {
             <Button
               onClick={handleStripeCheckout}
               disabled={isProcessing}
-              className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-6 text-lg rounded-xl"
+              className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-6 text-lg rounded-xl"
               data-testid="stripe-checkout-btn"
             >
               {isProcessing
@@ -145,7 +145,7 @@ const SubscriptionPricing = ({ onClose }) => {
                   : 'Subscribe Now — $45/month'
               }
             </Button>
-            <div className="flex items-center justify-center gap-2 text-slate-400 text-xs">
+            <div className="flex items-center justify-center gap-2 text-slate-300 text-xs">
               <Shield className="w-4 h-4" />
               <span>Secure payment via Stripe -- Cancel anytime -- 30-day money-back guarantee</span>
             </div>
@@ -160,7 +160,7 @@ const SubscriptionPricing = ({ onClose }) => {
                 return (
                   <div key={`feature-${feature.text}`} className="flex items-center gap-3 text-slate-300">
                     <div className="bg-emerald-900 bg-opacity-30 p-2 rounded-lg">
-                      <Icon className="w-5 h-5 text-emerald-400" />
+                      <Icon className="w-5 h-5 text-lime-400" />
                     </div>
                     <span>{feature.text}</span>
                   </div>
@@ -170,20 +170,20 @@ const SubscriptionPricing = ({ onClose }) => {
           </div>
 
           {/* FAQ */}
-          <div className="mt-8 border-t border-slate-500/40 pt-8">
+          <div className="mt-8 border-t border-slate-400/30 pt-8">
             <h3 className="text-white text-lg font-semibold text-center mb-4">Frequently Asked Questions</h3>
             <div className="space-y-4 max-w-2xl mx-auto">
               <div>
                 <p className="text-white font-medium">Can I cancel anytime?</p>
-                <p className="text-slate-400 text-sm mt-1">Yes! Cancel your subscription anytime with no penalties. You'll retain access until the end of your billing period.</p>
+                <p className="text-slate-300 text-sm mt-1">Yes! Cancel your subscription anytime with no penalties. You'll retain access until the end of your billing period.</p>
               </div>
               <div>
                 <p className="text-white font-medium">Can I switch between monthly and annual?</p>
-                <p className="text-slate-400 text-sm mt-1">Yes, you can switch plans at any time. If upgrading to annual, you'll receive prorated credit for your remaining monthly period.</p>
+                <p className="text-slate-300 text-sm mt-1">Yes, you can switch plans at any time. If upgrading to annual, you'll receive prorated credit for your remaining monthly period.</p>
               </div>
               <div>
                 <p className="text-white font-medium">Is my payment information secure?</p>
-                <p className="text-slate-400 text-sm mt-1">Absolutely! All transactions are processed securely through Stripe. We never store your payment details.</p>
+                <p className="text-slate-300 text-sm mt-1">Absolutely! All transactions are processed securely through Stripe. We never store your payment details.</p>
               </div>
             </div>
           </div>

@@ -15,8 +15,8 @@ const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
 
 const getPushToggleClass = (permission, subscribed) => {
-  if (permission === 'denied') return 'bg-red-900/20 text-red-400 border border-red-800/40 cursor-not-allowed';
-  if (subscribed) return 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40';
+  if (permission === 'denied') return 'bg-orange-900/20 text-orange-400 border border-orange-700/40 cursor-not-allowed';
+  if (subscribed) return 'bg-lime-900/30 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40';
   return 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600';
 };
 
@@ -106,15 +106,15 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
   };
 
   const verdictIcon = (v) => {
-    if (v === 'BUY') return <TrendingUp className="w-4 h-4 text-emerald-400" />;
-    if (v === 'SELL') return <TrendingDown className="w-4 h-4 text-red-400" />;
-    return <Minus className="w-4 h-4 text-amber-400" />;
+    if (v === 'BUY') return <TrendingUp className="w-4 h-4 text-lime-400" />;
+    if (v === 'SELL') return <TrendingDown className="w-4 h-4 text-orange-400" />;
+    return <Minus className="w-4 h-4 text-amber-300" />;
   };
 
   const verdictStyle = (v) => {
-    if (v === 'BUY') return 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50';
-    if (v === 'SELL') return 'text-red-400 bg-red-900/30 border-red-700/50';
-    return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
+    if (v === 'BUY') return 'text-lime-400 bg-lime-900/30 border-emerald-700/50';
+    if (v === 'SELL') return 'text-orange-400 bg-orange-900/30 border-red-700/50';
+    return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
   };
 
   const tabs = [
@@ -125,20 +125,20 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="user-workspace">
-      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-500/30">
+      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-400/25">
         {/* Header */}
-        <div className="p-6 border-b border-slate-500/40 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#35D6C8] rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-[#3DE8D9] rounded-xl flex items-center justify-center">
               <Briefcase className="w-6 h-6 text-white" />
             </div>
             <div>
               <h2 className="text-white text-xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>My Workspace</h2>
-              <p className="text-slate-400 text-sm">{user?.name || user?.email}</p>
+              <p className="text-slate-300 text-sm">{user?.name || user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isPro && <Badge className="bg-gradient-to-r from-[#35D6C8] to-cyan-500 text-white border-0 text-xs">PRO</Badge>}
+            {isPro && <Badge className="bg-gradient-to-r from-[#3DE8D9] to-cyan-500 text-white border-0 text-xs">PRO</Badge>}
             <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2" data-testid="workspace-close">
               <X className="w-5 h-5" />
             </button>
@@ -146,7 +146,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-500/30">
+        <div className="flex border-b border-slate-400/25">
           {tabs.map(t => {
             const Icon = t.icon;
             return (
@@ -155,7 +155,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
                 onClick={() => setTab(t.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
                   tab === t.id
-                    ? 'text-[#35D6C8] border-b-2 border-[#35D6C8] bg-[#35D6C8]/5'
+                    ? 'text-[#3DE8D9] border-b-2 border-[#3DE8D9] bg-[#3DE8D9]/5'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
                 data-testid={`workspace-tab-${t.id}`}
@@ -171,7 +171,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         <div className="p-4 sm:p-6 min-h-[300px]">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
+              <RefreshCw className="w-6 h-6 text-[#3DE8D9] animate-spin" />
             </div>
           ) : (
             <TabContent
@@ -220,7 +220,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
           data-testid="add-ticker-input"
         />
       </div>
-      <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="add-ticker-btn">
+      <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl" data-testid="add-ticker-btn">
         <Plus className="w-4 h-4 mr-1" /> Add
       </Button>
     </form>
@@ -228,7 +228,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-400">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
         {watchlist.length >= FREE_WATCHLIST_LIMIT && (
-          <button onClick={onSubscribe} className="text-[#35D6C8] hover:underline flex items-center gap-1">
+          <button onClick={onSubscribe} className="text-[#3DE8D9] hover:underline flex items-center gap-1">
             <Lock className="w-3 h-3" /> Upgrade for unlimited
           </button>
         )}
@@ -236,8 +236,8 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
     )}
     {addError && (
       <div className="bg-amber-900/20 border-amber-700/40 rounded-xl px-3 py-2 flex items-center justify-between border">
-        <span className="text-amber-400 text-xs">{addError}</span>
-        <Button size="sm" className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
+        <span className="text-amber-300 text-xs">{addError}</span>
+        <Button size="sm" className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
           Upgrade
         </Button>
       </div>
@@ -245,15 +245,15 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
     {watchlist.length === 0 ? (
       <div className="text-center py-10">
         <Star className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">No tickers in your watchlist yet</p>
-        <p className="text-slate-400 text-xs mt-1">Add tickers above to start tracking</p>
+        <p className="text-slate-300 text-sm">No tickers in your watchlist yet</p>
+        <p className="text-slate-300 text-xs mt-1">Add tickers above to start tracking</p>
       </div>
     ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {watchlist.map(ticker => (
-          <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
+          <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
             <span className="text-white font-semibold text-sm">{ticker}</span>
-            <button onClick={() => removeTicker(ticker)} className="text-slate-400 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" data-testid={`remove-ticker-${ticker}`}>
+            <button onClick={() => removeTicker(ticker)} className="text-slate-400 hover:text-orange-400 transition-colors opacity-0 group-hover:opacity-100" data-testid={`remove-ticker-${ticker}`}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -268,24 +268,24 @@ const HistoryTab = ({ history }) => (
     {history.length === 0 ? (
       <div className="text-center py-10">
         <Clock className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">No hypothesis history yet</p>
-        <p className="text-slate-400 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
+        <p className="text-slate-300 text-sm">No hypothesis history yet</p>
+        <p className="text-slate-300 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
       </div>
     ) : (
       history.map((h, i) => (
-        <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
+        <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
           <div className="flex items-center gap-3">
             {verdictIcon(h.verdict)}
             <div>
               <span className="text-white font-semibold text-sm">{h.symbol}</span>
-              <p className="text-slate-400 text-xs">
+              <p className="text-slate-300 text-xs">
                 {h.searched_at ? new Date(h.searched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {h.verdict && <Badge className={`text-[10px] border ${verdictStyle(h.verdict)}`}>{h.verdict}</Badge>}
-            {h.confidence > 0 && <span className="text-slate-400 text-xs font-mono">{h.confidence}%</span>}
+            {h.confidence > 0 && <span className="text-slate-300 text-xs font-mono">{h.confidence}%</span>}
           </div>
         </div>
       ))
@@ -323,24 +323,24 @@ const ReferralsTab = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
+        <RefreshCw className="w-6 h-6 text-[#3DE8D9] animate-spin" />
       </div>
     );
   }
 
   if (!info) {
-    return <div className="text-center py-10 text-slate-400 text-sm">Unable to load referral info</div>;
+    return <div className="text-center py-10 text-slate-300 text-sm">Unable to load referral info</div>;
   }
 
   return (
     <div className="space-y-5" data-testid="referrals-tab">
       {/* Share Link */}
-      <Card className="bg-gradient-to-br from-[#35D6C8]/10 to-cyan-900/10 border-[#35D6C8]/30 rounded-xl p-4">
+      <Card className="bg-gradient-to-br from-[#3DE8D9]/10 to-cyan-900/10 border-[#3DE8D9]/30 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Gift className="w-5 h-5 text-[#35D6C8]" />
+          <Gift className="w-5 h-5 text-[#3DE8D9]" />
           <h3 className="text-white text-sm font-semibold">Share & Earn</h3>
         </div>
-        <p className="text-slate-400 text-xs mb-3">
+        <p className="text-slate-300 text-xs mb-3">
           Invite friends to RISEDUAL AI. When they subscribe to Pro, you earn <strong className="text-white">1 free month</strong>. They get a <strong className="text-white">7-day Pro trial</strong>.
         </p>
         <div className="flex gap-2">
@@ -352,7 +352,7 @@ const ReferralsTab = () => {
           />
           <Button
             onClick={copyLink}
-            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#35D6C8] hover:bg-[#67E3D3]'} text-white`}
+            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#3DE8D9] hover:bg-[#7AEEE0]'} text-white`}
             data-testid="copy-referral-btn"
           >
             {copied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
@@ -366,16 +366,16 @@ const ReferralsTab = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-white">{info.total_referrals}</p>
           <p className="text-slate-400 text-[10px]">Total Referrals</p>
         </Card>
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-emerald-400">{info.rewards_earned}</p>
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-lime-400">{info.rewards_earned}</p>
           <p className="text-slate-400 text-[10px]">Months Earned</p>
         </Card>
-        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-[#35D6C8]">{info.rewards_remaining}</p>
+        <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-3 text-center">
+          <p className="text-2xl font-bold text-[#3DE8D9]">{info.rewards_remaining}</p>
           <p className="text-slate-400 text-[10px]">Remaining ({info.reward_cap}/yr)</p>
         </Card>
       </div>
@@ -388,13 +388,13 @@ const ReferralsTab = () => {
         {info.referrals.length === 0 ? (
           <div className="text-center py-8">
             <Users className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-            <p className="text-slate-400 text-sm">No referrals yet</p>
-            <p className="text-slate-400 text-xs mt-1">Share your link to start earning free months</p>
+            <p className="text-slate-300 text-sm">No referrals yet</p>
+            <p className="text-slate-300 text-xs mt-1">Share your link to start earning free months</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[250px] overflow-y-auto">
             {info.referrals.map((ref, i) => (
-              <div key={`ref-${i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-2.5" data-testid={`referral-item-${i}`}>
+              <div key={`ref-${i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-4 py-2.5" data-testid={`referral-item-${i}`}>
                 <div>
                   <p className="text-white text-sm">{ref.referred_email}</p>
                   <p className="text-slate-400 text-[10px]">
@@ -403,12 +403,12 @@ const ReferralsTab = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className={`text-[10px] border ${
-                    ref.status === 'completed' ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50' : 'text-amber-400 bg-amber-900/30 border-amber-700/50'
+                    ref.status === 'completed' ? 'text-lime-400 bg-lime-900/30 border-emerald-700/50' : 'text-amber-300 bg-amber-900/30 border-amber-700/50'
                   }`}>
                     {ref.status === 'completed' ? 'Subscribed' : 'Pending'}
                   </Badge>
                   {ref.reward_granted && (
-                    <Badge className="text-[10px] bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30">+1 Month</Badge>
+                    <Badge className="text-[10px] bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30">+1 Month</Badge>
                   )}
                 </div>
               </div>
@@ -460,11 +460,11 @@ const DigestToggle = () => {
   if (loading) return null;
 
   return (
-    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4" data-testid="digest-toggle">
+    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#35D6C8]/10 flex items-center justify-center">
-            <Mail className="w-4 h-4 text-[#35D6C8]" />
+          <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center">
+            <Mail className="w-4 h-4 text-[#3DE8D9]" />
           </div>
           <div>
             <p className="text-white text-sm font-medium">Daily Market Digest</p>
@@ -476,7 +476,7 @@ const DigestToggle = () => {
           disabled={toggling}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             subscribed
-              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+              ? 'bg-lime-900/30 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
               : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
           }`}
           data-testid="digest-toggle-btn"
@@ -507,7 +507,7 @@ const PushToggle = () => {
   };
 
   return (
-    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4" data-testid="push-toggle">
+    <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4" data-testid="push-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">

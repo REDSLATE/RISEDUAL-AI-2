@@ -19,18 +19,18 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#0A2A63] flex items-center justify-center p-6" data-testid="error-boundary">
+        <div className="min-h-screen bg-[#060E1F] flex items-center justify-center p-6" data-testid="error-boundary">
           <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-red-900/30 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-red-800/40">
-              <AlertTriangle className="w-8 h-8 text-red-400" />
+            <div className="w-16 h-16 bg-orange-900/30 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-orange-700/40">
+              <AlertTriangle className="w-8 h-8 text-orange-400" />
             </div>
             <h1 className="text-white text-2xl font-bold mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>Something went wrong</h1>
-            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
               An unexpected error occurred. This has been logged automatically. Try refreshing the page.
             </p>
             <Button
               onClick={() => window.location.reload()}
-              className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl px-6"
+              className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-6"
               data-testid="error-boundary-reload"
             >
               <RefreshCw className="w-4 h-4 mr-2" />

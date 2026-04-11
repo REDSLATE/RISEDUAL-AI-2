@@ -16,24 +16,24 @@ const PERIODS = [
 ];
 
 const getHeatColor = (val) => {
-  if (val >= 3) return 'bg-emerald-500/90 text-white';
-  if (val >= 1.5) return 'bg-emerald-600/70 text-white';
-  if (val >= 0.5) return 'bg-emerald-700/50 text-emerald-100';
-  if (val >= 0) return 'bg-emerald-900/30 text-emerald-300';
-  if (val >= -0.5) return 'bg-red-900/30 text-red-300';
-  if (val >= -1.5) return 'bg-red-700/50 text-red-100';
-  if (val >= -3) return 'bg-red-600/70 text-white';
-  return 'bg-red-500/90 text-white';
+  if (val >= 3) return 'bg-lime-500 text-white';
+  if (val >= 1.5) return 'bg-lime-600/80 text-white';
+  if (val >= 0.5) return 'bg-lime-700/60 text-lime-100';
+  if (val >= 0) return 'bg-lime-900/40 text-lime-300';
+  if (val >= -0.5) return 'bg-orange-900/40 text-orange-300';
+  if (val >= -1.5) return 'bg-orange-600/60 text-orange-100';
+  if (val >= -3) return 'bg-red-500/80 text-white';
+  return 'bg-red-500 text-white';
 };
 
 const getSentimentColor = (val) => {
-  if (val >= 75) return 'bg-emerald-500/90 text-white';
-  if (val >= 62) return 'bg-emerald-600/70 text-white';
-  if (val >= 55) return 'bg-emerald-700/50 text-emerald-100';
+  if (val >= 75) return 'bg-lime-500 text-white';
+  if (val >= 62) return 'bg-lime-600/80 text-white';
+  if (val >= 55) return 'bg-lime-700/60 text-lime-100';
   if (val >= 45) return 'bg-slate-600/50 text-slate-200';
-  if (val >= 38) return 'bg-orange-800/50 text-orange-200';
-  if (val >= 25) return 'bg-red-700/50 text-red-100';
-  return 'bg-red-500/90 text-white';
+  if (val >= 38) return 'bg-orange-600/60 text-orange-200';
+  if (val >= 25) return 'bg-red-500/80 text-red-100';
+  return 'bg-red-500 text-white';
 };
 
 const getSentimentLabel = (val) => {
@@ -113,7 +113,7 @@ const SectorHeatmap = () => {
 
   if (loading && !data) {
     return (
-      <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
+      <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
         <div className="flex items-center gap-3 mb-5">
           <div className="skeleton w-10 h-10 rounded-xl" />
           <div>
@@ -135,7 +135,7 @@ const SectorHeatmap = () => {
 
   if (error) {
     return (
-      <div className="bg-red-900/20 border border-red-800/40 rounded-xl p-4 text-red-400 text-sm">{error}</div>
+      <div className="bg-orange-900/20 border border-orange-700/40 rounded-xl p-4 text-orange-400 text-sm">{error}</div>
     );
   }
 
@@ -174,7 +174,7 @@ const SectorHeatmap = () => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>Sector Rotation</h2>
-            <p className="text-slate-400 text-xs">
+            <p className="text-slate-300 text-xs">
               {isAI ? 'Multi-agent AI sentiment analysis' : 'S&P 500 sector ETF performance heatmap'}
             </p>
           </div>
@@ -188,8 +188,8 @@ const SectorHeatmap = () => {
                 period === p.key
                   ? p.key === 'ai_sentiment'
                     ? 'bg-purple-600 text-white ring-1 ring-purple-400/50'
-                    : 'bg-[#35D6C8] text-white'
-                  : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30'
+                    : 'bg-[#3DE8D9] text-white'
+                  : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-400/25'
               }`}
               data-testid={`period-${p.key}`}
             >
@@ -199,7 +199,7 @@ const SectorHeatmap = () => {
           ))}
           <button
             onClick={() => isAI ? fetchSentiment(true) : fetchData(true)}
-            className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30 transition-all ml-1"
+            className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-400/25 transition-all ml-1"
             title={isAI ? 'Regenerate AI sentiment' : 'Force refresh (bypass cache)'}
             data-testid="refresh-sectors"
           >
@@ -217,7 +217,7 @@ const SectorHeatmap = () => {
             <Badge className="bg-purple-900/50 text-purple-300 border-purple-700/50 text-[10px]">
               {sentiment.agents_used || 4} agents
             </Badge>
-            <Badge className={`text-[10px] border-0 ${sentiment.risk_regime === 'risk-on' ? 'bg-emerald-900/50 text-emerald-300' : sentiment.risk_regime === 'risk-off' ? 'bg-red-900/50 text-red-300' : 'bg-slate-700/50 text-slate-300'}`}>
+            <Badge className={`text-[10px] border-0 ${sentiment.risk_regime === 'risk-on' ? 'bg-lime-900/50 text-lime-300' : sentiment.risk_regime === 'risk-off' ? 'bg-orange-900/50 text-orange-300' : 'bg-slate-700/50 text-slate-300'}`}>
               {sentiment.risk_regime || 'mixed'}
             </Badge>
             {history && history.snapshots_count > 1 && (
@@ -239,24 +239,24 @@ const SectorHeatmap = () => {
             <Sparkles className="w-4 h-4 text-purple-300 absolute -top-1 -right-1 animate-bounce" />
           </div>
           <p className="text-purple-300 text-sm font-medium">AI agents analyzing sectors...</p>
-          <p className="text-slate-400 text-xs">3 analysts + 1 strategist running in parallel</p>
+          <p className="text-slate-300 text-xs">3 analysts + 1 strategist running in parallel</p>
         </div>
       )}
 
       {!isAI && summary.best_sector && summary.worst_sector && (
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <Card className="bg-emerald-950/20 border-emerald-800/30 rounded-xl p-3 flex items-center gap-3">
-            <TrendingUp className="w-5 h-5 text-emerald-400" />
+          <Card className="bg-lime-950/20 border-lime-700/30 rounded-xl p-3 flex items-center gap-3">
+            <TrendingUp className="w-5 h-5 text-lime-400" />
             <div>
               <p className="text-slate-400 text-[10px] uppercase">Best Sector</p>
-              <p className="text-white text-sm font-bold">{summary.best_sector.name} <span className="text-emerald-400">+{summary.best_sector.change}%</span></p>
+              <p className="text-white text-sm font-bold">{summary.best_sector.name} <span className="text-lime-400">+{summary.best_sector.change}%</span></p>
             </div>
           </Card>
-          <Card className="bg-red-950/20 border-red-800/30 rounded-xl p-3 flex items-center gap-3">
-            <TrendingDown className="w-5 h-5 text-red-400" />
+          <Card className="bg-red-950/20 border-orange-700/30 rounded-xl p-3 flex items-center gap-3">
+            <TrendingDown className="w-5 h-5 text-orange-400" />
             <div>
               <p className="text-slate-400 text-[10px] uppercase">Worst Sector</p>
-              <p className="text-white text-sm font-bold">{summary.worst_sector.name} <span className="text-red-400">{summary.worst_sector.change}%</span></p>
+              <p className="text-white text-sm font-bold">{summary.worst_sector.name} <span className="text-orange-400">{summary.worst_sector.change}%</span></p>
             </div>
           </Card>
         </div>
@@ -363,10 +363,10 @@ const SectorHeatmap = () => {
                 <div className="w-3 h-3 rounded bg-red-500/90" /><span>-3%+</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-red-900/30" /><span>-0.5%</span>
+                <div className="w-3 h-3 rounded bg-orange-900/30" /><span>-0.5%</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded bg-emerald-900/30" /><span>+0.5%</span>
+                <div className="w-3 h-3 rounded bg-lime-900/30" /><span>+0.5%</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded bg-emerald-500/90" /><span>+3%+</span>

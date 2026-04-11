@@ -20,7 +20,7 @@ const Header = ({ onGetStarted }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <a href="#" className="text-lg font-bold text-white tracking-tight">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
-          <span className="text-slate-400 text-sm ml-1">AI</span>
+          <span className="text-slate-300 text-sm ml-1">AI</span>
         </a>
         <nav className="hidden md:flex items-center gap-8">
           {NAV_ITEMS.map(n => (
@@ -70,7 +70,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-cta">
           Start Free Trial <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
-        <button onClick={onScroll} className="px-8 py-3.5 rounded-full border border-slate-500/40 text-slate-300 font-medium text-sm hover:border-slate-500 hover:text-white transition-all">
+        <button onClick={onScroll} className="px-8 py-3.5 rounded-full border border-slate-400/30 text-slate-300 font-medium text-sm hover:border-slate-500 hover:text-white transition-all">
           See How It Works
         </button>
       </div>
@@ -108,7 +108,7 @@ const HowItWorks = () => (
             color: 'teal',
           },
           {
-            icon: <Shield className="w-5 h-5 text-red-400" />,
+            icon: <Shield className="w-5 h-5 text-orange-400" />,
             title: 'The Auditor',
             desc: 'Actively hunts for flaws. Trained to identify TECH_FAKEOUT, LIQUIDITY_GAP, and false breakouts. Kills 40% of signals.',
             bullets: ['False breakout detection', 'Liquidity trap analysis', 'Risk score validation'],
@@ -122,7 +122,7 @@ const HowItWorks = () => (
             color: 'cyan',
           },
         ].map(card => (
-          <div key={card.title} className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/50 hover:border-slate-500/40/60 transition-colors group">
+          <div key={card.title} className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/50 hover:border-slate-400/30/60 transition-colors group">
             <div className="mb-4">{card.icon}</div>
             <h3 className="text-sm font-semibold text-white mb-2">{card.title}</h3>
             <p className="text-xs text-slate-400 mb-4 leading-relaxed">{card.desc}</p>
@@ -288,7 +288,7 @@ const Pricing = ({ onGetStarted }) => (
               </li>
             ))}
           </ul>
-          <div className="w-full py-2.5 rounded-lg border border-slate-800 text-slate-400 text-sm font-medium text-center">
+          <div className="w-full py-2.5 rounded-lg border border-slate-800 text-slate-300 text-sm font-medium text-center">
             Annual Contract Only
           </div>
         </div>
@@ -329,7 +329,7 @@ const Testimonials = () => {
               </div>
               <p className="text-xs text-slate-300 leading-relaxed mb-5 italic">"{t.quote}"</p>
               <div className="flex items-center gap-3">
-                <img src={t.img} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-slate-500/40" />
+                <img src={t.img} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-slate-400/30" />
                 <div>
                   <div className="text-xs font-semibold text-white">{t.name}</div>
                   <div className="text-[10px] text-slate-400">{t.role}</div>

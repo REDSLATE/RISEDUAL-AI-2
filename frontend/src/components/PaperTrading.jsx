@@ -79,21 +79,21 @@ const PaperTrading = ({ onClose }) => {
     }
   };
 
-  const pnlColor = (val) => val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-400';
-  const pnlBg = (val) => val > 0 ? 'bg-emerald-900/20 border-emerald-800/30' : val < 0 ? 'bg-red-900/20 border-red-800/30' : 'bg-slate-700/35 border-slate-500/40/40';
+  const pnlColor = (val) => val > 0 ? 'text-lime-400' : val < 0 ? 'text-orange-400' : 'text-slate-400';
+  const pnlBg = (val) => val > 0 ? 'bg-lime-900/20 border-lime-700/30' : val < 0 ? 'bg-orange-900/20 border-orange-700/30' : 'bg-slate-700/45 border-slate-400/30/40';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="paper-trading-modal">
-      <div className="bg-[#0A2A63] border border-slate-500/30 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="bg-[#060E1F] border border-slate-400/25 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-500/30">
+        <div className="flex items-center justify-between p-5 border-b border-slate-400/25">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-teal-500 rounded-xl flex items-center justify-center">
               <Briefcase className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-white text-lg font-bold" data-testid="paper-trading-title">Paper Trading</h2>
-              <p className="text-slate-400 text-xs">Simulated portfolio with live market prices</p>
+              <p className="text-slate-300 text-xs">Simulated portfolio with live market prices</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -126,17 +126,17 @@ const PaperTrading = ({ onClose }) => {
           {loading ? (
             <div className="text-center py-12">
               <RefreshCw className="w-6 h-6 text-teal-400 mx-auto animate-spin" />
-              <p className="text-slate-400 text-sm mt-3">Loading portfolio...</p>
+              <p className="text-slate-300 text-sm mt-3">Loading portfolio...</p>
             </div>
           ) : tab === 'portfolio' ? (
             <>
               {/* Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
+                <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4">
                   <p className="text-slate-400 text-[10px] uppercase tracking-wider">Equity</p>
                   <p className="text-white text-lg font-bold" data-testid="paper-equity">${portfolio?.equity?.toLocaleString()}</p>
                 </Card>
-                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
+                <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4">
                   <p className="text-slate-400 text-[10px] uppercase tracking-wider">Cash</p>
                   <p className="text-white text-lg font-bold" data-testid="paper-cash">${portfolio?.cash?.toLocaleString()}</p>
                 </Card>
@@ -188,28 +188,28 @@ const PaperTrading = ({ onClose }) => {
                     ))}
                   </div>
                 ) : (
-                  <Card className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-8 text-center">
+                  <Card className="bg-slate-700/35 border-slate-400/30/30 rounded-xl p-8 text-center">
                     <DollarSign className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-slate-400 text-sm">No positions yet</p>
-                    <p className="text-slate-400 text-xs mt-1">Use the Trade tab to buy your first paper stock</p>
+                    <p className="text-slate-300 text-sm">No positions yet</p>
+                    <p className="text-slate-300 text-xs mt-1">Use the Trade tab to buy your first paper stock</p>
                   </Card>
                 )}
               </div>
             </>
           ) : tab === 'trade' ? (
             <div className="space-y-4">
-              <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5">
+              <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-5">
                 <h3 className="text-white text-sm font-semibold mb-4">Execute Paper Trade</h3>
                 <div className="space-y-3">
                   {/* Side Toggle */}
                   <div className="flex gap-2">
                     <button onClick={() => setSide('BUY')}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-500/30'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-emerald-500/20 text-lime-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-400/25'}`}
                       data-testid="paper-buy-toggle">
                       <ArrowUpRight className="w-4 h-4 inline mr-1" /> BUY
                     </button>
                     <button onClick={() => setSide('SELL')}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'SELL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-slate-800 text-slate-400 border border-slate-500/30'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'SELL' ? 'bg-red-500/20 text-orange-400 border border-red-500/40' : 'bg-slate-800 text-slate-400 border border-slate-400/25'}`}
                       data-testid="paper-sell-toggle">
                       <ArrowDownRight className="w-4 h-4 inline mr-1" /> SELL
                     </button>
@@ -231,7 +231,7 @@ const PaperTrading = ({ onClose }) => {
                       data-testid="paper-qty-input" />
                   </div>
                   {/* Cash Available */}
-                  <div className="text-slate-400 text-xs">
+                  <div className="text-slate-300 text-xs">
                     Cash available: <span className="text-white font-medium">${portfolio?.cash?.toLocaleString()}</span>
                   </div>
                   {/* Execute */}
@@ -246,12 +246,12 @@ const PaperTrading = ({ onClose }) => {
 
               {/* Quick positions for sell */}
               {side === 'SELL' && portfolio?.positions?.length > 0 && (
-                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
-                  <p className="text-slate-400 text-xs font-medium mb-2">Quick Sell — Tap a position:</p>
+                <Card className="bg-slate-700/40 border-slate-400/30/30 rounded-xl p-4">
+                  <p className="text-slate-300 text-xs font-medium mb-2">Quick Sell — Tap a position:</p>
                   <div className="flex flex-wrap gap-2">
                     {portfolio.positions.map(p => (
                       <button key={p.symbol} onClick={() => { setSymbol(p.symbol); setQty(String(p.qty)); }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-500/30 text-white text-xs hover:border-red-500/40 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-400/25 text-white text-xs hover:border-red-500/40 transition-colors"
                         data-testid={`quick-sell-${p.symbol}`}>
                         {p.symbol} ({p.qty})
                       </button>
@@ -264,13 +264,13 @@ const PaperTrading = ({ onClose }) => {
             /* Trade History */
             <div className="space-y-2">
               {trades.length > 0 ? trades.map((t, i) => (
-                <Card key={i} className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
+                <Card key={i} className="bg-slate-700/35 border-slate-400/30/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-emerald-900/40' : 'bg-red-900/40'}`}>
-                      {t.side === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-emerald-400" /> : <ArrowDownRight className="w-4 h-4 text-red-400" />}
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-lime-900/40' : 'bg-orange-900/40'}`}>
+                      {t.side === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-lime-400" /> : <ArrowDownRight className="w-4 h-4 text-orange-400" />}
                     </div>
                     <div>
-                      <span className={`text-xs font-semibold ${t.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{t.side}</span>
+                      <span className={`text-xs font-semibold ${t.side === 'BUY' ? 'text-lime-400' : 'text-orange-400'}`}>{t.side}</span>
                       <span className="text-white text-sm font-medium ml-2">{t.symbol}</span>
                       <p className="text-slate-400 text-[10px]">{t.qty} shares @ ${t.price}</p>
                     </div>
@@ -281,9 +281,9 @@ const PaperTrading = ({ onClose }) => {
                   </div>
                 </Card>
               )) : (
-                <Card className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-8 text-center">
+                <Card className="bg-slate-700/35 border-slate-400/30/30 rounded-xl p-8 text-center">
                   <History className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <p className="text-slate-400 text-sm">No trades yet</p>
+                  <p className="text-slate-300 text-sm">No trades yet</p>
                 </Card>
               )}
             </div>

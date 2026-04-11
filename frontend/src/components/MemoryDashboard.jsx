@@ -8,21 +8,21 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const FAILURE_COLORS = {
-  TECH_FAKEOUT: { bg: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-400', bar: 'bg-amber-500' },
-  MACRO_SHOCK: { bg: 'bg-red-500/15', border: 'border-red-500/30', text: 'text-red-400', bar: 'bg-red-500' },
+  TECH_FAKEOUT: { bg: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-300', bar: 'bg-amber-500' },
+  MACRO_SHOCK: { bg: 'bg-red-500/15', border: 'border-red-500/30', text: 'text-orange-400', bar: 'bg-red-500' },
   LIQUIDITY_GAP: { bg: 'bg-purple-500/15', border: 'border-purple-500/30', text: 'text-purple-400', bar: 'bg-purple-500' },
   REGIME_SHIFT: { bg: 'bg-cyan-500/15', border: 'border-cyan-500/30', text: 'text-cyan-400', bar: 'bg-cyan-500' },
-  UNKNOWN: { bg: 'bg-slate-500/15', border: 'border-slate-500/30', text: 'text-slate-400', bar: 'bg-slate-500' },
+  UNKNOWN: { bg: 'bg-slate-500/15', border: 'border-slate-400/25', text: 'text-slate-400', bar: 'bg-slate-500' },
 };
 
 const StatCard = ({ icon: Icon, label, value, sub, color = 'text-white' }) => (
   <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-4" data-testid={`stat-${label.toLowerCase().replace(/\s/g, '-')}`}>
     <div className="flex items-center gap-2 mb-2">
       <Icon className={`w-4 h-4 ${color}`} />
-      <span className="text-slate-400 text-xs uppercase tracking-wider">{label}</span>
+      <span className="text-slate-300 text-xs uppercase tracking-wider">{label}</span>
     </div>
     <p className={`text-2xl font-bold ${color}`}>{value}</p>
-    {sub && <p className="text-slate-400 text-xs mt-1">{sub}</p>}
+    {sub && <p className="text-slate-300 text-xs mt-1">{sub}</p>}
   </div>
 );
 
@@ -40,14 +40,14 @@ const OverviewTab = ({ stats, accuracy }) => {
     <div className="space-y-6" data-testid="memory-overview-tab">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={Database} label="Total Episodes" value={stats.total_episodes?.toLocaleString()} sub={stats.embedding_model} color="text-white" />
-        <StatCard icon={Zap} label="Active" value={stats.active_episodes?.toLocaleString()} sub="Usable patterns" color="text-emerald-400" />
-        <StatCard icon={AlertTriangle} label="Toxic Lessons" value={stats.toxic_lessons} sub="Negative examples" color="text-red-400" />
-        <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#35D6C8]" />
+        <StatCard icon={Zap} label="Active" value={stats.active_episodes?.toLocaleString()} sub="Usable patterns" color="text-lime-400" />
+        <StatCard icon={AlertTriangle} label="Toxic Lessons" value={stats.toxic_lessons} sub="Negative examples" color="text-orange-400" />
+        <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#3DE8D9]" />
       </div>
 
       <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-5">
         <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-[#35D6C8]" /> Memory Health
+          <Shield className="w-4 h-4 text-[#3DE8D9]" /> Memory Health
         </h4>
         <div className="space-y-3">
           <HealthRow label="ChromaDB" status={stats.initialized} detail={stats.storage_path} />
@@ -64,16 +64,16 @@ const OverviewTab = ({ stats, accuracy }) => {
           </h4>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-red-400 text-xl font-bold">{stats.last_cleanup.toxic_removed}</p>
-              <p className="text-slate-400 text-xs">Toxic Re-tagged</p>
+              <p className="text-orange-400 text-xl font-bold">{stats.last_cleanup.toxic_removed}</p>
+              <p className="text-slate-300 text-xs">Toxic Re-tagged</p>
             </div>
             <div>
-              <p className="text-amber-400 text-xl font-bold">{stats.last_cleanup.obsolete_removed}</p>
-              <p className="text-slate-400 text-xs">Obsolete Pruned</p>
+              <p className="text-amber-300 text-xl font-bold">{stats.last_cleanup.obsolete_removed}</p>
+              <p className="text-slate-300 text-xs">Obsolete Pruned</p>
             </div>
             <div>
               <p className="text-slate-300 text-xl font-bold">{stats.last_cleanup.total_after}</p>
-              <p className="text-slate-400 text-xs">Episodes After</p>
+              <p className="text-slate-300 text-xs">Episodes After</p>
             </div>
           </div>
         </div>
@@ -88,7 +88,7 @@ const HealthRow = ({ label, status, detail }) => (
       <div className={`w-2 h-2 rounded-full ${status ? 'bg-emerald-400' : 'bg-red-400'}`} />
       <span className="text-slate-300 text-sm">{label}</span>
     </div>
-    <span className="text-slate-400 text-xs">{detail}</span>
+    <span className="text-slate-300 text-xs">{detail}</span>
   </div>
 );
 
@@ -97,7 +97,7 @@ const CleanupTab = ({ runs, onRunCleanup, loading }) => (
     <div className="flex items-center justify-between">
       <h4 className="text-white text-sm font-semibold">Cleanup History</h4>
       <Button size="sm" variant="outline" onClick={onRunCleanup} disabled={loading}
-        className="text-xs bg-transparent border-slate-500/40 text-slate-300 hover:bg-slate-600/30"
+        className="text-xs bg-transparent border-slate-400/30 text-slate-300 hover:bg-slate-600/30"
         data-testid="run-cleanup-btn">
         <RefreshCw className={`w-3 h-3 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
         {loading ? 'Running...' : 'Run Now'}
@@ -106,7 +106,7 @@ const CleanupTab = ({ runs, onRunCleanup, loading }) => (
 
     <div className="space-y-2">
       {runs.length === 0 ? (
-        <p className="text-slate-400 text-sm text-center py-8">No cleanup runs yet</p>
+        <p className="text-slate-300 text-sm text-center py-8">No cleanup runs yet</p>
       ) : (
         runs.map((run, i) => (
           <CleanupRunCard key={i} run={run} />
@@ -127,11 +127,11 @@ const CleanupRunCard = ({ run }) => {
         <div className="flex items-center gap-3">
           <Clock className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300 text-sm">{formatDate(run.run_at)}</span>
-          {hasToxic && <span className="text-[10px] bg-red-500/15 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5">{run.toxic_removed} toxic</span>}
-          {hasObsolete && <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded px-1.5 py-0.5">{run.obsolete_removed} obsolete</span>}
+          {hasToxic && <span className="text-[10px] bg-red-500/15 text-orange-400 border border-red-500/30 rounded px-1.5 py-0.5">{run.toxic_removed} toxic</span>}
+          {hasObsolete && <span className="text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded px-1.5 py-0.5">{run.obsolete_removed} obsolete</span>}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400 text-xs">{run.total_before} {'\u2192'} {run.total_after}</span>
+          <span className="text-slate-300 text-xs">{run.total_before} {'\u2192'} {run.total_after}</span>
           <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         </div>
       </button>
@@ -142,7 +142,7 @@ const CleanupRunCard = ({ run }) => {
             {run.toxic_details.map((d, j) => (
               <div key={j} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-3 h-3 text-red-400" />
+                  <AlertTriangle className="w-3 h-3 text-orange-400" />
                   <span className="text-white font-medium">{d.symbol}</span>
                   {d.failure_code && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${FAILURE_COLORS[d.failure_code]?.bg || ''} ${FAILURE_COLORS[d.failure_code]?.border || ''} ${FAILURE_COLORS[d.failure_code]?.text || 'text-slate-400'}`}>
@@ -171,8 +171,8 @@ const FailureTab = ({ breakdown, modes }) => {
       {total === 0 ? (
         <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-8 text-center">
           <BarChart3 className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">No verified failures yet</p>
-          <p className="text-slate-400 text-xs mt-1">Failure analysis begins once predictions are verified at 24h</p>
+          <p className="text-slate-300 text-sm">No verified failures yet</p>
+          <p className="text-slate-300 text-xs mt-1">Failure analysis begins once predictions are verified at 24h</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -184,14 +184,14 @@ const FailureTab = ({ breakdown, modes }) => {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-semibold ${colors.text}`}>{code}</span>
-                    <span className="text-slate-400 text-xs">{info.count} failures</span>
+                    <span className="text-slate-300 text-xs">{info.count} failures</span>
                   </div>
                   <span className={`text-sm font-bold ${colors.text}`}>{pct.toFixed(0)}%</span>
                 </div>
-                <div className="w-full bg-slate-700/35 rounded-full h-1.5 mb-2">
+                <div className="w-full bg-slate-700/45 rounded-full h-1.5 mb-2">
                   <div className={`h-1.5 rounded-full ${colors.bar}`} style={{ width: `${pct}%` }} />
                 </div>
-                <p className="text-slate-400 text-xs">{info.description}</p>
+                <p className="text-slate-300 text-xs">{info.description}</p>
               </div>
             );
           })}
@@ -199,12 +199,12 @@ const FailureTab = ({ breakdown, modes }) => {
       )}
 
       <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-4">
-        <h5 className="text-slate-400 text-xs uppercase tracking-wider mb-3">Failure Mode Reference</h5>
+        <h5 className="text-slate-300 text-xs uppercase tracking-wider mb-3">Failure Mode Reference</h5>
         <div className="space-y-2">
           {Object.entries(modes || {}).map(([code, desc]) => (
             <div key={code} className="flex items-start gap-2">
               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${FAILURE_COLORS[code]?.bg || ''} ${FAILURE_COLORS[code]?.text || 'text-slate-400'} whitespace-nowrap`}>{code}</span>
-              <span className="text-slate-400 text-xs">{desc}</span>
+              <span className="text-slate-300 text-xs">{desc}</span>
             </div>
           ))}
         </div>
@@ -220,8 +220,8 @@ const PostMortemTab = ({ postMortems }) => (
     {postMortems.length === 0 ? (
       <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-8 text-center">
         <Brain className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">No post-mortems completed yet</p>
-        <p className="text-slate-400 text-xs mt-1">AI post-mortem runs automatically when predictions fail at 24h verification</p>
+        <p className="text-slate-300 text-sm">No post-mortems completed yet</p>
+        <p className="text-slate-300 text-xs mt-1">AI post-mortem runs automatically when predictions fail at 24h verification</p>
       </div>
     ) : (
       <div className="space-y-2">
@@ -238,14 +238,14 @@ const PostMortemTab = ({ postMortems }) => (
                     <span className="text-slate-400 text-[10px] line-through">{pm.heuristic_code}</span>
                   )}
                 </div>
-                <span className="text-slate-400 text-xs">{formatDate(pm.run_at)}</span>
+                <span className="text-slate-300 text-xs">{formatDate(pm.run_at)}</span>
               </div>
-              {pm.reasoning && <p className="text-slate-400 text-xs leading-relaxed">{pm.reasoning}</p>}
+              {pm.reasoning && <p className="text-slate-300 text-xs leading-relaxed">{pm.reasoning}</p>}
               {pm.key_headline && pm.key_headline !== 'None' && (
-                <p className="text-slate-400 text-[10px] mt-1.5 italic border-l-2 border-slate-500/40 pl-2">"{pm.key_headline}"</p>
+                <p className="text-slate-400 text-[10px] mt-1.5 italic border-l-2 border-slate-400/30 pl-2">"{pm.key_headline}"</p>
               )}
               <div className="flex items-center gap-2 mt-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${pm.source === 'ai_post_mortem' ? 'bg-[#35D6C8]/10 text-[#35D6C8] border border-[#35D6C8]/20' : 'bg-slate-700 text-slate-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${pm.source === 'ai_post_mortem' ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20' : 'bg-slate-700 text-slate-400'}`}>
                   {pm.source === 'ai_post_mortem' ? 'AI Classified' : 'Heuristic'}
                 </span>
               </div>
@@ -310,13 +310,13 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
   if (!isPro) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="memory-dashboard">
-        <Card className="bg-[#0A2A63] border-slate-800 max-w-md w-full p-8 text-center">
+        <Card className="bg-[#060E1F] border-slate-800 max-w-md w-full p-8 text-center">
           <Lock className="w-10 h-10 text-slate-400 mx-auto mb-4" />
           <h3 className="text-white text-lg font-semibold mb-2">Memory Dashboard</h3>
-          <p className="text-slate-400 text-sm mb-6">Visualize AI memory episodes, cleanup history, and failure analysis. Available for Pro users.</p>
+          <p className="text-slate-300 text-sm mb-6">Visualize AI memory episodes, cleanup history, and failure analysis. Available for Pro users.</p>
           <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={onClose} className="bg-transparent border-slate-500/40 text-slate-300">Close</Button>
-            <Button onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#35D6C8]/80 text-white">Upgrade to Pro</Button>
+            <Button variant="outline" onClick={onClose} className="bg-transparent border-slate-400/30 text-slate-300">Close</Button>
+            <Button onClick={onSubscribe} className="bg-[#3DE8D9] hover:bg-[#3DE8D9]/80 text-white">Upgrade to Pro</Button>
           </div>
         </Card>
       </div>
@@ -325,14 +325,14 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="memory-dashboard">
-      <div className="bg-[#0A2A63] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
+      <div className="bg-[#060E1F] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-600/30">
           <div className="flex items-center gap-3">
-            <Database className="w-5 h-5 text-[#35D6C8]" />
+            <Database className="w-5 h-5 text-[#3DE8D9]" />
             <div>
               <h2 className="text-white text-base font-semibold">Memory Dashboard</h2>
-              <p className="text-slate-400 text-xs">Vector memory, cleanup history, failure analysis</p>
+              <p className="text-slate-300 text-xs">Vector memory, cleanup history, failure analysis</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-1" data-testid="memory-dashboard-close">
@@ -345,8 +345,8 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-2 px-5 py-3 text-sm transition-colors border-b-2 ${tab === t.id
-                ? 'text-[#35D6C8] border-[#35D6C8]'
-                : 'text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-500/40'
+                ? 'text-[#3DE8D9] border-[#3DE8D9]'
+                : 'text-slate-400 border-transparent hover:text-slate-300 hover:border-slate-400/30'
               }`}
               data-testid={`memory-tab-${t.id}`}
             >
@@ -360,7 +360,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
         <div className="p-6 max-h-[65vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
+              <RefreshCw className="w-6 h-6 text-[#3DE8D9] animate-spin" />
             </div>
           ) : (
             <>

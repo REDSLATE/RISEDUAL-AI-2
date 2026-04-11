@@ -38,7 +38,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="auth-modal">
-      <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative">
+      <div className="bg-slate-900 rounded-2xl border border-slate-400/25 w-full max-w-md p-6 relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="auth-close-btn">
           <X className="w-5 h-5" />
         </button>
@@ -51,7 +51,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
               {['login', 'register'].map(t => (
                 <button key={t} onClick={() => { setTab(t); setError(''); }} data-testid={`auth-tab-${t}`}
                   className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                    tab === t ? 'bg-[#35D6C8] text-white' : 'text-slate-400 hover:text-white'
+                    tab === t ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'
                   }`}>
                   {t === 'login' ? 'Log In' : 'Sign Up'}
                 </button>
@@ -61,7 +61,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
             <h2 className="text-white text-xl font-bold mb-1">
               {tab === 'login' ? 'Welcome back' : 'Create your account'}
             </h2>
-            <p className="text-slate-400 text-sm mb-6">
+            <p className="text-slate-300 text-sm mb-6">
               {tab === 'login' ? 'Log in to access your workspace' : 'Start your AI trading journey'}
             </p>
 
@@ -70,7 +70,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
             {tab === 'login' && (
               <div className="text-right mt-3">
                 <button type="button" onClick={() => { setView('forgot'); setError(''); }}
-                  className="text-[#35D6C8] hover:text-[#67E3D3] text-sm font-medium transition-colors"
+                  className="text-[#3DE8D9] hover:text-[#7AEEE0] text-sm font-medium transition-colors"
                   data-testid="forgot-password-link">
                   Forgot password?
                 </button>
