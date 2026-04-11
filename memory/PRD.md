@@ -249,6 +249,17 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Mobile nav: Added AI War Room, Order Flow, Whale Radar
 - **Verified (Iteration 72)**: All terminology correct, 100% pass
 
+### Paper Trading System (April 11, 2026)
+- Backend: `paper_trading_service.py` + `routes/paper_trading.py`
+- MongoDB collections: `paper_portfolios` (user portfolios), `paper_trades` (trade history)
+- Users start with $100K simulated cash
+- Live prices: Alpha Vantage (stocks) + Binance US (crypto)
+- Endpoints: GET /api/paper/portfolio, POST /api/paper/trade, GET /api/paper/trades, POST /api/paper/reset
+- Frontend: `PaperTrading.jsx` modal with Portfolio/Trade/History tabs
+- Accessible from Navbar user menu (desktop + mobile)
+- AI Chat Integration: `routes/ai.py` detects portfolio keywords (portfolio, positions, P&L, holdings, etc.) and auto-injects real portfolio context into the AI prompt for personalized advice
+- **Verified (Iteration 73)**: 100% pass rate (18/18 backend, all frontend)
+
 ### Token Swap & Mobile Menu Fix (April 10, 2026)
 - Swapped MATIC → SHIB across all 5 files (orderflow_ws_service, whale_radar, WhaleRadar.jsx, order_flow_service, OrderFlowPanel.jsx)
 - Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
