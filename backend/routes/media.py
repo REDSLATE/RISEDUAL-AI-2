@@ -30,6 +30,8 @@ async def upload_media(
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")

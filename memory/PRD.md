@@ -362,6 +362,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Backend: `POST /api/chat/tts` (text→MP3 base64) + `POST /api/chat/stt` (audio upload→text)
 - **Verified (Iteration 82)**: 100% pass (8/8 backend, all frontend controls)
 
+### Media Upload / Object Storage System (April 11, 2026)
+- Built media upload system using Emergent Object Storage (`emergentintegrations`)
+- Backend: `storage_service.py` (init, put, get) + `routes/media.py` (6 endpoints)
+- Endpoints: `POST /api/media/upload` (single), `POST /api/media/upload-chunk` (chunked 2MB), `GET /api/media` (list), `GET /api/media/landing-video` (public), `GET /api/media/file/{id}` (download), `DELETE /api/media/{id}` (soft-delete)
+- Chunked upload: splits files >2MB into 2MB chunks, assembles on last chunk, cleans up /tmp
+- Max file size: 100MB. Supports video, image, audio, PDF
+- MongoDB `media_files` collection stores metadata (file_id, storage_path, content_type, size, category)
+- Admin Panel: New "Media" tab with MediaManager UI — upload button, category selector (Landing/Commercial/General), file list table with view/delete
+- Landing Page: `CommercialVideo` component between Hero and HowItWorks — fetches `/api/media/landing-video`, shows `<video>` player if video exists, gracefully hides if none
+- Object storage initialized at server startup via `init_storage()`
+- **Verified (Iteration 83)**: 100% pass (14/14 backend, all frontend)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
