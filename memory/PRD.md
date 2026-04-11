@@ -337,6 +337,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - All macro data now flows into AI predictions: congressional trades + Fed announcements + insider trades + earnings + world events + foreign markets
 - **Verified via API**: 12 congressional trades (real tickers: GOOGL, AVGO, SBUX, META, AAPL), 10 Fed announcements, 20 insider trades, 30 earnings
 
+### Lobbying Data + Fear & Greed Index Integration (April 11, 2026)
+- Imported user-provided datasets into MongoDB:
+  - `lobbying_data`: 13,340 records (12,189 with amounts >$0) — 1,111 unique stock tickers
+  - `fear_greed_index`: 2,393 daily readings (Aug 2018 – Feb 2025)
+- Built `lobbying_service.py` — MongoDB aggregation queries (top spenders, by ticker, by issue)
+- Built `fear_greed_service.py` — live CNN scraping + historical DB fallback
+- Added API routes: `GET /api/lobbying`, `GET /api/lobbying/ticker/{ticker}`, `GET /api/lobbying/top-spenders`, `GET /api/fear-greed`
+- Added **Fear & Greed Gauge** to dashboard (SVG arc gauge, 7d/30d averages, 90-day sparkline)
+- Added **Top Corporate Lobbying Spenders** table to Congress Trades tab (ticker, client, total spent, filings, issue)
+- Fed both datasets into AI prediction engine (lobbying in gov_filings prompt, fear & greed as market sentiment context)
+- **Verified (Iteration 80)**: 100% pass (21/21 backend, all frontend), no regressions
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
