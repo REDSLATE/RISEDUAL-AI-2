@@ -58,12 +58,12 @@ const AlertsPanel = ({ onSubscribe }) => {
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#0F172A] border border-slate-700 rounded-full p-3 hover:bg-slate-800 transition-colors"
+        className="relative bg-[#0A2A63] border border-slate-700 rounded-full p-3 hover:bg-slate-800 transition-colors"
         data-testid="alerts-bell"
       >
         <Bell className="w-5 h-5 text-white" />
         {isPro && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-[#0052FF] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-[#35D6C8] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -81,9 +81,9 @@ const AlertsPanel = ({ onSubscribe }) => {
             <div className="flex items-center gap-2">
               <h3 className="text-white font-semibold text-sm">AI Alerts</h3>
               {isPro && unreadCount > 0 && (
-                <Badge className="bg-[#0052FF] text-white text-[10px] px-1.5 py-0">{unreadCount} new</Badge>
+                <Badge className="bg-[#35D6C8] text-white text-[10px] px-1.5 py-0">{unreadCount} new</Badge>
               )}
-              {isPro && <Badge className="bg-[#0052FF]/20 text-[#0052FF] border-0 text-[10px]">PRO</Badge>}
+              {isPro && <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-0 text-[10px]">PRO</Badge>}
             </div>
             <div className="flex items-center gap-1">
               {isPro && notifications.length > 0 && (
@@ -109,7 +109,7 @@ const AlertsPanel = ({ onSubscribe }) => {
                 <p className="text-slate-400 text-xs leading-relaxed mb-4">
                   Get notified when our AI detects a verdict change on your watchlist tickers. Never miss a BUY→SELL flip.
                 </p>
-                <Button className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl text-sm w-full" onClick={() => { onSubscribe?.(); setIsOpen(false); }} data-testid="alerts-upgrade-btn">
+                <Button className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl text-sm w-full" onClick={() => { onSubscribe?.(); setIsOpen(false); }} data-testid="alerts-upgrade-btn">
                   Upgrade to Pro
                 </Button>
               </div>

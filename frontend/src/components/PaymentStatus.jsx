@@ -103,7 +103,7 @@ const PaymentStatus = ({ sessionId, initialStatus, onClose }) => {
         <div className="mt-6 text-center">
           <Button
             onClick={onClose}
-            className="bg-[#0052FF] hover:bg-[#2563EB] text-white px-8"
+            className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white px-8"
             data-testid="payment-status-close-btn"
           >
             {status === 'checking' ? 'Close' : 'Continue to Dashboard'}

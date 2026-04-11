@@ -58,7 +58,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
           <p className="text-slate-400 text-sm mb-6">Your password has been successfully updated. You can now log in with your new password.</p>
           <Button
             onClick={onLoginClick}
-            className="w-full bg-[#0052FF] hover:bg-[#2563EB] text-white font-semibold py-5 rounded-xl"
+            className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
             data-testid="reset-login-btn"
           >
             Log In
@@ -119,7 +119,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
           <Button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#0052FF] hover:bg-[#2563EB] text-white font-semibold py-5 rounded-xl"
+            className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
             data-testid="reset-submit-btn"
           >
             {loading ? 'Resetting...' : 'Reset Password'}

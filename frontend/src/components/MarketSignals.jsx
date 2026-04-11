@@ -81,16 +81,16 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
               <Lock className="w-10 h-10 text-slate-500 mx-auto mb-3" />
               <p className="text-white font-semibold mb-1">Pro Feature</p>
               <p className="text-slate-400 text-xs mb-4">AI monitors your watchlist for dark pool spikes, whale movements, and unusual options flow.</p>
-              <Button className="bg-[#0052FF] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
+              <Button className="bg-[#35D6C8] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
             </div>
           ) : (
             <div className="space-y-4">
-              <Button onClick={scan} disabled={scanning} className="bg-[#0052FF] text-white rounded-xl w-full">
+              <Button onClick={scan} disabled={scanning} className="bg-[#35D6C8] text-white rounded-xl w-full">
                 {scanning ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Scanning Watchlist...</> : <><Zap className="w-4 h-4 mr-2" /> Scan Watchlist for Signals</>}
               </Button>
 
               {loading ? (
-                <div className="flex items-center justify-center py-8"><RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" /></div>
+                <div className="flex items-center justify-center py-8"><RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" /></div>
               ) : signals.length === 0 ? (
                 <div className="text-center py-8">
                   <Radio className="w-10 h-10 text-slate-600 mx-auto mb-3" />

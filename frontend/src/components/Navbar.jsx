@@ -57,7 +57,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           <form onSubmit={handleSearch} className="relative hidden lg:block">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input ref={searchRef} type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
-              className="pl-10 pr-16 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#0052FF] rounded-xl" data-testid="search-input" />
+              className="pl-10 pr-16 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#35D6C8] rounded-xl" data-testid="search-input" />
             <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-slate-700/60 border border-slate-600/50 rounded px-1.5 py-0.5 font-mono pointer-events-none">
               <span className="text-[9px]">&#8984;</span>K
             </kbd>
@@ -70,7 +70,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="platform-menu">
               Platform <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
+            <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-red-400 hover:text-red-300 hover:bg-slate-700 cursor-pointer font-medium" onSelect={() => scrollTo('ai-war-room')} data-testid="nav-warroom-btn">AI War Room</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('ai-hypothesis')}>AI Hypothesis</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-radar')}>AI Options Radar</DropdownMenuItem>
@@ -82,7 +82,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-emerald-400 hover:text-emerald-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('pnl-tracker')} data-testid="nav-pnl-tracker-btn">P&L Tracker</DropdownMenuItem>
               <DropdownMenuItem className="text-cyan-400 hover:text-cyan-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('order-flow')} data-testid="nav-orderflow-btn">Order Flow</DropdownMenuItem>
               <DropdownMenuItem className="text-yellow-400 hover:text-yellow-300 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('whale-radar')} data-testid="nav-whale-radar-btn">Whale Radar</DropdownMenuItem>
-              <DropdownMenuItem className="text-[#0052FF] hover:text-blue-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-btn">Memory Dashboard</DropdownMenuItem>
+              <DropdownMenuItem className="text-[#35D6C8] hover:text-blue-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-btn">Memory Dashboard</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Market</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -91,7 +91,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="strategies-menu">
               Strategies <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
+            <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('momentum')}>Momentum Close Strength</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('fast-movers')}>Fast Mover Calls</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('unusual-volume')}>Unusual Options Volume</DropdownMenuItem>
@@ -105,7 +105,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="education-menu">
               Education <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
+            <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={openChat}>Ask RISEDUAL AI</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('market-prediction')}>Market Analysis</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('options-radar')}>Options Guide</DropdownMenuItem>
@@ -116,7 +116,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <DropdownMenuTrigger className="text-slate-300 hover:text-slate-50 flex items-center gap-1 text-sm transition-colors outline-none" data-testid="resources-menu">
               Resources <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60">
+            <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60">
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('company-research')}>Company Research</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('market-prediction')}>AI Market Predictions</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
@@ -128,7 +128,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           <BrokerConnect />
 
           {!isPro && (
-            <Button variant="outline" className="bg-[#0052FF] text-white hover:bg-[#2563EB] border-0 font-semibold rounded-xl"
+            <Button variant="outline" className="bg-[#35D6C8] text-white hover:bg-[#67E3D3] border-0 font-semibold rounded-xl"
               onClick={onSubscribe} data-testid="upgrade-btn">
               Upgrade Pro
             </Button>
@@ -137,19 +137,19 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           {user ? (
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger className="flex items-center gap-2 text-slate-300 hover:text-white outline-none" data-testid="user-menu">
-                <div className="w-8 h-8 bg-[#0052FF] rounded-full flex items-center justify-center text-white text-sm font-bold">
+                <div className="w-8 h-8 bg-[#35D6C8] rounded-full flex items-center justify-center text-white text-sm font-bold">
                   {(user.name || user.email || '?')[0].toUpperCase()}
                 </div>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="bg-[#0F172A] border-slate-600 z-[100] shadow-2xl shadow-black/60 min-w-[200px]">
+              <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60 min-w-[200px]">
                 <div className="px-3 py-2 border-b border-slate-700">
                   <p className="text-white text-sm font-medium">{user.name || user.email}</p>
                   <p className="text-slate-400 text-xs">{user.email}</p>
-                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded mt-1 inline-block ${isPro ? 'bg-[#0052FF]/20 text-[#0052FF]' : 'bg-slate-700 text-slate-400'}`}>
+                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded mt-1 inline-block ${isPro ? 'bg-[#35D6C8]/20 text-[#35D6C8]' : 'bg-slate-700 text-slate-400'}`}>
                     {isPro ? 'PRO' : 'FREE'}
                   </span>
                 </div>
-                {!isPro && <DropdownMenuItem className="text-[#0052FF] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
+                {!isPro && <DropdownMenuItem className="text-[#35D6C8] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenWorkspace} data-testid="nav-workspace-btn">
                   <Briefcase className="w-4 h-4 mr-2" /> My Workspace
                 </DropdownMenuItem>
@@ -168,7 +168,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-cyan-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenMarketplace} data-testid="nav-marketplace-menu-btn">
                   <Store className="w-4 h-4 mr-2" /> Marketplace
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-[#0052FF] hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-menu-btn">
+                <DropdownMenuItem className="text-[#35D6C8] hover:bg-slate-700 cursor-pointer" onSelect={onOpenMemory} data-testid="nav-memory-menu-btn">
                   <Database className="w-4 h-4 mr-2" /> Memory Dashboard
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-emerald-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPaperTrading} data-testid="nav-paper-trading-btn">
@@ -195,13 +195,13 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
         {/* Mobile */}
         <div className="flex lg:hidden items-center gap-2">
           {!isPro && (
-            <Button variant="outline" size="sm" className="bg-[#0052FF] text-white hover:bg-[#2563EB] border-0 rounded-xl text-xs px-3"
+            <Button variant="outline" size="sm" className="bg-[#35D6C8] text-white hover:bg-[#67E3D3] border-0 rounded-xl text-xs px-3"
               onClick={onSubscribe} data-testid="mobile-upgrade-btn">
               Pro
             </Button>
           )}
           {user ? (
-            <div className="w-7 h-7 bg-[#0052FF] rounded-full flex items-center justify-center text-white text-xs font-bold" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <div className="w-7 h-7 bg-[#35D6C8] rounded-full flex items-center justify-center text-white text-xs font-bold" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {(user.name || user.email || '?')[0].toUpperCase()}
             </div>
           ) : (
@@ -222,7 +222,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           <form onSubmit={handleSearch} className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
-              className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#0052FF] rounded-xl w-full" data-testid="mobile-search-input" />
+              className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#35D6C8] rounded-xl w-full" data-testid="mobile-search-input" />
           </form>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -250,15 +250,15 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <>
                 <div className="w-full text-sm text-slate-300 flex items-center gap-2 px-1 mb-1">
                   <User className="w-4 h-4" /> {user.name || user.email}
-                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isPro ? 'bg-[#0052FF]/20 text-[#0052FF]' : 'bg-slate-700 text-slate-400'}`}>
+                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isPro ? 'bg-[#35D6C8]/20 text-[#35D6C8]' : 'bg-slate-700 text-slate-400'}`}>
                     {isPro ? 'PRO' : 'FREE'}
                   </span>
                 </div>
-                <Button variant="outline" size="sm" className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 rounded-xl text-xs"
+                <Button variant="outline" size="sm" className="bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30 rounded-xl text-xs"
                   onClick={() => { onOpenWorkspace(); setMobileMenuOpen(false); }} data-testid="mobile-workspace-btn">
                   <Briefcase className="w-3 h-3 mr-1" /> Workspace
                 </Button>
-                <Button variant="outline" size="sm" className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 rounded-xl text-xs"
+                <Button variant="outline" size="sm" className="bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30 rounded-xl text-xs"
                   onClick={() => { onOpenPortfolio(); setMobileMenuOpen(false); }} data-testid="mobile-portfolio-btn">
                   <PieChart className="w-3 h-3 mr-1" /> Portfolio
                 </Button>
@@ -278,7 +278,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                   onClick={() => { onOpenMarketplace(); setMobileMenuOpen(false); }} data-testid="mobile-marketplace-btn">
                   <Store className="w-3 h-3 mr-1" /> Marketplace
                 </Button>
-                <Button variant="outline" size="sm" className="bg-blue-900/30 text-[#0052FF] border-blue-800/50 rounded-xl text-xs"
+                <Button variant="outline" size="sm" className="bg-blue-900/30 text-[#35D6C8] border-blue-800/50 rounded-xl text-xs"
                   onClick={() => { onOpenMemory(); setMobileMenuOpen(false); }} data-testid="mobile-memory-btn">
                   <Database className="w-3 h-3 mr-1" /> Memory
                 </Button>
@@ -299,7 +299,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               </>
             ) : (
               <>
-                <Button className="flex-1 bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl text-sm" onClick={() => { onRegister(); setMobileMenuOpen(false); }}>
+                <Button className="flex-1 bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl text-sm" onClick={() => { onRegister(); setMobileMenuOpen(false); }}>
                   Sign Up
                 </Button>
                 <Button variant="outline" className="flex-1 bg-white text-slate-900 hover:bg-slate-100 border-0 rounded-xl text-sm"

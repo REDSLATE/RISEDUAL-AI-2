@@ -33,7 +33,7 @@ const SourceBadge = ({ source }) => (
     className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs px-2 py-1 rounded-full transition-colors"
     data-testid={`source-${source.number}`}
   >
-    <span className="text-[#0052FF] font-bold">[{source.number}]</span>
+    <span className="text-[#35D6C8] font-bold">[{source.number}]</span>
     <span className="truncate max-w-[150px]">{source.source}</span>
     <ExternalLink className="w-3 h-3 shrink-0 opacity-50" />
   </a>
@@ -62,7 +62,7 @@ const ResearchCard = ({ data, compact = false }) => {
       {/* Header */}
       <div className="px-5 py-4 border-b border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#35D6C8] rounded-xl flex items-center justify-center">
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -70,7 +70,7 @@ const ResearchCard = ({ data, compact = false }) => {
               <h3 className="text-white font-bold text-lg" style={{fontFamily:'Manrope,sans-serif'}}>
                 {data.company_name || data.symbol}
               </h3>
-              <Badge className="bg-[#0052FF]/20 text-[#0052FF] border-0 text-xs">{data.symbol}</Badge>
+              <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-0 text-xs">{data.symbol}</Badge>
             </div>
             <p className="text-slate-500 text-xs">
               {overview.sector || 'Technology'} &middot; {overview.exchange || 'NYSE'}
@@ -126,8 +126,8 @@ const ResearchCard = ({ data, compact = false }) => {
           {/* AI Synthesis */}
           <div className="px-5 py-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-[#0052FF] animate-pulse" />
-              <p className="text-xs font-bold text-[#0052FF] uppercase tracking-wider" style={{fontFamily:'Manrope,sans-serif'}}>
+              <div className="w-2 h-2 rounded-full bg-[#35D6C8] animate-pulse" />
+              <p className="text-xs font-bold text-[#35D6C8] uppercase tracking-wider" style={{fontFamily:'Manrope,sans-serif'}}>
                 AI Research Summary
               </p>
             </div>
@@ -208,7 +208,7 @@ const CompanyResearch = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#35D6C8] rounded-xl flex items-center justify-center">
             <Globe className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -234,7 +234,7 @@ const CompanyResearch = () => {
         <Button
           type="submit"
           disabled={isLoading || !symbol.trim()}
-          className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl px-6"
+          className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl px-6"
           data-testid="research-search-btn"
         >
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Research'}
@@ -247,7 +247,7 @@ const CompanyResearch = () => {
           <button
             key={ticker}
             onClick={() => { setSymbol(ticker); }}
-            className="text-xs px-3 py-1.5 rounded-full border border-slate-700/50 text-slate-400 hover:text-[#0052FF] hover:border-[#0052FF] transition-colors"
+            className="text-xs px-3 py-1.5 rounded-full border border-slate-700/50 text-slate-400 hover:text-[#35D6C8] hover:border-[#35D6C8] transition-colors"
             data-testid={`quick-ticker-${ticker}`}
           >
             {ticker}
@@ -258,7 +258,7 @@ const CompanyResearch = () => {
       {/* Loading State */}
       {isLoading && (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <Loader2 className="w-8 h-8 text-[#0052FF] animate-spin" />
+          <Loader2 className="w-8 h-8 text-[#35D6C8] animate-spin" />
           <p className="text-slate-400 text-sm">Researching {symbol}... Gathering data from multiple sources</p>
         </div>
       )}

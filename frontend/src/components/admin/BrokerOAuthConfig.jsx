@@ -88,7 +88,7 @@ const BrokerOAuthConfig = () => {
   return (
     <div className="space-y-4" data-testid="broker-oauth-config">
       <div className="flex items-center gap-2 mb-2">
-        <Key className="w-4 h-4 text-[#0052FF]" />
+        <Key className="w-4 h-4 text-[#35D6C8]" />
         <h3 className="text-white text-sm font-semibold">Broker OAuth Credentials</h3>
       </div>
       <p className="text-slate-500 text-xs leading-relaxed">
@@ -170,7 +170,7 @@ const BrokerOAuthConfig = () => {
                   <div className="flex items-center justify-between">
                     <p className="text-slate-600 text-[10px]">Credentials are encrypted with AES-256 before storage</p>
                     <Button onClick={() => handleSave(brokerId)} disabled={saving}
-                      className="bg-[#0052FF] hover:bg-[#0052FF]/80 text-white text-xs h-8"
+                      className="bg-[#35D6C8] hover:bg-[#35D6C8]/80 text-white text-xs h-8"
                       data-testid={`broker-save-${brokerId}`}>
                       <Save className="w-3 h-3 mr-1.5" />
                       {saving ? 'Saving...' : 'Save Credentials'}

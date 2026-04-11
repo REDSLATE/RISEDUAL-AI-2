@@ -188,7 +188,7 @@ const SectorHeatmap = () => {
                 period === p.key
                   ? p.key === 'ai_sentiment'
                     ? 'bg-purple-600 text-white ring-1 ring-purple-400/50'
-                    : 'bg-[#0052FF] text-white'
+                    : 'bg-[#35D6C8] text-white'
                   : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'
               }`}
               data-testid={`period-${p.key}`}

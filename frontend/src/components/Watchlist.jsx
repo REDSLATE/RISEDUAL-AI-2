@@ -160,7 +160,7 @@ const Watchlist = ({ onSubscribe }) => {
               className="bg-[#1E293B] border-slate-600 text-white"
               data-testid="watchlist-input"
             />
-            <Button onClick={addSymbol} className="bg-[#0052FF] hover:bg-[#2563EB]" data-testid="watchlist-add-btn">
+            <Button onClick={addSymbol} className="bg-[#35D6C8] hover:bg-[#67E3D3]" data-testid="watchlist-add-btn">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -168,7 +168,7 @@ const Watchlist = ({ onSubscribe }) => {
             <div className="flex items-center gap-2 mb-3 bg-amber-900/20 border border-amber-800/40 rounded-lg px-3 py-2" data-testid="watchlist-cap-warning">
               <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
               <p className="text-amber-300 text-xs flex-1">{capWarning}</p>
-              {onSubscribe && <Button size="sm" className="bg-[#0052FF] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
+              {onSubscribe && <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
             </div>
           )}
 

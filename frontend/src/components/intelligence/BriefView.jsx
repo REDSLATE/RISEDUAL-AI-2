@@ -101,8 +101,8 @@ const BriefView = ({ data }) => {
       {b.action && (
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            <Shield className="w-4 h-4 text-[#0052FF]" />
-            <span className="text-[#0052FF] text-xs font-semibold uppercase">Suggested Action</span>
+            <Shield className="w-4 h-4 text-[#35D6C8]" />
+            <span className="text-[#35D6C8] text-xs font-semibold uppercase">Suggested Action</span>
           </div>
           <p className="text-slate-200 text-sm">{b.action}</p>
         </Card>

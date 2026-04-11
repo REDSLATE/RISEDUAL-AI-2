@@ -47,7 +47,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className="text-[#0052FF] font-bold">{trade.ticker || '\u2014'}</span>
+                      <span className="text-[#35D6C8] font-bold">{trade.ticker || '\u2014'}</span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs font-semibold uppercase ${getTradeTypeColor(trade.type)}`}>{trade.type || '\u2014'}</span>
@@ -76,7 +76,7 @@ const CongressTab = ({ data, loading, isPro, onSubscribe }) => {
                   <Clock className="w-3 h-3 text-slate-500" />
                   <span className="text-[10px] text-slate-500">{ann.date}</span>
                   {ann.url && (
-                    <a href={ann.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[10px] text-[#0052FF] hover:underline flex items-center gap-1">
+                    <a href={ann.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[10px] text-[#35D6C8] hover:underline flex items-center gap-1">
                       View <ChevronRight className="w-3 h-3" />
                     </a>
                   )}

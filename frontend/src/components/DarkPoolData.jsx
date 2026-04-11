@@ -54,7 +54,7 @@ const DarkPoolData = ({ onSubscribe }) => {
 
   if (loading) {
     return (
-      <div className="bg-[#0F172A] rounded-xl border border-slate-700/50 p-6">
+      <div className="bg-[#0A2A63] rounded-xl border border-slate-700/50 p-6">
         <div className="text-slate-400">Loading dark pool data...</div>
       </div>
     );

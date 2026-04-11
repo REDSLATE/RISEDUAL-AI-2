@@ -77,7 +77,7 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
             className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl" data-testid="forgot-email-input" />
         </div>
         <Button type="submit" disabled={loading}
-          className="w-full bg-[#0052FF] hover:bg-[#2563EB] text-white font-semibold py-5 rounded-xl"
+          className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-5 rounded-xl"
           data-testid="forgot-submit-btn">
           {loading ? 'Sending...' : 'Send Reset Link'}
         </Button>

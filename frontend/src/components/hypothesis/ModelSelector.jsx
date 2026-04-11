@@ -41,7 +41,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
                   setShowPicker(false);
                 }}
                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 transition-colors ${
-                  selectedModel === m.key ? 'bg-[#0052FF]/10 border-l-2 border-[#0052FF]' : 'border-l-2 border-transparent hover:bg-slate-700/40'
+                  selectedModel === m.key ? 'bg-[#35D6C8]/10 border-l-2 border-[#35D6C8]' : 'border-l-2 border-transparent hover:bg-slate-700/40'
                 } ${locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                 data-testid={`model-option-${m.key}`}
                 disabled={locked}
@@ -66,7 +66,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
           })}
           {!isPro && (
             <div className="px-4 py-2.5 bg-[#0B1120] border-t border-slate-600">
-              <button onClick={onSubscribe} className="text-[#0052FF] text-xs font-medium hover:underline flex items-center gap-1" data-testid="model-upgrade-btn">
+              <button onClick={onSubscribe} className="text-[#35D6C8] text-xs font-medium hover:underline flex items-center gap-1" data-testid="model-upgrade-btn">
                 <Zap className="w-3 h-3" /> Upgrade to Pro to unlock all models + Consensus Mode
               </button>
             </div>
@@ -80,7 +80,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
 const ModelBadge = ({ free, locked }) => {
   if (free) return <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-[9px]">FREE</Badge>;
   if (locked) return <Lock className="w-4 h-4 text-slate-500" />;
-  return <Badge className="bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30 text-[9px]">PRO</Badge>;
+  return <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30 text-[9px]">PRO</Badge>;
 };
 
 export default ModelSelector;

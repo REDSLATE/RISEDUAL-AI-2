@@ -93,7 +93,7 @@ const PromoManager = () => {
     <div className="p-4 space-y-4" data-testid="promo-manager">
       <div className="flex items-center justify-between">
         <h3 className="text-white text-sm font-semibold">Promo Campaigns</h3>
-        <Button size="sm" className="bg-[#0052FF] hover:bg-[#2563EB] text-white text-xs h-8" onClick={() => setShowCreate(!showCreate)} data-testid="create-promo-btn">
+        <Button size="sm" className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-xs h-8" onClick={() => setShowCreate(!showCreate)} data-testid="create-promo-btn">
           <Plus className="w-3.5 h-3.5 mr-1" /> New Campaign
         </Button>
       </div>
@@ -136,7 +136,7 @@ const PromoManager = () => {
           </div>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" className="text-xs h-8 bg-slate-700 text-slate-300 border-slate-600" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button size="sm" className="text-xs h-8 bg-[#0052FF] text-white" onClick={createPromo} disabled={creating || !form.title || !form.end_date} data-testid="promo-submit-btn">
+            <Button size="sm" className="text-xs h-8 bg-[#35D6C8] text-white" onClick={createPromo} disabled={creating || !form.title || !form.end_date} data-testid="promo-submit-btn">
               {creating ? 'Creating...' : 'Create Campaign'}
             </Button>
           </div>
@@ -144,7 +144,7 @@ const PromoManager = () => {
       )}
 
       {loading ? (
-        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-[#0052FF] animate-spin" /></div>
+        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin" /></div>
       ) : promos.length === 0 ? (
         <div className="text-center py-8">
           <Gift className="w-10 h-10 text-slate-600 mx-auto mb-3" />
@@ -169,7 +169,7 @@ const PromoManager = () => {
                   <p className="text-slate-400 text-xs truncate">{p.message}</p>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-slate-500 text-[10px] flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(p.start_date)} - {formatDate(p.end_date)}</span>
-                    <span className="text-[#0052FF] text-[10px] font-medium">{p.referral_target} refs = {p.reward_months} months</span>
+                    <span className="text-[#35D6C8] text-[10px] font-medium">{p.referral_target} refs = {p.reward_months} months</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 ml-3">

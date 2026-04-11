@@ -109,7 +109,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-cyan-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -120,7 +120,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         {isPro && (
           <div className="flex items-center gap-2">
             <AccuracyBadge feature="hypothesis" />
-            <Badge className="bg-gradient-to-r from-[#0052FF] to-cyan-500 text-white border-0">PRO</Badge>
+            <Badge className="bg-gradient-to-r from-[#35D6C8] to-cyan-500 text-white border-0">PRO</Badge>
           </div>
         )}
       </div>
@@ -148,7 +148,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             data-testid="hypothesis-search"
           />
         </div>
-        <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl px-6" data-testid="hypothesis-submit">
+        <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl px-6" data-testid="hypothesis-submit">
           {loading ? (selectedModel === 'consensus' ? 'Running 3 Models...' : 'Analyzing...') : 'Analyze'}
         </Button>
       </form>

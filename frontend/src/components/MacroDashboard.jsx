@@ -124,7 +124,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-violet-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-violet-600 rounded-xl flex items-center justify-center">
             <Globe className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -164,7 +164,7 @@ const MacroDashboard = ({ onSubscribe }) => {
               data-testid={`macro-tab-${tab.id}`}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-[#0052FF] text-white shadow-lg shadow-blue-500/20'
+                  ? 'bg-[#35D6C8] text-white shadow-lg shadow-blue-500/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
               }`}
             >

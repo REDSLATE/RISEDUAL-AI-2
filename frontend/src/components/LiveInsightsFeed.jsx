@@ -18,7 +18,7 @@ const EventIcon = ({ type, correct }) => {
       ? <CheckCircle className="w-4 h-4 text-emerald-400" />
       : <XCircle className="w-4 h-4 text-red-400" />;
   }
-  if (type === 'post_mortem') return <Brain className="w-4 h-4 text-[#0052FF]" />;
+  if (type === 'post_mortem') return <Brain className="w-4 h-4 text-[#35D6C8]" />;
   if (type === 'toxic_alert') return <AlertTriangle className="w-4 h-4 text-red-400" />;
   if (type === 'memory_update') return <Zap className="w-4 h-4 text-amber-400" />;
   return <Activity className="w-4 h-4 text-slate-400" />;
@@ -68,7 +68,7 @@ const PostMortemEvent = ({ data }) => (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
         <span className="text-white text-sm font-semibold">{data.ticker}</span>
-        <span className="text-[#0052FF] text-xs">Post-Mortem</span>
+        <span className="text-[#35D6C8] text-xs">Post-Mortem</span>
         {data.failure_code && <FailureBadge code={data.failure_code} />}
       </div>
       {data.reasoning && (

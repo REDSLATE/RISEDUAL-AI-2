@@ -50,7 +50,7 @@ const ReferralLeaderboard = () => {
 
   if (loading) {
     return (
-      <Card className="bg-[#0F172A]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-loading">
+      <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-loading">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-400" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
@@ -66,7 +66,7 @@ const ReferralLeaderboard = () => {
 
   if (!data || data.leaderboard.length === 0) {
     return (
-      <Card className="bg-[#0F172A]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-empty">
+      <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-empty">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-400" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
@@ -80,7 +80,7 @@ const ReferralLeaderboard = () => {
   }
 
   return (
-    <Card className="bg-[#0F172A]/80 border-slate-700/40 rounded-2xl p-5" data-testid="referral-leaderboard">
+    <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-5" data-testid="referral-leaderboard">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center">

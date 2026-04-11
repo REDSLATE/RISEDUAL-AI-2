@@ -52,7 +52,7 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
       {!isUser && (
         <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
       )}
-      <div className={`max-w-[82%] ${isUser ? 'bg-[#0052FF] text-white' : 'bg-slate-800/60 border border-slate-700/40 text-slate-200'} rounded-xl px-3 py-2`}>
+      <div className={`max-w-[82%] ${isUser ? 'bg-[#35D6C8] text-white' : 'bg-slate-800/60 border border-slate-700/40 text-slate-200'} rounded-xl px-3 py-2`}>
         {msg.image && (
           <div className="mb-1.5">
             <img src={msg.image} alt="Uploaded" className="max-w-[200px] rounded-lg border border-slate-600/50" />
@@ -125,14 +125,14 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask about stocks, crypto, charts..."
-          className="flex-1 bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#0052FF] min-h-[34px] max-h-[100px]"
+          className="flex-1 bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#35D6C8] min-h-[34px] max-h-[100px]"
           rows={1}
           data-testid="chat-input"
         />
         <button
           onClick={onSend}
           disabled={loading || (!input.trim() && !imagePreview)}
-          className="flex-shrink-0 w-8 h-8 bg-[#0052FF] hover:bg-[#2563EB] rounded-lg flex items-center justify-center text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-shrink-0 w-8 h-8 bg-[#35D6C8] hover:bg-[#67E3D3] rounded-lg flex items-center justify-center text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="chat-send"
         >
           {loading ? (

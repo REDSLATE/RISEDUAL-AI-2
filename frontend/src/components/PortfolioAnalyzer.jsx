@@ -58,7 +58,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
       <div className="bg-slate-900 rounded-2xl max-w-2xl w-full my-4 border border-slate-700/50">
         <div className="p-5 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-cyan-500 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
               <PieChart className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -67,7 +67,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className="bg-gradient-to-r from-[#0052FF] to-cyan-500 text-white border-0 text-xs">PRO</Badge>
+            <Badge className="bg-gradient-to-r from-[#35D6C8] to-cyan-500 text-white border-0 text-xs">PRO</Badge>
             <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">×</button>
           </div>
         </div>
@@ -78,7 +78,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
               <Lock className="w-8 h-8 text-slate-500 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm mb-1">Pro Feature</p>
               <p className="text-slate-400 text-xs mb-3">Input your holdings and get an AI health score, risk analysis, and rebalancing suggestions.</p>
-              <Button className="bg-[#0052FF] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
+              <Button className="bg-[#35D6C8] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
             </div>
           )}
 
@@ -98,7 +98,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={addRow} className="border-slate-600 text-slate-300 rounded-xl"><Plus className="w-3 h-3 mr-1" /> Add Holding</Button>
-                <Button onClick={analyze} disabled={loading} className="bg-[#0052FF] text-white rounded-xl flex-1">
+                <Button onClick={analyze} disabled={loading} className="bg-[#35D6C8] text-white rounded-xl flex-1">
                   {loading ? 'Analyzing...' : 'Analyze Portfolio'}
                 </Button>
               </div>
@@ -129,7 +129,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                 <div>
                   <h4 className="text-white text-sm font-semibold mb-2 flex items-center gap-1"><Zap className="w-4 h-4 text-amber-400" /> Suggestions</h4>
                   <ul className="space-y-1">
-                    {result.suggestions.map((s, i) => <li key={`sug-${i}`} className="text-slate-300 text-xs flex items-start gap-2"><span className="text-[#0052FF] mt-0.5">•</span>{s}</li>)}
+                    {result.suggestions.map((s, i) => <li key={`sug-${i}`} className="text-slate-300 text-xs flex items-start gap-2"><span className="text-[#35D6C8] mt-0.5">•</span>{s}</li>)}
                   </ul>
                 </div>
               )}

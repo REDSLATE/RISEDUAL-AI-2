@@ -127,7 +127,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#0052FF] hover:bg-[#2563EB] text-white shadow-lg shadow-[#0052FF]/30 flex items-center justify-center transition-all hover:scale-105"
+          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white shadow-lg shadow-[#35D6C8]/30 flex items-center justify-center transition-all hover:scale-105"
           data-testid="chat-fab"
         >
           <MessageSquare className="w-6 h-6" />
@@ -136,7 +136,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
       {/* Chat panel — floats above everything including mobile nav */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0F172A] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
+        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0A2A63] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 flex-shrink-0">
             <div className="flex items-center gap-2">

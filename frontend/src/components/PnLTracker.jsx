@@ -52,7 +52,7 @@ const PnLTracker = ({ onOpenBroker }) => {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-16">
-        <RefreshCw className="w-5 h-5 text-[#0052FF] animate-spin mr-3" />
+        <RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin mr-3" />
         <span className="text-slate-400 text-sm">Loading portfolio...</span>
       </div>
     );
@@ -97,7 +97,7 @@ const PnLTracker = ({ onOpenBroker }) => {
           <p className="text-white text-lg font-semibold mb-2">No Positions Found</p>
           <p className="text-slate-400 text-sm mb-4">Connect a broker and open positions to track your P&L</p>
           {onOpenBroker && (
-            <Button onClick={onOpenBroker} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="connect-broker-btn">
+            <Button onClick={onOpenBroker} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="connect-broker-btn">
               <ExternalLink className="w-4 h-4 mr-2" /> Connect Broker
             </Button>
           )}
@@ -109,7 +109,7 @@ const PnLTracker = ({ onOpenBroker }) => {
             <SummaryCard
               label="Portfolio Value"
               value={`$${(data.total_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-              icon={<Briefcase className="w-4 h-4 text-[#0052FF]" />}
+              icon={<Briefcase className="w-4 h-4 text-[#35D6C8]" />}
               accent="blue"
             />
             <SummaryCard
@@ -194,7 +194,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                     return (
                       <tr key={`${p.symbol}-${p.broker}-${i}`} className="border-b border-slate-800/40 hover:bg-slate-700/20 transition-colors" data-testid={`position-row-${p.symbol}`}>
                         <td className="px-4 py-2.5">
-                          <span className="text-[#0052FF] font-bold">{p.symbol}</span>
+                          <span className="text-[#35D6C8] font-bold">{p.symbol}</span>
                           {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-red-900/30 text-red-400">SHORT</Badge>}
                         </td>
                         <td className="px-4 py-2.5 text-right text-white tabular-nums">{p.qty}</td>
@@ -230,7 +230,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                     <span className="text-slate-300 text-xs w-28 truncate">{s.name}</span>
                     <div className="flex-1 bg-slate-700/30 rounded-full h-2">
                       <div
-                        className="h-2 rounded-full bg-gradient-to-r from-[#0052FF] to-violet-500"
+                        className="h-2 rounded-full bg-gradient-to-r from-[#35D6C8] to-violet-500"
                         style={{ width: `${Math.min(s.pct, 100)}%` }}
                       />
                     </div>

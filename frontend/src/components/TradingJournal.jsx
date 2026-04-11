@@ -115,7 +115,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         {/* Header */}
         <div className="p-5 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-indigo-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-indigo-600 rounded-xl flex items-center justify-center">
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -124,7 +124,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" className="bg-[#0052FF] text-white text-xs h-8" onClick={() => setShowForm(!showForm)} data-testid="new-trade-btn"
+            <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-8" onClick={() => setShowForm(!showForm)} data-testid="new-trade-btn"
               disabled={tradeLimit > 0 && trades.length >= tradeLimit}>
               <Plus className="w-3.5 h-3.5 mr-1" /> Log Trade
             </Button>
@@ -137,7 +137,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} data-testid={`journal-tab-${t.id}`}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
-                tab === t.id ? 'text-[#0052FF] border-[#0052FF]' : 'text-slate-400 border-transparent hover:text-slate-300'
+                tab === t.id ? 'text-[#35D6C8] border-[#35D6C8]' : 'text-slate-400 border-transparent hover:text-slate-300'
               }`}>
               <t.icon className="w-4 h-4" /> {t.label}
             </button>
@@ -150,7 +150,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
             <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-800/40 rounded-xl px-4 py-2.5 mb-4" data-testid="trade-limit-warning">
               <Lock className="w-4 h-4 text-amber-400" />
               <p className="text-amber-300 text-xs flex-1">Free limit reached ({tradeLimit} trades). Upgrade to Pro for unlimited.</p>
-              <Button size="sm" className="bg-[#0052FF] text-white text-xs h-7 px-3" onClick={onSubscribe}>Upgrade</Button>
+              <Button size="sm" className="bg-[#35D6C8] text-white text-xs h-7 px-3" onClick={onSubscribe}>Upgrade</Button>
             </div>
           )}
 
@@ -206,7 +206,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
               </div>
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" className="text-xs h-8 bg-slate-700 text-slate-300 border-slate-600" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button size="sm" className="text-xs h-8 bg-[#0052FF] text-white" onClick={createTrade} disabled={saving || !form.ticker || !form.entry_price || !form.quantity} data-testid="trade-submit">
+                <Button size="sm" className="text-xs h-8 bg-[#35D6C8] text-white" onClick={createTrade} disabled={saving || !form.ticker || !form.entry_price || !form.quantity} data-testid="trade-submit">
                   {saving ? 'Saving...' : 'Log Trade'}
                 </Button>
               </div>
@@ -226,7 +226,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
 };
 
 const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, setCloseForm }) => {
-  if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" /></div>;
   if (trades.length === 0) return (
     <div className="text-center py-12">
       <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
@@ -246,7 +246,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
               <Badge className={`text-[9px] ${t.side === 'buy' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-700/50' : 'bg-red-900/30 text-red-400 border-red-700/50'}`}>
                 {t.side.toUpperCase()}
               </Badge>
-              <Badge className={`text-[9px] ${t.status === 'closed' ? 'bg-slate-700 text-slate-400' : 'bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30'}`}>
+              <Badge className={`text-[9px] ${t.status === 'closed' ? 'bg-slate-700 text-slate-400' : 'bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30'}`}>
                 {t.status.toUpperCase()}
               </Badge>
             </div>
@@ -319,7 +319,7 @@ const AnalyticsTab = ({ analytics }) => {
     { label: 'Win Rate', value: `${a.win_rate}%`, color: a.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400' },
     { label: 'Avg Gain', value: `$${a.avg_gain.toFixed(2)}`, color: 'text-emerald-400' },
     { label: 'Avg Loss', value: `$${a.avg_loss.toFixed(2)}`, color: 'text-red-400' },
-    { label: 'Open', value: a.open_trades, color: 'text-[#0052FF]' },
+    { label: 'Open', value: a.open_trades, color: 'text-[#35D6C8]' },
     { label: 'Closed', value: a.closed_trades, color: 'text-white' },
   ];
 
@@ -348,8 +348,8 @@ const AnalyticsTab = ({ analytics }) => {
             <AreaChart data={a.pnl_timeline}>
               <defs>
                 <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#0052FF" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#0052FF" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#35D6C8" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#35D6C8" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis dataKey="date" tick={xAxisTick} tickLine={false} axisLine={false}
@@ -357,7 +357,7 @@ const AnalyticsTab = ({ analytics }) => {
               <YAxis tick={yAxisTick} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
               <Tooltip contentStyle={chartTooltipStyle}
                 labelStyle={chartLabelStyle} formatter={(v) => [`$${v.toFixed(2)}`, 'Cumulative P&L']} />
-              <Area type="monotone" dataKey="cumulative" stroke="#0052FF" fill="url(#pnlGrad)" strokeWidth={2} />
+              <Area type="monotone" dataKey="cumulative" stroke="#35D6C8" fill="url(#pnlGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>

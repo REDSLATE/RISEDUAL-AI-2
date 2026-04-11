@@ -21,7 +21,7 @@ const SENTIMENT_BADGES = {
 };
 const sentimentBadge = (s) => SENTIMENT_BADGES[s] || 'bg-slate-700 text-slate-400';
 
-const MiniBar = ({ value, max = 100, color = '#0052FF' }) => (
+const MiniBar = ({ value, max = 100, color = '#35D6C8' }) => (
   <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
     <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min((value / max) * 100, 100)}%`, backgroundColor: color }} />
   </div>
@@ -51,7 +51,7 @@ export const OverviewCard = ({ overview, symbol }) => {
   return (
     <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
       <div className="flex items-center gap-2 mb-3">
-        <Building2 className="w-4 h-4 text-[#0052FF]" />
+        <Building2 className="w-4 h-4 text-[#35D6C8]" />
         <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
         <Badge className="bg-slate-700 text-slate-300 text-[10px]">{overview.sector || 'N/A'}</Badge>
         {overview.industry && <Badge className="bg-slate-700/60 text-slate-400 text-[10px]">{overview.industry}</Badge>}
@@ -82,7 +82,7 @@ export const AIScoreCard = ({ aiScore }) => (
     </div>
     <div className="space-y-2.5">
       {[
-        { label: 'Technical', score: aiScore.technical_score || 0, color: '#0052FF' },
+        { label: 'Technical', score: aiScore.technical_score || 0, color: '#35D6C8' },
         { label: 'Fundamental', score: aiScore.fundamental_score || 0, color: '#10B981' },
         { label: 'Sentiment', score: aiScore.sentiment_score || 0, color: '#F59E0B' },
       ].map(s => (
@@ -235,11 +235,11 @@ export const ScoreGauge = ({ score, label }) => {
 export const CompositeBreakdownBar = ({ breakdown }) => {
   // Support both multi-agent (fundamental/technical/sentiment) and legacy (ai_score/earnings/insider)
   const bars = breakdown.fundamental_score !== undefined ? [
-    { label: 'Fundamentals', value: breakdown.fundamental_score, color: '#0052FF' },
+    { label: 'Fundamentals', value: breakdown.fundamental_score, color: '#35D6C8' },
     { label: 'Technicals', value: breakdown.technical_score, color: '#10B981' },
     { label: 'Sentiment', value: breakdown.sentiment_score, color: '#F59E0B' },
   ] : [
-    { label: 'AI Score', value: breakdown.ai_score_weight, color: '#0052FF' },
+    { label: 'AI Score', value: breakdown.ai_score_weight, color: '#35D6C8' },
     { label: 'Earnings', value: breakdown.earnings_weight, color: '#10B981' },
     { label: 'Insiders', value: breakdown.insider_weight, color: '#F59E0B' },
   ];
@@ -329,8 +329,8 @@ export const CrewInsightsCard = ({ composite }) => {
         </div>
       )}
       {composite.trade_recommendation && (
-        <div className="bg-[#0052FF]/10 border border-[#0052FF]/20 rounded-lg p-2.5">
-          <span className="text-[#0052FF] text-[10px] font-semibold uppercase">Trade Setup</span>
+        <div className="bg-[#35D6C8]/10 border border-[#35D6C8]/20 rounded-lg p-2.5">
+          <span className="text-[#35D6C8] text-[10px] font-semibold uppercase">Trade Setup</span>
           <p className="text-slate-300 text-xs mt-1">{composite.trade_recommendation}</p>
         </div>
       )}

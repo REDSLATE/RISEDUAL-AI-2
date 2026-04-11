@@ -91,7 +91,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
         data-testid="order-flow-toggle"
       >
         <div className="flex items-center gap-3">
-          <Activity className="w-4 h-4 text-[#0052FF]" />
+          <Activity className="w-4 h-4 text-[#35D6C8]" />
           <h3 className="text-white text-sm font-semibold tracking-wide">Order Flow</h3>
           {data && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${biasStyle.bg} ${biasStyle.color}`}>
@@ -121,7 +121,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
               {['SPY', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'BTC', 'ETH'].map(t => (
                 <button key={t} onClick={() => setTicker(t)}
                   className={`text-[10px] px-2 py-1 rounded transition-colors ${ticker === t
-                    ? 'bg-[#0052FF] text-white'
+                    ? 'bg-[#35D6C8] text-white'
                     : 'bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-700'}`}
                   data-testid={`flow-ticker-${t}`}
                 >
@@ -140,7 +140,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
               {isCrypto && (
                 <button onClick={() => setTab('live')}
                   className={`text-[10px] px-2 py-1 rounded transition-colors flex items-center gap-1 ${
-                    tab === 'live' ? 'bg-[#0052FF] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                    tab === 'live' ? 'bg-[#35D6C8] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                   data-testid="tab-live">
                   <Radio className="w-3 h-3" />
                   Live
@@ -165,7 +165,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
           <>
           {loading ? (
             <div className="py-8 flex justify-center">
-              <RefreshCw className="w-5 h-5 text-[#0052FF] animate-spin" />
+              <RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin" />
             </div>
           ) : !data ? (
             <div className="py-8 text-center">

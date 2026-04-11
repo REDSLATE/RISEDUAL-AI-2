@@ -142,7 +142,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
     {hypothesis.technical_outlook && (
       <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-[#0052FF]" /> Technical Outlook
+          <BarChart3 className="w-4 h-4 text-[#35D6C8]" /> Technical Outlook
         </h3>
         <p className="text-slate-300 text-sm">{hypothesis.technical_outlook}</p>
       </Card>

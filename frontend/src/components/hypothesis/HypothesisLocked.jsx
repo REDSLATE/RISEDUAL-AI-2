@@ -7,7 +7,7 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
   <Card className="relative bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden" data-testid="hypothesis-locked">
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-2 text-white font-semibold text-lg">
-        <Sparkles className="w-5 h-5 text-[#0052FF]" />
+        <Sparkles className="w-5 h-5 text-[#35D6C8]" />
         AI Hypothesis Ready for {hypothesis.symbol}
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -40,7 +40,7 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
         </div>
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm rounded-b-xl">
-        <Lock className="w-8 h-8 text-[#0052FF] mb-3" />
+        <Lock className="w-8 h-8 text-[#35D6C8] mb-3" />
         <p className="text-white font-semibold text-lg mb-1">Unlock Full AI Hypothesis</p>
         <p className="text-slate-400 text-sm text-center max-w-xs mb-4">{hypothesis.teaser.summary}</p>
         <div className="flex gap-3">
@@ -49,7 +49,7 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
               Log In
             </Button>
           )}
-          <Button onClick={onSubscribe} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="hypothesis-subscribe-btn">
+          <Button onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="hypothesis-subscribe-btn">
             <Zap className="w-4 h-4 mr-2" /> Subscribe to Pro
           </Button>
         </div>

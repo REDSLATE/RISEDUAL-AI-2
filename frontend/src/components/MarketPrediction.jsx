@@ -49,7 +49,7 @@ const MarketPrediction = ({ onSubscribe }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#0052FF] to-cyan-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -74,7 +74,7 @@ const MarketPrediction = ({ onSubscribe }) => {
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-lg transition-colors ${
               activeTab === tab.key
-                ? 'bg-slate-800 text-[#0052FF] border-b-2 border-[#0052FF]'
+                ? 'bg-slate-800 text-[#35D6C8] border-b-2 border-[#35D6C8]'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
             }`}
             data-testid={`tab-${tab.key}`}
@@ -90,7 +90,7 @@ const MarketPrediction = ({ onSubscribe }) => {
       {loading && !prediction && (
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-12 text-center">
           <div className="animate-pulse space-y-3">
-            <Sparkles className="w-8 h-8 text-[#0052FF] mx-auto animate-spin" />
+            <Sparkles className="w-8 h-8 text-[#35D6C8] mx-auto animate-spin" />
             <p className="text-white font-medium">Scraping macro data & generating predictions...</p>
             <p className="text-slate-400 text-sm">Analyzing news, crypto, world events, congress, and foreign markets</p>
           </div>
@@ -163,10 +163,10 @@ const LockedSection = ({ label, onSubscribe }) => (
 
 const LockedOverlay = ({ label, onSubscribe }) => (
   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-    <Lock className="w-8 h-8 text-[#0052FF] mb-3" />
+    <Lock className="w-8 h-8 text-[#35D6C8] mb-3" />
     <p className="text-white font-semibold mb-1">Unlock {label}</p>
     <p className="text-slate-400 text-xs text-center mb-3">Full analysis available with Pro subscription</p>
-    <Button size="sm" onClick={onSubscribe} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="prediction-subscribe-btn">
+    <Button size="sm" onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="prediction-subscribe-btn">
       <Zap className="w-3 h-3 mr-1" /> Upgrade to Pro
     </Button>
   </div>

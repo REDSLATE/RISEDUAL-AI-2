@@ -117,7 +117,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
       {strategy.market_conditions && (
         <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4 text-[#0052FF]" />
+            <Clock className="w-4 h-4 text-[#35D6C8]" />
             <span className="text-slate-400 text-xs font-medium uppercase">Market Conditions</span>
           </div>
           <p className="text-slate-300 text-sm">{strategy.market_conditions}</p>

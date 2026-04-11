@@ -146,7 +146,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0F172A] border-slate-600 shadow-2xl shadow-black/60">
+                  <SelectContent className="bg-[#0A2A63] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="market" className="text-white">Market Order</SelectItem>
                     <SelectItem value="limit" className="text-white">Limit Order</SelectItem>
                   </SelectContent>
@@ -190,7 +190,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                   <SelectTrigger className="bg-[#1E293B] border-slate-600 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0F172A] border-slate-600 shadow-2xl shadow-black/60">
+                  <SelectContent className="bg-[#0A2A63] border-slate-600 shadow-2xl shadow-black/60">
                     <SelectItem value="alpaca" className="text-white">Alpaca</SelectItem>
                   </SelectContent>
                 </Select>

@@ -52,7 +52,7 @@ const ToxicSpikeNotification = ({ n, index }) => {
 };
 
 const VerdictNotification = ({ n, index }) => (
-  <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#0052FF]/5' : 'hover:bg-slate-800/40'}`}
+  <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#35D6C8]/5' : 'hover:bg-slate-800/40'}`}
     data-testid={`notification-${index}`}>
     <div className="flex items-start gap-3">
       <div className="mt-0.5 flex-shrink-0">{verdictIcon(n.new_verdict)}</div>
@@ -60,7 +60,7 @@ const VerdictNotification = ({ n, index }) => (
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-white text-sm font-semibold">{n.symbol}</span>
           {n.in_watchlist && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
-          {!n.read && <div className="w-1.5 h-1.5 bg-[#0052FF] rounded-full" />}
+          {!n.read && <div className="w-1.5 h-1.5 bg-[#35D6C8] rounded-full" />}
         </div>
         <p className="text-slate-300 text-xs">
           Verdict changed: <span className={verdictColor(n.old_verdict)}>{n.old_verdict}</span>

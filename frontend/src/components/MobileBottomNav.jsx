@@ -15,7 +15,7 @@ const MobileBottomNav = ({ onOpenChat }) => {
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0F172A]/95 backdrop-blur-xl border-t border-slate-700/50 safe-area-bottom" data-testid="mobile-bottom-nav">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0A2A63]/95 backdrop-blur-xl border-t border-slate-700/50 safe-area-bottom" data-testid="mobile-bottom-nav">
       <div className="flex items-center justify-around px-1 py-1.5">
         {items.map((item, i) => {
           const Icon = item.icon;
@@ -25,7 +25,7 @@ const MobileBottomNav = ({ onOpenChat }) => {
               onClick={item.action}
               className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors ${
                 item.accent
-                  ? 'bg-[#0052FF] text-white shadow-lg shadow-blue-500/30'
+                  ? 'bg-[#35D6C8] text-white shadow-lg shadow-blue-500/30'
                   : 'text-slate-400 active:text-white active:bg-slate-800'
               }`}
               data-testid={`mobile-nav-${item.label.toLowerCase().replace(' ', '-')}`}

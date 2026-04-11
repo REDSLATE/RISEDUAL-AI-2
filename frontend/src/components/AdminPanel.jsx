@@ -96,7 +96,7 @@ const AdminPanel = ({ onClose }) => {
               onClick={() => setTab(t.id)}
               data-testid={`admin-tab-${t.id}`}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
-                tab === t.id ? 'text-[#0052FF] border-[#0052FF]' : 'text-slate-400 border-transparent hover:text-slate-300'
+                tab === t.id ? 'text-[#35D6C8] border-[#35D6C8]' : 'text-slate-400 border-transparent hover:text-slate-300'
               }`}
             >
               <t.icon className="w-4 h-4" />
@@ -141,7 +141,7 @@ const AdminPanel = ({ onClose }) => {
                         }`}>{u.role}</Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-semibold ${u.subscription_status === 'pro' ? 'text-[#0052FF]' : u.subscription_status === 'trial' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <span className={`text-xs font-semibold ${u.subscription_status === 'pro' ? 'text-[#35D6C8]' : u.subscription_status === 'trial' ? 'text-emerald-400' : 'text-slate-500'}`}>
                           {u.subscription_status === 'pro' ? 'PRO' : u.subscription_status === 'trial' ? 'TRIAL' : 'FREE'}
                         </span>
                       </td>

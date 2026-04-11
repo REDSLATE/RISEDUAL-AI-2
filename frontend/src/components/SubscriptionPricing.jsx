@@ -77,7 +77,7 @@ const SubscriptionPricing = ({ onClose }) => {
             <Card
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'monthly'
-                  ? 'bg-slate-800/80 border-[#0052FF] shadow-lg shadow-blue-500/10'
+                  ? 'bg-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
                   : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('monthly')}
@@ -85,9 +85,9 @@ const SubscriptionPricing = ({ onClose }) => {
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  selectedPlan === 'monthly' ? 'border-[#0052FF]' : 'border-slate-600'
+                  selectedPlan === 'monthly' ? 'border-[#35D6C8]' : 'border-slate-600'
                 }`}>
-                  {selectedPlan === 'monthly' && <div className="w-2.5 h-2.5 rounded-full bg-[#0052FF]" />}
+                  {selectedPlan === 'monthly' && <div className="w-2.5 h-2.5 rounded-full bg-[#35D6C8]" />}
                 </div>
                 <span className="text-white font-semibold text-lg">Monthly</span>
               </div>
@@ -102,7 +102,7 @@ const SubscriptionPricing = ({ onClose }) => {
             <Card
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'annual'
-                  ? 'bg-gradient-to-br from-[#0052FF]/15 to-slate-800/80 border-[#0052FF] shadow-lg shadow-blue-500/10'
+                  ? 'bg-gradient-to-br from-[#35D6C8]/15 to-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
                   : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('annual')}
@@ -113,9 +113,9 @@ const SubscriptionPricing = ({ onClose }) => {
               </Badge>
               <div className="flex items-center gap-3 mb-4">
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  selectedPlan === 'annual' ? 'border-[#0052FF]' : 'border-slate-600'
+                  selectedPlan === 'annual' ? 'border-[#35D6C8]' : 'border-slate-600'
                 }`}>
-                  {selectedPlan === 'annual' && <div className="w-2.5 h-2.5 rounded-full bg-[#0052FF]" />}
+                  {selectedPlan === 'annual' && <div className="w-2.5 h-2.5 rounded-full bg-[#35D6C8]" />}
                 </div>
                 <span className="text-white font-semibold text-lg">Annual</span>
                 <Star className="w-4 h-4 text-yellow-500" />
@@ -135,7 +135,7 @@ const SubscriptionPricing = ({ onClose }) => {
             <Button
               onClick={handleStripeCheckout}
               disabled={isProcessing}
-              className="w-full bg-[#0052FF] hover:bg-[#2563EB] text-white font-semibold py-6 text-lg rounded-xl"
+              className="w-full bg-[#35D6C8] hover:bg-[#67E3D3] text-white font-semibold py-6 text-lg rounded-xl"
               data-testid="stripe-checkout-btn"
             >
               {isProcessing

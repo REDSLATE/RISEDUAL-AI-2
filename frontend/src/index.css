@@ -2,12 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    --brand-navy: #0A2A63;
+    --brand-navy-light: #12345A;
+    --brand-deep-blue: #155F85;
+    --brand-teal: #35D6C8;
+    --brand-teal-light: #67E3D3;
+}
+
 html,
 body,
 #root {
     margin: 0;
     padding: 0;
-    background-color: #0F172A !important;
+    background-color: var(--brand-navy) !important;
     min-height: 100vh;
     -webkit-overflow-scrolling: touch;
 }
@@ -17,7 +25,7 @@ body {
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #0F172A !important;
+    background-color: var(--brand-navy) !important;
 }
 
 h1, h2, h3, h4, h5, h6 {

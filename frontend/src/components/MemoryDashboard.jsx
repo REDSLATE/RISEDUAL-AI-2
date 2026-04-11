@@ -42,12 +42,12 @@ const OverviewTab = ({ stats, accuracy }) => {
         <StatCard icon={Database} label="Total Episodes" value={stats.total_episodes?.toLocaleString()} sub={stats.embedding_model} color="text-white" />
         <StatCard icon={Zap} label="Active" value={stats.active_episodes?.toLocaleString()} sub="Usable patterns" color="text-emerald-400" />
         <StatCard icon={AlertTriangle} label="Toxic Lessons" value={stats.toxic_lessons} sub="Negative examples" color="text-red-400" />
-        <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#0052FF]" />
+        <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#35D6C8]" />
       </div>
 
       <div className="bg-[#0B1120] border border-slate-800/60 rounded-xl p-5">
         <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-[#0052FF]" /> Memory Health
+          <Shield className="w-4 h-4 text-[#35D6C8]" /> Memory Health
         </h4>
         <div className="space-y-3">
           <HealthRow label="ChromaDB" status={stats.initialized} detail={stats.storage_path} />
@@ -245,7 +245,7 @@ const PostMortemTab = ({ postMortems }) => (
                 <p className="text-slate-500 text-[10px] mt-1.5 italic border-l-2 border-slate-700 pl-2">"{pm.key_headline}"</p>
               )}
               <div className="flex items-center gap-2 mt-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${pm.source === 'ai_post_mortem' ? 'bg-[#0052FF]/10 text-[#0052FF] border border-[#0052FF]/20' : 'bg-slate-700 text-slate-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${pm.source === 'ai_post_mortem' ? 'bg-[#35D6C8]/10 text-[#35D6C8] border border-[#35D6C8]/20' : 'bg-slate-700 text-slate-400'}`}>
                   {pm.source === 'ai_post_mortem' ? 'AI Classified' : 'Heuristic'}
                 </span>
               </div>
@@ -310,13 +310,13 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
   if (!isPro) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="memory-dashboard">
-        <Card className="bg-[#0F172A] border-slate-800 max-w-md w-full p-8 text-center">
+        <Card className="bg-[#0A2A63] border-slate-800 max-w-md w-full p-8 text-center">
           <Lock className="w-10 h-10 text-slate-600 mx-auto mb-4" />
           <h3 className="text-white text-lg font-semibold mb-2">Memory Dashboard</h3>
           <p className="text-slate-400 text-sm mb-6">Visualize AI memory episodes, cleanup history, and failure analysis. Available for Pro users.</p>
           <div className="flex gap-3 justify-center">
             <Button variant="outline" onClick={onClose} className="bg-transparent border-slate-700 text-slate-300">Close</Button>
-            <Button onClick={onSubscribe} className="bg-[#0052FF] hover:bg-[#0052FF]/80 text-white">Upgrade to Pro</Button>
+            <Button onClick={onSubscribe} className="bg-[#35D6C8] hover:bg-[#35D6C8]/80 text-white">Upgrade to Pro</Button>
           </div>
         </Card>
       </div>
@@ -325,11 +325,11 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="memory-dashboard">
-      <div className="bg-[#0F172A] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
+      <div className="bg-[#0A2A63] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <Database className="w-5 h-5 text-[#0052FF]" />
+            <Database className="w-5 h-5 text-[#35D6C8]" />
             <div>
               <h2 className="text-white text-base font-semibold">Memory Dashboard</h2>
               <p className="text-slate-500 text-xs">Vector memory, cleanup history, failure analysis</p>
@@ -345,7 +345,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-2 px-5 py-3 text-sm transition-colors border-b-2 ${tab === t.id
-                ? 'text-[#0052FF] border-[#0052FF]'
+                ? 'text-[#35D6C8] border-[#35D6C8]'
                 : 'text-slate-500 border-transparent hover:text-slate-300 hover:border-slate-700'
               }`}
               data-testid={`memory-tab-${t.id}`}
@@ -360,7 +360,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
         <div className="p-6 max-h-[65vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" />
+              <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
             </div>
           ) : (
             <>

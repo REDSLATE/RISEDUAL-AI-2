@@ -89,7 +89,7 @@ const CacheMonitor = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4" data-testid="cache-hit-rate">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="w-4 h-4 text-[#0052FF]" />
+            <Zap className="w-4 h-4 text-[#35D6C8]" />
             <span className="text-slate-400 text-xs">Hit Rate</span>
           </div>
           <p className={`text-2xl font-black ${hitRateColor}`}>

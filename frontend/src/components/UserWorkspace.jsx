@@ -129,7 +129,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         {/* Header */}
         <div className="p-6 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-[#35D6C8] rounded-xl flex items-center justify-center">
               <Briefcase className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -138,7 +138,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isPro && <Badge className="bg-gradient-to-r from-[#0052FF] to-cyan-500 text-white border-0 text-xs">PRO</Badge>}
+            {isPro && <Badge className="bg-gradient-to-r from-[#35D6C8] to-cyan-500 text-white border-0 text-xs">PRO</Badge>}
             <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2" data-testid="workspace-close">
               <X className="w-5 h-5" />
             </button>
@@ -155,7 +155,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
                 onClick={() => setTab(t.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
                   tab === t.id
-                    ? 'text-[#0052FF] border-b-2 border-[#0052FF] bg-[#0052FF]/5'
+                    ? 'text-[#35D6C8] border-b-2 border-[#35D6C8] bg-[#35D6C8]/5'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
                 data-testid={`workspace-tab-${t.id}`}
@@ -171,7 +171,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         <div className="p-4 sm:p-6 min-h-[300px]">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" />
+              <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
             </div>
           ) : (
             <TabContent
@@ -220,7 +220,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
           data-testid="add-ticker-input"
         />
       </div>
-      <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-xl" data-testid="add-ticker-btn">
+      <Button type="submit" disabled={addLoading || !addTicker.trim()} className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-xl" data-testid="add-ticker-btn">
         <Plus className="w-4 h-4 mr-1" /> Add
       </Button>
     </form>
@@ -228,7 +228,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-500">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
         {watchlist.length >= FREE_WATCHLIST_LIMIT && (
-          <button onClick={onSubscribe} className="text-[#0052FF] hover:underline flex items-center gap-1">
+          <button onClick={onSubscribe} className="text-[#35D6C8] hover:underline flex items-center gap-1">
             <Lock className="w-3 h-3" /> Upgrade for unlimited
           </button>
         )}
@@ -237,7 +237,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
     {addError && (
       <div className="bg-amber-900/20 border-amber-700/40 rounded-xl px-3 py-2 flex items-center justify-between border">
         <span className="text-amber-400 text-xs">{addError}</span>
-        <Button size="sm" className="bg-[#0052FF] hover:bg-[#2563EB] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
+        <Button size="sm" className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white rounded-lg text-xs h-7 px-3" onClick={onSubscribe}>
           Upgrade
         </Button>
       </div>
@@ -323,7 +323,7 @@ const ReferralsTab = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-6 h-6 text-[#0052FF] animate-spin" />
+        <RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" />
       </div>
     );
   }
@@ -335,9 +335,9 @@ const ReferralsTab = () => {
   return (
     <div className="space-y-5" data-testid="referrals-tab">
       {/* Share Link */}
-      <Card className="bg-gradient-to-br from-[#0052FF]/10 to-cyan-900/10 border-[#0052FF]/30 rounded-xl p-4">
+      <Card className="bg-gradient-to-br from-[#35D6C8]/10 to-cyan-900/10 border-[#35D6C8]/30 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Gift className="w-5 h-5 text-[#0052FF]" />
+          <Gift className="w-5 h-5 text-[#35D6C8]" />
           <h3 className="text-white text-sm font-semibold">Share & Earn</h3>
         </div>
         <p className="text-slate-400 text-xs mb-3">
@@ -352,7 +352,7 @@ const ReferralsTab = () => {
           />
           <Button
             onClick={copyLink}
-            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#0052FF] hover:bg-[#2563EB]'} text-white`}
+            className={`rounded-xl px-4 text-sm ${copied ? 'bg-emerald-600' : 'bg-[#35D6C8] hover:bg-[#67E3D3]'} text-white`}
             data-testid="copy-referral-btn"
           >
             {copied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
@@ -375,7 +375,7 @@ const ReferralsTab = () => {
           <p className="text-slate-400 text-[10px]">Months Earned</p>
         </Card>
         <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-[#0052FF]">{info.rewards_remaining}</p>
+          <p className="text-2xl font-bold text-[#35D6C8]">{info.rewards_remaining}</p>
           <p className="text-slate-400 text-[10px]">Remaining ({info.reward_cap}/yr)</p>
         </Card>
       </div>
@@ -408,7 +408,7 @@ const ReferralsTab = () => {
                     {ref.status === 'completed' ? 'Subscribed' : 'Pending'}
                   </Badge>
                   {ref.reward_granted && (
-                    <Badge className="text-[10px] bg-[#0052FF]/20 text-[#0052FF] border-[#0052FF]/30">+1 Month</Badge>
+                    <Badge className="text-[10px] bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30">+1 Month</Badge>
                   )}
                 </div>
               </div>
@@ -463,8 +463,8 @@ const DigestToggle = () => {
     <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4" data-testid="digest-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#0052FF]/10 flex items-center justify-center">
-            <Mail className="w-4 h-4 text-[#0052FF]" />
+          <div className="w-8 h-8 rounded-lg bg-[#35D6C8]/10 flex items-center justify-center">
+            <Mail className="w-4 h-4 text-[#35D6C8]" />
           </div>
           <div>
             <p className="text-white text-sm font-medium">Daily Market Digest</p>

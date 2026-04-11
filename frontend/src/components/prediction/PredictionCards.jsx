@@ -49,7 +49,7 @@ const PredictionCard = ({ prediction }) => {
           </div>
           <div className="w-full bg-slate-700/50 rounded-full h-2">
             <div
-              className="h-2 rounded-full transition-all bg-gradient-to-r from-[#0052FF] to-cyan-400"
+              className="h-2 rounded-full transition-all bg-gradient-to-r from-[#35D6C8] to-cyan-400"
               style={{ width: `${confidence}%` }}
             />
           </div>

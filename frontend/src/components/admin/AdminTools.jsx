@@ -116,8 +116,8 @@ const AdminTools = () => {
 
       <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#0052FF]/10 border border-[#0052FF]/20 flex items-center justify-center shrink-0">
-            <FileCode className="w-6 h-6 text-[#0052FF]" />
+          <div className="w-12 h-12 rounded-xl bg-[#35D6C8]/10 border border-[#35D6C8]/20 flex items-center justify-center shrink-0">
+            <FileCode className="w-6 h-6 text-[#35D6C8]" />
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-white text-sm font-semibold mb-1">Download Complete Source Code</h4>
@@ -132,7 +132,7 @@ const AdminTools = () => {
             <Button
               onClick={downloadCodebase}
               disabled={downloading}
-              className="bg-[#0052FF] hover:bg-[#2563EB] text-white text-xs h-9 px-4 rounded-xl transition-all"
+              className="bg-[#35D6C8] hover:bg-[#67E3D3] text-white text-xs h-9 px-4 rounded-xl transition-all"
               data-testid="download-codebase-btn"
             >
               {downloading ? (
