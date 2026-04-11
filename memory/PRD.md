@@ -349,6 +349,12 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Fed both datasets into AI prediction engine (lobbying in gov_filings prompt, fear & greed as market sentiment context)
 - **Verified (Iteration 80)**: 100% pass (21/21 backend, all frontend), no regressions
 
+### About Us Page (April 11, 2026)
+- Created dual-mode `AboutUs.jsx` component: embedded section on Landing Page + full-screen overlay for logged-in users
+- Content: Mission statement, stats bar (8+ sources, 2X AI, 24/7, 12K+ lobbying), Core Values (4 cards), Platform Capabilities (6 cards), Team bios (4 placeholder members with gradient avatars)
+- Navigation: Landing page nav link "About Us" (scrolls to section), Resources dropdown "About RISEDUAL AI" (opens overlay), Mobile menu "About Us" button
+- **Verified (Iteration 81)**: 100% pass, all modes + no regressions
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
