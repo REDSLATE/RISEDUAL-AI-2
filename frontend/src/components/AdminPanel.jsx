@@ -69,8 +69,8 @@ const AdminPanel = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="admin-panel">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-700/50">
-        <div className="p-6 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-500/30">
+        <div className="p-6 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center">
               <Crown className="w-6 h-6 text-white" />
@@ -81,7 +81,7 @@ const AdminPanel = ({ onClose }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={fetchUsers} className="bg-slate-800 border-slate-700 text-white">
+            <Button variant="outline" size="sm" onClick={fetchUsers} className="bg-slate-800 border-slate-500/40 text-white">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
             <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">x</button>
@@ -89,7 +89,7 @@ const AdminPanel = ({ onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-700/50 px-4">
+        <div className="flex border-b border-slate-500/30 px-4">
           {tabs.map(t => (
             <button
               key={t.id}
@@ -107,7 +107,7 @@ const AdminPanel = ({ onClose }) => {
 
         {tab === 'users' ? (
           <>
-            <div className="p-4 border-b border-slate-700/50">
+            <div className="p-4 border-b border-slate-500/30">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <Input placeholder="Search users..." value={filter} onChange={e => setFilter(e.target.value)}
@@ -118,7 +118,7 @@ const AdminPanel = ({ onClose }) => {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="admin-users-table">
                 <thead>
-                  <tr className="border-b border-slate-700/40">
+                  <tr className="border-b border-slate-500/40/40">
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">User</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Role</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Plan</th>
@@ -128,10 +128,10 @@ const AdminPanel = ({ onClose }) => {
                 </thead>
                 <tbody>
                   {filtered.map(u => (
-                    <tr key={u._id} className="border-b border-slate-800/40 hover:bg-slate-800/30">
+                    <tr key={u._id} className="border-b border-slate-600/30/40 hover:bg-slate-700/25">
                       <td className="px-4 py-3">
                         <p className="text-white font-medium">{u.name}</p>
-                        <p className="text-slate-500 text-xs">{u.email}</p>
+                        <p className="text-slate-400 text-xs">{u.email}</p>
                       </td>
                       <td className="px-4 py-3">
                         <Badge className={`text-[10px] ${
@@ -141,7 +141,7 @@ const AdminPanel = ({ onClose }) => {
                         }`}>{u.role}</Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-semibold ${u.subscription_status === 'pro' ? 'text-[#35D6C8]' : u.subscription_status === 'trial' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <span className={`text-xs font-semibold ${u.subscription_status === 'pro' ? 'text-[#35D6C8]' : u.subscription_status === 'trial' ? 'text-emerald-400' : 'text-slate-400'}`}>
                           {u.subscription_status === 'pro' ? 'PRO' : u.subscription_status === 'trial' ? 'TRIAL' : 'FREE'}
                         </span>
                       </td>

@@ -99,7 +99,7 @@ const PromoManager = () => {
       </div>
 
       {showCreate && (
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4 space-y-3" data-testid="promo-create-form">
+        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4 space-y-3" data-testid="promo-create-form">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-slate-400 text-[10px] block mb-1">Title</label>
@@ -147,9 +147,9 @@ const PromoManager = () => {
         <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-[#35D6C8] animate-spin" /></div>
       ) : promos.length === 0 ? (
         <div className="text-center py-8">
-          <Gift className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <Gift className="w-10 h-10 text-slate-400 mx-auto mb-3" />
           <p className="text-slate-400 text-sm">No promo campaigns yet</p>
-          <p className="text-slate-500 text-xs mt-1">Create your first campaign to drive referrals</p>
+          <p className="text-slate-400 text-xs mt-1">Create your first campaign to drive referrals</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -158,7 +158,7 @@ const PromoManager = () => {
             const isLive = p.is_active && new Date(p.start_date) <= now && new Date(p.end_date) >= now;
             const isExpired = new Date(p.end_date) < now;
             return (
-              <div key={p.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`promo-item-${p.id}`}>
+              <div key={p.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`promo-item-${p.id}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-white text-sm font-medium truncate">{p.title}</p>
@@ -168,7 +168,7 @@ const PromoManager = () => {
                   </div>
                   <p className="text-slate-400 text-xs truncate">{p.message}</p>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-slate-500 text-[10px] flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(p.start_date)} - {formatDate(p.end_date)}</span>
+                    <span className="text-slate-400 text-[10px] flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(p.start_date)} - {formatDate(p.end_date)}</span>
                     <span className="text-[#35D6C8] text-[10px] font-medium">{p.referral_target} refs = {p.reward_months} months</span>
                   </div>
                 </div>

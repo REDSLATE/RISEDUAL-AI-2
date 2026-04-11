@@ -35,7 +35,7 @@ const AccuracyBadge = ({ feature, className = '' }) => {
   if (displayAcc === null) {
     if (stats.pending > 0) {
       return (
-        <span className={`inline-flex items-center gap-1 text-[10px] bg-slate-800/60 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700/40 ${className}`} data-testid={`accuracy-badge-${feature}`}>
+        <span className={`inline-flex items-center gap-1 text-[10px] bg-slate-800/60 text-slate-400 px-2 py-0.5 rounded-full border border-slate-500/40/40 ${className}`} data-testid={`accuracy-badge-${feature}`}>
           <Target className="w-2.5 h-2.5" />
           {stats.pending} pending
         </span>

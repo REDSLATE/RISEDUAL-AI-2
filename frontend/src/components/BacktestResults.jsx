@@ -45,17 +45,17 @@ const BacktestResults = ({ result, onClose }) => {
       {/* Stats Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {statCards.map(({ label, value, color, icon: Icon }) => (
-          <Card key={label} className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <Card key={label} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
             <Icon className={`w-4 h-4 mx-auto mb-1 ${color}`} />
             <p className={`text-lg font-bold ${color}`}>{value}</p>
-            <p className="text-slate-500 text-[9px]">{label}</p>
+            <p className="text-slate-400 text-[9px]">{label}</p>
           </Card>
         ))}
       </div>
 
       {/* P&L Curve */}
       {m.cumulative_pnl?.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">Cumulative P&L</h4>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={m.cumulative_pnl}>
@@ -78,7 +78,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Buy & Hold Comparison + Win/Loss */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
           <h4 className="text-slate-400 text-xs font-medium uppercase mb-3">Strategy vs Buy & Hold</h4>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -93,15 +93,15 @@ const BacktestResults = ({ result, onClose }) => {
                 ${m.buy_hold_pnl.toFixed(2)} ({m.buy_hold_pct}%)
               </span>
             </div>
-            <div className="border-t border-slate-700 pt-2">
-              <span className="text-slate-500 text-xs">
+            <div className="border-t border-slate-500/40 pt-2">
+              <span className="text-slate-400 text-xs">
                 {m.total_pnl > m.buy_hold_pnl ? 'Strategy outperforms Buy & Hold' : 'Buy & Hold outperforms this strategy'}
               </span>
             </div>
           </div>
         </Card>
 
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
           <h4 className="text-slate-400 text-xs font-medium uppercase mb-3">Win / Loss Breakdown</h4>
           <div className="flex items-center gap-4">
             <div className="flex-1">
@@ -128,7 +128,7 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Monthly Breakdown */}
       {m.monthly?.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">Monthly Performance</h4>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={m.monthly}>
@@ -149,14 +149,14 @@ const BacktestResults = ({ result, onClose }) => {
 
       {/* Trade Log */}
       {result.trades?.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
           <h4 className="text-white text-sm font-semibold mb-3">
             Trade Log ({result.total_trades_generated > 50 ? `Last 50 of ${result.total_trades_generated}` : result.trades.length} trades)
           </h4>
           <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-800">
-                <tr className="border-b border-slate-700">
+                <tr className="border-b border-slate-500/40">
                   <th className="text-left py-2 px-2 text-slate-400 font-medium">Entry</th>
                   <th className="text-left py-2 px-2 text-slate-400 font-medium">Exit</th>
                   <th className="text-right py-2 px-2 text-slate-400 font-medium">Entry $</th>
@@ -168,7 +168,7 @@ const BacktestResults = ({ result, onClose }) => {
               </thead>
               <tbody>
                 {result.trades.map((t, i) => (
-                  <tr key={`trade-${i}`} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <tr key={`trade-${i}`} className="border-b border-slate-500/30 hover:bg-slate-700/30">
                     <td className="py-1.5 px-2 text-slate-300">{t.entry_date}</td>
                     <td className="py-1.5 px-2 text-slate-300">{t.exit_date}</td>
                     <td className="py-1.5 px-2 text-right text-white">${t.entry_price}</td>
@@ -194,12 +194,12 @@ const BacktestResults = ({ result, onClose }) => {
       {m.best_trade && m.worst_trade && (
         <div className="grid grid-cols-2 gap-3">
           <Card className="bg-emerald-950/20 border-emerald-800/30 rounded-xl p-4">
-            <p className="text-[10px] text-slate-500 mb-1">Best Trade</p>
+            <p className="text-[10px] text-slate-400 mb-1">Best Trade</p>
             <p className="text-emerald-400 text-lg font-bold">+${m.best_trade.pnl} ({m.best_trade.pnl_pct}%)</p>
             <p className="text-slate-400 text-[10px]">{m.best_trade.entry_date} — {m.best_trade.holding_days}d hold</p>
           </Card>
           <Card className="bg-red-950/20 border-red-800/30 rounded-xl p-4">
-            <p className="text-[10px] text-slate-500 mb-1">Worst Trade</p>
+            <p className="text-[10px] text-slate-400 mb-1">Worst Trade</p>
             <p className="text-red-400 text-lg font-bold">${m.worst_trade.pnl} ({m.worst_trade.pnl_pct}%)</p>
             <p className="text-slate-400 text-[10px]">{m.worst_trade.entry_date} — {m.worst_trade.holding_days}d hold</p>
           </Card>
@@ -207,7 +207,7 @@ const BacktestResults = ({ result, onClose }) => {
       )}
 
       {/* Disclaimer */}
-      <div className="flex items-start gap-2 text-slate-500 text-[10px] bg-slate-800/30 rounded-lg p-3">
+      <div className="flex items-start gap-2 text-slate-400 text-[10px] bg-slate-700/25 rounded-lg p-3">
         <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
         <span>Past performance does not guarantee future results. This backtest uses simplified assumptions (single position, no slippage, no commissions). Use as directional guidance only.</span>
       </div>

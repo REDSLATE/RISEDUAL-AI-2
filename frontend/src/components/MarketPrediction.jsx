@@ -59,7 +59,7 @@ const MarketPrediction = ({ onSubscribe }) => {
         </div>
         <div className="flex items-center gap-2">
           {isPro && <AccuracyBadge feature="market_prediction" />}
-          {lastUpdated && <span className="text-slate-500 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
+          {lastUpdated && <span className="text-slate-400 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={fetchPrediction} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
@@ -67,7 +67,7 @@ const MarketPrediction = ({ onSubscribe }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-700/50 pb-1">
+      <div className="flex gap-2 border-b border-slate-500/30 pb-1">
         {tabs.map(tab => (
           <button
             key={tab.key}
@@ -75,7 +75,7 @@ const MarketPrediction = ({ onSubscribe }) => {
             className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-lg transition-colors ${
               activeTab === tab.key
                 ? 'bg-slate-800 text-[#35D6C8] border-b-2 border-[#35D6C8]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                : 'text-slate-400 hover:text-white hover:bg-slate-700/35'
             }`}
             data-testid={`tab-${tab.key}`}
           >
@@ -88,7 +88,7 @@ const MarketPrediction = ({ onSubscribe }) => {
 
       {/* Loading */}
       {loading && !prediction && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-12 text-center">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-12 text-center">
           <div className="animate-pulse space-y-3">
             <Sparkles className="w-8 h-8 text-[#35D6C8] mx-auto animate-spin" />
             <p className="text-white font-medium">Scraping macro data & generating predictions...</p>
@@ -132,21 +132,21 @@ const MarketPrediction = ({ onSubscribe }) => {
 const LockedMacro = ({ macroData, onSubscribe }) => {
   const gf = macroData?.gov_filings || {};
   return (
-    <Card className="relative bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden">
+    <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
       <div className="p-6 space-y-3">
         <p className="text-white font-semibold">Macro Intelligence Summary</p>
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-slate-900/60 rounded-lg p-3 text-center">
             <p className="text-white font-bold">{macroData?.world_events?.total || 0}</p>
-            <p className="text-slate-500 text-[10px]">World Events</p>
+            <p className="text-slate-400 text-[10px]">World Events</p>
           </div>
           <div className="bg-slate-900/60 rounded-lg p-3 text-center">
             <p className="text-white font-bold">{gf.congressional_trades || 0}</p>
-            <p className="text-slate-500 text-[10px]">Congress Trades</p>
+            <p className="text-slate-400 text-[10px]">Congress Trades</p>
           </div>
           <div className="bg-slate-900/60 rounded-lg p-3 text-center">
             <p className="text-white font-bold">{macroData?.foreign_markets?.total_indices || 0}</p>
-            <p className="text-slate-500 text-[10px]">Market Indices</p>
+            <p className="text-slate-400 text-[10px]">Market Indices</p>
           </div>
         </div>
       </div>
@@ -156,7 +156,7 @@ const LockedMacro = ({ macroData, onSubscribe }) => {
 };
 
 const LockedSection = ({ label, onSubscribe }) => (
-  <Card className="relative bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden p-6 min-h-[150px]">
+  <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden p-6 min-h-[150px]">
     <LockedOverlay label={label} onSubscribe={onSubscribe} />
   </Card>
 );

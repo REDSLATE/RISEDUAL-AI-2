@@ -80,7 +80,7 @@ const BrokerOAuthConfig = () => {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
-        <RefreshCw className="w-5 h-5 text-slate-500 animate-spin" />
+        <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
       </div>
     );
   }
@@ -91,7 +91,7 @@ const BrokerOAuthConfig = () => {
         <Key className="w-4 h-4 text-[#35D6C8]" />
         <h3 className="text-white text-sm font-semibold">Broker OAuth Credentials</h3>
       </div>
-      <p className="text-slate-500 text-xs leading-relaxed">
+      <p className="text-slate-400 text-xs leading-relaxed">
         Configure OAuth Client ID and Secret for each supported broker. These are encrypted and stored securely.
         Once configured, users can connect their brokerage via one-click OAuth.
       </p>
@@ -106,10 +106,10 @@ const BrokerOAuthConfig = () => {
               data-testid={`broker-config-${brokerId}`}>
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Shield className={`w-4 h-4 ${config.configured ? 'text-emerald-400' : 'text-slate-600'}`} />
+                  <Shield className={`w-4 h-4 ${config.configured ? 'text-emerald-400' : 'text-slate-400'}`} />
                   <div>
                     <span className={`text-sm font-semibold ${label.color}`}>{label.name}</span>
-                    <p className="text-slate-600 text-xs">{label.desc}</p>
+                    <p className="text-slate-400 text-xs">{label.desc}</p>
                   </div>
                 </div>
 
@@ -119,7 +119,7 @@ const BrokerOAuthConfig = () => {
                       <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5 flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" /> Configured
                       </span>
-                      <span className="text-slate-600 text-[10px] font-mono">{config.client_id_preview}</span>
+                      <span className="text-slate-400 text-[10px] font-mono">{config.client_id_preview}</span>
                     </>
                   ) : (
                     <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 flex items-center gap-1">
@@ -132,7 +132,7 @@ const BrokerOAuthConfig = () => {
                     setClientSecret('');
                     setShowSecret(false);
                   }}
-                    className="text-xs bg-transparent border-slate-700 text-slate-300 hover:bg-slate-800 h-7"
+                    className="text-xs bg-transparent border-slate-500/40 text-slate-300 hover:bg-slate-600/30 h-7"
                     data-testid={`broker-edit-${brokerId}`}>
                     {isEditing ? 'Cancel' : config.configured ? 'Update' : 'Configure'}
                   </Button>
@@ -147,12 +147,12 @@ const BrokerOAuthConfig = () => {
               </div>
 
               {isEditing && (
-                <div className="px-4 pb-4 border-t border-slate-800/40 pt-3 space-y-3">
+                <div className="px-4 pb-4 border-t border-slate-600/30/40 pt-3 space-y-3">
                   <div>
                     <label className="text-slate-400 text-xs mb-1 block">OAuth Client ID</label>
                     <Input value={clientId} onChange={e => setClientId(e.target.value)}
                       placeholder="Enter Client ID from Alpaca Developer Dashboard"
-                      className="bg-slate-900 border-slate-700 text-white text-sm"
+                      className="bg-slate-900 border-slate-500/40 text-white text-sm"
                       data-testid={`broker-client-id-${brokerId}`} />
                   </div>
                   <div>
@@ -160,15 +160,15 @@ const BrokerOAuthConfig = () => {
                     <div className="relative">
                       <Input type={showSecret ? 'text' : 'password'} value={clientSecret} onChange={e => setClientSecret(e.target.value)}
                         placeholder="Enter Client Secret"
-                        className="bg-slate-900 border-slate-700 text-white text-sm pr-10"
+                        className="bg-slate-900 border-slate-500/40 text-white text-sm pr-10"
                         data-testid={`broker-client-secret-${brokerId}`} />
-                      <button onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                      <button onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300">
                         {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-slate-600 text-[10px]">Credentials are encrypted with AES-256 before storage</p>
+                    <p className="text-slate-400 text-[10px]">Credentials are encrypted with AES-256 before storage</p>
                     <Button onClick={() => handleSave(brokerId)} disabled={saving}
                       className="bg-[#35D6C8] hover:bg-[#35D6C8]/80 text-white text-xs h-8"
                       data-testid={`broker-save-${brokerId}`}>

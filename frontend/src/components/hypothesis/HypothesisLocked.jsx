@@ -4,7 +4,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 
 const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
-  <Card className="relative bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden" data-testid="hypothesis-locked">
+  <Card className="relative bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden" data-testid="hypothesis-locked">
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-2 text-white font-semibold text-lg">
         <Sparkles className="w-5 h-5 text-[#35D6C8]" />
@@ -14,17 +14,17 @@ const HypothesisLocked = ({ hypothesis, user, onLogin, onSubscribe }) => (
         <div className="bg-slate-900/60 rounded-lg p-3 text-center">
           <BarChart3 className="w-4 h-4 text-blue-400 mx-auto mb-1" />
           <p className="text-white text-lg font-bold">{hypothesis.teaser.data_sources_count}</p>
-          <p className="text-slate-500 text-[10px]">Data Points</p>
+          <p className="text-slate-400 text-[10px]">Data Points</p>
         </div>
         <div className="bg-slate-900/60 rounded-lg p-3 text-center">
           <Globe className="w-4 h-4 text-emerald-400 mx-auto mb-1" />
           <p className="text-white text-lg font-bold">{hypothesis.teaser.world_events_count}</p>
-          <p className="text-slate-500 text-[10px]">World Events</p>
+          <p className="text-slate-400 text-[10px]">World Events</p>
         </div>
         <div className="bg-slate-900/60 rounded-lg p-3 text-center">
           <Landmark className="w-4 h-4 text-violet-400 mx-auto mb-1" />
           <p className="text-white text-lg font-bold">{hypothesis.teaser.congressional_trades_count}</p>
-          <p className="text-slate-500 text-[10px]">Congress Trades</p>
+          <p className="text-slate-400 text-[10px]">Congress Trades</p>
         </div>
       </div>
     </div>

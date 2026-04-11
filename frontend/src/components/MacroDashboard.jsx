@@ -142,7 +142,7 @@ const MacroDashboard = ({ onSubscribe }) => {
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
               autoRefresh
                 ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400'
-                : 'bg-slate-800 border-slate-700 text-slate-500'
+                : 'bg-slate-800 border-slate-500/40 text-slate-400'
             }`}
             data-testid="auto-refresh-toggle"
           >
@@ -153,7 +153,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 bg-slate-800/60 p-1 rounded-xl border border-slate-700/50" data-testid="macro-tabs">
+      <div className="flex gap-1 bg-slate-800/60 p-1 rounded-xl border border-slate-500/30" data-testid="macro-tabs">
         {TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -181,7 +181,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       {activeTab === 'congress' && <CongressTab data={govFilings} loading={loading.congress} isPro={isPro} onSubscribe={onSubscribe} />}
 
       {lastRefresh && (
-        <div className="flex items-center justify-center gap-2 text-slate-600 text-[10px]">
+        <div className="flex items-center justify-center gap-2 text-slate-400 text-[10px]">
           <Clock className="w-3 h-3" />
           Last refreshed: {lastRefresh.toLocaleTimeString()}
           {autoRefresh && <span className="text-emerald-600">· Auto-refreshing every 30s</span>}

@@ -58,7 +58,7 @@ const AdminTools = () => {
     <div className="p-6 space-y-6" data-testid="admin-tools">
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
 
-      <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5" data-testid="code-quality-card">
+      <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-emerald-900/20 border border-emerald-700/30 flex items-center justify-center shrink-0">
             <CheckCircle className="w-6 h-6 text-emerald-400" />
@@ -67,7 +67,7 @@ const AdminTools = () => {
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-white text-sm font-semibold">Code Quality Score</h4>
               {loadingQuality ? (
-                <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />
+                <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />
               ) : codeQuality ? (
                 <div className="flex items-center gap-2">
                   <span className={`text-2xl font-black ${gradeColor(codeQuality.grade).split(' ')[0]}`}>{codeQuality.score}</span>
@@ -76,7 +76,7 @@ const AdminTools = () => {
                   </Badge>
                 </div>
               ) : (
-                <span className="text-slate-500 text-xs">Unavailable</span>
+                <span className="text-slate-400 text-xs">Unavailable</span>
               )}
             </div>
 
@@ -96,11 +96,11 @@ const AdminTools = () => {
                         )}
                         <span className="text-white text-xs font-bold">{item.score}/{item.max}</span>
                       </div>
-                      <span className="text-slate-500 text-[9px]">{item.label}</span>
+                      <span className="text-slate-400 text-[9px]">{item.label}</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
+                <div className="flex flex-wrap gap-3 text-[10px] text-slate-400">
                   <span>{codeQuality.metrics.backend_files} backend files ({codeQuality.metrics.backend_lines} lines)</span>
                   <span>{codeQuality.metrics.frontend_files} frontend files ({codeQuality.metrics.frontend_lines} lines)</span>
                   <span>{codeQuality.metrics.test_files} tests</span>
@@ -114,7 +114,7 @@ const AdminTools = () => {
         </div>
       </Card>
 
-      <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-5">
+      <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-5">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-[#35D6C8]/10 border border-[#35D6C8]/20 flex items-center justify-center shrink-0">
             <FileCode className="w-6 h-6 text-[#35D6C8]" />

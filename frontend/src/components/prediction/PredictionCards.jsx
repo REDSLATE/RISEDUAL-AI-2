@@ -17,7 +17,7 @@ const PredictionCard = ({ prediction }) => {
   const confidence = prediction.confidence_score ?? prediction.confidence;
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-6" data-testid="prediction-main-card">
+    <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
@@ -70,13 +70,13 @@ const PredictionCard = ({ prediction }) => {
       {(prediction.institutional_flow || prediction.geopolitical_impact) && (
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
           {prediction.institutional_flow && (
-            <div className="bg-slate-900/40 rounded-lg p-2.5">
+            <div className="bg-slate-800/50 rounded-lg p-2.5">
               <span className="text-blue-400 text-[10px] font-semibold">Institutional Flow</span>
               <p className="text-slate-400 text-xs mt-0.5">{prediction.institutional_flow}</p>
             </div>
           )}
           {prediction.geopolitical_impact && (
-            <div className="bg-slate-900/40 rounded-lg p-2.5">
+            <div className="bg-slate-800/50 rounded-lg p-2.5">
               <span className="text-amber-400 text-[10px] font-semibold">Geopolitical Impact</span>
               <p className="text-slate-400 text-xs mt-0.5">{prediction.geopolitical_impact}</p>
             </div>
@@ -86,12 +86,12 @@ const PredictionCard = ({ prediction }) => {
 
       {prediction.agent_analyses?.length > 0 && (
         <details className="mt-3">
-          <summary className="text-slate-500 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
+          <summary className="text-slate-400 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
             View agent analyses ({prediction.agent_analyses.length} agents)
           </summary>
           <div className="mt-2 space-y-2">
             {prediction.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-900/40 rounded-lg p-2.5">
+              <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
                 <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] mt-0.5">{a.summary}</p>
               </div>
@@ -111,7 +111,7 @@ const TimeframeCard = ({ label, tf }) => {
   const iconColor = isUp ? 'text-emerald-400' : isDown ? 'text-red-400' : 'text-amber-400';
 
   return (
-    <Card className="bg-slate-900/60 border-slate-700/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
+    <Card className="bg-slate-900/60 border-slate-500/40/30 rounded-lg p-3" data-testid={`timeframe-${label}`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-4 h-4 ${iconColor}`} />
         <span className="text-white text-xs font-semibold capitalize">{label.replace('_', ' ')}</span>
@@ -159,7 +159,7 @@ const MacroDataSection = ({ macroData }) => {
               <span className="text-white text-sm font-bold">{v.value}</span>
             </div>
           ))}
-          {extra && <p className="text-slate-500 text-[10px] mt-2">{extra}</p>}
+          {extra && <p className="text-slate-400 text-[10px] mt-2">{extra}</p>}
         </Card>
       ))}
     </div>
@@ -176,7 +176,7 @@ const RealEstateSection = ({ realEstate }) => {
   };
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5" data-testid="real-estate-section">
+    <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5" data-testid="real-estate-section">
       <h3 className="text-white text-sm font-semibold mb-3">Real Estate Outlook</h3>
       <div className="grid grid-cols-2 gap-3">
         <div>

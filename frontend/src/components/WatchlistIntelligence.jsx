@@ -54,7 +54,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
   if (!user) return null;
 
   return (
-    <Card className="bg-slate-900/80 border-slate-700/50 rounded-2xl overflow-hidden" data-testid="watchlist-intelligence">
+    <Card className="bg-slate-900/80 border-slate-500/30 rounded-2xl overflow-hidden" data-testid="watchlist-intelligence">
       {/* Header */}
       <button
         onClick={() => data ? setExpanded(e => !e) : generate(false)}
@@ -67,7 +67,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           </div>
           <div>
             <h3 className="text-white text-sm sm:text-base font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>Watchlist Intelligence</h3>
-            <p className="text-slate-500 text-[10px] sm:text-xs">
+            <p className="text-slate-400 text-[10px] sm:text-xs">
               {data ? `Last updated ${new Date(data.generated_at).toLocaleString()}` : 'AI-powered analysis of your watchlist'}
             </p>
           </div>
@@ -76,7 +76,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           {data?.summary?.health_score !== undefined && (
             <HealthBadge score={data.summary.health_score} />
           )}
-          <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </div>
       </button>
 
@@ -101,7 +101,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
             <div className="text-center py-8">
               <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="text-slate-400 text-sm">Analyzing your watchlist...</p>
-              <p className="text-slate-600 text-[10px] mt-1">Fetching quotes, computing technicals, running AI</p>
+              <p className="text-slate-400 text-[10px] mt-1">Fetching quotes, computing technicals, running AI</p>
             </div>
           )}
 
@@ -129,7 +129,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
                   onClick={() => generate(true)}
                   disabled={loading}
                   variant="outline"
-                  className="text-slate-400 border-slate-700 hover:text-white text-xs rounded-xl"
+                  className="text-slate-400 border-slate-500/40 hover:text-white text-xs rounded-xl"
                   data-testid="wl-intel-refresh-btn"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Analysis
@@ -172,7 +172,7 @@ const SummaryCard = ({ summary }) => {
 const MiniStat = ({ label, value, color }) => (
   <div className="flex items-center gap-1.5">
     <span className={`text-lg font-bold ${color}`}>{value}</span>
-    <span className="text-slate-500 text-[10px]">{label}</span>
+    <span className="text-slate-400 text-[10px]">{label}</span>
   </div>
 );
 
@@ -186,7 +186,7 @@ const AlertsList = ({ alerts }) => (
       const severityColors = {
         high: 'bg-red-900/30 border-red-800/40 text-red-300',
         medium: 'bg-amber-900/30 border-amber-800/40 text-amber-300',
-        low: 'bg-slate-800/60 border-slate-700/40 text-slate-300',
+        low: 'bg-slate-800/60 border-slate-500/40/40 text-slate-300',
       };
       const style = severityColors[a.severity] || severityColors.low;
       return (
@@ -217,7 +217,7 @@ const TopMovers = ({ movers }) => (
             <span className={`text-xs font-semibold ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
               {positive ? '+' : ''}{m.change_pct?.toFixed(1)}%
             </span>
-            {m.reason && <span className="text-slate-500 text-[9px] hidden sm:inline">— {m.reason}</span>}
+            {m.reason && <span className="text-slate-400 text-[9px] hidden sm:inline">— {m.reason}</span>}
           </Card>
         );
       })}
@@ -240,7 +240,7 @@ const TickerGrid = ({ tickers }) => (
         const changePct = q.change_pct || 0;
 
         return (
-          <Card key={`ticker-${i}`} className="bg-slate-800/50 border-slate-700/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
+          <Card key={`ticker-${i}`} className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-3 flex items-center gap-3" data-testid={`wl-ticker-${t.symbol}`}>
             {/* Score Circle */}
             <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 ${scoreColor}`}>
               <span className={`text-sm font-black ${scoreColor.split(' ')[0]}`}>{t.score}</span>
@@ -254,7 +254,7 @@ const TickerGrid = ({ tickers }) => (
                   {t.verdict}
                 </Badge>
               </div>
-              <p className="text-slate-500 text-[10px] truncate">{t.one_liner}</p>
+              <p className="text-slate-400 text-[10px] truncate">{t.one_liner}</p>
             </div>
 
             {/* Price */}

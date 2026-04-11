@@ -98,7 +98,7 @@ const PaymentStatus = ({ sessionId, initialStatus, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl max-w-md w-full p-8" data-testid="payment-status-modal">
+      <div className="bg-slate-900 border border-slate-500/30 rounded-2xl max-w-md w-full p-8" data-testid="payment-status-modal">
         {renderContent()}
         <div className="mt-6 text-center">
           <Button

@@ -64,7 +64,7 @@ const StockTicker = () => {
 
   if (loading) {
     return (
-      <div className="bg-[#0A2A63] border-b border-slate-700 overflow-hidden">
+      <div className="bg-[#0A2A63] border-b border-slate-500/40 overflow-hidden">
         <div className="flex py-2 px-6">
           <span className="text-slate-400 text-sm">Loading market data...</span>
         </div>
@@ -76,7 +76,7 @@ const StockTicker = () => {
   const duplicatedData = [...stockData, ...stockData, ...stockData];
 
   return (
-    <div className="bg-[#0A2A63] border-b border-slate-700 overflow-hidden">
+    <div className="bg-[#0A2A63] border-b border-slate-500/40 overflow-hidden">
       <div ref={tickerRef} className="flex py-2">
         {duplicatedData.map((stock, index) => (
           <TickerItem key={`${stock.symbol}-${index}`} {...stock} />

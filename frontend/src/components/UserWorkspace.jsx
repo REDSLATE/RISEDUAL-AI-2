@@ -125,9 +125,9 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="user-workspace">
-      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-700/50">
+      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-500/30">
         {/* Header */}
-        <div className="p-6 border-b border-slate-700 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-[#35D6C8] rounded-xl flex items-center justify-center">
               <Briefcase className="w-6 h-6 text-white" />
@@ -146,7 +146,7 @@ const UserWorkspace = ({ onClose, onSubscribe }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-700/50">
+        <div className="flex border-b border-slate-500/30">
           {tabs.map(t => {
             const Icon = t.icon;
             return (
@@ -226,7 +226,7 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
     </form>
     {!isPro && (
       <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-500">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
+        <span className="text-slate-400">{watchlist.length}/{FREE_WATCHLIST_LIMIT} free tickers used</span>
         {watchlist.length >= FREE_WATCHLIST_LIMIT && (
           <button onClick={onSubscribe} className="text-[#35D6C8] hover:underline flex items-center gap-1">
             <Lock className="w-3 h-3" /> Upgrade for unlimited
@@ -244,16 +244,16 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
     )}
     {watchlist.length === 0 ? (
       <div className="text-center py-10">
-        <Star className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+        <Star className="w-10 h-10 text-slate-400 mx-auto mb-3" />
         <p className="text-slate-400 text-sm">No tickers in your watchlist yet</p>
-        <p className="text-slate-500 text-xs mt-1">Add tickers above to start tracking</p>
+        <p className="text-slate-400 text-xs mt-1">Add tickers above to start tracking</p>
       </div>
     ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {watchlist.map(ticker => (
-          <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
+          <div key={ticker} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-3 py-2.5 group" data-testid={`watchlist-ticker-${ticker}`}>
             <span className="text-white font-semibold text-sm">{ticker}</span>
-            <button onClick={() => removeTicker(ticker)} className="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" data-testid={`remove-ticker-${ticker}`}>
+            <button onClick={() => removeTicker(ticker)} className="text-slate-400 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" data-testid={`remove-ticker-${ticker}`}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -267,18 +267,18 @@ const HistoryTab = ({ history }) => (
   <div className="space-y-3">
     {history.length === 0 ? (
       <div className="text-center py-10">
-        <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+        <Clock className="w-10 h-10 text-slate-400 mx-auto mb-3" />
         <p className="text-slate-400 text-sm">No hypothesis history yet</p>
-        <p className="text-slate-500 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
+        <p className="text-slate-400 text-xs mt-1">Generate an AI Hypothesis to see it here</p>
       </div>
     ) : (
       history.map((h, i) => (
-        <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
+        <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
           <div className="flex items-center gap-3">
             {verdictIcon(h.verdict)}
             <div>
               <span className="text-white font-semibold text-sm">{h.symbol}</span>
-              <p className="text-slate-500 text-xs">
+              <p className="text-slate-400 text-xs">
                 {h.searched_at ? new Date(h.searched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
               </p>
             </div>
@@ -358,7 +358,7 @@ const ReferralsTab = () => {
             {copied ? <><Check className="w-4 h-4 mr-1" /> Copied</> : <><Copy className="w-4 h-4 mr-1" /> Copy</>}
           </Button>
         </div>
-        <p className="text-slate-500 text-[10px] mt-2">Your code: <span className="text-white font-mono">{info.code}</span></p>
+        <p className="text-slate-400 text-[10px] mt-2">Your code: <span className="text-white font-mono">{info.code}</span></p>
         <div className="mt-3">
           <SocialShareButtons referralLink={referralLink} />
         </div>
@@ -366,15 +366,15 @@ const ReferralsTab = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-white">{info.total_referrals}</p>
           <p className="text-slate-400 text-[10px]">Total Referrals</p>
         </Card>
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-emerald-400">{info.rewards_earned}</p>
           <p className="text-slate-400 text-[10px]">Months Earned</p>
         </Card>
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
           <p className="text-2xl font-bold text-[#35D6C8]">{info.rewards_remaining}</p>
           <p className="text-slate-400 text-[10px]">Remaining ({info.reward_cap}/yr)</p>
         </Card>
@@ -387,17 +387,17 @@ const ReferralsTab = () => {
         </h4>
         {info.referrals.length === 0 ? (
           <div className="text-center py-8">
-            <Users className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+            <Users className="w-10 h-10 text-slate-400 mx-auto mb-3" />
             <p className="text-slate-400 text-sm">No referrals yet</p>
-            <p className="text-slate-500 text-xs mt-1">Share your link to start earning free months</p>
+            <p className="text-slate-400 text-xs mt-1">Share your link to start earning free months</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[250px] overflow-y-auto">
             {info.referrals.map((ref, i) => (
-              <div key={`ref-${i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-2.5" data-testid={`referral-item-${i}`}>
+              <div key={`ref-${i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-2.5" data-testid={`referral-item-${i}`}>
                 <div>
                   <p className="text-white text-sm">{ref.referred_email}</p>
-                  <p className="text-slate-500 text-[10px]">
+                  <p className="text-slate-400 text-[10px]">
                     {ref.created_at ? new Date(ref.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
                   </p>
                 </div>
@@ -460,7 +460,7 @@ const DigestToggle = () => {
   if (loading) return null;
 
   return (
-    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4" data-testid="digest-toggle">
+    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4" data-testid="digest-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#35D6C8]/10 flex items-center justify-center">
@@ -468,7 +468,7 @@ const DigestToggle = () => {
           </div>
           <div>
             <p className="text-white text-sm font-medium">Daily Market Digest</p>
-            <p className="text-slate-500 text-[10px]">Morning briefing at 6:00 AM UTC</p>
+            <p className="text-slate-400 text-[10px]">Morning briefing at 6:00 AM UTC</p>
           </div>
         </div>
         <button
@@ -507,7 +507,7 @@ const PushToggle = () => {
   };
 
   return (
-    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4" data-testid="push-toggle">
+    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4" data-testid="push-toggle">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -515,7 +515,7 @@ const PushToggle = () => {
           </div>
           <div>
             <p className="text-white text-sm font-medium">Push Notifications</p>
-            <p className="text-slate-500 text-[10px]">
+            <p className="text-slate-400 text-[10px]">
               {isPro ? 'All alerts: predictions, dark pool, watchlist, signals' : '1 alert/day (Pro: unlimited)'}
             </p>
           </div>

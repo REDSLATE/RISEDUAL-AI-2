@@ -56,7 +56,7 @@ const VerificationEvent = ({ data }) => (
       </div>
       <p className="text-slate-400 text-xs mt-0.5">
         {data.direction} @ ${data.price_at?.toFixed(2)} {'\u2192'} ${data.price_now?.toFixed(2)}
-        {data.confidence > 0 && <span className="text-slate-500 ml-1">({data.confidence}% conf)</span>}
+        {data.confidence > 0 && <span className="text-slate-400 ml-1">({data.confidence}% conf)</span>}
       </p>
     </div>
   </div>
@@ -75,7 +75,7 @@ const PostMortemEvent = ({ data }) => (
         <p className="text-slate-400 text-xs mt-0.5 line-clamp-2">{data.reasoning}</p>
       )}
       {data.key_headline && data.key_headline !== 'None' && (
-        <p className="text-slate-500 text-[10px] mt-0.5 italic truncate">"{data.key_headline}"</p>
+        <p className="text-slate-400 text-[10px] mt-0.5 italic truncate">"{data.key_headline}"</p>
       )}
     </div>
   </div>
@@ -95,7 +95,7 @@ const ToxicAlertEvent = ({ data }) => (
             <span key={t} className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 rounded px-1.5 py-0.5">{t}</span>
           ))}
           {data.affected_tickers.length > 4 && (
-            <span className="text-[10px] text-slate-500">+{data.affected_tickers.length - 4}</span>
+            <span className="text-[10px] text-slate-400">+{data.affected_tickers.length - 4}</span>
           )}
         </div>
       )}
@@ -106,14 +106,14 @@ const ToxicAlertEvent = ({ data }) => (
 const EventItem = ({ event }) => {
   const { type, data, timestamp } = event;
   return (
-    <div className="px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
+    <div className="px-4 py-3 border-b border-slate-600/30/50 hover:bg-slate-600/30/20 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {type === 'new_verification' && <VerificationEvent data={data} />}
           {type === 'post_mortem' && <PostMortemEvent data={data} />}
           {type === 'toxic_alert' && <ToxicAlertEvent data={data} />}
         </div>
-        <span className="text-slate-600 text-[10px] whitespace-nowrap flex-shrink-0">{formatTime(timestamp)}</span>
+        <span className="text-slate-400 text-[10px] whitespace-nowrap flex-shrink-0">{formatTime(timestamp)}</span>
       </div>
     </div>
   );
@@ -194,12 +194,12 @@ const LiveInsightsFeed = () => {
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/20 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-600/30/20 transition-colors"
         data-testid="insights-feed-toggle"
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Radio className={`w-4 h-4 ${connected ? 'text-emerald-400 animate-pulse' : 'text-slate-600'}`} />
+            <Radio className={`w-4 h-4 ${connected ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
             <h3 className="text-white text-sm font-semibold tracking-wide">Live Insights Feed</h3>
           </div>
           {connected && (
@@ -213,21 +213,21 @@ const LiveInsightsFeed = () => {
           {verifications.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <span className="text-emerald-400">{hits}H</span>
-              <span className="text-slate-600">/</span>
+              <span className="text-slate-400">/</span>
               <span className="text-red-400">{misses}M</span>
             </div>
           )}
-          {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </div>
       </button>
 
       {/* Events List */}
       {expanded && (
-        <div className="max-h-[320px] overflow-y-auto border-t border-slate-800/50" data-testid="insights-feed-list">
+        <div className="max-h-[320px] overflow-y-auto border-t border-slate-600/30/50" data-testid="insights-feed-list">
           {events.length === 0 ? (
             <div className="py-8 text-center">
               <Activity className="w-6 h-6 text-slate-700 mx-auto mb-2" />
-              <p className="text-slate-600 text-xs">Waiting for new predictions and verifications...</p>
+              <p className="text-slate-400 text-xs">Waiting for new predictions and verifications...</p>
               <p className="text-slate-700 text-[10px] mt-1">Events stream in real-time as predictions are verified</p>
             </div>
           ) : (

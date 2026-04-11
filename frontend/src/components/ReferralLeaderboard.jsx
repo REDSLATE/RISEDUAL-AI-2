@@ -50,14 +50,14 @@ const ReferralLeaderboard = () => {
 
   if (loading) {
     return (
-      <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-loading">
+      <Card className="bg-[#0A2A63]/80 border-slate-500/40/40 rounded-2xl p-6" data-testid="leaderboard-loading">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-400" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
         </div>
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={`skel-${i}`} className="h-12 bg-slate-800/50 rounded-xl animate-pulse" />
+            <div key={`skel-${i}`} className="h-12 bg-slate-700/35 rounded-xl animate-pulse" />
           ))}
         </div>
       </Card>
@@ -66,13 +66,13 @@ const ReferralLeaderboard = () => {
 
   if (!data || data.leaderboard.length === 0) {
     return (
-      <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-6" data-testid="leaderboard-empty">
+      <Card className="bg-[#0A2A63]/80 border-slate-500/40/40 rounded-2xl p-6" data-testid="leaderboard-empty">
         <div className="flex items-center gap-3 mb-4">
           <Trophy className="w-5 h-5 text-amber-400" />
           <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
         </div>
         <div className="text-center py-6">
-          <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+          <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
           <p className="text-slate-400 text-xs">Be the first to refer a friend!</p>
         </div>
       </Card>
@@ -80,7 +80,7 @@ const ReferralLeaderboard = () => {
   }
 
   return (
-    <Card className="bg-[#0A2A63]/80 border-slate-700/40 rounded-2xl p-5" data-testid="referral-leaderboard">
+    <Card className="bg-[#0A2A63]/80 border-slate-500/40/40 rounded-2xl p-5" data-testid="referral-leaderboard">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center">
@@ -88,7 +88,7 @@ const ReferralLeaderboard = () => {
           </div>
           <div>
             <h3 className="text-white font-semibold text-sm">Top Referrers</h3>
-            <p className="text-slate-500 text-[10px]">{data.total_participants} participants</p>
+            <p className="text-slate-400 text-[10px]">{data.total_participants} participants</p>
           </div>
         </div>
         <Flame className="w-4 h-4 text-orange-500 animate-pulse" />
@@ -96,7 +96,7 @@ const ReferralLeaderboard = () => {
 
       <div className="space-y-2">
         {data.leaderboard.map((entry, i) => {
-          const style = RANK_STYLES[i] || { bg: 'from-slate-800/50 to-slate-800/30', border: 'border-slate-700/30', icon: 'text-slate-400', text: 'text-slate-300' };
+          const style = RANK_STYLES[i] || { bg: 'from-slate-800/50 to-slate-800/30', border: 'border-slate-500/40/30', icon: 'text-slate-400', text: 'text-slate-300' };
           return (
             <div
               key={`lb-${entry.rank}`}
@@ -116,7 +116,7 @@ const ReferralLeaderboard = () => {
               <div className="flex items-center gap-1.5">
                 <ChevronUp className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-white text-sm font-semibold">{entry.referrals}</span>
-                <span className="text-slate-500 text-[10px]">referrals</span>
+                <span className="text-slate-400 text-[10px]">referrals</span>
               </div>
             </div>
           );
@@ -125,7 +125,7 @@ const ReferralLeaderboard = () => {
 
       {/* Share section for logged-in users */}
       {refCode && (
-        <div className="mt-4 pt-3 border-t border-slate-700/30">
+        <div className="mt-4 pt-3 border-t border-slate-500/40/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Share2 className="w-3.5 h-3.5 text-slate-400" />

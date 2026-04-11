@@ -88,16 +88,16 @@ const getCellContent = (col, row) => {
 };
 
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
+    <div className="bg-slate-700/35 rounded-xl border border-slate-500/30 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-white text-lg font-semibold">{title}</h3>
-            <HelpCircle className="w-4 h-4 text-slate-500" />
+            <HelpCircle className="w-4 h-4 text-slate-400" />
           </div>
           {subtitle && (
-            <p className="text-slate-500 text-sm mt-1">{subtitle}</p>
+            <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -115,13 +115,13 @@ const getCellContent = (col, row) => {
             <>
               <button 
                 onClick={() => toast.success('Thanks for your feedback!')}
-                className="text-slate-500 hover:text-emerald-400 transition-colors"
+                className="text-slate-400 hover:text-emerald-400 transition-colors"
               >
                 <ThumbsUp className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => toast('Thanks for your feedback! We\'ll improve this.')}
-                className="text-slate-500 hover:text-red-400 transition-colors"
+                className="text-slate-400 hover:text-red-400 transition-colors"
               >
                 <ThumbsDown className="w-5 h-5" />
               </button>
@@ -134,7 +134,7 @@ const getCellContent = (col, row) => {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-700">
+            <tr className="border-b border-slate-500/40">
               {columns.map((col) => (
                 <th
                   key={col.key || col.label}
@@ -157,7 +157,7 @@ const getCellContent = (col, row) => {
             {filteredData.map((row, rowIndex) => (
               <tr
                 key={row.contract || row.symbol || rowIndex}
-                className="border-b border-slate-700 hover:bg-slate-700 transition-colors"
+                className="border-b border-slate-500/40 hover:bg-slate-700 transition-colors"
               >
                 {columns.map((col) => (
                   <td key={col.key || col.label} className="py-3 px-3 text-sm">
@@ -177,7 +177,7 @@ const getCellContent = (col, row) => {
 
       {/* Results Info */}
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-slate-500 text-sm">
+        <p className="text-slate-400 text-sm">
           Showing {filteredData.length} of {data.length} results
         </p>
         <button 

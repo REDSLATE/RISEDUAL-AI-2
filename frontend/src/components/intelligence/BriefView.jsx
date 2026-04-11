@@ -28,10 +28,10 @@ const BriefView = ({ data }) => {
             <p className="text-slate-300 text-sm">{b.brief}</p>
           </div>
           <div className="text-right shrink-0">
-            <div className="w-14 h-14 rounded-full border-4 border-slate-700 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full border-4 border-slate-500/40 flex items-center justify-center">
               <span className={`text-lg font-black ${vs.text}`}>{b.confidence}</span>
             </div>
-            <p className="text-slate-500 text-[8px] mt-0.5">Confidence</p>
+            <p className="text-slate-400 text-[8px] mt-0.5">Confidence</p>
           </div>
         </div>
       </Card>
@@ -41,9 +41,9 @@ const BriefView = ({ data }) => {
           {b.key_metrics.map((m, i) => {
             const sentColor = m.sentiment === 'positive' ? 'text-emerald-400' : m.sentiment === 'negative' ? 'text-red-400' : 'text-amber-400';
             return (
-              <Card key={`m-${i}`} className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+              <Card key={`m-${i}`} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
                 <p className={`text-base font-bold ${sentColor}`}>{m.value}</p>
-                <p className="text-slate-500 text-[9px]">{m.label}</p>
+                <p className="text-slate-400 text-[9px]">{m.label}</p>
               </Card>
             );
           })}
@@ -56,11 +56,11 @@ const BriefView = ({ data }) => {
           { label: '1 Month', val: data.performance?.['1m'] },
           { label: '3 Months', val: data.performance?.['3m'] },
         ].map(p => (
-          <Card key={p.label} className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <Card key={p.label} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
             <p className={`text-sm font-bold ${(p.val || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {(p.val || 0) >= 0 ? '+' : ''}{p.val || 0}%
             </p>
-            <p className="text-slate-500 text-[9px]">{p.label}</p>
+            <p className="text-slate-400 text-[9px]">{p.label}</p>
           </Card>
         ))}
       </div>
@@ -99,7 +99,7 @@ const BriefView = ({ data }) => {
       </div>
 
       {b.action && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <Shield className="w-4 h-4 text-[#35D6C8]" />
             <span className="text-[#35D6C8] text-xs font-semibold uppercase">Suggested Action</span>

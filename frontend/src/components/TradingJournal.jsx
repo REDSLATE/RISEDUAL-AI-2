@@ -111,9 +111,9 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="trading-journal">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-700/50">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-500/30">
         {/* Header */}
-        <div className="p-5 border-b border-slate-700 flex items-center justify-between">
+        <div className="p-5 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-indigo-600 rounded-xl flex items-center justify-center">
               <BookOpen className="w-5 h-5 text-white" />
@@ -133,7 +133,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-700/50 px-4">
+        <div className="flex border-b border-slate-500/30 px-4">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} data-testid={`journal-tab-${t.id}`}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
@@ -156,7 +156,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
 
           {/* New Trade Form */}
           {showForm && (
-            <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4 mb-4 space-y-3" data-testid="trade-form">
+            <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4 mb-4 space-y-3" data-testid="trade-form">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-slate-400 text-[10px] block mb-1">Ticker</label>
@@ -229,16 +229,16 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
   if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" /></div>;
   if (trades.length === 0) return (
     <div className="text-center py-12">
-      <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+      <BookOpen className="w-12 h-12 text-slate-400 mx-auto mb-3" />
       <p className="text-slate-400 text-sm">No trades logged yet</p>
-      <p className="text-slate-500 text-xs mt-1">Click "Log Trade" to start tracking your performance</p>
+      <p className="text-slate-400 text-xs mt-1">Click "Log Trade" to start tracking your performance</p>
     </div>
   );
 
   return (
     <div className="space-y-2 max-h-[400px] overflow-y-auto">
       {trades.map(t => (
-        <div key={t.id} className="bg-slate-800/60 border border-slate-700/40 rounded-xl px-4 py-3" data-testid={`trade-${t.id}`}>
+        <div key={t.id} className="bg-slate-800/60 border border-slate-500/40/40 rounded-xl px-4 py-3" data-testid={`trade-${t.id}`}>
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               {t.side === 'buy' ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
@@ -258,7 +258,7 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
               )}
             </div>
           </div>
-          <div className="flex items-center gap-4 text-[10px] text-slate-500">
+          <div className="flex items-center gap-4 text-[10px] text-slate-400">
             <span>Entry: ${t.entry_price?.toFixed(2)}</span>
             {t.exit_price && <span>Exit: ${t.exit_price.toFixed(2)}</span>}
             <span>Qty: {t.quantity}</span>
@@ -266,8 +266,8 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
           </div>
           {t.notes && <p className="text-slate-400 text-xs mt-1 italic">"{t.notes}"</p>}
           {t.hypothesis && (
-            <div className="mt-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-700/30">
-              <p className="text-[10px] text-slate-500 mb-0.5">AI Hypothesis</p>
+            <div className="mt-2 bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-500/40/30">
+              <p className="text-[10px] text-slate-400 mb-0.5">AI Hypothesis</p>
               <p className="text-xs text-white font-medium">{t.hypothesis.verdict} ({t.hypothesis.confidence}%)</p>
               {t.hypothesis.summary && <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{t.hypothesis.summary}</p>}
             </div>
@@ -307,9 +307,9 @@ const TradesTab = ({ trades, loading, onDelete, onClose, onAttach, closeForm, se
 const AnalyticsTab = ({ analytics }) => {
   if (!analytics || analytics.closed_trades === 0) return (
     <div className="text-center py-12">
-      <BarChart3 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+      <BarChart3 className="w-12 h-12 text-slate-400 mx-auto mb-3" />
       <p className="text-slate-400 text-sm">No closed trades yet</p>
-      <p className="text-slate-500 text-xs mt-1">Close some trades to see your performance analytics</p>
+      <p className="text-slate-400 text-xs mt-1">Close some trades to see your performance analytics</p>
     </div>
   );
 
@@ -333,16 +333,16 @@ const AnalyticsTab = ({ analytics }) => {
       {/* Stats Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {stats.map(s => (
-          <Card key={s.label} className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+          <Card key={s.label} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
             <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-slate-500 text-[10px]">{s.label}</p>
+            <p className="text-slate-400 text-[10px]">{s.label}</p>
           </Card>
         ))}
       </div>
 
       {/* P&L Timeline Chart */}
       {a.pnl_timeline.length > 0 && (
-        <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4">
+        <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4">
           <h4 className="text-white text-sm font-semibold mb-3">Cumulative P&L</h4>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={a.pnl_timeline}>
@@ -367,14 +367,14 @@ const AnalyticsTab = ({ analytics }) => {
       <div className="grid grid-cols-2 gap-3">
         {a.best_trade && (
           <Card className="bg-emerald-900/10 border-emerald-700/30 rounded-xl p-3">
-            <p className="text-[10px] text-slate-500 mb-1">Best Trade</p>
+            <p className="text-[10px] text-slate-400 mb-1">Best Trade</p>
             <p className="text-emerald-400 text-lg font-bold">{a.best_trade.ticker}</p>
             <p className="text-emerald-300 text-xs">+${a.best_trade.pnl.toFixed(2)} ({a.best_trade.pnl_percent > 0 ? '+' : ''}{a.best_trade.pnl_percent.toFixed(1)}%)</p>
           </Card>
         )}
         {a.worst_trade && (
           <Card className="bg-red-900/10 border-red-700/30 rounded-xl p-3">
-            <p className="text-[10px] text-slate-500 mb-1">Worst Trade</p>
+            <p className="text-[10px] text-slate-400 mb-1">Worst Trade</p>
             <p className="text-red-400 text-lg font-bold">{a.worst_trade.ticker}</p>
             <p className="text-red-300 text-xs">${a.worst_trade.pnl.toFixed(2)} ({a.worst_trade.pnl_percent.toFixed(1)}%)</p>
           </Card>
@@ -396,14 +396,14 @@ const TickerPerformance = ({ byTicker }) => {
   );
 
   return (
-    <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4">
+    <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4">
       <h4 className="text-white text-sm font-semibold mb-2">Performance by Ticker</h4>
       <div className="space-y-1.5">
         {sortedEntries.map(([ticker, data]) => (
           <div key={ticker} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2">
             <div className="flex items-center gap-2">
               <span className="text-white text-sm font-medium">{ticker}</span>
-              <span className="text-slate-500 text-[10px]">{data.trades} trades ({data.wins}W)</span>
+              <span className="text-slate-400 text-[10px]">{data.trades} trades ({data.wins}W)</span>
             </div>
             <span className={`text-sm font-bold ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}

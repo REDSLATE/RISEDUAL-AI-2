@@ -70,7 +70,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-cta">
           Start Free Trial <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
-        <button onClick={onScroll} className="px-8 py-3.5 rounded-full border border-slate-700 text-slate-300 font-medium text-sm hover:border-slate-500 hover:text-white transition-all">
+        <button onClick={onScroll} className="px-8 py-3.5 rounded-full border border-slate-500/40 text-slate-300 font-medium text-sm hover:border-slate-500 hover:text-white transition-all">
           See How It Works
         </button>
       </div>
@@ -82,7 +82,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
         ].map(s => (
           <div key={s.label} className="text-center">
             <div className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">{s.val}</div>
-            <div className="text-xs text-slate-500 mt-1">{s.label}</div>
+            <div className="text-xs text-slate-400 mt-1">{s.label}</div>
           </div>
         ))}
       </div>
@@ -122,13 +122,13 @@ const HowItWorks = () => (
             color: 'cyan',
           },
         ].map(card => (
-          <div key={card.title} className="p-6 rounded-xl border border-slate-800/60 bg-slate-900/40 hover:border-slate-700/60 transition-colors group">
+          <div key={card.title} className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/50 hover:border-slate-500/40/60 transition-colors group">
             <div className="mb-4">{card.icon}</div>
             <h3 className="text-sm font-semibold text-white mb-2">{card.title}</h3>
             <p className="text-xs text-slate-400 mb-4 leading-relaxed">{card.desc}</p>
             <ul className="space-y-2">
               {card.bullets.map(b => (
-                <li key={b} className="flex items-center gap-2 text-xs text-slate-500">
+                <li key={b} className="flex items-center gap-2 text-xs text-slate-400">
                   <Check className={`w-3.5 h-3.5 text-${card.color}-400 shrink-0`} />
                   {b}
                 </li>
@@ -155,24 +155,24 @@ const Comparison = () => {
     <section className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-comparison">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
         <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">
-          RISEDUAL AI vs <span className="line-through decoration-red-500 decoration-2 text-slate-500">TradeAlgoGPT</span>
+          RISEDUAL AI vs <span className="line-through decoration-red-500 decoration-2 text-slate-400">TradeAlgoGPT</span>
         </h2>
         <p className="text-sm text-slate-400 text-center mb-12">Stop paying institutional prices for retail-grade signals.</p>
         <div className="rounded-xl border border-slate-800/60 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-slate-800/60 bg-slate-900/60">
-                <th className="text-left text-slate-500 font-medium px-4 py-3">Intelligence Specs</th>
+              <tr className="border-b border-slate-600/30/60 bg-slate-900/60">
+                <th className="text-left text-slate-400 font-medium px-4 py-3">Intelligence Specs</th>
                 <th className="text-center text-teal-400 font-semibold px-4 py-3">RISEDUAL AI</th>
-                <th className="text-center px-4 py-3"><span className="line-through decoration-red-500 decoration-2 text-slate-600">TradeAlgoGPT</span></th>
+                <th className="text-center px-4 py-3"><span className="line-through decoration-red-500 decoration-2 text-slate-400">TradeAlgoGPT</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={r.spec} className={`border-b border-slate-800/30 ${i % 2 === 0 ? 'bg-slate-900/20' : ''}`}>
+                <tr key={r.spec} className={`border-b border-slate-600/30/30 ${i % 2 === 0 ? 'bg-slate-900/20' : ''}`}>
                   <td className="px-4 py-3 text-slate-400">{r.spec}</td>
                   <td className="px-4 py-3 text-center text-white font-medium">{r.us}</td>
-                  <td className="px-4 py-3 text-center text-slate-600">{r.them}</td>
+                  <td className="px-4 py-3 text-center text-slate-400">{r.them}</td>
                 </tr>
               ))}
             </tbody>
@@ -184,10 +184,10 @@ const Comparison = () => {
             { icon: <Brain className="w-4 h-4 text-cyan-400" />, title: 'Pruned Memories', desc: 'Prunes toxic data nightly in ChromaDB for evolving accuracy.' },
             { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $45, get full RISEDUAL AI War Room access in under 60 seconds.' },
           ].map(c => (
-            <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-900/30">
+            <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-800/40">
               <div className="mb-2">{c.icon}</div>
               <h4 className="text-xs font-semibold text-white mb-1">{c.title}</h4>
-              <p className="text-[10px] text-slate-500 leading-relaxed">{c.desc}</p>
+              <p className="text-[10px] text-slate-400 leading-relaxed">{c.desc}</p>
             </div>
           ))}
         </div>
@@ -213,7 +213,7 @@ const Features = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Every feature is designed to give you an unfair advantage in volatile markets.</p>
         <div className="grid md:grid-cols-3 gap-4">
           {features.map(f => (
-            <div key={f.title} className={`p-6 rounded-xl border border-slate-800/50 bg-slate-900/30 hover:border-teal-500/20 transition-colors group ${f.span || ''}`}>
+            <div key={f.title} className={`p-6 rounded-xl border border-slate-800/50 bg-slate-800/40 hover:border-teal-500/20 transition-colors group ${f.span || ''}`}>
               <div className="text-teal-400 mb-3 group-hover:scale-110 transition-transform">{f.icon}</div>
               <h3 className="text-sm font-semibold text-white mb-2">{f.title}</h3>
               <p className="text-xs text-slate-400 leading-relaxed">{f.desc}</p>
@@ -242,7 +242,7 @@ const Pricing = ({ onGetStarted }) => (
             <span className="text-3xl font-bold text-white">$45</span>
             <span className="text-xs text-slate-400">/month</span>
           </div>
-          <p className="text-[10px] text-slate-500 mb-5">No contract &middot; Cancel anytime</p>
+          <p className="text-[10px] text-slate-400 mb-5">No contract &middot; Cancel anytime</p>
           <ul className="space-y-2.5 mb-6">
             {[
               'Adversarial AI (Strategist + Auditor)',
@@ -264,14 +264,14 @@ const Pricing = ({ onGetStarted }) => (
           </button>
         </div>
         {/* Others */}
-        <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-900/30 opacity-60">
-          <div className="text-[10px] text-slate-600 font-medium uppercase tracking-wider mb-2"><span className="line-through decoration-red-500/60 decoration-1">The Old Guard</span></div>
+        <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/40 opacity-60">
+          <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-2"><span className="line-through decoration-red-500/60 decoration-1">The Old Guard</span></div>
           <h3 className="text-sm font-bold text-slate-400 mb-1"><span className="line-through decoration-red-500 decoration-2">TradeAlgoGPT</span></h3>
           <div className="flex items-baseline gap-1 mb-4">
-            <span className="text-3xl font-bold text-slate-500">$99-$416</span>
-            <span className="text-xs text-slate-600">/month</span>
+            <span className="text-3xl font-bold text-slate-400">$99-$416</span>
+            <span className="text-xs text-slate-400">/month</span>
           </div>
-          <p className="text-[10px] text-slate-600 mb-5">Annual contract required</p>
+          <p className="text-[10px] text-slate-400 mb-5">Annual contract required</p>
           <ul className="space-y-2.5 mb-6">
             {[
               'Single-model black box',
@@ -282,13 +282,13 @@ const Pricing = ({ onGetStarted }) => (
               'Basic dashboard',
               'Limited support',
             ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-xs text-slate-600">
+              <li key={f} className="flex items-start gap-2 text-xs text-slate-400">
                 <X className="w-3.5 h-3.5 text-slate-700 shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}
           </ul>
-          <div className="w-full py-2.5 rounded-lg border border-slate-800 text-slate-600 text-sm font-medium text-center">
+          <div className="w-full py-2.5 rounded-lg border border-slate-800 text-slate-400 text-sm font-medium text-center">
             Annual Contract Only
           </div>
         </div>
@@ -323,16 +323,16 @@ const Testimonials = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Real results from real traders using RISEDUAL AI.</p>
         <div className="grid md:grid-cols-3 gap-6">
           {testimonials.map(t => (
-            <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-900/30">
+            <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/40">
               <div className="flex gap-1 mb-4">
                 {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-teal-400 text-teal-400" />)}
               </div>
               <p className="text-xs text-slate-300 leading-relaxed mb-5 italic">"{t.quote}"</p>
               <div className="flex items-center gap-3">
-                <img src={t.img} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-slate-700" />
+                <img src={t.img} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-slate-500/40" />
                 <div>
                   <div className="text-xs font-semibold text-white">{t.name}</div>
-                  <div className="text-[10px] text-slate-500">{t.role}</div>
+                  <div className="text-[10px] text-slate-400">{t.role}</div>
                 </div>
                 <div className="ml-auto">
                   <span className="text-[10px] px-2 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">{t.stat}</span>
@@ -364,14 +364,14 @@ const FAQ = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Everything you need to know about RISEDUAL AI.</p>
         <div className="space-y-3">
           {items.map((item, i) => (
-            <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-900/30 overflow-hidden">
+            <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-800/40 overflow-hidden">
               <button
                 onClick={() => setOpen(open === i ? null : i)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left"
                 data-testid={`faq-${i}`}
               >
                 <span className="text-xs font-medium text-white pr-4">{item.q}</span>
-                <ChevronDown className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${open === i ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open === i ? 'rotate-180' : ''}`} />
               </button>
               {open === i && (
                 <div className="px-5 pb-4">
@@ -402,7 +402,7 @@ const CTA = ({ onGetStarted }) => (
           Start 7-Day Free Trial <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
-      <div className="flex items-center justify-center gap-6 text-[10px] text-slate-600">
+      <div className="flex items-center justify-center gap-6 text-[10px] text-slate-400">
         <span>No credit card required</span>
         <span className="w-1 h-1 rounded-full bg-slate-700" />
         <span>7-day free trial</span>
@@ -417,8 +417,8 @@ const CTA = ({ onGetStarted }) => (
 const LandingFooter = () => (
   <footer className="border-t border-white/5 py-8">
     <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <span className="text-xs text-slate-600">&copy; {new Date().getFullYear()} RISEDUAL AI. All rights reserved.</span>
-      <div className="flex items-center gap-6 text-xs text-slate-600">
+      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL AI. All rights reserved.</span>
+      <div className="flex items-center gap-6 text-xs text-slate-400">
         <a href="#" className="hover:text-slate-400 transition-colors">Privacy</a>
         <a href="#" className="hover:text-slate-400 transition-colors">Terms</a>
         <a href="#" className="hover:text-slate-400 transition-colors">Contact</a>

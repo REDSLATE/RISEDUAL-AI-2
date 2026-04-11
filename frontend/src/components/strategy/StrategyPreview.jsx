@@ -5,10 +5,10 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 
 const CollapsibleSection = ({ title, icon, section, expanded, toggle, children }) => (
-  <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden">
+  <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
     <button
       onClick={() => toggle(section)}
-      className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-800/80 transition-colors"
+      className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-600/30/80 transition-colors"
       data-testid={`section-toggle-${section}`}
     >
       <div className="flex items-center gap-2">
@@ -53,7 +53,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
           className="bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs h-8" data-testid="save-strategy-btn">
           <Save className="w-3.5 h-3.5 mr-1" /> {saving ? 'Saving...' : 'Save Strategy'}
         </Button>
-        <Badge className="bg-slate-800 text-slate-400 border-slate-700 text-[9px]">
+        <Badge className="bg-slate-800 text-slate-400 border-slate-500/40 text-[9px]">
           <Sparkles className="w-3 h-3 mr-1" /> {strategy.model_used || 'GPT-5.2'}
         </Badge>
       </div>
@@ -64,7 +64,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
       <CollapsibleSection title="Technical Indicators" icon={<Target className="w-4 h-4 text-blue-400" />} section="indicators" expanded={expanded} toggle={toggle}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {strategy.indicators.map((ind, i) => (
-            <div key={`ind-${i}`} className="bg-slate-900/60 rounded-lg p-3 border border-slate-700/30">
+            <div key={`ind-${i}`} className="bg-slate-900/60 rounded-lg p-3 border border-slate-500/40/30">
               <div className="flex items-center gap-2">
                 <span className="text-white text-sm font-semibold">{ind.name}</span>
                 {ind.period && <Badge className="bg-blue-900/30 text-blue-400 border-blue-800/40 text-[9px]">Period: {ind.period}</Badge>}
@@ -103,8 +103,8 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
       <CollapsibleSection title="Risk Management" icon={<Shield className="w-4 h-4 text-amber-400" />} section="risk" expanded={expanded} toggle={toggle}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {Object.entries(strategy.risk_management).map(([key, value]) => (
-            <div key={key} className="bg-slate-900/60 rounded-lg p-3 border border-slate-700/30">
-              <span className="text-slate-500 text-[10px] uppercase tracking-wider">{key.replace(/_/g, ' ')}</span>
+            <div key={key} className="bg-slate-900/60 rounded-lg p-3 border border-slate-500/40/30">
+              <span className="text-slate-400 text-[10px] uppercase tracking-wider">{key.replace(/_/g, ' ')}</span>
               <p className="text-white text-sm font-semibold mt-0.5">{String(value)}</p>
             </div>
           ))}
@@ -115,7 +115,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
     {/* Market Conditions & Notes */}
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {strategy.market_conditions && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-[#35D6C8]" />
             <span className="text-slate-400 text-xs font-medium uppercase">Market Conditions</span>
@@ -124,7 +124,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
         </Card>
       )}
       {strategy.backtesting_notes && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Target className="w-4 h-4 text-violet-400" />
             <span className="text-slate-400 text-xs font-medium uppercase">Backtesting Notes</span>

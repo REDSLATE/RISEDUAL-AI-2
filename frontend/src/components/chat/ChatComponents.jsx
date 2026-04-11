@@ -22,7 +22,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
             {['What is AAPL doing today?', 'Analyze BTC chart patterns', 'Best sector rotation?'].map(q => (
               <button
                 key={q}
-                className="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border border-slate-700/50"
+                className="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border border-slate-500/30"
                 data-testid={`suggestion-${q.slice(0, 10)}`}
               >
                 {q}
@@ -52,7 +52,7 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
       {!isUser && (
         <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
       )}
-      <div className={`max-w-[82%] ${isUser ? 'bg-[#35D6C8] text-white' : 'bg-slate-800/60 border border-slate-700/40 text-slate-200'} rounded-xl px-3 py-2`}>
+      <div className={`max-w-[82%] ${isUser ? 'bg-[#35D6C8] text-white' : 'bg-slate-800/60 border border-slate-500/40/40 text-slate-200'} rounded-xl px-3 py-2`}>
         {msg.image && (
           <div className="mb-1.5">
             <img src={msg.image} alt="Uploaded" className="max-w-[200px] rounded-lg border border-slate-600/50" />
@@ -68,7 +68,7 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
         {!isUser && (
           <button
             onClick={() => onCopy(idx, msg.content)}
-            className="mt-1 text-slate-500 hover:text-white text-[11px] flex items-center gap-1 transition-colors"
+            className="mt-1 text-slate-400 hover:text-white text-[11px] flex items-center gap-1 transition-colors"
             data-testid={`copy-msg-${idx}`}
           >
             {copiedId === idx ? <><Check className="w-2.5 h-2.5" /> Copied</> : <><Copy className="w-2.5 h-2.5" /> Copy</>}
@@ -95,9 +95,9 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
   };
 
   return (
-    <div className="border-t border-slate-700/50 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
+    <div className="border-t border-slate-500/30 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
       {imagePreview && (
-        <div className="mb-2 flex items-center gap-2 bg-slate-800/50 rounded-lg p-1.5">
+        <div className="mb-2 flex items-center gap-2 bg-slate-700/35 rounded-lg p-1.5">
           <img src={imagePreview} alt="Preview" className="h-10 rounded border border-slate-600" />
           <span className="text-slate-400 text-[11px]">Image attached</span>
           <button onClick={onClearImage} className="text-red-400 text-[11px] hover:text-red-300 ml-auto">Remove</button>
@@ -106,7 +106,7 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
       <div className="flex gap-1.5 items-end">
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex-shrink-0 w-8 h-8 bg-slate-800 border border-slate-700/50 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
+          className="flex-shrink-0 w-8 h-8 bg-slate-800 border border-slate-500/30 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
           title="Upload chart image"
           data-testid="chat-image-upload"
         >
@@ -125,7 +125,7 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask about stocks, crypto, charts..."
-          className="flex-1 bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#35D6C8] min-h-[34px] max-h-[100px]"
+          className="flex-1 bg-slate-800 border border-slate-500/30 rounded-lg px-3 py-1.5 text-white text-[13px] placeholder-slate-500 resize-none focus:outline-none focus:border-[#35D6C8] min-h-[34px] max-h-[100px]"
           rows={1}
           data-testid="chat-input"
         />

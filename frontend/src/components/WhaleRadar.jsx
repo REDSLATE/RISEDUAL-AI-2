@@ -8,7 +8,7 @@ const MAX_EVENTS = 30;
 const biasIcon = (bias) => {
   if (bias === 'INSTITUTIONAL_BID') return <TrendingUp className="w-3 h-3 text-emerald-400" />;
   if (bias === 'INSTITUTIONAL_ASK') return <TrendingDown className="w-3 h-3 text-red-400" />;
-  return <Minus className="w-3 h-3 text-slate-500" />;
+  return <Minus className="w-3 h-3 text-slate-400" />;
 };
 
 const biasColor = (bias) => {
@@ -87,9 +87,9 @@ const WhaleRadar = () => {
   const tickerList = RADAR_TICKERS.map(t => ({ ticker: t, ...tickers[t] }));
 
   return (
-    <div className="bg-slate-900/40 backdrop-blur-sm border border-slate-800/50 rounded-xl overflow-hidden" data-testid="whale-radar">
+    <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-800/50 rounded-xl overflow-hidden" data-testid="whale-radar">
       {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-slate-800/30">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-slate-600/30/30">
         <div className="flex items-center gap-2">
           <Radio className="w-4 h-4 text-yellow-400" />
           <h3 className="text-white text-sm font-semibold tracking-tight">Whale Radar</h3>
@@ -100,14 +100,14 @@ const WhaleRadar = () => {
             {connected ? 'SCANNING' : 'CONNECTING'}
           </span>
         </div>
-        <span className="text-slate-600 text-[10px]">{RADAR_TICKERS.length} pairs monitored</span>
+        <span className="text-slate-400 text-[10px]">{RADAR_TICKERS.length} pairs monitored</span>
       </div>
 
       {/* Ticker Grid */}
-      <div className="grid grid-cols-5 gap-px bg-slate-800/30 p-px" data-testid="radar-grid">
+      <div className="grid grid-cols-5 gap-px bg-slate-700/25 p-px" data-testid="radar-grid">
         {tickerList.map(t => (
           <div key={t.ticker}
-            className={`px-3 py-2.5 bg-slate-900/80 hover:bg-slate-800/60 transition-colors ${
+            className={`px-3 py-2.5 bg-slate-900/80 hover:bg-slate-600/30/60 transition-colors ${
               t.whale_count > 0 ? 'ring-1 ring-inset ring-yellow-500/30' : ''
             }`}
             data-testid={`radar-tile-${t.ticker}`}
@@ -133,7 +133,7 @@ const WhaleRadar = () => {
               <div className="bg-red-500/50 transition-all duration-700" style={{ width: `${100 - (t.bid_pct || 50)}%` }} />
             </div>
             <div className="flex justify-between mt-1 text-[9px]">
-              <span className="text-slate-600">{t.wall_count || 0} walls</span>
+              <span className="text-slate-400">{t.wall_count || 0} walls</span>
               <span className={biasColor(t.bias)}>
                 {t.bid_pct != null ? `${t.bid_pct.toFixed(0)}%` : '--'}
               </span>
@@ -144,17 +144,17 @@ const WhaleRadar = () => {
 
       {/* Whale Events Feed */}
       {whaleEvents.length > 0 && (
-        <div className="border-t border-slate-800/30">
+        <div className="border-t border-slate-600/30/30">
           <div className="px-4 py-2 flex items-center gap-2">
             <AlertTriangle className="w-3 h-3 text-yellow-400" />
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Whale Detections</span>
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider">Whale Detections</span>
             <span className="text-[10px] text-yellow-400 font-mono">{whaleEvents.length}</span>
           </div>
           <div className="max-h-36 overflow-y-auto px-4 pb-3 space-y-1">
             {whaleEvents.slice(0, 10).map(ev => (
-              <div key={ev.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-slate-800/20 last:border-0">
+              <div key={ev.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-slate-600/30/20 last:border-0">
                 <span className="text-white font-bold w-10">{ev.ticker}</span>
-                <span className="text-slate-500 font-mono">${ev.mid?.toLocaleString()}</span>
+                <span className="text-slate-400 font-mono">${ev.mid?.toLocaleString()}</span>
                 <div className="flex gap-1 flex-wrap flex-1">
                   {ev.walls?.slice(0, 3).map((w, i) => (
                     <span key={i} className={`px-1.5 py-0.5 rounded border ${

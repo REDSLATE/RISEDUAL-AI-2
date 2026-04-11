@@ -24,7 +24,7 @@ const PatternsView = ({ data }) => {
               <p className="text-slate-400 text-xs">{a.patterns?.length || 0} patterns detected</p>
             </div>
           </div>
-          <Badge className={`text-sm font-bold px-3 py-1 capitalize ${dirColors[a.overall_bias] || 'text-slate-300'} bg-slate-800/60 border-slate-700`} data-testid="pattern-bias">
+          <Badge className={`text-sm font-bold px-3 py-1 capitalize ${dirColors[a.overall_bias] || 'text-slate-300'} bg-slate-800/60 border-slate-500/40`} data-testid="pattern-bias">
             {a.overall_bias} Bias
           </Badge>
         </div>
@@ -55,7 +55,7 @@ const PatternsView = ({ data }) => {
       {a.patterns?.length > 0 ? (
         <div className="space-y-3">
           {a.patterns.map((p, i) => (
-            <Card key={`p-${i}`} className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4" data-testid={`pattern-card-${i}`}>
+            <Card key={`p-${i}`} className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid={`pattern-card-${i}`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className={`text-sm font-bold ${dirColors[p.direction] || 'text-slate-300'}`}>{p.name}</span>
@@ -68,14 +68,14 @@ const PatternsView = ({ data }) => {
               <div className="flex gap-4 text-[10px]">
                 {p.price_target && <span className="text-emerald-400">Target: ${p.price_target}</span>}
                 {p.stop_level && <span className="text-red-400">Stop: ${p.stop_level}</span>}
-                {p.timeframe && <span className="text-slate-500">Timeframe: {p.timeframe}</span>}
+                {p.timeframe && <span className="text-slate-400">Timeframe: {p.timeframe}</span>}
               </div>
             </Card>
           ))}
         </div>
       ) : (
         <div className="text-center py-8">
-          <p className="text-slate-500 text-sm">No clear patterns detected at this time.</p>
+          <p className="text-slate-400 text-sm">No clear patterns detected at this time.</p>
         </div>
       )}
     </div>

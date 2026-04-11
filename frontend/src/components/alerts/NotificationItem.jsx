@@ -22,7 +22,7 @@ const ToxicSpikeNotification = ({ n, index }) => {
   const meta = n.metadata || {};
   const tickers = meta.affected_tickers || [];
   return (
-    <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-red-500/5 border-l-2 border-red-500' : 'hover:bg-slate-800/40'}`}
+    <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-red-500/5 border-l-2 border-red-500' : 'hover:bg-slate-700/30'}`}
       data-testid={`notification-toxic-${index}`}>
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex-shrink-0">
@@ -41,10 +41,10 @@ const ToxicSpikeNotification = ({ n, index }) => {
                   {t}
                 </span>
               ))}
-              {tickers.length > 6 && <span className="text-[10px] text-slate-500">+{tickers.length - 6}</span>}
+              {tickers.length > 6 && <span className="text-[10px] text-slate-400">+{tickers.length - 6}</span>}
             </div>
           )}
-          <p className="text-slate-600 text-[10px] mt-1">{formatDate(n.created_at)}</p>
+          <p className="text-slate-400 text-[10px] mt-1">{formatDate(n.created_at)}</p>
         </div>
       </div>
     </div>
@@ -52,7 +52,7 @@ const ToxicSpikeNotification = ({ n, index }) => {
 };
 
 const VerdictNotification = ({ n, index }) => (
-  <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#35D6C8]/5' : 'hover:bg-slate-800/40'}`}
+  <div className={`px-4 py-3 transition-colors ${!n.read ? 'bg-[#35D6C8]/5' : 'hover:bg-slate-700/30'}`}
     data-testid={`notification-${index}`}>
     <div className="flex items-start gap-3">
       <div className="mt-0.5 flex-shrink-0">{verdictIcon(n.new_verdict)}</div>
@@ -68,9 +68,9 @@ const VerdictNotification = ({ n, index }) => (
           <span className={verdictColor(n.new_verdict)}>{n.new_verdict}</span>
         </p>
         {n.confidence > 0 && (
-          <p className="text-slate-500 text-[10px] mt-0.5">Confidence: {n.confidence}%</p>
+          <p className="text-slate-400 text-[10px] mt-0.5">Confidence: {n.confidence}%</p>
         )}
-        <p className="text-slate-600 text-[10px] mt-0.5">{formatDate(n.created_at)}</p>
+        <p className="text-slate-400 text-[10px] mt-0.5">{formatDate(n.created_at)}</p>
       </div>
     </div>
   </div>

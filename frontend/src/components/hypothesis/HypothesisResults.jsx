@@ -13,7 +13,7 @@ const verdictColor = (v) => {
 const miniVerdictColor = (v) => {
   if (v === 'BUY') return 'text-emerald-400';
   if (v === 'SELL') return 'text-red-400';
-  if (v === 'ERROR') return 'text-slate-500';
+  if (v === 'ERROR') return 'text-slate-400';
   return 'text-amber-400';
 };
 
@@ -68,11 +68,11 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Price Targets */}
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
         <h3 className="text-slate-400 text-xs font-medium uppercase mb-2">Short-Term Target (1-2 weeks)</h3>
         <p className="text-white text-lg font-bold">{hypothesis.price_target_short || 'N/A'}</p>
       </Card>
-      <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
         <h3 className="text-slate-400 text-xs font-medium uppercase mb-2">Medium-Term Target (1-3 months)</h3>
         <p className="text-white text-lg font-bold">{hypothesis.price_target_medium || 'N/A'}</p>
       </Card>
@@ -80,7 +80,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Thesis */}
     {hypothesis.thesis && (
-      <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-3">Investment Thesis</h3>
         <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">{hypothesis.thesis}</p>
       </Card>
@@ -140,7 +140,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Technical Outlook */}
     {hypothesis.technical_outlook && (
-      <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-5">
+      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-[#35D6C8]" /> Technical Outlook
         </h3>
@@ -150,7 +150,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 
     {/* Strategist & Auditor Analyses */}
     {hypothesis.agent_analyses?.length > 0 && (
-      <Card className="bg-slate-800/50 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
+      <Card className="bg-slate-700/35 border-violet-800/30 rounded-xl p-5" data-testid="agent-analyses">
         <details>
           <summary className="flex items-center gap-2 cursor-pointer text-violet-400 font-semibold text-sm hover:text-violet-300 transition-colors">
             <Brain className="w-4 h-4" />
@@ -158,7 +158,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
           </summary>
           <div className="mt-3 space-y-3">
             {hypothesis.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-900/40 rounded-lg p-3">
+              <div key={i} className="bg-slate-800/50 rounded-lg p-3">
                 <span className="text-violet-400 text-xs font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-xs leading-relaxed mt-1">{a.summary}</p>
               </div>
@@ -171,7 +171,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
 );
 
 const ConsensusBreakdown = ({ results, models }) => (
-  <Card className="bg-slate-800/50 border-violet-800/30 rounded-xl p-5" data-testid="consensus-breakdown">
+  <Card className="bg-slate-700/35 border-violet-800/30 rounded-xl p-5" data-testid="consensus-breakdown">
     <h3 className="text-violet-400 font-semibold mb-4 flex items-center gap-2">
       <Network className="w-4 h-4" /> Individual Model Verdicts
     </h3>
@@ -180,7 +180,7 @@ const ConsensusBreakdown = ({ results, models }) => (
         const modelDef = models.find(m => m.key === r.model_key) || models[0];
         const ModelIcon = modelDef.icon;
         return (
-          <div key={r.model_key} className="bg-slate-900/60 border border-slate-700/40 rounded-xl p-4">
+          <div key={r.model_key} className="bg-slate-900/60 border border-slate-500/40/40 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <ModelIcon className={`w-4 h-4 ${modelDef.color}`} />
               <span className="text-white text-xs font-medium">{r.model}</span>
@@ -188,7 +188,7 @@ const ConsensusBreakdown = ({ results, models }) => (
             <div className={`text-xl font-black ${miniVerdictColor(r.verdict)}`}>
               {r.error ? 'FAILED' : r.verdict}
             </div>
-            <div className="text-slate-500 text-xs mt-1">
+            <div className="text-slate-400 text-xs mt-1">
               {r.error ? 'Model error' : `${r.confidence}% confidence`}
             </div>
           </div>

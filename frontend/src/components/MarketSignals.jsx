@@ -13,7 +13,7 @@ const severityStyle = (s) => ({
   high: { icon: 'text-red-400', bg: 'border-red-700/40 bg-red-900/10' },
   medium: { icon: 'text-amber-400', bg: 'border-amber-700/40 bg-amber-900/10' },
   low: { icon: 'text-blue-400', bg: 'border-blue-700/40 bg-blue-900/10' },
-}[s] || { icon: 'text-slate-400', bg: 'border-slate-700/40' });
+}[s] || { icon: 'text-slate-400', bg: 'border-slate-500/40/40' });
 
 const MarketSignals = ({ onClose, onSubscribe }) => {
   const { isPro } = useAuth();
@@ -58,8 +58,8 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="market-signals">
-      <div className="bg-slate-900 rounded-2xl max-w-lg w-full my-4 border border-slate-700/50">
-        <div className="p-5 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900 rounded-2xl max-w-lg w-full my-4 border border-slate-500/30">
+        <div className="p-5 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-red-500 rounded-xl flex items-center justify-center">
               <Radio className="w-5 h-5 text-white" />
@@ -78,7 +78,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
         <div className="p-5">
           {!isPro ? (
             <div className="text-center py-8">
-              <Lock className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+              <Lock className="w-10 h-10 text-slate-400 mx-auto mb-3" />
               <p className="text-white font-semibold mb-1">Pro Feature</p>
               <p className="text-slate-400 text-xs mb-4">AI monitors your watchlist for dark pool spikes, whale movements, and unusual options flow.</p>
               <Button className="bg-[#35D6C8] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
@@ -93,9 +93,9 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
                 <div className="flex items-center justify-center py-8"><RefreshCw className="w-6 h-6 text-[#35D6C8] animate-spin" /></div>
               ) : signals.length === 0 ? (
                 <div className="text-center py-8">
-                  <Radio className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                  <Radio className="w-10 h-10 text-slate-400 mx-auto mb-3" />
                   <p className="text-slate-400 text-sm">No signals detected yet</p>
-                  <p className="text-slate-500 text-xs mt-1">Add tickers to your watchlist and scan for signals</p>
+                  <p className="text-slate-400 text-xs mt-1">Add tickers to your watchlist and scan for signals</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[400px] overflow-y-auto">
@@ -114,7 +114,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
                             </div>
                             <p className="text-white text-xs font-medium">{sig.title}</p>
                             <p className="text-slate-400 text-[11px] mt-0.5">{sig.detail}</p>
-                            <p className="text-slate-600 text-[10px] mt-1">
+                            <p className="text-slate-400 text-[10px] mt-1">
                               {sig.detected_at ? new Date(sig.detected_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                             </p>
                           </div>

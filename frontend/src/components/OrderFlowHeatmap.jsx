@@ -21,7 +21,7 @@ const WallEvent = ({ event }) => {
     <div className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md border ${
       appeared
         ? (isBid ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400')
-        : 'bg-slate-800/50 border-slate-700 text-slate-500'
+        : 'bg-slate-700/35 border-slate-500/40 text-slate-400'
     }`} data-testid={`wall-event-${event.event}`}>
       {appeared ? <Zap className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
       <span className="font-mono">${event.price?.toLocaleString()}</span>
@@ -175,7 +175,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
           {latest && (
             <>
               <span className="text-white text-sm font-mono font-bold">${latest.mid?.toLocaleString()}</span>
-              <span className="text-slate-500 text-[10px]">
+              <span className="text-slate-400 text-[10px]">
                 Spread: ${latest.spread} ({latest.spread_pct}%)
               </span>
             </>
@@ -184,7 +184,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
         {latest && (
           <div className="flex items-center gap-3 text-[10px]">
             <span className={biasColor}>{latest.bias?.replace('_', ' ')}</span>
-            <span className="text-slate-500">
+            <span className="text-slate-400">
               Bids: <span className="text-emerald-400 font-mono">${(latest.bid_total / 1000).toFixed(0)}K</span>
               {' / '}
               Asks: <span className="text-red-400 font-mono">${(latest.ask_total / 1000).toFixed(0)}K</span>
@@ -203,7 +203,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
 
       {/* Heatmap Grid */}
       {grid.length > 0 ? (
-        <div className="relative overflow-hidden rounded-lg border border-slate-700/60 bg-slate-800/40" ref={heatmapRef}>
+        <div className="relative overflow-hidden rounded-lg border border-slate-500/40/60 bg-slate-700/30" ref={heatmapRef}>
           <div className="overflow-x-hidden">
             <div className="min-w-full">
               {grid.map((row, ri) => {
@@ -212,7 +212,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
                 return (
                 <div key={ri} className={`flex items-center ${isMidRow ? 'border-y border-yellow-500/40' : ''}`} style={{ height: '16px' }}>
                   {/* Price label */}
-                  <div className="w-20 shrink-0 text-right pr-2 text-[9px] font-mono text-slate-600">
+                  <div className="w-20 shrink-0 text-right pr-2 text-[9px] font-mono text-slate-400">
                     ${row.price >= 1000 ? row.price.toFixed(0).toLocaleString() : row.price.toFixed(2)}
                   </div>
                   {/* Cells */}
@@ -238,14 +238,14 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
           </div>
           {/* Mid price indicator */}
           {latest && (
-            <div className="absolute right-2 top-1 text-[9px] text-slate-600 flex items-center gap-1">
+            <div className="absolute right-2 top-1 text-[9px] text-slate-400 flex items-center gap-1">
               <ArrowUpDown className="w-3 h-3" />
               {grid.length} bins · {snapshots.length}s
             </div>
           )}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-10 text-slate-600">
+        <div className="flex flex-col items-center justify-center py-10 text-slate-400">
           <Activity className="w-6 h-6 mb-2 animate-pulse" />
           <p className="text-xs">{connected ? 'Building heatmap...' : 'Connecting to Binance stream...'}</p>
         </div>
@@ -254,7 +254,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       {/* Live walls */}
       {latest?.walls?.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[10px] text-slate-600 uppercase tracking-wider">Active Walls</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Active Walls</p>
           <div className="grid grid-cols-2 gap-1">
             {latest.walls.slice(0, 6).map((w, i) => (
               <div key={i} className={`flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
@@ -263,7 +263,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
                 <span className={`font-mono ${w.side === 'bid' ? 'text-emerald-400' : 'text-red-400'}`}>
                   ${w.price.toLocaleString()}
                 </span>
-                <span className="text-slate-500">
+                <span className="text-slate-400">
                   {w.intensity != null ? `${w.intensity}/100` : `${w.ratio}x`} · {w.strength}
                 </span>
               </div>
@@ -275,7 +275,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       {/* Wall events feed */}
       {wallEvents.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[10px] text-slate-600 uppercase tracking-wider">Wall Movements</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Wall Movements</p>
           <div className="flex flex-wrap gap-1">
             {wallEvents.slice(0, 6).map((ev, i) => (
               <WallEvent key={i} event={ev} />
@@ -285,7 +285,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
       )}
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-4 text-[9px] text-slate-600">
+      <div className="flex items-center justify-center gap-4 text-[9px] text-slate-400">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded-sm" style={{ background: 'rgb(20, 160, 110)' }} />
           <span>Bid Volume</span>

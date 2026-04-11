@@ -18,11 +18,11 @@ const WorldEventsTab = ({ data, loading }) => {
       </div>
 
       {affected_sectors.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700/40 p-4 rounded-xl">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 p-4 rounded-xl">
           <h3 className="text-white text-sm font-semibold mb-3">Sector Impact Map</h3>
           <div className="flex flex-wrap gap-2">
             {affected_sectors.map((s) => (
-              <div key={s.sector} className="flex items-center gap-2 bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
+              <div key={s.sector} className="flex items-center gap-2 bg-slate-900/60 border border-slate-500/30 rounded-lg px-3 py-2" data-testid={`sector-${s.sector}`}>
                 <div className={`w-2 h-2 rounded-full ${s.avg_impact >= 75 ? 'bg-red-500' : s.avg_impact >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                 <span className="text-white text-xs font-medium">{s.sector}</span>
                 <span className={`text-xs font-bold ${s.avg_impact >= 75 ? 'text-red-400' : s.avg_impact >= 50 ? 'text-amber-400' : 'text-emerald-400'}`}>{s.avg_impact}</span>
@@ -64,20 +64,20 @@ const WorldEventsTab = ({ data, loading }) => {
 
 const EventCard = ({ event, isHighImpact }) => (
   <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${
-    isHighImpact ? 'bg-red-950/20 border-red-900/40' : 'bg-slate-800/40 border-slate-700/30'
+    isHighImpact ? 'bg-red-950/20 border-red-900/40' : 'bg-slate-700/30 border-slate-500/40/30'
   }`}>
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
         <p className="text-white text-sm font-medium leading-snug truncate">{event.title}</p>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">{event.source}</span>
-          {event.published && <span className="text-[10px] text-slate-500">{event.published}</span>}
+          <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">{event.source}</span>
+          {event.published && <span className="text-[10px] text-slate-400">{event.published}</span>}
         </div>
       </div>
       {event.affected_sectors?.length > 0 && (
         <div className="flex gap-1 flex-shrink-0">
           {event.affected_sectors.slice(0, 2).map((s) => (
-            <Badge key={s.sector} variant="outline" className={`text-[10px] border-slate-700 ${
+            <Badge key={s.sector} variant="outline" className={`text-[10px] border-slate-500/40 ${
               s.impact_score >= 50 ? 'text-amber-400 border-amber-800/50' : 'text-slate-400'
             }`}>{s.sector}</Badge>
           ))}

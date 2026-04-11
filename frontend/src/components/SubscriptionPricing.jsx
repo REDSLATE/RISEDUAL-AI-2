@@ -51,7 +51,7 @@ const SubscriptionPricing = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-700/50 relative" data-testid="subscription-modal">
+      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-500/30 relative" data-testid="subscription-modal">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -62,7 +62,7 @@ const SubscriptionPricing = ({ onClose }) => {
         </button>
 
         {/* Header */}
-        <div className="p-8 pt-2 text-center border-b border-slate-700">
+        <div className="p-8 pt-2 text-center border-b border-slate-500/40">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Crown className="w-8 h-8 text-yellow-500" />
             <h2 className="text-3xl font-bold text-white">Upgrade to Premium</h2>
@@ -78,7 +78,7 @@ const SubscriptionPricing = ({ onClose }) => {
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'monthly'
                   ? 'bg-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
-                  : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
+                  : 'bg-slate-700/30 border-slate-500/30 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('monthly')}
               data-testid="plan-monthly"
@@ -95,7 +95,7 @@ const SubscriptionPricing = ({ onClose }) => {
                 <span className="text-4xl font-bold text-white">$45</span>
                 <span className="text-slate-400 text-sm">/month</span>
               </div>
-              <p className="text-slate-500 text-xs">Billed monthly. Cancel anytime.</p>
+              <p className="text-slate-400 text-xs">Billed monthly. Cancel anytime.</p>
             </Card>
 
             {/* Annual */}
@@ -103,7 +103,7 @@ const SubscriptionPricing = ({ onClose }) => {
               className={`relative rounded-2xl p-6 cursor-pointer transition-all border-2 ${
                 selectedPlan === 'annual'
                   ? 'bg-gradient-to-br from-[#35D6C8]/15 to-slate-800/80 border-[#35D6C8] shadow-lg shadow-blue-500/10'
-                  : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
+                  : 'bg-slate-700/30 border-slate-500/30 hover:border-slate-600'
               }`}
               onClick={() => setSelectedPlan('annual')}
               data-testid="plan-annual"
@@ -124,8 +124,8 @@ const SubscriptionPricing = ({ onClose }) => {
                 <span className="text-4xl font-bold text-white">$40.50</span>
                 <span className="text-slate-400 text-sm">/month</span>
               </div>
-              <p className="text-slate-500 text-xs">
-                $486/year <span className="line-through text-slate-600">$540</span>
+              <p className="text-slate-400 text-xs">
+                $486/year <span className="line-through text-slate-400">$540</span>
               </p>
             </Card>
           </div>
@@ -170,7 +170,7 @@ const SubscriptionPricing = ({ onClose }) => {
           </div>
 
           {/* FAQ */}
-          <div className="mt-8 border-t border-slate-700 pt-8">
+          <div className="mt-8 border-t border-slate-500/40 pt-8">
             <h3 className="text-white text-lg font-semibold text-center mb-4">Frequently Asked Questions</h3>
             <div className="space-y-4 max-w-2xl mx-auto">
               <div>

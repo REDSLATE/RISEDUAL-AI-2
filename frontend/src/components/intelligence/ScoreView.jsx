@@ -36,9 +36,9 @@ const ScoreView = ({ data }) => {
           </div>
           {s.target_range && (
             <div className="text-right">
-              <p className="text-slate-500 text-[10px] uppercase">Target Range</p>
+              <p className="text-slate-400 text-[10px] uppercase">Target Range</p>
               <p className="text-white text-lg font-bold">${s.target_range.low} — ${s.target_range.high}</p>
-              <p className="text-slate-500 text-[10px]">{s.time_horizon}</p>
+              <p className="text-slate-400 text-[10px]">{s.time_horizon}</p>
             </div>
           )}
         </div>
@@ -51,7 +51,7 @@ const ScoreView = ({ data }) => {
       </div>
 
       {s.factors?.length > 0 && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
           <h4 className="text-white text-sm font-semibold mb-3">Key Factors</h4>
           <div className="space-y-2">
             {s.factors.map((f, i) => (
@@ -78,7 +78,7 @@ const ScoreBar = ({ label, score, color }) => {
   };
   const c = colors[color];
   return (
-    <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3">
+    <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-slate-400 text-[10px] uppercase tracking-wider">{label}</span>
         <span className={`text-lg font-bold ${c.text}`}>{score}</span>

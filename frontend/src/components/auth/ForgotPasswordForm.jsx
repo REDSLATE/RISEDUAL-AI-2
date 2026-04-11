@@ -44,7 +44,7 @@ const ForgotPasswordForm = ({ onBack, initialEmail = '' }) => {
         <p className="text-slate-400 text-sm mb-2">
           If an account exists for <span className="text-white font-medium">{email}</span>, we've sent a password reset link.
         </p>
-        <p className="text-slate-500 text-xs mb-6">The link expires in 1 hour.</p>
+        <p className="text-slate-400 text-xs mb-6">The link expires in 1 hour.</p>
         <Button onClick={onBack}
           className="w-full bg-slate-800 hover:bg-slate-700 text-white font-semibold py-5 rounded-xl border border-slate-600"
           data-testid="forgot-back-to-login-btn">

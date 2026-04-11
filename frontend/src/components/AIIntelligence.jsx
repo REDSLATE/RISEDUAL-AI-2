@@ -69,7 +69,7 @@ const AIIntelligence = ({ onSubscribe }) => {
           <button
             key={t.id}
             onClick={() => { setTab(t.id); setResult(null); setError(''); }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t.id ? `bg-gradient-to-r ${t.color} text-white shadow-lg` : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}`}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t.id ? `bg-gradient-to-r ${t.color} text-white shadow-lg` : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30'}`}
             data-testid={`tab-${t.id}`}
           >
             <t.icon className="w-4 h-4" />
@@ -80,13 +80,13 @@ const AIIntelligence = ({ onSubscribe }) => {
 
       <div className="flex gap-2 mb-5">
         <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <input
             value={symbol}
             onChange={e => setSymbol(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
             placeholder="Enter ticker (AAPL, TSLA, SPY...)"
-            className="w-full bg-slate-800/80 border border-slate-700/60 rounded-xl pl-10 pr-4 py-3 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500/60"
+            className="w-full bg-slate-800/80 border border-slate-500/40/60 rounded-xl pl-10 pr-4 py-3 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500/60"
             data-testid="intelligence-symbol-input"
           />
         </div>
@@ -106,7 +106,7 @@ const AIIntelligence = ({ onSubscribe }) => {
         <div className="text-center py-12">
           <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-slate-400 text-sm">Analyzing {symbol.toUpperCase()}...</p>
-          <p className="text-slate-600 text-xs mt-1">Crunching technicals + AI inference</p>
+          <p className="text-slate-400 text-xs mt-1">Crunching technicals + AI inference</p>
         </div>
       )}
 
@@ -117,7 +117,7 @@ const AIIntelligence = ({ onSubscribe }) => {
       {!loading && !result && !error && (
         <div className="text-center py-10">
           <Brain className="w-10 h-10 text-slate-700 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Enter a ticker symbol and click Analyze</p>
+          <p className="text-slate-400 text-sm">Enter a ticker symbol and click Analyze</p>
         </div>
       )}
     </div>

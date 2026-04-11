@@ -157,9 +157,9 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="strategy-builder">
-      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-700/50">
+      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-500/30">
         {/* Header */}
-        <div className="p-6 border-b border-slate-700 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-violet-600 to-fuchsia-500 rounded-xl flex items-center justify-center">
               <Wand2 className="w-6 h-6 text-white" />
@@ -194,7 +194,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="e.g., Buy AAPL when RSI drops below 30 and MACD crosses bullish. Set a 2% stop loss and take profit at 6%..."
-              className="w-full bg-slate-800 border border-slate-700/60 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500 resize-none focus:outline-none focus:border-violet-500/60 min-h-[100px]"
+              className="w-full bg-slate-800 border border-slate-500/40/60 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500 resize-none focus:outline-none focus:border-violet-500/60 min-h-[100px]"
               rows={4}
               data-testid="strategy-input"
             />
@@ -205,7 +205,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
                 <button
                   key={p}
                   onClick={() => setDescription(p)}
-                  className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700/50 hover:border-violet-600/50 hover:text-violet-300 transition-colors truncate max-w-[250px]"
+                  className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800/80 text-slate-400 border border-slate-500/30 hover:border-violet-600/50 hover:text-violet-300 transition-colors truncate max-w-[250px]"
                   data-testid={`example-prompt-${idx}`}
                 >
                   {p.length > 60 ? p.slice(0, 60) + '...' : p}
@@ -247,7 +247,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
                       value={backtestSymbol}
                       onChange={e => setBacktestSymbol(e.target.value.toUpperCase())}
                       placeholder="e.g. AAPL, TSLA, SPY"
-                      className="w-full bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
+                      className="w-full bg-slate-800 border border-slate-500/40/60 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
                       data-testid="backtest-symbol-input"
                     />
                   </div>
@@ -256,7 +256,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
                     <select
                       value={backtestYears}
                       onChange={e => setBacktestYears(Number(e.target.value))}
-                      className="w-full bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500/60"
+                      className="w-full bg-slate-800 border border-slate-500/40/60 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500/60"
                       data-testid="backtest-years-select"
                     >
                       <option value={1}>1 Year</option>
@@ -325,25 +325,25 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
 };
 
 const SavedStrategiesDrawer = ({ strategies, onLoad, onDelete }) => (
-  <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-4" data-testid="saved-strategies">
+  <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-4" data-testid="saved-strategies">
     <h4 className="text-white text-sm font-semibold mb-3">Saved Strategies</h4>
     {strategies.length === 0 ? (
       <div className="text-center py-6" data-testid="no-saved-strategies">
-        <div className="w-10 h-10 bg-slate-900/60 rounded-xl flex items-center justify-center mx-auto mb-2 border border-slate-700/30">
-          <Target className="w-5 h-5 text-slate-600" />
+        <div className="w-10 h-10 bg-slate-900/60 rounded-xl flex items-center justify-center mx-auto mb-2 border border-slate-500/40/30">
+          <Target className="w-5 h-5 text-slate-400" />
         </div>
-        <p className="text-slate-500 text-xs">No saved strategies yet.</p>
-        <p className="text-slate-600 text-[10px]">Generate and save your first one above.</p>
+        <p className="text-slate-400 text-xs">No saved strategies yet.</p>
+        <p className="text-slate-400 text-[10px]">Generate and save your first one above.</p>
       </div>
     ) : (
       <div className="space-y-2 max-h-[200px] overflow-y-auto">
         {strategies.map((s) => (
-          <div key={s.name} className="flex items-center justify-between bg-slate-900/60 border border-slate-700/30 rounded-lg px-3 py-2.5 group">
+          <div key={s.name} className="flex items-center justify-between bg-slate-900/60 border border-slate-500/40/30 rounded-lg px-3 py-2.5 group">
             <button className="flex-1 text-left" onClick={() => onLoad(s)} data-testid={`load-strategy-${s.name}`}>
               <span className="text-white text-sm font-medium">{s.strategy?.name || s.name}</span>
-              <p className="text-slate-500 text-[10px] truncate max-w-[300px]">{s.description}</p>
+              <p className="text-slate-400 text-[10px] truncate max-w-[300px]">{s.description}</p>
             </button>
-            <button onClick={() => onDelete(s.name)} className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" data-testid={`delete-strategy-${s.name}`}>
+            <button onClick={() => onDelete(s.name)} className="text-slate-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" data-testid={`delete-strategy-${s.name}`}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>

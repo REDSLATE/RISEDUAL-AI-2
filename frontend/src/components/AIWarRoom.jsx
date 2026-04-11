@@ -102,7 +102,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
 
       {/* Pro Lock */}
       {error === 'pro_required' && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
           <Lock className="w-10 h-10 text-amber-400 mx-auto mb-3" />
           <h3 className="text-white font-bold text-lg mb-2">War Room is Pro Only</h3>
           <p className="text-slate-400 text-sm mb-4">Unlock the full Adversarial AI — Strategist + Auditor dual-signal engine</p>
@@ -117,7 +117,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
 
       {/* Loading */}
       {loading && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
           <Shield className="w-10 h-10 text-amber-400 mx-auto animate-pulse" />
           <p className="text-white font-semibold mt-3">Deploying War Room for {symbol}</p>
           <p className="text-slate-400 text-sm">Running Strategist & Auditor — Adversarial dual-signal analysis in progress...</p>
@@ -125,7 +125,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
             {['Strategist', 'Auditor', 'Data Feeds', 'Retraining', 'Synthesis'].map((s, i) => (
               <div key={s} className="text-center">
                 <div className="w-2 h-2 bg-amber-400 rounded-full mx-auto mb-1 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
-                <span className="text-slate-500 text-[10px]">{s}</span>
+                <span className="text-slate-400 text-[10px]">{s}</span>
               </div>
             ))}
           </div>

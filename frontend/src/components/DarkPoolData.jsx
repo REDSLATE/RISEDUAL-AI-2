@@ -54,7 +54,7 @@ const DarkPoolData = ({ onSubscribe }) => {
 
   if (loading) {
     return (
-      <div className="bg-[#0A2A63] rounded-xl border border-slate-700/50 p-6">
+      <div className="bg-[#0A2A63] rounded-xl border border-slate-500/30 p-6">
         <div className="text-slate-400">Loading dark pool data...</div>
       </div>
     );
@@ -85,7 +85,7 @@ const DarkPoolData = ({ onSubscribe }) => {
 
       {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+        <div className="bg-slate-700/35 border border-slate-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-5 h-5 text-purple-400" />
             <h3 className="text-white font-semibold">What is Dark Pool?</h3>
@@ -95,7 +95,7 @@ const DarkPoolData = ({ onSubscribe }) => {
           </p>
         </div>
         
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+        <div className="bg-slate-700/35 border border-slate-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="w-5 h-5 text-emerald-400" />
             <h3 className="text-white font-semibold">Why It Matters</h3>
@@ -105,7 +105,7 @@ const DarkPoolData = ({ onSubscribe }) => {
           </p>
         </div>
         
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+        <div className="bg-slate-700/35 border border-slate-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Eye className="w-5 h-5 text-blue-400" />
             <h3 className="text-white font-semibold">How to Use</h3>

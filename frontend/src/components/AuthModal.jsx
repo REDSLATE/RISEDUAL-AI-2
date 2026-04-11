@@ -38,7 +38,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="auth-modal">
-      <div className="bg-slate-900 rounded-2xl border border-slate-700/50 w-full max-w-md p-6 relative">
+      <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="auth-close-btn">
           <X className="w-5 h-5" />
         </button>

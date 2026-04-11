@@ -136,14 +136,14 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
       {/* Chat panel — floats above everything including mobile nav */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0A2A63] lg:rounded-2xl border-t lg:border border-slate-700/50 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
+        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#0A2A63] lg:rounded-2xl border-t lg:border border-slate-500/30 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="trade-gpt-chat">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-500/30 flex-shrink-0">
             <div className="flex items-center gap-2">
               <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain" />
               <div>
                 <h3 className="text-white text-xs font-semibold leading-tight">RISEDUAL AI</h3>
-                <p className="text-slate-500 text-[9px] leading-tight">
+                <p className="text-slate-400 text-[9px] leading-tight">
                   {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
                   {selectedImage && ' · Image'}
                 </p>
@@ -176,7 +176,7 @@ const TradeGPTChat = ({ onLimitReached }) => {
 
           {/* Pattern Library */}
           {showPatterns && (
-            <div className="border-b border-slate-700/50 max-h-[240px] overflow-y-auto flex-shrink-0">
+            <div className="border-b border-slate-500/30 max-h-[240px] overflow-y-auto flex-shrink-0">
               <ChartPatternLibrary onPatternSelect={handlePatternSelect} compact />
             </div>
           )}
@@ -207,24 +207,24 @@ const TradeGPTChat = ({ onLimitReached }) => {
 };
 
 const ChatHistorySidebar = ({ history, onSelect, onClose }) => (
-  <div className="border-b border-slate-700/50 bg-slate-900/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
+  <div className="border-b border-slate-500/30 bg-slate-900/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
     <div className="flex items-center justify-between mb-1.5">
       <span className="text-slate-400 text-[11px] font-medium">Chat History</span>
-      <button onClick={onClose} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
+      <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-3 h-3" /></button>
     </div>
     {(!history || history.length === 0) ? (
-      <p className="text-slate-500 text-[11px]">No previous chats</p>
+      <p className="text-slate-400 text-[11px]">No previous chats</p>
     ) : (
       <div className="space-y-0.5">
         {history.map((s) => (
           <button
             key={s.session_id}
             onClick={() => onSelect(s.session_id)}
-            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors group"
+            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-600/30 transition-colors group"
             data-testid={`session-${s.session_id}`}
           >
             <div className="text-white text-[11px] font-medium truncate">{s.preview || 'Chat Session'}</div>
-            <div className="text-slate-500 text-[9px]">{s.message_count || 0} messages</div>
+            <div className="text-slate-400 text-[9px]">{s.message_count || 0} messages</div>
           </button>
         ))}
       </div>

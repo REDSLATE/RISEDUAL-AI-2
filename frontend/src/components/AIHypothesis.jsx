@@ -155,7 +155,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
 
       {/* Loading */}
       {loading && (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
           <div className="animate-pulse space-y-3">
             <currentModel.icon className={`w-8 h-8 ${currentModel.color} mx-auto animate-spin`} />
             <p className="text-white font-medium">

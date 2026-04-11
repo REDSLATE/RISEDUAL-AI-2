@@ -226,7 +226,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
           </Button>
           <div className="flex items-center gap-3 my-3">
             <div className="flex-1 h-px bg-slate-700" />
-            <span className="text-slate-500 text-xs">or enter API keys manually</span>
+            <span className="text-slate-400 text-xs">or enter API keys manually</span>
             <div className="flex-1 h-px bg-slate-700" />
           </div>
         </div>
@@ -391,7 +391,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
             { label: 'Buying Power', value: fmt(account.buying_power), icon: Wallet, color: 'text-[#35D6C8]' },
             { label: 'Equity', value: fmt(account.equity), icon: BarChart3, color: 'text-amber-400' },
           ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="bg-slate-800/60 border border-slate-700/30 rounded-xl p-3">
+            <div key={label} className="bg-slate-800/60 border border-slate-500/40/30 rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Icon className={`w-3.5 h-3.5 ${color}`} />
                 <span className="text-slate-400 text-xs">{label}</span>
@@ -458,7 +458,7 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-800/40 rounded-lg p-0.5">
+      <div className="flex gap-1 bg-slate-700/30 rounded-lg p-0.5">
         {[
           { id: 'positions', label: 'Positions', icon: TrendingUp, count: positions.length },
           { id: 'orders', label: 'Orders', icon: FileText, count: orders.length },
@@ -476,9 +476,9 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       {tab === 'positions' && (
         <div className="space-y-2">
           {positions.length === 0 ? (
-            <p className="text-slate-500 text-sm text-center py-6">No open positions</p>
+            <p className="text-slate-400 text-sm text-center py-6">No open positions</p>
           ) : positions.map((p, i) => (
-            <div key={`${p.symbol}-${i}`} className="bg-slate-800/40 border border-slate-700/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={`${p.symbol}-${i}`} className="bg-slate-700/30 border border-slate-500/40/30 rounded-lg p-3 flex items-center justify-between">
               <div>
                 <span className="text-white font-semibold text-sm">{p.symbol}</span>
                 <span className="text-slate-400 text-xs ml-2">{p.qty} shares</span>
@@ -498,9 +498,9 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       {tab === 'orders' && (
         <div className="space-y-2">
           {orders.length === 0 ? (
-            <p className="text-slate-500 text-sm text-center py-6">No orders</p>
+            <p className="text-slate-400 text-sm text-center py-6">No orders</p>
           ) : orders.slice(0, 20).map((o, i) => (
-            <div key={o.id || i} className="bg-slate-800/40 border border-slate-700/30 rounded-lg p-3 flex items-center justify-between">
+            <div key={o.id || i} className="bg-slate-700/30 border border-slate-500/40/30 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Badge className={`text-[10px] ${o.side === 'buy' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'}`}>
                   {o.side?.toUpperCase()}
@@ -607,13 +607,13 @@ const BrokerConnect = () => {
 
       {isModalOpen && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="broker-modal">
-          <div className="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-700/50">
+          <div className="bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-500/30">
             {/* Header */}
-            <div className="border-b border-slate-700 p-5 flex items-start justify-between flex-shrink-0">
+            <div className="border-b border-slate-500/40 p-5 flex items-start justify-between flex-shrink-0">
               <div>
                 <h2 className="text-white text-xl font-bold mb-1">Connect Your Broker</h2>
                 <p className="text-slate-400 text-sm">Link your brokerage to trade directly from RISEDUAL AI</p>
-                <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
                   <Shield className="w-3.5 h-3.5" />
                   <span>Encrypted storage &middot; Keys never leave our server &middot; Disconnect anytime</span>
                 </div>
@@ -672,7 +672,7 @@ const BrokerConnect = () => {
                     const isConnected = connectedIds.includes(broker.id);
                     const isConnecting = connectingBroker === broker.id;
                     return (
-                      <div key={broker.id} className={`bg-slate-800/40 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-700/30 hover:border-slate-600'}`}
+                      <div key={broker.id} className={`bg-slate-700/30 border rounded-xl p-4 transition-all ${isConnected ? 'border-emerald-700/40' : 'border-slate-500/40/30 hover:border-slate-600'}`}
                         data-testid={`broker-card-${broker.id}`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
@@ -724,7 +724,7 @@ const BrokerConnect = () => {
 
               {/* How it works */}
               {!activeBroker && (
-                <div className="p-4 bg-slate-800/30 border border-slate-700/30 rounded-xl">
+                <div className="p-4 bg-slate-700/25 border border-slate-500/40/30 rounded-xl">
                   <h3 className="text-white font-semibold text-sm mb-2">How it works</h3>
                   <ol className="text-slate-400 text-xs space-y-1 list-decimal list-inside">
                     <li>Sign up with your broker and get your API keys from their developer portal</li>

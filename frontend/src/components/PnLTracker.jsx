@@ -42,8 +42,8 @@ const PnLTracker = ({ onOpenBroker }) => {
 
   if (!user) {
     return (
-      <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
-        <Briefcase className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+      <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
+        <Briefcase className="w-10 h-10 text-slate-400 mx-auto mb-3" />
         <p className="text-slate-400 text-sm">Login to view your portfolio P&L</p>
       </Card>
     );
@@ -85,15 +85,15 @@ const PnLTracker = ({ onOpenBroker }) => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchPnL} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50 transition-all" data-testid="refresh-pnl">
+          <button onClick={fetchPnL} className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30 transition-all" data-testid="refresh-pnl">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
       {!hasPositions ? (
-        <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-8 text-center">
-          <Briefcase className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+        <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-8 text-center">
+          <Briefcase className="w-12 h-12 text-slate-400 mx-auto mb-4" />
           <p className="text-white text-lg font-semibold mb-2">No Positions Found</p>
           <p className="text-slate-400 text-sm mb-4">Connect a broker and open positions to track your P&L</p>
           {onOpenBroker && (
@@ -138,7 +138,7 @@ const PnLTracker = ({ onOpenBroker }) => {
           {data.brokers?.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {data.brokers.map(b => (
-                <Card key={b.broker_id} className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
+                <Card key={b.broker_id} className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4" data-testid={`broker-card-${b.broker_id}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-white text-sm font-semibold capitalize">{b.broker_id}</span>
@@ -147,7 +147,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                     {b.error ? (
                       <Badge className="bg-red-900/30 text-red-400 text-[9px]">Error</Badge>
                     ) : (
-                      <span className="text-slate-500 text-[10px]">{b.positions_count} positions</span>
+                      <span className="text-slate-400 text-[10px]">{b.positions_count} positions</span>
                     )}
                   </div>
                   {b.error ? (
@@ -156,7 +156,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                     <div className="flex items-end justify-between">
                       <div>
                         <p className="text-white text-lg font-bold tabular-nums">${(b.portfolio_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        <p className="text-slate-500 text-[10px]">Cash: ${(b.cash || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className="text-slate-400 text-[10px]">Cash: ${(b.cash || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                       </div>
                       <span className={`text-sm font-bold ${(b.unrealized_pl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {(b.unrealized_pl || 0) >= 0 ? '+' : ''}${(b.unrealized_pl || 0).toFixed(2)}
@@ -169,15 +169,15 @@ const PnLTracker = ({ onOpenBroker }) => {
           )}
 
           {/* Positions Table */}
-          <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-700/40 flex items-center justify-between">
+          <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-slate-500/40/40 flex items-center justify-between">
               <h3 className="text-white text-sm font-semibold">Open Positions</h3>
-              <span className="text-slate-500 text-[10px]">{data.positions?.length || 0} positions</span>
+              <span className="text-slate-400 text-[10px]">{data.positions?.length || 0} positions</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="positions-table">
                 <thead>
-                  <tr className="border-b border-slate-700/30">
+                  <tr className="border-b border-slate-500/40/30">
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-2.5">Symbol</th>
                     <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Qty</th>
                     <th className="text-right text-slate-400 text-xs font-medium px-4 py-2.5">Avg Entry</th>
@@ -192,7 +192,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                   {(data.positions || []).map((p, i) => {
                     const posUp = p.unrealized_pl >= 0;
                     return (
-                      <tr key={`${p.symbol}-${p.broker}-${i}`} className="border-b border-slate-800/40 hover:bg-slate-700/20 transition-colors" data-testid={`position-row-${p.symbol}`}>
+                      <tr key={`${p.symbol}-${p.broker}-${i}`} className="border-b border-slate-600/30/40 hover:bg-slate-700/20 transition-colors" data-testid={`position-row-${p.symbol}`}>
                         <td className="px-4 py-2.5">
                           <span className="text-[#35D6C8] font-bold">{p.symbol}</span>
                           {p.side === 'short' && <Badge className="ml-1 text-[8px] bg-red-900/30 text-red-400">SHORT</Badge>}
@@ -208,7 +208,7 @@ const PnLTracker = ({ onOpenBroker }) => {
                           {posUp ? '+' : ''}{p.unrealized_pl_pct.toFixed(2)}%
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className="text-slate-500 text-xs capitalize">{p.broker}</span>
+                          <span className="text-slate-400 text-xs capitalize">{p.broker}</span>
                         </td>
                       </tr>
                     );
@@ -220,7 +220,7 @@ const PnLTracker = ({ onOpenBroker }) => {
 
           {/* Sector Allocation */}
           {data.sector_allocation?.length > 0 && (
-            <Card className="bg-slate-800/50 border-slate-700/40 rounded-xl p-4">
+            <Card className="bg-slate-700/35 border-slate-500/40/40 rounded-xl p-4">
               <h3 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
                 <PieChart className="w-4 h-4 text-violet-400" /> Sector Allocation
               </h3>
@@ -261,7 +261,7 @@ const SummaryCard = ({ label, value, sub, icon, accent }) => {
     <Card className={`bg-gradient-to-br ${accents[accent] || ''} rounded-xl p-4`}>
       <div className="flex items-center gap-2 mb-1">{icon}<span className="text-slate-400 text-[10px] uppercase">{label}</span></div>
       <p className="text-white text-xl font-bold tabular-nums">{value}</p>
-      {sub && <p className="text-slate-500 text-[10px] mt-0.5">{sub}</p>}
+      {sub && <p className="text-slate-400 text-[10px] mt-0.5">{sub}</p>}
     </Card>
   );
 };

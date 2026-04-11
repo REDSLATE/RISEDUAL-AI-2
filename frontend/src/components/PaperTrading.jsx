@@ -80,13 +80,13 @@ const PaperTrading = ({ onClose }) => {
   };
 
   const pnlColor = (val) => val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-400';
-  const pnlBg = (val) => val > 0 ? 'bg-emerald-900/20 border-emerald-800/30' : val < 0 ? 'bg-red-900/20 border-red-800/30' : 'bg-slate-800/50 border-slate-700/40';
+  const pnlBg = (val) => val > 0 ? 'bg-emerald-900/20 border-emerald-800/30' : val < 0 ? 'bg-red-900/20 border-red-800/30' : 'bg-slate-700/35 border-slate-500/40/40';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="paper-trading-modal">
-      <div className="bg-[#0A2A63] border border-slate-700/50 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="bg-[#0A2A63] border border-slate-500/30 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-700/50">
+        <div className="flex items-center justify-between p-5 border-b border-slate-500/30">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-teal-500 rounded-xl flex items-center justify-center">
               <Briefcase className="w-5 h-5 text-white" />
@@ -114,7 +114,7 @@ const PaperTrading = ({ onClose }) => {
             { key: 'history', label: 'History', icon: History },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.key ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.key ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-600/30/60'}`}
               data-testid={`paper-tab-${t.key}`}>
               <t.icon className="w-3.5 h-3.5" /> {t.label}
             </button>
@@ -132,22 +132,22 @@ const PaperTrading = ({ onClose }) => {
             <>
               {/* Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4">
-                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">Equity</p>
+                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
+                  <p className="text-slate-400 text-[10px] uppercase tracking-wider">Equity</p>
                   <p className="text-white text-lg font-bold" data-testid="paper-equity">${portfolio?.equity?.toLocaleString()}</p>
                 </Card>
-                <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4">
-                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">Cash</p>
+                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
+                  <p className="text-slate-400 text-[10px] uppercase tracking-wider">Cash</p>
                   <p className="text-white text-lg font-bold" data-testid="paper-cash">${portfolio?.cash?.toLocaleString()}</p>
                 </Card>
                 <Card className={`border rounded-xl p-4 ${pnlBg(portfolio?.total_pnl)}`}>
-                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">Total P&L</p>
+                  <p className="text-slate-400 text-[10px] uppercase tracking-wider">Total P&L</p>
                   <p className={`text-lg font-bold ${pnlColor(portfolio?.total_pnl)}`} data-testid="paper-pnl">
                     ${portfolio?.total_pnl > 0 ? '+' : ''}{portfolio?.total_pnl?.toLocaleString()}
                   </p>
                 </Card>
                 <Card className={`border rounded-xl p-4 ${pnlBg(portfolio?.total_pnl_pct)}`}>
-                  <p className="text-slate-500 text-[10px] uppercase tracking-wider">Return %</p>
+                  <p className="text-slate-400 text-[10px] uppercase tracking-wider">Return %</p>
                   <p className={`text-lg font-bold ${pnlColor(portfolio?.total_pnl_pct)}`} data-testid="paper-return">
                     {portfolio?.total_pnl_pct > 0 ? '+' : ''}{portfolio?.total_pnl_pct}%
                   </p>
@@ -173,7 +173,7 @@ const PaperTrading = ({ onClose }) => {
                             </div>
                             <div>
                               <span className="text-white text-sm font-semibold">{p.symbol}</span>
-                              <p className="text-slate-500 text-[10px]">{p.qty} shares @ ${p.avg_cost.toFixed(2)}</p>
+                              <p className="text-slate-400 text-[10px]">{p.qty} shares @ ${p.avg_cost.toFixed(2)}</p>
                             </div>
                           </div>
                           <div className="text-right">
@@ -188,35 +188,35 @@ const PaperTrading = ({ onClose }) => {
                     ))}
                   </div>
                 ) : (
-                  <Card className="bg-slate-800/30 border-slate-700/30 rounded-xl p-8 text-center">
-                    <DollarSign className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <Card className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-8 text-center">
+                    <DollarSign className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                     <p className="text-slate-400 text-sm">No positions yet</p>
-                    <p className="text-slate-500 text-xs mt-1">Use the Trade tab to buy your first paper stock</p>
+                    <p className="text-slate-400 text-xs mt-1">Use the Trade tab to buy your first paper stock</p>
                   </Card>
                 )}
               </div>
             </>
           ) : tab === 'trade' ? (
             <div className="space-y-4">
-              <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5">
+              <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5">
                 <h3 className="text-white text-sm font-semibold mb-4">Execute Paper Trade</h3>
                 <div className="space-y-3">
                   {/* Side Toggle */}
                   <div className="flex gap-2">
                     <button onClick={() => setSide('BUY')}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-700/50'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-500/30'}`}
                       data-testid="paper-buy-toggle">
                       <ArrowUpRight className="w-4 h-4 inline mr-1" /> BUY
                     </button>
                     <button onClick={() => setSide('SELL')}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'SELL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-slate-800 text-slate-400 border border-slate-700/50'}`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${side === 'SELL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-slate-800 text-slate-400 border border-slate-500/30'}`}
                       data-testid="paper-sell-toggle">
                       <ArrowDownRight className="w-4 h-4 inline mr-1" /> SELL
                     </button>
                   </div>
                   {/* Symbol */}
                   <div>
-                    <label className="text-slate-500 text-[10px] uppercase tracking-wider mb-1 block">Symbol</label>
+                    <label className="text-slate-400 text-[10px] uppercase tracking-wider mb-1 block">Symbol</label>
                     <Input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
                       placeholder="AAPL, NVDA, BTC..."
                       className="bg-slate-900 border-slate-600 text-white rounded-lg"
@@ -224,14 +224,14 @@ const PaperTrading = ({ onClose }) => {
                   </div>
                   {/* Quantity */}
                   <div>
-                    <label className="text-slate-500 text-[10px] uppercase tracking-wider mb-1 block">Quantity</label>
+                    <label className="text-slate-400 text-[10px] uppercase tracking-wider mb-1 block">Quantity</label>
                     <Input type="number" value={qty} onChange={e => setQty(e.target.value)}
                       placeholder="Number of shares"
                       className="bg-slate-900 border-slate-600 text-white rounded-lg"
                       data-testid="paper-qty-input" />
                   </div>
                   {/* Cash Available */}
-                  <div className="text-slate-500 text-xs">
+                  <div className="text-slate-400 text-xs">
                     Cash available: <span className="text-white font-medium">${portfolio?.cash?.toLocaleString()}</span>
                   </div>
                   {/* Execute */}
@@ -246,12 +246,12 @@ const PaperTrading = ({ onClose }) => {
 
               {/* Quick positions for sell */}
               {side === 'SELL' && portfolio?.positions?.length > 0 && (
-                <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-4">
+                <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-4">
                   <p className="text-slate-400 text-xs font-medium mb-2">Quick Sell — Tap a position:</p>
                   <div className="flex flex-wrap gap-2">
                     {portfolio.positions.map(p => (
                       <button key={p.symbol} onClick={() => { setSymbol(p.symbol); setQty(String(p.qty)); }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/50 text-white text-xs hover:border-red-500/40 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-500/30 text-white text-xs hover:border-red-500/40 transition-colors"
                         data-testid={`quick-sell-${p.symbol}`}>
                         {p.symbol} ({p.qty})
                       </button>
@@ -264,7 +264,7 @@ const PaperTrading = ({ onClose }) => {
             /* Trade History */
             <div className="space-y-2">
               {trades.length > 0 ? trades.map((t, i) => (
-                <Card key={i} className="bg-slate-800/30 border-slate-700/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
+                <Card key={i} className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-emerald-900/40' : 'bg-red-900/40'}`}>
                       {t.side === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-emerald-400" /> : <ArrowDownRight className="w-4 h-4 text-red-400" />}
@@ -272,17 +272,17 @@ const PaperTrading = ({ onClose }) => {
                     <div>
                       <span className={`text-xs font-semibold ${t.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{t.side}</span>
                       <span className="text-white text-sm font-medium ml-2">{t.symbol}</span>
-                      <p className="text-slate-500 text-[10px]">{t.qty} shares @ ${t.price}</p>
+                      <p className="text-slate-400 text-[10px]">{t.qty} shares @ ${t.price}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-white text-sm font-medium">${t.total.toLocaleString()}</p>
-                    <p className="text-slate-500 text-[10px]">{new Date(t.timestamp).toLocaleDateString()}</p>
+                    <p className="text-slate-400 text-[10px]">{new Date(t.timestamp).toLocaleDateString()}</p>
                   </div>
                 </Card>
               )) : (
-                <Card className="bg-slate-800/30 border-slate-700/30 rounded-xl p-8 text-center">
-                  <History className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <Card className="bg-slate-700/25 border-slate-500/40/30 rounded-xl p-8 text-center">
+                  <History className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   <p className="text-slate-400 text-sm">No trades yet</p>
                 </Card>
               )}

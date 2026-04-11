@@ -47,7 +47,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
   if (success) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="reset-password-modal">
-        <div className="bg-slate-900 rounded-2xl border border-slate-700/50 w-full max-w-md p-6 relative text-center">
+        <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative text-center">
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="reset-close-btn">
             <X className="w-5 h-5" />
           </button>
@@ -70,7 +70,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="reset-password-modal">
-      <div className="bg-slate-900 rounded-2xl border border-slate-700/50 w-full max-w-md p-6 relative">
+      <div className="bg-slate-900 rounded-2xl border border-slate-500/30 w-full max-w-md p-6 relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white" data-testid="reset-close-btn">
           <X className="w-5 h-5" />
         </button>
@@ -115,7 +115,7 @@ const ResetPasswordModal = ({ token, onClose, onLoginClick }) => {
               data-testid="reset-confirm-input"
             />
           </div>
-          <p className="text-slate-500 text-xs">Minimum 6 characters</p>
+          <p className="text-slate-400 text-xs">Minimum 6 characters</p>
           <Button
             type="submit"
             disabled={loading}

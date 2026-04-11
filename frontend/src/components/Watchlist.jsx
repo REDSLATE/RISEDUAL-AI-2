@@ -119,12 +119,12 @@ const Watchlist = ({ onSubscribe }) => {
   };
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700/50 rounded-xl p-4">
+    <Card className="bg-slate-700/35 border-slate-500/30 rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
           <h3 className="text-white font-semibold">My Watchlist</h3>
-          <span className="text-slate-500 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
+          <span className="text-slate-400 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
         </div>
         <Button
           variant="ghost"
@@ -175,12 +175,12 @@ const Watchlist = ({ onSubscribe }) => {
           {/* Watchlist Items */}
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {watchlist.length === 0 ? (
-              <div className="text-center py-10 text-slate-500" data-testid="watchlist-empty">
-                <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-700/40">
-                  <Star className="w-7 h-7 text-slate-600" />
+              <div className="text-center py-10 text-slate-400" data-testid="watchlist-empty">
+                <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-slate-500/40/40">
+                  <Star className="w-7 h-7 text-slate-400" />
                 </div>
                 <p className="text-slate-400 text-sm font-medium mb-1">No tickers yet</p>
-                <p className="text-slate-600 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
+                <p className="text-slate-400 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
               </div>
             ) : (
               watchlist.map((item) => (
@@ -209,7 +209,7 @@ const Watchlist = ({ onSubscribe }) => {
                     )}
                     <button
                       onClick={() => removeSymbol(item.symbol)}
-                      className="text-slate-500 hover:text-red-400 transition-colors"
+                      className="text-slate-400 hover:text-red-400 transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>

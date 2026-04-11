@@ -113,7 +113,7 @@ const SectorHeatmap = () => {
 
   if (loading && !data) {
     return (
-      <Card className="bg-slate-800/40 border-slate-700/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
+      <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-2xl p-5" data-testid="sector-heatmap-skeleton">
         <div className="flex items-center gap-3 mb-5">
           <div className="skeleton w-10 h-10 rounded-xl" />
           <div>
@@ -189,7 +189,7 @@ const SectorHeatmap = () => {
                   ? p.key === 'ai_sentiment'
                     ? 'bg-purple-600 text-white ring-1 ring-purple-400/50'
                     : 'bg-[#35D6C8] text-white'
-                  : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'
+                  : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30'
               }`}
               data-testid={`period-${p.key}`}
             >
@@ -199,7 +199,7 @@ const SectorHeatmap = () => {
           ))}
           <button
             onClick={() => isAI ? fetchSentiment(true) : fetchData(true)}
-            className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50 transition-all ml-1"
+            className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400 hover:text-white border border-slate-500/30 transition-all ml-1"
             title={isAI ? 'Regenerate AI sentiment' : 'Force refresh (bypass cache)'}
             data-testid="refresh-sectors"
           >
@@ -239,7 +239,7 @@ const SectorHeatmap = () => {
             <Sparkles className="w-4 h-4 text-purple-300 absolute -top-1 -right-1 animate-bounce" />
           </div>
           <p className="text-purple-300 text-sm font-medium">AI agents analyzing sectors...</p>
-          <p className="text-slate-500 text-xs">3 analysts + 1 strategist running in parallel</p>
+          <p className="text-slate-400 text-xs">3 analysts + 1 strategist running in parallel</p>
         </div>
       )}
 
@@ -334,7 +334,7 @@ const SectorHeatmap = () => {
         })}
       </div>
 
-      <div className="flex items-center justify-between mt-4 text-[10px] text-slate-600">
+      <div className="flex items-center justify-between mt-4 text-[10px] text-slate-400">
         {isAI ? (
           <>
             <div className="flex items-center gap-2">

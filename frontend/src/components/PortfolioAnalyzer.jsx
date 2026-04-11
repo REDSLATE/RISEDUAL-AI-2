@@ -55,8 +55,8 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="portfolio-analyzer">
-      <div className="bg-slate-900 rounded-2xl max-w-2xl w-full my-4 border border-slate-700/50">
-        <div className="p-5 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900 rounded-2xl max-w-2xl w-full my-4 border border-slate-500/30">
+        <div className="p-5 border-b border-slate-500/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-[#35D6C8] to-cyan-500 rounded-xl flex items-center justify-center">
               <PieChart className="w-5 h-5 text-white" />
@@ -74,8 +74,8 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
 
         <div className="p-5 space-y-4">
           {!isPro && (
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 text-center">
-              <Lock className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+            <div className="bg-slate-800/60 border border-slate-500/30 rounded-xl p-4 text-center">
+              <Lock className="w-8 h-8 text-slate-400 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm mb-1">Pro Feature</p>
               <p className="text-slate-400 text-xs mb-3">Input your holdings and get an AI health score, risk analysis, and rebalancing suggestions.</p>
               <Button className="bg-[#35D6C8] text-white rounded-xl" onClick={onSubscribe}>Upgrade to Pro</Button>
@@ -91,7 +91,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                     <Input placeholder="Shares" type="number" value={h.shares} onChange={e => updateHolding(i, 'shares', e.target.value)} className="bg-slate-800 border-slate-600 text-white rounded-xl w-24" />
                     <Input placeholder="Avg Price" type="number" value={h.avg_price} onChange={e => updateHolding(i, 'avg_price', e.target.value)} className="bg-slate-800 border-slate-600 text-white rounded-xl flex-1" />
                     {holdings.length > 1 && (
-                      <button onClick={() => removeRow(i)} className="text-slate-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => removeRow(i)} className="text-slate-400 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>
                 ))}
@@ -109,21 +109,21 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
           {result && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+                <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
                   <p className="text-3xl font-bold text-white">{result.health_score}</p>
                   <p className="text-slate-400 text-xs">Health Score</p>
                 </Card>
-                <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+                <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
                   <p className={`text-lg font-bold ${riskColor(result.risk_level)}`}>{result.risk_level?.toUpperCase()}</p>
                   <p className="text-slate-400 text-xs">Risk Level</p>
                 </Card>
-                <Card className="bg-slate-800/60 border-slate-700/40 rounded-xl p-3 text-center">
+                <Card className="bg-slate-800/60 border-slate-500/40/40 rounded-xl p-3 text-center">
                   <span className={`text-2xl font-bold px-3 py-1 rounded-lg ${gradeColor(result.diversification_grade)}`}>{result.diversification_grade}</span>
                   <p className="text-slate-400 text-xs mt-1">Diversification</p>
                 </Card>
               </div>
 
-              {result.summary && <p className="text-slate-300 text-sm bg-slate-800/40 rounded-xl p-3 border border-slate-700/30">{result.summary}</p>}
+              {result.summary && <p className="text-slate-300 text-sm bg-slate-700/30 rounded-xl p-3 border border-slate-500/40/30">{result.summary}</p>}
 
               {result.suggestions?.length > 0 && (
                 <div>
@@ -139,7 +139,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
                   <h4 className="text-white text-sm font-semibold mb-2 flex items-center gap-1"><Shield className="w-4 h-4 text-blue-400" /> Rebalance Actions</h4>
                   <div className="space-y-1">
                     {result.rebalance_actions.map((a, i) => (
-                      <div key={`reb-${i}`} className="flex items-center gap-2 bg-slate-800/40 rounded-lg px-3 py-2 text-xs">
+                      <div key={`reb-${i}`} className="flex items-center gap-2 bg-slate-700/30 rounded-lg px-3 py-2 text-xs">
                         {a.action === 'buy' ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> : a.action === 'sell' ? <TrendingDown className="w-3.5 h-3.5 text-red-400" /> : <Minus className="w-3.5 h-3.5 text-amber-400" />}
                         <span className="text-white font-semibold">{a.ticker}</span>
                         <Badge className={`text-[10px] border ${a.action === 'buy' ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50' : a.action === 'sell' ? 'text-red-400 bg-red-900/30 border-red-700/50' : 'text-amber-400 bg-amber-900/30 border-amber-700/50'}`}>{a.action?.toUpperCase()}</Badge>

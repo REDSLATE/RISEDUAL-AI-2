@@ -83,7 +83,7 @@ const SocialShareButtons = ({ referralLink, compact = false }) => {
           <button
             key={p.id}
             onClick={() => handleShare(p)}
-            className={`w-8 h-8 rounded-lg bg-slate-800/60 border border-slate-700/40 flex items-center justify-center text-slate-400 ${p.color} hover:text-white transition-all hover:scale-105`}
+            className={`w-8 h-8 rounded-lg bg-slate-800/60 border border-slate-500/40/40 flex items-center justify-center text-slate-400 ${p.color} hover:text-white transition-all hover:scale-105`}
             title={`Share on ${p.label}`}
             data-testid={`share-${p.id}`}
           >
@@ -96,13 +96,13 @@ const SocialShareButtons = ({ referralLink, compact = false }) => {
 
   return (
     <div className="space-y-2" data-testid="social-share-buttons">
-      <p className="text-slate-500 text-[10px] font-medium uppercase tracking-wider">Share your link</p>
+      <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wider">Share your link</p>
       <div className="flex flex-wrap gap-2">
         {platforms.map((p) => (
           <button
             key={p.id}
             onClick={() => handleShare(p)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/40 text-slate-400 text-xs ${p.color} hover:text-white transition-all hover:scale-[1.02]`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-500/40/40 text-slate-400 text-xs ${p.color} hover:text-white transition-all hover:scale-[1.02]`}
             data-testid={`share-${p.id}`}
           >
             {p.icon}

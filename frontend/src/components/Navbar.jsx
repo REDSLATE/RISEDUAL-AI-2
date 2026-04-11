@@ -44,7 +44,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
   const mobileNav = (id) => { scrollTo(id); setMobileMenuOpen(false); };
 
   return (
-    <nav className="bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 px-3 sm:px-6 py-3 sticky top-0 z-40">
+    <nav className="bg-slate-900/80 backdrop-blur-xl border-b border-slate-500/30 px-3 sm:px-6 py-3 sticky top-0 z-40">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 sm:gap-8">
           <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
@@ -58,7 +58,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input ref={searchRef} type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
               className="pl-10 pr-16 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#35D6C8] rounded-xl" data-testid="search-input" />
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-slate-700/60 border border-slate-600/50 rounded px-1.5 py-0.5 font-mono pointer-events-none">
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center gap-0.5 text-[10px] text-slate-400 bg-slate-700/60 border border-slate-600/50 rounded px-1.5 py-0.5 font-mono pointer-events-none">
               <span className="text-[9px]">&#8984;</span>K
             </kbd>
           </form>
@@ -142,7 +142,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="bg-[#0A2A63] border-slate-600 z-[100] shadow-2xl shadow-black/60 min-w-[200px]">
-                <div className="px-3 py-2 border-b border-slate-700">
+                <div className="px-3 py-2 border-b border-slate-500/40">
                   <p className="text-white text-sm font-medium">{user.name || user.email}</p>
                   <p className="text-slate-400 text-xs">{user.email}</p>
                   <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded mt-1 inline-block ${isPro ? 'bg-[#35D6C8]/20 text-[#35D6C8]' : 'bg-slate-700 text-slate-400'}`}>
@@ -218,7 +218,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden mt-3 pb-3 border-t border-slate-700/50 pt-3 space-y-3" data-testid="mobile-menu">
+        <div className="lg:hidden mt-3 pb-3 border-t border-slate-500/30 pt-3 space-y-3" data-testid="mobile-menu">
           <form onSubmit={handleSearch} className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
@@ -240,7 +240,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               { label: 'Crypto Market', id: 'crypto' },
             ].map(item => (
               <button key={item.id} onClick={() => mobileNav(item.id)}
-                className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
+                className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/35 border border-slate-500/30 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
                 {item.label}
               </button>
             ))}

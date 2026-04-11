@@ -58,7 +58,7 @@ const AlertsPanel = ({ onSubscribe }) => {
       {/* Bell Icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#0A2A63] border border-slate-700 rounded-full p-3 hover:bg-slate-800 transition-colors"
+        className="relative bg-[#0A2A63] border border-slate-500/40 rounded-full p-3 hover:bg-slate-600/30 transition-colors"
         data-testid="alerts-bell"
       >
         <Bell className="w-5 h-5 text-white" />
@@ -76,8 +76,8 @@ const AlertsPanel = ({ onSubscribe }) => {
 
       {/* Panel */}
       {isOpen && (
-        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-700/50 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
-          <div className="border-b border-slate-700 p-4 flex items-center justify-between">
+        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-500/30 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
+          <div className="border-b border-slate-500/40 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-white font-semibold text-sm">AI Alerts</h3>
               {isPro && unreadCount > 0 && (
@@ -103,7 +103,7 @@ const AlertsPanel = ({ onSubscribe }) => {
               /* Free user — paywall teaser */
               <div className="text-center py-8 px-6" data-testid="alerts-paywall">
                 <div className="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Lock className="w-7 h-7 text-slate-500" />
+                  <Lock className="w-7 h-7 text-slate-400" />
                 </div>
                 <h4 className="text-white font-semibold mb-1">Pro AI Alerts</h4>
                 <p className="text-slate-400 text-xs leading-relaxed mb-4">
@@ -116,9 +116,9 @@ const AlertsPanel = ({ onSubscribe }) => {
             ) : notifications.length === 0 ? (
               /* Pro but no notifications */
               <div className="text-center py-8 px-4">
-                <Bell className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+                <Bell className="w-10 h-10 text-slate-400 mx-auto mb-3" />
                 <p className="text-slate-400 text-sm">No alerts yet</p>
-                <p className="text-slate-500 text-xs mt-1">You'll be notified when AI detects a verdict change on your watchlist tickers</p>
+                <p className="text-slate-400 text-xs mt-1">You'll be notified when AI detects a verdict change on your watchlist tickers</p>
               </div>
             ) : (
               /* Pro with notifications */

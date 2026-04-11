@@ -10,7 +10,7 @@ export const StatCard = ({ icon, label, value, accent }) => {
     emerald: 'from-emerald-950/30 to-emerald-900/10 border-emerald-800/30',
   };
   return (
-    <Card className={`bg-gradient-to-br ${colors[accent] || 'from-slate-800/50 to-slate-800/30 border-slate-700/40'} p-4 rounded-xl`}>
+    <Card className={`bg-gradient-to-br ${colors[accent] || 'from-slate-800/50 to-slate-800/30 border-slate-500/40/40'} p-4 rounded-xl`}>
       <div className="flex items-center gap-2 mb-1">{icon}<span className="text-slate-400 text-xs">{label}</span></div>
       <p className="text-white text-2xl font-bold tabular-nums">{value}</p>
     </Card>
@@ -18,7 +18,7 @@ export const StatCard = ({ icon, label, value, accent }) => {
 };
 
 export const LoadingState = ({ text }) => (
-  <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-12 flex items-center justify-center">
+  <div className="bg-slate-700/25 border border-slate-500/40/40 rounded-xl p-12 flex items-center justify-center">
     <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mr-3" />
     <span className="text-slate-400 text-sm">{text}</span>
   </div>

@@ -49,7 +49,7 @@ export const OverviewCard = ({ overview, symbol }) => {
   ];
   const metrics = isEtf ? etfMetrics : stockMetrics;
   return (
-    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
+    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5 lg:col-span-2" data-testid="warroom-overview">
       <div className="flex items-center gap-2 mb-3">
         <Building2 className="w-4 h-4 text-[#35D6C8]" />
         <h3 className="text-white font-semibold text-sm">{overview.name || symbol}</h3>
@@ -58,10 +58,10 @@ export const OverviewCard = ({ overview, symbol }) => {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {metrics.map(({ label, value, icon: Icon }) => (
-          <div key={label} className="bg-slate-900/40 rounded-lg p-2.5">
+          <div key={label} className="bg-slate-800/50 rounded-lg p-2.5">
             <div className="flex items-center gap-1 mb-0.5">
-              <Icon className="w-3 h-3 text-slate-500" />
-              <span className="text-slate-500 text-[10px]">{label}</span>
+              <Icon className="w-3 h-3 text-slate-400" />
+              <span className="text-slate-400 text-[10px]">{label}</span>
             </div>
             <p className="text-white text-sm font-semibold">{value}</p>
           </div>
@@ -72,7 +72,7 @@ export const OverviewCard = ({ overview, symbol }) => {
 };
 
 export const AIScoreCard = ({ aiScore }) => (
-  <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-ai-score">
+  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-ai-score">
     <div className="flex items-center gap-2 mb-3">
       <Brain className="w-4 h-4 text-violet-400" />
       <h3 className="text-white font-semibold text-sm">AI Score</h3>
@@ -109,7 +109,7 @@ export const AIScoreCard = ({ aiScore }) => (
 );
 
 export const BriefCard = ({ brief }) => (
-  <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-brief">
+  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-brief">
     <div className="flex items-center gap-2 mb-3">
       <Zap className="w-4 h-4 text-amber-400" />
       <h3 className="text-white font-semibold text-sm">Intelligence Brief</h3>
@@ -133,7 +133,7 @@ export const BriefCard = ({ brief }) => (
 );
 
 export const EarningsCard = ({ earnings }) => (
-  <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-earnings">
+  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-earnings">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <Target className="w-4 h-4 text-emerald-400" />
@@ -163,7 +163,7 @@ export const EarningsCard = ({ earnings }) => (
         );
       })}
     </div>
-    <div className="flex justify-between text-[9px] text-slate-500 px-1">
+    <div className="flex justify-between text-[9px] text-slate-400 px-1">
       {(earnings.quarters || []).slice(0, 8).reverse().map((q) => (
         <span key={`label-${q.date}`}>{q.date?.slice(2, 7)}</span>
       ))}
@@ -176,7 +176,7 @@ export const EarningsCard = ({ earnings }) => (
 );
 
 export const InsidersCard = ({ insiders }) => (
-  <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-insiders">
+  <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-insiders">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <Users className="w-4 h-4 text-blue-400" />
@@ -197,14 +197,14 @@ export const InsidersCard = ({ insiders }) => (
     </div>
     <div className="space-y-1.5 max-h-36 overflow-y-auto">
       {(insiders.trades || []).slice(0, 6).map((t) => (
-        <div key={`${t.name}-${t.date}`} className="flex items-center justify-between text-xs bg-slate-900/40 rounded-lg px-2.5 py-1.5">
+        <div key={`${t.name}-${t.date}`} className="flex items-center justify-between text-xs bg-slate-800/50 rounded-lg px-2.5 py-1.5">
           <div className="flex items-center gap-2">
             <span className={`w-1.5 h-1.5 rounded-full ${t.type === 'buy' ? 'bg-emerald-400' : 'bg-red-400'}`} />
             <span className="text-slate-300 truncate max-w-[120px]">{t.name}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-slate-500">{t.shares?.toLocaleString()} shares</span>
-            <span className="text-slate-600 text-[10px]">{t.date?.slice(5)}</span>
+            <span className="text-slate-400">{t.shares?.toLocaleString()} shares</span>
+            <span className="text-slate-400 text-[10px]">{t.date?.slice(5)}</span>
           </div>
         </div>
       ))}
@@ -248,7 +248,7 @@ export const CompositeBreakdownBar = ({ breakdown }) => {
     <div className="mt-3 space-y-1.5 text-left">
       {bars.map(b => (
         <div key={b.label} className="flex items-center gap-2">
-          <span className="text-slate-500 text-[10px] w-16">{b.label}</span>
+          <span className="text-slate-400 text-[10px] w-16">{b.label}</span>
           <MiniBar value={b.value} max={maxVal} color={b.color} />
           <span className="text-slate-400 text-[10px] w-6">{b.value}</span>
         </div>
@@ -260,7 +260,7 @@ export const CompositeBreakdownBar = ({ breakdown }) => {
 export const CrewInsightsCard = ({ composite }) => {
   if (!composite?.multi_agent) return null;
   return (
-    <Card className="bg-slate-800/40 border-slate-700/30 rounded-xl p-5" data-testid="warroom-crew-insights">
+    <Card className="bg-slate-700/30 border-slate-500/40/30 rounded-xl p-5" data-testid="warroom-crew-insights">
       <div className="flex items-center gap-2 mb-3">
         <Brain className="w-4 h-4 text-violet-400" />
         <h3 className="text-white font-semibold text-sm">Strategist vs Auditor</h3>
@@ -336,12 +336,12 @@ export const CrewInsightsCard = ({ composite }) => {
       )}
       {composite.agent_analyses?.length > 0 && (
         <details className="mt-3">
-          <summary className="text-slate-500 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
+          <summary className="text-slate-400 text-[10px] cursor-pointer hover:text-slate-300 transition-colors">
             View Strategist & Auditor analyses ({composite.agent_analyses.length} agents)
           </summary>
           <div className="mt-2 space-y-2">
             {composite.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-900/40 rounded-lg p-2.5">
+              <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
                 <span className="text-violet-400 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] leading-relaxed mt-1">{a.summary}</p>
               </div>

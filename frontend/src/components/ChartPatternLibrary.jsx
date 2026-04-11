@@ -120,7 +120,7 @@ const PatternSVG = ({ pattern }) => (
 const PatternCard = ({ pattern, onClick }) => (
   <button
     onClick={() => onClick(pattern)}
-    className="bg-[#1E293B] border border-slate-700 rounded-xl p-2 hover:border-[#35D6C8] transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10 text-left group"
+    className="bg-[#1E293B] border border-slate-500/40 rounded-xl p-2 hover:border-[#35D6C8] transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10 text-left group"
     data-testid={`pattern-card-${pattern.id}`}
   >
     <div className="aspect-[5/3] mb-2 rounded overflow-hidden">
@@ -134,7 +134,7 @@ const PatternCard = ({ pattern, onClick }) => (
 );
 
 const ChartPatternLibrary = ({ onSelectPattern }) => (
-  <div className="bg-[#0A2A63] rounded-xl p-3 border border-slate-700" data-testid="pattern-library">
+  <div className="bg-[#0A2A63] rounded-xl p-3 border border-slate-500/40" data-testid="pattern-library">
     <div className="flex items-center gap-2 mb-3">
       <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
       <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">Chart Pattern Library</p>

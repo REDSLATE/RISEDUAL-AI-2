@@ -9,7 +9,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
     <div className="relative" data-testid="model-selector">
       <button
         onClick={() => setShowPicker(!showPicker)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-800/70 border border-slate-700/50 rounded-xl hover:border-slate-600 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-800/70 border border-slate-500/30 rounded-xl hover:border-slate-600 transition-colors"
         data-testid="model-selector-trigger"
       >
         <div className="flex items-center gap-3">
@@ -21,7 +21,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
               {currentModel.label}
               {currentModel.key === 'consensus' && <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">3 MODELS</Badge>}
             </div>
-            <div className="text-slate-500 text-xs">{currentModel.provider}</div>
+            <div className="text-slate-400 text-xs">{currentModel.provider}</div>
           </div>
         </div>
         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showPicker ? 'rotate-180' : ''}`} />
@@ -57,7 +57,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
                         <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">BEST ACCURACY</Badge>
                       )}
                     </div>
-                    <div className="text-slate-500 text-xs">{m.provider}</div>
+                    <div className="text-slate-400 text-xs">{m.provider}</div>
                   </div>
                 </div>
                 <ModelBadge free={m.free} locked={locked} />
@@ -79,7 +79,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
 
 const ModelBadge = ({ free, locked }) => {
   if (free) return <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-[9px]">FREE</Badge>;
-  if (locked) return <Lock className="w-4 h-4 text-slate-500" />;
+  if (locked) return <Lock className="w-4 h-4 text-slate-400" />;
   return <Badge className="bg-[#35D6C8]/20 text-[#35D6C8] border-[#35D6C8]/30 text-[9px]">PRO</Badge>;
 };
 
