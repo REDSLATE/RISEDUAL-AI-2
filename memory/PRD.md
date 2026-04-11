@@ -275,6 +275,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
 - Added AI War Room, Order Flow, Whale Radar to mobile nav grid
 
+### Vivid Solid Color Palette (April 11, 2026)
+- User requested bright solid colors (red, yellow, lime, green) instead of semi-transparent muted ones
+- Background darkened to `#060E1F` (near-black navy) for maximum contrast
+- Sector heatmap: solid `bg-green-500`, `bg-lime-400`, `bg-yellow-400`, `bg-orange-500`, `bg-red-500` (no opacity)
+- All gain/loss indicators app-wide: lime-400 (gains), orange-400 (losses)
+- Accent colors: violet → brighter violet-300, amber → amber-300
+- Teal accent brightened: `#35D6C8` → `#3DE8D9`
+- **Verified (Iteration 78)**: 100% pass, all 11 heatmap tiles + legend confirmed solid
+
 ### Contrast Fix for Navy Background (April 11, 2026)
 - User reported card borders, text, and legends overpowered by navy `#0A2A63` background
 - Card borders: `slate-700/50` → `slate-500/30` (brighter)
