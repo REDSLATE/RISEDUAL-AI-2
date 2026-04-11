@@ -275,6 +275,16 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
 - Added AI War Room, Order Flow, Whale Radar to mobile nav grid
 
+### Brand Guide Color Palette Update (April 11, 2026)
+- Applied RISEDUAL brand guide colors across all 50+ frontend files (197 color references)
+- Primary navy: `#0F172A` → `#0A2A63` (deeper true navy blue)
+- Accent teal: `#0052FF` → `#35D6C8` (AI actions, CTAs, active states)
+- Hover teal: `#2563EB` → `#67E3D3` (hover/interactive states)
+- CSS custom properties added to index.css: `--brand-navy`, `--brand-teal`, `--brand-teal-light`, `--brand-deep-blue`, `--brand-navy-light`
+- Dual-identity principle: Teal = AI emphasis, Navy = platform trust
+- Landing page already aligned (uses Tailwind `teal-400/500`)
+- **Verified (Iteration 76)**: 100% pass, all components + mobile verified
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
