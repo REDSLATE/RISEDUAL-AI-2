@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Footer = () => {
+const Footer = ({ onOpenLegal }) => {
   const year = new Date().getFullYear();
 
   return (
@@ -62,16 +62,17 @@ const Footer = () => {
           <div>
             <h4 className="text-slate-300 text-xs font-semibold uppercase tracking-wider mb-3">Legal</h4>
             <ul className="space-y-2">
-              <li><span className="text-slate-300 text-xs">Terms of Service</span></li>
-              <li><span className="text-slate-300 text-xs">Privacy Policy</span></li>
-              <li><span className="text-slate-300 text-xs">Risk Disclosure</span></li>
+              <li><button onClick={() => onOpenLegal?.('terms')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-terms-link">Terms of Service</button></li>
+              <li><button onClick={() => onOpenLegal?.('privacy')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-privacy-link">Privacy Policy</button></li>
+              <li><button onClick={() => onOpenLegal?.('risk')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-risk-link">Risk Disclosure</button></li>
+              <li><button onClick={() => onOpenLegal?.('disclaimer')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-disclaimer-link">Disclaimer</button></li>
             </ul>
           </div>
         </div>
 
         {/* Divider + Bottom */}
         <div className="border-t border-slate-600/30/60 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-slate-400 text-[11px]">&copy; {year} RISEDUAL AI. All rights reserved. Not financial advice.</p>
+          <p className="text-slate-400 text-[11px]">&copy; {year} RISEDUAL CORPORATION. All rights reserved. Not financial advice.</p>
           <p className="text-slate-700 text-[10px]">Powered by AI Multi-Model Consensus Engine</p>
         </div>
       </div>

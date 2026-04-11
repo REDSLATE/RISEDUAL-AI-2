@@ -3,11 +3,12 @@ import { Mail, Lock, User, Eye, EyeOff, Gift } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 
-const AuthForm = ({ tab, onSubmit, error, loading, refCode }) => {
+const AuthForm = ({ tab, onSubmit, error, loading, refCode, onOpenLegal }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -50,7 +51,25 @@ const AuthForm = ({ tab, onSubmit, error, loading, refCode }) => {
         </div>
       )}
 
-      <Button type="submit" disabled={loading}
+      {tab === 'register' && (
+        <label className="flex items-start gap-2 cursor-pointer" data-testid="auth-terms-label">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-[#3DE8D9] focus:ring-[#3DE8D9]"
+            data-testid="auth-terms-checkbox"
+          />
+          <span className="text-slate-400 text-[11px] leading-relaxed">
+            I agree to the{' '}
+            <button type="button" onClick={() => onOpenLegal?.('terms')} className="text-[#3DE8D9] hover:underline">Terms of Service</button>,{' '}
+            <button type="button" onClick={() => onOpenLegal?.('privacy')} className="text-[#3DE8D9] hover:underline">Privacy Policy</button>, and{' '}
+            <button type="button" onClick={() => onOpenLegal?.('risk')} className="text-[#3DE8D9] hover:underline">Risk Disclosure</button>.
+          </span>
+        </label>
+      )}
+
+      <Button type="submit" disabled={loading || (tab === 'register' && !agreed)}
         className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-5 rounded-xl"
         data-testid="auth-submit-btn">
         {loading ? 'Please wait...' : tab === 'login' ? 'Log In' : 'Create Account'}

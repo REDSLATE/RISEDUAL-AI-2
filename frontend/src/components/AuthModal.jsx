@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import AuthForm from './auth/AuthForm';
 import ForgotPasswordForm from './auth/ForgotPasswordForm';
 
-const AuthModal = ({ onClose, initialTab = 'login' }) => {
+const AuthModal = ({ onClose, initialTab = 'login', onOpenLegal }) => {
   const [tab, setTab] = useState(initialTab);
   const [view, setView] = useState('form');
   const [error, setError] = useState('');
@@ -65,7 +65,7 @@ const AuthModal = ({ onClose, initialTab = 'login' }) => {
               {tab === 'login' ? 'Log in to access your workspace' : 'Start your AI trading journey'}
             </p>
 
-            <AuthForm tab={tab} onSubmit={handleSubmit} error={error} loading={loading} refCode={refCode} />
+            <AuthForm tab={tab} onSubmit={handleSubmit} error={error} loading={loading} refCode={refCode} onOpenLegal={onOpenLegal} />
 
             {tab === 'login' && (
               <div className="text-right mt-3">

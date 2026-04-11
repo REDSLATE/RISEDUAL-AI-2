@@ -47,6 +47,7 @@ import MemoryDashboard from './components/MemoryDashboard';
 import LandingPage from './components/LandingPage';
 import PaperTrading from './components/PaperTrading';
 import AboutUs from './components/AboutUs';
+import LegalPages from './components/LegalPages';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -74,6 +75,8 @@ function AppContent() {
     showMemory, setShowMemory,
     showPaperTrading, setShowPaperTrading,
     showAbout, setShowAbout,
+    showLegal, setShowLegal,
+    legalTab, setLegalTab,
     resetToken, setResetToken,
     openLogin, openRegister, openChat,
   } = useModals();
@@ -81,11 +84,13 @@ function AppContent() {
 
   // Show landing page for unauthenticated users
   if (!user) {
+    const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
     return (
       <div>
-        <LandingPage onGetStarted={openRegister} />
+        <LandingPage onGetStarted={openRegister} onOpenLegal={openLegalTab} />
         <Toaster />
-        {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
+        {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
+        {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
         {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
       </div>
     );
@@ -156,7 +161,7 @@ function AppContent() {
         <div id="crypto" className="animate-enter"><CryptoSection /></div>
       </main>
 
-      <Footer />
+      <Footer onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />
 
       <TradeGPTChat onSubscribe={() => setShowSubscription(true)} />
       <MobileBottomNav onOpenChat={openChat} />
@@ -164,7 +169,7 @@ function AppContent() {
       <Toaster />
 
       {paymentInfo && <PaymentStatus sessionId={paymentInfo.sessionId} initialStatus={paymentInfo.status} onClose={() => setPaymentInfo(null)} />}
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} />}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
       {showSubscription && <SubscriptionPricing onClose={() => setShowSubscription(false)} />}
       {showAdmin && user?.role === 'owner' && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} onSubscribe={() => { setShowWorkspace(false); setShowSubscription(true); }} />}
@@ -176,6 +181,7 @@ function AppContent() {
       {showMemory && user && <MemoryDashboard onClose={() => setShowMemory(false)} onSubscribe={() => { setShowMemory(false); setShowSubscription(true); }} />}
       {showPaperTrading && user && <PaperTrading onClose={() => setShowPaperTrading(false)} />}
       {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
+      {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
     </div>
   );

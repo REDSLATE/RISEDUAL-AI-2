@@ -454,14 +454,15 @@ const CTA = ({ onGetStarted }) => (
 );
 
 /* ─── Landing Footer ─── */
-const LandingFooter = () => (
+const LandingFooter = ({ onOpenLegal }) => (
   <footer className="border-t border-white/5 py-8">
     <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL AI. All rights reserved.</span>
+      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL CORPORATION. All rights reserved.</span>
       <div className="flex items-center gap-6 text-xs text-slate-400">
-        <a href="#" className="hover:text-slate-400 transition-colors">Privacy</a>
-        <a href="#" className="hover:text-slate-400 transition-colors">Terms</a>
-        <a href="#" className="hover:text-slate-400 transition-colors">Contact</a>
+        <button onClick={() => onOpenLegal?.('privacy')} className="hover:text-slate-300 transition-colors" data-testid="landing-privacy-link">Privacy</button>
+        <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>
+        <button onClick={() => onOpenLegal?.('risk')} className="hover:text-slate-300 transition-colors" data-testid="landing-risk-link">Risk Disclosure</button>
+        <button onClick={() => onOpenLegal?.('disclaimer')} className="hover:text-slate-300 transition-colors" data-testid="landing-disclaimer-link">Disclaimer</button>
       </div>
     </div>
   </footer>
@@ -470,7 +471,7 @@ const LandingFooter = () => (
 import AboutUs from './AboutUs';
 
 /* ─── Main Landing Page ─── */
-const LandingPage = ({ onGetStarted }) => {
+const LandingPage = ({ onGetStarted, onOpenLegal }) => {
   const scrollToHow = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -488,7 +489,7 @@ const LandingPage = ({ onGetStarted }) => {
       <Testimonials />
       <FAQ />
       <CTA onGetStarted={onGetStarted} />
-      <LandingFooter />
+      <LandingFooter onOpenLegal={onOpenLegal} />
     </div>
   );
 };
