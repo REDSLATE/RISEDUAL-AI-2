@@ -116,7 +116,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
       {expanded && (
         <div className="border-t border-slate-600/30/50">
           {/* Ticker selector */}
-          <div className="px-4 py-2 flex items-center gap-2 border-b border-slate-600/30/30">
+          <div className="px-4 py-2 flex flex-wrap items-center gap-2 border-b border-slate-600/30/30">
             <div className="flex gap-1.5 flex-wrap">
               {['SPY', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'BTC', 'ETH'].map(t => (
                 <button key={t} onClick={() => setTicker(t)}

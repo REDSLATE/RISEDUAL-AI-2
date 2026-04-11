@@ -46,7 +46,7 @@ const CryptoSection = () => {
           <Bitcoin className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h2 className="text-white text-2xl font-bold">Cryptocurrency Market</h2>
+          <h2 className="text-white text-lg sm:text-2xl font-bold">Cryptocurrency Market</h2>
           <p className="text-slate-300 text-sm">Real-time cryptocurrency prices and market data</p>
         </div>
       </div>

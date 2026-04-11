@@ -68,7 +68,7 @@ const DarkPoolData = ({ onSubscribe }) => {
           <Eye className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h2 className="text-white text-2xl font-bold">Dark Pool Trading</h2>
+          <h2 className="text-white text-lg sm:text-2xl font-bold">Dark Pool Trading</h2>
           <p className="text-slate-300 text-sm">Off-exchange institutional trading activity</p>
         </div>
       </div>

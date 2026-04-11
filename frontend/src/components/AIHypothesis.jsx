@@ -137,7 +137,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
       />
 
       {/* Search */}
-      <form onSubmit={search} className="flex gap-3">
+      <form onSubmit={search} className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <Input

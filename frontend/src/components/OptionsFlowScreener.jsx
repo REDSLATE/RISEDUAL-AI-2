@@ -25,7 +25,7 @@ const OptionsFlowScreener = () => {
           </svg>
         </div>
         <div>
-          <h2 className="text-white text-2xl font-bold">Options Flow Screener</h2>
+          <h2 className="text-white text-lg sm:text-2xl font-bold">Options Flow Screener</h2>
           <p className="text-slate-300 text-sm">OPRA data is delayed by 15 minutes</p>
         </div>
       </div>

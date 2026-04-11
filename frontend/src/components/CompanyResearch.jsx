@@ -212,14 +212,14 @@ const CompanyResearch = () => {
             <Globe className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-white text-xl font-bold" style={{fontFamily:'Manrope,sans-serif'}}>Company Research</h2>
+            <h2 className="text-white text-lg sm:text-xl font-bold" style={{fontFamily:'Manrope,sans-serif'}}>Company Research</h2>
             <p className="text-slate-300 text-xs">Perplexity-style AI research with cited sources</p>
           </div>
         </div>
       </div>
 
       {/* Search Bar */}
-      <form onSubmit={handleSearch} className="flex gap-3">
+      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <Input

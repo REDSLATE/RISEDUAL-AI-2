@@ -67,12 +67,12 @@ const MarketPrediction = ({ onSubscribe }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-400/25 pb-1">
+      <div className="flex gap-2 border-b border-slate-400/25 pb-1 overflow-x-auto">
         {tabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-medium rounded-t-lg transition-colors whitespace-nowrap ${
               activeTab === tab.key
                 ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
                 : 'text-slate-400 hover:text-white hover:bg-slate-700/70'

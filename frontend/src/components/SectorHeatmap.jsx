@@ -177,7 +177,7 @@ const SectorHeatmap = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {PERIODS.map(p => (
             <button
               key={p.key}

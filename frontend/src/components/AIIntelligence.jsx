@@ -64,12 +64,12 @@ const AIIntelligence = ({ onSubscribe }) => {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 overflow-x-auto">
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => { setTab(t.id); setResult(null); setError(''); }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t.id ? `bg-gradient-to-r ${t.color} text-white shadow-lg` : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-400/25'}`}
+            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${tab === t.id ? `bg-gradient-to-r ${t.color} text-white shadow-lg` : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-400/25'}`}
             data-testid={`tab-${t.id}`}
           >
             <t.icon className="w-4 h-4" />

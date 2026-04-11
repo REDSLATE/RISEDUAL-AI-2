@@ -90,11 +90,11 @@ const getCellContent = (col, row) => {
   return (
     <div className="bg-slate-700/60 rounded-xl border border-slate-400/25 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-white text-lg font-semibold">{title}</h3>
-            <HelpCircle className="w-4 h-4 text-slate-400" />
+            <h3 className="text-white text-base sm:text-lg font-semibold truncate">{title}</h3>
+            <HelpCircle className="w-4 h-4 text-slate-400 flex-shrink-0" />
           </div>
           {subtitle && (
             <p className="text-slate-300 text-sm mt-1">{subtitle}</p>
