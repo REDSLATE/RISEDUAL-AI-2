@@ -8,6 +8,7 @@ import {
 const NAV_ITEMS = [
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Features', href: '#features' },
+  { label: 'About Us', href: '#about-us' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
 ];
@@ -427,6 +428,8 @@ const LandingFooter = () => (
   </footer>
 );
 
+import AboutUs from './AboutUs';
+
 /* ─── Main Landing Page ─── */
 const LandingPage = ({ onGetStarted }) => {
   const scrollToHow = () => {
@@ -440,6 +443,7 @@ const LandingPage = ({ onGetStarted }) => {
       <HowItWorks />
       <Comparison />
       <Features />
+      <AboutUs embedded />
       <Pricing onGetStarted={onGetStarted} />
       <Testimonials />
       <FAQ />

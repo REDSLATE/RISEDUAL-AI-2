@@ -46,6 +46,7 @@ import WhaleRadar from './components/WhaleRadar';
 import MemoryDashboard from './components/MemoryDashboard';
 import LandingPage from './components/LandingPage';
 import PaperTrading from './components/PaperTrading';
+import AboutUs from './components/AboutUs';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -72,6 +73,7 @@ function AppContent() {
     showMarketplace, setShowMarketplace,
     showMemory, setShowMemory,
     showPaperTrading, setShowPaperTrading,
+    showAbout, setShowAbout,
     resetToken, setResetToken,
     openLogin, openRegister, openChat,
   } = useModals();
@@ -93,7 +95,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenAbout={() => setShowAbout(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -173,6 +175,7 @@ function AppContent() {
       {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
       {showMemory && user && <MemoryDashboard onClose={() => setShowMemory(false)} onSubscribe={() => { setShowMemory(false); setShowSubscription(true); }} />}
       {showPaperTrading && user && <PaperTrading onClose={() => setShowPaperTrading(false)} />}
+      {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
     </div>
   );

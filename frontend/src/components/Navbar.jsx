@@ -14,7 +14,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -121,7 +121,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('market-prediction')}>AI Market Predictions</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('macro-dashboard')}>Macro Intelligence</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => scrollTo('crypto')}>Crypto Data</DropdownMenuItem>
-              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => window.open('https://risedual.ai', '_blank')}>About RISEDUAL AI</DropdownMenuItem>
+              <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAbout} data-testid="nav-about-btn">About RISEDUAL AI</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -244,6 +244,10 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 {item.label}
               </button>
             ))}
+            <button onClick={() => { onOpenAbout(); setMobileMenuOpen(false); }}
+              className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors" data-testid="mobile-about-btn">
+              About Us
+            </button>
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
             {user ? (

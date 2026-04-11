@@ -14,6 +14,7 @@ export default function useModals() {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
   const [showPaperTrading, setShowPaperTrading] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [resetToken, setResetToken] = useState(null);
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function useModals() {
     showMarketplace, setShowMarketplace,
     showMemory, setShowMemory,
     showPaperTrading, setShowPaperTrading,
+    showAbout, setShowAbout,
     resetToken, setResetToken,
     openLogin, openRegister, openChat,
   };
