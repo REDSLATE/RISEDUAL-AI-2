@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
 from services.paper_trading_service import get_portfolio_context
+from services.portfolio_agent import run_portfolio_agent
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
 from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
 from routes.market_data import _collect_all_scrape_data
@@ -82,17 +83,18 @@ async def chat(
                 session_doc["user_id"] = user["_id"]
             await db.chat_sessions.insert_one(session_doc)
 
-        # Inject portfolio context if message is portfolio-related
-        enriched_message = message
-        if user and PORTFOLIO_KEYWORDS.search(message):
+        # Route portfolio queries to the Portfolio Agent (tool calling)
+        # Non-portfolio queries go through the standard AI service
+        is_portfolio_query = user and PORTFOLIO_KEYWORDS.search(message) and not image_base64
+        
+        if is_portfolio_query:
             try:
-                ctx = await get_portfolio_context(user["_id"])
-                if ctx:
-                    enriched_message = f"{message}\n\n[PORTFOLIO CONTEXT — real-time data from user's paper trading account]\n{ctx}"
+                ai_response = await run_portfolio_agent(user["_id"], message)
             except Exception as e:
-                logging.warning(f"Failed to inject portfolio context: {e}")
-
-        ai_response = await ai_service.chat(enriched_message, sessionId, image_base64)
+                logging.warning(f"Portfolio agent failed, falling back to standard chat: {e}")
+                ai_response = await ai_service.chat(message, sessionId, image_base64)
+        else:
+            ai_response = await ai_service.chat(message, sessionId, image_base64)
 
         user_message = ChatMessage(
             role="user",
