@@ -9,7 +9,8 @@ import litellm
 from emergentintegrations.llm.utils import get_integration_proxy_url
 
 from services.paper_trading_service import (
-    get_portfolio_snapshot, get_trade_history, get_portfolio_context
+    get_portfolio_snapshot, get_trade_history, get_portfolio_context,
+    place_paper_order_intent, confirm_paper_order, get_pending_orders
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,58 @@ PORTFOLIO_TOOLS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "place_paper_order_intent",
+            "description": "Create a proposed paper order that requires a separate user confirmation step before execution. NEVER skip this step — always propose first, then ask the user to confirm. Supports MARKET and LIMIT orders for stocks and crypto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Ticker symbol like AAPL, NVDA, BTC"
+                    },
+                    "side": {
+                        "type": "string",
+                        "enum": ["BUY", "SELL"],
+                        "description": "BUY or SELL"
+                    },
+                    "qty": {
+                        "type": "number",
+                        "description": "Number of shares/units to trade"
+                    },
+                    "order_type": {
+                        "type": "string",
+                        "enum": ["MARKET", "LIMIT"],
+                        "description": "MARKET for immediate execution at current price, LIMIT for specified price"
+                    },
+                    "limit_price": {
+                        "type": "number",
+                        "description": "Required for LIMIT orders — the target price"
+                    }
+                },
+                "required": ["symbol", "side", "qty", "order_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "confirm_paper_order",
+            "description": "Confirm and execute a previously proposed paper order using its proposal ID. Only call this AFTER the user explicitly confirms the proposal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "proposal_id": {
+                        "type": "string",
+                        "description": "The proposal ID like po_abc12345"
+                    }
+                },
+                "required": ["proposal_id"]
+            }
+        }
     }
 ]
 
@@ -99,6 +152,13 @@ When analyzing the portfolio:
 - Flag if any position's unrealized loss exceeds 5%
 - Suggest rebalancing when appropriate
 - Mention their available cash for new positions
+
+PAPER TRADING ORDERS — CONFIRMATION REQUIRED:
+- When the user wants to buy or sell, ALWAYS call place_paper_order_intent FIRST to create a proposal.
+- NEVER execute a trade directly from a single request.
+- After creating a proposal, present the details to the user and ask them to confirm using the proposal ID.
+- Only call confirm_paper_order AFTER the user explicitly confirms the specific proposal ID.
+- If the user says "cancel" or changes their mind, tell them the proposal has been discarded.
 
 Be direct, data-driven, and actionable. Use actual dollar amounts and percentages from the tools."""
 
@@ -136,6 +196,24 @@ async def _execute_tool(user_id: str, tool_name: str, arguments: dict) -> str:
                 symbols = [s for s in symbols if s == symbol_filter.upper()] or [symbol_filter.upper()]
             news = [{"symbol": s, "note": f"Live market data tracked for {s}"} for s in symbols]
             return json.dumps(news, default=str)
+
+        elif tool_name == "place_paper_order_intent":
+            result = await place_paper_order_intent(
+                user_id=user_id,
+                symbol=arguments.get("symbol", ""),
+                side=arguments.get("side", "BUY"),
+                qty=arguments.get("qty", 0),
+                order_type=arguments.get("order_type", "MARKET"),
+                limit_price=arguments.get("limit_price"),
+            )
+            return json.dumps(result, default=str)
+
+        elif tool_name == "confirm_paper_order":
+            result = await confirm_paper_order(
+                user_id=user_id,
+                proposal_id=arguments.get("proposal_id", ""),
+            )
+            return json.dumps(result, default=str)
 
         else:
             return json.dumps({"error": f"Unknown tool: {tool_name}"})

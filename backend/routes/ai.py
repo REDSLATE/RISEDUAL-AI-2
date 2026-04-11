@@ -21,7 +21,8 @@ ai_service = AIService()
 PORTFOLIO_KEYWORDS = re.compile(
     r'\b(portfolio|positions?|holdings?|p&l|pnl|profit|loss|unrealized|'
     r'my stocks?|my trades?|my shares?|how am i doing|trade history|'
-    r'paper trad|buy|sell|cash balance|equity|cost basis)\b',
+    r'paper trad|buy|sell|cash balance|equity|cost basis|'
+    r'confirm|proposal|po_|order|place.*order)\b',
     re.IGNORECASE
 )
 

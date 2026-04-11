@@ -228,3 +228,115 @@ async def get_portfolio_context(user_id: str) -> str:
     except Exception as e:
         logger.error(f"Error getting portfolio context: {e}")
         return ""
+
+
+# ── Confirmation-Gated Paper Order Flow ──────────────────────────────
+
+async def place_paper_order_intent(
+    user_id: str, symbol: str, side: str, qty: float,
+    order_type: str = "MARKET", limit_price: float = None
+) -> Dict:
+    """Create a pending order proposal. Does NOT execute — requires confirmation."""
+    symbol = symbol.upper()
+    side = side.upper()
+    if side not in ("BUY", "SELL"):
+        return {"error": "Side must be BUY or SELL"}
+    if qty <= 0:
+        return {"error": "Quantity must be positive"}
+    if order_type == "LIMIT" and limit_price is None:
+        return {"error": "limitPrice required for LIMIT orders"}
+
+    live_price = await _get_live_price(symbol)
+    if live_price is None:
+        return {"error": f"Cannot get live price for {symbol}"}
+
+    # Validate cash/position before creating proposal
+    portfolio = await get_or_create_portfolio(user_id)
+    exec_price = limit_price if order_type == "LIMIT" else live_price
+
+    if side == "BUY":
+        total_cost = exec_price * qty
+        if total_cost > portfolio["cash"]:
+            return {"error": f"Insufficient cash. Need ${total_cost:,.2f}, have ${portfolio['cash']:,.2f}"}
+    elif side == "SELL":
+        pos = next((p for p in portfolio.get("positions", []) if p["symbol"] == symbol), None)
+        if not pos:
+            return {"error": f"No position in {symbol} to sell"}
+        if qty > pos["qty"]:
+            return {"error": f"Cannot sell {qty}. Only hold {pos['qty']}"}
+
+    import uuid
+    proposal_id = f"po_{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    proposal = {
+        "proposal_id": proposal_id,
+        "user_id": user_id,
+        "symbol": symbol,
+        "side": side,
+        "qty": qty,
+        "order_type": order_type,
+        "limit_price": limit_price,
+        "estimated_price": round(live_price, 4),
+        "estimated_total": round(exec_price * qty, 2),
+        "status": "PENDING_CONFIRMATION",
+        "created_at": now,
+    }
+    await _db.pending_orders.insert_one(proposal)
+
+    return {
+        "message": "Paper order proposal created. Ask the user to confirm before execution.",
+        "proposal": {k: v for k, v in proposal.items() if k != "_id"},
+        "next_step": f"Ask the user to confirm proposal {proposal_id}."
+    }
+
+
+async def confirm_paper_order(user_id: str, proposal_id: str) -> Dict:
+    """Confirm and execute a pending paper order proposal."""
+    proposal = await _db.pending_orders.find_one(
+        {"proposal_id": proposal_id, "user_id": user_id},
+        {"_id": 0}
+    )
+    if not proposal:
+        return {"error": f"Proposal {proposal_id} not found"}
+    if proposal["status"] != "PENDING_CONFIRMATION":
+        return {"error": f"Proposal status is {proposal['status']}, cannot confirm"}
+
+    # Execute the actual trade
+    result = await execute_trade(
+        user_id, proposal["symbol"], proposal["side"], proposal["qty"]
+    )
+    if "error" in result:
+        return result
+
+    # Mark proposal as confirmed
+    await _db.pending_orders.update_one(
+        {"proposal_id": proposal_id},
+        {"$set": {"status": "CONFIRMED", "confirmed_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    return {
+        "message": "Paper order confirmed and executed.",
+        "executed_trade": result,
+        "proposal_id": proposal_id,
+    }
+
+
+async def cancel_paper_order(user_id: str, proposal_id: str) -> Dict:
+    """Cancel a pending paper order proposal."""
+    result = await _db.pending_orders.update_one(
+        {"proposal_id": proposal_id, "user_id": user_id, "status": "PENDING_CONFIRMATION"},
+        {"$set": {"status": "CANCELLED", "cancelled_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        return {"error": f"Proposal {proposal_id} not found or already processed"}
+    return {"message": f"Proposal {proposal_id} cancelled.", "status": "CANCELLED"}
+
+
+async def get_pending_orders(user_id: str) -> List[Dict]:
+    """Get all pending order proposals for a user."""
+    cursor = _db.pending_orders.find(
+        {"user_id": user_id, "status": "PENDING_CONFIRMATION"},
+        {"_id": 0}
+    ).sort("created_at", -1)
+    return await cursor.to_list(length=20)
