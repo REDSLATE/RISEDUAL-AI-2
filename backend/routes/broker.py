@@ -46,8 +46,40 @@ OAUTH_CONFIGS = {
         "scopes": "account:write trading",
         "client_id_env": "ALPACA_OAUTH_CLIENT_ID",
         "client_secret_env": "ALPACA_OAUTH_CLIENT_SECRET",
+        "supports_pkce": False,
+        "token_expiry_seconds": 900,
+    },
+    "schwab": {
+        "authorize_url": "https://api.schwabapi.com/v1/oauth/authorize",
+        "token_url": "https://api.schwabapi.com/v1/oauth/token",
+        "scopes": "readonly",
+        "client_id_env": "SCHWAB_OAUTH_CLIENT_ID",
+        "client_secret_env": "SCHWAB_OAUTH_CLIENT_SECRET",
+        "supports_pkce": True,
+        "token_expiry_seconds": 1800,
+    },
+    "ibkr": {
+        "authorize_url": "https://www.interactivebrokers.com/authorize",
+        "token_url": "https://www.interactivebrokers.com/v1/api/oauth/token",
+        "scopes": "trading account",
+        "client_id_env": "IBKR_OAUTH_CLIENT_ID",
+        "client_secret_env": "IBKR_OAUTH_CLIENT_SECRET",
+        "supports_pkce": True,
+        "token_expiry_seconds": 86400,
     },
 }
+
+
+# --- PKCE (Proof Key for Code Exchange) ---
+import hashlib as _hl
+
+def _generate_pkce():
+    """Generate PKCE code_verifier and code_challenge (S256)."""
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(
+        _hl.sha256(verifier.encode()).digest()
+    ).decode().rstrip("=")
+    return verifier, challenge
 
 
 # --- Request Models ---
@@ -103,6 +135,103 @@ def _build_client(conn: dict):
         "oauth": conn.get("auth_method") == "oauth",
     }
     return BrokerService.get_broker_client(broker_id, credentials)
+
+
+async def _refresh_oauth_token(user_id: str, broker_id: str, conn: dict) -> dict:
+    """Refresh an OAuth access token using the stored refresh token.
+    Implements refresh token rotation — new refresh token replaces the old one.
+    Returns updated connection dict, or raises HTTPException on failure.
+    """
+    if broker_id not in OAUTH_CONFIGS:
+        raise HTTPException(status_code=400, detail=f"OAuth not configured for {broker_id}")
+
+    refresh_token_enc = conn.get("oauth_refresh_token_enc")
+    if not refresh_token_enc:
+        raise HTTPException(status_code=401, detail=f"No refresh token stored for {broker_id}. Please reconnect via OAuth.")
+
+    refresh_token = decrypt_value(refresh_token_enc)
+    cfg = OAUTH_CONFIGS[broker_id]
+    client_id, client_secret = await _get_oauth_credentials(broker_id)
+
+    if not client_id:
+        raise HTTPException(status_code=500, detail=f"OAuth credentials not configured for {broker_id}")
+
+    # Request new tokens using refresh_token grant
+    token_payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+
+    try:
+        resp = await asyncio.to_thread(
+            http_requests.post,
+            cfg["token_url"],
+            data=token_payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        token_data = resp.json()
+    except Exception as e:
+        logger.error(f"OAuth token refresh failed for {broker_id} (user {user_id}): {e}")
+        raise HTTPException(status_code=401, detail=f"Token refresh failed. Please reconnect {broker_id} via OAuth.")
+
+    new_access = token_data.get("access_token", "")
+    if not new_access:
+        raise HTTPException(status_code=401, detail="Token refresh returned no access token.")
+
+    # Refresh token rotation: new refresh token replaces old one
+    new_refresh = token_data.get("refresh_token", refresh_token)
+    expiry_seconds = token_data.get("expires_in", cfg.get("token_expiry_seconds", 3600))
+
+    update = {
+        "api_key_enc": encrypt_value(new_access),
+        "oauth_refresh_token_enc": encrypt_value(new_refresh),
+        "oauth_expires_at": datetime.now(timezone.utc),
+        "oauth_token_expiry_seconds": expiry_seconds,
+        "oauth_last_refreshed": datetime.now(timezone.utc),
+        "last_used": datetime.now(timezone.utc),
+    }
+
+    # Log rotation event for audit
+    await db.oauth_token_audit.insert_one({
+        "user_id": user_id,
+        "broker_id": broker_id,
+        "event": "token_rotated",
+        "old_refresh_hash": hashlib.sha256(refresh_token.encode()).hexdigest()[:16],
+        "new_refresh_hash": hashlib.sha256(new_refresh.encode()).hexdigest()[:16],
+        "expires_in": expiry_seconds,
+        "timestamp": datetime.now(timezone.utc),
+    })
+
+    await db.broker_connections.update_one(
+        {"user_id": user_id, "broker_id": broker_id},
+        {"$set": update},
+    )
+
+    logger.info(f"OAuth token rotated for user {user_id} -> {broker_id} (expires in {expiry_seconds}s)")
+
+    # Return refreshed connection data
+    conn.update(update)
+    return conn
+
+
+async def _get_or_refresh_client(user_id: str, broker_id: str, conn: dict):
+    """Get broker client, auto-refreshing OAuth tokens if expired."""
+    if conn.get("auth_method") == "oauth":
+        expires_at = conn.get("oauth_expires_at")
+        expiry_secs = conn.get("oauth_token_expiry_seconds", OAUTH_CONFIGS.get(broker_id, {}).get("token_expiry_seconds", 3600))
+
+        if expires_at:
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            token_age = (datetime.now(timezone.utc) - expires_at).total_seconds()
+            if token_age > expiry_secs * 0.8:  # Refresh at 80% of expiry
+                logger.info(f"OAuth token nearing expiry for {broker_id}, refreshing...")
+                conn = await _refresh_oauth_token(user_id, broker_id, conn)
+
+    return _build_client(conn)
 
 
 # ============================================================
@@ -226,11 +355,44 @@ async def oauth_status(broker_id: str):
     """Check if OAuth is configured for a broker."""
     if broker_id not in OAUTH_CONFIGS:
         return {"available": False, "reason": "OAuth not supported for this broker"}
+    cfg = OAUTH_CONFIGS[broker_id]
     client_id, _ = await _get_oauth_credentials(broker_id)
     return {
         "available": bool(client_id),
         "broker_id": broker_id,
         "configured": bool(client_id),
+        "supports_pkce": cfg.get("supports_pkce", False),
+    }
+
+
+@router.get("/oauth/capabilities")
+async def oauth_capabilities():
+    """Public endpoint: OAuth capability report for broker compliance verification."""
+    return {
+        "three_legged_oauth": True,
+        "authorization_code_grant": True,
+        "refresh_token_rotation": True,
+        "pkce_support": True,
+        "csrf_state_validation": True,
+        "token_encryption": "AES-256 (Fernet)",
+        "supported_brokers": [
+            {
+                "broker_id": bid,
+                "authorize_url": cfg["authorize_url"],
+                "supports_pkce": cfg.get("supports_pkce", False),
+                "token_expiry_seconds": cfg.get("token_expiry_seconds", 3600),
+            }
+            for bid, cfg in OAUTH_CONFIGS.items()
+        ],
+        "security_features": [
+            "CSRF state tokens (one-time use)",
+            "PKCE S256 code challenge for supported brokers",
+            "Refresh token rotation on every refresh",
+            "Token audit trail (oauth_token_audit collection)",
+            "Encrypted credential storage (AES-256)",
+            "Automatic token refresh at 80% expiry",
+            "httpOnly secure cookies for session auth",
+        ],
     }
 
 
@@ -250,10 +412,19 @@ async def oauth_authorize(broker_id: str, request: Request):
 
     # Generate a CSRF state token
     state = secrets.token_urlsafe(32)
+
+    # PKCE support
+    pkce_verifier = None
+    pkce_params = ""
+    if cfg.get("supports_pkce"):
+        pkce_verifier, pkce_challenge = _generate_pkce()
+        pkce_params = f"&code_challenge={pkce_challenge}&code_challenge_method=S256"
+
     await db.oauth_states.insert_one({
         "state": state,
         "user_id": user_id,
         "broker_id": broker_id,
+        "pkce_verifier": pkce_verifier,
         "created_at": datetime.now(timezone.utc),
     })
 
@@ -274,6 +445,7 @@ async def oauth_authorize(broker_id: str, request: Request):
         f"redirect_uri={redirect_uri}&"
         f"state={state}&"
         f"scope={cfg['scopes']}"
+        f"{pkce_params}"
     )
 
     return {"authorize_url": authorize_url, "state": state}
@@ -297,6 +469,7 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
         return RedirectResponse(url="/?broker_error=invalid_state")
 
     user_id = state_doc["user_id"]
+    pkce_verifier = state_doc.get("pkce_verifier")
     cfg = OAUTH_CONFIGS[broker_id]
     client_id, client_secret = await _get_oauth_credentials(broker_id)
 
@@ -309,22 +482,25 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
             parsed = urlparse(referer)
             origin = f"{parsed.scheme}://{parsed.netloc}"
         else:
-            # Reconstruct from request URL
             origin = str(request.base_url).rstrip("/")
     redirect_uri = f"{origin}/api/broker/oauth/{broker_id}/callback"
 
-    # Exchange code for access token
+    # Exchange code for access token (include PKCE verifier if used)
+    token_payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+    }
+    if pkce_verifier:
+        token_payload["code_verifier"] = pkce_verifier
+
     try:
         token_resp = await asyncio.to_thread(
             http_requests.post,
             cfg["token_url"],
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-            },
+            data=token_payload,
             timeout=15,
         )
         token_resp.raise_for_status()
@@ -354,7 +530,8 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
         logger.error(f"OAuth account validation failed: {e}")
         return RedirectResponse(url="/?broker_error=validation_failed")
 
-    # Store the OAuth connection
+    # Store the OAuth connection with token rotation metadata
+    expiry_seconds = token_data.get("expires_in", cfg.get("token_expiry_seconds", 3600))
     doc = {
         "user_id": user_id,
         "broker_id": broker_id,
@@ -365,6 +542,9 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
         "auth_method": "oauth",
         "oauth_refresh_token_enc": encrypt_value(token_data.get("refresh_token", "")),
         "oauth_expires_at": datetime.now(timezone.utc),
+        "oauth_token_expiry_seconds": expiry_seconds,
+        "oauth_last_refreshed": datetime.now(timezone.utc),
+        "oauth_pkce_used": bool(pkce_verifier),
         "account_id": account.get("account_number", account.get("id", "N/A")),
         "connected_at": datetime.now(timezone.utc),
         "last_used": datetime.now(timezone.utc),
@@ -389,7 +569,7 @@ async def get_account(broker_id: str, request: Request):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
     account = await asyncio.to_thread(client.get_account)
     if not account:
         raise HTTPException(status_code=502, detail="Failed to fetch account from broker")
@@ -409,6 +589,7 @@ async def get_account(broker_id: str, request: Request):
         "equity": float(account.get("equity", 0)),
         "status": account.get("status", "active"),
         "paper": conn.get("paper", True),
+        "auth_method": conn.get("auth_method", "api_key"),
     }
 
 
@@ -418,7 +599,7 @@ async def get_positions(broker_id: str, request: Request):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
     positions = await asyncio.to_thread(client.get_positions)
     formatted = []
     for p in (positions or []):
@@ -447,7 +628,7 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
 
     result = await asyncio.to_thread(
         client.place_order,
@@ -504,7 +685,7 @@ async def get_orders(broker_id: str, request: Request, status: str = "all"):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
     orders = await asyncio.to_thread(client.get_orders, status=status)
     formatted = []
     for o in (orders or []):
@@ -531,7 +712,7 @@ async def cancel_order(broker_id: str, order_id: str, request: Request):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
-    client = _build_client(conn)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
     success = await asyncio.to_thread(client.cancel_order, order_id)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to cancel order")

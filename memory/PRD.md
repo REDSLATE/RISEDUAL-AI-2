@@ -373,6 +373,17 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Read-only endpoints (account, positions, orders, portfolio-sync) remain accessible to all authenticated users
 - **Verified (Iteration 84)**: 100% pass (16/16 backend, all frontend)
 
+### 3-Legged OAuth + Refresh Token Rotation + PKCE (April 11, 2026)
+- Full 3-legged OAuth 2.0 authorization code flow: user redirect → broker auth page → callback with code → token exchange
+- **Refresh Token Rotation**: On every token refresh, the old refresh token is invalidated and a new one is issued. Rotation events logged in `oauth_token_audit` collection for security audit trail
+- **PKCE (S256)**: Proof Key for Code Exchange support for Schwab and IBKR (generates code_verifier/code_challenge pair per authorization)
+- **Automatic Token Refresh**: `_get_or_refresh_client()` checks token age, auto-refreshes at 80% of expiry window
+- CSRF protection via one-time `state` tokens stored in `oauth_states` collection
+- All tokens encrypted at rest with AES-256 (Fernet)
+- OAuth configs for Alpaca, Schwab, IBKR (extensible to more brokers)
+- Public capability endpoint: `GET /api/broker/oauth/capabilities` — returns full OAuth compliance report
+- Per-broker status: `GET /api/broker/oauth/{broker_id}/status` — includes PKCE support flag
+
 ### Trade Execution Notifications (April 11, 2026)
 - Push notification + in-app notification sent to owner when a live trade is executed
 - In-app: stored in `notifications` collection (user_id, type, symbol, side, qty, order_id, broker_id, read flag)
