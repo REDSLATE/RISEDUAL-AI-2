@@ -328,9 +328,16 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Body background stays `#060E1F`; cards now clearly "float" above it
 - **Verified (Iteration 79)**: 100% pass, all sections desktop + mobile (390px) confirmed visible
 
+### Gov Filings Scraper Fix (April 11, 2026)
+- Fixed Capitol Trades scraper: added `?assetType=stock` filter to return actual stock trades instead of private LLCs
+- Fixed HTML parser: using proper CSS selectors (`a.text-txt-interactive`, `h3.issuer-name`, `span` tags) instead of raw text splitting
+- Fixed ticker extraction: `GOOGL:US` → `GOOGL` (split on colon)
+- Fixed date formatting: `6 Mar2026` → `6 Mar 2026` (regex insert space before 4-digit year)
+- Removed broken QuiverQuant fallback (SPA, no server-rendered table)
+- All macro data now flows into AI predictions: congressional trades + Fed announcements + insider trades + earnings + world events + foreign markets
+- **Verified via API**: 12 congressional trades (real tickers: GOOGL, AVGO, SBUX, META, AAPL), 10 Fed announcements, 20 insider trades, 30 earnings
+
 ## Backlog
-- P1: Fix Gov Filings Scraper 403 Error (congressional trades API)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
-- P2: Integrate macro scraping data (world events, foreign markets, gov filings) into AI predictions
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
 - P3: Refactor server.py into separate route modules

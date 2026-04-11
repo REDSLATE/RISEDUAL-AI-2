@@ -106,19 +106,18 @@ class GovFilingsService:
         return announcements
 
     async def get_congressional_trades(self) -> List[Dict]:
-        """Scrape congressional stock trades from Capitol Trades"""
+        """Scrape congressional stock trades from Capitol Trades (stock-only filter)"""
         trades = await self._scrape_capitol_trades()
-        if not trades:
-            trades = await self._scrape_quiverquant_congress()
         return trades[:20]
 
     async def _scrape_capitol_trades(self) -> List[Dict]:
-        """Primary: scrape Capitol Trades for congressional trades."""
+        """Primary: scrape Capitol Trades for congressional stock trades."""
         trades = []
         try:
-            url = 'https://www.capitoltrades.com/trades'
+            url = 'https://www.capitoltrades.com/trades?assetType=stock'
             resp = await self._get(url, headers=self.headers, timeout=15)
             if resp.status_code != 200:
+                logger.warning(f"Capitol Trades returned {resp.status_code}")
                 return trades
             soup = BeautifulSoup(resp.text, 'html.parser')
             table = soup.find('table')
@@ -134,83 +133,52 @@ class GovFilingsService:
         return trades
 
     @staticmethod
+    def _fix_date(raw: str) -> str:
+        """Fix concatenated dates like '6 Mar2026' → '6 Mar 2026'."""
+        return re.sub(r'(\d{4})$', r' \1', raw.strip()) if raw else ''
+
+    @staticmethod
     def _parse_capitol_row(row) -> Optional[Dict]:
-        """Parse a single row from Capitol Trades table."""
+        """Parse a single row from Capitol Trades table using CSS selectors."""
         cols = row.find_all('td')
         if len(cols) < 8:
             return None
 
-        politician_text = cols[0].get_text(strip=True)
-        issuer_text = cols[1].get_text(strip=True)
+        # Politician: extract from <a> tag and <span> elements
+        name_a = cols[0].find('a', class_='text-txt-interactive')
+        name = name_a.get_text(strip=True) if name_a else cols[0].get_text(strip=True).split('Democrat')[0].split('Republican')[0].strip()
+        pol_cell = cols[0].find(class_='cell--politician')
+        party_spans = pol_cell.find_all('span') if pol_cell else []
+        party_raw = party_spans[0].get_text(strip=True) if party_spans else ''
+        party = 'D' if 'Democrat' in party_raw else 'R' if 'Republican' in party_raw else ''
+        chamber = party_spans[1].get_text(strip=True) if len(party_spans) > 1 else ''
+
+        # Issuer: extract from <h3 class="issuer-name"> and <span> for ticker
+        iss_h3 = cols[1].find('h3', class_='issuer-name')
+        company = iss_h3.get_text(strip=True) if iss_h3 else ''
+        iss_spans = cols[1].find_all('span')
+        ticker_raw = iss_spans[0].get_text(strip=True) if iss_spans else ''
+        ticker = ticker_raw.split(':')[0] if ':' in ticker_raw else ticker_raw
+        if ticker == 'N/A':
+            ticker = ''
+
         trade_type = cols[6].get_text(strip=True)
         size = cols[7].get_text(strip=True)
-
-        name, party, chamber = GovFilingsService._parse_politician(politician_text)
-        ticker, company = GovFilingsService._parse_issuer(issuer_text)
+        tx_date = GovFilingsService._fix_date(cols[3].get_text(strip=True)) if len(cols) > 3 else ''
+        disc_date = GovFilingsService._fix_date(cols[2].get_text(strip=True)) if len(cols) > 2 else ''
 
         return {
             'representative': name,
             'ticker': ticker,
             'company': company,
-            'transaction_date': cols[3].get_text(strip=True) if len(cols) > 3 else '',
-            'disclosure_date': cols[2].get_text(strip=True) if len(cols) > 2 else '',
+            'transaction_date': tx_date,
+            'disclosure_date': disc_date,
             'type': trade_type,
             'amount': size,
             'party': party,
             'chamber': chamber,
-            'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) - {ticker} {size}",
+            'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) — {ticker or company} {size}",
         }
-
-    @staticmethod
-    def _parse_politician(text: str):
-        """Extract name, party, chamber from politician text."""
-        name = text
-        party = ''
-        chamber = ''
-        if 'Republican' in text:
-            party = 'R'
-            name = text.split('Republican')[0].strip()
-        elif 'Democrat' in text:
-            party = 'D'
-            name = text.split('Democrat')[0].strip()
-        if 'House' in text:
-            chamber = 'House'
-        elif 'Senate' in text:
-            chamber = 'Senate'
-        return name, party, chamber
-
-    @staticmethod
-    def _parse_issuer(text: str):
-        """Extract ticker and company name from issuer text."""
-        ticker_match = re.search(r'([A-Z]{1,5}):[A-Z]{2}', text)
-        ticker = ticker_match.group(1) if ticker_match else ''
-        company = text.split(ticker)[0].strip() if ticker else text
-        return ticker, company
-
-    async def _scrape_quiverquant_congress(self) -> List[Dict]:
-        """Fallback: scrape QuiverQuant congressional trading page"""
-        trades = []
-        try:
-            url = 'https://www.quiverquant.com/congresstrading/'
-            resp = await self._get(url, headers=self.headers, timeout=10)
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            table = soup.find('table')
-            if table:
-                rows = table.find_all('tr')[1:16]
-                for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 5:
-                        trades.append({
-                            'representative': cols[0].get_text(strip=True),
-                            'ticker': cols[1].get_text(strip=True),
-                            'type': cols[2].get_text(strip=True) if len(cols) > 2 else '',
-                            'amount': cols[3].get_text(strip=True) if len(cols) > 3 else '',
-                            'transaction_date': cols[4].get_text(strip=True) if len(cols) > 4 else '',
-                            'description': f"Congressional trade: {cols[0].get_text(strip=True)} - {cols[1].get_text(strip=True)}",
-                        })
-        except Exception as e:
-            logger.error(f"Error scraping QuiverQuant: {str(e)}")
-        return trades
 
     async def _fetch_finnhub_data(self) -> Dict:
         """Try Finnhub API first (reliable structured data)."""
