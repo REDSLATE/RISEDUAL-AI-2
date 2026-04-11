@@ -141,7 +141,7 @@ PORTFOLIO_TOOLS = [
     }
 ]
 
-SYSTEM_PROMPT = """You are RISEDUALAI's Portfolio Intelligence Agent — the Strategist and Auditor working together.
+SYSTEM_PROMPT = """You are RISEDUAL AI's Portfolio Intelligence Agent — the Strategist and Auditor working together.
 
 You have access to the user's real paper trading portfolio through tools. ALWAYS use tools to get current data before answering portfolio questions. NEVER invent positions, prices, trades, or news.
 

@@ -11,7 +11,7 @@ const Footer = () => {
           <div className="col-span-2 sm:col-span-1">
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-7 h-7 object-contain brightness-125" />
-              <span className="text-white font-bold text-lg" style={{ fontFamily: 'Manrope, sans-serif' }}>RISEDUAL AI</span>
+              <span className="text-white font-bold text-lg tracking-wide" style={{ fontFamily: 'Manrope, sans-serif' }}>RISEDUAL <span className="text-[#3DE8D9]">AI</span></span>
             </div>
             <p className="text-slate-300 text-xs leading-relaxed max-w-[220px]">
               AI-powered trading intelligence. Real-time market data, multi-model analysis, and actionable signals.

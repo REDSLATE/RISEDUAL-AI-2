@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class AIService:
     def __init__(self):
         self.api_key = os.environ.get('EMERGENT_LLM_KEY')
-        self.system_message = """You are RISEDUALAI, an advanced AI-powered trading assistant. 
+        self.system_message = """You are RISEDUAL AI, an advanced AI-powered trading assistant. 
         You specialize in:
         - Stock market analysis and insights
         - Options trading strategies
