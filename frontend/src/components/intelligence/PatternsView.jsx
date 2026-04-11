@@ -33,7 +33,7 @@ const PatternsView = ({ data }) => {
 
       {a.key_levels && (
         <div className="grid grid-cols-2 gap-3">
-          <Card className="bg-red-950/15 border-orange-700/25 rounded-xl p-4">
+          <Card className="bg-red-500/15 border-orange-700/25 rounded-xl p-4">
             <p className="text-orange-400 text-[10px] uppercase tracking-wider mb-2 font-medium">Resistance</p>
             <div className="flex gap-2 flex-wrap">
               {(a.key_levels.resistance || []).map((l, i) => (
@@ -41,7 +41,7 @@ const PatternsView = ({ data }) => {
               ))}
             </div>
           </Card>
-          <Card className="bg-emerald-950/15 border-lime-700/25 rounded-xl p-4">
+          <Card className="bg-green-500/20 border-lime-700/25 rounded-xl p-4">
             <p className="text-lime-400 text-[10px] uppercase tracking-wider mb-2 font-medium">Support</p>
             <div className="flex gap-2 flex-wrap">
               {(a.key_levels.support || []).map((l, i) => (

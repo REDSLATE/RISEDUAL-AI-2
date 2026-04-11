@@ -10,7 +10,7 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const severityStyle = (s) => ({
-  high: { icon: 'text-orange-400', bg: 'border-red-700/40 bg-red-900/10' },
+  high: { icon: 'text-orange-400', bg: 'border-red-700/40 bg-red-500/15' },
   medium: { icon: 'text-amber-300', bg: 'border-amber-700/40 bg-amber-900/10' },
   low: { icon: 'text-blue-400', bg: 'border-blue-700/40 bg-blue-900/10' },
 }[s] || { icon: 'text-slate-400', bg: 'border-slate-400/30/40' });

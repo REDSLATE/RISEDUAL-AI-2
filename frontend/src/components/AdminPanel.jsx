@@ -167,7 +167,7 @@ const AdminPanel = ({ onClose }) => {
                               </Button>
                             )}
                             {u.is_active !== false ? (
-                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
+                              <Button size="sm" variant="outline" className="text-[10px] px-2 py-1 h-7 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-500/30"
                                 disabled={actionLoading === `${u._id}-deactivate`}
                                 onClick={() => doAction(u._id, 'deactivate')}>
                                 <UserX className="w-3 h-3 mr-1" /> Disable

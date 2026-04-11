@@ -80,7 +80,7 @@ const PaperTrading = ({ onClose }) => {
   };
 
   const pnlColor = (val) => val > 0 ? 'text-lime-400' : val < 0 ? 'text-orange-400' : 'text-slate-400';
-  const pnlBg = (val) => val > 0 ? 'bg-lime-800 border-lime-700/30' : val < 0 ? 'bg-orange-900 border-orange-700/30' : 'bg-slate-700/45 border-slate-400/30/40';
+  const pnlBg = (val) => val > 0 ? 'bg-green-600 border-lime-700/30' : val < 0 ? 'bg-orange-900 border-orange-700/30' : 'bg-slate-700/45 border-slate-400/30/40';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="paper-trading-modal">

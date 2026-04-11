@@ -83,7 +83,7 @@ const getMarketStateStyle = (state) => {
 };
 const getMarketCardBg = (isPulsing, isHot, isUp) => {
   if (isPulsing) return 'ring-2 ring-[#3DE8D9]/50 animate-pulse';
-  if (isHot) return isUp ? 'bg-emerald-950/15 border-lime-700/30' : 'bg-red-950/15 border-orange-700/30';
+  if (isHot) return isUp ? 'bg-green-500/20 border-lime-700/30' : 'bg-red-500/15 border-orange-700/30';
   return 'bg-slate-700/40 border-slate-400/30/30';
 };
 

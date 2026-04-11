@@ -373,7 +373,7 @@ const AnalyticsTab = ({ analytics }) => {
           </Card>
         )}
         {a.worst_trade && (
-          <Card className="bg-red-900/10 border-red-700/30 rounded-xl p-3">
+          <Card className="bg-red-500/15 border-red-700/30 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 mb-1">Worst Trade</p>
             <p className="text-orange-400 text-lg font-bold">{a.worst_trade.ticker}</p>
             <p className="text-orange-300 text-xs">${a.worst_trade.pnl.toFixed(2)} ({a.worst_trade.pnl_percent.toFixed(1)}%)</p>

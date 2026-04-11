@@ -64,7 +64,7 @@ const WorldEventsTab = ({ data, loading }) => {
 
 const EventCard = ({ event, isHighImpact }) => (
   <Card className={`p-3 rounded-xl border transition-all hover:border-slate-600 ${
-    isHighImpact ? 'bg-red-950/20 border-red-900/40' : 'bg-slate-700/40 border-slate-400/30/30'
+    isHighImpact ? 'bg-red-500/20 border-red-900/40' : 'bg-slate-700/40 border-slate-400/30/30'
   }`}>
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">

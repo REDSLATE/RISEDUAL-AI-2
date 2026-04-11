@@ -157,7 +157,7 @@ const CacheMonitor = () => {
           </Button>
           <Button size="sm" variant="outline" onClick={clearAll}
             disabled={actionKey === '__all__' || !stats?.total_keys}
-            className="text-[10px] h-7 px-2 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-800/40"
+            className="text-[10px] h-7 px-2 bg-orange-800 text-orange-400 border-orange-700/50 hover:bg-red-500/30"
             data-testid="cache-clear-all-btn">
             <Trash2 className="w-3 h-3 mr-1" />
             Clear All

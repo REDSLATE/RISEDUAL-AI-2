@@ -44,7 +44,7 @@ const AccuracyBadge = ({ feature, className = '' }) => {
     return null;
   }
 
-  const color = displayAcc >= 60 ? 'text-lime-400 border-lime-700/40 bg-lime-800'
+  const color = displayAcc >= 60 ? 'text-lime-400 border-lime-700/40 bg-green-600'
     : displayAcc >= 50 ? 'text-amber-300 border-amber-800/40 bg-amber-900/20'
     : 'text-orange-400 border-orange-700/40 bg-orange-900';
 

@@ -89,7 +89,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
     {/* Catalysts & Risks */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {hypothesis.catalysts?.length > 0 && (
-        <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-5">
+        <Card className="bg-green-600 border-lime-700/30 rounded-xl p-5">
           <h3 className="text-lime-400 font-semibold mb-3 flex items-center gap-2">
             <TrendingUp className="w-4 h-4" /> Strategist Catalysts
           </h3>
@@ -103,7 +103,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
         </Card>
       )}
       {hypothesis.risks?.length > 0 && (
-        <Card className="bg-red-950/20 border-orange-700/30 rounded-xl p-5">
+        <Card className="bg-red-500/20 border-orange-700/30 rounded-xl p-5">
           <h3 className="text-orange-400 font-semibold mb-3 flex items-center gap-2">
             <TrendingDown className="w-4 h-4" /> Auditor Risk Flags
           </h3>

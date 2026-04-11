@@ -67,7 +67,7 @@ const BriefView = ({ data }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {b.catalysts?.length > 0 && (
-          <Card className="bg-emerald-950/15 border-lime-700/25 rounded-xl p-4">
+          <Card className="bg-green-500/20 border-lime-700/25 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-4 h-4 text-lime-400" />
               <span className="text-lime-400 text-xs font-semibold uppercase">Catalysts</span>
@@ -82,7 +82,7 @@ const BriefView = ({ data }) => {
           </Card>
         )}
         {b.risks?.length > 0 && (
-          <Card className="bg-red-950/15 border-orange-700/25 rounded-xl p-4">
+          <Card className="bg-red-500/15 border-orange-700/25 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-4 h-4 text-orange-400" />
               <span className="text-orange-400 text-xs font-semibold uppercase">Risks</span>

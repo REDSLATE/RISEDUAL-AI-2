@@ -625,7 +625,7 @@ const BrokerConnect = () => {
 
             {/* Connected Summary */}
             {oauthMessage && (
-              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-lime-800 border-lime-700/30 text-lime-400' : 'bg-orange-900 border-orange-700/30 text-orange-400'}`}>
+              <div className={`px-5 py-3 flex items-center gap-2 text-sm border-b ${oauthMessage.type === 'success' ? 'bg-green-600 border-lime-700/30 text-lime-400' : 'bg-orange-900 border-orange-700/30 text-orange-400'}`}>
                 {oauthMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 <span>{oauthMessage.text}</span>
               </div>

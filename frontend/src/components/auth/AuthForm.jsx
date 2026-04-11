@@ -17,7 +17,7 @@ const AuthForm = ({ tab, onSubmit, error, loading, refCode }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-testid="auth-form">
       {tab === 'register' && refCode && (
-        <div className="bg-lime-800 border border-emerald-700/40 rounded-xl px-3 py-2 flex items-center gap-2" data-testid="referral-banner">
+        <div className="bg-green-600 border border-emerald-700/40 rounded-xl px-3 py-2 flex items-center gap-2" data-testid="referral-banner">
           <Gift className="w-4 h-4 text-lime-400 flex-shrink-0" />
           <p className="text-lime-300 text-xs">You've been referred! Sign up to get a <strong>7-day free Pro trial</strong>.</p>
         </div>

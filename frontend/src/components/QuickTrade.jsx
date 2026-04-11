@@ -211,7 +211,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
             {/* Result Message */}
             {result && (
               <div className={`mt-4 p-3 rounded-lg flex items-start gap-2 ${
-                result.success ? 'bg-emerald-900 bg-opacity-20 border border-green-800' : 'bg-red-900 bg-opacity-20 border border-orange-700'
+                result.success ? 'bg-emerald-900 bg-opacity-20 border border-green-800' : 'bg-red-500 bg-opacity-20 border border-orange-700'
               }`}>
                 <AlertCircle className={`w-5 h-5 flex-shrink-0 ${result.success ? 'text-lime-400' : 'text-orange-400'}`} />
                 <div>

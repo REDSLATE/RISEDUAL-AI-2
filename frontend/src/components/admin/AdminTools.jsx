@@ -60,7 +60,7 @@ const AdminTools = () => {
 
       <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-lime-800 border border-emerald-700/30 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-green-600 border border-emerald-700/30 flex items-center justify-center shrink-0">
             <CheckCircle className="w-6 h-6 text-lime-400" />
           </div>
           <div className="flex-1">

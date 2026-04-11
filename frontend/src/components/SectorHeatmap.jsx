@@ -245,18 +245,18 @@ const SectorHeatmap = () => {
 
       {!isAI && summary.best_sector && summary.worst_sector && (
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-3 flex items-center gap-3">
-            <TrendingUp className="w-5 h-5 text-lime-400" />
+          <Card className="bg-green-600 border-green-400/30 rounded-xl p-3 flex items-center gap-3">
+            <TrendingUp className="w-5 h-5 text-white" />
             <div>
-              <p className="text-slate-400 text-[10px] uppercase">Best Sector</p>
-              <p className="text-white text-sm font-bold">{summary.best_sector.name} <span className="text-lime-400">+{summary.best_sector.change}%</span></p>
+              <p className="text-green-100 text-[10px] uppercase">Best Sector</p>
+              <p className="text-white text-sm font-bold">{summary.best_sector.name} <span className="text-lime-300">+{summary.best_sector.change}%</span></p>
             </div>
           </Card>
-          <Card className="bg-red-950/20 border-orange-700/30 rounded-xl p-3 flex items-center gap-3">
-            <TrendingDown className="w-5 h-5 text-orange-400" />
+          <Card className="bg-red-500 border-red-400/30 rounded-xl p-3 flex items-center gap-3">
+            <TrendingDown className="w-5 h-5 text-white" />
             <div>
-              <p className="text-slate-400 text-[10px] uppercase">Worst Sector</p>
-              <p className="text-white text-sm font-bold">{summary.worst_sector.name} <span className="text-orange-400">{summary.worst_sector.change}%</span></p>
+              <p className="text-red-100 text-[10px] uppercase">Worst Sector</p>
+              <p className="text-white text-sm font-bold">{summary.worst_sector.name} <span className="text-yellow-300">{summary.worst_sector.change}%</span></p>
             </div>
           </Card>
         </div>

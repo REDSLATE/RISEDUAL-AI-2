@@ -272,7 +272,7 @@ export const CrewInsightsCard = ({ composite }) => {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         {composite.bull_case && (
-          <div className="bg-lime-800 border border-lime-700/30 rounded-lg p-3">
+          <div className="bg-green-600 border border-lime-700/30 rounded-lg p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <TrendingUp className="w-3 h-3 text-lime-400" />
               <span className="text-lime-400 text-[10px] font-semibold uppercase">Strategist Bull Case</span>

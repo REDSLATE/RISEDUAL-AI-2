@@ -193,12 +193,12 @@ const BacktestResults = ({ result, onClose }) => {
       {/* Best / Worst Trade */}
       {m.best_trade && m.worst_trade && (
         <div className="grid grid-cols-2 gap-3">
-          <Card className="bg-lime-900 border-lime-700/30 rounded-xl p-4">
+          <Card className="bg-green-600 border-lime-700/30 rounded-xl p-4">
             <p className="text-[10px] text-slate-400 mb-1">Best Trade</p>
             <p className="text-lime-400 text-lg font-bold">+${m.best_trade.pnl} ({m.best_trade.pnl_pct}%)</p>
             <p className="text-slate-400 text-[10px]">{m.best_trade.entry_date} — {m.best_trade.holding_days}d hold</p>
           </Card>
-          <Card className="bg-red-950/20 border-orange-700/30 rounded-xl p-4">
+          <Card className="bg-red-500/20 border-orange-700/30 rounded-xl p-4">
             <p className="text-[10px] text-slate-400 mb-1">Worst Trade</p>
             <p className="text-orange-400 text-lg font-bold">${m.worst_trade.pnl} ({m.worst_trade.pnl_pct}%)</p>
             <p className="text-slate-400 text-[10px]">{m.worst_trade.entry_date} — {m.worst_trade.holding_days}d hold</p>

@@ -14,7 +14,7 @@ const scoreGradient = (score) =>
   score >= 40 ? 'from-amber-600 to-yellow-600' : 'from-red-600 to-rose-600';
 
 const severityBadge = (sev) =>
-  sev === 'high' ? 'bg-red-800/50 text-orange-300' :
+  sev === 'high' ? 'bg-red-500/40 text-orange-300' :
   sev === 'medium' ? 'bg-amber-800/50 text-amber-300' : 'bg-slate-700 text-slate-400';
 
 const tickerScoreColor = (score) =>
@@ -212,7 +212,7 @@ const TopMovers = ({ movers }) => (
       {movers.map((m, i) => {
         const positive = (m.change_pct || 0) >= 0;
         return (
-          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-lime-900 border-lime-700/30' : 'bg-red-950/20 border-orange-700/30'}`}>
+          <Card key={`mover-${i}`} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${positive ? 'bg-green-600 border-lime-700/30' : 'bg-red-500/20 border-orange-700/30'}`}>
             <span className="text-white text-xs font-bold">{m.symbol}</span>
             <span className={`text-xs font-semibold ${positive ? 'text-lime-400' : 'text-orange-400'}`}>
               {positive ? '+' : ''}{m.change_pct?.toFixed(1)}%
