@@ -275,6 +275,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
 - Added AI War Room, Order Flow, Whale Radar to mobile nav grid
 
+### SEO & Search Engine Optimization (April 11, 2026)
+- **Meta Tags**: Rich title, description, author, keywords targeting "AI trading platform", "adversarial AI", "options flow", "dark pool", etc.
+- **Open Graph + Twitter Cards**: Professional social sharing with image, description, site name
+- **Structured Data (JSON-LD)**: 3 schemas — SoftwareApplication ($45/mo pricing, features, rating), Organization (logo, contact), FAQPage (3 Q&As for rich snippets)
+- **robots.txt**: Allows indexing, blocks /api/ and /admin
+- **sitemap.xml**: 5 URLs (home, features, pricing, comparison, FAQ) with priority/frequency
+- **Canonical URL**: Points to `https://risedual.ai`
+- **Semantic HTML**: Proper h1→h2→h3→h4 heading hierarchy on landing page
+
 ### Vivid Solid Color Palette (April 11, 2026)
 - User requested bright solid colors (red, yellow, lime, green) instead of semi-transparent muted ones
 - Background darkened to `#060E1F` (near-black navy) for maximum contrast
