@@ -275,6 +275,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Fixed mobile hamburger menu: action buttons now use `flex-wrap` with user info on its own line, all buttons readable
 - Added AI War Room, Order Flow, Whale Radar to mobile nav grid
 
+### Contrast Fix for Navy Background (April 11, 2026)
+- User reported card borders, text, and legends overpowered by navy `#0A2A63` background
+- Card borders: `slate-700/50` → `slate-500/30` (brighter)
+- Card surfaces: `slate-800/40` → `slate-700/30` (more opaque)
+- Muted text: `slate-500/600` → `slate-400` (brighter)
+- Bottom nav: inactive text `slate-400` → `slate-300` (readable)
+- Divider borders: `slate-800` → `slate-600/30`
+- **Verified (Iteration 77)**: 100% pass, mobile (390px) + desktop (1920px) both verified
+
 ### Brand Guide Color Palette Update (April 11, 2026)
 - Applied RISEDUAL brand guide colors across all 50+ frontend files (197 color references)
 - Primary navy: `#0F172A` → `#0A2A63` (deeper true navy blue)
