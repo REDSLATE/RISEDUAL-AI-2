@@ -116,8 +116,11 @@ const CommercialVideo = () => {
           <video
             src={`${API_BASE}/api/media/file/${video.file_id}`}
             controls
+            autoPlay
+            muted
+            loop
             playsInline
-            preload="metadata"
+            preload="auto"
             className="w-full aspect-video bg-black"
             data-testid="landing-video-player"
           />
