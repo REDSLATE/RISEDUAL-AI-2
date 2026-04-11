@@ -186,3 +186,39 @@ async def notify_whale_wall(db, ticker: str, side: str, price: float, intensity:
         tag=f"whale-{ticker}-{int(price)}",
         notif_type=NOTIF_WHALE_WALL,
     )
+
+
+async def notify_trade_execution(db, user_id: str, symbol: str, side: str, qty: float, order_id: str, broker_id: str, status: str):
+    """Push + in-app notification when a live trade is executed by the owner."""
+    side_label = "BUY" if side.lower() == "buy" else "SELL"
+    title = f"Trade Executed: {side_label} {qty} {symbol}"
+    body = f"Order {order_id} via {broker_id.capitalize()} — Status: {status}"
+
+    # In-app notification
+    await db.notifications.insert_one({
+        "user_id": user_id,
+        "type": "trade_execution",
+        "title": title,
+        "body": body,
+        "symbol": symbol,
+        "side": side,
+        "qty": qty,
+        "order_id": order_id,
+        "broker_id": broker_id,
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    # Push notification (to owner's subscriptions only)
+    cursor = db.push_subscriptions.find({"user_id": user_id})
+    async for sub_doc in cursor:
+        await send_push(
+            subscription_info=sub_doc.get("subscription", {}),
+            title=title,
+            body=body,
+            url="/",
+            tag=f"trade-{order_id}",
+            db=db,
+            user_id=user_id,
+            is_pro=True,
+        )

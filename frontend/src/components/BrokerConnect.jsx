@@ -9,6 +9,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
+import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
@@ -344,6 +345,10 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Order failed');
+      toast.success(`${data.side?.toUpperCase()} ${data.qty} ${data.symbol} — Order ${data.order_id}`, {
+        description: `Status: ${data.status} via ${brokerId}`,
+        duration: 6000,
+      });
       setOrderForm(null);
       fetchData();
     } catch (err) {

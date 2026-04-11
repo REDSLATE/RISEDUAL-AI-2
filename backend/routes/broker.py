@@ -477,6 +477,17 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
         "created_at": datetime.now(timezone.utc),
     })
 
+    # Push + in-app notification for trade execution
+    try:
+        from services.push_service import notify_trade_execution
+        await notify_trade_execution(
+            db, user_id, req.symbol.upper(), req.side,
+            req.quantity, result.get("id", ""), broker_id,
+            result.get("status", "submitted"),
+        )
+    except Exception as e:
+        logger.warning(f"Trade notification failed (non-critical): {e}")
+
     return {
         "status": result.get("status", "submitted"),
         "order_id": result.get("id", ""),

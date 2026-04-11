@@ -372,6 +372,13 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - "New Order" button and order form only visible to owner; cancel order buttons also owner-only
 - Read-only endpoints (account, positions, orders, portfolio-sync) remain accessible to all authenticated users
 - **Verified (Iteration 84)**: 100% pass (16/16 backend, all frontend)
+
+### Trade Execution Notifications (April 11, 2026)
+- Push notification + in-app notification sent to owner when a live trade is executed
+- In-app: stored in `notifications` collection (user_id, type, symbol, side, qty, order_id, broker_id, read flag)
+- Push: sent to owner's VAPID subscriptions with order details (symbol, side, qty, broker, status)
+- Frontend: toast confirmation on successful order (`sonner` toast with order ID and status)
+- Non-blocking: notification failure doesn't block the order response
 ### Media Upload / Object Storage System (April 11, 2026)
 - Built media upload system using Emergent Object Storage (`emergentintegrations`)
 - Backend: `storage_service.py` (init, put, get) + `routes/media.py` (6 endpoints)
