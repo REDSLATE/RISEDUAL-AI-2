@@ -355,6 +355,13 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Navigation: Landing page nav link "About Us" (scrolls to section), Resources dropdown "About RISEDUAL AI" (opens overlay), Mobile menu "About Us" button
 - **Verified (Iteration 81)**: 100% pass, all modes + no regressions
 
+### Voice Chat (TTS + STT) (April 11, 2026)
+- Added Text-to-Speech: AI reads responses aloud via OpenAI TTS (Emergent LLM Key)
+- Voice selector in chat header: Off → Female (nova) → Male (onyx) → Off cycle
+- Added Speech-to-Text: Mic button records audio via MediaRecorder API → Whisper transcription
+- Backend: `POST /api/chat/tts` (text→MP3 base64) + `POST /api/chat/stt` (audio upload→text)
+- **Verified (Iteration 82)**: 100% pass (8/8 backend, all frontend controls)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Replace mock broker execution with real OAuth trade flows (Alpaca/IBKR)
