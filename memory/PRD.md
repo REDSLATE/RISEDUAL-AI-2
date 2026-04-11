@@ -379,6 +379,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Push: sent to owner's VAPID subscriptions with order details (symbol, side, qty, broker, status)
 - Frontend: toast confirmation on successful order (`sonner` toast with order ID and status)
 - Non-blocking: notification failure doesn't block the order response
+
+### Legal Pages — Terms, Privacy, Risk Disclosure, Disclaimer (April 11, 2026)
+- Created `LegalPages.jsx` — tabbed modal with 4 comprehensive legal documents
+- **Terms of Service**: Account rules, $45/mo subscription terms, brokerage key liability, IP, limitation of liability, indemnification, Florida governing law
+- **Privacy Policy**: Data collection (account, payment via Stripe, broker keys AES-256, AI chat, push tokens), third-party sharing (Stripe, Alpha Vantage, OpenAI, Gemini), retention, cookies, user rights
+- **Risk Disclosure**: General trading risks, AI prediction limitations, options/crypto risks, dark pool data caveats, paper trading limitations, no guarantee of profits
+- **Disclaimer**: Not a broker-dealer/investment advisor, no fiduciary relationship, "as is" warranty, assumption of risk
+- Entity: **RISEDUAL CORPORATION**, State of **Florida**, contact: legal@risedual.ai
+- Footer links (both landing page and logged-in dashboard) open legal modal to the correct tab
+- Sign-up form: Terms consent checkbox must be checked before "Create Account" is enabled; links in consent text open legal modal
+- Login form: no checkbox shown
+- **Verified (Iteration 85)**: 100% pass (11/11 frontend tests)
 ### Media Upload / Object Storage System (April 11, 2026)
 - Built media upload system using Emergent Object Storage (`emergentintegrations`)
 - Backend: `storage_service.py` (init, put, get) + `routes/media.py` (6 endpoints)
