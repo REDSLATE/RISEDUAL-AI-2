@@ -148,20 +148,23 @@ def _calc_performance(closes: list) -> Dict:
     return {"1w": perf_1w, "1m": perf_1m, "3m": perf_3m}
 
 
+async def _fetch_symbol_context(symbol: str, compact: bool = True) -> tuple:
+    """Fetch prices, technicals, and quote for a symbol. Returns (prices, technicals, quote)."""
+    prices = await _fetch_daily(symbol, compact=compact)
+    if not prices:
+        raise ValueError(f"No data found for {symbol}")
+    technicals = _compute_technicals(prices)
+    quote = await _fetch_quote(symbol)
+    return prices, technicals, quote
+
+
 # ═══════════════════════════════════════
 # 1. AI STOCK SCORING (Danelfin-style)
 # ═══════════════════════════════════════
 
 async def generate_ai_score(api_key: str, symbol: str) -> Dict:
     """Generate a 1-10 AI score with technical, fundamental, and sentiment breakdown."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-    prices = await _fetch_daily(symbol, compact=False)
-    if not prices:
-        raise ValueError(f"No data found for {symbol}")
-
-    technicals = _compute_technicals(prices)
-    quote = await _fetch_quote(symbol)
+    prices, technicals, quote = await _fetch_symbol_context(symbol, compact=False)
 
     prompt = f"""Analyze {symbol} and provide an AI investment score.
 
@@ -194,11 +197,8 @@ Return ONLY valid JSON:
 
 Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sell. Be realistic based on actual data."""
 
-    session_id = f"score_{symbol}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
-    chat = LlmChat(api_key=api_key, session_id=session_id,
-                    system_message="You are an expert quantitative analyst. Return only JSON.").with_model("openai", "gpt-5.2")
-    response = await chat.send_message(UserMessage(text=prompt))
-    scores = _parse_llm_json(str(response))
+    scores = await _call_llm(api_key, prompt, "score", symbol,
+                              "You are an expert quantitative analyst. Return only JSON.")
 
     return {
         "symbol": symbol.upper(),
@@ -215,17 +215,14 @@ Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sel
 
 async def detect_patterns(api_key: str, symbol: str) -> Dict:
     """Detect chart patterns using AI analysis of price data."""
-    prices = await _fetch_daily(symbol, compact=True)
+    prices, technicals, _ = await _fetch_symbol_context(symbol, compact=True)
     if len(prices) < 30:
         raise ValueError(f"Insufficient data for pattern analysis on {symbol}")
 
-    # Prepare last 60 days of OHLCV for the AI
-    recent = prices[-60:]
-    price_summary = []
-    for p in recent[-30:]:
-        price_summary.append(f"{p['date']}: O={p['open']:.2f} H={p['high']:.2f} L={p['low']:.2f} C={p['close']:.2f} V={p['volume']}")
-
-    technicals = _compute_technicals(prices)
+    price_summary = [
+        f"{p['date']}: O={p['open']:.2f} H={p['high']:.2f} L={p['low']:.2f} C={p['close']:.2f} V={p['volume']}"
+        for p in prices[-30:]
+    ]
 
     prompt = f"""Analyze the following 30-day price data for {symbol} and detect ALL active chart patterns.
 
@@ -278,16 +275,7 @@ Pattern types: reversal, continuation, bilateral. Directions: bullish, bearish, 
 
 async def generate_quick_brief(api_key: str, symbol: str) -> Dict:
     """Generate a 30-second stock brief with key metrics and verdict."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-    prices = await _fetch_daily(symbol, compact=True)
-    if not prices:
-        raise ValueError(f"No data found for {symbol}")
-
-    technicals = _compute_technicals(prices)
-    quote = await _fetch_quote(symbol)
-
-    # Calculate quick stats
+    prices, technicals, quote = await _fetch_symbol_context(symbol, compact=True)
     closes = [p["close"] for p in prices]
     perf = _calc_performance(closes)
 

@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 105: Component Splitting/Refactoring Tests - All tests PASSED. Backend: 9/9 tests passed (auth endpoints, public endpoints, AI intelligence endpoints with refactored _fetch_symbol_context, admin users endpoint). Frontend: Login flow works, dashboard loads, Admin Panel opens with UsersTab component showing 49 users, ModalManager correctly manages modals.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Order Book/Price Data", "issues": ["Console warnings about duplicate keys (bid-0.24, ask-1.33) - not related to refactored components"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration105_component_refactoring.py",
+    "/app/test_reports/pytest/iteration105_component_refactoring_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "App.js: Reduced from 204 to 187 lines by extracting ModalManager - VERIFIED WORKING",
+    "ModalManager.jsx: NEW 59-line component managing all modal rendering - VERIFIED WORKING",
+    "AdminPanel.jsx: Reduced from 219 to 131 lines by extracting UsersTab - VERIFIED WORKING",
+    "UsersTab.jsx: NEW 99-line component with admin users table - VERIFIED WORKING (49 users displayed)",
+    "AIHypothesis.jsx: Reduced from 197 to 167 lines by extracting exportHypothesisReport - VERIFIED",
+    "exportHypothesis.js: NEW 36-line utility for report export - VERIFIED",
+    "FilterPanel.jsx: useMemo for slider values - VERIFIED (ivRankMinVal, ivRankMaxVal, powerMinVal)",
+    "BacktestResults.jsx: Fixed index-as-key with entry.month - VERIFIED",
+    "ai_intelligence_service.py: Shared _fetch_symbol_context helper - VERIFIED (all 3 AI intelligence endpoints working)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration105_component_refactoring.py"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests passed)",
+    "frontend": "100% - Login flow works, dashboard loads, Admin Panel with UsersTab renders correctly"
+  },
+  "test_credentials": {
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!",
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 105 verified component splitting/refactoring Round 2: 1) ModalManager extracted from App.js - manages all modals, 2) UsersTab extracted from AdminPanel - renders users table with 49 users, 3) exportHypothesisReport extracted from AIHypothesis, 4) FilterPanel uses useMemo for slider values, 5) BacktestResults uses entry.month as key instead of index, 6) ai_intelligence_service.py uses shared _fetch_symbol_context helper. All auth endpoints working. Admin Panel accessible via user menu dropdown for owner/admin users. Console warnings about duplicate keys (bid-0.24, ask-1.33) are from order book component, not refactored components.",
+  "verified_features": {
+    "admin_login_200": "PASS - POST /api/auth/login with admin credentials returns 200",
+    "owner_login_200": "PASS - POST /api/auth/login with owner credentials returns 200",
+    "root_endpoint": "PASS - GET /api/ returns ready message",
+    "sectors_heatmap": "PASS - GET /api/sectors/heatmap returns data",
+    "waitlist_stats": "PASS - GET /api/waitlist/stats returns stats",
+    "ai_score_endpoint": "PASS - GET /api/intelligence/score/AAPL works (refactored _fetch_symbol_context)",
+    "pattern_detection_endpoint": "PASS - GET /api/intelligence/patterns/AAPL works",
+    "quick_brief_endpoint": "PASS - GET /api/intelligence/brief/AAPL works",
+    "admin_users_list": "PASS - GET /api/auth/admin/users returns 49 users",
+    "frontend_landing_page": "PASS - Landing page loads with Log In link",
+    "frontend_auth_modal": "PASS - Auth modal opens with 3 tabs (Log In, Sign Up, Beta Key)",
+    "frontend_login_flow": "PASS - Login flow works with data-testid selectors",
+    "frontend_dashboard": "PASS - Dashboard loads with all sections (Watchlist, AI War Room, AI Hypothesis)",
+    "frontend_admin_panel": "PASS - Admin Panel opens via user menu dropdown",
+    "frontend_users_tab": "PASS - UsersTab component renders with 49 users in table",
+    "frontend_modal_manager": "PASS - ModalManager correctly manages Admin Panel modal"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

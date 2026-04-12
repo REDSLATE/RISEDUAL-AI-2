@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Filter, X, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -6,16 +6,18 @@ import { Label } from './ui/label';
 import { Slider } from './ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
+const DEFAULT_FILTERS = {
+  ivRankMin: 0,
+  ivRankMax: 100,
+  powerMin: 0,
+  volumeMin: 0,
+  sentiment: 'all',
+  timeframe: 'today'
+};
+
 const FilterPanel = ({ onFilterChange }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [filters, setFilters] = useState({
-    ivRankMin: 0,
-    ivRankMax: 100,
-    powerMin: 0,
-    volumeMin: 0,
-    sentiment: 'all',
-    timeframe: 'today'
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   const handleFilterChange = (key, value) => {
     const updated = { ...filters, [key]: value };
@@ -24,17 +26,13 @@ const FilterPanel = ({ onFilterChange }) => {
   };
 
   const resetFilters = () => {
-    const defaultFilters = {
-      ivRankMin: 0,
-      ivRankMax: 100,
-      powerMin: 0,
-      volumeMin: 0,
-      sentiment: 'all',
-      timeframe: 'today'
-    };
-    setFilters(defaultFilters);
-    onFilterChange(defaultFilters);
+    setFilters(DEFAULT_FILTERS);
+    onFilterChange(DEFAULT_FILTERS);
   };
+
+  const ivRankMinVal = useMemo(() => [filters.ivRankMin], [filters.ivRankMin]);
+  const ivRankMaxVal = useMemo(() => [filters.ivRankMax], [filters.ivRankMax]);
+  const powerMinVal = useMemo(() => [filters.powerMin], [filters.powerMin]);
 
   return (
     <>
@@ -70,14 +68,14 @@ const FilterPanel = ({ onFilterChange }) => {
                 </Label>
                 <div className="space-y-2">
                   <Slider
-                    value={[filters.ivRankMin]}
+                    value={ivRankMinVal}
                     onValueChange={([value]) => handleFilterChange('ivRankMin', value)}
                     max={100}
                     step={5}
                     className="w-full"
                   />
                   <Slider
-                    value={[filters.ivRankMax]}
+                    value={ivRankMaxVal}
                     onValueChange={([value]) => handleFilterChange('ivRankMax', value)}
                     max={100}
                     step={5}
@@ -92,7 +90,7 @@ const FilterPanel = ({ onFilterChange }) => {
                   Minimum Power: {filters.powerMin}%
                 </Label>
                 <Slider
-                  value={[filters.powerMin]}
+                  value={powerMinVal}
                   onValueChange={([value]) => handleFilterChange('powerMin', value)}
                   max={100}
                   step={10}

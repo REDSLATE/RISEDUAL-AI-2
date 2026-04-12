@@ -138,8 +138,8 @@ const BacktestResults = ({ result, onClose }) => {
               <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartLabelStyle}
                 formatter={(v, name) => [`$${v.toFixed(2)}`, 'Monthly P&L']} />
               <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                {m.monthly.map((entry, i) => (
-                  <Cell key={`cell-${i}`} fill={entry.pnl >= 0 ? '#10B981' : '#EF4444'} />
+                {m.monthly.map((entry) => (
+                  <Cell key={`cell-${entry.month}`} fill={entry.pnl >= 0 ? '#10B981' : '#EF4444'} />
                 ))}
               </Bar>
             </BarChart>

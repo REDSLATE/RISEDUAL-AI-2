@@ -17,38 +17,27 @@ import AdditionalSections from './components/AdditionalSections';
 import DarkPoolData from './components/DarkPoolData';
 import CryptoSection from './components/CryptoSection';
 import RiseDualGPTChat from './components/RiseDualGPTChat';
-import PaymentStatus from './components/PaymentStatus';
 import CompanyResearch from './components/CompanyResearch';
 import MacroDashboard from './components/MacroDashboard';
 import MobileBottomNav from './components/MobileBottomNav';
 import AIHypothesis from './components/AIHypothesis';
 import PromoBanner from './components/PromoBanner';
 import AuthModal from './components/AuthModal';
-import SubscriptionPricing from './components/SubscriptionPricing';
-import AdminPanel from './components/AdminPanel';
-import UserWorkspace from './components/UserWorkspace';
-import PortfolioAnalyzer from './components/PortfolioAnalyzer';
-import MarketSignals from './components/MarketSignals';
-import ReferralLeaderboard from './components/ReferralLeaderboard';
-import TradingJournal from './components/TradingJournal';
-import StrategyBuilder from './components/StrategyBuilder';
-import StrategyMarketplace from './components/StrategyMarketplace';
+import WaitlistModal from './components/WaitlistModal';
+import ResetPasswordModal from './components/ResetPasswordModal';
 import AIWarRoom from './components/AIWarRoom';
 import AIIntelligence from './components/AIIntelligence';
 import WatchlistIntelligence from './components/WatchlistIntelligence';
-import WaitlistModal from './components/WaitlistModal';
-import ResetPasswordModal from './components/ResetPasswordModal';
+import ReferralLeaderboard from './components/ReferralLeaderboard';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
 import FearGreedGauge from './components/FearGreedGauge';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
-import MemoryDashboard from './components/MemoryDashboard';
 import LandingPage from './components/LandingPage';
-import PaperTrading from './components/PaperTrading';
-import AboutUs from './components/AboutUs';
 import LegalPages from './components/LegalPages';
+import ModalManager from './components/ModalManager';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -171,21 +160,16 @@ function AppContent() {
       <ScrollToTop />
       <Toaster />
 
-      {paymentInfo && <PaymentStatus sessionId={paymentInfo.sessionId} initialStatus={paymentInfo.status} onClose={() => setPaymentInfo(null)} />}
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
-      {showSubscription && <SubscriptionPricing onClose={() => setShowSubscription(false)} />}
-      {showAdmin && (user?.role === 'owner' || user?.role === 'admin') && <AdminPanel onClose={() => setShowAdmin(false)} />}
-      {showWorkspace && user && <UserWorkspace onClose={() => setShowWorkspace(false)} onSubscribe={() => { setShowWorkspace(false); setShowSubscription(true); }} />}
-      {showPortfolio && user && <PortfolioAnalyzer onClose={() => setShowPortfolio(false)} onSubscribe={() => { setShowPortfolio(false); setShowSubscription(true); }} />}
-      {showSignals && user && <MarketSignals onClose={() => setShowSignals(false)} onSubscribe={() => { setShowSignals(false); setShowSubscription(true); }} />}
-      {showJournal && user && <TradingJournal onClose={() => setShowJournal(false)} onSubscribe={() => { setShowJournal(false); setShowSubscription(true); }} />}
-      {showStrategy && user && <StrategyBuilder onClose={() => setShowStrategy(false)} onSubscribe={() => { setShowStrategy(false); setShowSubscription(true); }} />}
-      {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
-      {showMemory && user && <MemoryDashboard onClose={() => setShowMemory(false)} onSubscribe={() => { setShowMemory(false); setShowSubscription(true); }} />}
-      {showPaperTrading && user && <PaperTrading onClose={() => setShowPaperTrading(false)} />}
-      {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
-      {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
-      {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
+      <ModalManager user={user} modals={{
+        paymentInfo, setPaymentInfo, showAuth, setShowAuth, authTab, setAuthTab,
+        showSubscription, setShowSubscription, showAdmin, setShowAdmin,
+        showWorkspace, setShowWorkspace, showPortfolio, setShowPortfolio,
+        showSignals, setShowSignals, showJournal, setShowJournal,
+        showStrategy, setShowStrategy, showMarketplace, setShowMarketplace,
+        showMemory, setShowMemory, showPaperTrading, setShowPaperTrading,
+        showAbout, setShowAbout, showLegal, setShowLegal,
+        legalTab, setLegalTab, resetToken, setResetToken,
+      }} />
     </div>
   );
 }
