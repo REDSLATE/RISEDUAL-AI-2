@@ -390,6 +390,8 @@ async def create_indexes():
     await db.users.create_index("email", unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
+    await db.waitlist.create_index("email", unique=True, name="unique_email")
+    await db.waitlist.create_index("referral_code", unique=True, name="unique_referral_code")
 
 # --- Owner-only guard ---
 async def require_owner(request: Request):

@@ -18,6 +18,7 @@
       '<form id="rd-wl-form">' +
         '<input id="rd-wl-email" type="email" placeholder="your@email.com" required style="width:100%;box-sizing:border-box;padding:10px 14px;background:#1E293B;border:1px solid #475569;border-radius:10px;color:#fff;font-size:13px;margin-bottom:8px;outline:none;" />' +
         '<input id="rd-wl-name" type="text" placeholder="Your name (optional)" style="width:100%;box-sizing:border-box;padding:10px 14px;background:#1E293B;border:1px solid #475569;border-radius:10px;color:#fff;font-size:13px;margin-bottom:12px;outline:none;" />' +
+        '<div style="position:absolute;left:-9999px;" aria-hidden="true"><input type="text" id="rd-wl-hp" name="first_name_field" tabindex="-1" autocomplete="off" /></div>' +
         (ref ? '<input type="hidden" id="rd-wl-ref" value="' + ref + '" />' : '') +
         '<button type="submit" style="width:100%;padding:12px;background:linear-gradient(135deg,#14B8A6,#06B6D4);color:#fff;font-size:13px;font-weight:600;border:none;border-radius:10px;cursor:pointer;">Join the Waitlist</button>' +
       '</form>' +
@@ -31,6 +32,8 @@
       var name = document.getElementById('rd-wl-name').value;
       var refEl = document.getElementById('rd-wl-ref');
       var refCode = refEl ? refEl.value : '';
+      var hpEl = document.getElementById('rd-wl-hp');
+      var hp = hpEl ? hpEl.value : '';
       var btn = e.target.querySelector('button');
       btn.textContent = 'Joining...';
       btn.disabled = true;
@@ -38,7 +41,7 @@
       fetch(API + '/join', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email: email, name: name, referral_code: refCode})
+        body: JSON.stringify({email: email, name: name, referral_code: refCode, first_name_field: hp})
       })
       .then(function(r) { return r.json(); })
       .then(function(d) {

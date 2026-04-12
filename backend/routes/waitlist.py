@@ -12,11 +12,18 @@ APP_URL = os.environ.get('FRONTEND_URL', 'https://risedual.ai')
 
 @router.post("/join")
 async def join_waitlist(request: Request):
-    """Join the beta waitlist. Public endpoint."""
+    """Join the beta waitlist. Public endpoint with honeypot bot protection."""
     body = await request.json()
     email = body.get("email", "").strip()
     name = body.get("name", "").strip()
     referred_by = body.get("referral_code", "").strip()
+    honeypot = body.get("first_name_field", "").strip()
+
+    # Honeypot: if this hidden field is filled, it's a bot
+    if honeypot:
+        logger.warning(f"Waitlist honeypot triggered: {email}")
+        # Return fake success to not alert the bot
+        return {"already_joined": False, "position": 999, "referral_code": "RDXXXXXX", "referral_count": 0, "priority_score": 999, "status": "waiting", "total_waitlist": 999}
 
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email is required")

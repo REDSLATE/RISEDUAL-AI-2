@@ -33,7 +33,7 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
       const res = await fetch(`${API}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, referral_code: referralInput }),
+        body: JSON.stringify({ email, name, referral_code: referralInput, first_name_field: '' }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -144,6 +144,10 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
                   className="bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#3DE8D9] rounded-xl"
                   data-testid="waitlist-name"
                 />
+                {/* Honeypot — hidden from humans, traps bots */}
+                <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
+                  <input type="text" name="first_name_field" tabIndex="-1" autoComplete="off" />
+                </div>
                 {referralInput && (
                   <div className="flex items-center gap-2 bg-[#3DE8D9]/5 border border-[#3DE8D9]/20 rounded-xl px-3 py-2">
                     <Users className="w-3.5 h-3.5 text-[#3DE8D9]" />
