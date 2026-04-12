@@ -446,6 +446,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Added `pb-20` bottom padding to mobile menu to prevent overlap with bottom navigation bar
 - **Verified (Iteration 88)**: 100% pass — download returns 713KB PDF, all mobile elements readable
 
+### Persistent Chat Memory + RiseDualGPT Rename (April 12, 2026)
+- **Renamed TradeGPT → RiseDualGPT** — component renamed to `RiseDualGPTChat.jsx`, header shows "RiseDualGPT"
+- **Persistent Chat Memory** (Pro-only):
+  - Backend: `chat_memory_service.py` — auto-extracts key facts/preferences from conversations using GPT-5.2
+  - MongoDB collections: `chat_memories` (stored memories), `chat_memory_prefs` (user toggle state)
+  - AI system prompt injected with memory context: "PERSISTENT MEMORY — Things you remember about this user..."
+  - Memory extraction runs asynchronously via `asyncio.create_task()` after each chat exchange
+  - CRUD endpoints: `GET /api/chat/memory`, `POST /api/chat/memory/toggle`, `DELETE /api/chat/memory/{id}`, `DELETE /api/chat/memory`
+- **Frontend**: Brain icon in chat header (teal when ON, gray when OFF), expandable memory panel with ON/OFF toggle, memory list with per-item delete, "Clear all" option
+- Memory enabled by default for Pro users
+- **Verified (Iteration 89)**: 100% pass (9/9 backend, all frontend)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
