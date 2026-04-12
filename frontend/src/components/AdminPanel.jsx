@@ -74,14 +74,14 @@ const AdminPanel = ({ onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="admin-panel">
       <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-400/25">
-        <div className="p-6 border-b border-slate-400/30 flex items-center justify-between">
+        <div className="p-4 sm:p-6 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center">
-              <Crown className="w-6 h-6 text-white" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-600 rounded-xl flex items-center justify-center">
+              <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-white text-xl font-bold">Admin Panel</h2>
-              <p className="text-slate-300 text-sm">{users.length} users total</p>
+              <h2 className="text-white text-lg sm:text-xl font-bold">Admin Panel</h2>
+              <p className="text-slate-300 text-xs sm:text-sm">{users.length} users total</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -93,17 +93,17 @@ const AdminPanel = ({ onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-400/25 px-4">
+        <div className="flex border-b border-slate-400/25 px-4 overflow-x-auto scrollbar-none">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               data-testid={`admin-tab-${t.id}`}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-3 text-xs sm:text-sm font-medium border-b-2 transition-all whitespace-nowrap shrink-0 ${
                 tab === t.id ? 'text-[#3DE8D9] border-[#3DE8D9]' : 'text-slate-400 border-transparent hover:text-slate-300'
               }`}
             >
-              <t.icon className="w-4 h-4" />
+              <t.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {t.label}
             </button>
           ))}

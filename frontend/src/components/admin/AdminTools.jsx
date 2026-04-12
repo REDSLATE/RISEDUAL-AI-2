@@ -28,7 +28,7 @@ const AdminTools = () => {
   const downloadCodebase = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(`${API}/download/codebase-pdf`);
+      const res = await authFetch(`${API}/download/codebase-pdf`);
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
