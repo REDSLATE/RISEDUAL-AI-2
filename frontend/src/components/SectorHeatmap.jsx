@@ -120,11 +120,11 @@ const SectorHeatmap = () => {
           </div>
         </div>
         <div className="flex gap-2 mb-5">
-          {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton w-12 h-7 rounded-lg" />)}
+          {[1,2,3,4,5,6].map(n => <div key={`skel-tab-${n}`} className="skeleton w-12 h-7 rounded-lg" />)}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {[1,2,3,4,5,6,7,8].map(i => (
-            <div key={i} className="skeleton h-24 rounded-xl" />
+          {[1,2,3,4,5,6,7,8].map(n => (
+            <div key={`skel-card-${n}`} className="skeleton h-24 rounded-xl" />
           ))}
         </div>
       </Card>

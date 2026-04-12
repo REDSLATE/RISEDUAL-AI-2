@@ -1,6 +1,7 @@
 """Sector Rotation Heatmap service — fetches sector ETF performance data."""
 import logging
 import asyncio
+from datetime import datetime, timezone
 from typing import Dict, List
 
 from services.price_provider import get_quote, get_daily_history
@@ -132,5 +133,5 @@ async def get_sector_heatmap() -> Dict:
             "worst_sector": {"name": worst["name"], "change": worst["change_1d"]} if worst else None,
             "total_sectors": len(sectors),
         },
-        "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }

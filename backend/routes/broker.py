@@ -137,10 +137,39 @@ def _build_client(conn: dict):
     return BrokerService.get_broker_client(broker_id, credentials)
 
 
+async def _request_token_refresh(cfg: dict, refresh_token: str, client_id: str, client_secret: str, broker_id: str, user_id: str) -> dict:
+    """Make the HTTP request to refresh an OAuth token. Returns token_data or raises."""
+    token_payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    try:
+        resp = await asyncio.to_thread(http_requests.post, cfg["token_url"], data=token_payload, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error(f"OAuth token refresh failed for {broker_id} (user {user_id}): {e}")
+        raise HTTPException(status_code=401, detail=f"Token refresh failed. Please reconnect {broker_id} via OAuth.")
+
+
+async def _log_token_rotation(user_id: str, broker_id: str, old_refresh: str, new_refresh: str, expiry_seconds: int):
+    """Log a token rotation event for security audit."""
+    await db.oauth_token_audit.insert_one({
+        "user_id": user_id,
+        "broker_id": broker_id,
+        "event": "token_rotated",
+        "old_refresh_hash": hashlib.sha256(old_refresh.encode()).hexdigest()[:16],
+        "new_refresh_hash": hashlib.sha256(new_refresh.encode()).hexdigest()[:16],
+        "expires_in": expiry_seconds,
+        "timestamp": datetime.now(timezone.utc),
+    })
+
+
 async def _refresh_oauth_token(user_id: str, broker_id: str, conn: dict) -> dict:
     """Refresh an OAuth access token using the stored refresh token.
     Implements refresh token rotation — new refresh token replaces the old one.
-    Returns updated connection dict, or raises HTTPException on failure.
     """
     if broker_id not in OAUTH_CONFIGS:
         raise HTTPException(status_code=400, detail=f"OAuth not configured for {broker_id}")
@@ -152,36 +181,15 @@ async def _refresh_oauth_token(user_id: str, broker_id: str, conn: dict) -> dict
     refresh_token = decrypt_value(refresh_token_enc)
     cfg = OAUTH_CONFIGS[broker_id]
     client_id, client_secret = await _get_oauth_credentials(broker_id)
-
     if not client_id:
         raise HTTPException(status_code=500, detail=f"OAuth credentials not configured for {broker_id}")
 
-    # Request new tokens using refresh_token grant
-    token_payload = {
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": client_id,
-        "client_secret": client_secret,
-    }
-
-    try:
-        resp = await asyncio.to_thread(
-            http_requests.post,
-            cfg["token_url"],
-            data=token_payload,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        token_data = resp.json()
-    except Exception as e:
-        logger.error(f"OAuth token refresh failed for {broker_id} (user {user_id}): {e}")
-        raise HTTPException(status_code=401, detail=f"Token refresh failed. Please reconnect {broker_id} via OAuth.")
+    token_data = await _request_token_refresh(cfg, refresh_token, client_id, client_secret, broker_id, user_id)
 
     new_access = token_data.get("access_token", "")
     if not new_access:
         raise HTTPException(status_code=401, detail="Token refresh returned no access token.")
 
-    # Refresh token rotation: new refresh token replaces old one
     new_refresh = token_data.get("refresh_token", refresh_token)
     expiry_seconds = token_data.get("expires_in", cfg.get("token_expiry_seconds", 3600))
 
@@ -194,25 +202,10 @@ async def _refresh_oauth_token(user_id: str, broker_id: str, conn: dict) -> dict
         "last_used": datetime.now(timezone.utc),
     }
 
-    # Log rotation event for audit
-    await db.oauth_token_audit.insert_one({
-        "user_id": user_id,
-        "broker_id": broker_id,
-        "event": "token_rotated",
-        "old_refresh_hash": hashlib.sha256(refresh_token.encode()).hexdigest()[:16],
-        "new_refresh_hash": hashlib.sha256(new_refresh.encode()).hexdigest()[:16],
-        "expires_in": expiry_seconds,
-        "timestamp": datetime.now(timezone.utc),
-    })
-
-    await db.broker_connections.update_one(
-        {"user_id": user_id, "broker_id": broker_id},
-        {"$set": update},
-    )
-
+    await _log_token_rotation(user_id, broker_id, refresh_token, new_refresh, expiry_seconds)
+    await db.broker_connections.update_one({"user_id": user_id, "broker_id": broker_id}, {"$set": update})
     logger.info(f"OAuth token rotated for user {user_id} -> {broker_id} (expires in {expiry_seconds}s)")
 
-    # Return refreshed connection data
     conn.update(update)
     return conn
 

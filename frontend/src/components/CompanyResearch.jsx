@@ -133,16 +133,17 @@ const ResearchCard = ({ data, compact = false }) => {
             </div>
             <div className="prose prose-sm prose-invert max-w-none text-slate-300 text-sm leading-relaxed research-content">
               {data.synthesis?.split('\n').map((line, i) => {
-                if (line.startsWith('## ')) return <h3 key={i} className="text-white font-bold text-base mt-3 mb-2" style={{fontFamily:'Manrope,sans-serif'}}>{line.replace('## ', '')}</h3>;
+                const key = `line-${i}-${line.slice(0, 12)}`;
+                if (line.startsWith('## ')) return <h3 key={key} className="text-white font-bold text-base mt-3 mb-2" style={{fontFamily:'Manrope,sans-serif'}}>{line.replace('## ', '')}</h3>;
                 if (line.startsWith('**') && line.includes('**:')) {
                   const parts = line.split('**:');
                   const label = parts[0].replace(/\*\*/g, '');
                   const value = parts.slice(1).join('**:');
-                  return <p key={i} className="mb-2"><strong className="text-white">{label}:</strong>{value}</p>;
+                  return <p key={key} className="mb-2"><strong className="text-white">{label}:</strong>{value}</p>;
                 }
-                if (line.startsWith('- ')) return <p key={i} className="ml-4 mb-1 text-slate-400">{line}</p>;
-                if (line.trim() === '') return <br key={i} />;
-                return <p key={i} className="mb-2">{line}</p>;
+                if (line.startsWith('- ')) return <p key={key} className="ml-4 mb-1 text-slate-400">{line}</p>;
+                if (line.trim() === '') return <br key={key} />;
+                return <p key={key} className="mb-2">{line}</p>;
               })}
             </div>
           </div>

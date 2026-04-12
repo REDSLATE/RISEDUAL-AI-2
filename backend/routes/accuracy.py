@@ -1,5 +1,6 @@
 """Prediction accuracy tracking routes (Pro only)."""
 import asyncio
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from services.auth_helpers import get_current_user, is_pro_user
 from services.prediction_tracker import (
@@ -247,7 +248,7 @@ async def start_memory_training(request: Request):
     async def _progress_cb(update):
         _training_status.update(update)
 
-    _training_status = {"status": "running", "started_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+    _training_status = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat()}
 
     async def _run():
         global _training_status
