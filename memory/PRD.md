@@ -488,7 +488,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Landing Page**: All CTAs changed from "Get Started"/"Start Free Trial" to "Join Waitlist"/"Join the Waitlist"
 - **App.js**: WaitlistModal opens on landing page CTA clicks (replaces AuthModal for unauthenticated users)
 - MongoDB collections: `waitlist` (entries), `waitlist_counter` (atomic position sequencing)
-- **Verified (Iteration 95)**: 100% pass (19/19 backend, all frontend)
+
+### Waitlist Auto-Invite Cron + Email System (April 12, 2026)
+- **Daily Cron Job** (9:00 UTC): `_run_waitlist_auto_invite()` via APScheduler — auto-invites top 5 users by priority score
+- **Beta Access Keys**: Secure `BETA-XXXX-XXXX-XXXX` format via `secrets.token_hex()`, stored with 7-day expiry
+- **War Room Invite Email**: Subject: "You've been bumped to the front: Welcome to the War Room." — includes rank, referral stats, beta key, CTA button
+- **Referral Success Email**: Triggered async when someone joins via referral link — shows new rank, spots skipped, referral count
+- **Admin Manual Trigger**: `POST /api/waitlist/admin/auto-invite` (batch_size 1-20) for on-demand invites
+- Both emails use Resend API with branded HTML templates matching RISEDUAL's visual identity
+- **Verified (Iteration 96)**: 100% pass (14/14 backend, all frontend)
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
