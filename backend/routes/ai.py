@@ -393,7 +393,7 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
         hypothesis["is_pro"] = True
 
         # Log prediction for accuracy tracking
-        if hypothesis.get("verdict") and db:
+        if hypothesis.get("verdict") and db is not None:
             try:
                 from services.prediction_tracker import log_prediction
                 await log_prediction(

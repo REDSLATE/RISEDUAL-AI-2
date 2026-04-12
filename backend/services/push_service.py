@@ -60,7 +60,7 @@ async def send_push(subscription_info: dict, title: str, body: str, url: str = "
             vapid_claims=VAPID_CLAIMS,
         )
         # Log for rate limiting
-        if db and user_id:
+        if db is not None and user_id:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             await db.push_log.insert_one({
                 "user_id": user_id,
@@ -73,7 +73,7 @@ async def send_push(subscription_info: dict, title: str, body: str, url: str = "
         logger.error(f"Push send failed: {e}")
         # If subscription expired (410 Gone), clean it up
         if hasattr(e, 'response') and e.response and e.response.status_code == 410:
-            if db:
+            if db is not None:
                 await db.push_subscriptions.delete_one({"endpoint": subscription_info.get("endpoint")})
                 logger.info("Removed expired push subscription")
         return False
