@@ -5,16 +5,12 @@ Tests P1 (Memory Dashboard data endpoints) and P2 (Broker OAuth Admin CRUD)
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 # Test credentials from test_credentials.md
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-
-
 class TestAuthSetup:
     """Authentication setup tests"""
     

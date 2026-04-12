@@ -13,14 +13,12 @@ and cleanup history shows 1 run (55 toxic outliers removed: 2974->2919).
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 # Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-
-
 class TestMemoryCleanupFeature:
     """Memory cleanup endpoint tests (Pro only)"""
     

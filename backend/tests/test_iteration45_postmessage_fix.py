@@ -12,8 +12,10 @@ This test verifies all AI endpoints work correctly after the fix.
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestAuthEndpoints:
     """Test authentication endpoints with cookies"""
@@ -22,7 +24,7 @@ class TestAuthEndpoints:
         """Test login sets httpOnly cookies"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Login failed: {response.text}"
@@ -33,7 +35,7 @@ class TestAuthEndpoints:
         
         data = response.json()
         assert 'email' in data, "Response should contain user email"
-        assert data['email'] == 'admin@risedual.ai'
+        assert data['email'] == ADMIN_EMAIL
         print(f"Login successful for {data['email']}")
     
     def test_auth_me_with_cookies(self):
@@ -42,7 +44,7 @@ class TestAuthEndpoints:
         session = requests.Session()
         login_response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert login_response.status_code == 200
@@ -52,7 +54,7 @@ class TestAuthEndpoints:
         assert me_response.status_code == 200, f"Auth me failed: {me_response.text}"
         
         data = me_response.json()
-        assert data['email'] == 'admin@risedual.ai'
+        assert data['email'] == ADMIN_EMAIL
         print(f"Auth me successful: {data['email']}, role: {data.get('role')}")
 
 
@@ -65,7 +67,7 @@ class TestAIWarRoom:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200
@@ -99,7 +101,7 @@ class TestAIIntelligenceHub:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200
@@ -156,7 +158,7 @@ class TestAIHypothesis:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200
@@ -189,7 +191,7 @@ class TestMarketPredictions:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200
@@ -220,7 +222,7 @@ class TestCompanyResearch:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200

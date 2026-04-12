@@ -9,9 +9,6 @@ import requests
 import os
 import time
 import uuid
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
 class TestPortfolioAgentToolCalling:
     """Test the portfolio agent with AI tool calling for portfolio queries."""
     
@@ -21,8 +18,8 @@ class TestPortfolioAgentToolCalling:
         self.session = requests.Session()
         # Login as admin
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
         self.session_id = str(uuid.uuid4())
@@ -135,8 +132,8 @@ class TestChatWithImageBypassesAgent:
         """Setup: Login as admin."""
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
         self.session_id = str(uuid.uuid4())
@@ -147,6 +144,11 @@ class TestChatWithImageBypassesAgent:
         """POST /api/chat with image should use standard AI even with portfolio keywords."""
         # Create a simple test image (1x1 pixel PNG)
         import base64
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+
         # Minimal valid PNG
         png_data = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -177,8 +179,8 @@ class TestPaperTradingEndpointsStillWork:
         """Setup: Login as admin."""
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
         yield
@@ -261,8 +263,8 @@ class TestPortfolioAgentErrorHandling:
         """Setup: Login as admin."""
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
         self.session_id = str(uuid.uuid4())
@@ -339,8 +341,8 @@ class TestChatRateLimitForFreeUsers:
         
         # Login as admin (pro user)
         login_resp = session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200
         
@@ -369,8 +371,8 @@ class TestPortfolioKeywordsDetection:
         """Setup: Login as admin."""
         self.session = requests.Session()
         login_resp = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200
         yield

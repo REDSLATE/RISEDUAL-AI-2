@@ -90,8 +90,8 @@ const PredictionCard = ({ prediction }) => {
             View agent analyses ({prediction.agent_analyses.length} agents)
           </summary>
           <div className="mt-2 space-y-2">
-            {prediction.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
+            {prediction.agent_analyses.map((a) => (
+              <div key={`${a.role}-${a.summary?.slice(0,20)}`} className="bg-slate-800/50 rounded-lg p-2.5">
                 <span className="text-violet-300 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] mt-0.5">{a.summary}</p>
               </div>

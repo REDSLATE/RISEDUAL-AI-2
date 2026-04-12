@@ -232,7 +232,7 @@ async def run_and_update_post_mortem(
         from services.market_memory_service import _collection
         if _collection:
             import hashlib
-            doc_id = hashlib.md5(
+            doc_id = hashlib.sha256(
                 f"{prediction['symbol']}|{prediction.get('timestamp', '')[:10]}|{prediction.get('price_at_prediction', '')}".encode()
             ).hexdigest()
             existing = await asyncio.to_thread(_collection.get, ids=[doc_id])

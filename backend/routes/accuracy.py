@@ -1,4 +1,5 @@
 """Prediction accuracy tracking routes (Pro only)."""
+import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from services.auth_helpers import get_current_user, is_pro_user
 from services.prediction_tracker import (
@@ -119,6 +120,25 @@ async def get_failure_modes(request: Request):
     return {"failure_modes": FAILURE_MODES}
 
 
+async def _update_chromadb_failure_code(pred: dict, code: str):
+    """Update failure_code in ChromaDB metadata for a prediction."""
+    try:
+        from services.market_memory_service import _collection
+        if _collection:
+            import hashlib
+            doc_id = hashlib.sha256(
+                f"{pred['symbol']}|{pred.get('timestamp', '')[:10]}|{pred.get('price_at_prediction', '')}".encode()
+            ).hexdigest()
+            existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
+            if existing and existing.get("ids"):
+                meta = existing["metadatas"][0].copy() if existing.get("metadatas") else {}
+                meta["failure_code"] = code
+                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])
+                logger.info(f"Updated ChromaDB failure_code for {pred['symbol']}: {code}")
+    except Exception as e:
+        logger.warning(f"ChromaDB failure classification update failed: {e}")
+
+
 @router.post("/classify/{prediction_id}")
 async def classify_failure(prediction_id: str, request: Request):
     """Manually classify a prediction failure. Pro only.
@@ -134,7 +154,6 @@ async def classify_failure(prediction_id: str, request: Request):
     if code not in FAILURE_MODES:
         raise HTTPException(status_code=400, detail=f"Invalid failure_code. Must be one of: {list(FAILURE_MODES.keys())}")
 
-    # Update MongoDB prediction
     pred = await db.predictions.find_one({"prediction_id": prediction_id}, {"_id": 0})
     if not pred:
         raise HTTPException(status_code=404, detail="Prediction not found")
@@ -151,28 +170,8 @@ async def classify_failure(prediction_id: str, request: Request):
     if not update_fields:
         raise HTTPException(status_code=400, detail="Prediction was not a failure or hasn't been verified yet")
 
-    await db.predictions.update_one(
-        {"prediction_id": prediction_id},
-        {"$set": update_fields}
-    )
-
-    # Also update ChromaDB metadata if the episode exists
-    try:
-        from services.market_memory_service import _collection
-        if _collection:
-            import asyncio
-            import hashlib
-            doc_id = hashlib.md5(
-                f"{pred['symbol']}|{pred.get('timestamp', '')[:10]}|{pred.get('price_at_prediction', '')}".encode()
-            ).hexdigest()
-            existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
-            if existing and existing.get("ids"):
-                meta = existing["metadatas"][0].copy() if existing.get("metadatas") else {}
-                meta["failure_code"] = code
-                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])
-                logger.info(f"Updated ChromaDB failure_code for {pred['symbol']}: {code}")
-    except Exception as e:
-        logger.warning(f"ChromaDB failure classification update failed: {e}")
+    await db.predictions.update_one({"prediction_id": prediction_id}, {"$set": update_fields})
+    await _update_chromadb_failure_code(pred, code)
 
     return {
         "prediction_id": prediction_id,

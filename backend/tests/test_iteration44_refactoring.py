@@ -11,11 +11,10 @@ Tests verify that refactored code paths work correctly:
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-OWNER_EMAIL = os.environ.get('OWNER_EMAIL', 'managingdirector@redslateholdings.com')
-OWNER_PASSWORD = os.environ.get('OWNER_PASSWORD', 'RedSlate2026!')
-
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestMarketDataService:
     """Tests for refactored market_data_service.py - generate_mock_options_data"""

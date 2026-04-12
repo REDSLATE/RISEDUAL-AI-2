@@ -6,14 +6,12 @@ across all backend services.
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 # Test credentials
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-
-
 class TestSectorHeatmap:
     """Tests for GET /api/sectors/heatmap - sector rotation data with real prices"""
     

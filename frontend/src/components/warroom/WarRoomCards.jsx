@@ -295,8 +295,8 @@ export const CrewInsightsCard = ({ composite }) => {
           <div>
             <span className="text-lime-400 text-[10px] font-semibold uppercase">Strategist Catalysts</span>
             <ul className="mt-1 space-y-0.5">
-              {composite.catalysts.map((c, i) => (
-                <li key={i} className="text-slate-300 text-xs flex items-start gap-1.5">
+              {composite.catalysts.map((c) => (
+                <li key={c} className="text-slate-300 text-xs flex items-start gap-1.5">
                   <span className="w-1 h-1 bg-emerald-400 rounded-full mt-1.5 flex-shrink-0" />
                   {c}
                 </li>
@@ -340,8 +340,8 @@ export const CrewInsightsCard = ({ composite }) => {
             View Strategist & Auditor analyses ({composite.agent_analyses.length} agents)
           </summary>
           <div className="mt-2 space-y-2">
-            {composite.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-800/50 rounded-lg p-2.5">
+            {composite.agent_analyses.map((a) => (
+              <div key={`${a.role}-${a.summary?.slice(0,20)}`} className="bg-slate-800/50 rounded-lg p-2.5">
                 <span className="text-violet-300 text-[10px] font-semibold">{a.role}</span>
                 <p className="text-slate-400 text-[11px] leading-relaxed mt-1">{a.summary}</p>
               </div>

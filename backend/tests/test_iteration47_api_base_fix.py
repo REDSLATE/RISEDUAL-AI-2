@@ -9,8 +9,10 @@ Key changes tested:
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestAuthFlow:
     """Test authentication and cookie-based auth"""
@@ -23,8 +25,8 @@ class TestAuthFlow:
     def test_login_sets_cookies(self, session):
         """Login should set httpOnly cookies"""
         response = session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
@@ -38,21 +40,21 @@ class TestAuthFlow:
         """Auth me endpoint should work with cookies"""
         # First login
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         response = session.get(f"{BASE_URL}/api/auth/me")
         assert response.status_code == 200, f"Auth me failed: {response.text}"
         data = response.json()
-        assert data["email"] == "admin@risedual.ai"
+        assert data["email"] == ADMIN_EMAIL
         print(f"PASS: Auth me returned user email={data['email']}")
     
     def test_refresh_token_endpoint(self, session):
         """Refresh token endpoint should work"""
         # First login
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         response = session.post(f"{BASE_URL}/api/auth/refresh", json={})
         assert response.status_code == 200, f"Refresh failed: {response.text}"
@@ -69,8 +71,8 @@ class TestAIWarRoom:
         """Create authenticated session"""
         session = requests.Session()
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         return session
     
@@ -108,8 +110,8 @@ class TestAIIntelligenceHub:
         """Create authenticated session"""
         session = requests.Session()
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         return session
     
@@ -161,8 +163,8 @@ class TestAIHypothesis:
         """Create authenticated session"""
         session = requests.Session()
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         return session
     
@@ -190,8 +192,8 @@ class TestMarketPrediction:
         """Create authenticated session"""
         session = requests.Session()
         session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         return session
     

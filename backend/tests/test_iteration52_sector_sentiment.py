@@ -11,8 +11,10 @@ import pytest
 import requests
 import os
 import time
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestSectorSentimentCrew:
     """Test the NEW AI-powered sector sentiment multi-agent crew endpoint"""
@@ -189,8 +191,8 @@ class TestAuthRegression:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "admin@risedual.ai",
-                "password": "RiseDual2026!"
+                "email": ADMIN_EMAIL,
+                "password": ADMIN_PASSWORD
             },
             timeout=30
         )
@@ -199,7 +201,7 @@ class TestAuthRegression:
         data = response.json()
         # Response structure: {email, role, subscription, access_token, ...} (flat, no nested 'user')
         assert "email" in data, "Response missing 'email'"
-        assert data["email"] == "admin@risedual.ai"
+        assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         
         # Verify access_token is returned

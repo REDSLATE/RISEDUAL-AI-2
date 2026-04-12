@@ -263,8 +263,8 @@ const PaperTrading = ({ onClose }) => {
           ) : (
             /* Trade History */
             <div className="space-y-2">
-              {trades.length > 0 ? trades.map((t, i) => (
-                <Card key={i} className="bg-slate-700/55 border-slate-400/30/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${i}`}>
+              {trades.length > 0 ? trades.map((t) => (
+                <Card key={`${t.symbol}-${t.side}-${t.timestamp}`} className="bg-slate-700/55 border-slate-400/30/30 rounded-xl p-3 flex items-center justify-between" data-testid={`trade-${t.symbol}-${t.side}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${t.side === 'BUY' ? 'bg-lime-600' : 'bg-orange-700'}`}>
                       {t.side === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-lime-400" /> : <ArrowDownRight className="w-4 h-4 text-orange-400" />}

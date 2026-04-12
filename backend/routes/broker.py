@@ -396,6 +396,78 @@ async def oauth_capabilities():
     }
 
 
+def _resolve_origin(request: Request) -> str:
+    """Resolve the origin from request headers for OAuth redirect URIs."""
+    origin = request.headers.get("origin", "")
+    if not origin:
+        referer = request.headers.get("referer", "")
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            origin = str(request.base_url).rstrip("/")
+    return origin
+
+
+async def _exchange_oauth_code(cfg: dict, code: str, client_id: str, client_secret: str,
+                                redirect_uri: str, pkce_verifier: str = None) -> dict:
+    """Exchange an authorization code for OAuth tokens. Returns token_data dict or raises."""
+    token_payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+    }
+    if pkce_verifier:
+        token_payload["code_verifier"] = pkce_verifier
+
+    resp = await asyncio.to_thread(
+        http_requests.post, cfg["token_url"], data=token_payload, timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def _validate_oauth_account(broker_id: str, access_token: str) -> dict:
+    """Validate an OAuth token by fetching the broker account. Returns account dict."""
+    from services.broker_service import BrokerService
+    credentials = {"api_key": access_token, "api_secret": "oauth", "paper": False, "oauth": True}
+    client = BrokerService.get_broker_client(broker_id, credentials)
+    account = await asyncio.to_thread(client.get_account)
+    if not account:
+        raise ValueError("Account fetch returned empty")
+    return account
+
+
+async def _store_oauth_connection(user_id: str, broker_id: str, token_data: dict,
+                                   account: dict, pkce_used: bool) -> None:
+    """Persist the OAuth connection with encrypted tokens to MongoDB."""
+    cfg = OAUTH_CONFIGS[broker_id]
+    expiry_seconds = token_data.get("expires_in", cfg.get("token_expiry_seconds", 3600))
+    doc = {
+        "user_id": user_id,
+        "broker_id": broker_id,
+        "api_key_enc": encrypt_value(token_data["access_token"]),
+        "api_secret_enc": encrypt_value("oauth"),
+        "paper": False,
+        "is_active": True,
+        "auth_method": "oauth",
+        "oauth_refresh_token_enc": encrypt_value(token_data.get("refresh_token", "")),
+        "oauth_expires_at": datetime.now(timezone.utc),
+        "oauth_token_expiry_seconds": expiry_seconds,
+        "oauth_last_refreshed": datetime.now(timezone.utc),
+        "oauth_pkce_used": pkce_used,
+        "account_id": account.get("account_number", account.get("id", "N/A")),
+        "connected_at": datetime.now(timezone.utc),
+        "last_used": datetime.now(timezone.utc),
+    }
+    await db.broker_connections.update_one(
+        {"user_id": user_id, "broker_id": broker_id}, {"$set": doc}, upsert=True,
+    )
+
+
 @router.get("/oauth/{broker_id}/authorize")
 async def oauth_authorize(broker_id: str, request: Request):
     """Start OAuth flow — returns the authorization URL for the frontend to redirect to."""
@@ -428,14 +500,7 @@ async def oauth_authorize(broker_id: str, request: Request):
         "created_at": datetime.now(timezone.utc),
     })
 
-    # Build redirect URI from the request origin
-    origin = request.headers.get("origin", "")
-    if not origin:
-        referer = request.headers.get("referer", "")
-        if referer:
-            from urllib.parse import urlparse
-            parsed = urlparse(referer)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
+    origin = _resolve_origin(request)
     redirect_uri = f"{origin}/api/broker/oauth/{broker_id}/callback"
 
     authorize_url = (
@@ -456,14 +521,11 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
     """Handle OAuth callback — exchange code for tokens and store the connection."""
     if error:
         return RedirectResponse(url=f"/?broker_error={error}")
-
     if broker_id not in OAUTH_CONFIGS:
         return RedirectResponse(url="/?broker_error=unsupported_broker")
-
     if not code or not state:
         return RedirectResponse(url="/?broker_error=missing_code")
 
-    # Validate state token
     state_doc = await db.oauth_states.find_one_and_delete({"state": state})
     if not state_doc:
         return RedirectResponse(url="/?broker_error=invalid_state")
@@ -473,38 +535,10 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
     cfg = OAUTH_CONFIGS[broker_id]
     client_id, client_secret = await _get_oauth_credentials(broker_id)
 
-    # Build redirect URI (must match the authorize call)
-    origin = request.headers.get("origin", "")
-    if not origin:
-        referer = request.headers.get("referer", "")
-        if referer:
-            from urllib.parse import urlparse
-            parsed = urlparse(referer)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-        else:
-            origin = str(request.base_url).rstrip("/")
-    redirect_uri = f"{origin}/api/broker/oauth/{broker_id}/callback"
-
-    # Exchange code for access token (include PKCE verifier if used)
-    token_payload = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-    }
-    if pkce_verifier:
-        token_payload["code_verifier"] = pkce_verifier
+    redirect_uri = f"{_resolve_origin(request)}/api/broker/oauth/{broker_id}/callback"
 
     try:
-        token_resp = await asyncio.to_thread(
-            http_requests.post,
-            cfg["token_url"],
-            data=token_payload,
-            timeout=15,
-        )
-        token_resp.raise_for_status()
-        token_data = token_resp.json()
+        token_data = await _exchange_oauth_code(cfg, code, client_id, client_secret, redirect_uri, pkce_verifier)
     except Exception as e:
         logger.error(f"OAuth token exchange failed for {broker_id}: {e}")
         return RedirectResponse(url="/?broker_error=token_exchange_failed")
@@ -513,48 +547,13 @@ async def oauth_callback(broker_id: str, request: Request, code: str = "", state
     if not access_token:
         return RedirectResponse(url="/?broker_error=no_access_token")
 
-    # Validate the token by fetching account
-    from services.broker_service import BrokerService
-    credentials = {
-        "api_key": access_token,
-        "api_secret": "oauth",
-        "paper": False,
-        "oauth": True,
-    }
     try:
-        client = BrokerService.get_broker_client(broker_id, credentials)
-        account = await asyncio.to_thread(client.get_account)
-        if not account:
-            return RedirectResponse(url="/?broker_error=account_fetch_failed")
+        account = await _validate_oauth_account(broker_id, access_token)
     except Exception as e:
         logger.error(f"OAuth account validation failed: {e}")
         return RedirectResponse(url="/?broker_error=validation_failed")
 
-    # Store the OAuth connection with token rotation metadata
-    expiry_seconds = token_data.get("expires_in", cfg.get("token_expiry_seconds", 3600))
-    doc = {
-        "user_id": user_id,
-        "broker_id": broker_id,
-        "api_key_enc": encrypt_value(access_token),
-        "api_secret_enc": encrypt_value("oauth"),
-        "paper": False,
-        "is_active": True,
-        "auth_method": "oauth",
-        "oauth_refresh_token_enc": encrypt_value(token_data.get("refresh_token", "")),
-        "oauth_expires_at": datetime.now(timezone.utc),
-        "oauth_token_expiry_seconds": expiry_seconds,
-        "oauth_last_refreshed": datetime.now(timezone.utc),
-        "oauth_pkce_used": bool(pkce_verifier),
-        "account_id": account.get("account_number", account.get("id", "N/A")),
-        "connected_at": datetime.now(timezone.utc),
-        "last_used": datetime.now(timezone.utc),
-    }
-    await db.broker_connections.update_one(
-        {"user_id": user_id, "broker_id": broker_id},
-        {"$set": doc},
-        upsert=True,
-    )
-
+    await _store_oauth_connection(user_id, broker_id, token_data, account, bool(pkce_verifier))
     logger.info(f"OAuth connection established for user {user_id} -> {broker_id}")
     return RedirectResponse(url=f"/?broker_connected={broker_id}")
 

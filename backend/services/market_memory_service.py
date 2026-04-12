@@ -128,7 +128,7 @@ def _make_id(regime: Dict) -> str:
         str(regime.get("price", "")),
     ]
     raw = "|".join(key_parts)
-    return hashlib.md5(raw.encode()).hexdigest()
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 async def save_regime(regime: Dict) -> str:

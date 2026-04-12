@@ -203,8 +203,8 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
                     <span>Price Level</span>
                     <span className="flex gap-4"><span>Volume</span><span>Int</span></span>
                   </div>
-                  {walls.slice(0, 8).map((w, i) => (
-                    <WallBar key={i} wall={w} maxVol={maxVol} />
+                  {walls.slice(0, 8).map((w) => (
+                    <WallBar key={`${w.side}-${w.price}`} wall={w} maxVol={maxVol} />
                   ))}
                 </div>
               )}

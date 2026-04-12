@@ -8,14 +8,7 @@ Tests for:
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
 # Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-
-
 @pytest.fixture(scope="module")
 def session():
     """Create a session with cookies for authenticated requests."""
@@ -261,6 +254,11 @@ class TestSectorSentimentRegression:
             elif response.status_code == 502 and attempt < 1:
                 print(f"Got 502, retrying... (attempt {attempt + 1})")
                 import time
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+
                 time.sleep(2)
                 continue
         

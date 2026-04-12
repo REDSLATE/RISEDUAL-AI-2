@@ -108,8 +108,8 @@ const CleanupTab = ({ runs, onRunCleanup, loading }) => (
       {runs.length === 0 ? (
         <p className="text-slate-300 text-sm text-center py-8">No cleanup runs yet</p>
       ) : (
-        runs.map((run, i) => (
-          <CleanupRunCard key={i} run={run} />
+        runs.map((run) => (
+          <CleanupRunCard key={run.run_at} run={run} />
         ))
       )}
     </div>
@@ -225,10 +225,10 @@ const PostMortemTab = ({ postMortems }) => (
       </div>
     ) : (
       <div className="space-y-2">
-        {postMortems.map((pm, i) => {
+        {postMortems.map((pm) => {
           const colors = FAILURE_COLORS[pm.failure_code] || FAILURE_COLORS.UNKNOWN;
           return (
-            <div key={i} className={`bg-[#111C30] border ${colors.border} rounded-xl p-4`}>
+            <div key={`${pm.ticker}-${pm.run_at}`} className={`bg-[#111C30] border ${colors.border} rounded-xl p-4`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Brain className={`w-4 h-4 ${colors.text}`} />

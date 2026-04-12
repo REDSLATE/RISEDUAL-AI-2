@@ -157,8 +157,8 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
             Strategist & Auditor Breakdown ({hypothesis.agent_analyses.length} Agents)
           </summary>
           <div className="mt-3 space-y-3">
-            {hypothesis.agent_analyses.map((a, i) => (
-              <div key={i} className="bg-slate-800/50 rounded-lg p-3">
+            {hypothesis.agent_analyses.map((a) => (
+              <div key={`${a.role}-${a.summary?.slice(0,20)}`} className="bg-slate-800/50 rounded-lg p-3">
                 <span className="text-violet-300 text-xs font-semibold">{a.role}</span>
                 <p className="text-slate-300 text-xs leading-relaxed mt-1">{a.summary}</p>
               </div>

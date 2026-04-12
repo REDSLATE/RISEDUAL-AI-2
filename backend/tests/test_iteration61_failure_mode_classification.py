@@ -19,10 +19,6 @@ import sys
 
 # Add backend to path for direct imports
 sys.path.insert(0, '/app/backend')
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
-
 class TestClassifyFailureFunction:
     """Test _classify_failure() function logic directly via Python imports."""
 
@@ -108,7 +104,7 @@ class TestFailureModesAPI:
         session = requests.Session()
         login_resp = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         if login_resp.status_code != 200:
             pytest.skip(f"Login failed: {login_resp.status_code}")
@@ -143,7 +139,7 @@ class TestFailureBreakdownAPI:
         session = requests.Session()
         login_resp = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         if login_resp.status_code != 200:
             pytest.skip(f"Login failed: {login_resp.status_code}")
@@ -179,7 +175,7 @@ class TestManualClassificationAPI:
         session = requests.Session()
         login_resp = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         if login_resp.status_code != 200:
             pytest.skip(f"Login failed: {login_resp.status_code}")
@@ -386,6 +382,7 @@ class TestVerifyPendingPredictionsClassifiesFailure:
         """Verify verify_pending_predictions() passes failure_code to save_regime."""
         import inspect
         from services.prediction_tracker import verify_pending_predictions
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
         source = inspect.getsource(verify_pending_predictions)
         

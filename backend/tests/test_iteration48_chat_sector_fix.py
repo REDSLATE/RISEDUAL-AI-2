@@ -7,9 +7,10 @@ import pytest
 import requests
 import os
 import time
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001').rstrip('/')
-
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestChatEndpointFormData:
     """Tests for POST /api/chat with FormData (PRIMARY BUG FIX)"""
@@ -154,8 +155,8 @@ class TestAuthenticatedChat:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "admin@risedual.ai",
-                "password": "RiseDual2026!"
+                "email": ADMIN_EMAIL,
+                "password": ADMIN_PASSWORD
             },
             timeout=10
         )
