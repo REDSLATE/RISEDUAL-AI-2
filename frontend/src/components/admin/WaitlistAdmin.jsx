@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, Send, RefreshCw, ArrowUpDown, Trophy, Code, Copy, Check } from 'lucide-react';
+import { Users, Crown, Send, RefreshCw, ArrowUpDown, Trophy, Code, Copy, Check, BarChart3 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { toast } from '../ui/sonner';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
+import WaitlistAnalytics from './WaitlistAnalytics';
 
 const API = `${getApiBase()}/api/waitlist`;
 
@@ -72,6 +73,7 @@ const WaitlistAdmin = () => {
   const [sortBy, setSortBy] = useState('priority');
   const [inviting, setInviting] = useState(false);
   const [inviteCount, setInviteCount] = useState(10);
+  const [view, setView] = useState('manage');
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -124,6 +126,26 @@ const WaitlistAdmin = () => {
 
   return (
     <div className="p-4 space-y-4" data-testid="waitlist-admin">
+      {/* View Toggle */}
+      <div className="flex items-center gap-1 bg-slate-800/60 rounded-xl p-1 w-fit">
+        <button onClick={() => setView('manage')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            view === 'manage' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'
+          }`} data-testid="waitlist-view-manage">
+          <Users className="w-3.5 h-3.5" /> Manage
+        </button>
+        <button onClick={() => setView('analytics')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            view === 'analytics' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'
+          }`} data-testid="waitlist-view-analytics">
+          <BarChart3 className="w-3.5 h-3.5" /> Analytics
+        </button>
+      </div>
+
+      {view === 'analytics' ? (
+        <WaitlistAnalytics />
+      ) : (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -220,6 +242,8 @@ const WaitlistAdmin = () => {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );

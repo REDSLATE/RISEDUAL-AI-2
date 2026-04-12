@@ -256,9 +256,120 @@ async def get_waitlist_stats() -> Dict:
     }
 
 
+async def get_waitlist_analytics(days: int = 30) -> Dict:
+    """Comprehensive analytics for the waitlist admin dashboard."""
+    from datetime import datetime, timezone, timedelta
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # ── Daily signups (time series) ──
+    all_entries = await db.waitlist.find(
+        {"signed_up_at": {"$gte": cutoff}},
+        {"_id": 0, "signed_up_at": 1, "referred_by": 1, "status": 1, "referral_count": 1},
+    ).to_list(length=10000)
+
+    daily_map = {}
+    for entry in all_entries:
+        day = entry.get("signed_up_at", "")[:10]
+        if not day:
+            continue
+        if day not in daily_map:
+            daily_map[day] = {"date": day, "total": 0, "organic": 0, "referred": 0}
+        daily_map[day]["total"] += 1
+        if entry.get("referred_by"):
+            daily_map[day]["referred"] += 1
+        else:
+            daily_map[day]["organic"] += 1
+
+    daily_signups = sorted(daily_map.values(), key=lambda x: x["date"])
+
+    # ── Status breakdown (funnel) ──
+    total = await db.waitlist.count_documents({})
+    waiting = await db.waitlist.count_documents({"status": "waiting"})
+    invited = await db.waitlist.count_documents({"status": "invited"})
+    active = await db.waitlist.count_documents({"status": "active"})
+    founding = await db.waitlist.count_documents({"status": "founding"})
+
+    # ── Referral metrics ──
+    total_with_referral = await db.waitlist.count_documents({"referred_by": {"$ne": ""}})
+    total_referrers = await db.waitlist.count_documents({"referral_count": {"$gt": 0}})
+
+    referral_rate = round((total_with_referral / total * 100), 1) if total > 0 else 0
+    invite_conversion = round((active / invited * 100), 1) if invited > 0 else 0
+
+    # ── Top referrers ──
+    top_referrers_cursor = db.waitlist.find(
+        {"referral_count": {"$gt": 0}},
+        {"_id": 0, "name": 1, "email": 1, "referral_code": 1, "referral_count": 1, "priority_score": 1, "status": 1},
+    ).sort("referral_count", -1).limit(10)
+    top_referrers = await top_referrers_cursor.to_list(length=10)
+    for r in top_referrers:
+        r["email"] = r["email"][:3] + "***" + r["email"][r["email"].index("@"):]
+
+    # ── Invite timeline ──
+    invited_entries = await db.waitlist.find(
+        {"invited_at": {"$ne": None}},
+        {"_id": 0, "invited_at": 1},
+    ).to_list(length=10000)
+
+    invite_daily = {}
+    for entry in invited_entries:
+        day = (entry.get("invited_at") or "")[:10]
+        if day:
+            invite_daily[day] = invite_daily.get(day, 0) + 1
+
+    invite_timeline = [{"date": d, "invites": c} for d, c in sorted(invite_daily.items())]
+
+    # ── Priority score distribution ──
+    all_scores = await db.waitlist.find(
+        {"status": "waiting"},
+        {"_id": 0, "priority_score": 1},
+    ).to_list(length=10000)
+    scores = [e.get("priority_score", 0) for e in all_scores]
+
+    buckets = {"< 0": 0, "0-20": 0, "21-50": 0, "51-100": 0, "> 100": 0}
+    for s in scores:
+        if s < 0:
+            buckets["< 0"] += 1
+        elif s <= 20:
+            buckets["0-20"] += 1
+        elif s <= 50:
+            buckets["21-50"] += 1
+        elif s <= 100:
+            buckets["51-100"] += 1
+        else:
+            buckets["> 100"] += 1
+
+    score_distribution = [{"range": k, "count": v} for k, v in buckets.items()]
+
+    return {
+        "period_days": days,
+        "daily_signups": daily_signups,
+        "funnel": {
+            "total": total,
+            "waiting": waiting,
+            "invited": invited,
+            "active": active,
+            "founding": founding,
+        },
+        "referral_metrics": {
+            "total_referred": total_with_referral,
+            "total_organic": total - total_with_referral,
+            "total_referrers": total_referrers,
+            "referral_rate": referral_rate,
+            "invite_conversion": invite_conversion,
+        },
+        "top_referrers": top_referrers,
+        "invite_timeline": invite_timeline,
+        "score_distribution": score_distribution,
+    }
+
+
+
 def _generate_beta_key() -> str:
     """Generate a secure, unique beta access key. Format: BETA-XXXX-XXXX-XXXX"""
-    seg = lambda: secrets.token_hex(2).upper()
+    def seg():
+        return secrets.token_hex(2).upper()
     return f"BETA-{seg()}-{seg()}-{seg()}"
 
 

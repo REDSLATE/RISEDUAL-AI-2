@@ -114,6 +114,16 @@ async def admin_auto_invite(request: Request):
     return {"invited": invited, "count": len(invited)}
 
 
+@router.get("/admin/analytics")
+async def admin_analytics(request: Request, days: int = 30):
+    """Admin: Waitlist analytics — daily signups, referral funnel, conversion rates, top referrers."""
+    await _require_admin(request)
+    if days < 1 or days > 365:
+        days = 30
+    from services.waitlist_service import get_waitlist_analytics
+    return await get_waitlist_analytics(days)
+
+
 
 # ── Embeddable Widget ──
 
