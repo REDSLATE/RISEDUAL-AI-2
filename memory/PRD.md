@@ -456,7 +456,9 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - CRUD endpoints: `GET /api/chat/memory`, `POST /api/chat/memory/toggle`, `DELETE /api/chat/memory/{id}`, `DELETE /api/chat/memory`
 - **Frontend**: Brain icon in chat header (teal when ON, gray when OFF), expandable memory panel with ON/OFF toggle, memory list with per-item delete, "Clear all" option
 - Memory enabled by default for Pro users
-- **Verified (Iteration 89)**: 100% pass (9/9 backend, all frontend)
+- **Manual Memory Pinning**: Pin icon on AI message bubbles (max 5 pinned memories). Pinned memories shown with Pin icon in memory panel with X/5 counter. Server-side limit enforced — 6th pin returns 400.
+- **"What do you remember about me?"**: Quick-action suggestion in empty chat for Pro users — fills input on click
+- **Verified (Iteration 89-90)**: 100% pass (11/11 pin tests + 9/9 memory tests, all frontend)
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
