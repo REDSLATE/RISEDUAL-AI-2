@@ -306,11 +306,16 @@ async def run_prediction_crew(
     real_estate_data=None, world_events=None, foreign_markets=None,
     gov_filings=None, api_key: str = "", memory_context: str = "",
     strategist_context: str = "", veto_context: str = "",
-    order_flow_context: str = ""
+    order_flow_context: str = "", ticker_focus: str = None
 ) -> Dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+
+    ticker_label = ticker_focus or "the overall market (S&P 500)"
+    ticker_instruction = ""
+    if ticker_focus:
+        ticker_instruction = f"\n\nFOCUS: Your analysis must be specifically about **{ticker_focus}**. All predictions, price targets, signals, and risk factors should relate to {ticker_focus}, not the general market. Use macro data as context for how it affects {ticker_focus} specifically.\n"
 
     # Format data for each agent
     news_str = _fmt_list(financial_news, "title", "source", limit=8)
@@ -324,13 +329,13 @@ async def run_prediction_crew(
 
     tasks = [
         # Sentiment Analyst
-        f"Analyze market sentiment.\n\nFINANCIAL NEWS:\n{news_str}\n\nSOCIAL MEDIA:\n{social_str}\n\nCRYPTO SIGNALS:\n{crypto_str}\n\nProvide: overall sentiment score (-100 to +100), narrative direction, and key sentiment drivers.",
+        f"Analyze market sentiment for {ticker_label}.{ticker_instruction}\n\nFINANCIAL NEWS:\n{news_str}\n\nSOCIAL MEDIA:\n{social_str}\n\nCRYPTO SIGNALS:\n{crypto_str}\n\nProvide: overall sentiment score (-100 to +100), narrative direction, and key sentiment drivers.",
 
         # Macro Strategist
-        f"Analyze global macro conditions.\n\nWORLD EVENTS:\n{events_str}\n\nFOREIGN MARKETS:\n{markets_str}\n\nREAL ESTATE:\n{re_str}\n\nProvide: macro risk assessment, cross-market correlations, sector rotation signals, and directional bias.",
+        f"Analyze global macro conditions and their impact on {ticker_label}.{ticker_instruction}\n\nWORLD EVENTS:\n{events_str}\n\nFOREIGN MARKETS:\n{markets_str}\n\nREAL ESTATE:\n{re_str}\n\nProvide: macro risk assessment, cross-market correlations, sector rotation signals, and directional bias.",
 
         # Flow Analyst
-        f"Analyze institutional flows.\n\nINSIDER TRADES:\n{trades_str}\n\nCONGRESSIONAL & GOV:\n{gov_str}\n\nProvide: smart money direction, notable positioning changes, dark pool signal, and conviction level.",
+        f"Analyze institutional flows relevant to {ticker_label}.{ticker_instruction}\n\nINSIDER TRADES:\n{trades_str}\n\nCONGRESSIONAL & GOV:\n{gov_str}\n\nProvide: smart money direction, notable positioning changes, dark pool signal, and conviction level.",
     ]
 
     # Build dual-signal memory injection for prediction crew
@@ -355,12 +360,13 @@ async def run_prediction_crew(
             "4. In your summary, explicitly state why the current market is NOT a trap.\n\n"
         )
 
-    synth_prompt = f"""Produce a definitive market forecast by synthesizing sentiment, macro, and flow analyses.
-
+    synth_prompt = f"""Produce a definitive forecast for **{ticker_label}** by synthesizing sentiment, macro, and flow analyses.
+{ticker_instruction}
 {memory_injection}Output ONLY valid JSON:
 {{
   "overall_direction": "BULLISH / BEARISH / NEUTRAL",
   "confidence_score": 0-100,
+  "symbol": "{ticker_focus or 'MARKET'}",
   "timeframes": {{
     "intraday": {{"direction": "...", "target": "..."}},
     "short_term": {{"direction": "...", "target": "..."}},
@@ -373,7 +379,7 @@ async def run_prediction_crew(
   "geopolitical_impact": "...",
   "institutional_flow": "Summary of smart money positioning",
   "agent_consensus": "Did all agents agree or were there conflicts?",
-  "summary": "3-sentence executive summary"
+  "summary": "3-sentence executive summary focused on {ticker_label}"
 }}"""
 
     result = await engine.run_parallel_crew(

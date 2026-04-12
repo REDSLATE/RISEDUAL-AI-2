@@ -160,12 +160,20 @@ const MarketPrediction = ({ onSubscribe }) => {
       {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
 
       {/* Loading */}
-      {loading && !prediction && (
+      {loading && (
         <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-12 text-center">
           <div className="animate-pulse space-y-3">
             <Sparkles className="w-8 h-8 text-[#3DE8D9] mx-auto animate-spin" />
-            <p className="text-white font-medium">Scraping macro data & generating predictions...</p>
-            <p className="text-slate-300 text-sm">Analyzing news, crypto, world events, congress, and foreign markets</p>
+            <p className="text-white font-medium">
+              {activeSymbol || searchSymbol
+                ? `Analyzing ${(activeSymbol || searchSymbol).toUpperCase()}...`
+                : 'Scraping macro data & generating predictions...'}
+            </p>
+            <p className="text-slate-300 text-sm">
+              {activeSymbol || searchSymbol
+                ? `Running adversarial AI pipeline for ${(activeSymbol || searchSymbol).toUpperCase()}`
+                : 'Analyzing news, crypto, world events, congress, and foreign markets'}
+            </p>
           </div>
         </Card>
       )}

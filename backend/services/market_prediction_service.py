@@ -94,6 +94,7 @@ class MarketPredictionService:
                 strategist_context=strategist_context,
                 veto_context=veto_context,
                 order_flow_context=order_flow_context,
+                ticker_focus=ticker,
             )
             return result
         except Exception as e:

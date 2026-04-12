@@ -35,7 +35,10 @@ const AdversarialHub = ({ prediction }) => {
     ? prediction.key_signals[0].split(' ').slice(0, 4).join('_').toUpperCase().replace(/[^A-Z0-9_]/g, '')
     : 'PATTERN_ANALYSIS_V4';
 
-  const ticker = prediction.fear_greed ? 'SPY/USD' : 'SPY';
+  // Use prediction.symbol if available, otherwise default to SPY
+  const ticker = prediction.symbol && prediction.symbol !== 'MARKET'
+    ? prediction.symbol
+    : (prediction.fear_greed ? 'SPY/USD' : 'SPY');
 
   return (
     <Card className="bg-[#0D1526] border-[#3DE8D9]/20 shadow-2xl overflow-hidden font-mono" data-testid="adversarial-hub">

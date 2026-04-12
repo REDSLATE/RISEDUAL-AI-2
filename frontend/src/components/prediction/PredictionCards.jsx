@@ -15,12 +15,19 @@ const PredictionCard = ({ prediction }) => {
   if (!prediction) return null;
   const verdict = prediction.overall_direction || prediction.verdict;
   const confidence = prediction.confidence_score ?? prediction.confidence;
+  const symbol = prediction.symbol;
+  const title = symbol && symbol !== 'MARKET' ? `${symbol} Outlook` : 'Market Outlook';
 
   return (
     <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-6" data-testid="prediction-main-card">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>Market Outlook</h3>
+          <h3 className="text-white text-lg font-semibold" style={{ fontFamily: 'Manrope, sans-serif' }}>{title}</h3>
+          {symbol && symbol !== 'MARKET' && (
+            <Badge className="bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/20 text-[10px]">
+              {symbol}
+            </Badge>
+          )}
           {prediction.multi_agent && (
             <Badge className="bg-violet-800/40 text-violet-300 text-[9px]">
               {prediction.agents_used || 4} AI Agents
