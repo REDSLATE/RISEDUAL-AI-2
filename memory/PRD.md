@@ -576,6 +576,14 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **ai_intelligence_service.py**: Extracted shared `_fetch_symbol_context()` helper — deduplicates data fetching across all 3 AI intelligence functions. Removed redundant `LlmChat` imports (already uses shared `_call_llm`).
 - **Verified (Iteration 105)**: 100% pass (9/9 backend, all frontend, no regressions)
 
+### Code Quality Sweep Round 7 — Deep Refactoring (April 12, 2026)
+- **RiseDualGPTChat.jsx**: 344→258 lines. Extracted `useChatMemory` hook (74 lines) — all memory callbacks (load, toggle, pin, delete, clear). Extracted `ChatHistorySidebar` (30 lines) to separate file.
+- **broker.py `place_order`**: 56→28 lines. Extracted `_log_order()` helper (24 lines) — order logging + push notifications.
+- **referral.py `process_referral_signup`**: 57→32 lines. Extracted `_notify_referral_signup()` (17 lines) — email notifications.
+- **referral.py `complete_referral_reward`**: 53→24 lines. Extracted `_grant_referral_reward()` (23 lines) — reward granting + email.
+- **test_iteration105**: Fixed hardcoded secrets → conftest_creds.py. Zero hardcoded credentials remaining.
+- **Verified (Iteration 106)**: 100% pass (14/14 backend, all frontend including chat + admin panel, no regressions)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
