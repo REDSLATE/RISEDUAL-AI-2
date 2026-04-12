@@ -52,6 +52,51 @@ async def get_chat_limit(request: Request):
     return {"limit": FREE_CHAT_DAILY_LIMIT, "used": count, "remaining": max(0, FREE_CHAT_DAILY_LIMIT - count), "is_pro": False}
 
 
+async def _enforce_rate_limit(user: dict):
+    """Check and enforce daily chat rate limit for free users. Raises 429 if over limit."""
+    if not user or is_pro_user(user):
+        return
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
+    if count >= FREE_CHAT_DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Free accounts are limited to {FREE_CHAT_DAILY_LIMIT} AI messages per day. Upgrade to Pro for unlimited.")
+    await db.chat_usage.insert_one({"user_id": user["_id"], "date": today, "timestamp": datetime.now(timezone.utc).isoformat()})
+
+
+async def _ensure_session(sessionId: str, user: dict):
+    """Create a chat session if it doesn't exist."""
+    session = await db.chat_sessions.find_one({"session_id": sessionId}, {"_id": 0, "session_id": 1})
+    if not session:
+        new_session = ChatSession(session_id=sessionId)
+        session_doc = new_session.dict()
+        if user:
+            session_doc["user_id"] = user["_id"]
+        await db.chat_sessions.insert_one(session_doc)
+
+
+async def _get_memory_context(user: dict) -> str:
+    """Load persistent memory context for Pro users."""
+    if not user or not is_pro_user(user):
+        return ""
+    from services.chat_memory_service import get_memory_enabled, get_memory_context
+    if await get_memory_enabled(user["_id"]):
+        return await get_memory_context(user["_id"])
+    return ""
+
+
+async def _trigger_memory_extraction(user: dict, messages: list, sessionId: str):
+    """Trigger async memory extraction for Pro users."""
+    if not user or not is_pro_user(user):
+        return
+    try:
+        from services.chat_memory_service import get_memory_enabled, extract_memories_from_conversation
+        if await get_memory_enabled(user["_id"]):
+            import asyncio
+            asyncio.create_task(extract_memories_from_conversation(user["_id"], messages, sessionId))
+    except Exception as e:
+        logging.warning(f"Memory extraction trigger failed: {e}")
+
+
 # --- AI Chat ---
 @router.post("/chat")
 async def chat(
@@ -61,41 +106,18 @@ async def chat(
     image: Optional[UploadFile] = File(None),
 ):
     try:
-        # Rate limit for free users
         user = await get_optional_user(request)
-        if user and not is_pro_user(user):
-            today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            count = await db.chat_usage.count_documents({"user_id": user["_id"], "date": today})
-            if count >= FREE_CHAT_DAILY_LIMIT:
-                raise HTTPException(status_code=429, detail=f"Free accounts are limited to {FREE_CHAT_DAILY_LIMIT} AI messages per day. Upgrade to Pro for unlimited.")
-            await db.chat_usage.insert_one({"user_id": user["_id"], "date": today, "timestamp": datetime.now(timezone.utc).isoformat()})
+        await _enforce_rate_limit(user)
 
-        # Process uploaded image to base64
         image_base64 = None
         if image and image.filename:
             content = await image.read()
             image_base64 = base64.b64encode(content).decode()
 
-        session = await db.chat_sessions.find_one({"session_id": sessionId}, {"_id": 0, "session_id": 1})
-        if not session:
-            new_session = ChatSession(session_id=sessionId)
-            session_doc = new_session.dict()
-            if user:
-                session_doc["user_id"] = user["_id"]
-            await db.chat_sessions.insert_one(session_doc)
+        await _ensure_session(sessionId, user)
+        memory_context = await _get_memory_context(user)
 
-        # Inject persistent memory context for Pro users
-        memory_context = ""
-        if user and is_pro_user(user):
-            from services.chat_memory_service import get_memory_enabled, get_memory_context, extract_memories_from_conversation
-            mem_enabled = await get_memory_enabled(user["_id"])
-            if mem_enabled:
-                memory_context = await get_memory_context(user["_id"])
-
-        # Route portfolio queries to the Portfolio Agent (tool calling)
-        # Non-portfolio queries go through the standard AI service
         is_portfolio_query = user and PORTFOLIO_KEYWORDS.search(message) and not image_base64
-        
         if is_portfolio_query:
             try:
                 ai_response = await run_portfolio_agent(user["_id"], message)
@@ -105,33 +127,16 @@ async def chat(
         else:
             ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context)
 
-        user_message = ChatMessage(
-            role="user",
-            content=message,
-            image_base64="[image_attached]" if image_base64 else None
-        )
+        user_message = ChatMessage(role="user", content=message, image_base64="[image_attached]" if image_base64 else None)
         assistant_message = ChatMessage(role="assistant", content=ai_response)
 
         await db.chat_sessions.update_one(
             {"session_id": sessionId},
-            {
-                "$push": {"messages": {"$each": [user_message.dict(), assistant_message.dict()]}},
-                "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
-            }
+            {"$push": {"messages": {"$each": [user_message.dict(), assistant_message.dict()]}},
+             "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
         )
 
-        # Extract memories in the background (non-blocking) for Pro users with memory enabled
-        if user and is_pro_user(user) and memory_context is not None:
-            try:
-                from services.chat_memory_service import get_memory_enabled, extract_memories_from_conversation
-                mem_enabled = await get_memory_enabled(user["_id"])
-                if mem_enabled:
-                    import asyncio
-                    all_msgs = [user_message.dict(), assistant_message.dict()]
-                    asyncio.create_task(extract_memories_from_conversation(user["_id"], all_msgs, sessionId))
-            except Exception as e:
-                logging.warning(f"Memory extraction trigger failed: {e}")
-
+        await _trigger_memory_extraction(user, [user_message.dict(), assistant_message.dict()], sessionId)
         return {"response": ai_response, "sessionId": sessionId}
     except HTTPException:
         raise

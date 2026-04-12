@@ -380,7 +380,7 @@ const Testimonials = () => {
           {testimonials.map(t => (
             <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/55">
               <div className="flex gap-1 mb-4">
-                {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-teal-400 text-teal-400" />)}
+                {[...Array(5)].map((_, i) => <Star key={`star-${i}`} className="w-3.5 h-3.5 fill-teal-400 text-teal-400" />)}
               </div>
               <p className="text-xs text-slate-300 leading-relaxed mb-5 italic">"{t.quote}"</p>
               <div className="flex items-center gap-3">
@@ -419,7 +419,7 @@ const FAQ = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Everything you need to know about RISEDUAL AI.</p>
         <div className="space-y-3">
           {items.map((item, i) => (
-            <div key={i} className="rounded-xl border border-slate-800/50 bg-slate-800/55 overflow-hidden">
+            <div key={item.q} className="rounded-xl border border-slate-800/50 bg-slate-800/55 overflow-hidden">
               <button
                 onClick={() => setOpen(open === i ? null : i)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left"

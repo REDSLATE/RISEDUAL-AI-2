@@ -11,16 +11,10 @@ Tests for:
 import pytest
 import requests
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 # Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-
-
 class TestChatMemoryEndpoints:
     """Test chat memory CRUD endpoints (Pro only feature)"""
     

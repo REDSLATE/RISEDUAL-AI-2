@@ -19,6 +19,7 @@ import sys
 
 # Add backend to path for direct imports
 sys.path.insert(0, '/app/backend')
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 class TestClassifyFailureFunction:
     """Test _classify_failure() function logic directly via Python imports."""
 
@@ -382,7 +383,6 @@ class TestVerifyPendingPredictionsClassifiesFailure:
         """Verify verify_pending_predictions() passes failure_code to save_regime."""
         import inspect
         from services.prediction_tracker import verify_pending_predictions
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
         source = inspect.getsource(verify_pending_predictions)
         

@@ -9,6 +9,9 @@ import requests
 import os
 import time
 import uuid
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 class TestPortfolioAgentToolCalling:
     """Test the portfolio agent with AI tool calling for portfolio queries."""
     
@@ -144,11 +147,6 @@ class TestChatWithImageBypassesAgent:
         """POST /api/chat with image should use standard AI even with portfolio keywords."""
         # Create a simple test image (1x1 pixel PNG)
         import base64
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
-
         # Minimal valid PNG
         png_data = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="

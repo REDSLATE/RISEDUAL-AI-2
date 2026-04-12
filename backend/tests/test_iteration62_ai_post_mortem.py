@@ -21,6 +21,7 @@ from uuid import uuid4
 
 # Add backend to path for service imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 # Test credentials
 class TestPostMortemServiceImports:
     """Test that post_mortem_service functions are importable and structured correctly"""
@@ -471,7 +472,6 @@ class TestPostMortemCorrectPredictionValidation:
             pytest.skip("MongoDB not available")
         
         import asyncio
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
         
         async def run_test():
             test_id = f"TEST_UNVERIFIED_{str(uuid4())[:8]}"

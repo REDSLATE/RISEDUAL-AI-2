@@ -308,8 +308,8 @@ export const CrewInsightsCard = ({ composite }) => {
           <div>
             <span className="text-orange-400 text-[10px] font-semibold uppercase">Auditor Risk Flags</span>
             <ul className="mt-1 space-y-0.5">
-              {composite.risks.map((r, i) => (
-                <li key={i} className="text-slate-300 text-xs flex items-start gap-1.5">
+              {composite.risks.map((r) => (
+                <li key={r} className="text-slate-300 text-xs flex items-start gap-1.5">
                   <span className="w-1 h-1 bg-red-400 rounded-full mt-1.5 flex-shrink-0" />
                   {r}
                 </li>

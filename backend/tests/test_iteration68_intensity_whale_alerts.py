@@ -14,6 +14,9 @@ import requests
 import os
 import json
 import time
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 # Test credentials
 def ratio_to_intensity(ratio: float) -> int:
     """Expected intensity calculation formula."""
@@ -160,11 +163,6 @@ class TestSSEStreamIntensity:
     def test_sse_snapshot_intensity_matches_ratio(self):
         """SSE snapshot wall intensity should match the formula"""
         import sseclient
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
-
         
         url = f"{BASE_URL}/api/stream/orderflow/BTC"
         response = requests.get(url, stream=True, timeout=15)
