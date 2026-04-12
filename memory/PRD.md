@@ -478,6 +478,18 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **RiseDualGPTChat.jsx split** — 424→343 lines. Extracted `ChatHeader.jsx` (53 lines) and `MemoryPanel.jsx` (71 lines) into `chat/` sub-components.
 - **Verified (Iterations 93-94)**: 100% pass (10/10 + 11/11 backend, all frontend, no regressions)
 
+### Beta Waitlist System (April 12, 2026)
+- **Backend**: `waitlist_service.py` + `routes/waitlist.py` — 7 endpoints (4 public, 3 admin)
+  - Priority Score: `position - (referral_count * 20)`. Lower = higher priority. 1 referral skips 20 spots.
+  - Public: `POST /join`, `GET /status/{code}`, `GET /leaderboard`, `GET /stats`
+  - Admin: `GET /admin/list`, `POST /admin/invite` (batch), `POST /admin/select-founding` (Founding 100)
+- **Frontend**: `WaitlistModal.jsx` — join form → status view with rank, referrals, priority score, referral link, Share on X/LinkedIn
+- **Admin Panel**: `WaitlistAdmin.jsx` — stats grid, batch invite control, Founding 100 selection button, sortable entry list
+- **Landing Page**: All CTAs changed from "Get Started"/"Start Free Trial" to "Join Waitlist"/"Join the Waitlist"
+- **App.js**: WaitlistModal opens on landing page CTA clicks (replaces AuthModal for unauthenticated users)
+- MongoDB collections: `waitlist` (entries), `waitlist_counter` (atomic position sequencing)
+- **Verified (Iteration 95)**: 100% pass (19/19 backend, all frontend)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
