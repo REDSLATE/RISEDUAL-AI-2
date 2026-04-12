@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { MessageSquare, History, X, Plus, Minimize2, Volume2, VolumeX, Mic, Brain, Trash2, Pin } from 'lucide-react';
-import { Button } from './ui/button';
+import { MessageSquare } from 'lucide-react';
 import { useAuth, authFetch } from '../contexts/AuthContext';
-import { ChatMessages, ChatInputArea, VoiceSelector } from './chat/ChatComponents';
+import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
+import ChatHeader from './chat/ChatHeader';
+import MemoryPanel from './chat/MemoryPanel';
 import ChartPatternLibrary from './ChartPatternLibrary';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
@@ -247,43 +248,14 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       {isOpen && (
         <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#060E1F] lg:rounded-2xl border-t lg:border border-slate-400/25 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="risedual-gpt-chat">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-400/25 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <img src="/logo-ai-bright2.png" alt="RiseDualGPT" className="w-7 h-7 object-contain" />
-              <div>
-                <h3 className="text-white text-xs font-semibold leading-tight">RiseDualGPT</h3>
-                <p className="text-slate-400 text-[9px] leading-tight">
-                  {isPro ? 'Pro — Unlimited' : 'Free — 5/day'}
-                  {memoryEnabled && isPro && ' · Memory ON'}
-                  {selectedImage && ' · Image'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <VoiceSelector voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} onStopSpeaking={stopSpeaking} />
-              {isPro && (
-                <Button size="sm" variant="ghost"
-                  className={`h-7 w-7 p-0 ${memoryEnabled ? 'text-[#3DE8D9]' : 'text-slate-400'} hover:text-white`}
-                  onClick={() => { setShowMemory(!showMemory); if (!showMemory) loadMemories(); }}
-                  title={memoryEnabled ? 'Memory ON — click to manage' : 'Memory OFF — click to manage'}
-                  data-testid="memory-toggle-btn">
-                  <Brain className="w-3.5 h-3.5" />
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 px-2 text-[11px]" onClick={() => setShowPatterns(!showPatterns)} data-testid="patterns-toggle">
-                Patterns
-              </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }} data-testid="history-toggle">
-                <History className="w-3.5 h-3.5" />
-              </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={newChat} data-testid="new-chat">
-                <Plus className="w-3.5 h-3.5" />
-              </Button>
-              <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white h-7 w-7 p-0" onClick={() => setIsOpen(false)} data-testid="chat-close">
-                <Minimize2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
+          <ChatHeader
+            isPro={isPro} memoryEnabled={memoryEnabled} selectedImage={selectedImage}
+            voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} stopSpeaking={stopSpeaking}
+            showMemory={showMemory} onToggleMemory={() => setShowMemory(!showMemory)} onLoadMemories={loadMemories}
+            showPatterns={showPatterns} onTogglePatterns={() => setShowPatterns(!showPatterns)}
+            showHistory={showHistory} onToggleHistory={() => setShowHistory(!showHistory)} onLoadHistory={loadHistory}
+            onNewChat={newChat} onClose={() => setIsOpen(false)}
+          />
 
           {/* Sidebar: History */}
           {showHistory && (
@@ -296,66 +268,14 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
 
           {/* Memory Panel */}
           {showMemory && (
-            <div className="border-b border-slate-400/25 max-h-[280px] overflow-y-auto flex-shrink-0 p-3 space-y-2" data-testid="memory-panel">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Brain className="w-4 h-4 text-[#3DE8D9]" />
-                  <span className="text-white text-xs font-semibold">Chat Memory</span>
-                  <span className="text-slate-500 text-[10px]">{memories.length} saved</span>
-                  {memories.filter(m => m.category === 'pinned').length > 0 && (
-                    <span className="text-[#3DE8D9] text-[10px]">{memories.filter(m => m.category === 'pinned').length}/5 pinned</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={toggleMemory}
-                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                      memoryEnabled
-                        ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/30'
-                        : 'bg-slate-800 text-slate-500 border-slate-600'
-                    }`}
-                    data-testid="memory-enable-toggle"
-                  >
-                    {memoryEnabled ? 'ON' : 'OFF'}
-                  </button>
-                  {memories.length > 0 && (
-                    <button onClick={clearAllMemories} className="text-slate-500 hover:text-orange-400 text-[10px] px-1" title="Clear all"
-                      data-testid="clear-all-memories">
-                      Clear all
-                    </button>
-                  )}
-                  <button onClick={() => setShowMemory(false)} className="text-slate-400 hover:text-white">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              {!memoryEnabled && (
-                <p className="text-slate-500 text-[10px] bg-slate-800/60 rounded-lg p-2">
-                  Memory is off. The AI won't remember past conversations. Turn it on to enable persistent context.
-                </p>
-              )}
-              {memories.length === 0 ? (
-                <p className="text-slate-500 text-[10px] text-center py-3">
-                  {memoryEnabled ? 'No memories yet. Chat with the AI and it will remember key details.' : 'Memory is disabled.'}
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {memories.map(m => (
-                    <div key={m.memory_id} className="flex items-start gap-2 bg-slate-800/40 rounded-lg px-2.5 py-1.5 group">
-                      {m.category === 'pinned' && <Pin className="w-3 h-3 text-[#3DE8D9] shrink-0 mt-0.5" />}
-                      <p className="flex-1 text-slate-300 text-[11px] leading-snug">{m.content}</p>
-                      <button
-                        onClick={() => deleteMemoryItem(m.memory_id)}
-                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-orange-400 shrink-0 mt-0.5 transition-opacity"
-                        data-testid={`delete-memory-${m.memory_id}`}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <MemoryPanel
+              memories={memories}
+              memoryEnabled={memoryEnabled}
+              onToggle={toggleMemory}
+              onDelete={deleteMemoryItem}
+              onClearAll={clearAllMemories}
+              onClose={() => setShowMemory(false)}
+            />
           )}
 
           {/* Pattern Library */}
