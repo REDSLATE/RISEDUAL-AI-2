@@ -515,6 +515,13 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **embed_widget_js refactored**: 72-line inline JS template → separate file `templates/waitlist_widget.js` with placeholder replacement
 - **Verified (Iteration 98)**: 100% pass (13/13 backend, all frontend, no regressions)
 
+### Code Quality Sweep Round 4 (April 12, 2026)
+- **Index-as-key**: Final 7 instances fixed in CompanyResearch.jsx (5) and SectorHeatmap.jsx (2). Zero remaining across entire codebase.
+- **Dynamic `__import__()`**: Replaced with proper imports in `sector_service.py` and `accuracy.py` (2 instances)
+- **`_refresh_oauth_token`**: Split from 77 lines into 3 focused helpers: `_request_token_refresh`, `_log_token_rotation` + main (now 35 lines)
+- **OrderParams dataclass**: Already existed and in use — confirmed correct pattern for broker `place_order` args
+- **Verified (Iteration 99)**: 100% pass (8/8 backend, all frontend)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
