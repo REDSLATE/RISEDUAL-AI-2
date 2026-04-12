@@ -465,7 +465,8 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - New backend endpoint: `GET /api/market/prediction/{symbol}` — fetches macro data + ticker-specific price data, runs full adversarial AI crew focused on that asset
 - Frontend: Search input + quick-select pills (General Market, AAPL, TSLA, NVDA, BTC, SPY, AMZN, META, GOOGL) with active highlighting
 - All 3 Adversarial Pipeline sections (War Room, Hypothesis, Market Predictions) now have search functionality
-- **Verified (Iteration 91)**: 100% pass (10/10 backend, all frontend + regression)
+- **Bug Fix**: Ticker-specific predictions no longer show "SPY" — crew prompts, synthesizer, PredictionCard, and AdversarialHub all use the actual searched ticker
+- **Verified (Iteration 91-92)**: 100% pass (6/6 ticker tests, all frontend + regression)
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
