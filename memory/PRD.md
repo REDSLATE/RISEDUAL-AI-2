@@ -584,6 +584,24 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **test_iteration105**: Fixed hardcoded secrets → conftest_creds.py. Zero hardcoded credentials remaining.
 - **Verified (Iteration 106)**: 100% pass (14/14 backend, all frontend including chat + admin panel, no regressions)
 
+### Waitlist Analytics Dashboard (April 12, 2026)
+- **Backend**: `GET /api/waitlist/admin/analytics?days=30` — comprehensive analytics endpoint (admin-only)
+  - Daily signups time series (organic vs referred breakdown)
+  - Conversion funnel (total → waiting → invited → active → founding)
+  - Referral metrics (referral rate %, invite→active conversion %, total referrers, total referred)
+  - Top 10 referrers (masked emails, referral counts, status badges)
+  - Invite timeline (daily invite counts)
+  - Priority score distribution (5 buckets: <0, 0-20, 21-50, 51-100, >100)
+  - Period selector: 7d, 14d, 30d, 90d
+- **Frontend**: `WaitlistAnalytics.jsx` — integrated into WaitlistAdmin via Manage/Analytics toggle
+  - 4 KPI stat cards: Total Signups, Referral Rate, Active Referrers, Invite→Active conversion
+  - Custom bar chart for daily signups (teal organic + violet referred overlay, hover tooltips)
+  - Horizontal funnel visualization with 5 stages
+  - Top referrers leaderboard with mini progress bars
+  - Priority score distribution with gradient bars
+  - Period quick-select buttons (7d/14d/30d/90d) with refresh
+- **Verified (Iteration 107)**: 100% pass (17/17 backend, all frontend components)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
