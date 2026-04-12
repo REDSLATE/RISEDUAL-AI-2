@@ -474,7 +474,9 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **eval()/exec() in test_iteration36** — confirmed these are security regression tests (they verify dangerous code is REJECTED). No fix needed.
 - **Index-as-key fixed** — LandingPage.jsx (stars, FAQ items), WarRoomCards.jsx (risks). Zero index-as-key remaining across all components.
 - **ai.py chat() refactored** — 85-line function split into 4 focused helpers: `_enforce_rate_limit`, `_ensure_session`, `_get_memory_context`, `_trigger_memory_extraction`. Main chat handler now 35 lines.
-- **Verified (Iteration 93)**: 100% pass (11/11 backend, all frontend, no regressions)
+- **whale_radar.py refactored** — Deep nesting (depth 5) split into 3 helpers: `_build_whale_event`, `_build_tick_event`, `_process_snapshot`. Queue polling flattened with early `continue`.
+- **RiseDualGPTChat.jsx split** — 424→343 lines. Extracted `ChatHeader.jsx` (53 lines) and `MemoryPanel.jsx` (71 lines) into `chat/` sub-components.
+- **Verified (Iterations 93-94)**: 100% pass (10/10 + 11/11 backend, all frontend, no regressions)
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
