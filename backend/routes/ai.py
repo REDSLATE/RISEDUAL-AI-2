@@ -586,3 +586,35 @@ async def clear_chat_memories(request: Request):
     from services.chat_memory_service import clear_all_memories
     count = await clear_all_memories(user["_id"])
     return {"cleared": count}
+
+
+MAX_PINNED_MEMORIES = 5
+
+@router.post("/chat/memory/pin")
+async def pin_chat_memory(request: Request):
+    """Manually pin a message to memory. Max 5 pinned memories. Pro only.
+    
+    Body: {"content": "The text to remember"}
+    """
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    
+    body = await request.json()
+    content = body.get("content", "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+    if len(content) > 500:
+        content = content[:500]
+    
+    from services.chat_memory_service import get_memories, save_memory
+    
+    # Count existing pinned memories
+    existing = await get_memories(user["_id"], limit=100)
+    pinned_count = sum(1 for m in existing if m.get("category") == "pinned")
+    
+    if pinned_count >= MAX_PINNED_MEMORIES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_PINNED_MEMORIES} pinned memories allowed. Delete one to pin a new one.")
+    
+    memory_id = await save_memory(user["_id"], content, "pinned", "manual")
+    return {"pinned": True, "memory_id": memory_id, "pinned_count": pinned_count + 1, "max": MAX_PINNED_MEMORIES}

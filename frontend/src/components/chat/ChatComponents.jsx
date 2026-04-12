@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX, Pin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { authFetch } from '../../contexts/AuthContext';
 
-const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
+const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick }) => {
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -11,20 +11,30 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
   }, [messages]);
 
   if (messages.length === 0 && !showPatterns) {
+    const suggestions = [
+      'What is AAPL doing today?',
+      'Analyze BTC chart patterns',
+      'Best sector rotation?',
+    ];
+    if (isPro) suggestions.push('What do you remember about me?');
+
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="text-center">
-          <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-10 h-10 mx-auto mb-3 object-contain" />
+          <img src="/logo-ai-bright2.png" alt="RiseDualGPT" className="w-10 h-10 mx-auto mb-3 object-contain" />
           <h3 className="text-white text-sm font-semibold mb-1">RiseDualGPT</h3>
           <p className="text-slate-300 text-xs max-w-xs mx-auto leading-relaxed">
             Stocks, crypto, market trends, technical analysis, or upload a chart for pattern recognition.
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5 justify-center">
-            {['What is AAPL doing today?', 'Analyze BTC chart patterns', 'Best sector rotation?'].map(q => (
+            {suggestions.map(q => (
               <button
                 key={q}
-                className="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border border-slate-400/25"
-                data-testid={`suggestion-${q.slice(0, 10)}`}
+                onClick={() => onSuggestionClick?.(q)}
+                className={`text-[11px] px-2.5 py-1 rounded-full hover:bg-slate-700 transition-colors border ${
+                  q.includes('remember') ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/30' : 'bg-slate-800 text-slate-300 border-slate-400/25'
+                }`}
+                data-testid={`suggestion-${q.slice(0, 15).replace(/\s/g, '-')}`}
               >
                 {q}
               </button>
@@ -38,15 +48,24 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
   return (
     <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2.5 scrollbar-thin scrollbar-thumb-slate-700" data-testid="chat-messages">
       {messages.map((msg, idx) => (
-        <MessageBubble key={`msg-${idx}-${msg.role}`} msg={msg} idx={idx} copiedId={copiedId} onCopy={onCopy} />
+        <MessageBubble key={`msg-${idx}-${msg.role}`} msg={msg} idx={idx} copiedId={copiedId} onCopy={onCopy} isPro={isPro} onPin={onPin} />
       ))}
       <div ref={endRef} />
     </div>
   );
 };
 
-const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
+const MessageBubble = ({ msg, idx, copiedId, onCopy, isPro, onPin }) => {
   const isUser = msg.role === 'user';
+  const [pinned, setPinned] = useState(false);
+
+  const handlePin = () => {
+    if (onPin && !pinned) {
+      onPin(msg.content);
+      setPinned(true);
+      setTimeout(() => setPinned(false), 3000);
+    }
+  };
 
   return (
     <div className={`flex gap-2 ${isUser ? 'justify-end' : ''}`} data-testid={`message-${idx}`}>
@@ -67,13 +86,28 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy }) => {
           </div>
         )}
         {!isUser && (
-          <button
-            onClick={() => onCopy(idx, msg.content)}
-            className="mt-1 text-slate-400 hover:text-white text-[11px] flex items-center gap-1 transition-colors"
-            data-testid={`copy-msg-${idx}`}
-          >
-            {copiedId === idx ? <><Check className="w-2.5 h-2.5" /> Copied</> : <><Copy className="w-2.5 h-2.5" /> Copy</>}
-          </button>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              onClick={() => onCopy(idx, msg.content)}
+              className="text-slate-400 hover:text-white text-[11px] flex items-center gap-1 transition-colors"
+              data-testid={`copy-msg-${idx}`}
+            >
+              {copiedId === idx ? <><Check className="w-2.5 h-2.5" /> Copied</> : <><Copy className="w-2.5 h-2.5" /> Copy</>}
+            </button>
+            {isPro && onPin && (
+              <button
+                onClick={handlePin}
+                className={`text-[11px] flex items-center gap-1 transition-colors ${
+                  pinned ? 'text-[#3DE8D9]' : 'text-slate-500 hover:text-[#3DE8D9]'
+                }`}
+                title="Pin to memory"
+                data-testid={`pin-msg-${idx}`}
+              >
+                <Pin className="w-2.5 h-2.5" />
+                {pinned ? 'Pinned' : 'Pin'}
+              </button>
+            )}
+          </div>
         )}
       </div>
       {isUser && (

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { MessageSquare, History, X, Plus, Minimize2, Volume2, VolumeX, Mic, Brain, Trash2 } from 'lucide-react';
+import { MessageSquare, History, X, Plus, Minimize2, Volume2, VolumeX, Mic, Brain, Trash2, Pin } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea, VoiceSelector } from './chat/ChatComponents';
@@ -203,6 +203,33 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     } catch (e) { logger.error('Memory clear error:', e); }
   }, []);
 
+  const pinToMemory = useCallback(async (content) => {
+    if (!isPro) return;
+    try {
+      const summary = content.length > 500 ? content.substring(0, 500) : content;
+      const res = await authFetch(`${API}/chat/memory/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: summary }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        loadMemories();
+        return data;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (err.detail) {
+          setMessages(prev => [...prev, { role: 'assistant', content: `Memory pin failed: ${err.detail}` }]);
+        }
+      }
+    } catch (e) { logger.error('Pin error:', e); }
+  }, [isPro, loadMemories]);
+
+  const handleSuggestionClick = useCallback((text) => {
+    setInput(text);
+    inputRef.current?.focus();
+  }, []);
+
   return (
     <>
       {/* Floating trigger button — above mobile nav */}
@@ -275,6 +302,9 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
                   <Brain className="w-4 h-4 text-[#3DE8D9]" />
                   <span className="text-white text-xs font-semibold">Chat Memory</span>
                   <span className="text-slate-500 text-[10px]">{memories.length} saved</span>
+                  {memories.filter(m => m.category === 'pinned').length > 0 && (
+                    <span className="text-[#3DE8D9] text-[10px]">{memories.filter(m => m.category === 'pinned').length}/5 pinned</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -312,6 +342,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
                 <div className="space-y-1">
                   {memories.map(m => (
                     <div key={m.memory_id} className="flex items-start gap-2 bg-slate-800/40 rounded-lg px-2.5 py-1.5 group">
+                      {m.category === 'pinned' && <Pin className="w-3 h-3 text-[#3DE8D9] shrink-0 mt-0.5" />}
                       <p className="flex-1 text-slate-300 text-[11px] leading-snug">{m.content}</p>
                       <button
                         onClick={() => deleteMemoryItem(m.memory_id)}
@@ -340,6 +371,9 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             showPatterns={showPatterns}
             copiedId={copiedId}
             onCopy={handleCopy}
+            isPro={isPro}
+            onPin={pinToMemory}
+            onSuggestionClick={handleSuggestionClick}
           />
 
           {/* Input */}
