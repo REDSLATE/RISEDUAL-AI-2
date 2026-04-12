@@ -468,6 +468,14 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Bug Fix**: Ticker-specific predictions no longer show "SPY" — crew prompts, synthesizer, PredictionCard, and AdversarialHub all use the actual searched ticker
 - **Verified (Iteration 91-92)**: 100% pass (6/6 ticker tests, all frontend + regression)
 
+### Code Quality Sweep Round 2 (April 12, 2026)
+- **CRITICAL: 5 test file syntax errors fixed** — IndentationError in test files 53, 61, 62, 68, 74. Root cause: previous credential centralization script injected imports inside indented function bodies.
+- **CRITICAL: Remaining hardcoded secrets fixed** — test_iteration89/90 now use conftest_creds.py. All test files verified clean.
+- **eval()/exec() in test_iteration36** — confirmed these are security regression tests (they verify dangerous code is REJECTED). No fix needed.
+- **Index-as-key fixed** — LandingPage.jsx (stars, FAQ items), WarRoomCards.jsx (risks). Zero index-as-key remaining across all components.
+- **ai.py chat() refactored** — 85-line function split into 4 focused helpers: `_enforce_rate_limit`, `_ensure_session`, `_get_memory_context`, `_trigger_memory_extraction`. Main chat handler now 35 lines.
+- **Verified (Iteration 93)**: 100% pass (11/11 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
