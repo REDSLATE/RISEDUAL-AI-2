@@ -1,0 +1,94 @@
+{
+  "summary": "Iteration 87: Security Audit Dashboard - All 20 backend tests PASSED. Frontend tests PASSED for Security Audit Dashboard, Admin Panel access for admin role, and mobile menu functionality. The new Security Audit feature is fully functional with 4 API endpoints returning real data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "pre_existing_issues": [
+      {
+        "component": "OrderFlowHeatmap.jsx / OrderFlowPanel.jsx",
+        "issue": "React key warning: 'Encountered two children with the same key bid-0.24'. This occurs when SSE stream returns multiple walls with same side+price combination. Key pattern `${w.side}-${w.price}` can produce duplicates.",
+        "priority": "LOW",
+        "note": "Pre-existing issue from iteration 86, NOT related to this iteration's changes"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration87_security_audit.py",
+    "/app/test_reports/pytest/iteration87_security_audit_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Security Audit API correctly requires admin/owner role via _require_admin helper",
+    "Sensitive fields (api_key_enc, api_secret_enc, oauth_refresh_token_enc) correctly excluded from broker-connections response",
+    "Admin Panel now correctly shows for both owner AND admin roles (user.role === 'owner' || user.role === 'admin')",
+    "MobileMenu.jsx extraction successful - mobile menu works correctly with all buttons",
+    "SecurityAudit.jsx has proper data-testid attributes for testing",
+    "Note: /api/auth/admin/users endpoint is owner-only (not admin) - this is by design for user management"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration87_security_audit.py"
+  ],
+  "success_rate": {
+    "backend": "100% - 20/20 tests passed",
+    "frontend": "100% - All Security Audit Dashboard, Admin Panel, and mobile menu tests passed"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 87 verified Security Audit Dashboard feature: (1) 4 new API endpoints under /api/admin/security/ all working, (2) Admin Panel Security tab loads with stat cards and expandable sections, (3) Failed Login Attempts shows real data (13 records from previous test runs), (4) Admin role now has access to Admin Panel (previously owner-only), (5) MobileMenu.jsx extraction working correctly. Pre-existing React key warning in OrderFlowHeatmap.jsx from SSE stream data (bid-0.24 duplicates) is unrelated to this iteration.",
+  "verified_features": {
+    "security_audit_api": {
+      "GET /api/admin/security/overview": {"status": "PASS", "returns": "failed_logins_24h, failed_logins_7d, locked_accounts, oauth_rotations_24h, oauth_rotations_7d, active_broker_connections, total_users, pro_users"},
+      "GET /api/admin/security/failed-logins": {"status": "PASS", "returns": "failed_logins array with identifier, attempts, last_attempt, locked_until, is_locked"},
+      "GET /api/admin/security/oauth-rotations": {"status": "PASS", "returns": "rotations array with user_id, broker_id, event, old_refresh_hash, new_refresh_hash, expires_in, timestamp"},
+      "GET /api/admin/security/broker-connections": {"status": "PASS", "returns": "connections array (sensitive fields excluded)"},
+      "POST /api/admin/security/unlock/{identifier}": {"status": "PASS", "returns": "404 for non-existent, unlocks locked accounts"}
+    },
+    "admin_panel_access": {
+      "admin_role_can_access_admin_panel": {"status": "PASS"},
+      "owner_role_can_access_admin_panel": {"status": "PASS"},
+      "admin_role_cannot_access_user_management": {"status": "PASS", "note": "Owner-only endpoint by design"},
+      "security_tab_visible": {"status": "PASS"}
+    },
+    "mobile_menu": {
+      "mobile_menu_opens": {"status": "PASS"},
+      "admin_button_visible_for_admin_role": {"status": "PASS"},
+      "admin_panel_opens_from_mobile": {"status": "PASS"},
+      "all_navigation_buttons_present": {"status": "PASS"}
+    },
+    "security_audit_frontend": {
+      "stat_cards_visible": {"status": "PASS", "cards": ["Failed Logins (24h)", "Locked Accounts", "Token Rotations (24h)", "Active Broker Links"]},
+      "failed_logins_section_expandable": {"status": "PASS", "shows_real_data": true},
+      "oauth_rotations_section_present": {"status": "PASS"},
+      "broker_connections_section_present": {"status": "PASS"},
+      "refresh_button_works": {"status": "PASS"}
+    }
+  },
+  "api_health_checks": {
+    "POST /api/auth/login (admin)": {"status": "PASS", "code": 200},
+    "POST /api/auth/login (owner)": {"status": "PASS", "code": 200},
+    "GET /api/admin/security/overview": {"status": "PASS", "code": 200},
+    "GET /api/admin/security/failed-logins": {"status": "PASS", "code": 200},
+    "GET /api/admin/security/oauth-rotations": {"status": "PASS", "code": 200},
+    "GET /api/admin/security/broker-connections": {"status": "PASS", "code": 200},
+    "POST /api/admin/security/unlock (non-existent)": {"status": "PASS", "code": 404},
+    "GET /api/auth/me": {"status": "PASS", "code": 200},
+    "GET /api/auth/admin/users (owner)": {"status": "PASS", "code": 200},
+    "GET /api/auth/admin/users (admin)": {"status": "PASS", "code": 403, "note": "Owner-only by design"},
+    "GET /api/": {"status": "PASS", "code": 200},
+    "GET /api/sectors/heatmap": {"status": "PASS", "code": 200}
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

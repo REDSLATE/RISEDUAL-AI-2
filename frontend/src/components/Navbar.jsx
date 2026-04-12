@@ -3,6 +3,7 @@ import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart,
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
+import MobileMenu from './MobileMenu';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DropdownMenu,
@@ -174,7 +175,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-lime-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPaperTrading} data-testid="nav-paper-trading-btn">
                   <LineChart className="w-4 h-4 mr-2" /> Paper Trading
                 </DropdownMenuItem>
-                {user.role === 'owner' && (
+                {(user.role === 'owner' || user.role === 'admin') && (
                   <DropdownMenuItem className="text-orange-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
                   </DropdownMenuItem>
@@ -218,102 +219,18 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden mt-3 pb-3 border-t border-slate-400/25 pt-3 space-y-3" data-testid="mobile-menu">
-          <form onSubmit={handleSearch} className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
-              className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#3DE8D9] rounded-xl w-full" data-testid="mobile-search-input" />
-          </form>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: 'AI War Room', id: 'ai-war-room' },
-              { label: 'AI Hypothesis', id: 'ai-hypothesis' },
-              { label: 'Market Prediction', id: 'market-prediction' },
-              { label: 'Company Research', id: 'company-research' },
-              { label: 'Macro Intelligence', id: 'macro-dashboard' },
-              { label: 'Sector Heatmap', id: 'sector-heatmap' },
-              { label: 'P&L Tracker', id: 'pnl-tracker' },
-              { label: 'Order Flow', id: 'order-flow' },
-              { label: 'Whale Radar', id: 'whale-radar' },
-              { label: 'Options Radar', id: 'options-radar' },
-              { label: 'Dark Pool', id: 'dark-pool' },
-              { label: 'Crypto Market', id: 'crypto' },
-            ].map(item => (
-              <button key={item.id} onClick={() => mobileNav(item.id)}
-                className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
-                {item.label}
-              </button>
-            ))}
-            <button onClick={() => { onOpenAbout(); setMobileMenuOpen(false); }}
-              className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors" data-testid="mobile-about-btn">
-              About Us
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {user ? (
-              <>
-                <div className="w-full text-sm text-slate-300 flex items-center gap-2 px-1 mb-1">
-                  <User className="w-4 h-4" /> {user.name || user.email}
-                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isPro ? 'bg-[#3DE8D9]/20 text-[#3DE8D9]' : 'bg-slate-700 text-slate-400'}`}>
-                    {isPro ? 'PRO' : 'FREE'}
-                  </span>
-                </div>
-                <Button variant="outline" size="sm" className="bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30 rounded-xl text-xs"
-                  onClick={() => { onOpenWorkspace(); setMobileMenuOpen(false); }} data-testid="mobile-workspace-btn">
-                  <Briefcase className="w-3 h-3 mr-1" /> Workspace
-                </Button>
-                <Button variant="outline" size="sm" className="bg-[#3DE8D9]/20 text-[#3DE8D9] border-[#3DE8D9]/30 rounded-xl text-xs"
-                  onClick={() => { onOpenPortfolio(); setMobileMenuOpen(false); }} data-testid="mobile-portfolio-btn">
-                  <PieChart className="w-3 h-3 mr-1" /> Portfolio
-                </Button>
-                <Button variant="outline" size="sm" className="bg-amber-900/30 text-amber-300 border-amber-800/50 rounded-xl text-xs"
-                  onClick={() => { onOpenSignals(); setMobileMenuOpen(false); }} data-testid="mobile-signals-btn">
-                  <Radio className="w-3 h-3 mr-1" /> Signals
-                </Button>
-                <Button variant="outline" size="sm" className="bg-indigo-900/30 text-indigo-400 border-indigo-800/50 rounded-xl text-xs"
-                  onClick={() => { onOpenJournal(); setMobileMenuOpen(false); }} data-testid="mobile-journal-btn">
-                  <BookOpen className="w-3 h-3 mr-1" /> Journal
-                </Button>
-                <Button variant="outline" size="sm" className="bg-violet-900/30 text-violet-300 border-violet-800/50 rounded-xl text-xs"
-                  onClick={() => { onOpenStrategy(); setMobileMenuOpen(false); }} data-testid="mobile-strategy-btn">
-                  <Wand2 className="w-3 h-3 mr-1" /> Strategy
-                </Button>
-                <Button variant="outline" size="sm" className="bg-cyan-900/30 text-cyan-400 border-cyan-800/50 rounded-xl text-xs"
-                  onClick={() => { onOpenMarketplace(); setMobileMenuOpen(false); }} data-testid="mobile-marketplace-btn">
-                  <Store className="w-3 h-3 mr-1" /> Marketplace
-                </Button>
-                <Button variant="outline" size="sm" className="bg-blue-900/30 text-[#3DE8D9] border-blue-800/50 rounded-xl text-xs"
-                  onClick={() => { onOpenMemory(); setMobileMenuOpen(false); }} data-testid="mobile-memory-btn">
-                  <Database className="w-3 h-3 mr-1" /> Memory
-                </Button>
-                <Button variant="outline" size="sm" className="bg-lime-700 text-lime-400 border-lime-700/50 rounded-xl text-xs"
-                  onClick={() => { onOpenPaperTrading(); setMobileMenuOpen(false); }} data-testid="mobile-paper-trading-btn">
-                  <LineChart className="w-3 h-3 mr-1" /> Paper Trade
-                </Button>
-                {user.role === 'owner' && (
-                  <Button variant="outline" size="sm" className="bg-orange-800 text-orange-400 border-orange-700/50 rounded-xl text-xs"
-                    onClick={() => { onOpenAdmin(); setMobileMenuOpen(false); }} data-testid="mobile-admin-btn">
-                    <Crown className="w-3 h-3 mr-1" /> Admin
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" className="bg-orange-800 text-orange-400 border-orange-700/50 rounded-xl text-xs"
-                  onClick={() => { logout(); setMobileMenuOpen(false); }}>
-                  Log Out
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button className="flex-1 bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl text-sm" onClick={() => { onRegister(); setMobileMenuOpen(false); }}>
-                  Sign Up
-                </Button>
-                <Button variant="outline" className="flex-1 bg-white text-slate-900 hover:bg-slate-100 border-0 rounded-xl text-sm"
-                  onClick={() => { onLogin(); setMobileMenuOpen(false); }}>
-                  Login
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        <MobileMenu
+          searchValue={searchValue} setSearchValue={setSearchValue}
+          handleSearch={handleSearch} mobileNav={mobileNav}
+          close={() => setMobileMenuOpen(false)}
+          user={user} isPro={isPro} logout={logout}
+          onOpenAdmin={onOpenAdmin} onOpenWorkspace={onOpenWorkspace}
+          onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
+          onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
+          onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
+          onOpenPaperTrading={onOpenPaperTrading} onOpenAbout={onOpenAbout}
+          onLogin={onLogin} onRegister={onRegister}
+        />
       )}
     </nav>
   );
