@@ -439,6 +439,13 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Navbar refactor**: Mobile menu extracted to `MobileMenu.jsx` component
 - **Verified (Iteration 87)**: 100% pass (20/20 backend, all frontend)
 
+### Mobile Menu & Download Bug Fixes (April 12, 2026)
+- Fixed source code PDF download in AdminTools.jsx — switched from plain `fetch()` to `authFetch()` with credentials
+- Restructured mobile nav menu from `flex-wrap` to `grid-cols-3` layout — clean 3-column grid for all 9 action buttons
+- Admin Panel tabs now horizontally scrollable on mobile (`overflow-x-auto`, smaller text `text-xs sm:text-sm`)
+- Added `pb-20` bottom padding to mobile menu to prevent overlap with bottom navigation bar
+- **Verified (Iteration 88)**: 100% pass — download returns 713KB PDF, all mobile elements readable
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
