@@ -506,6 +506,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Admin Embed Snippet**: Copyable HTML embed code in Admin Panel Waitlist tab
 - **Verified (Iteration 97)**: Backend 100% pass, frontend UX gap fixed (beta key entry point added)
 
+### Code Quality Sweep Round 3 (April 12, 2026)
+- **Hardcoded secrets**: Fixed 5 newer test files (93-97) — all now use conftest_creds.py. Zero hardcoded credentials remaining.
+- **`is N` → `== N`**: Fixed incorrect identity comparisons across test files
+- **Empty catch blocks**: WhaleRadar.jsx (3 catches) and WaitlistAdmin.jsx (1 catch) now log warnings/errors
+- **Insecure random**: `polygon_dark_pool_service.py` now uses `hashlib.sha256` for deterministic seeding instead of `hash()`
+- **redeem_beta_key refactored**: Extracted `_validate_beta_key()` helper — validation + expiry + duplicate checks separated
+- **embed_widget_js refactored**: 72-line inline JS template → separate file `templates/waitlist_widget.js` with placeholder replacement
+- **Verified (Iteration 98)**: 100% pass (13/13 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
