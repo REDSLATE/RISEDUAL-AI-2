@@ -106,7 +106,8 @@ async def get_crypto_by_symbol(symbol: str):
 @router.get("/dark-pool")
 async def get_dark_pool():
     try:
-        return market_service.generate_dark_pool_data()
+        from services.polygon_dark_pool_service import fetch_dark_pool_data
+        return await fetch_dark_pool_data()
     except Exception as e:
         logging.error(f"Error fetching dark pool data: {e}")
         raise HTTPException(status_code=500, detail="Error fetching dark pool data")

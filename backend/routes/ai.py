@@ -210,14 +210,21 @@ async def scan_for_signals(request: Request):
 
 
 async def _scan_dark_pool(market_svc, user_id: str, ticker: str) -> list:
-    """Check for dark pool volume spikes on a ticker."""
-    dark_pool = market_svc.generate_dark_pool_data()
-    dp_match = [d for d in dark_pool if d.get("ticker") == ticker]
-    if dp_match and dp_match[0].get("volume", 0) > 500000:
+    """Check for dark pool volume spikes on a ticker using Polygon data."""
+    try:
+        from services.polygon_dark_pool_service import fetch_dark_pool_data
+        dp_data = await fetch_dark_pool_data()
+        rows = dp_data.get("dark_pool", [])
+    except Exception:
+        rows = []
+    dp_match = [d for d in rows if d.get("ticker") == ticker]
+    if dp_match and dp_match[0].get("dark_pool_volume", 0) > 500000:
+        vol = dp_match[0]["dark_pool_volume"]
+        pct = dp_match[0].get("dark_pool_pct", 0)
         sig = {
             "user_id": user_id, "ticker": ticker, "type": "dark_pool_spike",
             "title": f"Dark Pool Spike: {ticker}",
-            "detail": f"Unusual dark pool volume detected ({dp_match[0].get('volume', 0):,} shares)",
+            "detail": f"Dark pool volume: {vol:,} shares ({pct}% of total)",
             "severity": "high", "detected_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.market_signals.insert_one(sig)
