@@ -256,8 +256,8 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
         <div className="space-y-1">
           <p className="text-[10px] text-slate-400 uppercase tracking-wider">Active Walls</p>
           <div className="grid grid-cols-2 gap-1">
-            {latest.walls.slice(0, 6).map((w) => (
-              <div key={`${w.side}-${w.price}`} className={`flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
+            {latest.walls.slice(0, 6).map((w, idx) => (
+              <div key={`${w.side}-${w.price}-${idx}`} className={`flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
                 w.side === 'bid' ? 'border-emerald-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'
               }`}>
                 <span className={`font-mono ${w.side === 'bid' ? 'text-lime-400' : 'text-orange-400'}`}>

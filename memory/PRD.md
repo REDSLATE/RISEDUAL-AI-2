@@ -414,6 +414,19 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Object storage initialized at server startup via `init_storage()`
 - **Verified (Iteration 83)**: 100% pass (14/14 backend, all frontend)
 
+
+### Code Quality Sweep (April 12, 2026)
+- **P0 DONE: eval()/exec() removal** — Already completed by previous agent. `backtester_service.py` uses safe AST evaluator with whitelisted indicators only.
+- **P0 DONE: Hardcoded secrets in test files** — 25 test files updated to import credentials from `conftest_creds.py` instead of hardcoding emails/passwords inline.
+- **P1 DONE: MD5 → SHA-256** — Replaced weak `hashlib.md5()` with `hashlib.sha256()` in `routes/accuracy.py`, `services/market_memory_service.py`, `services/post_mortem_service.py`.
+- **P1 DONE: Index-as-key anti-pattern** — Fixed in 9 React components: `WarRoomCards.jsx`, `OrderFlowHeatmap.jsx`, `MemoryDashboard.jsx`, `DarkPoolData.jsx`, `PaperTrading.jsx`, `PredictionCards.jsx`, `OrderFlowPanel.jsx`, `WhaleRadar.jsx`, `HypothesisResults.jsx`. All use content-based stable keys.
+- **P1 DONE: Backend refactoring** — `routes/broker.py` `oauth_callback` (105 lines) split into 4 helpers: `_resolve_origin`, `_exchange_oauth_code`, `_validate_oauth_account`, `_store_oauth_connection`. `routes/accuracy.py` `classify_failure` refactored with extracted `_update_chromadb_failure_code` helper.
+- **Verified (Iteration 86)**: 100% pass (15/15 backend, all frontend), no regressions
+
+## Remaining Code Quality Items
+- P0: React Hooks missing dependencies (104 instances reported) — AuthContext.jsx and usePushNotifications.js already well-structured; remaining instances need ESLint config for JSX parsing
+- P2: Split large React components (AIHypothesis.jsx, AdminPanel.jsx, App.js, AIWarRoom.jsx, Navbar.jsx, SectorHeatmap.jsx, StrategyBuilder.jsx)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
