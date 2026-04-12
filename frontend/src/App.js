@@ -16,7 +16,7 @@ import OptionsFlowScreener from './components/OptionsFlowScreener';
 import AdditionalSections from './components/AdditionalSections';
 import DarkPoolData from './components/DarkPoolData';
 import CryptoSection from './components/CryptoSection';
-import TradeGPTChat from './components/TradeGPTChat';
+import RiseDualGPTChat from './components/RiseDualGPTChat';
 import PaymentStatus from './components/PaymentStatus';
 import CompanyResearch from './components/CompanyResearch';
 import MacroDashboard from './components/MacroDashboard';
@@ -163,7 +163,7 @@ function AppContent() {
 
       <Footer onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />
 
-      <TradeGPTChat onSubscribe={() => setShowSubscription(true)} />
+      <RiseDualGPTChat onSubscribe={() => setShowSubscription(true)} />
       <MobileBottomNav onOpenChat={openChat} />
       <ScrollToTop />
       <Toaster />

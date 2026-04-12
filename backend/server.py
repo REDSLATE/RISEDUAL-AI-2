@@ -227,6 +227,9 @@ def _wire_db_to_routes():
     stream_manager.set_db(db)
     set_sectors_db(db)
     set_security_audit_db(db)
+    # Chat memory service
+    from services.chat_memory_service import set_db as set_chat_memory_db
+    set_chat_memory_db(db)
 
     # Initialize Market Memory (ChromaDB vector store)
     try:

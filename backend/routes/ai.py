@@ -84,6 +84,14 @@ async def chat(
                 session_doc["user_id"] = user["_id"]
             await db.chat_sessions.insert_one(session_doc)
 
+        # Inject persistent memory context for Pro users
+        memory_context = ""
+        if user and is_pro_user(user):
+            from services.chat_memory_service import get_memory_enabled, get_memory_context, extract_memories_from_conversation
+            mem_enabled = await get_memory_enabled(user["_id"])
+            if mem_enabled:
+                memory_context = await get_memory_context(user["_id"])
+
         # Route portfolio queries to the Portfolio Agent (tool calling)
         # Non-portfolio queries go through the standard AI service
         is_portfolio_query = user and PORTFOLIO_KEYWORDS.search(message) and not image_base64
@@ -93,9 +101,9 @@ async def chat(
                 ai_response = await run_portfolio_agent(user["_id"], message)
             except Exception as e:
                 logging.warning(f"Portfolio agent failed, falling back to standard chat: {e}")
-                ai_response = await ai_service.chat(message, sessionId, image_base64)
+                ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context)
         else:
-            ai_response = await ai_service.chat(message, sessionId, image_base64)
+            ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context)
 
         user_message = ChatMessage(
             role="user",
@@ -111,6 +119,19 @@ async def chat(
                 "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
             }
         )
+
+        # Extract memories in the background (non-blocking) for Pro users with memory enabled
+        if user and is_pro_user(user) and memory_context is not None:
+            try:
+                from services.chat_memory_service import get_memory_enabled, extract_memories_from_conversation
+                mem_enabled = await get_memory_enabled(user["_id"])
+                if mem_enabled:
+                    import asyncio
+                    all_msgs = [user_message.dict(), assistant_message.dict()]
+                    asyncio.create_task(extract_memories_from_conversation(user["_id"], all_msgs, sessionId))
+            except Exception as e:
+                logging.warning(f"Memory extraction trigger failed: {e}")
+
         return {"response": ai_response, "sessionId": sessionId}
     except HTTPException:
         raise
@@ -514,3 +535,54 @@ async def speech_to_text(audio: UploadFile = File(...)):
     except Exception as e:
         logging.error(f"STT error: {e}")
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+
+# ── Chat Memory Endpoints (Pro only) ──
+
+@router.get("/chat/memory")
+async def get_chat_memories(request: Request):
+    """Get all stored memories for the current user. Pro only."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    from services.chat_memory_service import get_memories, get_memory_enabled
+    memories = await get_memories(user["_id"])
+    enabled = await get_memory_enabled(user["_id"])
+    return {"memories": memories, "enabled": enabled, "count": len(memories)}
+
+
+@router.post("/chat/memory/toggle")
+async def toggle_chat_memory(request: Request):
+    """Toggle chat memory on/off."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    body = await request.json()
+    enabled = body.get("enabled", True)
+    from services.chat_memory_service import set_memory_enabled
+    await set_memory_enabled(user["_id"], enabled)
+    return {"enabled": enabled}
+
+
+@router.delete("/chat/memory/{memory_id}")
+async def delete_chat_memory(memory_id: str, request: Request):
+    """Delete a specific memory."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    from services.chat_memory_service import delete_memory
+    deleted = await delete_memory(user["_id"], memory_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"deleted": True, "memory_id": memory_id}
+
+
+@router.delete("/chat/memory")
+async def clear_chat_memories(request: Request):
+    """Clear all memories for the current user."""
+    user = await get_current_user(request)
+    if not is_pro_user(user):
+        raise HTTPException(status_code=403, detail="Pro subscription required")
+    from services.chat_memory_service import clear_all_memories
+    count = await clear_all_memories(user["_id"])
+    return {"cleared": count}

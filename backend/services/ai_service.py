@@ -38,13 +38,17 @@ class AIService:
         Be professional, knowledgeable, and helpful. Use data-driven insights when possible.
         Your responses should be informative yet concise."""
     
-    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None) -> str:
-        """Send a message to the AI and get a response, optionally with an image"""
+    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None, memory_context: str = "") -> str:
+        """Send a message to the AI and get a response, optionally with an image and memory context"""
         try:
+            system = self.system_message
+            if memory_context:
+                system = f"{self.system_message}\n\n{memory_context}"
+
             chat = LlmChat(
                 api_key=self.api_key,
                 session_id=session_id,
-                system_message=self.system_message
+                system_message=system
             ).with_model("openai", "gpt-5.2")
             
             if image_base64:

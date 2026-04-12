@@ -15,7 +15,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy }) => {
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="text-center">
           <img src="/logo-ai-bright2.png" alt="RISEDUAL AI" className="w-10 h-10 mx-auto mb-3 object-contain" />
-          <h3 className="text-white text-sm font-semibold mb-1">RISEDUAL AI Assistant</h3>
+          <h3 className="text-white text-sm font-semibold mb-1">RiseDualGPT</h3>
           <p className="text-slate-300 text-xs max-w-xs mx-auto leading-relaxed">
             Stocks, crypto, market trends, technical analysis, or upload a chart for pattern recognition.
           </p>
