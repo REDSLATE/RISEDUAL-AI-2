@@ -260,8 +260,9 @@ async def _start_schedulers():
         scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
         scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
         scheduler.add_job(_run_memory_cleanup, 'cron', hour=2, minute=0, id='memory_cleanup')
+        scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00 UTC)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00 UTC)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -274,6 +275,22 @@ async def _run_memory_cleanup():
         logger.info(f"Nightly memory cleanup: {result.get('toxic_removed', 0)} toxic + {result.get('obsolete_removed', 0)} obsolete removed")
     except Exception as e:
         logger.warning(f"Memory cleanup failed: {e}")
+
+
+async def _run_waitlist_auto_invite():
+    """Scheduled daily task: Auto-invite top 5 users from the waitlist."""
+    try:
+        from services.waitlist_service import auto_invite_top_users
+        invited = await auto_invite_top_users(batch_size=5)
+        if invited:
+            logger.info(f"Waitlist auto-invite: Sent {len(invited)} War Room invites")
+            for u in invited:
+                logger.info(f"  Invited: {u['email']} (rank #{u['rank']}, key: {u['beta_key']}, email_sent: {u['email_sent']})")
+        else:
+            logger.info("Waitlist auto-invite: No users to invite")
+    except Exception as e:
+        logger.warning(f"Waitlist auto-invite failed: {e}")
+
 
 
 def _start_cache_warmup():

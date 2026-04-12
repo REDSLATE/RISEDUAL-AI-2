@@ -5,8 +5,9 @@ Lower score = higher priority. Active promoters jump the line.
 Founding 100: Top 100 users selected after 30-day launch window.
 """
 import uuid
+import secrets
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,10 @@ async def join_waitlist(email: str, name: str = "", referred_by: str = "") -> Di
                 {"$inc": {"referral_count": 1}, "$set": {"priority_score": new_score}},
             )
             logger.info(f"Referral credited: {ref_code} now has {new_count} referrals (score: {new_score})")
+
+            # Notify the referrer asynchronously
+            import asyncio
+            asyncio.create_task(notify_referral_success(ref_code))
 
     total = await db.waitlist.count_documents({})
     logger.info(f"Waitlist join: {email} at position #{position} (total: {total})")
@@ -238,3 +243,101 @@ async def get_waitlist_stats() -> Dict:
         "founding": founding,
         "top_referrer": top_referrer,
     }
+
+
+def _generate_beta_key() -> str:
+    """Generate a secure, unique beta access key. Format: BETA-XXXX-XXXX-XXXX"""
+    seg = lambda: secrets.token_hex(2).upper()
+    return f"BETA-{seg()}-{seg()}-{seg()}"
+
+
+async def auto_invite_top_users(batch_size: int = 5) -> List[Dict]:
+    """Scheduled task: Auto-invite the top users by priority score.
+    
+    Generates beta access keys, sends War Room invite emails, 
+    and updates their status to 'invited'.
+    """
+    from services.email_service import send_war_room_invite, _is_configured
+
+    cursor = db.waitlist.find(
+        {"status": "waiting"},
+        {"_id": 0},
+    ).sort("priority_score", 1).limit(batch_size)
+
+    to_invite = await cursor.to_list(length=batch_size)
+    if not to_invite:
+        logger.info("Auto-invite: No users waiting in queue")
+        return []
+
+    invited = []
+    now = datetime.now(timezone.utc)
+
+    for entry in to_invite:
+        beta_key = _generate_beta_key()
+
+        # Calculate rank
+        ahead = await db.waitlist.count_documents({
+            "priority_score": {"$lt": entry.get("priority_score", entry["position"])},
+            "status": "waiting",
+        })
+        rank = ahead + 1
+
+        # Update status and store beta key
+        await db.waitlist.update_one(
+            {"referral_code": entry["referral_code"]},
+            {"$set": {
+                "status": "invited",
+                "invited_at": now.isoformat(),
+                "beta_key": beta_key,
+                "beta_key_expires": (now + timedelta(days=7)).isoformat(),
+            }},
+        )
+
+        # Send War Room invite email
+        email_sent = await send_war_room_invite(
+            email=entry["email"],
+            name=entry.get("name", ""),
+            beta_key=beta_key,
+            rank=rank,
+            referral_count=entry.get("referral_count", 0),
+        )
+
+        invited.append({
+            "email": entry["email"],
+            "name": entry.get("name", ""),
+            "referral_code": entry["referral_code"],
+            "beta_key": beta_key,
+            "rank": rank,
+            "referral_count": entry.get("referral_count", 0),
+            "email_sent": email_sent,
+        })
+
+    logger.info(f"Auto-invite: Invited {len(invited)} users from waitlist")
+    return invited
+
+
+async def notify_referral_success(referrer_code: str):
+    """Send a referral success email to the referrer when someone joins via their link."""
+    from services.email_service import send_referral_success, _is_configured
+
+    if not _is_configured():
+        return
+
+    referrer = await db.waitlist.find_one({"referral_code": referrer_code}, {"_id": 0})
+    if not referrer:
+        return
+
+    # Calculate current rank
+    ahead = await db.waitlist.count_documents({
+        "priority_score": {"$lt": referrer.get("priority_score", referrer["position"])},
+        "status": "waiting",
+    })
+    rank = ahead + 1
+
+    await send_referral_success(
+        email=referrer["email"],
+        name=referrer.get("name", ""),
+        new_rank=rank,
+        referral_count=referrer.get("referral_count", 0),
+        spots_skipped=referrer.get("referral_count", 0) * 20,
+    )

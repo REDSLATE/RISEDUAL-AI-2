@@ -86,3 +86,18 @@ async def admin_select_founding(request: Request):
     from services.waitlist_service import select_founding_100
     founders = await select_founding_100()
     return {"founders": founders, "count": len(founders)}
+
+
+
+@router.post("/admin/auto-invite")
+async def admin_auto_invite(request: Request):
+    """Admin: Manually trigger the daily auto-invite (top 5 by priority, with beta keys + emails)."""
+    await _require_admin(request)
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    batch_size = body.get("batch_size", 5)
+    if batch_size < 1 or batch_size > 20:
+        raise HTTPException(status_code=400, detail="batch_size must be 1-20")
+
+    from services.waitlist_service import auto_invite_top_users
+    invited = await auto_invite_top_users(batch_size)
+    return {"invited": invited, "count": len(invited)}

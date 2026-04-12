@@ -324,3 +324,137 @@ async def send_welcome_referral_email(user_email: str, user_name: str, referrer_
     except Exception as e:
         logger.error(f"Failed to send welcome email to {user_email}: {e}")
         return False
+
+
+# ── Waitlist Emails ──
+
+def _war_room_invite_html(name: str, beta_key: str, rank: int, referral_count: int) -> str:
+    """HTML email for War Room beta invite — the user has been bumped to the front."""
+    display_name = name or "Trader"
+    referral_line = ""
+    if referral_count > 0:
+        referral_line = f"""
+<tr><td style="padding:12px 16px;background-color:#1a1a3e;border-radius:8px;margin-bottom:16px;">
+<p style="color:#a78bfa;font-size:13px;margin:0;"><strong>{referral_count} referral{'s' if referral_count != 1 else ''}</strong> helped you skip the line</p>
+</td></tr>
+<tr><td style="height:12px;"></td></tr>"""
+
+    content = f"""
+<h2 style="color:#ffffff;font-size:22px;margin:0 0 4px;font-weight:700;">You've been bumped to the front.</h2>
+<p style="color:#3DE8D9;font-size:14px;margin:0 0 20px;font-weight:600;">Welcome to the War Room, {display_name}.</p>
+<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
+You were <strong style="color:#fff;">#{rank}</strong> in priority. Our adversarial AI system — where the 
+<span style="color:#3DE8D9;">Strategist</span> generates signals and the 
+<span style="color:#f97316;">Auditor</span> kills the bad ones — is now unlocked for you.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+{referral_line}
+<tr><td style="padding:20px;background-color:#0f172a;border:1px solid #334155;border-radius:12px;text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Your Beta Access Key</p>
+<p style="color:#3DE8D9;font-size:28px;font-weight:800;margin:0;font-family:monospace;letter-spacing:3px;">{beta_key}</p>
+</td></tr>
+</table>
+
+<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 24px;">
+Use this key to activate your beta account. As an early tester, every trade, prediction, and signal you interact with 
+<strong style="color:#fff;">feeds our AI pipeline</strong> — making the system smarter for everyone.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center">
+<a href="{APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#06B6D4);color:#ffffff;font-size:14px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;">
+Enter the War Room &rarr;
+</a>
+</td></tr>
+</table>
+
+<p style="color:#475569;font-size:11px;margin:24px 0 0;text-align:center;">
+This key is unique to you. Do not share it. It expires in 7 days.
+</p>
+"""
+    return _base_html(content)
+
+
+def _referral_success_html(name: str, new_rank: int, referral_count: int, spots_skipped: int) -> str:
+    """HTML email when a referral successfully joins — the referrer skipped the line."""
+    display_name = name or "Trader"
+    content = f"""
+<h2 style="color:#ffffff;font-size:20px;margin:0 0 4px;font-weight:700;">You just skipped the line.</h2>
+<p style="color:#a78bfa;font-size:14px;margin:0 0 20px;font-weight:600;">{display_name}, your referral landed.</p>
+
+<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
+Someone used your referral link and you just jumped <strong style="color:#3DE8D9;">20 spots</strong> closer to the front.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+<tr>
+<td width="33%" style="padding:12px;background-color:#0f172a;border:1px solid #334155;border-radius:12px 0 0 12px;text-align:center;">
+<p style="color:#3DE8D9;font-size:24px;font-weight:800;margin:0;">#{new_rank}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">New Rank</p>
+</td>
+<td width="33%" style="padding:12px;background-color:#0f172a;border-top:1px solid #334155;border-bottom:1px solid #334155;text-align:center;">
+<p style="color:#a78bfa;font-size:24px;font-weight:800;margin:0;">{referral_count}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">Referrals</p>
+</td>
+<td width="33%" style="padding:12px;background-color:#0f172a;border:1px solid #334155;border-radius:0 12px 12px 0;text-align:center;">
+<p style="color:#f97316;font-size:24px;font-weight:800;margin:0;">{spots_skipped}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">Spots Skipped</p>
+</td>
+</tr>
+</table>
+
+<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 20px;">
+Keep sharing. The top 100 in the priority queue become <strong style="color:#fff;">Founding Members</strong> — 
+lifetime perks, exclusive badge, and first access to every new feature.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center">
+<a href="{APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#7C3AED,#6366F1);color:#ffffff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
+Share Again &rarr;
+</a>
+</td></tr>
+</table>
+"""
+    return _base_html(content)
+
+
+async def send_war_room_invite(email: str, name: str, beta_key: str, rank: int, referral_count: int) -> bool:
+    """Send the War Room beta invite email with access key."""
+    if not _is_configured():
+        logger.warning("Resend not configured — skipping War Room invite email")
+        return False
+    try:
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [email],
+            "subject": "You've been bumped to the front: Welcome to the War Room.",
+            "html": _war_room_invite_html(name, beta_key, rank, referral_count),
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"War Room invite sent to {email}, id: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send War Room invite to {email}: {e}")
+        return False
+
+
+async def send_referral_success(email: str, name: str, new_rank: int, referral_count: int, spots_skipped: int) -> bool:
+    """Send referral success notification — you just skipped the line."""
+    if not _is_configured():
+        logger.warning("Resend not configured — skipping referral success email")
+        return False
+    try:
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [email],
+            "subject": f"You just skipped 20 spots — now #{new_rank} in line",
+            "html": _referral_success_html(name, new_rank, referral_count, spots_skipped),
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Referral success email sent to {email}, id: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send referral success email to {email}: {e}")
+        return False
