@@ -102,6 +102,8 @@ def user_response(user: dict) -> dict:
         "subscription_status": user.get("subscription_status", "free"),
         "is_active": user.get("is_active", True),
         "trial_ends_at": user.get("trial_ends_at"),
+        "founding_member": user.get("founding_member", False),
+        "beta_access": user.get("beta_access", False),
     }
 
 # --- Models ---

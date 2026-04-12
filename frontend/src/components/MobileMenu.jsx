@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import UserBadge from './UserBadge';
 
 const MOBILE_NAV_ITEMS = [
   { label: 'AI War Room', id: 'ai-war-room' },
@@ -51,9 +52,7 @@ const MobileMenu = ({
           <>
             <div className="text-sm text-slate-300 flex items-center gap-2 px-1">
               <User className="w-4 h-4" /> {user.name || user.email}
-              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isPro ? 'bg-[#3DE8D9]/20 text-[#3DE8D9]' : 'bg-slate-700 text-slate-400'}`}>
-                {isPro ? 'PRO' : 'FREE'}
-              </span>
+              <UserBadge user={user} size="sm" />
             </div>
             <div className="grid grid-cols-3 gap-2">
               <button onClick={() => act(onOpenWorkspace)} data-testid="mobile-workspace-btn"

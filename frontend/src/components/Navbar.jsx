@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
 import MobileMenu from './MobileMenu';
+import UserBadge from './UserBadge';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DropdownMenu,
@@ -146,9 +147,12 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <div className="px-3 py-2 border-b border-slate-400/30">
                   <p className="text-white text-sm font-medium">{user.name || user.email}</p>
                   <p className="text-slate-300 text-xs">{user.email}</p>
-                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded mt-1 inline-block ${isPro ? 'bg-[#3DE8D9]/20 text-[#3DE8D9]' : 'bg-slate-700 text-slate-400'}`}>
-                    {isPro ? 'PRO' : 'FREE'}
-                  </span>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <UserBadge user={user} size="sm" />
+                    {isPro && (user.role !== 'owner' && user.role !== 'admin') && (
+                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#3DE8D9]/20 text-[#3DE8D9]">PRO</span>
+                    )}
+                  </div>
                 </div>
                 {!isPro && <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenWorkspace} data-testid="nav-workspace-btn">
