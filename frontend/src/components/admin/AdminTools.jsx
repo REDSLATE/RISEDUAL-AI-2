@@ -28,13 +28,13 @@ const AdminTools = () => {
   const downloadCodebase = async () => {
     setDownloading(true);
     try {
-      const res = await authFetch(`${API}/download/codebase-pdf`);
+      const res = await authFetch(`${API}/admin/download/codebase-txt`);
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'RISEDUAL_AI_Complete_Codebase.pdf';
+      a.download = 'RISEDUAL_AI_Codebase.txt';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -122,7 +122,7 @@ const AdminTools = () => {
           <div className="flex-1 min-w-0">
             <h4 className="text-white text-sm font-semibold mb-1">Download Complete Source Code</h4>
             <p className="text-slate-300 text-xs leading-relaxed mb-3">
-              Export the entire RISEDUAL AI codebase as a 305-page PDF. Includes all source code, architecture documentation, database schemas, API reference, environment configuration, setup guide, and the full test suite.
+              Export the entire RISEDUAL AI codebase as a plain text file. Includes all source code, architecture documentation, database schemas, API reference, environment configuration, setup guide, and the full test suite. Opens in Notepad, VS Code, or any text editor.
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
               {['Frontend', 'Backend', 'Services', 'Routes', 'Models', 'Tests', 'Config', 'API Docs', 'DB Schemas'].map(tag => (
@@ -138,7 +138,7 @@ const AdminTools = () => {
               {downloading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading...</>
               ) : (
-                <><Download className="w-4 h-4 mr-2" /> Download PDF (0.7 MB)</>
+                <><Download className="w-4 h-4 mr-2" /> Download .txt File</>
               )}
             </Button>
           </div>

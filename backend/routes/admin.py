@@ -141,3 +141,59 @@ async def delete_broker_oauth_config(broker_id: str, request: Request):
         raise HTTPException(status_code=404, detail="No OAuth config found for this broker")
 
     return {"status": "deleted", "broker_id": broker_id}
+
+
+# ── Codebase Download ──
+
+@router.get("/download/codebase-txt")
+async def download_codebase_txt(request: Request):
+    """Download the entire codebase as a single .txt file."""
+    await _require_admin(request)
+    import os
+    from fastapi.responses import Response
+
+    EXTENSIONS = {'.py', '.js', '.jsx', '.ts', '.tsx', '.css', '.html', '.json', '.md', '.txt', '.yml', '.yaml', '.toml', '.cfg'}
+    SKIP_DIRS = {'node_modules', '__pycache__', '.git', '.emergent', 'chromadb', 'dist', 'build', '.next', 'venv', '.venv'}
+    SKIP_FILES = {'.env', '.env.test', '.env.local', '.env.production'}
+    MAX_FILE_SIZE = 200_000  # skip files > 200KB
+
+    lines = []
+    lines.append("=" * 80)
+    lines.append("RISEDUAL AI — Complete Source Code Export")
+    lines.append(f"Generated: {datetime.now(timezone.utc).isoformat()}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    file_count = 0
+    for root, dirs, files in os.walk("/app"):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fname in sorted(files):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in EXTENSIONS or fname in SKIP_FILES:
+                continue
+            fpath = os.path.join(root, fname)
+            rel = os.path.relpath(fpath, "/app")
+            try:
+                size = os.path.getsize(fpath)
+                if size > MAX_FILE_SIZE:
+                    lines.append(f"\n{'─' * 80}")
+                    lines.append(f"FILE: {rel}  [SKIPPED — {size:,} bytes]")
+                    continue
+                with open(fpath, "r", errors="replace") as f:
+                    content = f.read()
+                lines.append(f"\n{'─' * 80}")
+                lines.append(f"FILE: {rel}  ({len(content.splitlines())} lines)")
+                lines.append("─" * 80)
+                lines.append(content)
+                file_count += 1
+            except Exception:
+                pass
+
+    lines.insert(4, f"Files: {file_count}")
+    body = "\n".join(lines)
+
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=RISEDUAL_AI_Codebase.txt"},
+    )
