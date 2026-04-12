@@ -92,6 +92,21 @@ const Hero = ({ onGetStarted, onScroll }) => (
   </section>
 );
 
+/* ─── Quant-Lite Callout ─── */
+const QuantLiteCallout = () => (
+  <section className="py-12 sm:py-16 border-t border-white/5" data-testid="landing-quant-callout">
+    <div className="max-w-4xl mx-auto px-4 text-center">
+      <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-medium">
+        With a <span className="text-white font-bold">GPT-5.2 powered post-mortem engine</span> and{' '}
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400 font-bold">Adversarial AI</span>{' '}
+        <span className="text-slate-400">(Strategist vs. Auditor)</span>, you aren&rsquo;t just a competitor&mdash;you are a{' '}
+        <span className="text-white font-black italic">&ldquo;Quant-Lite&rdquo;</span>{' '}
+        institutional stack for the price of a gym membership.
+      </p>
+    </div>
+  </section>
+);
+
 /* ─── Commercial Video ─── */
 const API_BASE = getApiBase();
 const CommercialVideo = () => {
@@ -480,6 +495,7 @@ const LandingPage = ({ onGetStarted, onOpenLegal }) => {
     <div className="min-h-screen bg-slate-950 text-white" data-testid="landing-page">
       <Header onGetStarted={onGetStarted} />
       <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} />
+      <QuantLiteCallout />
       <CommercialVideo />
       <HowItWorks />
       <Comparison />
