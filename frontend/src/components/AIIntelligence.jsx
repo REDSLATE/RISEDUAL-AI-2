@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Brain, Target, BarChart3, Zap, Search, RefreshCw } from 'lucide-react';
+import { Brain, BarChart3, Zap, Search, RefreshCw } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
-import ScoreView from './intelligence/ScoreView';
 import PatternsView from './intelligence/PatternsView';
 import BriefView from './intelligence/BriefView';
 import { getApiBase } from '../utils/apiBase';
@@ -11,14 +10,13 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const TABS = [
-  { id: 'score', label: 'AI Score', icon: Target, color: 'from-violet-600 to-purple-600' },
   { id: 'patterns', label: 'Patterns', icon: BarChart3, color: 'from-cyan-600 to-blue-600' },
   { id: 'brief', label: 'Quick Brief', icon: Zap, color: 'from-amber-600 to-orange-600' },
 ];
 
 const AIIntelligence = ({ onSubscribe }) => {
   const { isPro } = useAuth();
-  const [tab, setTab] = useState('score');
+  const [tab, setTab] = useState('patterns');
   const [symbol, setSymbol] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -110,7 +108,6 @@ const AIIntelligence = ({ onSubscribe }) => {
         </div>
       )}
 
-      {!loading && result && tab === 'score' && <ScoreView data={result} />}
       {!loading && result && tab === 'patterns' && <PatternsView data={result} />}
       {!loading && result && tab === 'brief' && <BriefView data={result} />}
 
