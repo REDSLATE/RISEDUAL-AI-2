@@ -12,14 +12,11 @@ import requests
 import os
 import json
 import time
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 # Test credentials from conftest_creds.py
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-
-
 class TestWhaleRadarRefactoring:
     """Test whale_radar.py refactored SSE endpoint"""
     

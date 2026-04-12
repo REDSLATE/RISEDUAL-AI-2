@@ -9,16 +9,11 @@ import pytest
 import requests
 import uuid
 import os
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 # Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
-
-
 class TestWaitlistPublicEndpoints:
     """Tests for public waitlist endpoints (no auth required)"""
     
@@ -259,7 +254,7 @@ class TestWaitlistAdminEndpoints:
         """POST /api/waitlist/admin/invite with invalid count returns 400"""
         response = self.session.post(
             f"{BASE_URL}/api/waitlist/admin/invite",
-            json={"count": 150}  # Max is 100
+            json={"count": 150}  # Max == 100
         )
         assert response.status_code == 400, f"Expected 400 for count > 100, got {response.status_code}"
         print("✓ Invalid invite count correctly rejected")

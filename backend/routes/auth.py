@@ -169,21 +169,12 @@ async def register(req: RegisterRequest, response: Response):
     resp["refresh_token"] = refresh
     return resp
 
-@auth_router.post("/redeem-beta-key")
-async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
-    """Redeem a beta access key to create an account with Pro trial access."""
-    email = req.email.strip().lower()
-    beta_key = req.beta_key.strip().upper()
-
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-
-    # Validate the beta key
+async def _validate_beta_key(beta_key: str, email: str) -> dict:
+    """Validate a beta key and email for redemption. Returns waitlist entry or raises."""
     waitlist_entry = await db.waitlist.find_one({"beta_key": beta_key, "status": "invited"}, {"_id": 0})
     if not waitlist_entry:
         raise HTTPException(status_code=400, detail="Invalid or already used beta key")
 
-    # Check expiry
     expires = waitlist_entry.get("beta_key_expires", "")
     if expires:
         from dateutil.parser import parse as parse_date
@@ -193,12 +184,24 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
         except (ValueError, TypeError):
             pass
 
-    # Check if email already registered
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered. Log in instead.")
 
-    # Create the account with Pro trial (30 days)
+    return waitlist_entry
+
+
+@auth_router.post("/redeem-beta-key")
+async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
+    """Redeem a beta access key to create an account with Pro trial access."""
+    email = req.email.strip().lower()
+    beta_key = req.beta_key.strip().upper()
+
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    waitlist_entry = await _validate_beta_key(beta_key, email)
+
     user_doc = {
         "email": email,
         "password_hash": hash_password(req.password),
@@ -214,7 +217,6 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
 
-    # Mark the waitlist entry as active
     await db.waitlist.update_one(
         {"beta_key": beta_key},
         {"$set": {"status": "active", "activated_at": datetime.now(timezone.utc).isoformat(), "activated_email": email}},

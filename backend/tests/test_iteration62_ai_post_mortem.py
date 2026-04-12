@@ -236,7 +236,7 @@ class TestRunPostMortemFunction:
     """Test run_post_mortem function behavior"""
     
     def test_run_post_mortem_returns_heuristic_on_no_price(self):
-        """run_post_mortem returns heuristic fallback when price_at is 0"""
+        """run_post_mortem returns heuristic fallback when price_at == 0"""
         import asyncio
         from services.post_mortem_service import run_post_mortem
         
@@ -254,7 +254,7 @@ class TestRunPostMortemFunction:
         assert result["failure_code"] == "TECH_FAKEOUT"
         assert result["source"] == "heuristic"
         assert "No price data" in result.get("reasoning", "")
-        print("PASS: run_post_mortem returns heuristic fallback when price_at is 0")
+        print("PASS: run_post_mortem returns heuristic fallback when price_at == 0")
 
 
 class TestPostMortemLogCollection:

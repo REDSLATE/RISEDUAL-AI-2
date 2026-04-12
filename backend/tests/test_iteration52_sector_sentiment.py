@@ -40,7 +40,7 @@ class TestSectorSentimentCrew:
         # Verify multi_agent is True
         assert data["multi_agent"] == True, f"Expected multi_agent=True, got {data['multi_agent']}"
         
-        # Verify agents_used is 4 (3 analysts + 1 strategist)
+        # Verify agents_used == 4 (3 analysts + 1 strategist)
         assert data["agents_used"] == 4, f"Expected 4 agents, got {data['agents_used']}"
         
         print(f"Multi-agent: {data['multi_agent']}, Agents used: {data['agents_used']}")

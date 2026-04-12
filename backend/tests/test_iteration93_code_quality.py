@@ -6,6 +6,10 @@ import pytest
 import requests
 import os
 import time
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -47,11 +51,11 @@ class TestAuthEndpoints:
         """Test admin login works."""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert response.status_code == 200, f"Admin login failed: {response.text}"
         data = response.json()
-        assert data["email"] == "admin@risedual.ai"
+        assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         assert data["subscription_status"] == "pro"
         assert "access_token" in data
@@ -62,11 +66,11 @@ class TestAuthEndpoints:
         """Test owner login works."""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "managingdirector@redslateholdings.com", "password": "RedSlate2026!"}
+            json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD}
         )
         assert response.status_code == 200, f"Owner login failed: {response.text}"
         data = response.json()
-        assert data["email"] == "managingdirector@redslateholdings.com"
+        assert data["email"] == OWNER_EMAIL
         assert data["role"] == "owner"
         print(f"PASS: Owner login works, role={data['role']}")
 
@@ -106,7 +110,7 @@ class TestAdminEndpoints:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert response.status_code == 200
         return session
@@ -131,7 +135,7 @@ class TestChatMemoryEndpoints:
         session = requests.Session()
         response = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert response.status_code == 200
         return session

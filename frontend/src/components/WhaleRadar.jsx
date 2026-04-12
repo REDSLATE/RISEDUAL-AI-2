@@ -45,7 +45,7 @@ const WhaleRadar = () => {
         const init = {};
         data.tickers?.forEach(t => { init[t] = { mid: null, bias: null, bid_pct: 50, wall_count: 0, whale_count: 0 }; });
         setTickers(init);
-      } catch {}
+      } catch (err) { console.warn('WhaleRadar status parse error:', err); }
     });
 
     es.addEventListener('tick', (e) => {
@@ -55,7 +55,7 @@ const WhaleRadar = () => {
           ...prev,
           [d.ticker]: { mid: d.mid, bias: d.bias, bid_pct: d.bid_pct, wall_count: d.wall_count, whale_count: d.whale_count, ts: d.ts },
         }));
-      } catch {}
+      } catch (err) { console.warn('WhaleRadar tick parse error:', err); }
     });
 
     es.addEventListener('whale', (e) => {
@@ -65,7 +65,7 @@ const WhaleRadar = () => {
           ticker: d.ticker, mid: d.mid, walls: d.walls, ts: d.ts,
           id: `${d.ticker}-${Date.now()}`,
         }, ...prev].slice(0, MAX_EVENTS));
-      } catch {}
+      } catch (err) { console.warn('WhaleRadar whale parse error:', err); }
     });
 
     es.onerror = () => {

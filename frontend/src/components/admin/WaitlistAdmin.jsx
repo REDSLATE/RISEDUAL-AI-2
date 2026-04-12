@@ -24,7 +24,7 @@ const EmbedSnippet = () => {
     try {
       const res = await fetch(`${API}/embed/snippet`);
       if (res.ok) setSnippet(await res.json());
-    } catch {}
+    } catch (e) { console.error('Failed to load embed snippet:', e); }
   };
 
   const copySnippet = () => {

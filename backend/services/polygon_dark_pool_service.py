@@ -45,8 +45,10 @@ def _estimate_dark_pool_pct(ticker: str, total_volume: float) -> float:
     """Estimate dark pool volume percentage based on market structure research."""
     tier = TICKER_TIER.get(ticker, "mid")
     lo, hi = TIER_RANGES[tier]
-    # Use volume as a seed for consistent-per-session but varying estimates
-    seed = hash(f"{ticker}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}")
+    # Use deterministic hash seed for consistent-per-day estimates
+    import hashlib
+    seed_bytes = hashlib.sha256(f"{ticker}-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}".encode()).digest()
+    seed = int.from_bytes(seed_bytes[:4], 'big')
     rng = random.Random(seed)
     return round(rng.uniform(lo, hi), 4)
 
