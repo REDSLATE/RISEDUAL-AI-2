@@ -248,7 +248,7 @@ class OrderFlowStream:
 
     async def _trigger_whale_alerts(self, symbol: str, whale_walls: list):
         """Send push notifications for whale walls (intensity >= 85), with cooldown."""
-        if not self._db:
+        if self._db is None:
             return
         now = datetime.now(timezone.utc)
         for w in whale_walls:

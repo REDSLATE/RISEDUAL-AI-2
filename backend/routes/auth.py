@@ -77,13 +77,28 @@ async def get_optional_user(request: Request):
 
 # Brute force check
 async def check_brute_force(identifier: str):
-    record = await db.login_attempts.find_one({"identifier": identifier})
-    if record and record.get("attempts", 0) >= 5:
-        locked_until = record.get("locked_until")
-        if locked_until and locked_until > datetime.now(timezone.utc):
-            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
-        elif locked_until and locked_until <= datetime.now(timezone.utc):
+    try:
+        record = await db.login_attempts.find_one({"identifier": identifier})
+        if record and record.get("attempts", 0) >= 5:
+            locked_until = record.get("locked_until")
+            if locked_until:
+                # Normalize to timezone-aware UTC (MongoDB may return naive datetimes)
+                if hasattr(locked_until, 'tzinfo') and locked_until.tzinfo is None:
+                    locked_until = locked_until.replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if locked_until > now:
+                    raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
+                else:
+                    await db.login_attempts.delete_one({"identifier": identifier})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"check_brute_force error for {identifier}: {e}")
+        # Clear potentially corrupt record so user isn't permanently locked
+        try:
             await db.login_attempts.delete_one({"identifier": identifier})
+        except Exception:
+            pass
 
 async def record_failed_attempt(identifier: str):
     record = await db.login_attempts.find_one({"identifier": identifier})
@@ -241,7 +256,19 @@ async def login(req: LoginRequest, request: Request, response: Response):
     identifier = f"{ip}:{email}"
     await check_brute_force(identifier)
     user = await db.users.find_one({"email": email})
-    if not user or not verify_password(req.password, user["password_hash"]):
+    if not user:
+        await record_failed_attempt(identifier)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    pw_hash = user.get("password_hash")
+    if not pw_hash:
+        logging.error(f"Login failed: user {email} has no password_hash field")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    try:
+        pw_match = verify_password(req.password, pw_hash)
+    except Exception as e:
+        logging.error(f"Password verify error for {email}: {e}")
+        pw_match = False
+    if not pw_match:
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.get("is_active", True):
@@ -364,8 +391,16 @@ async def seed_admin():
             "subscription_status": "pro",
             "created_at": datetime.now(timezone.utc),
         })
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+    else:
+        needs_rehash = True
+        existing_hash = existing.get("password_hash")
+        if existing_hash:
+            try:
+                needs_rehash = not verify_password(admin_password, existing_hash)
+            except Exception as e:
+                logging.warning(f"Admin password verify failed during seed: {e}")
+        if needs_rehash:
+            await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
     # Seed REDSLATE owner
     if not OWNER_PASSWORD:
@@ -383,8 +418,15 @@ async def seed_admin():
             "created_at": datetime.now(timezone.utc),
         })
     else:
-        updates = {"role": "owner", "subscription_status": "pro", "name": "REDSLATE"}
-        if not verify_password(OWNER_PASSWORD, existing_owner["password_hash"]):
+        updates = {"role": "owner", "subscription_status": "pro", "name": "REDSLATE", "is_active": True}
+        existing_hash = existing_owner.get("password_hash")
+        needs_rehash = True
+        if existing_hash:
+            try:
+                needs_rehash = not verify_password(OWNER_PASSWORD, existing_hash)
+            except Exception as e:
+                logging.warning(f"Owner password verify failed during seed: {e}")
+        if needs_rehash:
             updates["password_hash"] = hash_password(OWNER_PASSWORD)
         await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
 
