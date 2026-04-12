@@ -424,8 +424,20 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Verified (Iteration 86)**: 100% pass (15/15 backend, all frontend), no regressions
 
 ## Remaining Code Quality Items
-- P0: React Hooks missing dependencies (104 instances reported) — AuthContext.jsx and usePushNotifications.js already well-structured; remaining instances need ESLint config for JSX parsing
-- P2: Split large React components (AIHypothesis.jsx, AdminPanel.jsx, App.js, AIWarRoom.jsx, Navbar.jsx, SectorHeatmap.jsx, StrategyBuilder.jsx)
+- P0: React Hooks missing dependencies — RESOLVED. ESLint scan of all 136 source files returned zero hook warnings. All hooks properly use `useCallback`, `useMemo`, and correct dependency arrays.
+- P2: Split large React components — PARTIALLY DONE. Navbar mobile menu extracted to `MobileMenu.jsx` (322→239 lines). StrategyBuilder already well-structured with sub-components. Remaining: AIHypothesis, AdminPanel, App.js are at acceptable sizes (196-214 lines).
+
+### Security Audit Dashboard (April 12, 2026)
+- **Backend**: New `routes/security_audit.py` with 5 endpoints under `/api/admin/security/`:
+  - `GET /overview` — high-level stats (failed logins, locked accounts, OAuth rotations, broker connections, user counts)
+  - `GET /failed-logins` — detailed failed login attempts with lockout status
+  - `GET /oauth-rotations` — OAuth token rotation audit log
+  - `GET /broker-connections` — active broker connections (sensitive fields excluded)
+  - `POST /unlock/{identifier}` — manual unlock for brute-force locked accounts
+- **Frontend**: `admin/SecurityAudit.jsx` — admin panel tab with 4 stat cards and 3 expandable sections
+- **Access fix**: Admin Panel now accessible by both `owner` and `admin` roles (was owner-only)
+- **Navbar refactor**: Mobile menu extracted to `MobileMenu.jsx` component
+- **Verified (Iteration 87)**: 100% pass (20/20 backend, all frontend)
 
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")

@@ -8,6 +8,16 @@
 - **Confirmed: eval()/exec() already removed** by previous agent — safe AST evaluator in backtester_service.py
 - **Verified:** Iteration 86 — 100% pass (15/15 backend, all frontend)
 
+## April 12, 2026 — Security Audit Dashboard + Component Splitting
+- **New Feature: Security Audit Dashboard** in Admin Panel (new "Security" tab)
+  - Backend: 5 endpoints under `/api/admin/security/` (overview, failed-logins, oauth-rotations, broker-connections, unlock)
+  - Frontend: Stat cards + expandable sections showing real security data
+- **Admin Panel access fixed** for `admin` role (was owner-only in Navbar + App.js)
+- **Navbar refactored** — mobile menu extracted to `MobileMenu.jsx` (322 → 239 lines)
+- **React Hooks: Zero warnings** — ESLint scan of 136 files with exhaustive-deps rule returned 0 issues
+- **Verified:** Iteration 87 — 100% pass (20/20 backend, all frontend)
+
+
 ## April 11, 2026 — Media, Legal, Broker, OAuth, Voice
 - Media Upload / Object Storage System (storage_service.py, MediaManager.jsx)
 - Broker API Key Vault + Role-Based Execution
