@@ -558,6 +558,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - All error paths return proper 401/429 status codes, never 500
 - **Verified (Iteration 103)**: 100% pass (13/13 backend, frontend login flow confirmed)
 
+### Code Quality Sweep Round 5 (April 12, 2026)
+- **Hardcoded secrets**: Fixed 5 newer test files (99-103) — all now use `conftest_creds.py`. Zero hardcoded credentials remaining across entire test suite.
+- **Empty catch blocks**: Fixed 6 components (MediaManager, Watchlist, PaperTrading x2, MemoryDashboard) — all now log with `logger.warn`
+- **Console statements**: Replaced 11 direct `console.log/warn/error` calls in 6 components with production-safe `logger` utility. Only `ErrorBoundary.jsx` keeps `console.error` intentionally for production error tracking.
+- **Type hints**: Added `FastAPI`, `AsyncIOMotorDatabase`, `Any` type hints to `route_registry.py`
+- **get_ticker_prediction refactored**: Extracted `_fetch_ticker_context()` and `_log_ticker_prediction()` helpers — main handler reduced from 72 to 40 lines
+- **Already resolved (no action needed)**: `eval()/exec()` (safe AST evaluator), React hook deps (ESLint passes 0 warnings), index-as-key (0 instances), `is` vs `==` (only in comment/print strings), `OrderParams` dataclass (already existed and in use)
+- **Verified (Iteration 104)**: 100% pass (16/16 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
