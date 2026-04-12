@@ -101,48 +101,8 @@ async def validate_referral_code(code: str):
     return {"valid": True, "code": ref["code"]}
 
 
-async def process_referral_signup(referred_user_id: str, referred_email: str, ref_code: str):
-    """Called after registration when a ref code is provided.
-    Sets the new user on a 7-day Pro trial and creates a pending referral."""
-    ref_doc = await db.referral_codes.find_one({"code": ref_code.upper()})
-    if not ref_doc:
-        return
-
-    referrer_id = ref_doc["user_id"]
-
-    # Don't allow self-referral
-    if referrer_id == referred_user_id:
-        return
-
-    # Check if already referred
-    existing = await db.referrals.find_one({"referred_id": referred_user_id})
-    if existing:
-        return
-
-    # Create pending referral
-    await db.referrals.insert_one({
-        "referrer_id": referrer_id,
-        "referred_id": referred_user_id,
-        "referred_email": referred_email,
-        "status": "pending",
-        "reward_granted": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "completed_at": None,
-    })
-
-    # Grant 7-day Pro trial to referred user
-    trial_end = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()
-    await db.users.update_one(
-        {"_id": referred_user_id} if not isinstance(referred_user_id, str) else {"email": referred_email},
-        {"$set": {
-            "subscription_status": "trial",
-            "trial_ends_at": trial_end,
-            "referred_by": referrer_id,
-        }}
-    )
-    logging.info(f"Referral: {referred_email} signed up via code {ref_code}, 7-day trial granted")
-
-    # Send email notifications (non-blocking, fire-and-forget)
+async def _notify_referral_signup(referrer_id: str, referred_email: str) -> None:
+    """Send email notifications for a referral signup."""
     try:
         from services.email_service import send_referral_signup_email, send_welcome_referral_email
         from bson import ObjectId
@@ -160,6 +120,65 @@ async def process_referral_signup(referred_user_id: str, referred_email: str, re
         logging.warning(f"Email notification error (signup): {e}")
 
 
+async def process_referral_signup(referred_user_id: str, referred_email: str, ref_code: str):
+    """Called after registration when a ref code is provided.
+    Sets the new user on a 7-day Pro trial and creates a pending referral."""
+    ref_doc = await db.referral_codes.find_one({"code": ref_code.upper()})
+    if not ref_doc:
+        return
+
+    referrer_id = ref_doc["user_id"]
+    if referrer_id == referred_user_id:
+        return
+
+    existing = await db.referrals.find_one({"referred_id": referred_user_id})
+    if existing:
+        return
+
+    await db.referrals.insert_one({
+        "referrer_id": referrer_id,
+        "referred_id": referred_user_id,
+        "referred_email": referred_email,
+        "status": "pending",
+        "reward_granted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+    })
+
+    trial_end = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()
+    await db.users.update_one(
+        {"_id": referred_user_id} if not isinstance(referred_user_id, str) else {"email": referred_email},
+        {"$set": {"subscription_status": "trial", "trial_ends_at": trial_end, "referred_by": referrer_id}}
+    )
+    logging.info(f"Referral: {referred_email} signed up via code {ref_code}, 7-day trial granted")
+    await _notify_referral_signup(referrer_id, referred_email)
+
+
+async def _grant_referral_reward(referrer_id: str, referral: dict) -> None:
+    """Grant reward month and send notification email."""
+    await db.referral_rewards.insert_one({
+        "user_id": referrer_id,
+        "type": "free_month",
+        "from_referral": str(referral["_id"]),
+        "referred_email": referral["referred_email"],
+        "granted_at": datetime.now(timezone.utc).isoformat(),
+        "redeemed": False,
+    })
+    logging.info(f"Referral reward granted to {referrer_id} for {referral['referred_email']}")
+    try:
+        from services.email_service import send_reward_earned_email
+        from bson import ObjectId
+        referrer = await db.users.find_one(
+            {"_id": ObjectId(referrer_id) if isinstance(referrer_id, str) else referrer_id},
+            {"name": 1, "email": 1}
+        )
+        if referrer:
+            referrer_name = referrer.get("name", referrer.get("email", "").split("@")[0])
+            asyncio.create_task(send_reward_earned_email(referrer["email"], referrer_name, referral["referred_email"]))
+    except Exception as e:
+        logging.warning(f"Email notification error (reward): {e}")
+
+
 async def complete_referral_reward(referred_user_id: str):
     """Called when a referred user subscribes to Pro.
     Grants the referrer a reward month if under the 12/12 cap."""
@@ -168,49 +187,20 @@ async def complete_referral_reward(referred_user_id: str):
         return
 
     referrer_id = referral["referrer_id"]
-
-    # Check 12-month rolling cap
     twelve_months_ago = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
     rewards_count = await db.referrals.count_documents({
-        "referrer_id": referrer_id,
-        "status": "completed",
-        "reward_granted": True,
-        "completed_at": {"$gte": twelve_months_ago},
+        "referrer_id": referrer_id, "status": "completed",
+        "reward_granted": True, "completed_at": {"$gte": twelve_months_ago},
     })
 
     reward_granted = rewards_count < REWARD_CAP
-
     await db.referrals.update_one(
         {"_id": referral["_id"]},
-        {"$set": {
-            "status": "completed",
-            "reward_granted": reward_granted,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        }}
+        {"$set": {"status": "completed", "reward_granted": reward_granted, "completed_at": datetime.now(timezone.utc).isoformat()}}
     )
 
     if reward_granted:
-        # Add reward month to referrer's account
-        await db.referral_rewards.insert_one({
-            "user_id": referrer_id,
-            "type": "free_month",
-            "from_referral": str(referral["_id"]),
-            "referred_email": referral["referred_email"],
-            "granted_at": datetime.now(timezone.utc).isoformat(),
-            "redeemed": False,
-        })
-        logging.info(f"Referral reward granted to {referrer_id} for {referral['referred_email']}")
-
-        # Send reward email to referrer (non-blocking)
-        try:
-            from services.email_service import send_reward_earned_email
-            from bson import ObjectId
-            referrer = await db.users.find_one({"_id": ObjectId(referrer_id) if isinstance(referrer_id, str) else referrer_id}, {"name": 1, "email": 1})
-            if referrer:
-                referrer_name = referrer.get("name", referrer.get("email", "").split("@")[0])
-                asyncio.create_task(send_reward_earned_email(referrer["email"], referrer_name, referral["referred_email"]))
-        except Exception as e:
-            logging.warning(f"Email notification error (reward): {e}")
+        await _grant_referral_reward(referrer_id, referral)
 
     return reward_granted
 

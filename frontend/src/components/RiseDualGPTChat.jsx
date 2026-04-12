@@ -4,7 +4,9 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
 import ChatHeader from './chat/ChatHeader';
 import MemoryPanel from './chat/MemoryPanel';
+import ChatHistorySidebar from './chat/ChatHistorySidebar';
 import ChartPatternLibrary from './ChartPatternLibrary';
+import useChatMemory from '../hooks/useChatMemory';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -28,8 +30,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
   const [voiceMode, setVoiceMode] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
-  const [memories, setMemories] = useState([]);
-  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const { memories, memoryEnabled, loadMemories, toggleMemory, deleteMemoryItem, clearAllMemories, pinToMemory } = useChatMemory(isPro);
   const audioRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -166,66 +167,6 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     setShowHistory(false);
   }, []);
 
-  // Memory functions
-  const loadMemories = useCallback(async () => {
-    if (!isPro) return;
-    try {
-      const res = await authFetch(`${API}/chat/memory`);
-      if (res.ok) {
-        const data = await res.json();
-        setMemories(data.memories || []);
-        setMemoryEnabled(data.enabled);
-      }
-    } catch (e) { logger.error('Memory load error:', e); }
-  }, [isPro]);
-
-  const toggleMemory = useCallback(async () => {
-    try {
-      const res = await authFetch(`${API}/chat/memory/toggle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !memoryEnabled }),
-      });
-      if (res.ok) setMemoryEnabled(!memoryEnabled);
-    } catch (e) { logger.error('Memory toggle error:', e); }
-  }, [memoryEnabled]);
-
-  const deleteMemoryItem = useCallback(async (memoryId) => {
-    try {
-      const res = await authFetch(`${API}/chat/memory/${memoryId}`, { method: 'DELETE' });
-      if (res.ok) setMemories(prev => prev.filter(m => m.memory_id !== memoryId));
-    } catch (e) { logger.error('Memory delete error:', e); }
-  }, []);
-
-  const clearAllMemories = useCallback(async () => {
-    try {
-      const res = await authFetch(`${API}/chat/memory`, { method: 'DELETE' });
-      if (res.ok) setMemories([]);
-    } catch (e) { logger.error('Memory clear error:', e); }
-  }, []);
-
-  const pinToMemory = useCallback(async (content) => {
-    if (!isPro) return;
-    try {
-      const summary = content.length > 500 ? content.substring(0, 500) : content;
-      const res = await authFetch(`${API}/chat/memory/pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: summary }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        loadMemories();
-        return data;
-      } else {
-        const err = await res.json().catch(() => ({}));
-        if (err.detail) {
-          setMessages(prev => [...prev, { role: 'assistant', content: `Memory pin failed: ${err.detail}` }]);
-        }
-      }
-    } catch (e) { logger.error('Pin error:', e); }
-  }, [isPro, loadMemories]);
-
   const handleSuggestionClick = useCallback((text) => {
     setInput(text);
     inputRef.current?.focus();
@@ -292,7 +233,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             copiedId={copiedId}
             onCopy={handleCopy}
             isPro={isPro}
-            onPin={pinToMemory}
+            onPin={(content) => pinToMemory(content, setMessages)}
             onSuggestionClick={handleSuggestionClick}
           />
 
@@ -313,31 +254,5 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     </>
   );
 };
-
-const ChatHistorySidebar = ({ history, onSelect, onClose }) => (
-  <div className="border-b border-slate-400/25 bg-slate-800/50 px-2.5 py-2 max-h-[200px] overflow-y-auto" data-testid="chat-history-sidebar">
-    <div className="flex items-center justify-between mb-1.5">
-      <span className="text-slate-400 text-[11px] font-medium">Chat History</span>
-      <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-3 h-3" /></button>
-    </div>
-    {(!history || history.length === 0) ? (
-      <p className="text-slate-400 text-[11px]">No previous chats</p>
-    ) : (
-      <div className="space-y-0.5">
-        {history.map((s) => (
-          <button
-            key={s.session_id}
-            onClick={() => onSelect(s.session_id)}
-            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-600/30 transition-colors group"
-            data-testid={`session-${s.session_id}`}
-          >
-            <div className="text-white text-[11px] font-medium truncate">{s.preview || 'Chat Session'}</div>
-            <div className="text-slate-400 text-[9px]">{s.message_count || 0} messages</div>
-          </button>
-        ))}
-      </div>
-    )}
-  </div>
-);
 
 export default RiseDualGPTChat;

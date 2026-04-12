@@ -612,30 +612,8 @@ async def get_positions(broker_id: str, request: Request):
 # ORDER MANAGEMENT
 # ============================================================
 
-@router.post("/order/{broker_id}")
-async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
-    """Place a trade order through a connected broker. Owner-only."""
-    if not await _is_execution_allowed(request):
-        raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts. Your connection is read-only.")
-    user = await _get_user(request)
-    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
-    conn = await _get_user_broker(user_id, broker_id)
-    client = await _get_or_refresh_client(user_id, broker_id, conn)
-
-    result = await asyncio.to_thread(
-        client.place_order,
-        symbol=req.symbol,
-        qty=req.quantity,
-        side=req.side,
-        order_type=req.order_type,
-        time_in_force=req.time_in_force,
-        limit_price=req.limit_price,
-        stop_price=req.stop_price,
-    )
-    if not result:
-        raise HTTPException(status_code=400, detail="Order rejected by broker")
-
-    # Log order to MongoDB for history
+async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, result: dict) -> None:
+    """Log order to MongoDB and send notifications."""
     await db.trade_orders.insert_one({
         "user_id": user_id,
         "broker_id": broker_id,
@@ -649,8 +627,6 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
         "stop_price": req.stop_price,
         "created_at": datetime.now(timezone.utc),
     })
-
-    # Push + in-app notification for trade execution
     try:
         from services.push_service import notify_trade_execution
         await notify_trade_execution(
@@ -660,6 +636,28 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
         )
     except Exception as e:
         logger.warning(f"Trade notification failed (non-critical): {e}")
+
+
+@router.post("/order/{broker_id}")
+async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
+    """Place a trade order through a connected broker. Owner-only."""
+    if not await _is_execution_allowed(request):
+        raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts. Your connection is read-only.")
+    user = await _get_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+    conn = await _get_user_broker(user_id, broker_id)
+    client = await _get_or_refresh_client(user_id, broker_id, conn)
+
+    result = await asyncio.to_thread(
+        client.place_order,
+        symbol=req.symbol, qty=req.quantity, side=req.side,
+        order_type=req.order_type, time_in_force=req.time_in_force,
+        limit_price=req.limit_price, stop_price=req.stop_price,
+    )
+    if not result:
+        raise HTTPException(status_code=400, detail="Order rejected by broker")
+
+    await _log_order(user_id, broker_id, req, result)
 
     return {
         "status": result.get("status", "submitted"),
