@@ -532,6 +532,12 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - `wire_db(db)` — passes MongoDB to all route and service modules
 - **Verified (Iteration 100)**: 100% pass (18/18 backend, all frontend, no regressions)
 
+### Login Access + Admin/Owner Waitlist Guard (April 12, 2026)
+- **Login accessible from landing page**: Added "Log In" link to desktop and mobile navbar on the landing page. Opens AuthModal directly (bypasses waitlist).
+- **Admin/Owner blocked from waitlist**: `join_waitlist()` now checks `db.users` for admin/owner role BEFORE adding to waitlist. Returns `blocked: true` with message. Any accidentally-added entries are auto-cleaned.
+- **Frontend**: WaitlistModal handles `blocked` response with toast notification.
+- **Verified (Iteration 101)**: Login + waitlist guard working
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules

@@ -41,6 +41,10 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
         return;
       }
       const data = await res.json();
+      if (data.blocked) {
+        toast.info(data.message || 'This account should log in directly.');
+        return;
+      }
       setResult(data);
       setStep('status');
       if (data.already_joined) {

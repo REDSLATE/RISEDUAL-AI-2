@@ -50,6 +50,17 @@ async def join_waitlist(email: str, name: str = "", referred_by: str = "") -> Di
     """Add a user to the waitlist. Returns their position and referral code."""
     email = email.strip().lower()
 
+    # Block admin/owner accounts from joining the waitlist
+    admin_user = await db.users.find_one({"email": email, "role": {"$in": ["admin", "owner"]}})
+    if admin_user:
+        # Also remove if they were accidentally added before
+        await db.waitlist.delete_many({"email": email})
+        return {
+            "already_joined": False,
+            "blocked": True,
+            "message": "This email is registered as an admin/owner account. Please log in directly.",
+        }
+
     existing = await db.waitlist.find_one({"email": email}, {"_id": 0})
     if existing:
         return {
