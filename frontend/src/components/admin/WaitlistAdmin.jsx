@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, Send, RefreshCw, ArrowUpDown, Trophy } from 'lucide-react';
+import { Users, Crown, Send, RefreshCw, ArrowUpDown, Trophy, Code, Copy, Check } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { toast } from '../ui/sonner';
@@ -14,6 +14,56 @@ const statusColor = (s) => {
   if (s === 'active') return 'bg-[#3DE8D9]/15 text-[#3DE8D9] border-[#3DE8D9]/30';
   return 'bg-slate-700 text-slate-400 border-slate-600';
 };
+
+const EmbedSnippet = () => {
+  const [snippet, setSnippet] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [show, setShow] = useState(false);
+
+  const loadSnippet = async () => {
+    try {
+      const res = await fetch(`${API}/embed/snippet`);
+      if (res.ok) setSnippet(await res.json());
+    } catch {}
+  };
+
+  const copySnippet = () => {
+    if (!snippet) return;
+    navigator.clipboard.writeText(snippet.snippet);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success('Embed code copied!');
+  };
+
+  return (
+    <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-3" data-testid="embed-snippet-section">
+      <button onClick={() => { setShow(!show); if (!show && !snippet) loadSnippet(); }}
+        className="flex items-center gap-2 w-full text-left">
+        <Code className="w-4 h-4 text-[#3DE8D9]" />
+        <span className="text-white text-xs font-semibold flex-1">Embeddable Widget</span>
+        <span className="text-slate-500 text-[10px]">{show ? 'Hide' : 'Show embed code'}</span>
+      </button>
+      {show && snippet && (
+        <div className="mt-3 space-y-2">
+          <p className="text-slate-400 text-[10px]">{snippet.instructions}</p>
+          <div className="relative">
+            <pre className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-[10px] text-slate-300 overflow-x-auto whitespace-pre-wrap break-all">
+              {snippet.snippet}
+            </pre>
+            <button onClick={copySnippet}
+              className="absolute top-2 right-2 bg-slate-800 border border-slate-600 rounded-md px-2 py-1 text-[10px] text-slate-300 hover:text-white"
+              data-testid="copy-embed-snippet">
+              {copied ? <Check className="w-3 h-3 inline" /> : <Copy className="w-3 h-3 inline" />}
+              {copied ? ' Copied' : ' Copy'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 
 const WaitlistAdmin = () => {
   const [data, setData] = useState(null);
@@ -134,6 +184,9 @@ const WaitlistAdmin = () => {
           <Crown className="w-3 h-3 mr-1" /> Select Founding 100
         </Button>
       </div>
+
+      {/* Embed Widget Snippet */}
+      <EmbedSnippet />
 
       {/* List */}
       {data && data.entries.length > 0 && (
