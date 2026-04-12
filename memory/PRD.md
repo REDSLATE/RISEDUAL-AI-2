@@ -498,6 +498,14 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Both emails use Resend API with branded HTML templates matching RISEDUAL's visual identity
 - **Verified (Iteration 96)**: 100% pass (14/14 backend, all frontend)
 
+### Beta Key Redemption + Embeddable Widget (April 12, 2026)
+- **Beta Key Redemption**: `POST /api/auth/redeem-beta-key` — validates key, checks expiry (7 days), creates Pro account (30-day trial), marks waitlist entry as 'active'
+- **AuthModal**: Added 3rd tab "Beta Key" with monospace key input, email, name, password fields, "Activate Beta Access" button
+- **UX Flow**: WaitlistModal → "Have a beta key? Redeem it here" → opens AuthModal on Beta Key tab
+- **Embeddable Widget**: `GET /api/waitlist/embed/widget.js` — self-contained JavaScript that creates a full waitlist form on any external site. Supports referral codes via `RiseDualWaitlist.init('container', {ref: 'CODE'})`
+- **Admin Embed Snippet**: Copyable HTML embed code in Admin Panel Waitlist tab
+- **Verified (Iteration 97)**: Backend 100% pass, frontend UX gap fixed (beta key entry point added)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules

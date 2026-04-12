@@ -8,7 +8,7 @@ import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api/waitlist`;
 
-const WaitlistModal = ({ onClose }) => {
+const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
   const [step, setStep] = useState('join'); // join | status | leaderboard
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -162,10 +162,15 @@ const WaitlistModal = ({ onClose }) => {
                 </Button>
               </form>
 
-              <div className="text-center">
-                <button onClick={() => setStep('leaderboard')} className="text-slate-500 text-[10px] hover:text-slate-300 transition-colors">
+              <div className="text-center space-y-1">
+                <button onClick={() => setStep('leaderboard')} className="text-slate-500 text-[10px] hover:text-slate-300 transition-colors block mx-auto">
                   Already joined? <span className="text-[#3DE8D9]">Check your status</span>
                 </button>
+                {onOpenBetaKey && (
+                  <button onClick={onOpenBetaKey} className="text-slate-500 text-[10px] hover:text-slate-300 transition-colors block mx-auto" data-testid="open-beta-key-link">
+                    Have a beta key? <span className="text-amber-300">Redeem it here</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
