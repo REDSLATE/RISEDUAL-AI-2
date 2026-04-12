@@ -5,7 +5,6 @@ Thin orchestrator: connects MongoDB, registers route modules, handles startup/sh
 from fastapi import FastAPI, APIRouter
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -18,34 +17,7 @@ from datetime import datetime, timezone
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Route modules
-from routes.auth import auth_router, set_db as set_auth_db, seed_admin, create_indexes
-from routes.market import router as market_router
-from routes.trading import router as trading_router
-from routes.ai import router as ai_router, set_db as set_ai_db
-from routes.workspace import router as workspace_router, set_db as set_workspace_db
-from routes.subscription import router as subscription_router, set_db as set_subscription_db
-from routes.referral import router as referral_router, set_db as set_referral_db
-from routes.promo import router as promo_router, set_db as set_promo_db
-from routes.digest import router as digest_router, set_db as set_digest_db
-from routes.push import router as push_router, set_db as set_push_db
-from routes.journal import router as journal_router, set_db as set_journal_db
-from routes.strategy import router as strategy_router, set_db as set_strategy_db
-from routes.intelligence import router as intelligence_router, set_db as set_intelligence_db
-from routes.broker import router as broker_router, set_db as set_broker_db
-from routes.market_data import router as market_data_router, set_db as set_market_data_db
-from routes.sectors import router as sectors_router, set_db as set_sectors_db
-from routes.admin import router as admin_router, set_db as set_admin_db
-from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
-from routes.stream import router as stream_router, set_db as set_stream_db
-from routes.orderflow_stream import router as orderflow_stream_router
-from routes.whale_radar import router as whale_radar_router
-from routes.paper_trading import router as paper_trading_router, set_db as set_paper_trading_db
-from routes.media import router as media_router
-from routes.security_audit import router as security_audit_router, set_db as set_security_audit_db
-from routes.waitlist import router as waitlist_router
-from services.price_provider import set_db as set_price_provider_db
-from services.auth_helpers import set_db as set_auth_helpers_db
+from route_registry import register_all_routers, wire_db, seed_admin, create_indexes
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -107,36 +79,9 @@ async def get_status_checks():
 
 # Register all routers
 app.include_router(api_router)
-app.include_router(auth_router)
-app.include_router(market_router)
-app.include_router(trading_router)
-app.include_router(ai_router)
-app.include_router(workspace_router)
-app.include_router(subscription_router)
-app.include_router(referral_router)
-app.include_router(promo_router)
-app.include_router(digest_router)
-app.include_router(push_router)
-app.include_router(journal_router)
-app.include_router(strategy_router)
-app.include_router(intelligence_router)
-app.include_router(broker_router)
-app.include_router(market_data_router)
-app.include_router(sectors_router)
-app.include_router(admin_router)
-app.include_router(accuracy_router)
-app.include_router(stream_router)
-app.include_router(orderflow_stream_router)
-app.include_router(whale_radar_router)
-app.include_router(paper_trading_router)
-app.include_router(media_router)
-app.include_router(security_audit_router)
-app.include_router(waitlist_router)
+register_all_routers(app)
 
 # CORS — dynamic origin reflection for httpOnly cookie auth.
-# The frontend uses getApiBase() so requests are same-origin in production.
-# CORS is still needed for development and edge cases.
-# We reflect the request Origin when credentials are required.
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
@@ -169,11 +114,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 async def _pregen_watchlist_intel(database):
     """Pre-generate watchlist intelligence for all users with watchlists (runs 5:30 AM UTC)."""
     try:
-        import os
         from services.watchlist_intelligence_service import generate_watchlist_summary
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         count = 0
@@ -186,85 +129,11 @@ async def _pregen_watchlist_intel(database):
             try:
                 await generate_watchlist_summary(api_key, tickers, db=database, user_id=user_id)
                 count += 1
-                logger.info(f"Pre-generated watchlist intel for user {user_id} ({len(tickers)} tickers)")
             except Exception as e:
                 logger.warning(f"Failed to pre-generate watchlist intel for {user_id}: {e}")
         logger.info(f"Watchlist intelligence pre-generation complete: {count} users processed")
     except Exception as e:
         logger.error(f"Watchlist pre-generation failed: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    _wire_db_to_routes()
-    await _start_schedulers()
-    await create_indexes()
-    await seed_admin()
-    _start_cache_warmup()
-    _write_test_credentials()
-
-
-def _wire_db_to_routes():
-    """Pass db reference to all route modules."""
-    set_auth_helpers_db(db)
-    set_auth_db(db)
-    set_ai_db(db)
-    set_workspace_db(db)
-    set_subscription_db(db)
-    set_referral_db(db)
-    set_promo_db(db)
-    set_digest_db(db)
-    set_push_db(db)
-    set_journal_db(db)
-    set_strategy_db(db)
-    set_intelligence_db(db)
-    set_broker_db(db)
-    set_market_data_db(db)
-    set_admin_db(db)
-    set_accuracy_db(db)
-    set_stream_db(db)
-    set_price_provider_db(db)
-    set_paper_trading_db(db)
-    # Wire db to orderflow stream manager for whale alerts
-    from services.orderflow_ws_service import stream_manager
-    stream_manager.set_db(db)
-    set_sectors_db(db)
-    set_security_audit_db(db)
-    # Chat memory service
-    from services.chat_memory_service import set_db as set_chat_memory_db
-    set_chat_memory_db(db)
-    # Waitlist service
-    from services.waitlist_service import set_db as set_waitlist_db
-    set_waitlist_db(db)
-
-    # Initialize Market Memory (ChromaDB vector store)
-    try:
-        from services.market_memory_service import init_memory
-        init_memory(db)
-    except Exception as e:
-        logger.warning(f"Market Memory init failed: {e}")
-
-    # Initialize Object Storage
-    try:
-        from services.storage_service import init_storage
-        init_storage()
-    except Exception as e:
-        logger.warning(f"Object storage init failed (non-critical): {e}")
-
-
-async def _start_schedulers():
-    """Start APScheduler jobs for daily digest, watchlist pre-gen, and memory cleanup."""
-    try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from services.digest_service import send_daily_digest
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
-        scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
-        scheduler.add_job(_run_memory_cleanup, 'cron', hour=2, minute=0, id='memory_cleanup')
-        scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
-        scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00 UTC)")
-    except Exception as e:
-        logger.warning(f"Scheduler setup failed: {e}")
 
 
 async def _run_memory_cleanup():
@@ -292,6 +161,32 @@ async def _run_waitlist_auto_invite():
         logger.warning(f"Waitlist auto-invite failed: {e}")
 
 
+@app.on_event("startup")
+async def startup_event():
+    wire_db(db)
+    app.state.db = db
+    await _start_schedulers()
+    await create_indexes()
+    await seed_admin()
+    _start_cache_warmup()
+    _write_test_credentials()
+
+
+async def _start_schedulers():
+    """Start APScheduler jobs for daily digest, watchlist pre-gen, and memory cleanup."""
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from services.digest_service import send_daily_digest
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(send_daily_digest, 'cron', hour=6, minute=0, args=[db], id='daily_digest')
+        scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
+        scheduler.add_job(_run_memory_cleanup, 'cron', hour=2, minute=0, id='memory_cleanup')
+        scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
+        scheduler.start()
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00 UTC)")
+    except Exception as e:
+        logger.warning(f"Scheduler setup failed: {e}")
+
 
 def _start_cache_warmup():
     """Pre-populate expensive API caches so the first user never waits."""
@@ -317,7 +212,6 @@ def _start_cache_warmup():
         asyncio.create_task(_warm())
         logger.info("Cache warm-up started in background")
 
-        # Start periodic prediction verification (every 60 minutes)
         async def _verify_loop():
             while True:
                 await asyncio.sleep(3600)
