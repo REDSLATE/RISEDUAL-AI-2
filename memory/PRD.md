@@ -538,6 +538,17 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Frontend**: WaitlistModal handles `blocked` response with toast notification.
 - **Verified (Iteration 101)**: Login + waitlist guard working
 
+### User Badges — Creator, Founding 100, Beta (April 12, 2026)
+- **UserBadge component** (`UserBadge.jsx`) — reusable badge with priority rendering:
+  - **Creator** (Owner): Crown icon, amber/gold gradient — "Creator — Managing Director"
+  - **Creator** (Admin): Shield icon, orange/red gradient — "Creator — Admin"
+  - **Founding 100**: Sparkles icon, violet/purple gradient
+  - **Beta**: Zap icon, teal
+  - **Pro/Free**: Existing behavior as fallback
+- **Backend**: `user_response()` now returns `founding_member` and `beta_access` fields
+- **Navbar**: UserBadge shown in user dropdown menu + mobile menu
+- **Verified (Iteration 102)**: 100% pass — all badge variants render correctly
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
