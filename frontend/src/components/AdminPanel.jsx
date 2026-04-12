@@ -11,6 +11,7 @@ import CacheMonitor from './admin/CacheMonitor';
 import BrokerOAuthConfig from './admin/BrokerOAuthConfig';
 import MediaManager from './admin/MediaManager';
 import SecurityAudit from './admin/SecurityAudit';
+import WaitlistAdmin from './admin/WaitlistAdmin';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -68,6 +69,7 @@ const AdminPanel = ({ onClose }) => {
     { id: 'cache', label: 'Cache', icon: Database },
     { id: 'media', label: 'Media', icon: Film },
     { id: 'security', label: 'Security', icon: ShieldCheck },
+    { id: 'waitlist', label: 'Waitlist', icon: Users },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -202,6 +204,8 @@ const AdminPanel = ({ onClose }) => {
           <MediaManager />
         ) : tab === 'security' ? (
           <SecurityAudit />
+        ) : tab === 'waitlist' ? (
+          <WaitlistAdmin />
         ) : (
           <AdminTools />
         )}

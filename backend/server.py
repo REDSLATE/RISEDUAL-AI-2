@@ -43,6 +43,7 @@ from routes.whale_radar import router as whale_radar_router
 from routes.paper_trading import router as paper_trading_router, set_db as set_paper_trading_db
 from routes.media import router as media_router
 from routes.security_audit import router as security_audit_router, set_db as set_security_audit_db
+from routes.waitlist import router as waitlist_router
 from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
@@ -130,6 +131,7 @@ app.include_router(whale_radar_router)
 app.include_router(paper_trading_router)
 app.include_router(media_router)
 app.include_router(security_audit_router)
+app.include_router(waitlist_router)
 
 # CORS — dynamic origin reflection for httpOnly cookie auth.
 # The frontend uses getApiBase() so requests are same-origin in production.
@@ -230,6 +232,9 @@ def _wire_db_to_routes():
     # Chat memory service
     from services.chat_memory_service import set_db as set_chat_memory_db
     set_chat_memory_db(db)
+    # Waitlist service
+    from services.waitlist_service import set_db as set_waitlist_db
+    set_waitlist_db(db)
 
     # Initialize Market Memory (ChromaDB vector store)
     try:

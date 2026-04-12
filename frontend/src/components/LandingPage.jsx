@@ -29,7 +29,7 @@ const Header = ({ onGetStarted }) => {
             <a key={n.href} href={n.href} className="text-sm text-slate-400 hover:text-white transition-colors">{n.label}</a>
           ))}
           <button onClick={onGetStarted} className="text-sm px-5 py-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium hover:opacity-90 transition-opacity" data-testid="landing-get-started">
-            Get Started
+            Join Waitlist
           </button>
         </nav>
         <button className="md:hidden text-white" onClick={() => setMenuOpen(!menuOpen)}>
@@ -42,7 +42,7 @@ const Header = ({ onGetStarted }) => {
             <a key={n.href} href={n.href} onClick={() => setMenuOpen(false)} className="block text-sm text-slate-400 hover:text-white py-2">{n.label}</a>
           ))}
           <button onClick={() => { setMenuOpen(false); onGetStarted(); }} className="w-full text-sm px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium">
-            Get Started
+            Join Waitlist
           </button>
         </div>
       )}
@@ -70,7 +70,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-cta">
-          Start Free Trial <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          Join the Waitlist <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
         <button onClick={onScroll} className="px-8 py-3.5 rounded-full border border-slate-400/30 text-slate-300 font-medium text-sm hover:border-slate-500 hover:text-white transition-all">
           See How It Works
@@ -315,7 +315,7 @@ const Pricing = ({ onGetStarted }) => (
             ))}
           </ul>
           <button onClick={onGetStarted} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-sm font-semibold hover:opacity-90 transition-opacity" data-testid="pricing-cta">
-            Start Free Trial
+            Join the Waitlist
           </button>
         </div>
         {/* Others */}
@@ -454,7 +454,7 @@ const CTA = ({ onGetStarted }) => (
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="cta-final">
-          Start 7-Day Free Trial <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          Join the Waitlist <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
       <div className="flex items-center justify-center gap-6 text-[10px] text-slate-400">

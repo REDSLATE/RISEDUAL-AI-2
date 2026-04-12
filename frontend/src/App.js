@@ -36,6 +36,7 @@ import StrategyMarketplace from './components/StrategyMarketplace';
 import AIWarRoom from './components/AIWarRoom';
 import AIIntelligence from './components/AIIntelligence';
 import WatchlistIntelligence from './components/WatchlistIntelligence';
+import WaitlistModal from './components/WaitlistModal';
 import ResetPasswordModal from './components/ResetPasswordModal';
 import SectorHeatmap from './components/SectorHeatmap';
 import PnLTracker from './components/PnLTracker';
@@ -81,14 +82,16 @@ function AppContent() {
     openLogin, openRegister, openChat,
   } = useModals();
   const { user } = useAuth();
+  const [showWaitlist, setShowWaitlist] = React.useState(false);
 
   // Show landing page for unauthenticated users
   if (!user) {
     const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
     return (
       <div>
-        <LandingPage onGetStarted={openRegister} onOpenLegal={openLegalTab} />
+        <LandingPage onGetStarted={() => setShowWaitlist(true)} onOpenLegal={openLegalTab} />
         <Toaster />
+        {showWaitlist && <WaitlistModal onClose={() => setShowWaitlist(false)} />}
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
         {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
         {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
