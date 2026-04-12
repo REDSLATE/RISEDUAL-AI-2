@@ -124,10 +124,11 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
 
 
 async def log_market_prediction(db, direction: str, confidence: float,
-                                user_id: str = None) -> str:
-    """Log a market-wide prediction (no specific symbol — uses SPY as proxy)."""
+                                user_id: str = None, symbol: str = None) -> str:
+    """Log a market-wide prediction (defaults to SPY as proxy, or specific ticker)."""
+    target_symbol = symbol or "SPY"
     return await log_prediction(
-        db, "market_prediction", "SPY", direction, confidence, user_id=user_id
+        db, "market_prediction", target_symbol, direction, confidence, user_id=user_id
     )
 
 

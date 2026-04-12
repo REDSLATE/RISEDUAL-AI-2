@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, TrendingUp, Lock, Zap, Sparkles, BookOpen, DollarSign } from 'lucide-react';
+import { RefreshCw, TrendingUp, Lock, Zap, Sparkles, BookOpen, DollarSign, Search } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { PredictionCard, MacroDataSection, RealEstateSection } from './prediction/PredictionCards';
 import AdversarialHub from './AdversarialHub';
@@ -11,6 +12,8 @@ import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
 
+const POPULAR_TICKERS = ['AAPL', 'TSLA', 'NVDA', 'BTC', 'SPY', 'AMZN', 'META', 'GOOGL'];
+
 const MarketPrediction = ({ onSubscribe }) => {
   const { isPro } = useAuth();
   const [prediction, setPrediction] = useState(null);
@@ -18,16 +21,22 @@ const MarketPrediction = ({ onSubscribe }) => {
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [searchSymbol, setSearchSymbol] = useState('');
+  const [activeSymbol, setActiveSymbol] = useState(null); // null = general market
 
-  const fetchPrediction = useCallback(async () => {
+  const fetchPrediction = useCallback(async (symbol = null) => {
     setLoading(true);
     setError('');
     try {
-      const res = await authFetch(`${API}/market/prediction`);
+      const endpoint = symbol
+        ? `${API}/market/prediction/${symbol.toUpperCase()}`
+        : `${API}/market/prediction`;
+      const res = await authFetch(endpoint);
       if (!res.ok) throw new Error('Failed to fetch prediction');
       const data = await res.json();
       setPrediction(data);
       setLastUpdated(new Date());
+      setActiveSymbol(symbol ? symbol.toUpperCase() : null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -38,6 +47,17 @@ const MarketPrediction = ({ onSubscribe }) => {
   useEffect(() => {
     fetchPrediction();
   }, [fetchPrediction]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const s = searchSymbol.trim().toUpperCase();
+    if (s) fetchPrediction(s);
+  };
+
+  const handleQuickTicker = (ticker) => {
+    setSearchSymbol(ticker);
+    fetchPrediction(ticker);
+  };
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: TrendingUp },
@@ -61,10 +81,62 @@ const MarketPrediction = ({ onSubscribe }) => {
         <div className="flex items-center gap-2">
           {isPro && <AccuracyBadge feature="market_prediction" />}
           {lastUpdated && <span className="text-slate-300 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
-          <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={fetchPrediction} disabled={loading} data-testid="prediction-refresh">
+          <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={() => fetchPrediction(activeSymbol)} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
         </div>
+      </div>
+
+      {/* Ticker Search */}
+      <div className="space-y-2">
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <Input
+              type="text"
+              placeholder="Search any ticker (AAPL, BTC, TSLA, NVDA...)"
+              value={searchSymbol}
+              onChange={e => setSearchSymbol(e.target.value.toUpperCase())}
+              className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#3DE8D9] rounded-xl"
+              data-testid="prediction-search"
+            />
+          </div>
+          <Button type="submit" disabled={loading || !searchSymbol.trim()}
+            className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-5"
+            data-testid="prediction-search-btn">
+            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Analyze'}
+          </Button>
+        </form>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => { setSearchSymbol(''); fetchPrediction(null); }}
+            className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+              !activeSymbol ? 'bg-[#3DE8D9]/15 text-[#3DE8D9] border-[#3DE8D9]/30' : 'bg-slate-800 text-slate-400 border-slate-600 hover:text-white'
+            }`}
+            data-testid="prediction-general-market"
+          >
+            General Market
+          </button>
+          {POPULAR_TICKERS.map(t => (
+            <button
+              key={t}
+              onClick={() => handleQuickTicker(t)}
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                activeSymbol === t ? 'bg-[#3DE8D9]/15 text-[#3DE8D9] border-[#3DE8D9]/30' : 'bg-slate-800 text-slate-400 border-slate-600 hover:text-white'
+              }`}
+              data-testid={`prediction-quick-${t}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        {activeSymbol && (
+          <div className="flex items-center gap-2">
+            <Badge className="bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/20 text-xs">
+              Analyzing: {activeSymbol}
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

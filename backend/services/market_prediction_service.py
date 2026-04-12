@@ -42,6 +42,10 @@ class MarketPredictionService:
         """Comprehensive market analysis using multi-agent crew + vector memory."""
         from services.crew_definitions import run_prediction_crew
 
+        ticker = getattr(self, '_ticker_focus', None)
+        ticker_ctx = getattr(self, '_ticker_context', '')
+        target = ticker or "MARKET"
+
         # Query vector memory for similar past market regimes
         memory_context = ""
         strategist_context = ""
@@ -52,31 +56,34 @@ class MarketPredictionService:
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 world_events, foreign_markets
             )
-            memory_context = await get_prediction_context("MARKET", current_snapshot, n_results=3)
+            memory_context = await get_prediction_context(target, current_snapshot, n_results=3)
             if memory_context:
                 logger.info(f"Injecting {memory_context.count('Case')} historical regime(s) into prediction prompt")
 
-            # Get win-only patterns for the strategist
-            strategist_context = await get_strategist_context("MARKET", n_results=3)
+            strategist_context = await get_strategist_context(target, n_results=3)
             if strategist_context and "No similar" not in strategist_context:
                 logger.info(f"Injecting {strategist_context.count('Win Pattern')} win pattern(s) into strategist")
 
-            # Get toxic lessons for adversarial veto
-            veto_context = await get_strategist_veto_context("MARKET", n_results=2)
+            veto_context = await get_strategist_veto_context(target, n_results=2)
             if veto_context:
                 logger.info(f"Injecting {veto_context.count('FAILED Pattern')} veto pattern(s) into strategist")
         except Exception as e:
             logger.warning(f"Memory context fetch skipped: {e}")
 
-        # Fetch order flow for market-level prediction (use SPY as proxy)
+        # Fetch order flow
         order_flow_context = ""
         try:
             from services.order_flow_service import get_order_flow_context
-            order_flow_context = await get_order_flow_context("SPY")
+            flow_symbol = ticker or "SPY"
+            order_flow_context = await get_order_flow_context(flow_symbol)
             if order_flow_context:
-                logger.info("Injecting SPY order flow into market prediction")
+                logger.info(f"Injecting {flow_symbol} order flow into prediction")
         except Exception as e:
             logger.warning(f"Order flow fetch skipped: {e}")
+
+        # Append ticker-specific context if available
+        if ticker and ticker_ctx:
+            order_flow_context = f"{ticker_ctx}\n\n{order_flow_context}" if order_flow_context else ticker_ctx
 
         try:
             result = await run_prediction_crew(
