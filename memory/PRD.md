@@ -522,6 +522,16 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **OrderParams dataclass**: Already existed and in use — confirmed correct pattern for broker `place_order` args
 - **Verified (Iteration 99)**: 100% pass (8/8 backend, all frontend)
 
+### P2 Resolution: SectorHeatmap + server.py (April 12, 2026)
+- **SectorHeatmap.jsx**: 382→163 lines (57% reduction). Extracted into `heatmap/` folder:
+  - `HeatmapHeader.jsx` (56 lines) — period buttons, refresh, AI/performance mode toggle
+  - `HeatmapLegend.jsx` (43 lines) — color scale legends for both modes
+  - `SectorTile.jsx` (119 lines) — tile rendering with AI sentiment + performance variants, sparklines
+- **server.py**: 360→253 lines, imports reduced from **56 to 12**. Extracted `route_registry.py` (98 lines):
+  - `register_all_routers(app)` — registers all 25 route modules
+  - `wire_db(db)` — passes MongoDB to all route and service modules
+- **Verified (Iteration 100)**: 100% pass (18/18 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
 - P2: Refactor server.py into separate route modules
