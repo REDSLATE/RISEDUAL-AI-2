@@ -15,7 +15,7 @@ const NAV_ITEMS = [
 ];
 
 /* ─── Header ─── */
-const Header = ({ onGetStarted }) => {
+const Header = ({ onGetStarted, onLogin }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
@@ -28,6 +28,9 @@ const Header = ({ onGetStarted }) => {
           {NAV_ITEMS.map(n => (
             <a key={n.href} href={n.href} className="text-sm text-slate-400 hover:text-white transition-colors">{n.label}</a>
           ))}
+          <button onClick={onLogin} className="text-sm text-slate-300 hover:text-white transition-colors" data-testid="landing-login-btn">
+            Log In
+          </button>
           <button onClick={onGetStarted} className="text-sm px-5 py-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium hover:opacity-90 transition-opacity" data-testid="landing-get-started">
             Join Waitlist
           </button>
@@ -41,6 +44,9 @@ const Header = ({ onGetStarted }) => {
           {NAV_ITEMS.map(n => (
             <a key={n.href} href={n.href} onClick={() => setMenuOpen(false)} className="block text-sm text-slate-400 hover:text-white py-2">{n.label}</a>
           ))}
+          <button onClick={() => { setMenuOpen(false); onLogin(); }} className="w-full text-sm px-5 py-2.5 rounded-full border border-slate-600 text-slate-300 hover:text-white font-medium" data-testid="mobile-login-btn">
+            Log In
+          </button>
           <button onClick={() => { setMenuOpen(false); onGetStarted(); }} className="w-full text-sm px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium">
             Join Waitlist
           </button>
@@ -486,14 +492,14 @@ const LandingFooter = ({ onOpenLegal }) => (
 import AboutUs from './AboutUs';
 
 /* ─── Main Landing Page ─── */
-const LandingPage = ({ onGetStarted, onOpenLegal }) => {
+const LandingPage = ({ onGetStarted, onLogin, onOpenLegal }) => {
   const scrollToHow = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white" data-testid="landing-page">
-      <Header onGetStarted={onGetStarted} />
+      <Header onGetStarted={onGetStarted} onLogin={onLogin} />
       <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} />
       <QuantLiteCallout />
       <CommercialVideo />

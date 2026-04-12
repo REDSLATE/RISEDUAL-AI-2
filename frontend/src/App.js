@@ -89,7 +89,7 @@ function AppContent() {
     const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
     return (
       <div>
-        <LandingPage onGetStarted={() => setShowWaitlist(true)} onOpenLegal={openLegalTab} />
+        <LandingPage onGetStarted={() => setShowWaitlist(true)} onLogin={() => { setAuthTab('login'); setShowAuth(true); }} onOpenLegal={openLegalTab} />
         <Toaster />
         {showWaitlist && <WaitlistModal onClose={() => setShowWaitlist(false)} onOpenBetaKey={() => { setShowWaitlist(false); setAuthTab('beta'); setShowAuth(true); }} />}
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
