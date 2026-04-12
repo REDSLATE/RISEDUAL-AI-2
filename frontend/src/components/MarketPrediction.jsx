@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { PredictionCard, MacroDataSection, RealEstateSection } from './prediction/PredictionCards';
+import AdversarialHub from './AdversarialHub';
 import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
 
@@ -101,7 +102,10 @@ const MarketPrediction = ({ onSubscribe }) => {
       {prediction && (
         <div className="space-y-5">
           {activeTab === 'overview' && (
-            <PredictionCard prediction={prediction} />
+            <>
+              <AdversarialHub prediction={prediction} />
+              <PredictionCard prediction={prediction} />
+            </>
           )}
 
           {activeTab === 'macro' && (
