@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { toast } from '../ui/sonner';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
+import logger from '../../utils/logger';
 
 const API = `${getApiBase()}/api`;
 
@@ -47,7 +48,7 @@ const MediaManager = () => {
         const data = await res.json();
         setFiles(data.files || []);
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { logger.warn('Media fetch failed:', e); }
     setLoading(false);
   }, []);
 

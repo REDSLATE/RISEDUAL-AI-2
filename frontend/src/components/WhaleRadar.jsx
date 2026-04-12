@@ -3,6 +3,7 @@ import { Radio, Zap, TrendingUp, TrendingDown, Minus, AlertTriangle, Waves, Acti
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const RADAR_TICKERS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'SHIB'];
 const MAX_EVENTS = 30;
@@ -45,7 +46,7 @@ const WhaleRadar = () => {
         const init = {};
         data.tickers?.forEach(t => { init[t] = { mid: null, bias: null, bid_pct: 50, wall_count: 0, whale_count: 0 }; });
         setTickers(init);
-      } catch (err) { console.warn('WhaleRadar status parse error:', err); }
+      } catch (err) { logger.warn('WhaleRadar status parse error:', err); }
     });
 
     es.addEventListener('tick', (e) => {
@@ -55,7 +56,7 @@ const WhaleRadar = () => {
           ...prev,
           [d.ticker]: { mid: d.mid, bias: d.bias, bid_pct: d.bid_pct, wall_count: d.wall_count, whale_count: d.whale_count, ts: d.ts },
         }));
-      } catch (err) { console.warn('WhaleRadar tick parse error:', err); }
+      } catch (err) { logger.warn('WhaleRadar tick parse error:', err); }
     });
 
     es.addEventListener('whale', (e) => {
@@ -65,7 +66,7 @@ const WhaleRadar = () => {
           ticker: d.ticker, mid: d.mid, walls: d.walls, ts: d.ts,
           id: `${d.ticker}-${Date.now()}`,
         }, ...prev].slice(0, MAX_EVENTS));
-      } catch (err) { console.warn('WhaleRadar whale parse error:', err); }
+      } catch (err) { logger.warn('WhaleRadar whale parse error:', err); }
     });
 
     es.onerror = () => {

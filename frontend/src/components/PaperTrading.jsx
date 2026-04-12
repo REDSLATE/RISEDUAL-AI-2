@@ -9,6 +9,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 import { toast } from 'sonner';
 
 const API = `${getApiBase()}/api`;
@@ -28,14 +29,14 @@ const PaperTrading = ({ onClose }) => {
     try {
       const res = await authFetch(`${API}/paper/portfolio`);
       if (res.ok) setPortfolio(await res.json());
-    } catch (e) { /* ignore */ }
+    } catch (e) { logger.warn('Paper trading fetch failed:', e); }
   }, []);
 
   const fetchTrades = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/paper/trades?limit=30`);
       if (res.ok) setTrades(await res.json());
-    } catch (e) { /* ignore */ }
+    } catch (e) { logger.warn('Paper trading fetch failed:', e); }
   }, []);
 
   useEffect(() => {

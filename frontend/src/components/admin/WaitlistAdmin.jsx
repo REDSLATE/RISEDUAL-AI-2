@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { toast } from '../ui/sonner';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
+import logger from '../../utils/logger';
 
 const API = `${getApiBase()}/api/waitlist`;
 
@@ -24,7 +25,7 @@ const EmbedSnippet = () => {
     try {
       const res = await fetch(`${API}/embed/snippet`);
       if (res.ok) setSnippet(await res.json());
-    } catch (e) { console.error('Failed to load embed snippet:', e); }
+    } catch (e) { logger.error('Failed to load embed snippet:', e); }
   };
 
   const copySnippet = () => {

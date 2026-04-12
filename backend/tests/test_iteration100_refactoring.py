@@ -11,7 +11,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 class TestServerRefactoring:
     """Tests for server.py refactoring - verify all routes still work"""
@@ -29,12 +29,12 @@ class TestServerRefactoring:
         """POST /api/auth/login - Admin login should work after refactoring"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert response.status_code == 200
         data = response.json()
         assert "id" in data
-        assert data["email"] == "admin@risedual.ai"
+        assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         assert "access_token" in data
         print(f"✓ Auth login: Admin logged in successfully")
@@ -93,7 +93,7 @@ class TestRouteRegistryIntegration:
         session = requests.Session()
         login_resp = session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert login_resp.status_code == 200
         

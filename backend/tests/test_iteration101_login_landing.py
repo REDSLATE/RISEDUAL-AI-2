@@ -10,7 +10,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestAdminOwnerLogin:
     """Test that admin and owner can log in directly"""
@@ -18,8 +18,8 @@ class TestAdminOwnerLogin:
     def test_admin_login_success(self):
         """Admin should be able to log in directly"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Admin login failed: {response.text}"
         data = response.json()
@@ -31,12 +31,12 @@ class TestAdminOwnerLogin:
     def test_owner_login_success(self):
         """Owner should be able to log in directly"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "managingdirector@redslateholdings.com",
-            "password": "RedSlate2026!"
+            "email": OWNER_EMAIL,
+            "password": OWNER_PASSWORD
         })
         assert response.status_code == 200, f"Owner login failed: {response.text}"
         data = response.json()
-        assert data.get("email") == "managingdirector@redslateholdings.com"
+        assert data.get("email") == OWNER_EMAIL
         assert data.get("role") == "owner"
         assert "access_token" in data
         print(f"✓ Owner login successful: {data.get('email')}, role={data.get('role')}")
@@ -44,7 +44,7 @@ class TestAdminOwnerLogin:
     def test_invalid_credentials_rejected(self):
         """Invalid credentials should be rejected"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
+            "email": ADMIN_EMAIL,
             "password": "wrongpassword"
         })
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
@@ -56,42 +56,36 @@ class TestAdminOwnerNotInWaitlist:
     
     def test_admin_not_in_waitlist(self):
         """Admin email should not be in waitlist"""
-        # Get admin token first
         login_resp = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200
         cookies = login_resp.cookies
         
-        # Check waitlist admin list
         response = requests.get(f"{BASE_URL}/api/waitlist/admin/list?limit=100", cookies=cookies)
         assert response.status_code == 200, f"Failed to get waitlist: {response.text}"
         data = response.json()
         
-        # Check that admin email is not in waitlist
         waitlist_emails = [entry.get("email", "").lower() for entry in data.get("entries", [])]
-        assert "admin@risedual.ai" not in waitlist_emails, "Admin should NOT be in waitlist"
+        assert ADMIN_EMAIL not in waitlist_emails, "Admin should NOT be in waitlist"
         print(f"✓ Admin email not in waitlist (checked {len(waitlist_emails)} entries)")
     
     def test_owner_not_in_waitlist(self):
         """Owner email should not be in waitlist"""
-        # Get admin token first
         login_resp = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "admin@risedual.ai",
-            "password": "RiseDual2026!"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_resp.status_code == 200
         cookies = login_resp.cookies
         
-        # Check waitlist admin list
         response = requests.get(f"{BASE_URL}/api/waitlist/admin/list?limit=100", cookies=cookies)
         assert response.status_code == 200
         data = response.json()
         
-        # Check that owner email is not in waitlist
         waitlist_emails = [entry.get("email", "").lower() for entry in data.get("entries", [])]
-        assert "managingdirector@redslateholdings.com" not in waitlist_emails, "Owner should NOT be in waitlist"
+        assert OWNER_EMAIL not in waitlist_emails, "Owner should NOT be in waitlist"
         print(f"✓ Owner email not in waitlist (checked {len(waitlist_emails)} entries)")
 
 

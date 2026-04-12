@@ -4,6 +4,7 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const API = `${getApiBase()}/api`;
 
@@ -303,7 +304,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
     try {
       await authFetch(`${API}/accuracy/memory/cleanup?days=90&threshold=80.0`, { method: 'POST' });
       await fetchData();
-    } catch { /* */ }
+    } catch (e) { logger.warn('Memory cleanup failed:', e); }
     setCleanupLoading(false);
   };
 

@@ -3,6 +3,7 @@ import { Card } from './ui/card';
 import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import axios from 'axios';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const API = `${getApiBase()}/api`;
 
@@ -84,7 +85,7 @@ const FearGreedGauge = () => {
         const res = await axios.get(`${API}/fear-greed`);
         setData(res.data);
       } catch (err) {
-        console.error('Fear & Greed fetch error:', err);
+        logger.error('Fear & Greed fetch error:', err);
       } finally {
         setLoading(false);
       }

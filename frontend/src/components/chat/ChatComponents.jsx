@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX, Pin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { authFetch } from '../../contexts/AuthContext';
+import logger from '../../utils/logger';
 
 const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick }) => {
   const endRef = useRef(null);
@@ -190,7 +191,7 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
             }
           }
         } catch (err) {
-          console.error('STT error:', err);
+          logger.error('STT error:', err);
         } finally {
           setIsTranscribing(false);
         }
@@ -199,7 +200,7 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      console.error('Microphone access denied:', err);
+      logger.error('Microphone access denied:', err);
     }
   }, [apiBase, setInput, inputRef]);
 

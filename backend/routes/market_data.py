@@ -212,6 +212,39 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Error generating market prediction")
 
 
+async def _fetch_ticker_context(symbol: str) -> str:
+    """Fetch current price/volume context for a specific ticker."""
+    try:
+        from services.price_provider import get_quote
+        quote = await get_quote(symbol)
+        if quote:
+            return (
+                f"\n{symbol} CURRENT: ${quote.get('price', 'N/A')} | Change: {quote.get('change_percent', 'N/A')}%"
+                f" | Volume: {quote.get('volume', 'N/A')} | Prev Close: ${quote.get('previous_close', 'N/A')}"
+            )
+    except Exception as e:
+        logger.warning(f"Ticker quote fetch failed for {symbol}: {e}")
+    return ""
+
+
+async def _log_ticker_prediction(request: Request, prediction: dict, symbol: str) -> None:
+    """Log a ticker prediction for accuracy tracking."""
+    try:
+        from services.prediction_tracker import log_market_prediction
+        from services.auth_helpers import get_optional_user
+        user = await get_optional_user(request)
+        uid = str(user.get("_id", "")) if user else None
+        await log_market_prediction(
+            request.app.state.db,
+            prediction["overall_direction"],
+            prediction.get("confidence_score", 0),
+            user_id=uid,
+            symbol=symbol,
+        )
+    except Exception:
+        pass
+
+
 @router.get("/market/prediction/{symbol}")
 async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]:
     """Generate an AI market prediction focused on a specific ticker/asset."""
@@ -220,24 +253,9 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail="Invalid symbol")
 
     try:
-        from services.auth_helpers import get_optional_user
-        user = await get_optional_user(request)
-
-        # Fetch macro data + ticker-specific price data
         scrape_results = await _collect_all_scrape_data(include_real_estate=False)
+        ticker_context = await _fetch_ticker_context(symbol)
 
-        # Fetch ticker-specific price data
-        ticker_context = ""
-        try:
-            from services.price_provider import get_daily_history, get_quote
-            quote = await get_quote(symbol)
-            if quote:
-                ticker_context += f"\n{symbol} CURRENT: ${quote.get('price', 'N/A')} | Change: {quote.get('change_percent', 'N/A')}%"
-                ticker_context += f" | Volume: {quote.get('volume', 'N/A')} | Prev Close: ${quote.get('previous_close', 'N/A')}"
-        except Exception as e:
-            logger.warning(f"Ticker quote fetch failed for {symbol}: {e}")
-
-        # Run prediction with ticker focus
         from services.market_prediction_service import MarketPredictionService
         all_crypto = scrape_results["crypto_data"] + [scrape_results["crypto_sentiment"]] + scrape_results["whale_txns"]
         prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
@@ -245,7 +263,6 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         if scrape_results.get("fear_greed"):
             prediction_service._fear_greed = scrape_results["fear_greed"]
 
-        # Inject ticker focus into the prediction
         prediction_service._ticker_focus = symbol
         prediction_service._ticker_context = ticker_context
 
@@ -261,24 +278,10 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
 
         prediction["symbol"] = symbol
         prediction["ticker_focused"] = True
-
-        # Enrich with macro metadata
         _enrich_prediction_metadata(prediction, {**scrape_results, "real_estate": {}})
 
-        # Log for accuracy tracking
         if prediction.get("overall_direction"):
-            try:
-                from services.prediction_tracker import log_market_prediction
-                uid = str(user.get("_id", "")) if user else None
-                await log_market_prediction(
-                    request.app.state.db,
-                    prediction["overall_direction"],
-                    prediction.get("confidence_score", 0),
-                    user_id=uid,
-                    symbol=symbol,
-                )
-            except Exception:
-                pass
+            await _log_ticker_prediction(request, prediction, symbol)
 
         return prediction
     except HTTPException:

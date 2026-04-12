@@ -6,6 +6,7 @@ import { HeatmapHeader } from './heatmap/HeatmapHeader';
 import HeatmapLegend from './heatmap/HeatmapLegend';
 import { SectorTile } from './heatmap/SectorTile';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const BACKEND_URL = getApiBase();
 
@@ -45,9 +46,9 @@ const SectorHeatmap = () => {
       try {
         const hRes = await fetch(`${BACKEND_URL}/api/sectors/sentiment/history?limit=20`);
         if (hRes.ok) setHistory(await hRes.json());
-      } catch (e) { console.warn('Sentiment history fetch failed:', e); }
+      } catch (e) { logger.warn('Sentiment history fetch failed:', e); }
     } catch (e) {
-      console.error('Sentiment fetch failed:', e);
+      logger.error('Sentiment fetch failed:', e);
     } finally {
       setSentimentLoading(false);
     }

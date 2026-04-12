@@ -3,6 +3,10 @@
 This module is imported once by server.py to keep the main entry point clean.
 """
 import logging
+from typing import Any
+
+from fastapi import FastAPI
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +50,13 @@ ALL_ROUTERS = [
 ]
 
 
-def register_all_routers(app):
+def register_all_routers(app: FastAPI) -> None:
     """Register all route modules with the FastAPI app."""
     for router in ALL_ROUTERS:
         app.include_router(router)
 
 
-def wire_db(db):
+def wire_db(db: AsyncIOMotorDatabase) -> None:
     """Pass the database reference to all route and service modules."""
     set_auth_helpers_db(db)
     set_auth_db(db)

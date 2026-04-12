@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -42,7 +43,7 @@ const Watchlist = ({ onSubscribe }) => {
         return updated;
       });
     } catch (e) {
-      /* quote fetch is best-effort */
+      logger.warn('Quote refresh failed:', e);
     } finally {
       setRefreshing(false);
     }
