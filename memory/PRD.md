@@ -567,6 +567,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Already resolved (no action needed)**: `eval()/exec()` (safe AST evaluator), React hook deps (ESLint passes 0 warnings), index-as-key (0 instances), `is` vs `==` (only in comment/print strings), `OrderParams` dataclass (already existed and in use)
 - **Verified (Iteration 104)**: 100% pass (16/16 backend, all frontend, no regressions)
 
+### Code Quality Sweep Round 6 — Component Splitting (April 12, 2026)
+- **AdminPanel.jsx**: 219→131 lines. Extracted `admin/UsersTab.jsx` (99 lines) — users table with search, role badges, action buttons.
+- **App.js**: 204→187 lines. Extracted `ModalManager.jsx` (59 lines) — centralizes all 15 modal renderings.
+- **AIHypothesis.jsx**: 197→167 lines. Extracted `utils/exportHypothesis.js` (36 lines) — report export utility.
+- **FilterPanel.jsx**: Replaced inline `[value]` arrays with `useMemo` for stable Slider references.
+- **BacktestResults.jsx**: Fixed index-as-key in chart Cells — now uses `entry.month`.
+- **ai_intelligence_service.py**: Extracted shared `_fetch_symbol_context()` helper — deduplicates data fetching across all 3 AI intelligence functions. Removed redundant `LlmChat` imports (already uses shared `_call_llm`).
+- **Verified (Iteration 105)**: 100% pass (9/9 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
