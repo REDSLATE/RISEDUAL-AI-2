@@ -549,6 +549,17 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Navbar**: UserBadge shown in user dropdown menu + mobile menu
 - **Verified (Iteration 102)**: 100% pass — all badge variants render correctly
 
+### Login Hardening (April 12, 2026)
+- **P0 Fix**: Hardened login endpoint against production-specific database state issues
+- `check_brute_force`: Now handles naive datetimes (normalizes to UTC-aware), catches all exceptions, and clears corrupt records
+- `login()`: Separately checks for missing `password_hash` before calling `verify_password`; catches bcrypt exceptions
+- `seed_admin`: Handles missing `password_hash` with try/except for both admin and owner accounts
+- Fixed Motor DB boolean bug in `orderflow_ws_service.py` (`if not self._db` → `if self._db is None`)
+- All error paths return proper 401/429 status codes, never 500
+- **Verified (Iteration 103)**: 100% pass (13/13 backend, frontend login flow confirmed)
+
 ## Backlog
+- P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
-- P2: Refactor server.py into separate route modules
+- P2: Badge showcase on public user profiles & Leaderboard with badge visibility
+- P3: Alpha Vantage API upgrade guidance
