@@ -50,11 +50,15 @@ const TermsContent = () => (
       <p>Certain features of the Service require a paid subscription ("Pro Plan") at a rate of {PRICE} per month. Subscription fees are billed monthly through our third-party payment processor, Stripe, Inc. All payments are non-refundable except as required by applicable law or at our sole discretion. You authorize us to charge your payment method on a recurring basis until you cancel. Cancellation takes effect at the end of the current billing period.</p>
     </S>
 
-    <S title="6. Third-Party Brokerage Connections">
+    <S title="6. Success Fee">
+      <p>In addition to the monthly subscription, users who connect a third-party brokerage account to the Service are subject to a performance-based success fee. The success fee is calculated at a rate of one and a half percent (1.5%) of net monthly gains exceeding one thousand US dollars ($1,000) in a given billing period. The billing period resets on the first day of each calendar month. No success fee is charged during periods of loss, breakeven, or when gains do not exceed the $1,000 threshold. The success fee is assessed based on portfolio value changes as reported by connected broker accounts. Payment of success fees is manual and must be remitted promptly upon notification. {ENTITY} reserves the right to modify the fee rate or threshold with thirty (30) days prior written notice. By connecting a brokerage account, you acknowledge and agree to the success fee structure described herein.</p>
+    </S>
+
+    <S title="7. Third-Party Brokerage Connections">
       <p>The Service may allow you to connect third-party brokerage accounts by providing API keys or authorizing via OAuth. {ENTITY} does not act as a broker-dealer, investment advisor, or fiduciary. We do not have custody of your funds or securities. By connecting a brokerage account, you acknowledge that: (a) you are solely responsible for all trading decisions and activity on your connected accounts; (b) {ENTITY} is not liable for any losses, damages, or unauthorized transactions resulting from your use of connected broker APIs; (c) API keys are encrypted and stored securely, but you assume the risk of providing third-party credentials to our platform.</p>
     </S>
 
-    <S title="7. AI-Generated Content">
+    <S title="8. AI-Generated Content">
       <p>The Service utilizes artificial intelligence and machine learning models to generate market predictions, analysis, and insights. All AI-generated content is for informational purposes only and does not constitute financial advice, investment recommendations, or solicitations to buy or sell any security. AI predictions are probabilistic in nature and may be inaccurate. Past performance of AI models does not guarantee future results.</p>
     </S>
 
@@ -62,31 +66,31 @@ const TermsContent = () => (
       <p>You agree not to: (a) use the Service for any unlawful purpose or in violation of any applicable law or regulation; (b) reverse engineer, decompile, or disassemble any part of the Service; (c) attempt to gain unauthorized access to other users' accounts or our systems; (d) use automated means (bots, scrapers) to access the Service except through our provided APIs; (e) redistribute, resell, or commercially exploit the Service without written consent; (f) upload malicious code or interfere with the Service's operation.</p>
     </S>
 
-    <S title="9. Intellectual Property">
+    <S title="10. Intellectual Property">
       <p>All content, features, functionality, trademarks, and intellectual property of the Service are owned by {ENTITY} and protected by copyright, trademark, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works based on our proprietary content without express written permission.</p>
     </S>
 
-    <S title="10. Limitation of Liability">
+    <S title="11. Limitation of Liability">
       <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, {ENTITY}, ITS OFFICERS, DIRECTORS, EMPLOYEES, AND AGENTS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, LOSS OF DATA, TRADING LOSSES, OR LOSS OF GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE, WHETHER BASED ON WARRANTY, CONTRACT, TORT, OR ANY OTHER LEGAL THEORY, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. OUR TOTAL LIABILITY FOR ALL CLAIMS RELATED TO THE SERVICE SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
     </S>
 
-    <S title="11. Indemnification">
+    <S title="12. Indemnification">
       <p>You agree to indemnify, defend, and hold harmless {ENTITY} and its affiliates from any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising from your use of the Service, violation of these Terms, or infringement of any third-party rights.</p>
     </S>
 
-    <S title="12. Termination">
+    <S title="13. Termination">
       <p>{ENTITY} reserves the right to suspend or terminate your account at any time, with or without cause, and with or without notice. Upon termination, your right to use the Service ceases immediately. Sections relating to intellectual property, limitation of liability, indemnification, and governing law shall survive termination.</p>
     </S>
 
-    <S title="13. Governing Law and Dispute Resolution">
+    <S title="14. Governing Law and Dispute Resolution">
       <p>These Terms shall be governed by and construed in accordance with the laws of the State of {STATE}, without regard to its conflict of law provisions. Any disputes arising under these Terms shall be resolved exclusively in the state or federal courts located in {STATE}. You agree to submit to the personal jurisdiction of such courts.</p>
     </S>
 
-    <S title="14. Modifications">
+    <S title="15. Modifications">
       <p>{ENTITY} reserves the right to modify these Terms at any time. We will notify you of material changes by posting the updated Terms on the Service with a revised "Last Updated" date. Your continued use of the Service after such changes constitutes acceptance of the modified Terms.</p>
     </S>
 
-    <S title="15. Contact Information">
+    <S title="16. Contact Information">
       <p>For questions about these Terms, contact us at: {EMAIL}</p>
       <p>{ENTITY}<br/>State of Incorporation: {STATE}<br/>Website: {SITE}</p>
     </S>

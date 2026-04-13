@@ -40,6 +40,7 @@ from routes.smart_orders import router as smart_orders_router, set_db as set_sma
 from routes.risk_calculator import router as risk_calc_router, set_db as set_risk_calc_db
 from routes.scanner import router as scanner_router, set_db as set_scanner_db
 from routes.trading_bots import router as trading_bots_router, set_db as set_trading_bots_db
+from routes.success_fee import router as success_fee_router, set_db as set_success_fee_db
 from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
@@ -55,6 +56,7 @@ ALL_ROUTERS = [
     risk_calc_router,
     scanner_router,
     trading_bots_router,
+    success_fee_router,
 ]
 
 
@@ -91,6 +93,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     set_risk_calc_db(db)
     set_scanner_db(db)
     set_trading_bots_db(db)
+    set_success_fee_db(db)
 
     from services.orderflow_ws_service import stream_manager
     stream_manager.set_db(db)
