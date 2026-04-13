@@ -104,24 +104,26 @@ async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
             "5. In your key_thesis, explicitly state why this is NOT a trap.\n\n"
         )
 
-    synth_prompt = f"""Synthesize all three analyses for {symbol} into a final investment verdict.
+    synth_prompt = f"""Synthesize all three analyses for {symbol} into a final research assessment.
 
-{memory_injection}Output ONLY valid JSON:
+{memory_injection}COMPLIANCE: This is for a financial research publishing platform. Present findings as impersonal, broadcast-style observations — not personalized investment advice. Use language like "signals indicate" rather than "we recommend."
+
+Output ONLY valid JSON:
 {{
-  "verdict": "STRONG BUY / BUY / HOLD / SELL / STRONG SELL",
+  "verdict": "STRONG BULLISH / BULLISH / NEUTRAL / BEARISH / STRONG BEARISH",
   "composite_score": 0-100,
   "confidence": 0-100,
   "fundamental_score": 0-100,
   "technical_score": 0-100,
   "sentiment_score": 0-100,
-  "key_thesis": "2-3 sentence investment thesis",
+  "key_thesis": "2-3 sentence research thesis",
   "bull_case": "1-2 sentences",
   "bear_case": "1-2 sentences",
   "catalysts": ["catalyst1", "catalyst2", "catalyst3"],
   "risks": ["risk1", "risk2", "risk3"],
-  "price_target_short": "1-2 week target",
-  "price_target_medium": "1-3 month target",
-  "trade_recommendation": "Specific entry/exit/position size advice"
+  "price_target_short": "1-2 week observed level",
+  "price_target_medium": "1-3 month observed level",
+  "signal_summary": "Key observations and data points supporting the assessment"
 }}"""
 
     result = await engine.run_parallel_crew(
@@ -235,21 +237,23 @@ async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
             "5. In your thesis, explicitly state why this is NOT a trap.\n\n"
         )
 
-    synth_prompt = f"""Produce a definitive investment hypothesis for {symbol}.
+    synth_prompt = f"""Produce a research hypothesis for {symbol}.
 
-{memory_injection}Output ONLY valid JSON:
+{memory_injection}COMPLIANCE: This is for a financial research publishing platform. Present as impersonal, broadcast-style research — not personalized advice. Use "signals indicate" rather than "we recommend."
+
+Output ONLY valid JSON:
 {{
-  "verdict": "BUY / SELL / HOLD",
+  "verdict": "BULLISH / BEARISH / NEUTRAL",
   "confidence": 0-100,
-  "price_target_short": "1-2 week target",
-  "price_target_medium": "1-3 month target",
-  "thesis": "2-3 paragraph investment thesis using findings from all agents",
+  "price_target_short": "1-2 week observed level",
+  "price_target_medium": "1-3 month observed level",
+  "thesis": "2-3 paragraph research hypothesis using findings from all agents",
   "catalysts": ["catalyst1", "catalyst2", "catalyst3", "catalyst4", "catalyst5"],
   "risks": ["risk1", "risk2", "risk3", "risk4", "risk5"],
   "congressional_activity": "Summary of relevant congressional/insider trades",
   "sector_impact": "How macro conditions specifically affect this ticker",
   "technical_outlook": "Data-driven price assessment",
-  "summary": "One-line verdict"
+  "summary": "One-line research assessment"
 }}"""
 
     result = await engine.run_parallel_crew(
@@ -360,9 +364,11 @@ async def run_prediction_crew(
             "4. In your summary, explicitly state why the current market is NOT a trap.\n\n"
         )
 
-    synth_prompt = f"""Produce a definitive forecast for **{ticker_label}** by synthesizing sentiment, macro, and flow analyses.
+    synth_prompt = f"""Produce a market research assessment for **{ticker_label}** by synthesizing sentiment, macro, and flow analyses.
 {ticker_instruction}
-{memory_injection}Output ONLY valid JSON:
+{memory_injection}COMPLIANCE: This is for a financial research publishing platform. Present as impersonal, broadcast-style research delivered to all subscribers equally. Use "data suggests" rather than "we recommend." Always note uncertainty.
+
+Output ONLY valid JSON:
 {{
   "overall_direction": "BULLISH / BEARISH / NEUTRAL",
   "confidence_score": 0-100,
@@ -379,7 +385,7 @@ async def run_prediction_crew(
   "geopolitical_impact": "...",
   "institutional_flow": "Summary of smart money positioning",
   "agent_consensus": "Did all agents agree or were there conflicts?",
-  "summary": "3-sentence executive summary focused on {ticker_label}"
+  "summary": "3-sentence research summary focused on {ticker_label}. Include risk disclaimer."
 }}"""
 
     result = await engine.run_parallel_crew(

@@ -11,7 +11,7 @@ class MarketPredictionService:
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.system_message = """You are an expert financial analyst and market prediction AI. 
+        self.system_message = """You are an expert financial analyst and market research AI. 
         Analyze market data including:
         - Financial news headlines and sentiment
         - Social media trends (Reddit, Twitter)
@@ -23,15 +23,18 @@ class MarketPredictionService:
         - Federal Reserve announcements
         - Real estate market indicators
         
-        Provide predictions with:
-        1. Market direction (BULLISH/BEARISH/NEUTRAL)
+        Present analysis with:
+        1. Market direction assessment (BULLISH/BEARISH/NEUTRAL)
         2. Confidence score (0-100%)
-        3. Key signals supporting the prediction
-        4. Price targets and timeframes
+        3. Key signals supporting the assessment
+        4. Price level observations and timeframes
         5. Risk factors
         6. Geopolitical impact assessment
         
-        Be data-driven, objective, and always mention uncertainty."""
+        Be data-driven, objective, and always emphasize uncertainty."""
+        
+        from services.ai_guardrails import inject_guardrails
+        self.system_message = inject_guardrails(self.system_message)
     
     async def analyze_market(self, financial_news: List[Dict], crypto_data: List[Dict], 
                             insider_trades: List[Dict], social_sentiment: List[Dict],
@@ -315,7 +318,7 @@ Provide your analysis in JSON format with:
         # Fear & Greed Index
         if hasattr(self, '_fear_greed') and self._fear_greed:
             fg = self._fear_greed
-            summary += f"\nFEAR & GREED INDEX:\n"
+            summary += "\nFEAR & GREED INDEX:\n"
             summary += f"- Current: {fg.get('current', {}).get('value', 'N/A')} ({fg.get('current', {}).get('label', 'N/A')})\n"
             summary += f"- 7-day avg: {fg.get('avg_7d', 'N/A')} | 30-day avg: {fg.get('avg_30d', 'N/A')}\n"
         

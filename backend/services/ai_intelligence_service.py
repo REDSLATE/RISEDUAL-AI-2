@@ -198,7 +198,7 @@ Return ONLY valid JSON:
 Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sell. Be realistic based on actual data."""
 
     scores = await _call_llm(api_key, prompt, "score", symbol,
-                              "You are an expert quantitative analyst. Return only JSON.")
+                              "You are an expert quantitative analyst for a financial research publishing platform. Return only JSON. Never provide personalized investment advice. Present findings as data-driven observations.")
 
     return {
         "symbol": symbol.upper(),
@@ -259,7 +259,7 @@ Return ONLY valid JSON:
 Pattern types: reversal, continuation, bilateral. Directions: bullish, bearish, neutral. Confidence 0-100. Status: forming, confirmed, breaking_out, failed. Include all patterns you detect — common ones: Head & Shoulders, Double Top/Bottom, Cup & Handle, Bull/Bear Flag, Ascending/Descending Triangle, Wedge, Channel, Pennant, MACD Divergence."""
 
     result = await _call_llm(api_key, prompt, "pattern", symbol,
-                              "You are an expert technical analyst specializing in chart pattern recognition. Return only JSON.")
+                              "You are an expert technical analyst specializing in chart pattern recognition for a financial research publishing platform. Return only JSON. Present findings as observations, not recommendations.")
 
     return {
         "symbol": symbol.upper(),
@@ -309,7 +309,7 @@ Return ONLY valid JSON:
 verdict: buy/hold/sell. confidence 0-100. Be concise and actionable. Key metrics max 4 items. Catalysts and risks max 3 each."""
 
     brief = await _call_llm(api_key, prompt, "brief", symbol,
-                             "You are a financial analyst providing quick stock briefs. Return only JSON. Be concise.")
+                             "You are a financial research analyst providing quick stock briefs for a publishing platform. Return only JSON. Be concise. Present data-driven observations, not personal advice.")
 
     return {
         "symbol": symbol.upper(),

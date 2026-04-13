@@ -37,7 +37,7 @@ async def validate_signals(matches: List[Dict], strategy_name: str = "") -> List
             f"Signal: {m.get('detail', strategy_name)}"
         )
 
-    prompt = f"""You are an adversarial AI signal validator for a trading platform. Your job is to critically evaluate scanner signals and filter out weak ones.
+    prompt = f"""You are an adversarial AI signal validator for a financial research publishing platform. Your job is to critically evaluate scanner signals and filter out weak ones. Present findings as observations, not recommendations.
 
 STRATEGY: {strategy_name}
 MATCHES TO VALIDATE:
@@ -59,7 +59,7 @@ Respond with ONLY the JSON array, no other text."""
         session_id = f"validate_{datetime.now(timezone.utc).strftime('%H%M%S')}"
         chat = LlmChat(
             api_key=api_key, session_id=session_id,
-            system_message="You are an expert quantitative analyst. Return only valid JSON arrays."
+            system_message="You are an expert quantitative analyst for a financial research publishing platform. Return only valid JSON arrays. Present findings as observations."
         ).with_model("openai", "gpt-5.2")
 
         response = await chat.send_message(UserMessage(text=prompt))
