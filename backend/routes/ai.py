@@ -1,5 +1,6 @@
 """AI routes: chat, hypothesis, research endpoints."""
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile
+from fastapi.responses import JSONResponse
 from typing import Optional
 import os
 import logging
@@ -137,9 +138,9 @@ async def chat(
                 ai_response = await run_portfolio_agent(user["_id"], message)
             except Exception as e:
                 logging.warning(f"Portfolio agent failed, falling back to standard chat: {e}")
-                ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context)
+                ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context, user_id=str(user["_id"]) if user else "")
         else:
-            ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context)
+            ai_response = await ai_service.chat(message, sessionId, image_base64, memory_context=memory_context, user_id=str(user["_id"]) if user else "")
 
         user_message = ChatMessage(role="user", content=message, image_base64="[image_attached]" if image_base64 else None)
         assistant_message = ChatMessage(role="assistant", content=ai_response)

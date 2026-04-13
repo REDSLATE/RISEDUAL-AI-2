@@ -42,6 +42,7 @@ from routes.scanner import router as scanner_router, set_db as set_scanner_db
 from routes.trading_bots import router as trading_bots_router, set_db as set_trading_bots_db
 from routes.public_api import router as public_api_router, key_router as dev_key_router, set_db as set_public_api_db
 from routes.credits import router as credits_router, set_db as set_credits_db
+from routes.failure_loop import router as failure_loop_router, set_db as set_failure_loop_db
 from routes.success_fee import router as success_fee_router, set_db as set_success_fee_db
 from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
@@ -62,6 +63,7 @@ ALL_ROUTERS = [
     public_api_router,
     dev_key_router,
     credits_router,
+    failure_loop_router,
 ]
 
 
@@ -101,6 +103,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     set_success_fee_db(db)
     set_public_api_db(db)
     set_credits_db(db)
+    set_failure_loop_db(db)
 
     from services.orderflow_ws_service import stream_manager
     stream_manager.set_db(db)

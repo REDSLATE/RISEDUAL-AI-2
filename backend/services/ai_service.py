@@ -50,12 +50,24 @@ class AIService:
         from services.ai_guardrails import inject_guardrails
         self.system_message = inject_guardrails(self.system_message)
     
-    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None, memory_context: str = "") -> str:
+    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None, memory_context: str = "", user_id: str = "") -> str:
         """Send a message to the AI and get a response, optionally with an image and memory context"""
         try:
             system = self.system_message
             if memory_context:
                 system = f"{self.system_message}\n\n{memory_context}"
+
+            # Inject failure loop warnings as caution layer
+            if user_id:
+                try:
+                    from services.failure_loop_service import build_memory_warnings
+                    warnings = await build_memory_warnings(user_id)
+                    if warnings:
+                        warning_text = "\n\nCAUTION FROM REVIEWED TRADE HISTORY:\n" + "\n".join(f"- {w}" for w in warnings)
+                        warning_text += "\nUse these patterns as a caution layer when analyzing similar setups. Do not auto-override user judgment."
+                        system = system + warning_text
+                except Exception:
+                    pass
 
             chat = LlmChat(
                 api_key=self.api_key,
