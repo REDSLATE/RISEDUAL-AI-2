@@ -149,49 +149,55 @@ class RedeemBetaKeyRequest(BaseModel):
 # --- Routes ---
 @auth_router.post("/register")
 async def register(req: RegisterRequest, response: Response):
-    email = req.email.strip().lower()
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user_doc = {
-        "email": email,
-        "password_hash": hash_password(req.password),
-        "name": req.name.strip() or email.split("@")[0],
-        "role": "user",
-        "subscription_status": "free",
-        "created_at": datetime.now(timezone.utc),
-    }
-    result = await db.users.insert_one(user_doc)
-    user_doc["_id"] = result.inserted_id
-
-    # Grant signup bonus credits
     try:
-        from services.credit_service import grant_signup_bonus
-        await grant_signup_bonus(str(user_doc["_id"]))
-    except Exception as e:
-        logging.warning(f"Signup credit grant error: {e}")
+        email = req.email.strip().lower()
+        if len(req.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        existing = await db.users.find_one({"email": email})
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user_doc = {
+            "email": email,
+            "password_hash": hash_password(req.password),
+            "name": req.name.strip() or email.split("@")[0],
+            "role": "user",
+            "subscription_status": "free",
+            "created_at": datetime.now(timezone.utc),
+        }
+        result = await db.users.insert_one(user_doc)
+        user_doc["_id"] = result.inserted_id
 
-    # Process referral code if provided
-    if req.ref_code and req.ref_code.strip():
+        # Grant signup bonus credits
         try:
-            from routes.referral import process_referral_signup
-            await process_referral_signup(str(user_doc["_id"]), email, req.ref_code.strip())
-            # Reload user doc to reflect trial status
-            updated = await db.users.find_one({"_id": user_doc["_id"]})
-            if updated:
-                user_doc["subscription_status"] = updated.get("subscription_status", "free")
+            from services.credit_service import grant_signup_bonus
+            await grant_signup_bonus(str(user_doc["_id"]))
         except Exception as e:
-            logging.warning(f"Referral processing error: {e}")
+            logging.warning(f"Signup credit grant error: {e}")
 
-    access = create_access_token(str(user_doc["_id"]), email)
-    refresh = create_refresh_token(str(user_doc["_id"]))
-    set_auth_cookies(response, access, refresh)
-    resp = user_response(user_doc)
-    resp["access_token"] = access
-    resp["refresh_token"] = refresh
-    return resp
+        # Process referral code if provided
+        if req.ref_code and req.ref_code.strip():
+            try:
+                from routes.referral import process_referral_signup
+                await process_referral_signup(str(user_doc["_id"]), email, req.ref_code.strip())
+                updated = await db.users.find_one({"_id": user_doc["_id"]})
+                if updated:
+                    user_doc["subscription_status"] = updated.get("subscription_status", "free")
+            except Exception as e:
+                logging.warning(f"Referral processing error: {e}")
+
+        access = create_access_token(str(user_doc["_id"]), email)
+        refresh = create_refresh_token(str(user_doc["_id"]))
+        set_auth_cookies(response, access, refresh)
+        resp = user_response(user_doc)
+        resp["access_token"] = access
+        resp["refresh_token"] = refresh
+        return resp
+
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Register route failed")
+        raise HTTPException(status_code=500, detail="Registration failed")
 
 async def _validate_beta_key(beta_key: str, email: str) -> dict:
     """Validate a beta key and email for redemption. Returns waitlist entry or raises."""
@@ -258,36 +264,43 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
 
 @auth_router.post("/login")
 async def login(req: LoginRequest, request: Request, response: Response):
-    email = req.email.strip().lower()
-    ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{email}"
-    await check_brute_force(identifier)
-    user = await db.users.find_one({"email": email})
-    if not user:
-        await record_failed_attempt(identifier)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    pw_hash = user.get("password_hash")
-    if not pw_hash:
-        logging.error(f"Login failed: user {email} has no password_hash field")
-        raise HTTPException(status_code=401, detail="Invalid email or password")
     try:
-        pw_match = verify_password(req.password, pw_hash)
-    except Exception as e:
-        logging.error(f"Password verify error for {email}: {e}")
-        pw_match = False
-    if not pw_match:
-        await record_failed_attempt(identifier)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not user.get("is_active", True):
-        raise HTTPException(status_code=403, detail="Your account has been deactivated. Contact support.")
-    await db.login_attempts.delete_one({"identifier": identifier})
-    access = create_access_token(str(user["_id"]), email)
-    refresh = create_refresh_token(str(user["_id"]))
-    set_auth_cookies(response, access, refresh)
-    resp = user_response(user)
-    resp["access_token"] = access
-    resp["refresh_token"] = refresh
-    return resp
+        email = req.email.strip().lower()
+        ip = request.client.host if request.client else "unknown"
+        identifier = f"{ip}:{email}"
+        await check_brute_force(identifier)
+        user = await db.users.find_one({"email": email})
+        if not user:
+            await record_failed_attempt(identifier)
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        pw_hash = user.get("password_hash")
+        if not pw_hash:
+            logging.error(f"Login failed: user {email} has no password_hash field")
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        try:
+            pw_match = verify_password(req.password, pw_hash)
+        except Exception as e:
+            logging.error(f"Password verify error for {email}: {e}")
+            pw_match = False
+        if not pw_match:
+            await record_failed_attempt(identifier)
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=403, detail="Your account has been deactivated. Contact support.")
+        await db.login_attempts.delete_one({"identifier": identifier})
+        access = create_access_token(str(user["_id"]), email)
+        refresh = create_refresh_token(str(user["_id"]))
+        set_auth_cookies(response, access, refresh)
+        resp = user_response(user)
+        resp["access_token"] = access
+        resp["refresh_token"] = refresh
+        return resp
+
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Login route failed")
+        raise HTTPException(status_code=500, detail="Login failed")
 
 @auth_router.post("/logout")
 async def logout(response: Response):
@@ -297,8 +310,14 @@ async def logout(response: Response):
 
 @auth_router.get("/me")
 async def me(request: Request):
-    user = await get_current_user(request)
-    return user_response({"_id": user["_id"], **user})
+    try:
+        user = await get_current_user(request)
+        return user_response({"_id": user["_id"], **user})
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Me route failed")
+        raise HTTPException(status_code=500, detail="Failed to get user info")
 
 
 async def _extract_refresh_token(request: Request) -> str:
@@ -322,10 +341,10 @@ async def _extract_refresh_token(request: Request) -> str:
 
 @auth_router.post("/refresh")
 async def refresh_token(request: Request, response: Response):
-    token = await _extract_refresh_token(request)
-    if not token:
-        raise HTTPException(status_code=401, detail="No refresh token")
     try:
+        token = await _extract_refresh_token(request)
+        if not token:
+            raise HTTPException(status_code=401, detail="No refresh token")
         payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
@@ -337,45 +356,63 @@ async def refresh_token(request: Request, response: Response):
         samesite_val = "none" if is_secure else "lax"
         response.set_cookie(key="access_token", value=access, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
         return {"access_token": access}
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except Exception:
+        logging.exception("Refresh route failed")
+        raise HTTPException(status_code=500, detail="Token refresh failed")
 
 @auth_router.post("/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest):
-    email = req.email.strip().lower()
-    user = await db.users.find_one({"email": email})
-    if not user:
-        return {"message": "If that email exists, a reset link has been sent."}
-    token = secrets.token_urlsafe(32)
-    await db.password_reset_tokens.insert_one({
-        "token": token,
-        "user_id": user["_id"],
-        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
-        "used": False,
-    })
-    # Send the reset email via Resend
     try:
-        from services.email_service import send_password_reset_email
-        await send_password_reset_email(email, token, origin_url=req.origin_url)
-    except Exception as e:
-        logging.error(f"Failed to send password reset email: {e}")
-    return {"message": "If that email exists, a reset link has been sent."}
+        email = req.email.strip().lower()
+        user = await db.users.find_one({"email": email})
+        if not user:
+            return {"message": "If that email exists, a reset link has been sent."}
+        token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.insert_one({
+            "token": token,
+            "user_id": user["_id"],
+            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+            "used": False,
+        })
+        try:
+            from services.email_service import send_password_reset_email
+            await send_password_reset_email(email, token, origin_url=req.origin_url)
+        except Exception as e:
+            logging.error(f"Failed to send password reset email: {e}")
+        return {"message": "If that email exists, a reset link has been sent."}
+
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Forgot password route failed")
+        raise HTTPException(status_code=500, detail="Password reset request failed")
 
 @auth_router.post("/reset-password")
 async def reset_password(req: ResetPasswordRequest):
-    record = await db.password_reset_tokens.find_one({"token": req.token, "used": False})
-    if not record:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-    expires_at = record["expires_at"].replace(tzinfo=timezone.utc) if record["expires_at"].tzinfo is None else record["expires_at"]
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    await db.users.update_one({"_id": record["user_id"]}, {"$set": {"password_hash": hash_password(req.new_password)}})
-    await db.password_reset_tokens.update_one({"_id": record["_id"]}, {"$set": {"used": True}})
-    return {"message": "Password reset successful"}
+    try:
+        record = await db.password_reset_tokens.find_one({"token": req.token, "used": False})
+        if not record:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        expires_at = record["expires_at"].replace(tzinfo=timezone.utc) if record["expires_at"].tzinfo is None else record["expires_at"]
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        if len(req.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        await db.users.update_one({"_id": record["user_id"]}, {"$set": {"password_hash": hash_password(req.new_password)}})
+        await db.password_reset_tokens.update_one({"_id": record["_id"]}, {"$set": {"used": True}})
+        return {"message": "Password reset successful"}
+
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Reset password route failed")
+        raise HTTPException(status_code=500, detail="Password reset failed")
 
 # --- Admin Seeding ---
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "managingdirector@redslateholdings.com")
