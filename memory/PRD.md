@@ -6,16 +6,9 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 ## Architecture
 - **Frontend**: React + TailwindCSS + Shadcn UI (port 3000)
 - **Backend**: FastAPI + MongoDB via Motor Async (port 8001)
-- **AI**: Emergent LLM Key (GPT-5.2, Claude Sonnet 4.5, Gemini) with compliance guardrails
-- **Payments**: Stripe (4 tiers)
+- **AI**: Emergent LLM Key (GPT-5.2) with compliance guardrails
+- **Payments**: Stripe (4 tiers + credit top-ups)
 - **Market Data**: Alpha Vantage 170+ tier (dual key rotation), Finnhub, QuiverQuant
-
-## AI Compliance Guardrails (April 13, 2026)
-- Central `ai_guardrails.py` module with `COMPLIANCE_FOOTER` and `COMPLIANCE_AGENT_FOOTER`
-- Injected into all 8 AI services: Chat, Portfolio Agent, Market Predictions, War Room, Hypothesis, Prediction Crew, AI Intelligence, Signal Validator
-- Language: "financial research publishing platform", "signals indicate" not "you should", BULLISH/BEARISH/NEUTRAL not BUY/SELL/HOLD
-- Every substantive response includes risk disclaimer
-- All signals are impersonal and broadcast-style
 
 ## 4-Tier Credit System
 | Plan | Price | Monthly Credits | Top-Up Rate | Unlimited |
@@ -25,7 +18,23 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 | Pro | $55/mo | 15,000 | $8/1K | Chat, War Room |
 | Pro Max | $99/mo | 50,000 | $5/1K | Chat, War Room |
 
+## Stripe Billing Integration
+- Subscription checkout: Starter/Pro/Pro Max
+- Credit top-up checkout: 1K/2K/5K/10K credits
+- Customer portal for self-service management
+- Webhook processing: checkout completed, invoice paid/failed, subscription lifecycle
+- MongoDB collections: `billing_customers`, `billing_webhooks`
+- Env vars needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*`
+
+## Key Features
+- AI Credit System with frozen dataclass plan config
+- Failure Loop (trade idea memory + review + pattern analysis + AI chat warnings)
+- AI Compliance Guardrails (impersonal, broadcast-style, no personalized advice)
+- Developer API with key management + rate limiting
+- Backend resilience: /api/ready health check, isolated startup, ErrorBoundary modals
+
 ## Backlog
-- P0: Integrate Stripe for credit top-ups + subscription plans
-- P1: Deploy to `risedual.ai` (2.0 launch after beta)
-- P2: QuiverQuant re-test (insiders/lobbying/contracts)
+- Create real Stripe products/prices and configure IDs
+- Connect frontend CreditStore to Stripe checkout
+- Deploy to `risedual.ai` (2.0 launch after beta)
+- QuiverQuant re-test (insiders/lobbying/contracts)

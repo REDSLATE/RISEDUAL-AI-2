@@ -329,6 +329,71 @@ const Pricing = ({ onGetStarted }) => (
         />
       </div>
 
+      {/* Action Pricing Table */}
+      <div className="mt-10 mb-8 overflow-x-auto">
+        <h3 className="text-white text-xs font-bold mb-3 text-center">Action pricing</h3>
+        <p className="text-slate-400 text-[10px] text-center mb-4 max-w-xl mx-auto">Chat and War Room are bundled into Pro and Pro Max because they are your most frequent workflows. Advanced AI actions stay credit-based on every plan.</p>
+        <table className="w-full text-[10px] border-collapse" data-testid="action-pricing-table">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-700/40">
+              <th className="text-left py-2 px-3">Action</th>
+              <th className="text-center py-2 px-3">Free</th>
+              <th className="text-center py-2 px-3">Starter</th>
+              <th className="text-center py-2 px-3">Pro</th>
+              <th className="text-center py-2 px-3">Pro Max</th>
+            </tr>
+          </thead>
+          <tbody className="text-slate-300">
+            {[
+              ['AI Chat', '1 credit', '1 credit', true, true],
+              ['War Room', '5 credits', '5 credits', true, true],
+              ['AI Hypothesis', '3 credits', '3 credits', '3 credits', '3 credits'],
+              ['Market Prediction', '3 credits', '3 credits', '3 credits', '3 credits'],
+              ['AI Intelligence', '2 credits', '2 credits', '2 credits', '2 credits'],
+              ['Scanner + Validation', '2 credits', '2 credits', '2 credits', '2 credits'],
+              ['API call', '1 credit', '1 credit', '1 credit', '1 credit'],
+            ].map(([action, ...vals]) => (
+              <tr key={action} className="border-b border-slate-800/40">
+                <td className="py-2 px-3 text-white font-medium">{action}</td>
+                {vals.map((v, i) => (
+                  <td key={`${action}-${i}`} className={`text-center py-2 px-3 ${v === true ? 'text-lime-400 font-bold' : ''}`}>
+                    {v === true ? 'Unlimited' : v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Top-up Pricing Table */}
+      <div className="mb-10 overflow-x-auto">
+        <h3 className="text-white text-xs font-bold mb-3 text-center">Top-up pricing</h3>
+        <table className="w-full max-w-md mx-auto text-[10px] border-collapse" data-testid="topup-pricing-table">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-700/40">
+              <th className="text-left py-2 px-3">Plan</th>
+              <th className="text-center py-2 px-3">Included credits</th>
+              <th className="text-center py-2 px-3">Top-up per 1,000</th>
+            </tr>
+          </thead>
+          <tbody className="text-slate-300">
+            {[
+              ['Free', '50', '$15'],
+              ['Starter', '3,000', '$12'],
+              ['Pro', '15,000', '$8'],
+              ['Pro Max', '50,000', '$5'],
+            ].map(([plan, credits, rate]) => (
+              <tr key={plan} className="border-b border-slate-800/40">
+                <td className="py-2 px-3 text-white font-medium">{plan}</td>
+                <td className="text-center py-2 px-3">{credits}</td>
+                <td className="text-center py-2 px-3 text-amber-400 font-semibold">{rate}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* Why Pro */}
       <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 mb-8 max-w-2xl mx-auto">
         <h3 className="text-white text-xs font-bold mb-2">Why Pro stands out</h3>
