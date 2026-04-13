@@ -10,7 +10,6 @@ import BrokerOAuthConfig from './admin/BrokerOAuthConfig';
 import MediaManager from './admin/MediaManager';
 import SecurityAudit from './admin/SecurityAudit';
 import WaitlistAdmin from './admin/WaitlistAdmin';
-import SuccessFeesTab from './admin/SuccessFeesTab';
 import UsersTab from './admin/UsersTab';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
@@ -65,7 +64,6 @@ const AdminPanel = ({ onClose }) => {
     { id: 'media', label: 'Media', icon: Film },
     { id: 'security', label: 'Security', icon: ShieldCheck },
     { id: 'waitlist', label: 'Waitlist', icon: Users },
-    { id: 'fees', label: 'Fees', icon: DollarSign },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -121,8 +119,6 @@ const AdminPanel = ({ onClose }) => {
           <SecurityAudit />
         ) : tab === 'waitlist' ? (
           <WaitlistAdmin />
-        ) : tab === 'fees' ? (
-          <SuccessFeesTab />
         ) : (
           <AdminTools />
         )}

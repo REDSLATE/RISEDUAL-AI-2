@@ -313,7 +313,6 @@ const Pricing = ({ onGetStarted }) => (
               'Whale radar + sentiment analysis',
               'Full War Room dashboard access',
               '24/7 signal monitoring',
-              '1.5% success fee on gains above $1K*',
             ].map(f => (
               <li key={f} className="flex items-start gap-2 text-xs text-slate-300">
                 <Check className="w-3.5 h-3.5 text-teal-400 shrink-0 mt-0.5" />
@@ -324,7 +323,6 @@ const Pricing = ({ onGetStarted }) => (
           <button onClick={onGetStarted} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-sm font-semibold hover:opacity-90 transition-opacity" data-testid="pricing-cta">
             Join the Waitlist
           </button>
-          <p className="text-[9px] text-slate-500 mt-3 text-center">*Success fee applies only to broker-connected accounts with monthly gains exceeding $1,000. No fee on losses.</p>
         </div>
         {/* Others */}
         <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/55 opacity-60">
@@ -416,7 +414,6 @@ const FAQ = () => {
     { q: 'What makes RISEDUAL AI different from other trading signals?', a: 'RISEDUAL AI uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
     { q: 'How does the nightly retraining work?', a: 'Every night, GPT-5.2 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
     { q: 'Do I need to sign an annual contract?', a: 'No. RISEDUAL AI is $45/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure.' },
-    { q: 'What is the success fee?', a: 'For users who connect a real brokerage account, we charge a 1.5% success fee on monthly gains above $1,000. There is zero fee during losing months or if gains are below the threshold. We only profit when you profit — aligning our interests with yours.' },
     { q: 'What markets and assets do you cover?', a: 'US stocks (S&P 500, NASDAQ), major cryptocurrencies (BTC, ETH, SOL, etc.), options flow, dark pool data, and macro indicators including sector heatmaps and congressional trading activity.' },
     { q: 'Is there a free trial?', a: 'Yes. You can start with a 7-day free trial that gives you full access to the War Room, AI agents, Whale Radar, and all real-time data streams.' },
     { q: 'How accurate are the signals?', a: 'Our adversarial system has achieved a verified 68-73% win rate across backtested periods. The Auditor\'s veto mechanism kills approximately 40% of signals before they reach you, significantly reducing false positives.' },

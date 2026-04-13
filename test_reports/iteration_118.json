@@ -1,0 +1,80 @@
+{
+  "summary": "Iteration 118: Success Fee Removal, Terms Rewrite, AI Transparency Notice - Testing complete. Most features pass. Found 2 issues: Footer entity name not updated to 'RED SLATE HOLDINGS' in LandingPage.jsx and Footer.jsx.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "LandingPage.jsx - LandingFooter",
+        "issue": "Footer still shows 'RISEDUAL CORPORATION' instead of 'RED SLATE HOLDINGS' (line 481)",
+        "selector": "footer span.text-slate-400",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Footer.jsx",
+        "issue": "Footer still shows 'RISEDUAL CORPORATION' instead of 'RED SLATE HOLDINGS' (line 75)",
+        "selector": "[data-testid='app-footer'] p.text-slate-400",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_118.json"
+  ],
+  "action_items": [
+    "Update LandingPage.jsx line 481: Change 'RISEDUAL CORPORATION' to 'RED SLATE HOLDINGS'",
+    "Update Footer.jsx line 75: Change 'RISEDUAL CORPORATION' to 'RED SLATE HOLDINGS'",
+    "Optional cleanup: Delete orphaned files /app/frontend/src/components/SuccessFeeWidget.jsx and /app/frontend/src/components/admin/SuccessFeesTab.jsx (not imported anywhere but still exist)"
+  ],
+  "critical_code_review_comments": [
+    "SuccessFeeWidget.jsx and SuccessFeesTab.jsx files still exist but are NOT imported - orphaned code that should be deleted",
+    "React key warning in console: 'Encountered two children with the same key' for bid/ask elements - minor issue"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "94% (17/18 tests passed)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 118 tested success fee removal, Terms rewrite, and AI Transparency Notice. All legal content in LegalPages.jsx is correct with RED SLATE HOLDINGS. The only remaining issue is the footer copyright text in LandingPage.jsx (line 481) and Footer.jsx (line 75) which still say 'RISEDUAL CORPORATION'. SuccessFeeWidget and SuccessFeesTab components are orphaned (not imported) but files still exist.",
+  "verified_features": {
+    "Landing page pricing - no 1.5%": "PASS",
+    "Landing page pricing - no success fee": "PASS",
+    "Landing page FAQ - no success fee": "PASS",
+    "Terms contains RED SLATE HOLDINGS": "PASS",
+    "Terms does NOT contain RISEDUAL CORPORATION": "PASS",
+    "Terms Section 3 - digital asset transactions": "PASS",
+    "Terms Section 5 - no refunds for partial months": "PASS",
+    "Terms Section 6 - market manipulation/wash trading/spoofing": "PASS",
+    "Terms Section 8 - GPT-5.2 via Emergent Integrations": "PASS",
+    "Terms Section 8 - AI Signal tag": "PASS",
+    "Terms Section 8 - broadcast simultaneously": "PASS",
+    "Terms Section 9 - even if the AI suggested the trade": "PASS",
+    "Terms - no Success Fee section": "PASS",
+    "AI Transparency tab exists": "PASS",
+    "AI Transparency - GPT-5.2 via Emergent Integrations": "PASS",
+    "AI Transparency - 4-Mind architecture": "PASS",
+    "AI Transparency - human oversight": "PASS",
+    "AI Transparency - Impersonal Content Guarantee": "PASS",
+    "Login flow works": "PASS",
+    "Dashboard renders after login": "PASS",
+    "Dashboard - no Success Fee Widget": "PASS",
+    "Admin Panel - no Fees tab": "PASS",
+    "Landing page footer - RED SLATE HOLDINGS": "FAIL - still shows RISEDUAL CORPORATION",
+    "Dashboard footer - RED SLATE HOLDINGS": "FAIL - still shows RISEDUAL CORPORATION"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

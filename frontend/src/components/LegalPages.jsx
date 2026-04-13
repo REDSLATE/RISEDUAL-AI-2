@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { X, FileText, Shield, AlertTriangle, Scale } from 'lucide-react';
 
-const ENTITY = 'RISEDUAL CORPORATION';
+const ENTITY = 'RED SLATE HOLDINGS';
 const STATE = 'Florida';
 const SITE = 'risedual.ai';
 const EMAIL = 'legal@risedual.ai';
 const PRICE = '$45';
-const UPDATED = 'April 11, 2026';
+const UPDATED = 'April 13, 2026';
 
 const TABS = [
   { id: 'terms', label: 'Terms of Service', icon: FileText },
+  { id: 'ai', label: 'AI Transparency', icon: Shield },
   { id: 'privacy', label: 'Privacy Policy', icon: Shield },
   { id: 'risk', label: 'Risk Disclosure', icon: AlertTriangle },
   { id: 'disclaimer', label: 'Disclaimer', icon: Scale },
@@ -35,11 +36,11 @@ const TermsContent = () => (
     </S>
 
     <S title="2. Description of Service">
-      <p>RISEDUAL AI provides an AI-powered market intelligence platform that includes, but is not limited to: real-time market data visualization, AI-driven market analysis, multi-model consensus predictions, options flow analysis, dark pool data aggregation, sector heatmaps, paper trading simulation, and third-party brokerage account connectivity. The Service is designed for informational and educational purposes only.</p>
+      <p>RISEDUAL AI provides an AI-powered market intelligence platform that includes, but is not limited to: real-time market data visualization, AI-driven market analysis, multi-model consensus predictions, options flow analysis, dark pool data aggregation, sector heatmaps, paper trading simulation, and third-party brokerage account connectivity. The Service is provided "as is" for your own research purposes only and does not constitute financial, investment, legal, or tax advice.</p>
     </S>
 
     <S title="3. Eligibility">
-      <p>You must be at least 18 years of age and legally capable of entering into binding contracts to use the Service. By using the Service, you represent and warrant that you meet these requirements. Users under the age of 18 are strictly prohibited from using the Service.</p>
+      <p>You must be at least 18 years of age and possess the legal capacity to understand the risks of digital asset transactions, securities trading, and financial markets to use the Service. By using the Service, you represent and warrant that you meet these requirements and that your use of the platform complies with all applicable laws in your jurisdiction. Users under the age of 18 are strictly prohibited from using the Service.</p>
     </S>
 
     <S title="4. Account Registration">
@@ -47,52 +48,94 @@ const TermsContent = () => (
     </S>
 
     <S title="5. Subscription and Payment">
-      <p>Certain features of the Service require a paid subscription ("Pro Plan") at a rate of {PRICE} per month. Subscription fees are billed monthly through our third-party payment processor, Stripe, Inc. All payments are non-refundable except as required by applicable law or at our sole discretion. You authorize us to charge your payment method on a recurring basis until you cancel. Cancellation takes effect at the end of the current billing period.</p>
+      <p>Certain features of the Service require a paid subscription ("Pro Plan") at a rate of {PRICE} per month. Subscription fees are billed monthly through our third-party payment processor, Stripe, Inc. Users may cancel their subscription at any time; however, no refunds will be provided for partial months already served. Cancellation takes effect at the end of the current billing period. You authorize us to charge your payment method on a recurring basis until you cancel.</p>
     </S>
 
-    <S title="6. Success Fee">
-      <p>In addition to the monthly subscription, users who connect a third-party brokerage account to the Service are subject to a performance-based success fee. The success fee is calculated at a rate of one and a half percent (1.5%) of net monthly gains exceeding one thousand US dollars ($1,000) in a given billing period. The billing period resets on the first day of each calendar month. No success fee is charged during periods of loss, breakeven, or when gains do not exceed the $1,000 threshold. The success fee is assessed based on portfolio value changes as reported by connected broker accounts. Payment of success fees is manual and must be remitted promptly upon notification. {ENTITY} reserves the right to modify the fee rate or threshold with thirty (30) days prior written notice. By connecting a brokerage account, you acknowledge and agree to the success fee structure described herein.</p>
+    <S title="6. Permitted Use and Prohibited Conduct">
+      <p>The Service is provided solely for your personal, non-commercial research and informational purposes. You agree not to use the platform for: (a) market manipulation, wash trading, spoofing, layering, or any form of artificial market activity; (b) any unlawful purpose or in violation of any applicable law or regulation, including securities laws; (c) reverse engineering, decompiling, or disassembling any part of the Service; (d) attempting to gain unauthorized access to other users' accounts or our systems; (e) using automated means (bots, scrapers) to access the Service except through our provided APIs; (f) redistributing, reselling, or commercially exploiting the Service or its data without express written consent; (g) uploading malicious code or interfering with the Service's operation; (h) circumventing any technical measures designed to enforce these Terms.</p>
     </S>
 
     <S title="7. Third-Party Brokerage Connections">
-      <p>The Service may allow you to connect third-party brokerage accounts by providing API keys or authorizing via OAuth. {ENTITY} does not act as a broker-dealer, investment advisor, or fiduciary. We do not have custody of your funds or securities. By connecting a brokerage account, you acknowledge that: (a) you are solely responsible for all trading decisions and activity on your connected accounts; (b) {ENTITY} is not liable for any losses, damages, or unauthorized transactions resulting from your use of connected broker APIs; (c) API keys are encrypted and stored securely, but you assume the risk of providing third-party credentials to our platform.</p>
+      <p>The Service may allow you to connect third-party brokerage accounts by providing API keys or authorizing via OAuth. {ENTITY} does not act as a broker-dealer, investment advisor, or fiduciary. We do not have custody of your funds or securities. By connecting a brokerage account, you acknowledge that: (a) you are solely responsible for all trading decisions and activity on your connected accounts; (b) {ENTITY} is not liable for any losses, damages, or unauthorized transactions resulting from your use of connected broker APIs; (c) API keys are encrypted and stored securely using AES-256 encryption, but you assume the risk of providing third-party credentials to our platform.</p>
     </S>
 
-    <S title="8. AI-Generated Content">
-      <p>The Service utilizes artificial intelligence and machine learning models to generate market predictions, analysis, and insights. All AI-generated content is for informational purposes only and does not constitute financial advice, investment recommendations, or solicitations to buy or sell any security. AI predictions are probabilistic in nature and may be inaccurate. Past performance of AI models does not guarantee future results.</p>
+    <S title="8. AI-Generated Content and Signals">
+      <p>The Service utilizes artificial intelligence and machine learning models (including GPT-5.2 via Emergent Integrations) to generate market predictions, analysis, signals, and insights. All AI-generated content is: (a) clearly labeled with an "AI Signal" tag; (b) provided for informational purposes only and does not constitute financial advice, investment recommendations, or solicitations to buy or sell any security; (c) broadcast simultaneously to all eligible Pro subscribers rather than as individualized recommendations; (d) probabilistic in nature and may be inaccurate. Past performance of AI models does not guarantee future results. The AI is strictly prohibited from providing personalized investment advice.</p>
     </S>
 
-    <S title="8. Acceptable Use">
-      <p>You agree not to: (a) use the Service for any unlawful purpose or in violation of any applicable law or regulation; (b) reverse engineer, decompile, or disassemble any part of the Service; (c) attempt to gain unauthorized access to other users' accounts or our systems; (d) use automated means (bots, scrapers) to access the Service except through our provided APIs; (e) redistribute, resell, or commercially exploit the Service without written consent; (f) upload malicious code or interfere with the Service's operation.</p>
+    <S title="9. Limitation of Liability">
+      <p>IN NO EVENT SHALL {ENTITY}, ITS OFFICERS, DIRECTORS, EMPLOYEES, AGENTS, OR AFFILIATES BE LIABLE FOR ANY TRADING LOSSES, DATA ERRORS, SYSTEM DOWNTIME, OR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, EVEN IF THE AI SUGGESTED THE TRADE OR THE PLATFORM EXPERIENCED TECHNICAL FAILURES. THIS APPLIES WHETHER BASED ON WARRANTY, CONTRACT, TORT, OR ANY OTHER LEGAL THEORY, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. OUR TOTAL LIABILITY FOR ALL CLAIMS RELATED TO THE SERVICE SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
     </S>
 
     <S title="10. Intellectual Property">
       <p>All content, features, functionality, trademarks, and intellectual property of the Service are owned by {ENTITY} and protected by copyright, trademark, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works based on our proprietary content without express written permission.</p>
     </S>
 
-    <S title="11. Limitation of Liability">
-      <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, {ENTITY}, ITS OFFICERS, DIRECTORS, EMPLOYEES, AND AGENTS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, LOSS OF DATA, TRADING LOSSES, OR LOSS OF GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE, WHETHER BASED ON WARRANTY, CONTRACT, TORT, OR ANY OTHER LEGAL THEORY, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. OUR TOTAL LIABILITY FOR ALL CLAIMS RELATED TO THE SERVICE SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.</p>
+    <S title="11. Indemnification">
+      <p>You agree to indemnify, defend, and hold harmless {ENTITY} and its affiliates from any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising from your use of the Service, violation of these Terms, your trading activities, or infringement of any third-party rights.</p>
     </S>
 
-    <S title="12. Indemnification">
-      <p>You agree to indemnify, defend, and hold harmless {ENTITY} and its affiliates from any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising from your use of the Service, violation of these Terms, or infringement of any third-party rights.</p>
-    </S>
-
-    <S title="13. Termination">
+    <S title="12. Termination">
       <p>{ENTITY} reserves the right to suspend or terminate your account at any time, with or without cause, and with or without notice. Upon termination, your right to use the Service ceases immediately. Sections relating to intellectual property, limitation of liability, indemnification, and governing law shall survive termination.</p>
     </S>
 
-    <S title="14. Governing Law and Dispute Resolution">
+    <S title="13. Governing Law and Dispute Resolution">
       <p>These Terms shall be governed by and construed in accordance with the laws of the State of {STATE}, without regard to its conflict of law provisions. Any disputes arising under these Terms shall be resolved exclusively in the state or federal courts located in {STATE}. You agree to submit to the personal jurisdiction of such courts.</p>
     </S>
 
-    <S title="15. Modifications">
+    <S title="14. Modifications">
       <p>{ENTITY} reserves the right to modify these Terms at any time. We will notify you of material changes by posting the updated Terms on the Service with a revised "Last Updated" date. Your continued use of the Service after such changes constitutes acceptance of the modified Terms.</p>
     </S>
 
-    <S title="16. Contact Information">
+    <S title="15. Contact Information">
       <p>For questions about these Terms, contact us at: {EMAIL}</p>
       <p>{ENTITY}<br/>State of Incorporation: {STATE}<br/>Website: {SITE}</p>
+    </S>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════
+   AI TRANSPARENCY NOTICE
+   ═══════════════════════════════════════════════ */
+const AITransparencyContent = () => (
+  <div>
+    <p className="text-slate-400 text-[11px] mb-4">Last Updated: {UPDATED}</p>
+
+    <div className="bg-[#3DE8D9]/10 border border-[#3DE8D9]/30 rounded-xl p-4 mb-6">
+      <p className="text-[#3DE8D9] text-xs font-semibold mb-2">AI TRANSPARENCY DISCLOSURE</p>
+      <p className="text-slate-300 text-xs">In compliance with modern AI transparency standards, {ENTITY} provides the following disclosure regarding the use of artificial intelligence within the RISEDUAL AI platform.</p>
+    </div>
+
+    <S title="1. AI Models and Providers">
+      <p>This platform utilizes GPT-5.2 via Emergent Integrations as the primary AI inference engine. Additional models from Anthropic (Claude) and Google (Gemini) may be used for multi-model consensus analysis. All AI processing is performed by third-party model providers; {ENTITY} does not train, fine-tune, or host large language models internally.</p>
+    </S>
+
+    <S title="2. AI Signal Labeling">
+      <p>All AI-generated research, predictions, signals, and analysis are clearly labeled with an "AI Signal" tag or equivalent indicator throughout the platform. Users can always distinguish between raw market data from third-party providers and AI-generated interpretive content.</p>
+    </S>
+
+    <S title="3. Human Oversight">
+      <p>While our "4-Mind" adversarial AI architecture (Strategist, Auditor, Synthesizer, Memory) automates data monitoring and signal generation, all structural logic, prompt engineering, risk guardrails, and system architecture are designed and reviewed by humans. No AI-generated trade signal bypasses human-designed safety checks, including confidence thresholds, adversarial veto mechanisms, and toxic pattern detection.</p>
+    </S>
+
+    <S title="4. Impersonal Content Guarantee">
+      <p>RISEDUAL AI is designed to provide impersonal, broadcast-style market intelligence. The AI is strictly prohibited from generating personalized investment advice, individual portfolio recommendations, or user-specific "buy" or "sell" directives. All AI Market Signals are generated for and delivered to all Pro subscribers simultaneously, not tailored to any individual user's financial situation, risk tolerance, or investment objectives.</p>
+    </S>
+
+    <S title="5. Data Usage in AI Processing">
+      <p>When you interact with the AI assistant or request market analysis, your query text and relevant market context are sent to third-party AI model providers for inference. Chat conversations may be stored for session continuity. AI providers' data retention and privacy policies govern their handling of inference data. {ENTITY} does not use your personal trading data or portfolio information to train AI models.</p>
+    </S>
+
+    <S title="6. Limitations of AI">
+      <p>AI-generated content is probabilistic, not deterministic. AI models can produce inaccurate, incomplete, contradictory, or misleading outputs. The adversarial architecture reduces — but does not eliminate — false signals. AI predictions are based on historical patterns and available data, which may not reflect future market conditions. You should never rely solely on AI-generated content for trading or investment decisions.</p>
+    </S>
+
+    <S title="7. Nightly Retraining and Memory">
+      <p>The platform employs a Market Vector Memory System that stores historical market regime data and prediction outcomes. Nightly automated processes re-evaluate past AI predictions, classify failures, and re-tag toxic patterns to improve future signal quality. This process is fully automated but designed and monitored by human engineers.</p>
+    </S>
+
+    <S title="8. Contact">
+      <p>For questions about our AI practices, contact us at: {EMAIL}</p>
     </S>
   </div>
 );
@@ -270,6 +313,7 @@ const DisclaimerContent = () => (
    ═══════════════════════════════════════════════ */
 const CONTENT = {
   terms: TermsContent,
+  ai: AITransparencyContent,
   privacy: PrivacyContent,
   risk: RiskContent,
   disclaimer: DisclaimerContent,

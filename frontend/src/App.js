@@ -36,7 +36,6 @@ import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
 import BotsDashboard from './components/BotsDashboard';
-import SuccessFeeWidget from './components/SuccessFeeWidget';
 import LandingPage from './components/LandingPage';
 import LegalPages from './components/LegalPages';
 import ModalManager from './components/ModalManager';
@@ -148,12 +147,6 @@ function AppContent() {
         <div id="pnl-tracker" className="mb-6 sm:mb-8 animate-enter">
           <PnLTracker />
         </div>
-
-        {user && (
-          <div id="success-fee" className="mb-6 sm:mb-8 animate-enter">
-            <SuccessFeeWidget />
-          </div>
-        )}
 
         <div id="live-insights" className="mb-6 sm:mb-8 animate-enter">
           <LiveInsightsFeed />
