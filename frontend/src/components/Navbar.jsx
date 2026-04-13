@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -16,7 +16,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenAbout }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenHelp, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -128,6 +128,18 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           </DropdownMenu>
 
           <BrokerConnect />
+
+          {user && (
+            <div className="flex items-center gap-1">
+              <button onClick={onOpenBots} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/60 border border-slate-600/30 text-amber-400 hover:bg-slate-700 transition-colors" data-testid="nav-bots-shortcut">
+                <Bot className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-semibold hidden lg:inline">Bots</span>
+              </button>
+              <button onClick={onOpenHelp} className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-[#3DE8D9] hover:bg-slate-800/60 transition-colors" data-testid="nav-help-btn">
+                <HelpCircle className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {!isPro && (
             <Button variant="outline" className="bg-[#3DE8D9] text-white hover:bg-[#7AEEE0] border-0 font-semibold rounded-xl"
@@ -244,7 +256,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
           onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
           onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
-          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenAbout={onOpenAbout}
+          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenHelp={onOpenHelp} onOpenAbout={onOpenAbout}
           onLogin={onLogin} onRegister={onRegister}
         />
       )}

@@ -1,0 +1,57 @@
+{
+  "summary": "Iteration 114: Bots Dashboard + Help Center - All new features verified. Backend: 7/7 tests PASSED. Frontend: All UI components working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Console", "issues": ["React duplicate key warnings for 'bid-1.xx' - existing issue in OrderFlowPanel, not related to new features"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration114_bots_dashboard_help.py",
+    "/app/test_reports/pytest/iteration114_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_iteration114_bots_dashboard_help.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 tests passed)",
+    "frontend": "100% - All new features working"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None - tests create and cleanup their own data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 114 verified Bots Dashboard and Help Center features. BotsDashboard (data-testid='bots-dashboard') renders on main dashboard after WhaleRadar section, shows bot cards with toggles (data-testid='bots-dash-toggle-{id}'), trade counts, and 'Manage >' button (data-testid='bots-dashboard-manage'). HelpCenter is a full-screen modal with sidebar (data-testid='help-sidebar') with 8 sections and accordion content (data-testid='help-content'). Opened via '?' icon (data-testid='nav-help-btn') in navbar. Bots shortcut is data-testid='nav-bots-shortcut'. All 8 Help Center sections verified: Getting Started, Smart Orders, Risk Calculator, Market Scanner, Trading Bots, AI Features, Trading Tools, Market Data.",
+  "verified_features": {
+    "POST /api/auth/login with admin returns 200": "PASS",
+    "GET /api/bots returns bot list": "PASS",
+    "PATCH /api/bots/{id}/toggle works": "PASS",
+    "Frontend: Login → Dashboard loads with Bots Dashboard section visible": "PASS",
+    "Frontend: Bots Dashboard shows bot cards with ON/OFF toggles": "PASS",
+    "Frontend: Bots Dashboard has 'Manage >' button that opens full Trading Bots panel": "PASS",
+    "Frontend: Navbar has visible 'Bots' shortcut button": "PASS",
+    "Frontend: Navbar has '?' help icon button": "PASS",
+    "Frontend: Help Center opens with 8 sections": "PASS",
+    "Frontend: Help Center sidebar navigation works": "PASS",
+    "Frontend: Help Center accordion items expand to show content": "PASS",
+    "Frontend: Trading Bots section in Help Center explains all 3 bot types": "PASS",
+    "Regression: Smart Orders endpoint works": "PASS",
+    "Regression: Scanner strategies endpoint works": "PASS",
+    "Regression: Paper portfolio endpoint works": "PASS",
+    "Regression: User profile endpoint works": "PASS"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

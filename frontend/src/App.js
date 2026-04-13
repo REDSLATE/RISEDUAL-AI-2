@@ -35,6 +35,7 @@ import FearGreedGauge from './components/FearGreedGauge';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
+import BotsDashboard from './components/BotsDashboard';
 import LandingPage from './components/LandingPage';
 import LegalPages from './components/LegalPages';
 import ModalManager from './components/ModalManager';
@@ -68,6 +69,7 @@ function AppContent() {
     showRiskCalc, setShowRiskCalc,
     showScanner, setShowScanner,
     showBots, setShowBots,
+    showHelp, setShowHelp,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -96,7 +98,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenBots={() => setShowBots(true)} onOpenAbout={() => setShowAbout(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenBots={() => setShowBots(true)} onOpenHelp={() => setShowHelp(true)} onOpenAbout={() => setShowAbout(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -145,6 +147,11 @@ function AppContent() {
         <div id="whale-radar" className="mb-6 sm:mb-8 animate-enter">
           <WhaleRadar />
         </div>
+        {user && (
+          <div id="trading-bots" className="mb-6 sm:mb-8 animate-enter">
+            <BotsDashboard onOpenBots={() => setShowBots(true)} />
+          </div>
+        )}
 
 
         <div id="market-prediction" className="mb-6 sm:mb-8 animate-enter"><MarketPrediction /></div>
@@ -175,6 +182,7 @@ function AppContent() {
         showRiskCalc, setShowRiskCalc,
         showScanner, setShowScanner,
         showBots, setShowBots,
+        showHelp, setShowHelp,
         showAbout, setShowAbout, showLegal, setShowLegal,
         legalTab, setLegalTab, resetToken, setResetToken,
       }} />
