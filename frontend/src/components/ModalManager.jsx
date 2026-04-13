@@ -18,6 +18,7 @@ import TradingBotPanel from './TradingBotPanel';
 import HelpCenter from './HelpCenter';
 import DeveloperPortal from './DeveloperPortal';
 import CreditStore from './CreditStore';
+import FailureLoopDashboard from './FailureLoopDashboard';
 import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -43,6 +44,7 @@ const ModalManager = ({ user, modals }) => {
     showHelp, setShowHelp,
     showDeveloper, setShowDeveloper,
     showCredits, setShowCredits,
+    showFailureLoop, setShowFailureLoop,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -70,6 +72,7 @@ const ModalManager = ({ user, modals }) => {
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
       {showDeveloper && user && <DeveloperPortal onClose={() => setShowDeveloper(false)} />}
       {showCredits && user && <CreditStore onClose={() => setShowCredits(false)} onSubscribe={() => { setShowCredits(false); modals.setShowSubscription(true); }} />}
+      {showFailureLoop && user && <FailureLoopDashboard onClose={() => setShowFailureLoop(false)} />}
       {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
       {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
