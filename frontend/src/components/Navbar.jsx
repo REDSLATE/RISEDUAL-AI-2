@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -16,7 +16,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenHelp, onOpenAbout }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenHelp, onStartTour, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -138,6 +138,11 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
               <button onClick={onOpenHelp} className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-[#3DE8D9] hover:bg-slate-800/60 transition-colors" data-testid="nav-help-btn">
                 <HelpCircle className="w-4 h-4" />
               </button>
+              {onStartTour && (
+                <button onClick={onStartTour} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-slate-400 hover:text-[#3DE8D9] hover:bg-slate-800/60 transition-colors text-[10px]" data-testid="nav-tour-btn">
+                  <Rocket className="w-3 h-3" /> Tour
+                </button>
+              )}
             </div>
           )}
 

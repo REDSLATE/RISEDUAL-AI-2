@@ -39,6 +39,7 @@ import BotsDashboard from './components/BotsDashboard';
 import LandingPage from './components/LandingPage';
 import LegalPages from './components/LegalPages';
 import ModalManager from './components/ModalManager';
+import OnboardingTour, { STORAGE_KEY as TOUR_KEY } from './components/OnboardingTour';
 import useModals from './hooks/useModals';
 
 // Register service worker & force-update stale ones
@@ -78,6 +79,15 @@ function AppContent() {
   } = useModals();
   const { user } = useAuth();
   const [showWaitlist, setShowWaitlist] = React.useState(false);
+  const [tourActive, setTourActive] = React.useState(false);
+
+  // Auto-trigger tour on first login
+  React.useEffect(() => {
+    if (user && !localStorage.getItem(TOUR_KEY)) {
+      const timer = setTimeout(() => setTourActive(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
 
   // Show landing page for unauthenticated users
   if (!user) {
@@ -98,7 +108,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenBots={() => setShowBots(true)} onOpenHelp={() => setShowHelp(true)} onOpenAbout={() => setShowAbout(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenBots={() => setShowBots(true)} onOpenHelp={() => setShowHelp(true)} onStartTour={() => { localStorage.removeItem(TOUR_KEY); setTourActive(true); }} onOpenAbout={() => setShowAbout(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -170,6 +180,7 @@ function AppContent() {
       <MobileBottomNav onOpenChat={openChat} />
       <ScrollToTop />
       <Toaster />
+      <OnboardingTour active={tourActive} onComplete={() => setTourActive(false)} />
 
       <ModalManager user={user} modals={{
         paymentInfo, setPaymentInfo, showAuth, setShowAuth, authTab, setAuthTab,
