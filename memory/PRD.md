@@ -26,15 +26,15 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 - MongoDB collections: `billing_customers`, `billing_webhooks`
 - Env vars needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*`
 
-## Key Features
+## Key Features (All Completed)
 - AI Credit System with frozen dataclass plan config
 - Failure Loop (trade idea memory + review + pattern analysis + AI chat warnings)
 - AI Compliance Guardrails (impersonal, broadcast-style, no personalized advice)
 - Developer API with key management + rate limiting
 - Backend resilience: /api/ready health check, isolated startup, ErrorBoundary modals
+- Onboarding Tour with smart tooltip positioning (validated 2026-04-13)
 
 ## Backlog
-- Create real Stripe products/prices and configure IDs
-- Connect frontend CreditStore to Stripe checkout
-- Deploy to `risedual.ai` (2.0 launch after beta)
-- QuiverQuant re-test (insiders/lobbying/contracts)
+- P1: Configure Stripe webhook endpoint URL in Stripe Dashboard (production `/api/billing/webhook`)
+- P2: QuiverQuant API re-test (insiders/lobbying/contracts — external 500 errors)
+- P0-Future: Deploy to `risedual.ai` (2.0 launch after beta)
