@@ -602,6 +602,21 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - Period quick-select buttons (7d/14d/30d/90d) with refresh
 - **Verified (Iteration 107)**: 100% pass (17/17 backend, all frontend components)
 
+### Smart Orders System — Phase 1 (April 13, 2026)
+- **Backend**: `POST/GET/DELETE /api/smart-orders` — full smart order engine
+  - **Ladder Orders**: 2-10 entry levels, equal/weighted_bottom/weighted_top distribution
+  - **Trailing Stop-Loss**: Follows price with configurable %, emergency SL for crash protection
+  - **Trailing Take-Profit**: Up to 5 TP levels, each with trailing % option
+  - **Break-Even Protection**: Auto-moves SL to entry price after configurable TP trigger
+  - **3 Modes**: Paper (simulated), Live (owner-only broker execution), Simulate (preview with R:R calc)
+  - **Background Monitor**: APScheduler every 30s checks prices → triggers ladder fills, SL, TP
+  - Risk/Reward calculator built into simulate mode
+- **Frontend**: `SmartOrderPanel.jsx` — full-screen modal accessible from user dropdown menu
+  - Create tab: Symbol, BUY/SELL toggle, Qty, Mode selector, Entry Type, SL section (toggle + trailing), TP section (add up to 5 levels), Advanced (Ladder + Break-Even)
+  - Preview button: Shows projected risk/reward, R:R ratio, ladder leg breakdown
+  - Orders tab: Lists all smart orders with status badges (pending/filled/stopped/completed/cancelled)
+- **Verified (Iteration 108)**: 100% pass (17/17 backend, all frontend, no regressions)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
