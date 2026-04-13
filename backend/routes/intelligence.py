@@ -4,6 +4,7 @@ import os
 import logging
 
 from services.auth_helpers import get_current_user
+from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -16,10 +17,25 @@ def set_db(database):
     db = database
 
 
+async def _check_credits(user, action: str):
+    """Check and deduct credits. Raises HTTPException on insufficient credits."""
+    from services.credit_service import deduct_credits
+    user_id = str(user["_id"])
+    is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
+    result = await deduct_credits(user_id, action, is_pro)
+    if not result["allowed"]:
+        raise HTTPException(
+            status_code=402,
+            detail=result.get("error", "Not enough credits"),
+        )
+    return result
+
+
 @router.get("/intelligence/score/{symbol}")
 async def ai_score(symbol: str, request: Request):
     """AI Stock Score (1-10) with technical, fundamental, sentiment breakdown."""
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await _check_credits(user, "intelligence")
     try:
         from services.ai_intelligence_service import generate_ai_score
         api_key = os.environ.get("EMERGENT_LLM_KEY")
@@ -34,7 +50,8 @@ async def ai_score(symbol: str, request: Request):
 @router.get("/intelligence/patterns/{symbol}")
 async def pattern_recognition(symbol: str, request: Request):
     """Detect chart patterns on a ticker."""
-    await get_current_user(request)
+    user = await get_current_user(request)
+    await _check_credits(user, "intelligence")
     try:
         from services.ai_intelligence_service import detect_patterns
         api_key = os.environ.get("EMERGENT_LLM_KEY")
@@ -97,9 +114,8 @@ async def watchlist_intelligence(request: Request, refresh: bool = Query(False))
 async def war_room(symbol: str, request: Request):
     """AI War Room — unified command center analysis for a single stock."""
     user = await get_current_user(request)
-    # Pro check
-    if not user.get("is_pro") and not user.get("role") in ("admin", "owner"):
-        raise HTTPException(status_code=403, detail="War Room requires a Pro subscription")
+    # Credit check for War Room (Pro gets FREE)
+    await _check_credits(user, "war_room")
     try:
         from services.war_room_service import generate_war_room
         api_key = os.environ.get("EMERGENT_LLM_KEY")

@@ -291,67 +291,88 @@ const Pricing = ({ onGetStarted }) => (
   <section id="pricing" className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-pricing">
     <div className="max-w-4xl mx-auto px-4 sm:px-6">
       <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Simple, Transparent Pricing</h2>
-      <p className="text-sm text-slate-400 text-center mb-14">No hidden fees. No annual contracts. Cancel anytime.</p>
-      <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-        {/* RISEDUAL AI */}
-        <div className="relative p-6 rounded-xl border-2 border-teal-500/40 bg-slate-800/50">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[10px] text-white font-bold uppercase tracking-wider">
-            Recommended
+      <p className="text-sm text-slate-400 text-center mb-14">Start free with 50 AI credits. Buy more or go Pro.</p>
+      <div className="grid md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+        {/* Free */}
+        <div className="p-5 rounded-xl border border-slate-700/60 bg-slate-800/40">
+          <h3 className="text-sm font-bold text-white mb-1">Free</h3>
+          <div className="flex items-baseline gap-1 mb-3">
+            <span className="text-3xl font-bold text-white">50</span>
+            <span className="text-xs text-slate-400">credits on signup</span>
           </div>
-          <h3 className="text-sm font-bold text-white mb-1">RISEDUAL AI</h3>
-          <div className="flex items-baseline gap-1 mb-4">
+          <p className="text-[10px] text-slate-400 mb-4">Try the AI. Buy more when you need them.</p>
+          <ul className="space-y-2 mb-5">
+            {[
+              '50 credits on signup (free)',
+              'AI Chat (1 credit/msg)',
+              'Market Predictions (3 cr)',
+              'Buy credit packs anytime',
+            ].map(f => (
+              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
+                <Check className="w-3 h-3 text-slate-500 shrink-0 mt-0.5" />
+                {f}
+              </li>
+            ))}
+          </ul>
+          <button onClick={onGetStarted} className="w-full py-2 rounded-lg border border-slate-600 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors" data-testid="pricing-free-cta">
+            Get Started Free
+          </button>
+        </div>
+
+        {/* Pro */}
+        <div className="relative p-5 rounded-xl border-2 border-teal-500/40 bg-slate-800/50">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[10px] text-white font-bold uppercase tracking-wider">
+            Best Value
+          </div>
+          <h3 className="text-sm font-bold text-white mb-1">Pro</h3>
+          <div className="flex items-baseline gap-1 mb-3">
             <span className="text-3xl font-bold text-white">$55</span>
             <span className="text-xs text-slate-400">/month</span>
           </div>
-          <p className="text-[10px] text-slate-400 mb-5">No contract &middot; Cancel anytime &middot; Founding 100: $45/mo for life</p>
-          <ul className="space-y-2.5 mb-6">
+          <p className="text-[10px] text-slate-400 mb-4">5,000 credits/mo &middot; Founding 100: $45/mo for life</p>
+          <ul className="space-y-2 mb-5">
             {[
-              'Adversarial AI (Strategist + Auditor)',
-              'Nightly dual-signal retraining',
-              'GPT-5.2 post-mortem classification',
-              'Triple SSE real-time streams',
-              'Whale radar + sentiment analysis',
-              'Full War Room dashboard access',
-              '24/7 signal monitoring',
+              '5,000 AI credits/month',
+              'Unlimited AI Chat (FREE)',
+              'Unlimited War Room (FREE)',
+              'Full adversarial AI engine',
+              'Whale radar + sentiment',
+              'Buy extra credits at discount',
             ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-xs text-slate-300">
-                <Check className="w-3.5 h-3.5 text-teal-400 shrink-0 mt-0.5" />
+              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
+                <Check className="w-3 h-3 text-teal-400 shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}
           </ul>
-          <button onClick={onGetStarted} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-sm font-semibold hover:opacity-90 transition-opacity" data-testid="pricing-cta">
+          <button onClick={onGetStarted} className="w-full py-2 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-xs font-semibold hover:opacity-90 transition-opacity" data-testid="pricing-cta">
             Join the Waitlist
           </button>
         </div>
-        {/* Others */}
-        <div className="p-6 rounded-xl border border-slate-800/60 bg-slate-800/55 opacity-60">
-          <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-2"><span className="line-through decoration-red-500/60 decoration-1">The Old Guard</span></div>
-          <h3 className="text-sm font-bold text-slate-400 mb-1"><span className="line-through decoration-red-500 decoration-2">TradeAlgoGPT</span></h3>
-          <div className="flex items-baseline gap-1 mb-4">
-            <span className="text-3xl font-bold text-slate-400">$99-$416</span>
-            <span className="text-xs text-slate-400">/month</span>
+
+        {/* Credit Packs */}
+        <div className="p-5 rounded-xl border border-amber-500/20 bg-slate-800/40">
+          <h3 className="text-sm font-bold text-white mb-1">Credit Packs</h3>
+          <div className="flex items-baseline gap-1 mb-3">
+            <span className="text-lg font-bold text-amber-400">Pay As You Go</span>
           </div>
-          <p className="text-[10px] text-slate-400 mb-5">Annual contract required</p>
-          <ul className="space-y-2.5 mb-6">
+          <p className="text-[10px] text-slate-400 mb-4">Buy credits when you need them.</p>
+          <ul className="space-y-2 mb-5">
             {[
-              'Single-model black box',
-              'Static updates (no retraining)',
-              'No post-mortem analysis',
-              'Delayed Telegram signals',
-              'No whale tracking',
-              'Basic dashboard',
-              'Limited support',
+              'Starter: 100 credits — $5',
+              'Explorer: 500 credits — $20',
+              'Power: 1,500 credits — $45',
+              'Pro Top-Up: 2,000 cr — $15',
             ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-xs text-slate-400">
-                <X className="w-3.5 h-3.5 text-slate-700 shrink-0 mt-0.5" />
+              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
+                <Check className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}
           </ul>
-          <div className="w-full py-2.5 rounded-lg border border-slate-800 text-slate-300 text-sm font-medium text-center">
-            Annual Contract Only
-          </div>
+          <button onClick={onGetStarted} className="w-full py-2 rounded-lg border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/10 transition-colors" data-testid="pricing-credits-cta">
+            Browse Packs
+          </button>
         </div>
       </div>
     </div>

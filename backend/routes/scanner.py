@@ -150,7 +150,14 @@ async def delete_rule(rule_id: str, request: Request):
 @router.post("/validate")
 async def validate_scan_results(request: Request):
     """AI-validate scanner matches using Adversarial AI."""
-    await get_current_user(request)  # Auth check
+    user = await get_current_user(request)
+    # Deduct credits
+    from services.credit_service import deduct_credits
+    is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
+    cr = await deduct_credits(str(user["_id"]), "scanner_validate", is_pro)
+    if not cr["allowed"]:
+        raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+
     body = await request.json()
     matches = body.get("matches", [])
     strategy_name = body.get("strategy_name", "")

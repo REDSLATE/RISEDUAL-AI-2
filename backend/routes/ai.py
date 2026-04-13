@@ -109,6 +109,19 @@ async def chat(
         user = await get_optional_user(request)
         await _enforce_rate_limit(user)
 
+        # Deduct credits (Pro users get chat FREE)
+        if user:
+            from services.credit_service import deduct_credits
+            is_pro = user.get("subscription_status") == "pro"
+            credit_result = await deduct_credits(str(user["_id"]), "chat", is_pro)
+            if not credit_result["allowed"]:
+                return JSONResponse(status_code=402, content={
+                    "error": "insufficient_credits",
+                    "detail": credit_result.get("error", "Not enough credits"),
+                    "cost": credit_result["cost"],
+                    "remaining": credit_result["remaining"],
+                })
+
         image_base64 = None
         if image and image.filename:
             content = await image.read()

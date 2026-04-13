@@ -166,6 +166,13 @@ async def register(req: RegisterRequest, response: Response):
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
 
+    # Grant signup bonus credits
+    try:
+        from services.credit_service import grant_signup_bonus
+        await grant_signup_bonus(str(user_doc["_id"]))
+    except Exception as e:
+        logging.warning(f"Signup credit grant error: {e}")
+
     # Process referral code if provided
     if req.ref_code and req.ref_code.strip():
         try:

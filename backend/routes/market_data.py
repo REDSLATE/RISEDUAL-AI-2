@@ -186,6 +186,16 @@ async def get_real_estate_data() -> Dict[str, Any]:
 @router.get("/market/prediction")
 async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
+        # Deduct credits for prediction
+        from services.auth_helpers import get_optional_user
+        from services.credit_service import deduct_credits
+        user = await get_optional_user(request)
+        if user:
+            is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
+            cr = await deduct_credits(str(user["_id"]), "prediction", is_pro)
+            if not cr["allowed"]:
+                raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
         _enrich_prediction_metadata(prediction, scrape_results)
@@ -251,6 +261,16 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
     symbol = symbol.strip().upper()
     if not symbol or len(symbol) > 10:
         raise HTTPException(status_code=400, detail="Invalid symbol")
+
+    # Deduct credits
+    from services.auth_helpers import get_optional_user
+    from services.credit_service import deduct_credits
+    user = await get_optional_user(request)
+    if user:
+        is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
+        cr = await deduct_credits(str(user["_id"]), "prediction", is_pro)
+        if not cr["allowed"]:
+            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=False)

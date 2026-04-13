@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
 import MobileMenu from './MobileMenu';
 import UserBadge from './UserBadge';
+import CreditBadge from './CreditBadge';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DropdownMenu,
@@ -16,7 +17,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenHelp, onOpenDeveloper, onStartTour, onOpenAbout }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenBots, onOpenHelp, onOpenDeveloper, onOpenCredits, onStartTour, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -131,6 +132,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
 
           {user && (
             <div className="flex items-center gap-1">
+              <CreditBadge onClick={onOpenCredits} />
               <button onClick={onOpenBots} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/60 border border-slate-600/30 text-amber-400 hover:bg-slate-700 transition-colors" data-testid="nav-bots-shortcut">
                 <Bot className="w-3.5 h-3.5" />
                 <span className="text-[10px] font-semibold hidden lg:inline">Bots</span>
