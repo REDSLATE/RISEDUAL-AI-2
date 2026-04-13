@@ -38,6 +38,19 @@ def _mask_name(name: str) -> str:
     return " ".join(masked)
 
 
+def _get_badge_type(user: dict) -> str:
+    """Determine the badge type for a user. Priority: creator > founding > beta > pro > free."""
+    if user.get("role") in ("owner", "admin"):
+        return "creator"
+    if user.get("founding_member"):
+        return "founding"
+    if user.get("beta_access"):
+        return "beta"
+    if user.get("subscription_status") == "pro":
+        return "pro"
+    return "free"
+
+
 @router.get("/info")
 async def get_referral_info(request: Request):
     """Get user's referral code, link, and reward stats."""
@@ -241,10 +254,77 @@ async def get_referral_leaderboard():
         name = user.get("name", "") if user else ""
         if not name and user:
             name = user.get("email", "").split("@")[0]
-        leaderboard.append({
+        lb_entry = {
             "rank": i + 1,
             "name": _mask_name(name),
             "referrals": entry["referral_count"],
-        })
+            "user_id": str(entry["user_id"]),
+        }
+        # Add badge info
+        if user:
+            lb_entry["badge"] = _get_badge_type(user)
+        else:
+            lb_entry["badge"] = "free"
+        leaderboard.append(lb_entry)
 
     return {"leaderboard": leaderboard, "total_participants": await db.referral_codes.count_documents({})}
+
+
+
+@router.get("/profile/{user_id}")
+async def get_public_profile(user_id: str):
+    """Public endpoint: get a user's public profile with badge info."""
+    from bson import ObjectId
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        user = await db.users.find_one({"_id": user_id})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    name = user.get("name", "")
+    if not name:
+        name = user.get("email", "").split("@")[0]
+
+    badge = _get_badge_type(user)
+
+    # Referral stats
+    uid = str(user["_id"])
+    total_referrals = await db.referrals.count_documents({"referrer_id": uid})
+
+    # Leaderboard rank
+    pipeline = [
+        {"$match": {"status": "completed"}},
+        {"$group": {"_id": "$referrer_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    rank = None
+    idx = 1
+    async for doc in db.referrals.aggregate(pipeline):
+        if doc["_id"] == uid:
+            rank = idx
+            break
+        idx += 1
+
+    # Member since
+    created = user.get("created_at")
+    member_since = None
+    if created:
+        if isinstance(created, str):
+            member_since = created[:10]
+        elif hasattr(created, 'isoformat'):
+            member_since = created.isoformat()[:10]
+
+    return {
+        "user_id": uid,
+        "name": _mask_name(name),
+        "badge": badge,
+        "role": user.get("role", "user"),
+        "founding_member": user.get("founding_member", False),
+        "beta_access": user.get("beta_access", False),
+        "subscription_status": user.get("subscription_status", "free"),
+        "total_referrals": total_referrals,
+        "leaderboard_rank": rank,
+        "member_since": member_since,
+    }

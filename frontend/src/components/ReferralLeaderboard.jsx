@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Users, Medal, ChevronUp, Flame, Share2 } from 'lucide-react';
+import { Trophy, Users, Medal, ChevronUp, Flame, Share2, Crown, Sparkles, Zap, Shield } from 'lucide-react';
 import { Card } from './ui/card';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import SocialShareButtons from './SocialShareButtons';
+import PublicProfile from './PublicProfile';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -14,10 +15,18 @@ const RANK_STYLES = [
   { bg: 'from-orange-600/15 to-amber-700/10', border: 'border-orange-600/40', icon: 'text-orange-400', text: 'text-orange-300' },
 ];
 
+const BADGE_ICONS = {
+  creator: { icon: Crown, label: 'Creator', color: 'text-amber-300', bg: 'bg-amber-500/15' },
+  founding: { icon: Sparkles, label: 'F100', color: 'text-violet-300', bg: 'bg-violet-500/15' },
+  beta: { icon: Zap, label: 'Beta', color: 'text-[#3DE8D9]', bg: 'bg-[#3DE8D9]/15' },
+  pro: { icon: Shield, label: 'Pro', color: 'text-[#3DE8D9]', bg: 'bg-[#3DE8D9]/10' },
+};
+
 const ReferralLeaderboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refCode, setRefCode] = useState(null);
+  const [profileUserId, setProfileUserId] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -97,6 +106,7 @@ const ReferralLeaderboard = () => {
       <div className="space-y-2">
         {data.leaderboard.map((entry, i) => {
           const style = RANK_STYLES[i] || { bg: 'from-slate-800/50 to-slate-800/30', border: 'border-slate-400/30/30', icon: 'text-slate-400', text: 'text-slate-300' };
+          const badgeIcon = BADGE_ICONS[entry.badge];
           return (
             <div
               key={`lb-${entry.rank}`}
@@ -111,7 +121,18 @@ const ReferralLeaderboard = () => {
                     <span className="text-slate-300 text-xs font-bold">#{entry.rank}</span>
                   )}
                 </div>
-                <span className={`text-sm font-medium ${style.text}`}>{entry.name}</span>
+                <button
+                  onClick={() => entry.user_id && setProfileUserId(entry.user_id)}
+                  className={`text-sm font-medium ${style.text} hover:underline cursor-pointer`}
+                  data-testid={`leaderboard-name-${entry.rank}`}
+                >
+                  {entry.name}
+                </button>
+                {badgeIcon && (
+                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${badgeIcon.bg} ${badgeIcon.color}`} data-testid={`leaderboard-badge-${entry.rank}`}>
+                    <badgeIcon.icon className="w-2.5 h-2.5" /> {badgeIcon.label}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <ChevronUp className="w-3.5 h-3.5 text-lime-400" />
@@ -134,6 +155,10 @@ const ReferralLeaderboard = () => {
             <SocialShareButtons referralLink={`${window.location.origin}?ref=${refCode}`} compact />
           </div>
         </div>
+      )}
+
+      {profileUserId && (
+        <PublicProfile userId={profileUserId} onClose={() => setProfileUserId(null)} />
       )}
     </Card>
   );
