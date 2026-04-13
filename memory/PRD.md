@@ -6,37 +6,37 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 ## Architecture
 - **Frontend**: React + TailwindCSS + Shadcn UI (port 3000)
 - **Backend**: FastAPI + MongoDB via Motor Async (port 8001)
-- **Auth**: httpOnly secure cookies (JWT)
 - **AI**: Emergent LLM Key (GPT-5.2, Claude Sonnet 4.5, Gemini)
-- **Payments**: Stripe ($55/month Pro)
-- **Market Data**: Alpha Vantage 170+ tier (dual key rotation) + yfinance fallback, Finnhub
-- **Alternative Data**: QuiverQuant (congressional trading active)
+- **Payments**: Stripe (4 tiers)
+- **Market Data**: Alpha Vantage 170+ tier (dual key rotation), Finnhub, QuiverQuant
 
-## Pricing Model (Credit-Based)
-- **Signup**: 50 free credits
-- **Credit Packs**: Starter $5/100cr, Explorer $20/500cr, Power $45/1500cr
-- **Pro ($55/mo)**: 5,000 credits/month + unlimited AI Chat & War Room
-- **Pro Top-Up**: 2,000 credits/$15 (Pro subscribers only)
-- **Credit Costs**: Chat 1cr, War Room 5cr (Pro FREE), Hypothesis 3cr, Prediction 3cr, Intelligence 2cr, Scanner 2cr, API 1cr
-- **Founding 100**: Locked at $45/month for life
+## Pricing Model (4-Tier Credit System)
+| Plan | Price | Monthly Credits | Top-Up Rate | Unlimited Features |
+|------|-------|----------------|-------------|-------------------|
+| Free | $0 | 50 | $15/1K | None |
+| Starter | $19/mo | 3,000 | $12/1K | None |
+| Pro | $55/mo | 15,000 | $8/1K | AI Chat, War Room |
+| Pro Max | $99/mo | 50,000 | $5/1K | AI Chat, War Room |
+
+**Credit Costs**: Chat 1cr, War Room 5cr, Hypothesis 3cr, Prediction 3cr, Intelligence 2cr, Scanner 2cr, API 1cr
+**Founding 100**: Pro pricing locked for life
+**Top-Up Tiers**: 500, 1000, 2500, 5000 credits (price varies by plan)
 
 ## Core Features (All Implemented)
-- Real-time stock & crypto, Options Radar, Dark Pool
-- AI War Room, Intelligence Hub, Investment Hypothesis
-- Multimodal AI Chat + Voice, Persistent Memory
-- Market Predictions, Sector Heatmap, P&L Tracker
-- 8 Broker Integrations, Stripe Gateway
-- Admin Panel, Referral System + Badges + Public Profiles
-- Smart Orders, Risk Calculator, Market Scanner + AI Validation
-- Trading Bots, Help Center, Onboarding Tour
-- Developer API (key management, rate limiting, 7 endpoints)
-- AI Credit System (balance, packs, costs, history, deduction)
-- Investment Risk Disclosure (footer + Stripe checkout checkbox)
-- Legal: Terms, AI Transparency, Privacy, Risk, Disclaimer
+[Full feature list in previous PRD — all features operational]
+
+## Key Endpoints
+- `/api/credits/balance` — plan-aware balance with topup_rate
+- `/api/credits/plans` — all 4 plans
+- `/api/credits/topups` — plan-specific top-up pricing
+- `/api/credits/costs` — per-action costs with unlimited flags
+- `/api/credits/purchase` — buy top-ups (MOCKED — no Stripe yet)
+- `/api/credits/history` — usage event log
+- `/api/credits/matrix` — full public pricing matrix
 
 ## Backlog
-- Integrate Stripe checkout for credit pack purchases
-- Grant Pro monthly credits on subscription activation
-- Deploy to `risedual.ai` after beta testing (2.0 launch)
-- QuiverQuant: Re-test insiders/lobbying/contracts
-- Backend prompt guardrails for AI compliance
+- P0: Integrate Stripe for credit top-ups + subscription plans
+- P0: Grant monthly credits on subscription activation/renewal
+- P1: Deploy to `risedual.ai` (2.0 launch after beta)
+- P2: QuiverQuant re-test (insiders/lobbying/contracts)
+- P2: Backend AI prompt guardrails
