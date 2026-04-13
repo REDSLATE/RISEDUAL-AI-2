@@ -56,21 +56,24 @@ const CreditStore = ({ onClose, onSubscribe }) => {
   const buyTopup = async (topupId) => {
     setPurchasing(topupId);
     try {
-      const res = await authFetch(`${API}/credits/purchase`, {
+      const res = await authFetch(`${API}/billing/checkout/topup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topup_id: topupId }),
+        body: JSON.stringify({ pack: topupId }),
       });
       if (res.ok) {
         const data = await res.json();
-        toast.success(`+${data.credits_added.toLocaleString()} credits! Balance: ${data.new_balance.toLocaleString()}`);
-        fetchData();
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+        } else {
+          toast.error('No checkout URL returned');
+        }
       } else {
         const d = await res.json();
-        toast.error(d.detail || 'Purchase failed');
+        toast.error(d.detail || 'Checkout failed');
       }
     } catch (e) {
-      toast.error('Purchase error');
+      toast.error('Checkout error');
     } finally {
       setPurchasing(null);
     }

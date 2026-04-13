@@ -5,6 +5,7 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
 import logger from '../utils/logger';
+import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
@@ -28,24 +29,30 @@ const SubscriptionPricing = ({ onClose }) => {
   const handleStripeCheckout = async () => {
     setIsProcessing(true);
     try {
-      const originUrl = window.location.origin;
-      const response = await fetch(`${API}/subscription/create-checkout-session`, {
+      // Map UI plan selection to backend plan key
+      const planMap = { monthly: 'pro', annual: 'pro' };
+      const plan = planMap[selectedPlan] || 'pro';
+
+      const response = await authFetch(`${API}/billing/checkout/subscription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin_url: originUrl, plan: selectedPlan })
+        body: JSON.stringify({ plan })
       });
 
-      if (!response.ok) throw new Error('Failed to create checkout session');
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to create checkout session');
+      }
       const data = await response.json();
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
       } else {
         throw new Error('No checkout URL received');
       }
     } catch (error) {
       logger.error('Stripe checkout error:', error);
-      alert('Payment processing error. Please try again.');
+      toast.error(error.message || 'Payment processing error. Please try again.');
       setIsProcessing(false);
     }
   };
