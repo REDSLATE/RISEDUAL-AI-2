@@ -19,10 +19,10 @@ def set_db(database):
 
 async def _check_credits(user, action: str):
     """Check and deduct credits. Raises HTTPException on insufficient credits."""
-    from services.credit_service import deduct_credits
+    from services.credit_service import deduct_credits, get_user_plan
     user_id = str(user["_id"])
-    is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
-    result = await deduct_credits(user_id, action, is_pro)
+    plan_key = get_user_plan(user)
+    result = await deduct_credits(user_id, action, plan_key)
     if not result["allowed"]:
         raise HTTPException(
             status_code=402,

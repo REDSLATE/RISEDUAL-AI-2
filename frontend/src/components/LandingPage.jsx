@@ -289,94 +289,101 @@ const Features = () => {
 /* ─── Pricing ─── */
 const Pricing = ({ onGetStarted }) => (
   <section id="pricing" className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-pricing">
-    <div className="max-w-4xl mx-auto px-4 sm:px-6">
-      <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Simple, Transparent Pricing</h2>
-      <p className="text-sm text-slate-400 text-center mb-14">Start free with 50 AI credits. Buy more or go Pro.</p>
-      <div className="grid md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
+      <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-2">Trade smarter with AI access built into every plan.</h2>
+      <p className="text-xs text-slate-400 text-center mb-10 max-w-xl mx-auto">Every account includes AI access. Pro members get unlimited AI Chat and unlimited War Room, while advanced AI features use credits across all plans.</p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
         {/* Free */}
-        <div className="p-5 rounded-xl border border-slate-700/60 bg-slate-800/40">
-          <h3 className="text-sm font-bold text-white mb-1">Free</h3>
-          <div className="flex items-baseline gap-1 mb-3">
-            <span className="text-3xl font-bold text-white">50</span>
-            <span className="text-xs text-slate-400">credits on signup</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mb-4">Try the AI. Buy more when you need them.</p>
-          <ul className="space-y-2 mb-5">
-            {[
-              '50 credits on signup (free)',
-              'AI Chat (1 credit/msg)',
-              'Market Predictions (3 cr)',
-              'Buy credit packs anytime',
-            ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
-                <Check className="w-3 h-3 text-slate-500 shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
-          <button onClick={onGetStarted} className="w-full py-2 rounded-lg border border-slate-600 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors" data-testid="pricing-free-cta">
-            Get Started Free
-          </button>
-        </div>
-
+        <PlanCard
+          name="Free" price="$0" period="/month" credits="50" creditsLabel="AI credits"
+          desc="Great for exploring the platform and testing the AI workflow."
+          features={['50 AI credits included', 'AI Chat (1 cr/msg)', 'Buy more credits anytime', 'Best for first-time traders']}
+          cta="Start free" ctaStyle="border border-slate-600 text-slate-300 hover:bg-slate-700"
+          onCta={onGetStarted} testId="pricing-free-cta"
+        />
+        {/* Starter */}
+        <PlanCard
+          name="Starter" price="$19" period="/month" credits="3,000" creditsLabel="AI credits"
+          desc="Good for active users who want more AI access."
+          features={['3,000 AI credits/month', 'Lower top-up rates ($12/1K)', 'AI Chat (1 cr/msg)', 'Best for regular research']}
+          cta="Choose Starter" ctaStyle="border border-[#3DE8D9]/30 text-[#3DE8D9] hover:bg-[#3DE8D9]/10"
+          onCta={onGetStarted} testId="pricing-starter-cta"
+        />
         {/* Pro */}
-        <div className="relative p-5 rounded-xl border-2 border-teal-500/40 bg-slate-800/50">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[10px] text-white font-bold uppercase tracking-wider">
-            Best Value
-          </div>
-          <h3 className="text-sm font-bold text-white mb-1">Pro</h3>
-          <div className="flex items-baseline gap-1 mb-3">
-            <span className="text-3xl font-bold text-white">$55</span>
-            <span className="text-xs text-slate-400">/month</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mb-4">5,000 credits/mo &middot; Founding 100: $45/mo for life</p>
-          <ul className="space-y-2 mb-5">
-            {[
-              '5,000 AI credits/month',
-              'Unlimited AI Chat (FREE)',
-              'Unlimited War Room (FREE)',
-              'Full adversarial AI engine',
-              'Whale radar + sentiment',
-              'Buy extra credits at discount',
-            ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
-                <Check className="w-3 h-3 text-teal-400 shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
-          <button onClick={onGetStarted} className="w-full py-2 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-xs font-semibold hover:opacity-90 transition-opacity" data-testid="pricing-cta">
-            Join the Waitlist
-          </button>
-        </div>
+        <PlanCard
+          name="Pro" price="$55" period="/month" credits="15,000" creditsLabel="AI credits"
+          desc="Best overall value for serious users."
+          badge="Most Popular"
+          features={['15,000 AI credits/month', 'Unlimited AI Chat', 'Unlimited War Room', 'Better top-up rates ($8/1K)', 'Full adversarial AI engine']}
+          cta="Go Pro" ctaStyle="bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:opacity-90"
+          highlight onCta={onGetStarted} testId="pricing-cta"
+        />
+        {/* Pro Max */}
+        <PlanCard
+          name="Pro Max" price="$99" period="/month" credits="50,000" creditsLabel="AI credits"
+          desc="Built for high-volume AI and API usage."
+          features={['50,000 AI credits/month', 'Unlimited AI Chat', 'Unlimited War Room', 'Lowest top-up rates ($5/1K)', 'Best for power traders']}
+          cta="Get Pro Max" ctaStyle="border border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+          onCta={onGetStarted} testId="pricing-promax-cta"
+        />
+      </div>
 
-        {/* Credit Packs */}
-        <div className="p-5 rounded-xl border border-amber-500/20 bg-slate-800/40">
-          <h3 className="text-sm font-bold text-white mb-1">Credit Packs</h3>
-          <div className="flex items-baseline gap-1 mb-3">
-            <span className="text-lg font-bold text-amber-400">Pay As You Go</span>
-          </div>
-          <p className="text-[10px] text-slate-400 mb-4">Buy credits when you need them.</p>
-          <ul className="space-y-2 mb-5">
-            {[
-              'Starter: 100 credits — $5',
-              'Explorer: 500 credits — $20',
-              'Power: 1,500 credits — $45',
-              'Pro Top-Up: 2,000 cr — $15',
-            ].map(f => (
-              <li key={f} className="flex items-start gap-2 text-[10px] text-slate-300">
-                <Check className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
-          <button onClick={onGetStarted} className="w-full py-2 rounded-lg border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/10 transition-colors" data-testid="pricing-credits-cta">
-            Browse Packs
-          </button>
+      {/* Why Pro */}
+      <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 mb-8 max-w-2xl mx-auto">
+        <h3 className="text-white text-xs font-bold mb-2">Why Pro stands out</h3>
+        <p className="text-slate-400 text-[10px] leading-relaxed">If you use AI Chat and War Room often, Pro quickly becomes the best value because your most frequent workflows no longer consume credits. Pro includes unlimited Chat and War Room. Advanced AI actions use credits on every plan.</p>
+      </div>
+
+      {/* How pricing works */}
+      <div className="max-w-2xl mx-auto">
+        <h3 className="text-white text-xs font-bold mb-3 text-center">How pricing works</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px]">
+          {[
+            'AI access is available on every plan',
+            'Free, Starter, Pro, and Pro Max all include credits',
+            'Pro and Pro Max include unlimited AI Chat and War Room',
+            'Advanced AI actions still use credits on every plan',
+            'Buy extra credits anytime — higher plans get better rates',
+            'Founding 100 members get Pro pricing for life',
+          ].map(t => (
+            <div key={t} className="flex items-start gap-1.5 bg-slate-800/30 rounded-lg p-2">
+              <Check className="w-3 h-3 text-[#3DE8D9] shrink-0 mt-0.5" />
+              <span className="text-slate-400">{t}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   </section>
+);
+
+const PlanCard = ({ name, price, period, credits, creditsLabel, desc, badge, features, cta, ctaStyle, highlight, onCta, testId }) => (
+  <div className={`relative p-5 rounded-xl ${highlight ? 'border-2 border-teal-500/40 bg-slate-800/60' : 'border border-slate-700/40 bg-slate-800/30'}`}>
+    {badge && (
+      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[9px] text-white font-bold uppercase tracking-wider whitespace-nowrap">
+        {badge}
+      </div>
+    )}
+    <h3 className="text-sm font-bold text-white mb-1">{name}</h3>
+    <div className="flex items-baseline gap-1 mb-1">
+      <span className="text-2xl font-bold text-white">{price}</span>
+      <span className="text-[10px] text-slate-400">{period}</span>
+    </div>
+    <p className="text-amber-400 text-[10px] font-semibold mb-2">{credits} {creditsLabel}</p>
+    <p className="text-slate-400 text-[10px] mb-4 leading-relaxed">{desc}</p>
+    <ul className="space-y-1.5 mb-4">
+      {features.map(f => (
+        <li key={f} className="flex items-start gap-1.5 text-[10px] text-slate-300">
+          <Check className="w-3 h-3 text-teal-400 shrink-0 mt-0.5" />
+          {f}
+        </li>
+      ))}
+    </ul>
+    <button onClick={onCta} className={`w-full py-2 rounded-lg text-xs font-semibold transition-all ${ctaStyle}`} data-testid={testId}>
+      {cta}
+    </button>
+  </div>
 );
 
 /* ─── Testimonials ─── */
@@ -434,7 +441,10 @@ const FAQ = () => {
   const items = [
     { q: 'What makes RISEDUAL AI different from other trading signals?', a: 'RISEDUAL AI uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
     { q: 'How does the nightly retraining work?', a: 'Every night, GPT-5.2 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
-    { q: 'Do I need to sign an annual contract?', a: 'No. RISEDUAL AI is $55/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure. Founding 100 members are locked in at $45/month for life.' },
+    { q: 'Do I need to sign an annual contract?', a: 'No. Plans start at $0 (Free), $19 (Starter), $55 (Pro), or $99 (Pro Max) per month. No contracts. Cancel anytime from your dashboard. Founding 100 members are locked in at Pro pricing for life.' },
+    { q: 'What happens when I run out of credits?', a: 'You can buy more credits anytime. Unlimited AI Chat and War Room remain available for Pro and Pro Max members even at zero credits. Higher plans get better top-up rates.' },
+    { q: 'Do credits expire?', a: 'Credits reset monthly with your plan renewal. Unused credits do not roll over. You can always buy top-ups if you need more mid-cycle.' },
+    { q: 'Why are some features unlimited and others credit-based?', a: 'Chat and War Room are core daily workflows, so they are bundled into Pro and Pro Max as unlimited. Heavier AI actions like Hypothesis and Predictions still use credits so pricing stays sustainable and flexible.' },
     { q: 'What markets and assets do you cover?', a: 'US stocks (S&P 500, NASDAQ), major cryptocurrencies (BTC, ETH, SOL, etc.), options flow, dark pool data, and macro indicators including sector heatmaps and congressional trading activity.' },
     { q: 'Is there a free trial?', a: 'Yes. You can start with a 7-day free trial that gives you full access to the War Room, AI agents, Whale Radar, and all real-time data streams.' },
     { q: 'How accurate are the signals?', a: 'Our adversarial system has achieved a verified 68-73% win rate across backtested periods. The Auditor\'s veto mechanism kills approximately 40% of signals before they reach you, significantly reducing false positives.' },

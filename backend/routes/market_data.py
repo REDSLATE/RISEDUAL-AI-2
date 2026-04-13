@@ -188,11 +188,11 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
         # Deduct credits for prediction
         from services.auth_helpers import get_optional_user
-        from services.credit_service import deduct_credits
+        from services.credit_service import deduct_credits, get_user_plan
         user = await get_optional_user(request)
         if user:
-            is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
-            cr = await deduct_credits(str(user["_id"]), "prediction", is_pro)
+            plan_key = get_user_plan(user)
+            cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
             if not cr["allowed"]:
                 raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
@@ -264,11 +264,11 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
 
     # Deduct credits
     from services.auth_helpers import get_optional_user
-    from services.credit_service import deduct_credits
+    from services.credit_service import deduct_credits, get_user_plan
     user = await get_optional_user(request)
     if user:
-        is_pro = user.get("subscription_status") == "pro" or user.get("role") in ("admin", "owner")
-        cr = await deduct_credits(str(user["_id"]), "prediction", is_pro)
+        plan_key = get_user_plan(user)
+        cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
         if not cr["allowed"]:
             raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
