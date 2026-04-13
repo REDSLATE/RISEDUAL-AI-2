@@ -5,7 +5,7 @@ const ENTITY = 'RISEDUAL CORPORATION';
 const STATE = 'Florida';
 const SITE = 'risedual.ai';
 const EMAIL = 'legal@risedual.ai';
-const PRICE = '$45';
+const PRICE = '$55';
 const UPDATED = 'April 13, 2026';
 
 const TABS = [

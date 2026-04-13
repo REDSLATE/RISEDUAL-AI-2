@@ -72,7 +72,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
       <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
         RISEDUAL AI deploys dual models&mdash;<span className="text-teal-400 font-medium">Strategist</span> generates signals,{' '}
         <span className="text-cyan-400 font-medium">Auditor</span> kills bad ones. Triple SSE streams, nightly retraining, GPT-5.2 post-mortems.{' '}
-        <span className="text-white font-semibold">$45/month.</span> No contracts.
+        <span className="text-white font-semibold">$55/month.</span> No contracts.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-cta">
@@ -84,7 +84,7 @@ const Hero = ({ onGetStarted, onScroll }) => (
       </div>
       <div className="grid grid-cols-3 gap-6 max-w-md mx-auto">
         {[
-          { val: '$45', label: 'Per Month' },
+          { val: '$55', label: 'Per Month' },
           { val: '2X AI', label: 'Adversarial System' },
           { val: '24/7', label: 'Real-Time Data' },
         ].map(s => (
@@ -205,7 +205,7 @@ const HowItWorks = () => (
 /* ─── Comparison ─── */
 const Comparison = () => {
   const rows = [
-    { spec: 'Monthly Cost', us: '$45', them: '$99 - $416' },
+    { spec: 'Monthly Cost', us: '$55', them: '$99 - $416' },
     { spec: 'Contract Terms', us: 'No Contract', them: 'Annual Only' },
     { spec: 'AI Architecture', us: 'Adversarial (Strategist vs. Auditor)', them: 'Single-Model Black Box' },
     { spec: 'Self-Correction', us: 'Nightly Dual-Signal Retraining', them: 'Static Updates' },
@@ -243,7 +243,7 @@ const Comparison = () => {
           {[
             { icon: <Shield className="w-4 h-4 text-teal-400" />, title: 'The Auditor Veto', desc: 'Hunts for TECH_FAKEOUT and LIQUIDITY_GAP to kill bad trades.' },
             { icon: <Brain className="w-4 h-4 text-cyan-400" />, title: 'Pruned Memories', desc: 'Prunes toxic data nightly in ChromaDB for evolving accuracy.' },
-            { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $45, get full RISEDUAL AI War Room access in under 60 seconds.' },
+            { icon: <Users className="w-4 h-4 text-teal-400" />, title: 'Zero Sales Calls', desc: 'Pay $55, get full RISEDUAL AI War Room access in under 60 seconds.' },
           ].map(c => (
             <div key={c.title} className="p-4 rounded-lg border border-slate-800/40 bg-slate-800/55">
               <div className="mb-2">{c.icon}</div>
@@ -300,10 +300,10 @@ const Pricing = ({ onGetStarted }) => (
           </div>
           <h3 className="text-sm font-bold text-white mb-1">RISEDUAL AI</h3>
           <div className="flex items-baseline gap-1 mb-4">
-            <span className="text-3xl font-bold text-white">$45</span>
+            <span className="text-3xl font-bold text-white">$55</span>
             <span className="text-xs text-slate-400">/month</span>
           </div>
-          <p className="text-[10px] text-slate-400 mb-5">No contract &middot; Cancel anytime</p>
+          <p className="text-[10px] text-slate-400 mb-5">No contract &middot; Cancel anytime &middot; Founding 100: $45/mo for life</p>
           <ul className="space-y-2.5 mb-6">
             {[
               'Adversarial AI (Strategist + Auditor)',
@@ -413,7 +413,7 @@ const FAQ = () => {
   const items = [
     { q: 'What makes RISEDUAL AI different from other trading signals?', a: 'RISEDUAL AI uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
     { q: 'How does the nightly retraining work?', a: 'Every night, GPT-5.2 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
-    { q: 'Do I need to sign an annual contract?', a: 'No. RISEDUAL AI is $45/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure.' },
+    { q: 'Do I need to sign an annual contract?', a: 'No. RISEDUAL AI is $55/month with no contract. Cancel anytime from your dashboard. No hidden fees, no sales calls, no pressure. Founding 100 members are locked in at $45/month for life.' },
     { q: 'What markets and assets do you cover?', a: 'US stocks (S&P 500, NASDAQ), major cryptocurrencies (BTC, ETH, SOL, etc.), options flow, dark pool data, and macro indicators including sector heatmaps and congressional trading activity.' },
     { q: 'Is there a free trial?', a: 'Yes. You can start with a 7-day free trial that gives you full access to the War Room, AI agents, Whale Radar, and all real-time data streams.' },
     { q: 'How accurate are the signals?', a: 'Our adversarial system has achieved a verified 68-73% win rate across backtested periods. The Auditor\'s veto mechanism kills approximately 40% of signals before they reach you, significantly reducing false positives.' },
@@ -456,7 +456,7 @@ const CTA = ({ onGetStarted }) => (
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">Adversarial AI</span>?
       </h2>
       <p className="text-sm text-slate-400 mb-10 max-w-xl mx-auto">
-        Join hundreds of traders who stopped paying $99-$416/month for single-model black boxes. Get the full War Room for $45.
+        Join hundreds of traders who stopped paying $99-$416/month for single-model black boxes. Get the full War Room for $55.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="cta-final">

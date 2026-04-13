@@ -93,7 +93,7 @@ const SubscriptionPricing = ({ onClose }) => {
                 <span className="text-white font-semibold text-lg">Monthly</span>
               </div>
               <div className="mb-1">
-                <span className="text-4xl font-bold text-white">$45</span>
+                <span className="text-4xl font-bold text-white">$55</span>
                 <span className="text-slate-300 text-sm">/month</span>
               </div>
               <p className="text-slate-300 text-xs">Billed monthly. Cancel anytime.</p>
@@ -122,11 +122,11 @@ const SubscriptionPricing = ({ onClose }) => {
                 <Star className="w-4 h-4 text-yellow-500" />
               </div>
               <div className="mb-1">
-                <span className="text-4xl font-bold text-white">$40.50</span>
+                <span className="text-4xl font-bold text-white">$49.50</span>
                 <span className="text-slate-300 text-sm">/month</span>
               </div>
               <p className="text-slate-300 text-xs">
-                $486/year <span className="line-through text-slate-400">$540</span>
+                $594/year <span className="line-through text-slate-400">$660</span>
               </p>
             </Card>
           </div>
@@ -168,8 +168,8 @@ const SubscriptionPricing = ({ onClose }) => {
               {isProcessing
                 ? 'Redirecting to Stripe...'
                 : selectedPlan === 'annual'
-                  ? 'Subscribe Now — $486/year'
-                  : 'Subscribe Now — $45/month'
+                  ? 'Subscribe Now — $594/year'
+                  : 'Subscribe Now — $55/month'
               }
             </Button>
             <div className="flex items-center justify-center gap-2 text-slate-300 text-xs">

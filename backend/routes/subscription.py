@@ -29,7 +29,7 @@ async def get_plans():
             {
                 "id": "monthly",
                 "name": "Pro Monthly",
-                "price": 45.00,
+                "price": 55.00,
                 "currency": "usd",
                 "interval": "month",
                 "features": [
@@ -44,13 +44,13 @@ async def get_plans():
             {
                 "id": "annual",
                 "name": "Pro Annual",
-                "price": 486.00,
+                "price": 594.00,
                 "currency": "usd",
                 "interval": "year",
-                "savings": "Save $54/year",
+                "savings": "Save $66/year",
                 "features": [
                     "Everything in Pro Monthly",
-                    "2 months free ($54 savings)",
+                    "2 months free ($66 savings)",
                 ],
             },
         ]
@@ -66,7 +66,7 @@ async def create_checkout_session(request: CheckoutRequest, http_request: Reques
         webhook_url = f"{host_url}/api/webhook/stripe"
 
         plan = request.plan if request.plan in ("monthly", "annual") else "monthly"
-        amount = 486.00 if plan == "annual" else 45.00
+        amount = 594.00 if plan == "annual" else 55.00
 
         metadata = {"plan": f"risedualai_pro_{plan}", "source": "web_checkout"}
 
