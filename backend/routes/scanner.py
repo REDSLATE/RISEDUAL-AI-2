@@ -78,3 +78,67 @@ async def quick_scan(strategy_id: str, request: Request):
         "scanned": results.get("scanned", 0),
         "scanned_at": results.get("scanned_at"),
     }
+
+
+
+@router.get("/indicators")
+async def list_indicators():
+    """List all available indicators for the custom rule builder."""
+    from services.scanner_service import AVAILABLE_INDICATORS, OPERATORS
+    return {
+        "indicators": [{"id": iid, **info} for iid, info in AVAILABLE_INDICATORS.items()],
+        "operators": {k: [{"id": o["id"], "label": o["label"]} for o in v] for k, v in OPERATORS.items()},
+    }
+
+
+@router.post("/custom/run")
+async def run_custom_scan(request: Request):
+    """Run a custom rule against symbols."""
+    user = await get_current_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+
+    body = await request.json()
+    rule = body.get("rule")
+    if not rule or not rule.get("conditions"):
+        raise HTTPException(status_code=400, detail="Rule must have at least one condition")
+
+    from services.scanner_service import evaluate_custom_rule, get_user_scan_symbols
+    symbols = body.get("symbols") or await get_user_scan_symbols(user_id)
+    if len(symbols) > 50:
+        symbols = symbols[:50]
+
+    results = await evaluate_custom_rule(symbols, rule)
+    return results
+
+
+@router.post("/custom/save")
+async def save_rule(request: Request):
+    """Save a custom scanning rule."""
+    user = await get_current_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+
+    body = await request.json()
+    from services.scanner_service import save_custom_rule
+    result = await save_custom_rule(user_id, body)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/custom/rules")
+async def list_rules(request: Request):
+    """List user's saved custom rules."""
+    user = await get_current_user(request)
+    from services.scanner_service import get_user_rules
+    return await get_user_rules(user["_id"])
+
+
+@router.delete("/custom/rules/{rule_id}")
+async def delete_rule(rule_id: str, request: Request):
+    """Delete a custom rule."""
+    user = await get_current_user(request)
+    from services.scanner_service import delete_custom_rule
+    result = await delete_custom_rule(user["_id"], rule_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

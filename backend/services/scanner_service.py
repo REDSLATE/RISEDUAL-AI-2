@@ -257,3 +257,250 @@ async def get_user_scan_symbols(user_id: str) -> List[str]:
         if watchlist and watchlist.get("tickers"):
             symbols.update(t.upper() for t in watchlist["tickers"])
     return sorted(symbols)
+
+
+
+# ── Custom Rule Engine ──
+
+AVAILABLE_INDICATORS = {
+    "rsi": {"name": "RSI (14)", "type": "number", "range": [0, 100]},
+    "rsi_7": {"name": "RSI (7)", "type": "number", "range": [0, 100]},
+    "macd": {"name": "MACD Line", "type": "number", "range": [-50, 50]},
+    "macd_signal": {"name": "MACD Signal", "type": "number", "range": [-50, 50]},
+    "macd_histogram": {"name": "MACD Histogram", "type": "number", "range": [-10, 10]},
+    "bb_upper": {"name": "Bollinger Upper", "type": "price"},
+    "bb_lower": {"name": "Bollinger Lower", "type": "price"},
+    "bb_bandwidth": {"name": "Bollinger Bandwidth %", "type": "number", "range": [0, 50]},
+    "sma_20": {"name": "SMA 20", "type": "price"},
+    "sma_50": {"name": "SMA 50", "type": "price"},
+    "sma_200": {"name": "SMA 200", "type": "price"},
+    "ema_9": {"name": "EMA 9", "type": "price"},
+    "ema_21": {"name": "EMA 21", "type": "price"},
+    "ema_50": {"name": "EMA 50", "type": "price"},
+    "price": {"name": "Current Price", "type": "price"},
+    "volume_ratio": {"name": "Volume / 20d Avg", "type": "number", "range": [0, 20]},
+    "pct_from_high": {"name": "% From 52w High", "type": "number", "range": [-100, 100]},
+    "pct_from_low": {"name": "% Above 52w Low", "type": "number", "range": [0, 500]},
+    "atr": {"name": "ATR (14)", "type": "number", "range": [0, 500]},
+    "change_1d": {"name": "1-Day Change %", "type": "number", "range": [-30, 30]},
+    "change_5d": {"name": "5-Day Change %", "type": "number", "range": [-50, 50]},
+    "change_20d": {"name": "20-Day Change %", "type": "number", "range": [-80, 80]},
+    "trend": {"name": "Trend", "type": "category", "values": ["strong_bullish", "bullish", "neutral", "bearish"]},
+}
+
+OPERATORS = {
+    "number": [
+        {"id": "gt", "label": ">", "fn": lambda a, b: a > b},
+        {"id": "gte", "label": ">=", "fn": lambda a, b: a >= b},
+        {"id": "lt", "label": "<", "fn": lambda a, b: a < b},
+        {"id": "lte", "label": "<=", "fn": lambda a, b: a <= b},
+        {"id": "eq", "label": "=", "fn": lambda a, b: abs(a - b) < 0.01},
+        {"id": "between", "label": "between", "fn": lambda a, b: b[0] <= a <= b[1] if isinstance(b, (list, tuple)) else False},
+    ],
+    "price": [
+        {"id": "above", "label": "above", "fn": lambda a, b: a > b},
+        {"id": "below", "label": "below", "fn": lambda a, b: a < b},
+        {"id": "crosses_above", "label": "crosses above", "fn": lambda a, b: a > b},
+        {"id": "crosses_below", "label": "crosses below", "fn": lambda a, b: a < b},
+    ],
+    "category": [
+        {"id": "is", "label": "is", "fn": lambda a, b: a == b},
+        {"id": "is_not", "label": "is not", "fn": lambda a, b: a != b},
+    ],
+}
+
+
+def _compute_extended_indicators(prices: List[Dict]) -> Dict:
+    """Compute all available indicators for the custom rule engine."""
+    base = _compute_technicals(prices)
+    if not base:
+        return {}
+
+    closes = np.array([p["close"] for p in prices])
+    current = float(closes[-1])
+
+    # Extended indicators
+    indicators = {
+        "price": current,
+        "rsi": base.get("rsi", 50),
+        "macd": base.get("macd", 0),
+        "bb_upper": base.get("bb_upper", 0),
+        "bb_lower": base.get("bb_lower", 0),
+        "sma_20": base.get("sma_20", 0),
+        "sma_50": base.get("sma_50", 0),
+        "sma_200": base.get("sma_200", 0),
+        "volume_ratio": base.get("vol_ratio", 1),
+        "pct_from_high": base.get("pct_from_high", 0),
+        "pct_from_low": base.get("pct_from_low", 0),
+        "trend": base.get("trend", "neutral"),
+    }
+
+    # RSI 7
+    if len(closes) >= 7:
+        indicators["rsi_7"] = round(_calc_rsi(closes, 7), 1)
+
+    # EMAs
+    if len(closes) >= 9:
+        indicators["ema_9"] = round(_ema(closes, 9), 4)
+    if len(closes) >= 21:
+        indicators["ema_21"] = round(_ema(closes, 21), 4)
+    if len(closes) >= 50:
+        indicators["ema_50"] = round(_ema(closes, 50), 4)
+
+    # MACD signal & histogram
+    macd_line, signal, histogram = _calc_macd_full(closes)
+    indicators["macd_signal"] = round(signal, 4)
+    indicators["macd_histogram"] = round(histogram, 4)
+
+    # Bollinger bandwidth
+    bb_mid, bb_upper, bb_lower = _calc_bollinger(closes)
+    indicators["bb_bandwidth"] = round((bb_upper - bb_lower) / bb_mid * 100, 2) if bb_mid > 0 else 0
+
+    # ATR (14)
+    if len(prices) >= 15:
+        trs = []
+        for i in range(-14, 0):
+            h = prices[i]["high"]
+            lo = prices[i]["low"]
+            pc = prices[i - 1]["close"]
+            trs.append(max(h - lo, abs(h - pc), abs(lo - pc)))
+        indicators["atr"] = round(np.mean(trs), 4)
+
+    # Price changes
+    if len(closes) >= 2:
+        indicators["change_1d"] = round((current - float(closes[-2])) / float(closes[-2]) * 100, 2)
+    if len(closes) >= 6:
+        indicators["change_5d"] = round((current - float(closes[-6])) / float(closes[-6]) * 100, 2)
+    if len(closes) >= 21:
+        indicators["change_20d"] = round((current - float(closes[-21])) / float(closes[-21]) * 100, 2)
+
+    return indicators
+
+
+def _evaluate_condition(indicator_values: Dict, condition: Dict) -> bool:
+    """Evaluate a single condition against indicator values."""
+    ind_id = condition.get("indicator")
+    op_id = condition.get("operator")
+    value = condition.get("value")
+
+    if ind_id not in indicator_values:
+        return False
+
+    actual = indicator_values[ind_id]
+    ind_type = AVAILABLE_INDICATORS.get(ind_id, {}).get("type", "number")
+    op_list = OPERATORS.get(ind_type, [])
+    op = next((o for o in op_list if o["id"] == op_id), None)
+    if not op:
+        return False
+
+    try:
+        if ind_type == "category":
+            return op["fn"](str(actual), str(value))
+        return op["fn"](float(actual), float(value) if not isinstance(value, (list, tuple)) else value)
+    except (ValueError, TypeError):
+        return False
+
+
+def _evaluate_rule_group(indicator_values: Dict, group: Dict) -> bool:
+    """Evaluate a group of conditions with AND/OR logic."""
+    logic = group.get("logic", "AND").upper()
+    conditions = group.get("conditions", [])
+    sub_groups = group.get("groups", [])
+
+    results = []
+    for cond in conditions:
+        results.append(_evaluate_condition(indicator_values, cond))
+    for sub in sub_groups:
+        results.append(_evaluate_rule_group(indicator_values, sub))
+
+    if not results:
+        return False
+    return all(results) if logic == "AND" else any(results)
+
+
+async def evaluate_custom_rule(symbols: List[str], rule: Dict) -> Dict:
+    """Evaluate a custom rule against a list of symbols."""
+    matches = []
+    scanned = 0
+    errors = 0
+
+    for symbol in symbols:
+        try:
+            prices = await _fetch_daily(symbol, compact=True)
+            if not prices or len(prices) < 20:
+                continue
+            indicators = _compute_extended_indicators(prices)
+            if not indicators:
+                continue
+            scanned += 1
+
+            if _evaluate_rule_group(indicators, rule):
+                matches.append({
+                    "symbol": symbol,
+                    "price": indicators.get("price", 0),
+                    "rsi": indicators.get("rsi"),
+                    "volume_ratio": indicators.get("volume_ratio"),
+                    "trend": indicators.get("trend"),
+                    "indicators": {k: v for k, v in indicators.items() if k in _extract_rule_indicators(rule)},
+                })
+        except Exception as e:
+            logger.debug(f"Custom rule skip {symbol}: {e}")
+            errors += 1
+
+    return {
+        "matches": matches,
+        "match_count": len(matches),
+        "scanned": scanned,
+        "errors": errors,
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _extract_rule_indicators(rule: Dict) -> set:
+    """Extract all indicator IDs referenced in a rule for the response."""
+    ids = set()
+    for cond in rule.get("conditions", []):
+        if cond.get("indicator"):
+            ids.add(cond["indicator"])
+    for sub in rule.get("groups", []):
+        ids.update(_extract_rule_indicators(sub))
+    return ids
+
+
+async def save_custom_rule(user_id: str, rule_data: Dict) -> Dict:
+    """Save a custom scanning rule for a user."""
+    if _db is None:
+        return {"error": "DB not available"}
+
+    doc = {
+        "user_id": user_id,
+        "name": rule_data.get("name", "Untitled Rule"),
+        "description": rule_data.get("description", ""),
+        "rule": rule_data.get("rule", {}),
+        "signal_type": rule_data.get("signal_type", "neutral"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await _db.custom_scan_rules.insert_one(doc)
+    doc.pop("_id", None)
+    doc["rule_id"] = str(result.inserted_id)
+    return doc
+
+
+async def get_user_rules(user_id: str) -> List[Dict]:
+    """Get all custom rules for a user."""
+    if _db is None:
+        return []
+    cursor = _db.custom_scan_rules.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+    return await cursor.to_list(length=50)
+
+
+async def delete_custom_rule(user_id: str, rule_id: str) -> Dict:
+    """Delete a custom rule."""
+    if _db is None:
+        return {"error": "DB not available"}
+    from bson import ObjectId
+    result = await _db.custom_scan_rules.delete_one({"_id": ObjectId(rule_id), "user_id": user_id})
+    if result.deleted_count == 0:
+        return {"error": "Rule not found"}
+    return {"status": "deleted", "rule_id": rule_id}

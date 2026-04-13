@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Search, RefreshCw, Filter, TrendingUp, TrendingDown, Minus, Zap, BarChart3, Activity } from 'lucide-react';
+import { X, Search, RefreshCw, Filter, TrendingUp, TrendingDown, Minus, Zap, BarChart3, Activity, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import RuleBuilder from './scanner/RuleBuilder';
 
 const API = `${getApiBase()}/api/scanner`;
 
@@ -78,6 +79,8 @@ const MarketScanner = ({ onClose }) => {
   const [selected, setSelected] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [mode, setMode] = useState('presets');
+  const [customResults, setCustomResults] = useState(null);
 
   const loadStrategies = useCallback(async () => {
     try {
@@ -135,14 +138,52 @@ const MarketScanner = ({ onClose }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={runFullScan} disabled={scanning}
-              className="bg-slate-800 border-slate-400/30 text-slate-300 text-xs rounded-xl h-7" data-testid="scanner-refresh">
-              <RefreshCw className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} /> {scanning ? 'Scanning...' : 'Scan'}
-            </Button>
+            <div className="flex items-center gap-1 bg-slate-800/60 rounded-lg p-0.5">
+              <button onClick={() => setMode('presets')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'presets' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`}
+                data-testid="scanner-mode-presets">
+                <Search className="w-3 h-3 inline mr-1" />Presets
+              </button>
+              <button onClick={() => setMode('custom')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'custom' ? 'bg-violet-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                data-testid="scanner-mode-custom">
+                <Wrench className="w-3 h-3 inline mr-1" />Builder
+              </button>
+            </div>
+            {mode === 'presets' && (
+              <Button size="sm" variant="outline" onClick={runFullScan} disabled={scanning}
+                className="bg-slate-800 border-slate-400/30 text-slate-300 text-xs rounded-xl h-7" data-testid="scanner-refresh">
+                <RefreshCw className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} /> {scanning ? 'Scanning...' : 'Scan'}
+              </Button>
+            )}
             <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
         </div>
 
+        {mode === 'custom' ? (
+          /* Custom Rule Builder Mode */
+          <div className="flex flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <RuleBuilder onScanResults={setCustomResults} />
+              {customResults && customResults.matches?.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white text-xs font-semibold">Results</span>
+                    <Badge className="bg-[#3DE8D9]/15 text-[#3DE8D9] text-[10px]">{customResults.match_count} matches</Badge>
+                  </div>
+                  {customResults.matches.map(m => <MatchRow key={m.symbol} match={{...m, strength: 75, detail: `RSI=${m.rsi || '?'} Vol=${m.volume_ratio || '?'}x`}} />)}
+                </div>
+              )}
+              {customResults && customResults.match_count === 0 && (
+                <div className="text-center py-8">
+                  <Filter className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-slate-400 text-sm">No matches — try adjusting your conditions</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Filter Bar */}
         <div className="flex items-center gap-1.5 px-5 py-2 border-b border-slate-400/15 shrink-0 overflow-x-auto">
           {[
@@ -226,6 +267,8 @@ const MarketScanner = ({ onClose }) => {
             ) : null}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
