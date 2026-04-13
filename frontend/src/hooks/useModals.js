@@ -15,6 +15,7 @@ export default function useModals() {
   const [showMemory, setShowMemory] = useState(false);
   const [showPaperTrading, setShowPaperTrading] = useState(false);
   const [showSmartOrders, setShowSmartOrders] = useState(false);
+  const [showRiskCalc, setShowRiskCalc] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   const [legalTab, setLegalTab] = useState('terms');
@@ -55,6 +56,7 @@ export default function useModals() {
     showMemory, setShowMemory,
     showPaperTrading, setShowPaperTrading,
     showSmartOrders, setShowSmartOrders,
+    showRiskCalc, setShowRiskCalc,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,

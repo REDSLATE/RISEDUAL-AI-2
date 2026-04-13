@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart } from 'lucide-react';
+import { Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import UserBadge from './UserBadge';
