@@ -75,10 +75,10 @@ _ACTION_ALIAS = {
 }
 
 TOPUP_TIERS = [
-    {"id": "topup_500", "credits": 500, "label": "500 Credits"},
     {"id": "topup_1000", "credits": 1000, "label": "1,000 Credits"},
-    {"id": "topup_2500", "credits": 2500, "label": "2,500 Credits"},
+    {"id": "topup_2000", "credits": 2000, "label": "2,000 Credits"},
     {"id": "topup_5000", "credits": 5000, "label": "5,000 Credits"},
+    {"id": "topup_10000", "credits": 10000, "label": "10,000 Credits"},
 ]
 
 
@@ -127,23 +127,13 @@ def can_run_action(plan_key: str, action_key: str, wallet_balance: int) -> Tuple
 def charge_action(plan_key: str, action_key: str, wallet_balance: int) -> dict:
     allowed, cost = can_run_action(plan_key, action_key, wallet_balance)
     if not allowed:
-        upgrades = []
-        if plan_key == "free":
-            upgrades = ["starter", "pro", "buy_topup"]
-        elif plan_key == "starter":
-            upgrades = ["pro", "buy_topup"]
-        elif plan_key == "pro":
-            upgrades = ["pro_max", "buy_topup"]
-        else:
-            upgrades = ["buy_topup"]
-
         return {
             "ok": False,
             "error": "insufficient_credits",
             "action": action_key,
             "credits_required": cost,
             "credits_available": wallet_balance,
-            "upgrade_options": upgrades,
+            "upgrade_options": ["starter", "pro", "buy_topup"],
         }
 
     new_balance = wallet_balance if cost == 0 else wallet_balance - cost
@@ -159,8 +149,11 @@ def charge_action(plan_key: str, action_key: str, wallet_balance: int) -> dict:
 
 
 def topup_price(plan_key: str, credits: int) -> float:
+    if credits <= 0 or credits % 1000 != 0:
+        raise CreditError("Top-ups must be sold in 1,000-credit increments")
     plan = get_plan_rule(plan_key)
-    return round((credits / 1000) * plan.topup_per_1000_usd, 2)
+    blocks = credits // 1000
+    return blocks * plan.topup_per_1000_usd
 
 
 # ══════════════════════════════════════════════════
