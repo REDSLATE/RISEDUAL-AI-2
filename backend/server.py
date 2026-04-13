@@ -47,6 +47,22 @@ async def root():
     return {"message": "RISEDUAL AI API - Ready"}
 
 
+@api_router.get("/ready")
+async def readiness_check():
+    """Health/readiness check — confirms DB is connected and routes are registered."""
+    try:
+        await db.command("ping")
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    return {
+        "status": "ok" if db_status == "connected" else "degraded",
+        "db": db_status,
+        "routes": len(app.routes),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @api_router.get("/download/codebase-pdf")
 async def download_codebase_pdf():
     pdf_path = "/app/RISEDUAL_AI_Complete_Codebase.pdf"
@@ -163,13 +179,43 @@ async def _run_waitlist_auto_invite():
 
 @app.on_event("startup")
 async def startup_event():
-    wire_db(db)
-    app.state.db = db
-    await _start_schedulers()
-    await create_indexes()
-    await seed_admin()
-    _start_cache_warmup()
-    _write_test_credentials()
+    logger.info("=== RISEDUAL AI STARTUP BEGIN ===")
+    try:
+        wire_db(db)
+        app.state.db = db
+        logger.info("DB wired successfully")
+    except Exception as e:
+        logger.exception(f"CRITICAL: DB wire failed: {e}")
+
+    try:
+        await _start_schedulers()
+        logger.info("Schedulers started")
+    except Exception as e:
+        logger.warning(f"Scheduler startup failed (non-critical): {e}")
+
+    try:
+        await create_indexes()
+        logger.info("Indexes created")
+    except Exception as e:
+        logger.warning(f"Index creation failed (non-critical): {e}")
+
+    try:
+        await seed_admin()
+        logger.info("Admin seed complete")
+    except Exception as e:
+        logger.warning(f"Admin seed failed (non-critical): {e}")
+
+    try:
+        _start_cache_warmup()
+    except Exception as e:
+        logger.warning(f"Cache warmup failed (non-critical): {e}")
+
+    try:
+        _write_test_credentials()
+    except Exception as e:
+        logger.warning(f"Test credentials write failed (non-critical): {e}")
+
+    logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
 
 
 async def _start_schedulers():

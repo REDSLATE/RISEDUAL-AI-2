@@ -68,49 +68,50 @@ ALL_ROUTERS = [
 
 
 def register_all_routers(app: FastAPI) -> None:
-    """Register all route modules with the FastAPI app."""
+    """Register all route modules with the FastAPI app, isolating failures."""
     for router in ALL_ROUTERS:
-        app.include_router(router)
+        try:
+            app.include_router(router)
+        except Exception as e:
+            logger.error(f"Failed to register router {getattr(router, 'prefix', '?')}: {e}")
 
 
 def wire_db(db: AsyncIOMotorDatabase) -> None:
     """Pass the database reference to all route and service modules."""
-    set_auth_helpers_db(db)
-    set_auth_db(db)
-    set_ai_db(db)
-    set_workspace_db(db)
-    set_subscription_db(db)
-    set_referral_db(db)
-    set_promo_db(db)
-    set_digest_db(db)
-    set_push_db(db)
-    set_journal_db(db)
-    set_strategy_db(db)
-    set_intelligence_db(db)
-    set_broker_db(db)
-    set_market_data_db(db)
-    set_admin_db(db)
-    set_accuracy_db(db)
-    set_stream_db(db)
-    set_price_provider_db(db)
-    set_paper_trading_db(db)
-    set_sectors_db(db)
-    set_security_audit_db(db)
-    set_smart_orders_db(db)
-    set_risk_calc_db(db)
-    set_scanner_db(db)
-    set_trading_bots_db(db)
-    set_success_fee_db(db)
-    set_public_api_db(db)
-    set_credits_db(db)
-    set_failure_loop_db(db)
+    _setters = [
+        set_auth_helpers_db, set_auth_db, set_ai_db, set_workspace_db,
+        set_subscription_db, set_referral_db, set_promo_db, set_digest_db,
+        set_push_db, set_journal_db, set_strategy_db, set_intelligence_db,
+        set_broker_db, set_market_data_db, set_admin_db, set_accuracy_db,
+        set_stream_db, set_price_provider_db, set_paper_trading_db,
+        set_sectors_db, set_security_audit_db, set_smart_orders_db,
+        set_risk_calc_db, set_scanner_db, set_trading_bots_db,
+        set_success_fee_db, set_public_api_db, set_credits_db,
+        set_failure_loop_db,
+    ]
+    for setter in _setters:
+        try:
+            setter(db)
+        except Exception as e:
+            logger.error(f"DB wire failed for {setter.__module__}.{setter.__name__}: {e}")
 
-    from services.orderflow_ws_service import stream_manager
-    stream_manager.set_db(db)
-    from services.chat_memory_service import set_db as set_chat_memory_db
-    set_chat_memory_db(db)
-    from services.waitlist_service import set_db as set_waitlist_db
-    set_waitlist_db(db)
+    try:
+        from services.orderflow_ws_service import stream_manager
+        stream_manager.set_db(db)
+    except Exception as e:
+        logger.warning(f"Orderflow WS DB wire failed: {e}")
+
+    try:
+        from services.chat_memory_service import set_db as set_chat_memory_db
+        set_chat_memory_db(db)
+    except Exception as e:
+        logger.warning(f"Chat memory DB wire failed: {e}")
+
+    try:
+        from services.waitlist_service import set_db as set_waitlist_db
+        set_waitlist_db(db)
+    except Exception as e:
+        logger.warning(f"Waitlist DB wire failed: {e}")
 
     # Initialize Market Memory (ChromaDB vector store)
     try:
