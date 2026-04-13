@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Zap, Shield, Brain, BarChart3, Globe, Users, Target, Rocket, Award, Linkedin, Twitter } from 'lucide-react';
+import { X, Zap, Shield, Brain, BarChart3, Globe, Users, Target, Rocket, Award } from 'lucide-react';
 import { Card } from './ui/card';
 
 const MISSION = {
@@ -21,13 +21,6 @@ const CAPABILITIES = [
   { icon: <Zap className="w-5 h-5 text-lime-400" />, title: 'Live Order Flow Heatmaps', desc: 'Binance L2 depth visualization showing real-time buy/sell pressure across crypto pairs.' },
   { icon: <Shield className="w-5 h-5 text-violet-400" />, title: 'AI Strategy Builder & Backtester', desc: 'Build, backtest, and share trading strategies with a community marketplace.' },
   { icon: <Brain className="w-5 h-5 text-cyan-400" />, title: 'Portfolio-Aware AI Chat', desc: 'GPT-5.2 powered assistant that knows your paper portfolio and can execute trades with 2-step confirmation.' },
-];
-
-const TEAM = [
-  { name: 'Alex Mercer', role: 'CEO & Co-Founder', bio: 'Former quant at Goldman Sachs. 12 years building algorithmic trading systems.', color: 'from-teal-500 to-cyan-500' },
-  { name: 'Priya Sharma', role: 'CTO & Co-Founder', bio: 'Ex-Google AI researcher. Led teams building large-scale ML infrastructure.', color: 'from-violet-500 to-purple-500' },
-  { name: 'Marcus Chen', role: 'Head of Data Science', bio: 'PhD in computational finance. Built prediction models for two hedge funds.', color: 'from-orange-500 to-red-500' },
-  { name: 'Sarah Kim', role: 'Head of Product', bio: 'Former product lead at Robinhood. Passionate about democratizing finance.', color: 'from-blue-500 to-indigo-500' },
 ];
 
 const STATS = [
@@ -89,28 +82,6 @@ const AboutUs = ({ onClose, embedded = false }) => {
               </div>
               <h3 className="text-white font-semibold text-sm mb-1">{c.title}</h3>
               <p className="text-slate-400 text-xs leading-relaxed">{c.desc}</p>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {/* Team */}
-      <section>
-        <p className="text-[#3DE8D9] text-sm font-semibold tracking-widest uppercase mb-3 text-center">The Team</p>
-        <h2 className="text-2xl sm:text-3xl font-bold text-white mb-8 text-center">Built by Traders, for Traders</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {TEAM.map(t => (
-            <Card key={t.name} className="bg-slate-700/60 border-slate-400/30 rounded-xl p-5 text-center">
-              <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${t.color} mx-auto mb-3 flex items-center justify-center`}>
-                <span className="text-white text-xl font-bold">{t.name.split(' ').map(n => n[0]).join('')}</span>
-              </div>
-              <h3 className="text-white font-semibold text-sm">{t.name}</h3>
-              <p className="text-[#3DE8D9] text-xs mb-2">{t.role}</p>
-              <p className="text-slate-400 text-xs leading-relaxed">{t.bio}</p>
-              <div className="flex justify-center gap-3 mt-3">
-                <button className="text-slate-500 hover:text-slate-300 transition-colors"><Linkedin className="w-3.5 h-3.5" /></button>
-                <button className="text-slate-500 hover:text-slate-300 transition-colors"><Twitter className="w-3.5 h-3.5" /></button>
-              </div>
             </Card>
           ))}
         </div>
