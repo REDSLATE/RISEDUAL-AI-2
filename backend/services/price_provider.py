@@ -31,17 +31,56 @@ def _av_key() -> str:
     return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 
+def _av_key_2() -> str:
+    return os.environ.get("ALPHA_VANTAGE_API_KEY_2", "")
+
+
+_active_key_idx = 0  # 0 = primary, 1 = backup
+
+
+def _get_av_key() -> str:
+    """Return the currently active AV key, rotating on rate limit."""
+    global _active_key_idx
+    keys = [_av_key(), _av_key_2()]
+    keys = [k for k in keys if k]
+    if not keys:
+        return ""
+    return keys[_active_key_idx % len(keys)]
+
+
+def _rotate_av_key():
+    """Switch to the other AV key after a rate limit hit."""
+    global _active_key_idx
+    keys = [_av_key(), _av_key_2()]
+    keys = [k for k in keys if k]
+    if len(keys) > 1:
+        _active_key_idx = (_active_key_idx + 1) % len(keys)
+        logger.info(f"AV key rotated to key #{_active_key_idx + 1}")
+
+
 # ──────────────────────────────────────────────
 #  QUOTE (current price, change, volume)
 # ──────────────────────────────────────────────
 
 def _av_quote(symbol: str) -> Optional[Dict]:
-    """Fetch quote from Alpha Vantage GLOBAL_QUOTE."""
+    """Fetch quote from Alpha Vantage GLOBAL_QUOTE. Auto-rotates key on rate limit."""
     try:
         r = requests.get(AV_BASE, params={
-            "function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _av_key()
+            "function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _get_av_key()
         }, timeout=10)
-        gq = r.json().get("Global Quote", {})
+        data = r.json()
+
+        # Rate limit detection — AV returns a "Note" or "Information" key
+        if "Note" in data or "Information" in data:
+            logger.warning(f"AV rate limited on {symbol}, rotating key")
+            _rotate_av_key()
+            # Retry with backup key
+            r = requests.get(AV_BASE, params={
+                "function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": _get_av_key()
+            }, timeout=10)
+            data = r.json()
+
+        gq = data.get("Global Quote", {})
         price = float(gq.get("05. price", 0))
         if price <= 0:
             return None
@@ -151,7 +190,7 @@ def _av_daily(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
             "function": "TIME_SERIES_DAILY",
             "symbol": symbol.upper(),
             "outputsize": outputsize,
-            "apikey": _av_key(),
+            "apikey": _get_av_key(),
         }, timeout=15)
         ts = r.json().get("Time Series (Daily)", {})
         if not ts:
@@ -250,7 +289,7 @@ def _av_overview(symbol: str) -> Optional[Dict]:
     """Fetch company overview from Alpha Vantage."""
     try:
         r = requests.get(AV_BASE, params={
-            "function": "OVERVIEW", "symbol": symbol.upper(), "apikey": _av_key()
+            "function": "OVERVIEW", "symbol": symbol.upper(), "apikey": _get_av_key()
         }, timeout=10)
         data = r.json()
         if "Symbol" not in data:
@@ -310,7 +349,7 @@ def _av_crypto(symbol: str, market: str = "USD") -> Optional[Dict]:
             "function": "CURRENCY_EXCHANGE_RATE",
             "from_currency": symbol.upper(),
             "to_currency": market,
-            "apikey": _av_key(),
+            "apikey": _get_av_key(),
         }, timeout=10)
         data = r.json()
         rate = data.get("Realtime Currency Exchange Rate", {})
