@@ -157,6 +157,7 @@ pytokens==0.4.1
 pytz==2026.1.post1
 pywebpush==2.3.0
 PyYAML==6.0.3
+quiverquant==0.2.2
 referencing==0.37.0
 regex==2026.1.15
 requests==2.32.5

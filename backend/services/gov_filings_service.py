@@ -192,15 +192,33 @@ class GovFilingsService:
         return {}
 
     async def _resolve_insider_trades(self, finnhub_data: Dict) -> List[Dict]:
-        """Get insider trades from Finnhub or fallback to SEC scraping."""
+        """Get insider trades: QuiverQuant → Finnhub → SEC scraping."""
+        # Try QuiverQuant first
+        from services.quiver_service import get_insider_trades, is_configured
+        if is_configured():
+            quiver_data = await get_insider_trades(limit=20)
+            if quiver_data:
+                return quiver_data
+
+        # Fallback: Finnhub
         if finnhub_data.get("insider_count", 0) > 0:
             return [{"description": t["description"]} for t in finnhub_data.get("insider_transactions", [])]
+        # Fallback: SEC scraping
         return await self.get_sec_filings()
 
     async def _resolve_congressional_trades(self, finnhub_data: Dict) -> List[Dict]:
-        """Get congressional trades from Finnhub or fallback to scraping."""
+        """Get congressional trades: QuiverQuant → Finnhub → Capitol Trades scraping."""
+        # Try QuiverQuant first
+        from services.quiver_service import get_congressional_trades, is_configured
+        if is_configured():
+            quiver_data = await get_congressional_trades(limit=20)
+            if quiver_data:
+                return quiver_data
+
+        # Fallback: Finnhub
         if finnhub_data.get("congressional_count", 0) > 0:
             return finnhub_data.get("congressional_trades", [])
+        # Fallback: Capitol Trades scraping
         return await self.get_congressional_trades()
 
     @staticmethod
@@ -214,23 +232,41 @@ class GovFilingsService:
         return '+'.join(parts) if parts else 'none'
 
     async def get_all_gov_data(self) -> Dict:
-        """Aggregate government/institutional data from all available sources."""
+        """Aggregate government/institutional data from all available sources.
+        
+        Priority: QuiverQuant API → Finnhub → Web scrapers → MongoDB fallback.
+        """
         from services.lobbying_service import LobbyingService
+        from services.quiver_service import get_lobbying, get_gov_contracts, is_configured as quiver_ok
 
         finnhub_data = await self._fetch_finnhub_data()
 
-        insider_trades, congressional_trades, fed_announcements, lobbying = await asyncio.gather(
+        # Core data — QuiverQuant tried first inside resolve methods
+        insider_trades, congressional_trades, fed_announcements, lobbying_db = await asyncio.gather(
             self._resolve_insider_trades(finnhub_data),
             self._resolve_congressional_trades(finnhub_data),
             self.get_fed_announcements(),
             LobbyingService().get_top_spenders(10),
         )
 
+        # QuiverQuant extras (lobbying API + gov contracts) — as supplementary
+        quiver_lobbying = []
+        gov_contracts = []
+        if quiver_ok():
+            quiver_lobbying, gov_contracts = await asyncio.gather(
+                get_lobbying(limit=15),
+                get_gov_contracts(limit=15),
+            )
+
         upcoming_earnings = (
             finnhub_data.get("upcoming_earnings", [])
             if finnhub_data.get("earnings_count", 0) > 0
             else []
         )
+
+        source = self._determine_source(finnhub_data)
+        if quiver_ok():
+            source = "quiverquant+" + source if source else "quiverquant"
 
         return {
             'insider_trades': insider_trades,
@@ -241,9 +277,13 @@ class GovFilingsService:
             'congressional_count': len(congressional_trades),
             'upcoming_earnings': upcoming_earnings,
             'earnings_count': len(upcoming_earnings),
-            'lobbying_top_spenders': lobbying,
-            'lobbying_count': len(lobbying),
+            'lobbying_top_spenders': lobbying_db,
+            'lobbying_count': len(lobbying_db),
+            'lobbying_live': quiver_lobbying,
+            'lobbying_live_count': len(quiver_lobbying),
+            'gov_contracts': gov_contracts,
+            'gov_contracts_count': len(gov_contracts),
             'company_news_finnhub': finnhub_data.get("company_news", []),
             'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': self._determine_source(finnhub_data),
+            'source': source,
         }
