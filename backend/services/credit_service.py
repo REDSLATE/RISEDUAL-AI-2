@@ -3,61 +3,77 @@
 Plans: Free (50cr), Starter $19 (3,000cr), Pro $55 (15,000cr), Pro Max $99 (50,000cr).
 Pro/Pro Max: Unlimited AI Chat + War Room.
 All plans: Advanced AI actions use credits.
+
+Uses frozen dataclasses for plan config and pure functions for credit logic.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Dict, Set, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 db = None
 
+
 # ══════════════════════════════════════════════════
-#  PLAN CONFIGURATION (single source of truth)
+#  PLAN & ACTION CONFIG (frozen dataclasses)
 # ══════════════════════════════════════════════════
 
-PLAN_RULES = {
-    "free": {
-        "monthly_credits": 50,
-        "topup_per_1000": 15.00,
-        "unlimited_features": set(),
-        "price": 0,
-        "label": "Free",
-    },
-    "starter": {
-        "monthly_credits": 3000,
-        "topup_per_1000": 12.00,
-        "unlimited_features": set(),
-        "price": 19,
-        "label": "Starter",
-    },
-    "pro": {
-        "monthly_credits": 15000,
-        "topup_per_1000": 8.00,
-        "unlimited_features": {"chat", "war_room"},
-        "price": 55,
-        "label": "Pro",
-    },
-    "pro_max": {
-        "monthly_credits": 50000,
-        "topup_per_1000": 5.00,
-        "unlimited_features": {"chat", "war_room"},
-        "price": 99,
-        "label": "Pro Max",
-    },
+@dataclass(frozen=True)
+class PlanRule:
+    key: str
+    monthly_credits: int
+    topup_per_1000_usd: int
+    unlimited_features: Set[str] = field(default_factory=set)
+
+
+PLAN_RULES: Dict[str, PlanRule] = {
+    "free": PlanRule(
+        key="free",
+        monthly_credits=50,
+        topup_per_1000_usd=15,
+        unlimited_features=set(),
+    ),
+    "starter": PlanRule(
+        key="starter",
+        monthly_credits=3000,
+        topup_per_1000_usd=12,
+        unlimited_features=set(),
+    ),
+    "pro": PlanRule(
+        key="pro",
+        monthly_credits=15000,
+        topup_per_1000_usd=8,
+        unlimited_features={"ai_chat", "war_room"},
+    ),
+    "pro_max": PlanRule(
+        key="pro_max",
+        monthly_credits=50000,
+        topup_per_1000_usd=5,
+        unlimited_features={"ai_chat", "war_room"},
+    ),
 }
 
-ACTION_COSTS = {
-    "chat": 1,
+ACTION_COSTS: Dict[str, int] = {
+    "ai_chat": 1,
     "war_room": 5,
-    "hypothesis": 3,
-    "prediction": 3,
-    "intelligence": 2,
-    "scanner_validate": 2,
+    "ai_hypothesis": 3,
+    "market_prediction": 3,
+    "ai_intelligence": 2,
+    "scanner_validation": 2,
     "api_call": 1,
 }
 
-# Top-up packs (price calculated per-plan)
+# Map internal action keys used by endpoints to the canonical ACTION_COSTS keys
+_ACTION_ALIAS = {
+    "chat": "ai_chat",
+    "hypothesis": "ai_hypothesis",
+    "prediction": "market_prediction",
+    "intelligence": "ai_intelligence",
+    "scanner_validate": "scanner_validation",
+}
+
 TOPUP_TIERS = [
     {"id": "topup_500", "credits": 500, "label": "500 Credits"},
     {"id": "topup_1000", "credits": 1000, "label": "1,000 Credits"},
@@ -65,6 +81,91 @@ TOPUP_TIERS = [
     {"id": "topup_5000", "credits": 5000, "label": "5,000 Credits"},
 ]
 
+
+class CreditError(ValueError):
+    pass
+
+
+# ══════════════════════════════════════════════════
+#  PURE FUNCTIONS (no DB, no side effects)
+# ══════════════════════════════════════════════════
+
+def get_plan_rule(plan_key: str) -> PlanRule:
+    try:
+        return PLAN_RULES[plan_key]
+    except KeyError as exc:
+        raise CreditError(f"Unknown plan: {plan_key}") from exc
+
+
+def get_action_cost(action_key: str) -> int:
+    canonical = _ACTION_ALIAS.get(action_key, action_key)
+    try:
+        return ACTION_COSTS[canonical]
+    except KeyError as exc:
+        raise CreditError(f"Unknown action: {action_key}") from exc
+
+
+def is_unlimited(plan_key: str, action_key: str) -> bool:
+    canonical = _ACTION_ALIAS.get(action_key, action_key)
+    plan = get_plan_rule(plan_key)
+    return canonical in plan.unlimited_features
+
+
+def credits_required(plan_key: str, action_key: str) -> int:
+    if is_unlimited(plan_key, action_key):
+        return 0
+    return get_action_cost(action_key)
+
+
+def can_run_action(plan_key: str, action_key: str, wallet_balance: int) -> Tuple[bool, int]:
+    cost = credits_required(plan_key, action_key)
+    if cost == 0:
+        return True, 0
+    return wallet_balance >= cost, cost
+
+
+def charge_action(plan_key: str, action_key: str, wallet_balance: int) -> dict:
+    allowed, cost = can_run_action(plan_key, action_key, wallet_balance)
+    if not allowed:
+        upgrades = []
+        if plan_key == "free":
+            upgrades = ["starter", "pro", "buy_topup"]
+        elif plan_key == "starter":
+            upgrades = ["pro", "buy_topup"]
+        elif plan_key == "pro":
+            upgrades = ["pro_max", "buy_topup"]
+        else:
+            upgrades = ["buy_topup"]
+
+        return {
+            "ok": False,
+            "error": "insufficient_credits",
+            "action": action_key,
+            "credits_required": cost,
+            "credits_available": wallet_balance,
+            "upgrade_options": upgrades,
+        }
+
+    new_balance = wallet_balance if cost == 0 else wallet_balance - cost
+    return {
+        "ok": True,
+        "action": action_key,
+        "plan": plan_key,
+        "was_unlimited": cost == 0,
+        "credits_charged": cost,
+        "balance_before": wallet_balance,
+        "balance_after": new_balance,
+    }
+
+
+def topup_price(plan_key: str, credits: int) -> float:
+    plan = get_plan_rule(plan_key)
+    return round((credits / 1000) * plan.topup_per_1000_usd, 2)
+
+
+# ══════════════════════════════════════════════════
+#  DB-DEPENDENT FUNCTIONS
+# ══════════════════════════════════════════════════
 
 def set_db(database):
     global db
@@ -86,32 +187,21 @@ def get_user_plan(user: dict) -> str:
     status = user.get("subscription_status", "free")
     if status in PLAN_RULES:
         return status
-    if status == "pro":
-        return "pro"
     return "free"
-
-
-def get_action_cost(plan_key: str, action_key: str) -> int:
-    """Get credit cost for an action under a plan. Returns 0 if unlimited."""
-    plan = PLAN_RULES.get(plan_key, PLAN_RULES["free"])
-    if action_key in plan["unlimited_features"]:
-        return 0
-    return ACTION_COSTS.get(action_key, 1)
 
 
 def get_topup_packs(plan_key: str) -> list:
     """Get available top-up packs with plan-specific pricing."""
-    plan = PLAN_RULES.get(plan_key, PLAN_RULES["free"])
-    rate = plan["topup_per_1000"]
     packs = []
     for tier in TOPUP_TIERS:
-        price = round((tier["credits"] / 1000) * rate, 2)
+        price = topup_price(plan_key, tier["credits"])
+        plan = get_plan_rule(plan_key)
         packs.append({
             "id": tier["id"],
             "credits": tier["credits"],
             "label": tier["label"],
             "price": price,
-            "per_credit": round(rate / 1000, 4),
+            "per_credit": round(plan.topup_per_1000_usd / 1000, 4),
         })
     return packs
 
@@ -141,7 +231,7 @@ async def grant_signup_bonus(user_id: str) -> int:
     if existing:
         return 0
 
-    bonus = PLAN_RULES["free"]["monthly_credits"]
+    bonus = PLAN_RULES["free"].monthly_credits
     await db.user_credits.insert_one({
         "user_id": user_id,
         "credits": bonus,
@@ -160,8 +250,8 @@ async def grant_plan_credits(user_id: str, plan_key: str) -> int:
     if db is None:
         return 0
 
-    plan = PLAN_RULES.get(plan_key, PLAN_RULES["free"])
-    credits = plan["monthly_credits"]
+    plan = get_plan_rule(plan_key)
+    credits = plan.monthly_credits
 
     await db.user_credits.update_one(
         {"user_id": user_id},
@@ -175,7 +265,7 @@ async def grant_plan_credits(user_id: str, plan_key: str) -> int:
         upsert=True,
     )
 
-    await _log_event(user_id, "plan_credits", credits, False, f"{plan['label']} monthly — {credits:,} credits")
+    await _log_event(user_id, "plan_credits", credits, False, f"{plan.key} monthly — {credits:,} credits")
     return credits
 
 
@@ -188,8 +278,7 @@ async def purchase_topup(user_id: str, topup_id: str, plan_key: str) -> dict:
     if not tier:
         return {"success": False, "error": "Invalid top-up tier"}
 
-    plan = PLAN_RULES.get(plan_key, PLAN_RULES["free"])
-    price = round((tier["credits"] / 1000) * plan["topup_per_1000"], 2)
+    price = topup_price(plan_key, tier["credits"])
     credits = tier["credits"]
 
     await db.user_credits.update_one(
@@ -205,7 +294,7 @@ async def purchase_topup(user_id: str, topup_id: str, plan_key: str) -> dict:
         "topup_id": topup_id,
         "credits": credits,
         "price": price,
-        "price_per_1000": plan["topup_per_1000"],
+        "price_per_1000": get_plan_rule(plan_key).topup_per_1000_usd,
         "plan_key": plan_key,
         "purchased_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -215,45 +304,45 @@ async def purchase_topup(user_id: str, topup_id: str, plan_key: str) -> dict:
 
 
 async def deduct_credits(user_id: str, action: str, plan_key: str) -> dict:
-    """Deduct credits for an action. Returns {allowed, cost, remaining, was_unlimited}."""
-    cost = get_action_cost(plan_key, action)
-
-    if cost == 0:
-        await _log_event(user_id, action, 0, True, f"{action} (unlimited)")
-        return {"allowed": True, "cost": 0, "remaining": -1, "was_unlimited": True}
-
+    """Deduct credits for an action using pure charge_action logic + DB persistence."""
     if db is None:
-        return {"allowed": False, "cost": cost, "remaining": 0, "error": "Database unavailable"}
+        return {"allowed": False, "cost": 0, "remaining": 0, "error": "Database unavailable"}
 
+    # Get current balance
     doc = await db.user_credits.find_one({"user_id": user_id}, {"_id": 0})
     current = doc.get("credits", 0) if doc else 0
 
-    if current < cost:
-        upgrades = []
-        if plan_key == "free":
-            upgrades = ["starter", "pro", "buy_topup"]
-        elif plan_key == "starter":
-            upgrades = ["pro", "buy_topup"]
-        elif plan_key == "pro":
-            upgrades = ["pro_max", "buy_topup"]
-        else:
-            upgrades = ["buy_topup"]
+    # Run pure charge logic
+    result = charge_action(plan_key, action, current)
 
+    if not result["ok"]:
         return {
             "allowed": False,
-            "cost": cost,
-            "remaining": current,
-            "error": f"You need {cost} credits but have {current}.",
-            "upgrade_options": upgrades,
+            "cost": result["credits_required"],
+            "remaining": result["credits_available"],
+            "error": f"You need {result['credits_required']} credits but have {result['credits_available']}.",
+            "upgrade_options": result.get("upgrade_options", []),
         }
 
-    await db.user_credits.update_one(
-        {"user_id": user_id},
-        {"$inc": {"credits": -cost, "total_spent": cost}},
+    # Persist if credits were actually charged
+    if result["credits_charged"] > 0:
+        await db.user_credits.update_one(
+            {"user_id": user_id},
+            {"$inc": {"credits": -result["credits_charged"], "total_spent": result["credits_charged"]}},
+        )
+
+    await _log_event(
+        user_id, action, -result["credits_charged"] if result["credits_charged"] > 0 else 0,
+        result["was_unlimited"],
+        f"{action} {'(unlimited)' if result['was_unlimited'] else ''}"
     )
 
-    await _log_event(user_id, action, -cost, False, f"Used {action}")
-    return {"allowed": True, "cost": cost, "remaining": current - cost, "was_unlimited": False}
+    return {
+        "allowed": True,
+        "cost": result["credits_charged"],
+        "remaining": result["balance_after"],
+        "was_unlimited": result["was_unlimited"],
+    }
 
 
 async def get_usage_events(user_id: str, limit: int = 30) -> list:

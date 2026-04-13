@@ -9,12 +9,12 @@ import { getApiBase } from '../utils/apiBase';
 const API = `${getApiBase()}/api`;
 
 const ACTION_LABELS = {
-  chat: 'AI Chat',
+  ai_chat: 'AI Chat',
   war_room: 'War Room',
-  hypothesis: 'AI Hypothesis',
-  prediction: 'Market Prediction',
-  intelligence: 'AI Score / Patterns / Brief',
-  scanner_validate: 'Scanner + AI Validation',
+  ai_hypothesis: 'AI Hypothesis',
+  market_prediction: 'Market Prediction',
+  ai_intelligence: 'AI Score / Patterns / Brief',
+  scanner_validation: 'Scanner + AI Validation',
   api_call: 'Developer API Call',
 };
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, HTTPException
 
 from services.auth_helpers import get_current_user
 from services import credit_service
+from services.credit_service import PLAN_RULES, ACTION_COSTS, get_plan_rule, credits_required
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +24,16 @@ async def get_balance(request: Request):
     user = await get_current_user(request)
     user_id = str(user["_id"])
     plan_key = credit_service.get_user_plan(user)
-    plan = credit_service.PLAN_RULES.get(plan_key, credit_service.PLAN_RULES["free"])
+    plan = get_plan_rule(plan_key)
     balance = await credit_service.get_balance(user_id)
 
     return {
         **balance,
         "plan_key": plan_key,
-        "plan_label": plan["label"],
-        "monthly_credits": plan["monthly_credits"],
-        "unlimited_features": list(plan["unlimited_features"]),
-        "topup_rate": plan["topup_per_1000"],
+        "plan_label": plan.key.replace("_", " ").title(),
+        "monthly_credits": plan.monthly_credits,
+        "unlimited_features": list(plan.unlimited_features),
+        "topup_rate": plan.topup_per_1000_usd,
     }
 
 
@@ -40,14 +41,15 @@ async def get_balance(request: Request):
 async def get_plans():
     """Get all plan details for pricing display."""
     plans = []
-    for key, plan in credit_service.PLAN_RULES.items():
+    prices = {"free": 0, "starter": 19, "pro": 55, "pro_max": 99}
+    for key, plan in PLAN_RULES.items():
         plans.append({
             "key": key,
-            "label": plan["label"],
-            "price": plan["price"],
-            "monthly_credits": plan["monthly_credits"],
-            "topup_per_1000": plan["topup_per_1000"],
-            "unlimited_features": list(plan["unlimited_features"]),
+            "label": plan.key.replace("_", " ").title(),
+            "price": prices.get(key, 0),
+            "monthly_credits": plan.monthly_credits,
+            "topup_per_1000": plan.topup_per_1000_usd,
+            "unlimited_features": list(plan.unlimited_features),
         })
     return {"plans": plans}
 
@@ -71,8 +73,8 @@ async def get_costs(request: Request):
         plan_key = "free"
 
     costs = {}
-    for action, base_cost in credit_service.ACTION_COSTS.items():
-        cost = credit_service.get_action_cost(plan_key, action)
+    for action in ACTION_COSTS:
+        cost = credits_required(plan_key, action)
         costs[action] = {"cost": cost, "unlimited": cost == 0}
 
     return {"plan_key": plan_key, "costs": costs}
@@ -108,17 +110,17 @@ async def get_history(request: Request, limit: int = 30):
 async def get_pricing_matrix():
     """Get the full pricing matrix for public display."""
     actions = {}
-    for action, base_cost in credit_service.ACTION_COSTS.items():
+    for action, base_cost in ACTION_COSTS.items():
         actions[action] = {}
-        for plan_key in credit_service.PLAN_RULES:
-            cost = credit_service.get_action_cost(plan_key, action)
+        for plan_key in PLAN_RULES:
+            cost = credits_required(plan_key, action)
             actions[action][plan_key] = "Unlimited" if cost == 0 else f"{cost} credits"
 
     topups = {}
-    for plan_key, plan in credit_service.PLAN_RULES.items():
+    for plan_key, plan in PLAN_RULES.items():
         topups[plan_key] = {
-            "included": plan["monthly_credits"],
-            "topup_per_1000": plan["topup_per_1000"],
+            "included": plan.monthly_credits,
+            "topup_per_1000": plan.topup_per_1000_usd,
         }
 
     return {"actions": actions, "topups": topups}
