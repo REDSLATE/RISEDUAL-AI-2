@@ -11,6 +11,7 @@ import pytest
 import requests
 import os
 import time
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -21,7 +22,7 @@ class TestAuthLogin:
         """POST /api/auth/login with admin credentials returns 200"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -41,7 +42,7 @@ class TestBotsEndpoints:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert login_response.status_code == 200
@@ -116,7 +117,7 @@ class TestExistingFeatures:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"},
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             headers={"Content-Type": "application/json"}
         )
         assert login_response.status_code == 200

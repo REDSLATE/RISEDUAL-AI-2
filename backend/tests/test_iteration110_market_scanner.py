@@ -9,8 +9,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 
 class TestMarketScannerAuth:

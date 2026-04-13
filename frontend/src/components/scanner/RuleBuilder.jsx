@@ -196,14 +196,14 @@ const RuleBuilder = ({ onScanResults }) => {
         setIndicators(data.indicators || []);
         setOperators(data.operators || {});
       }
-    } catch { /* */ }
+    } catch (e) { console.warn('Failed to load scanner metadata:', e); }
   }, []);
 
   const loadSavedRules = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/custom/rules`);
       if (res.ok) setSavedRules(await res.json());
-    } catch { /* */ }
+    } catch (e) { console.warn('Failed to load saved rules:', e); }
   }, []);
 
   useEffect(() => { loadMeta(); loadSavedRules(); }, [loadMeta, loadSavedRules]);
@@ -244,7 +244,7 @@ const RuleBuilder = ({ onScanResults }) => {
     try {
       const res = await authFetch(`${API}/custom/rules/${ruleId}`, { method: 'DELETE' });
       if (res.ok) { toast.success('Rule deleted'); loadSavedRules(); }
-    } catch { /* */ }
+    } catch (e) { console.warn('Delete rule error:', e); }
   };
 
   const loadRule = (saved) => {

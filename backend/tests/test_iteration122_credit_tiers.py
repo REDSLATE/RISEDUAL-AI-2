@@ -5,6 +5,7 @@ Tests the rebuilt credit system with 4 plans: Free, Starter, Pro, Pro Max
 import pytest
 import requests
 import os
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -132,7 +133,7 @@ class TestAuthenticatedCreditEndpoints:
         self.session = requests.Session()
         login_response = self.session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "admin@risedual.ai", "password": "RiseDual2026!"}
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         self.user_data = login_response.json()

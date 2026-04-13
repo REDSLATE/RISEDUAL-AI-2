@@ -12,12 +12,9 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 ADMIN_USER_ID = "69d8c194e0cdcd6613a00891"
 
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
 
 
 class TestLeaderboardWithBadges:

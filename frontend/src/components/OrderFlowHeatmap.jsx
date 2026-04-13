@@ -210,7 +210,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
                 const binSize = grid.length > 1 ? Math.abs(grid[0].price - grid[1].price) : 999;
                 const isMidRow = latest && Math.abs(row.price - latest.mid) < binSize;
                 return (
-                <div key={ri} className={`flex items-center ${isMidRow ? 'border-y border-yellow-500/40' : ''}`} style={{ height: '16px' }}>
+                <div key={`row-${row.price}`} className={`flex items-center ${isMidRow ? 'border-y border-yellow-500/40' : ''}`} style={{ height: '16px' }}>
                   {/* Price label */}
                   <div className="w-20 shrink-0 text-right pr-2 text-[9px] font-mono text-slate-400">
                     ${row.price >= 1000 ? row.price.toFixed(0).toLocaleString() : row.price.toFixed(2)}
@@ -219,7 +219,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
                   <div className="flex-1 flex h-full">
                     {row.cells.map((cell, ci) => (
                       <div
-                        key={ci}
+                        key={`cell-${row.price}-${ci}`}
                         className="flex-1 h-full transition-colors duration-500"
                         style={{
                           backgroundColor: cell.side !== 'none'

@@ -172,6 +172,10 @@ async def validate_scan_results(request: Request):
     strong = sum(1 for m in validated if (m.get("ai_confidence") or 0) >= 70)
     moderate = sum(1 for m in validated if 40 <= (m.get("ai_confidence") or 0) < 70)
     weak = sum(1 for m in validated if (m.get("ai_confidence") or 0) < 40 and m.get("ai_validated"))
+    validated_items = [m for m in validated if m.get("ai_validated")]
+    avg_conf = round(
+        sum(m.get("ai_confidence") or 0 for m in validated_items) / max(len(validated_items), 1), 1
+    )
 
     return {
         "matches": validated,
@@ -180,7 +184,7 @@ async def validate_scan_results(request: Request):
             "strong_signals": strong,
             "moderate_signals": moderate,
             "weak_signals": weak,
-            "avg_confidence": round(sum(m.get("ai_confidence") or 0 for m in validated if m.get("ai_validated")) / max(sum(1 for m in validated if m.get("ai_validated")), 1), 1),
+            "avg_confidence": avg_conf,
         },
         "validated_at": datetime.now(timezone.utc).isoformat(),
     }

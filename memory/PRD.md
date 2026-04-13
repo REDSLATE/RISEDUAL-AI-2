@@ -19,34 +19,39 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 | Pro | $55/mo | 15,000 | $8/1K | Chat, War Room |
 | Pro Max | $99/mo | 50,000 | $5/1K | Chat, War Room |
 
-## Stripe Billing Integration (New Account: acct_1TLqluE7P86KSLtB)
-- Products and prices created on new Stripe account (2026-04-13)
-- Webhook endpoint: `https://risedual.ai/api/billing/webhook` (ID: we_1TLrWVE7P86KSLtBqIjS5xrx)
-- Events: checkout.session.completed, invoice.paid/failed, subscription lifecycle
-- All price IDs and webhook secret configured in backend .env
-- Old billing_customers collection cleared for fresh account
+## Stripe Billing (acct_1TLqluE7P86KSLtB)
+- Products/prices created, webhook at `https://risedual.ai/api/billing/webhook`
+- Webhook secret: configured in .env
 
 ## Key Features (All Completed)
-- AI Credit System with frozen dataclass plan config
-- Failure Loop (trade idea memory + review + pattern analysis + AI chat warnings)
-- AI Compliance Guardrails (impersonal, broadcast-style, no personalized advice)
-- Developer API with key management + rate limiting
-- Backend resilience: /api/ready health check, isolated startup, ErrorBoundary modals
-- Onboarding Tour with smart tooltip positioning
-- QuiverQuant API fixed (Bearer auth), congressional trading live
+- AI Credit System, Failure Loop, AI Compliance Guardrails
+- Developer API, Backend resilience, Onboarding Tour
+- QuiverQuant congressional trading (Bearer auth)
 
-## QuiverQuant API Status (Updated 2026-04-13)
-- Auth changed from `Token` to `Bearer` — fixed in quiver_service.py
-- Congressional trading: WORKING (live data via QuiverQuant)
-- Insiders, Lobbying, Gov Contracts: Still HTTP 500 on QuiverQuant server — graceful fallback active
+## Code Quality Audit (2026-04-13)
+### Critical Fixes Applied:
+- Removed hardcoded credentials from 13+ test files → all use conftest_creds.py
+- Fixed empty catch blocks in RuleBuilder.jsx → proper error logging
+- Fixed array index as key in OrderFlowHeatmap.jsx and MemoryDashboard.jsx
+- localStorage usage reviewed: only stores UI preferences (tour_completed, promo_dismissed) — no sensitive data
+
+### Important Refactors Applied:
+- risk_calculator.py: Extracted `_validate_trade_direction()`, `_calculate_position_size()`, `_compute_tp_details()` helpers
+- scanner.py: Simplified `validate_scan_results()` summary computation
+
+### Reviewed but No Changes Needed:
+- backtester_service.py: Already uses AST-safe evaluation (no eval/exec)
+- React hook dependencies: Module-level constants (API, authFetch) are stable refs — ESLint false positives
+- AuthContext callbacks: Properly structured with correct dependency arrays
+- localStorage: Only non-sensitive UI state (tour flag, promo dismiss)
 
 ## Deployment Status
-- Deployment pre-check: PASSED (no hardcoded URLs, env vars clean, supervisor valid)
-- FRONTEND_URL updated to https://risedual.ai
-- Ready for beta 2.0 deploy via Emergent platform
+- Deployment pre-check: PASSED
+- FRONTEND_URL: https://risedual.ai
+- Ready for beta 2.0 deploy
 
 ## Post-Deploy Checklist
-- User to configure custom domain DNS for risedual.ai
-- Verify Stripe webhook receives events at production URL
-- Update STRIPE_PUBLISHABLE_KEY in .env from Stripe Dashboard (Developers → API Keys)
-- Monitor QuiverQuant insider/lobbying/govcontracts for recovery
+- Configure DNS for risedual.ai
+- Verify Stripe webhook at production URL
+- Update STRIPE_PUBLISHABLE_KEY from Stripe Dashboard
+- Monitor QuiverQuant insiders/lobbying/govcontracts recovery

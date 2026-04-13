@@ -141,7 +141,7 @@ const CleanupRunCard = ({ run }) => {
         <div className="px-4 pb-3 border-t border-slate-600/30/40">
           <div className="mt-2 space-y-1.5">
             {run.toxic_details.map((d, j) => (
-              <div key={j} className="flex items-center justify-between text-xs">
+              <div key={d.symbol ? `${d.symbol}-${j}` : `detail-${j}`} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-3 h-3 text-orange-400" />
                   <span className="text-white font-medium">{d.symbol}</span>
