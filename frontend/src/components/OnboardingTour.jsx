@@ -11,7 +11,7 @@ const TOUR_STEPS = [
     position: 'center',
   },
   {
-    target: '[data-testid="watchlist"],.animate-enter:has(h3:contains("Watchlist"))',
+    target: '[data-testid="watchlist-section"]',
     fallback: '#stock-ticker',
     title: "Live Market Data",
     content: "Real-time stock and crypto tickers scroll across the top. Below, your personal Watchlist tracks your favorite symbols with AI-powered insights.",

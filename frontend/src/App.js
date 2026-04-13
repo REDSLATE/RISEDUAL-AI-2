@@ -113,7 +113,7 @@ function AppContent() {
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        <div className="mb-6 sm:mb-8 animate-enter"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
+        <div className="mb-6 sm:mb-8 animate-enter" data-testid="watchlist-section"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
 
         <div className="mb-6 sm:mb-8 animate-enter animate-enter-d1">
           <WatchlistIntelligence onSubscribe={() => setShowSubscription(true)} />
