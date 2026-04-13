@@ -633,6 +633,19 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - "Apply to Smart Order" bridge button → opens Smart Orders with pre-filled values
 - **Verified (Iteration 109)**: 100% pass (15/15 backend, all frontend, Smart Orders regression clear)
 
+### Market Scanner — Phase 3 Step 1 (April 13, 2026)
+- **Backend**: `GET /api/scanner/strategies`, `POST /api/scanner/scan`, `GET /api/scanner/quick/{strategy_id}`
+  - 10 pre-built strategies: RSI Oversold/Overbought, MACD Bullish/Bearish Cross, Bollinger Squeeze, EMA 9/21 Golden Cross, Volume Spike (2x avg), Near 52-Week High/Low, Momentum Breakout
+  - Scans watchlist + 19 popular tickers via Alpha Vantage price data
+  - Returns matches with: symbol, price, strength %, signal detail, RSI, vol_ratio, trend
+  - Reuses existing technical indicator functions from ai_intelligence_service
+- **Frontend**: `MarketScanner.jsx` — split-panel modal from user dropdown
+  - Left panel: 10 strategy cards with signal badges (bullish/bearish/neutral) and match counts
+  - Top: Filter bar (All/Bullish/Bearish/Momentum/Reversion/Trend/Volatility/Volume)
+  - Right panel: Match results with strength bars, trend badges, detailed indicators
+  - Auto-scans on mount, manual Scan button for refresh
+- **Verified (Iteration 110)**: 100% pass (14/14 backend, all frontend, Smart Orders + Risk Calc regression clear)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
