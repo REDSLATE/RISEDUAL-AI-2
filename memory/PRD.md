@@ -661,6 +661,22 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - Run Scan shows matches with indicator values
 - **Verified (Iteration 111)**: 100% pass (16/16 backend, all frontend, pre-built scanner regression clear)
 
+### AI Signal Validation — Phase 3 Step 3 (April 13, 2026)
+- **Backend**: `POST /api/scanner/validate` — Adversarial AI validation using GPT-5.2
+  - Batch validates up to 10 matches per call
+  - Returns per-match: `ai_confidence` (0-100), `ai_verdict` (strong_buy/buy/hold/sell/strong_sell/avoid), `ai_risk` (low/medium/high/extreme), `ai_reasoning`, `ai_action`
+  - Returns summary: strong/moderate/weak signal counts, average confidence
+  - `GET /api/scanner/validate/stats` — historical validation stats from MongoDB
+  - Tracks all validations in `ai_validations` collection
+- **Frontend**: Integrated into MarketScanner results panel
+  - "AI Validate" button appears when strategy has matches
+  - `ValidationSummary` component shows strong/moderate/weak signal breakdown
+  - `ValidatedMatchRow` with animated SVG confidence ring, verdict badges (color-coded), risk level badges, reasoning text, recommended action
+  - Clears validation when switching strategies
+- **Verified (Iteration 112)**: 100% pass (11/11 backend, all frontend, scanner + rule builder regression clear)
+
+**Phase 3 Complete**: Pre-built Screener (10 strategies) + Visual Rule Builder (23 indicators, AND/OR logic) + AI Validation Layer (GPT-5.2 adversarial scoring)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
