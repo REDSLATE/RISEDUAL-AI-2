@@ -182,10 +182,20 @@ async def _start_schedulers():
         scheduler.add_job(_pregen_watchlist_intel, 'cron', hour=5, minute=30, args=[db], id='watchlist_pregen')
         scheduler.add_job(_run_memory_cleanup, 'cron', hour=2, minute=0, id='memory_cleanup')
         scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
+        scheduler.add_job(_check_smart_orders, 'interval', seconds=30, id='smart_order_monitor')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00 UTC)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
+
+
+async def _check_smart_orders():
+    """Background: Monitor smart orders and trigger SL/TP/ladder fills."""
+    try:
+        from services.smart_order_service import check_smart_orders
+        await check_smart_orders()
+    except Exception as e:
+        logger.debug(f"Smart order check error: {e}")
 
 
 def _start_cache_warmup():

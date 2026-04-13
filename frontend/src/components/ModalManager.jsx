@@ -11,6 +11,7 @@ import StrategyBuilder from './StrategyBuilder';
 import StrategyMarketplace from './StrategyMarketplace';
 import MemoryDashboard from './MemoryDashboard';
 import PaperTrading from './PaperTrading';
+import SmartOrderPanel from './SmartOrderPanel';
 import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -29,6 +30,7 @@ const ModalManager = ({ user, modals }) => {
     showMarketplace, setShowMarketplace,
     showMemory, setShowMemory,
     showPaperTrading, setShowPaperTrading,
+    showSmartOrders, setShowSmartOrders,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -49,6 +51,7 @@ const ModalManager = ({ user, modals }) => {
       {showMarketplace && <StrategyMarketplace onClose={() => setShowMarketplace(false)} onSubscribe={() => { setShowMarketplace(false); setShowSubscription(true); }} />}
       {showMemory && user && <MemoryDashboard onClose={() => setShowMemory(false)} onSubscribe={() => { setShowMemory(false); setShowSubscription(true); }} />}
       {showPaperTrading && user && <PaperTrading onClose={() => setShowPaperTrading(false)} />}
+      {showSmartOrders && user && <SmartOrderPanel onClose={() => setShowSmartOrders(false)} />}
       {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
       {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}

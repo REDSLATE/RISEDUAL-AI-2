@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -16,7 +16,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenAbout }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -179,6 +179,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-lime-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPaperTrading} data-testid="nav-paper-trading-btn">
                   <LineChart className="w-4 h-4 mr-2" /> Paper Trading
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={onOpenSmartOrders} data-testid="nav-smart-orders-btn">
+                  <Layers className="w-4 h-4 mr-2" /> Smart Orders
+                </DropdownMenuItem>
                 {(user.role === 'owner' || user.role === 'admin') && (
                   <DropdownMenuItem className="text-orange-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -232,7 +235,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
           onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
           onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
-          onOpenPaperTrading={onOpenPaperTrading} onOpenAbout={onOpenAbout}
+          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenAbout={onOpenAbout}
           onLogin={onLogin} onRegister={onRegister}
         />
       )}
