@@ -1,5 +1,6 @@
 """Market Scanner Routes — Pre-built screening strategies with real-time scanning."""
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
 from typing import Optional, List
 from services.auth_helpers import get_current_user
@@ -14,6 +15,8 @@ def set_db(database):
     _db = database
     from services.scanner_service import set_db as set_svc_db
     set_svc_db(database)
+    from services.ai_signal_validator import set_db as set_validator_db
+    set_validator_db(database)
 
 
 @router.get("/strategies")
@@ -142,3 +145,44 @@ async def delete_rule(rule_id: str, request: Request):
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@router.post("/validate")
+async def validate_scan_results(request: Request):
+    """AI-validate scanner matches using Adversarial AI."""
+    await get_current_user(request)  # Auth check
+    body = await request.json()
+    matches = body.get("matches", [])
+    strategy_name = body.get("strategy_name", "")
+
+    if not matches:
+        raise HTTPException(status_code=400, detail="No matches to validate")
+
+    from services.ai_signal_validator import validate_signals
+    validated = await validate_signals(matches, strategy_name)
+    # Sort by AI confidence (highest first), None values last
+    validated.sort(key=lambda x: x.get("ai_confidence") or 0, reverse=True)
+
+    strong = sum(1 for m in validated if (m.get("ai_confidence") or 0) >= 70)
+    moderate = sum(1 for m in validated if 40 <= (m.get("ai_confidence") or 0) < 70)
+    weak = sum(1 for m in validated if (m.get("ai_confidence") or 0) < 40 and m.get("ai_validated"))
+
+    return {
+        "matches": validated,
+        "summary": {
+            "total": len(validated),
+            "strong_signals": strong,
+            "moderate_signals": moderate,
+            "weak_signals": weak,
+            "avg_confidence": round(sum(m.get("ai_confidence") or 0 for m in validated if m.get("ai_validated")) / max(sum(1 for m in validated if m.get("ai_validated")), 1), 1),
+        },
+        "validated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/validate/stats")
+async def validation_stats(request: Request):
+    """Get AI validation history stats."""
+    await get_current_user(request)
+    from services.ai_signal_validator import get_validation_stats
+    return await get_validation_stats()

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Search, RefreshCw, Filter, TrendingUp, TrendingDown, Minus, Zap, BarChart3, Activity, Wrench } from 'lucide-react';
+import { X, Search, RefreshCw, Filter, TrendingUp, TrendingDown, Minus, Zap, BarChart3, Activity, Wrench, ShieldCheck } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import RuleBuilder from './scanner/RuleBuilder';
+import { ValidatedMatchRow, ValidationSummary } from './scanner/ValidationResults';
 
 const API = `${getApiBase()}/api/scanner`;
 
@@ -81,6 +82,8 @@ const MarketScanner = ({ onClose }) => {
   const [filter, setFilter] = useState('all');
   const [mode, setMode] = useState('presets');
   const [customResults, setCustomResults] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [validatedData, setValidatedData] = useState(null);
 
   const loadStrategies = useCallback(async () => {
     try {
@@ -122,6 +125,23 @@ const MarketScanner = ({ onClose }) => {
 
   const selectedData = results?.strategies?.[selected];
   const totalMatches = results ? Object.values(results.strategies || {}).reduce((s, v) => s + (v.match_count || 0), 0) : 0;
+
+  const validateMatches = useCallback(async () => {
+    if (!selectedData?.matches?.length) return toast.error('No matches to validate');
+    setValidating(true);
+    try {
+      const res = await authFetch(`${API}/validate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matches: selectedData.matches, strategy_name: selectedData.info?.name || '' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setValidatedData(data);
+        toast.success(`Validated ${data.summary?.total} signals`);
+      } else toast.error('Validation failed');
+    } catch { toast.error('Validation error'); }
+    finally { setValidating(false); }
+  }, [selectedData]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="market-scanner">
@@ -221,7 +241,7 @@ const MarketScanner = ({ onClose }) => {
                   matches={results?.strategies?.[s.id]?.matches || []}
                   matchCount={results?.strategies?.[s.id]?.match_count || 0}
                   isSelected={selected === s.id}
-                  onSelect={setSelected}
+                  onSelect={(id) => { setSelected(id); setValidatedData(null); }}
                   isScanning={scanning}
                 />
               ))
@@ -243,26 +263,46 @@ const MarketScanner = ({ onClose }) => {
                     <h3 className="text-white font-semibold text-sm">{selectedData.info?.name}</h3>
                     <p className="text-slate-400 text-[10px]">{selectedData.info?.description}</p>
                   </div>
-                  <Badge className={`text-xs ${
-                    selectedData.match_count > 0 ? 'bg-[#3DE8D9]/15 text-[#3DE8D9]' : 'bg-slate-700 text-slate-400'
-                  }`}>
-                    {selectedData.match_count} match{selectedData.match_count !== 1 ? 'es' : ''}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {selectedData.match_count > 0 && (
+                      <Button size="sm" variant="outline" onClick={validateMatches} disabled={validating}
+                        className="bg-violet-900/20 text-violet-400 border-violet-800/50 hover:bg-violet-800/30 h-7 text-[10px]" data-testid="scanner-validate-btn">
+                        <ShieldCheck className={`w-3 h-3 mr-1 ${validating ? 'animate-pulse' : ''}`} />
+                        {validating ? 'Validating...' : 'AI Validate'}
+                      </Button>
+                    )}
+                    <Badge className={`text-xs ${
+                      selectedData.match_count > 0 ? 'bg-[#3DE8D9]/15 text-[#3DE8D9]' : 'bg-slate-700 text-slate-400'
+                    }`}>
+                      {selectedData.match_count} match{selectedData.match_count !== 1 ? 'es' : ''}
+                    </Badge>
+                  </div>
                 </div>
 
-                {selectedData.matches?.length > 0 ? (
+                {/* AI Validated Results */}
+                {validatedData && (
+                  <div className="space-y-2">
+                    <ValidationSummary summary={validatedData.summary} />
+                    {validatedData.matches?.map(m => (
+                      <ValidatedMatchRow key={`v-${m.symbol}`} match={m} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Raw Results (shown when not validated) */}
+                {!validatedData && selectedData.matches?.length > 0 ? (
                   <div className="space-y-1.5">
                     {selectedData.matches.map(m => (
                       <MatchRow key={m.symbol} match={m} />
                     ))}
                   </div>
-                ) : (
+                ) : !validatedData ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <Filter className="w-8 h-8 text-slate-600 mb-2" />
                     <p className="text-slate-400 text-sm">No matches for this strategy</p>
                     <p className="text-slate-500 text-[10px] mt-1">Try scanning more symbols or check back later</p>
                   </div>
-                )}
+                ) : null}
               </div>
             ) : null}
           </div>
