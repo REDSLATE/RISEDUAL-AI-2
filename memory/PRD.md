@@ -617,6 +617,22 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - Orders tab: Lists all smart orders with status badges (pending/filled/stopped/completed/cancelled)
 - **Verified (Iteration 108)**: 100% pass (17/17 backend, all frontend, no regressions)
 
+### Risk/Reward Calculator — Phase 2 (April 13, 2026)
+- **Backend**: `POST /api/risk-calc/calculate` and `POST /api/risk-calc/multi-tp`
+  - 3 position sizing methods: % Risk (of account), Fixed Dollar, Kelly Criterion (capped at 25%)
+  - Validates SL/TP placement relative to entry and side
+  - Auto-fetches live price when entry not provided
+  - Returns: position size, R:R ratio, max loss/profit, total cost, can_afford flag
+  - Multi-TP endpoint: weighted R:R across up to 5 take-profit levels with per-TP breakdown
+- **Frontend**: `RiskCalculator.jsx` — standalone modal from user dropdown
+  - Symbol input with auto-price fetch, BUY/SELL toggle
+  - Entry/SL/TP fields with color-coded labels
+  - 3 sizing method buttons with quick-select % presets (1/2/3/5%)
+  - R:R gauge needle visualization
+  - Result panel: position size, max loss/profit, price level bar, affordability warning
+  - "Apply to Smart Order" bridge button → opens Smart Orders with pre-filled values
+- **Verified (Iteration 109)**: 100% pass (15/15 backend, all frontend, Smart Orders regression clear)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
