@@ -698,6 +698,24 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 
 **All 4 Altrady-inspired phases complete**: Smart Orders → Risk Calculator → Market Scanner (with AI Validation) → Trading Bots
 
+### Bots Dashboard + Help Center (April 13, 2026)
+- **Bots Dashboard Section**: Visible on main dashboard (after Whale Radar)
+  - Bot cards with green/gray ON/OFF toggle switches directly on the dashboard
+  - Trade counts, signal stats per bot
+  - "Manage >" button opens full Trading Bots panel
+  - Only renders for logged-in users
+- **Navbar Shortcuts**: "Bots" button + "?" Help icon directly visible in top bar (not buried in dropdown)
+- **Help Center** (in-app user manual): 8 categorized sections, 45+ topics
+  - Getting Started (3 topics: Dashboard, Account Types, Navigation)
+  - Smart Orders (6 topics: Ladder, Trailing SL, Multi-TP, Break-Even, 3 Modes)
+  - Risk Calculator (6 topics: Position Sizing, %, Fixed $, Kelly, R:R Gauge, Apply)
+  - Market Scanner (5 topics: Pre-built, Custom Builder, 23 Indicators, AI Validation, Strength)
+  - Trading Bots (8 topics: All OFF by default, Grid/Signal/Webhook bots, Config, Webhook Setup, Safety)
+  - AI Features (5 topics: War Room, Hypothesis, RiseDualGPT, Predictions, Ticker-Specific)
+  - Trading Tools (6 topics: Paper Trading, Broker Connections, Strategy Builder, Marketplace, Dark Pool, Options)
+  - Market Data (5 topics: Watchlist, Sector Heatmap, Fear & Greed, Whale Radar, Order Flow)
+- **Verified (Iteration 114)**: 100% pass (7/7 backend, all frontend, all regressions clear)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
