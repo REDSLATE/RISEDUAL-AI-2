@@ -166,7 +166,13 @@ PAPER TRADING ORDERS — CONFIRMATION REQUIRED:
 - After creating a proposal, present the details and ask them to confirm using the proposal ID.
 - Only call confirm_paper_order AFTER the user explicitly confirms the specific proposal ID.
 
-Be direct, data-driven, and present findings as observations. Use actual dollar amounts and percentages from the tools."""
+Be direct, data-driven, and present findings as observations. Use actual dollar amounts and percentages from the tools.
+
+UX RULES:
+- Default to action. Use the latest portfolio snapshot without asking.
+- Ask at most ONE clarifying question, only if it changes asset class, execution, or output format.
+- Lead with the answer. Details follow.
+- Tell the user what default you used."""
 
 
 async def _execute_tool(user_id: str, tool_name: str, arguments: dict) -> str:
