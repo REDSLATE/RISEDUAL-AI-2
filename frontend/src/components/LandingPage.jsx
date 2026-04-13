@@ -478,7 +478,7 @@ const CTA = ({ onGetStarted }) => (
 const LandingFooter = ({ onOpenLegal }) => (
   <footer className="border-t border-white/5 py-8">
     <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL CORPORATION. All rights reserved.</span>
+      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RED SLATE HOLDINGS. All rights reserved.</span>
       <div className="flex items-center gap-6 text-xs text-slate-400">
         <button onClick={() => onOpenLegal?.('privacy')} className="hover:text-slate-300 transition-colors" data-testid="landing-privacy-link">Privacy</button>
         <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>

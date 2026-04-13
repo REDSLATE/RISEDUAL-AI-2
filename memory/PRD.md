@@ -1,7 +1,7 @@
 # RISEDUAL AI — Product Requirements Document
 
 ## Original Problem Statement
-Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. Requires real market data, crypto & dark pool data, functional trading broker connections, a Stripe subscription gateway ($45/month), an AI chat assistant, and a highly complex AI market prediction engine.
+Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform by RED SLATE HOLDINGS.
 
 ## Architecture
 - **Frontend**: React + TailwindCSS + Shadcn UI (port 3000)
@@ -9,15 +9,21 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Auth**: httpOnly secure cookies (JWT), 90s fetch timeout for AI endpoints
 - **AI**: Emergent LLM Key (GPT-5.2, Claude Sonnet 4.5, Gemini)
 - **Payments**: Stripe ($45/month Pro subscription)
-- **Market Data**: Alpha Vantage 170+ tier with yfinance fallback, Finnhub
+- **Market Data**: Alpha Vantage 170+ tier (dual key rotation) with yfinance fallback, Finnhub
+- **Alternative Data**: QuiverQuant (congressional trading active; others pending)
 - **Email**: Resend
-- **Alternative Data**: QuiverQuant (congressional trading — active; insiders/lobbying/contracts — pending server fix)
 
-## Critical Technical Decisions
-- **Motor DB Boolean Checks**: NEVER use `if db:`. ALWAYS use `if db is not None:`
-- **No AbortController in authFetch**: Causes postMessage clone errors
-- **90s fetch timeout**: AI endpoints take 8-50s
-- **Unified Price Provider**: `price_provider.py` (AV → yfinance → MongoDB cache)
+## Legal Entity
+- **Name**: RED SLATE HOLDINGS (formerly RISEDUAL CORPORATION)
+- **State**: Florida
+- **Contact**: legal@risedual.ai
+
+## Legal Compliance (April 13, 2026)
+- **Terms of Service**: 15 sections covering eligibility (18+ with digital asset capacity), permitted use (anti-manipulation), subscription (no partial refunds), AI content disclosure, limitation of liability
+- **AI Transparency Notice**: New legal tab — GPT-5.2 disclosure, 4-Mind architecture, human oversight, impersonal content guarantee, broadcast signals
+- **Privacy Policy**: 11 sections covering data collection, third-party sharing, AES-256 encryption
+- **Risk Disclosure**: 9 sections covering trading, AI, options, crypto, dark pool risks
+- **Disclaimer**: 10 sections covering no fiduciary relationship, no warranty
 
 ## Core Features (All Implemented)
 - Real-time stock & crypto tickers, Options Radar, Dark Pool
@@ -25,40 +31,14 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Multimodal AI Chat + Voice (TTS/STT), Persistent Chat Memory
 - Company Research, Market Predictions, Sector Heatmap + AI Sentiment
 - P&L Tracker, 8 Broker Integrations, Stripe Gateway
-- Admin Panel (Cache, Security Audit, Success Fees, Media, Waitlist)
+- Admin Panel (Cache, Security Audit, Media, Waitlist)
 - Referral System + Badge Showcase + Public Profiles
-- Trading Journal, Strategy Builder/Marketplace
 - Market Vector Memory (ChromaDB), VAPID Push, Order Flow Heatmaps
-- Whale Radar (10 crypto SSE), Paper Trading, Portfolio AI Agent
-- Legal Pages, SEO, Beta Waitlist, User Badges, Onboarding Tour
+- Whale Radar, Paper Trading, Portfolio AI Agent
 - Smart Orders, Risk Calculator, Market Scanner + AI Validation
-- Trading Bots (Grid/Signal/Webhook), Help Center, Contextual Tooltips
-- Success Fee System (1.5% on gains above $1K for broker-connected users)
-
-### QuiverQuant Integration (April 13, 2026)
-- **Service**: `quiver_service.py` — direct API calls with Token auth
-- **Congressional Trading**: WORKING — real data (Whitehouse, Gottheimer trades confirmed)
-- **Insider Trading**: QuiverQuant server returning 500 — fallback to SEC/OpenInsider active
-- **Lobbying**: QuiverQuant server returning 500 — fallback to MongoDB dataset active
-- **Gov Contracts**: QuiverQuant server returning 500 — no fallback (new dataset)
-- **Integration**: Primary source in `gov_filings_service.py`, all scrapers remain as fallbacks
-- **Key**: `QUIVER_API_KEY` in backend/.env
-- **Status**: Partially working — re-test when QuiverQuant server stabilizes
-
-### Success Fee System (April 13, 2026)
-- 1.5% on broker-connected users' monthly gains above $1,000
-- Zero fee on losses/breakeven/below threshold
-- Backend: 6 endpoints under `/api/success-fee/`
-- Frontend: SuccessFeeWidget (dashboard), SuccessFeesTab (admin)
-- Legal: Terms of Service Section 6, Landing page pricing + FAQ
-- Verified (Iteration 116)
-
-### Badge Showcase + Public Profiles (April 13, 2026)
-- Leaderboard shows badge pills (Creator, F100, Beta, Pro)
-- Clickable names open PublicProfile modal
-- Backend: `GET /api/referral/profile/{user_id}` public endpoint
-- Verified (Iteration 117)
+- Trading Bots (Grid/Signal/Webhook), Help Center, Onboarding Tour
 
 ## Backlog
-- P1: Deploy to `risedual.ai` custom domain (after beta testing — 2.0 launch)
-- QuiverQuant: Re-test insiders/lobbying/contracts when their server stabilizes
+- P1: Deploy to `risedual.ai` after beta testing (2.0 launch)
+- QuiverQuant: Re-test insiders/lobbying/contracts when server stabilizes
+- Backend prompt guardrails: Enforce impersonal/broadcast language in AI prompts
