@@ -646,6 +646,21 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
   - Auto-scans on mount, manual Scan button for refresh
 - **Verified (Iteration 110)**: 100% pass (14/14 backend, all frontend, Smart Orders + Risk Calc regression clear)
 
+### Visual Rule Builder — Phase 3 Step 2 (April 13, 2026)
+- **Backend**: Extended scanner with custom rule engine
+  - 23 indicators: RSI (14/7), MACD (line/signal/histogram), Bollinger (upper/lower/bandwidth), SMA (20/50/200), EMA (9/21/50), Price, Volume Ratio, 52w High/Low %, ATR, 1/5/20-day Change %, Trend
+  - AND/OR logic with nested groups (up to 2 levels deep)
+  - Operators per type: number (>, >=, <, <=, =, between), price (above, below, crosses above/below), category (is, is not)
+  - CRUD: `POST /custom/run`, `POST /custom/save`, `GET /custom/rules`, `DELETE /custom/rules/{id}`
+  - `GET /indicators` returns full indicator catalog with types and operators
+- **Frontend**: `RuleBuilder.jsx` integrated into MarketScanner via Presets/Builder toggle
+  - Condition rows with indicator/operator/value dropdowns
+  - AND/OR logic toggle per group
+  - Add Condition / Add Group buttons for nested logic
+  - Save rules with name, load saved rules, delete rules
+  - Run Scan shows matches with indicator values
+- **Verified (Iteration 111)**: 100% pass (16/16 backend, all frontend, pre-built scanner regression clear)
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
