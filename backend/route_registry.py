@@ -38,6 +38,7 @@ from routes.security_audit import router as security_audit_router, set_db as set
 from routes.waitlist import router as waitlist_router
 from routes.smart_orders import router as smart_orders_router, set_db as set_smart_orders_db
 from routes.risk_calculator import router as risk_calc_router, set_db as set_risk_calc_db
+from routes.scanner import router as scanner_router, set_db as set_scanner_db
 from services.price_provider import set_db as set_price_provider_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
@@ -51,6 +52,7 @@ ALL_ROUTERS = [
     paper_trading_router, media_router, security_audit_router, waitlist_router,
     smart_orders_router,
     risk_calc_router,
+    scanner_router,
 ]
 
 
@@ -85,6 +87,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     set_security_audit_db(db)
     set_smart_orders_db(db)
     set_risk_calc_db(db)
+    set_scanner_db(db)
 
     from services.orderflow_ws_service import stream_manager
     stream_manager.set_db(db)

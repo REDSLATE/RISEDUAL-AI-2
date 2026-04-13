@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -16,7 +16,7 @@ import {
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-chat'));
 
-const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenAbout }) => {
+const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals, onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory, onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenAbout }) => {
   const [searchValue, setSearchValue] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, isPro } = useAuth();
@@ -185,6 +185,9 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
                 <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={onOpenRiskCalc} data-testid="nav-risk-calc-btn">
                   <Calculator className="w-4 h-4 mr-2" /> Risk Calculator
                 </DropdownMenuItem>
+                <DropdownMenuItem className="text-violet-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenScanner} data-testid="nav-scanner-btn">
+                  <Radar className="w-4 h-4 mr-2" /> Market Scanner
+                </DropdownMenuItem>
                 {(user.role === 'owner' || user.role === 'admin') && (
                   <DropdownMenuItem className="text-orange-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenAdmin} data-testid="nav-admin-btn">
                     <Crown className="w-4 h-4 mr-2" /> Admin Panel
@@ -238,7 +241,7 @@ const Navbar = ({ onLogin, onRegister, onSubscribe, onOpenAdmin, onOpenWorkspace
           onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
           onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
           onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
-          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenAbout={onOpenAbout}
+          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenAbout={onOpenAbout}
           onLogin={onLogin} onRegister={onRegister}
         />
       )}

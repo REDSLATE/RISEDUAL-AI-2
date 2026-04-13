@@ -13,6 +13,7 @@ import MemoryDashboard from './MemoryDashboard';
 import PaperTrading from './PaperTrading';
 import SmartOrderPanel from './SmartOrderPanel';
 import RiskCalculator from './RiskCalculator';
+import MarketScanner from './MarketScanner';
 import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -33,6 +34,7 @@ const ModalManager = ({ user, modals }) => {
     showPaperTrading, setShowPaperTrading,
     showSmartOrders, setShowSmartOrders,
     showRiskCalc, setShowRiskCalc,
+    showScanner, setShowScanner,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -55,6 +57,7 @@ const ModalManager = ({ user, modals }) => {
       {showPaperTrading && user && <PaperTrading onClose={() => setShowPaperTrading(false)} />}
       {showSmartOrders && user && <SmartOrderPanel onClose={() => setShowSmartOrders(false)} />}
       {showRiskCalc && user && <RiskCalculator onClose={() => setShowRiskCalc(false)} onApplyToSmartOrder={(data) => { setShowRiskCalc(false); setShowSmartOrders(true); }} />}
+      {showScanner && user && <MarketScanner onClose={() => setShowScanner(false)} />}
       {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
       {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}

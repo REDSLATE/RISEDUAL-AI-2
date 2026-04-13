@@ -66,6 +66,7 @@ function AppContent() {
     showPaperTrading, setShowPaperTrading,
     showSmartOrders, setShowSmartOrders,
     showRiskCalc, setShowRiskCalc,
+    showScanner, setShowScanner,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -94,7 +95,7 @@ function AppContent() {
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={() => setShowSubscription(true)} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenAbout={() => setShowAbout(true)} />
+      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenAbout={() => setShowAbout(true)} />
       <CryptoTicker />
       <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
 
@@ -171,6 +172,7 @@ function AppContent() {
         showMemory, setShowMemory, showPaperTrading, setShowPaperTrading,
         showSmartOrders, setShowSmartOrders,
         showRiskCalc, setShowRiskCalc,
+        showScanner, setShowScanner,
         showAbout, setShowAbout, showLegal, setShowLegal,
         legalTab, setLegalTab, resetToken, setResetToken,
       }} />
