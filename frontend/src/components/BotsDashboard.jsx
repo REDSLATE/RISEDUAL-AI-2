@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api/bots`;
 const BOT_ICONS = { grid: Grid3X3, signal: Radio, webhook: Webhook };
@@ -48,6 +49,7 @@ const BotsDashboard = ({ onOpenBots }) => {
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-[#3DE8D9]" />
           <CardTitle className="text-white text-base">Trading Bots</CardTitle>
+          <InfoTooltip id="trading-bots" />
           <Badge className={`text-[9px] ${activeCount > 0 ? 'bg-lime-500/15 text-lime-400' : 'bg-slate-700 text-slate-400'}`}>
             {activeCount} active
           </Badge>

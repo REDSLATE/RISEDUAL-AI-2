@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { authFetch } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -81,6 +82,7 @@ const PnLTracker = ({ onOpenBroker }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>P&L Tracker</h2>
+            <InfoTooltip id="pnl-tracker" />
             <p className="text-slate-300 text-xs">Real-time portfolio performance across brokers</p>
           </div>
         </div>

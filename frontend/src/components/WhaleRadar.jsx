@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
+import InfoTooltip from './InfoTooltip';
 
 const RADAR_TICKERS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK', 'SHIB'];
 const MAX_EVENTS = 30;
@@ -102,6 +103,7 @@ const WhaleRadar = () => {
           <CardTitle className="text-sm font-black flex items-center gap-2 text-white tracking-tight">
             <Radio className="w-4 h-4 text-red-500 animate-pulse" />
             WHALE RADAR LIVE
+            <InfoTooltip id="whale-radar" />
           </CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-slate-500 text-[10px]">{RADAR_TICKERS.length} pairs</span>

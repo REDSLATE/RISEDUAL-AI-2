@@ -13,6 +13,7 @@ import {
 } from './warroom/WarRoomCards';
 import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -70,6 +71,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>
               AI War Room
             </h2>
+            <InfoTooltip id="ai-war-room" />
             <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI Command Center — Strategist signals, Auditor validates</p>
           </div>
         </div>

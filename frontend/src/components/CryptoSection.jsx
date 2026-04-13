@@ -3,6 +3,7 @@ import { Bitcoin, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { Card } from './ui/card';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const BACKEND_URL = getApiBase();
 
@@ -47,6 +48,7 @@ const CryptoSection = () => {
         </div>
         <div>
           <h2 className="text-white text-lg sm:text-2xl font-bold">Cryptocurrency Market</h2>
+          <InfoTooltip id="crypto" />
           <p className="text-slate-300 text-sm">Real-time cryptocurrency prices and market data</p>
         </div>
       </div>

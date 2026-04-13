@@ -12,6 +12,7 @@ import AccuracyBadge from './AccuracyBadge';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 import { exportHypothesisReport } from '../utils/exportHypothesis';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -85,6 +86,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>AI Investment Hypothesis</h2>
+            <InfoTooltip id="ai-hypothesis" />
             <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist generates thesis, Auditor stress-tests it</p>
           </div>
         </div>

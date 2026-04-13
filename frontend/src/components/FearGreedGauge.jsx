@@ -4,6 +4,7 @@ import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import axios from 'axios';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -110,6 +111,7 @@ const FearGreedGauge = () => {
       <div className="flex items-center gap-2 mb-3">
         <Activity className="w-4 h-4 text-[#3DE8D9]" />
         <h3 className="text-white text-sm font-semibold">Fear & Greed Index</h3>
+        <InfoTooltip id="fear-greed" />
         {current.source === 'cnn_live' && (
           <span className="ml-auto text-[9px] bg-green-900/40 text-green-400 px-1.5 py-0.5 rounded-full">LIVE</span>
         )}

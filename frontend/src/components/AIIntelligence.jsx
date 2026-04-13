@@ -6,6 +6,7 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import PatternsView from './intelligence/PatternsView';
 import BriefView from './intelligence/BriefView';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -58,6 +59,7 @@ const AIIntelligence = ({ onSubscribe }) => {
         </div>
         <div>
           <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>AI Intelligence Hub</h2>
+          <InfoTooltip id="ai-intelligence" />
           <p className="text-slate-300 text-xs">Strategist-powered stock scoring, pattern detection, and instant briefs</p>
         </div>
       </div>

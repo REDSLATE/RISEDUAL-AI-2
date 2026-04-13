@@ -5,6 +5,7 @@ import DataTable from './DataTable';
 import ProBlurWall from './ProBlurWall';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const BACKEND_URL = getApiBase();
 
@@ -72,6 +73,7 @@ const DarkPoolData = ({ onSubscribe }) => {
           </div>
           <div>
             <h2 className="text-white text-lg sm:text-2xl font-bold">Dark Pool Trading</h2>
+            <InfoTooltip id="dark-pool" />
             <p className="text-slate-300 text-sm">Off-exchange institutional activity via Polygon.io</p>
           </div>
         </div>

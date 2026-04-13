@@ -7,6 +7,7 @@ import ForeignMarketsTab from './macro/ForeignMarketsTab';
 import CongressTab from './macro/CongressTab';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const BACKEND_URL = getApiBase();
 
@@ -129,6 +130,7 @@ const MacroDashboard = ({ onSubscribe }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>Macro Intelligence</h2>
+            <InfoTooltip id="macro-dashboard" />
             <p className="text-slate-300 text-xs sm:text-sm">Real-time world events, foreign markets & government activity</p>
           </div>
         </div>

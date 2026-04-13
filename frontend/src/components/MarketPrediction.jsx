@@ -9,6 +9,7 @@ import { PredictionCard, MacroDataSection, RealEstateSection } from './predictio
 import AdversarialHub from './AdversarialHub';
 import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 
@@ -75,6 +76,7 @@ const MarketPrediction = ({ onSubscribe }) => {
           </div>
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>AI Market Predictions</h2>
+            <InfoTooltip id="market-prediction" />
             <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist predicts, Auditor vetoes weak signals</p>
           </div>
         </div>

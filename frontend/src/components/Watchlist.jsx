@@ -6,6 +6,7 @@ import { Card } from './ui/card';
 import { useAuth } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
+import InfoTooltip from './InfoTooltip';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -125,6 +126,7 @@ const Watchlist = ({ onSubscribe }) => {
         <div className="flex items-center gap-2">
           <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
           <h3 className="text-white font-semibold">My Watchlist</h3>
+          <InfoTooltip id="watchlist" />
           <span className="text-slate-300 text-sm">({watchlist.length}{user && !isPro ? `/${FREE_WATCHLIST_LIMIT}` : ''})</span>
         </div>
         <Button
