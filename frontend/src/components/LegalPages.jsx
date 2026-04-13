@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, FileText, Shield, AlertTriangle, Scale } from 'lucide-react';
 
-const ENTITY = 'RED SLATE HOLDINGS';
+const ENTITY = 'RISEDUAL CORPORATION';
 const STATE = 'Florida';
 const SITE = 'risedual.ai';
 const EMAIL = 'legal@risedual.ai';

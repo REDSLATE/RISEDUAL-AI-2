@@ -72,7 +72,7 @@ const Footer = ({ onOpenLegal }) => {
 
         {/* Divider + Bottom */}
         <div className="border-t border-slate-600/30/60 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-slate-400 text-[11px]">&copy; {year} RED SLATE HOLDINGS. All rights reserved. Not financial advice.</p>
+          <p className="text-slate-400 text-[11px]">&copy; {year} RISEDUAL CORPORATION. All rights reserved. Not financial advice.</p>
           <p className="text-slate-700 text-[10px]">Powered by AI Multi-Model Consensus Engine</p>
         </div>
       </div>
