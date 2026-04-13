@@ -19,6 +19,7 @@ export default function useModals() {
   const [showScanner, setShowScanner] = useState(false);
   const [showBots, setShowBots] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showDeveloper, setShowDeveloper] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   const [legalTab, setLegalTab] = useState('terms');
@@ -63,6 +64,7 @@ export default function useModals() {
     showScanner, setShowScanner,
     showBots, setShowBots,
     showHelp, setShowHelp,
+    showDeveloper, setShowDeveloper,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,

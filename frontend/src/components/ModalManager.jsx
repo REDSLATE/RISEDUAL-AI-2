@@ -16,6 +16,7 @@ import RiskCalculator from './RiskCalculator';
 import MarketScanner from './MarketScanner';
 import TradingBotPanel from './TradingBotPanel';
 import HelpCenter from './HelpCenter';
+import DeveloperPortal from './DeveloperPortal';
 import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -39,6 +40,7 @@ const ModalManager = ({ user, modals }) => {
     showScanner, setShowScanner,
     showBots, setShowBots,
     showHelp, setShowHelp,
+    showDeveloper, setShowDeveloper,
     showAbout, setShowAbout,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
@@ -64,6 +66,7 @@ const ModalManager = ({ user, modals }) => {
       {showScanner && user && <MarketScanner onClose={() => setShowScanner(false)} />}
       {showBots && user && <TradingBotPanel onClose={() => setShowBots(false)} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
+      {showDeveloper && user && <DeveloperPortal onClose={() => setShowDeveloper(false)} />}
       {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
       {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
       {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
