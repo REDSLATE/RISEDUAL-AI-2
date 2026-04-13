@@ -9,8 +9,9 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - **Auth**: httpOnly secure cookies (JWT), 90s fetch timeout for AI endpoints
 - **AI**: Emergent LLM Key (GPT-5.2, Claude Sonnet 4.5, Gemini)
 - **Payments**: Stripe ($45/month Pro subscription)
-- **Market Data**: Alpha Vantage with yfinance fallback, Finnhub
+- **Market Data**: Alpha Vantage 170+ tier with yfinance fallback, Finnhub
 - **Email**: Resend
+- **Alternative Data**: QuiverQuant (congressional trading — active; insiders/lobbying/contracts — pending server fix)
 
 ## Critical Technical Decisions
 - **Motor DB Boolean Checks**: NEVER use `if db:`. ALWAYS use `if db is not None:`
@@ -25,30 +26,39 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 - Company Research, Market Predictions, Sector Heatmap + AI Sentiment
 - P&L Tracker, 8 Broker Integrations, Stripe Gateway
 - Admin Panel (Cache, Security Audit, Success Fees, Media, Waitlist)
-- Referral System, Trading Journal, Strategy Builder/Marketplace
+- Referral System + Badge Showcase + Public Profiles
+- Trading Journal, Strategy Builder/Marketplace
 - Market Vector Memory (ChromaDB), VAPID Push, Order Flow Heatmaps
 - Whale Radar (10 crypto SSE), Paper Trading, Portfolio AI Agent
-- Legal Pages, SEO, Beta Waitlist, User Badges
+- Legal Pages, SEO, Beta Waitlist, User Badges, Onboarding Tour
 - Smart Orders, Risk Calculator, Market Scanner + AI Validation
-- Trading Bots (Grid/Signal/Webhook), Help Center, Onboarding Tour
+- Trading Bots (Grid/Signal/Webhook), Help Center, Contextual Tooltips
+- Success Fee System (1.5% on gains above $1K for broker-connected users)
+
+### QuiverQuant Integration (April 13, 2026)
+- **Service**: `quiver_service.py` — direct API calls with Token auth
+- **Congressional Trading**: WORKING — real data (Whitehouse, Gottheimer trades confirmed)
+- **Insider Trading**: QuiverQuant server returning 500 — fallback to SEC/OpenInsider active
+- **Lobbying**: QuiverQuant server returning 500 — fallback to MongoDB dataset active
+- **Gov Contracts**: QuiverQuant server returning 500 — no fallback (new dataset)
+- **Integration**: Primary source in `gov_filings_service.py`, all scrapers remain as fallbacks
+- **Key**: `QUIVER_API_KEY` in backend/.env
+- **Status**: Partially working — re-test when QuiverQuant server stabilizes
 
 ### Success Fee System (April 13, 2026)
 - 1.5% on broker-connected users' monthly gains above $1,000
 - Zero fee on losses/breakeven/below threshold
-- Monthly billing resets 1st. Manual collection via Admin Panel.
 - Backend: 6 endpoints under `/api/success-fee/`
 - Frontend: SuccessFeeWidget (dashboard), SuccessFeesTab (admin)
 - Legal: Terms of Service Section 6, Landing page pricing + FAQ
-- **Verified (Iteration 116)**: 96% backend, 100% frontend
+- Verified (Iteration 116)
 
 ### Badge Showcase + Public Profiles (April 13, 2026)
-- **Leaderboard badges**: Each entry shows badge pill (Creator, F100, Beta, Pro)
-- **Clickable names**: Open PublicProfile modal
-- **Public Profile modal**: Avatar, masked name, primary badge, rank, referrals, join date, "Badges Earned" section
-- **Backend**: `GET /api/referral/profile/{user_id}` public endpoint, leaderboard returns `user_id` + `badge`
-- **Badge priority**: Creator (owner/admin) > Founding 100 > Beta > Pro > Free
-- **Verified (Iteration 117)**: 94% backend, 100% frontend
+- Leaderboard shows badge pills (Creator, F100, Beta, Pro)
+- Clickable names open PublicProfile modal
+- Backend: `GET /api/referral/profile/{user_id}` public endpoint
+- Verified (Iteration 117)
 
 ## Backlog
-- P1: Deploy to `risedual.ai` custom domain
-- P2: Alpha Vantage API upgrade guidance
+- P1: Deploy to `risedual.ai` custom domain (after beta testing — 2.0 launch)
+- QuiverQuant: Re-test insiders/lobbying/contracts when their server stabilizes
