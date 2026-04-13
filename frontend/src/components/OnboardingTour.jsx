@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronRight, ChevronLeft, X, Rocket, Bot, Brain, BarChart3, TrendingUp, Shield, Search, Layers, Calculator, Zap } from 'lucide-react';
+import { ChevronRight, ChevronLeft, X, Rocket, Bot, Brain, BarChart3, TrendingUp, Shield, Search } from 'lucide-react';
 import { Button } from './ui/button';
 
 const TOUR_STEPS = [
@@ -91,6 +91,8 @@ const OnboardingTour = ({ active, onComplete }) => {
       return;
     }
 
+    if (typeof document === 'undefined') return;
+
     let el = document.querySelector(target);
     if (!el && currentStep.fallback) {
       el = document.querySelector(currentStep.fallback);
@@ -98,16 +100,23 @@ const OnboardingTour = ({ active, onComplete }) => {
 
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => {
+
+      const measure = () => {
         const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          setHighlight(null);
+          return;
+        }
         setHighlight({
-          top: rect.top + window.scrollY,
+          top: rect.top,       // viewport coords for fixed positioning
           left: rect.left,
           width: rect.width,
           height: rect.height,
-          screenTop: rect.top,
         });
-      }, 400);
+      };
+
+      setTimeout(measure, 500);
+      setTimeout(measure, 900);
     } else {
       setHighlight(null);
     }
@@ -117,16 +126,49 @@ const OnboardingTour = ({ active, onComplete }) => {
     if (active) scrollToTarget();
   }, [step, active, scrollToTarget]);
 
+  useEffect(() => {
+    if (!active || !currentStep?.target) return;
+    if (typeof document === 'undefined') return;
+
+    const remeasure = () => {
+      const target = currentStep.target;
+      let el = document.querySelector(target);
+      if (!el && currentStep.fallback) el = document.querySelector(currentStep.fallback);
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        setHighlight(null);
+        return;
+      }
+      setHighlight({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    window.addEventListener('scroll', remeasure, true);
+    window.addEventListener('resize', remeasure);
+    return () => {
+      window.removeEventListener('scroll', remeasure, true);
+      window.removeEventListener('resize', remeasure);
+    };
+  }, [active, currentStep]);
+
   const next = () => {
     if (isLast) {
       localStorage.setItem(STORAGE_KEY, 'true');
       onComplete();
     } else {
-      setStep(s => s + 1);
+      setStep((s) => s + 1);
     }
   };
 
-  const prev = () => { if (!isFirst) setStep(s => s - 1); };
+  const prev = () => {
+    if (!isFirst) setStep((s) => s - 1);
+  };
 
   const skip = () => {
     localStorage.setItem(STORAGE_KEY, 'true');
@@ -138,47 +180,63 @@ const OnboardingTour = ({ active, onComplete }) => {
   const Icon = currentStep.icon || Rocket;
   const isCentered = currentStep.position === 'center' || !highlight;
 
-  // Calculate tooltip position
   let tooltipStyle = {};
   if (isCentered) {
-    tooltipStyle = { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', position: 'fixed' };
+    tooltipStyle = {
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      position: 'fixed',
+    };
   } else if (currentStep.position === 'below') {
     tooltipStyle = {
       position: 'fixed',
-      top: `${Math.min(highlight.screenTop + highlight.height + 12, window.innerHeight - 280)}px`,
-      left: `${Math.max(Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370), 10)}px`,
+      top: `${Math.min(highlight.top + highlight.height + 12, window.innerHeight - 280)}px`,
+      left: `${Math.max(
+        Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370),
+        10
+      )}px`,
     };
   } else {
-    const belowSpace = window.innerHeight - highlight.screenTop - highlight.height;
-    const aboveSpace = highlight.screenTop;
+    const belowSpace = window.innerHeight - highlight.top - highlight.height;
+    const aboveSpace = highlight.top;
     if (belowSpace > 280) {
       tooltipStyle = {
         position: 'fixed',
-        top: `${highlight.screenTop + highlight.height + 12}px`,
-        left: `${Math.max(Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370), 10)}px`,
+        top: `${highlight.top + highlight.height + 12}px`,
+        left: `${Math.max(
+          Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370),
+          10
+        )}px`,
       };
     } else if (aboveSpace > 280) {
       tooltipStyle = {
         position: 'fixed',
-        top: `${highlight.screenTop - 260}px`,
-        left: `${Math.max(Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370), 10)}px`,
+        top: `${highlight.top - 260}px`,
+        left: `${Math.max(
+          Math.min(highlight.left + highlight.width / 2 - 175, window.innerWidth - 370),
+          10
+        )}px`,
       };
     } else {
-      tooltipStyle = { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', position: 'fixed' };
+      tooltipStyle = {
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        position: 'fixed',
+      };
     }
   }
 
   return (
     <div ref={overlayRef} className="fixed inset-0 z-[200]" data-testid="onboarding-tour">
-      {/* Dark overlay with cutout */}
       <div className="fixed inset-0 bg-black/70 transition-opacity duration-300" onClick={skip} />
 
-      {/* Highlight ring */}
       {highlight && !isCentered && (
         <div
           className="fixed border-2 border-[#3DE8D9] rounded-xl pointer-events-none z-[201] transition-all duration-500"
           style={{
-            top: `${highlight.screenTop - 6}px`,
+            top: `${highlight.top - 6}px`,
             left: `${highlight.left - 6}px`,
             width: `${highlight.width + 12}px`,
             height: `${highlight.height + 12}px`,
@@ -187,44 +245,67 @@ const OnboardingTour = ({ active, onComplete }) => {
         />
       )}
 
-      {/* Tooltip card */}
-      <div className="z-[202] w-[350px] bg-[#0B1426] border border-[#3DE8D9]/40 rounded-2xl shadow-2xl shadow-[#3DE8D9]/10 overflow-hidden" style={tooltipStyle} data-testid="tour-tooltip">
-        {/* Progress bar */}
+      <div
+        className="z-[202] w-[350px] bg-[#0B1426] border border-[#3DE8D9]/40 rounded-2xl shadow-2xl shadow-[#3DE8D9]/10 overflow-hidden"
+        style={tooltipStyle}
+        data-testid="tour-tooltip"
+      >
         <div className="h-1 bg-slate-800">
-          <div className="h-full bg-[#3DE8D9] transition-all duration-500" style={{ width: `${((step + 1) / TOUR_STEPS.length) * 100}%` }} />
+          <div
+            className="h-full bg-[#3DE8D9] transition-all duration-500"
+            style={{ width: `${((step + 1) / TOUR_STEPS.length) * 100}%` }}
+          />
         </div>
 
         <div className="p-5">
-          {/* Icon + Title */}
           <div className="flex items-center gap-2.5 mb-3">
             <div className="w-9 h-9 rounded-xl bg-[#3DE8D9]/10 flex items-center justify-center">
               <Icon className="w-5 h-5 text-[#3DE8D9]" />
             </div>
             <div>
               <h3 className="text-white font-bold text-sm">{currentStep.title}</h3>
-              <span className="text-slate-500 text-[10px]">Step {step + 1} of {TOUR_STEPS.length}</span>
+              <span className="text-slate-500 text-[10px]">
+                Step {step + 1} of {TOUR_STEPS.length}
+              </span>
             </div>
           </div>
 
-          {/* Content */}
-          <p className="text-slate-300 text-xs leading-relaxed mb-4">{currentStep.content}</p>
+          <p className="text-slate-300 text-xs leading-relaxed mb-4">
+            {currentStep.content}
+          </p>
 
-          {/* Actions */}
           <div className="flex items-center justify-between">
-            <button onClick={skip} className="text-slate-500 text-[10px] hover:text-slate-300 transition-colors" data-testid="tour-skip">
+            <button
+              onClick={skip}
+              className="text-slate-500 text-[10px] hover:text-slate-300 transition-colors"
+              data-testid="tour-skip"
+            >
               Skip Tour
             </button>
             <div className="flex items-center gap-2">
               {!isFirst && (
-                <Button size="sm" variant="outline" onClick={prev}
-                  className="bg-slate-800 border-slate-600 text-slate-300 h-8 text-xs" data-testid="tour-prev">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={prev}
+                  className="bg-slate-800 border-slate-600 text-slate-300 h-8 text-xs"
+                  data-testid="tour-prev"
+                >
                   <ChevronLeft className="w-3.5 h-3.5 mr-0.5" /> Back
                 </Button>
               )}
-              <Button size="sm" onClick={next}
-                className={`h-8 text-xs font-bold ${currentStep.final ? 'bg-lime-500 hover:bg-lime-400 text-white' : 'bg-[#3DE8D9] hover:bg-[#3DE8D9]/80 text-white'}`}
-                data-testid="tour-next">
-                {currentStep.final ? "Let's Go!" : 'Next'} {!currentStep.final && <ChevronRight className="w-3.5 h-3.5 ml-0.5" />}
+              <Button
+                size="sm"
+                onClick={next}
+                className={`h-8 text-xs font-bold ${
+                  currentStep.final
+                    ? 'bg-lime-500 hover:bg-lime-400 text-white'
+                    : 'bg-[#3DE8D9] hover:bg-[#3DE8D9]/80 text-white'
+                }`}
+                data-testid="tour-next"
+              >
+                {currentStep.final ? "Let's Go!" : 'Next'}{' '}
+                {!currentStep.final && <ChevronRight className="w-3.5 h-3.5 ml-0.5" />}
               </Button>
             </div>
           </div>
