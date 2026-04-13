@@ -38,34 +38,38 @@ def _init_client():
 async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> List[Dict]:
     """Fetch recent congressional stock trades from QuiverQuant."""
     try:
-        client = _init_client()
-        if not client:
+        key = _get_key()
+        if not key:
             return []
 
-        df = await asyncio.to_thread(
-            lambda: client.congress_trading(ticker) if ticker else client.congress_trading()
-        )
+        import requests
+        headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+        url = "https://api.quiverquant.com/beta/live/congresstrading"
+        if ticker:
+            url = f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker}"
 
-        if df is None or df.empty:
+        resp = await asyncio.to_thread(
+            lambda: requests.get(url, headers=headers, timeout=30)
+        )
+        if resp.status_code != 200:
+            logger.warning(f"QuiverQuant congressional: HTTP {resp.status_code}")
+            return []
+
+        data = resp.json()
+        if not data:
             return []
 
         trades = []
-        for _, row in df.head(limit).iterrows():
+        for row in data[-limit:] if len(data) > limit else data:
             representative = str(row.get("Representative", row.get("representative", "")))
             tx_type = str(row.get("Transaction", row.get("transaction", "")))
-            amount = str(row.get("Amount", row.get("amount", "")))
+            amount = str(row.get("Amount", row.get("Range", row.get("amount", ""))))
             tkr = str(row.get("Ticker", row.get("ticker", ticker or "")))
-            date_val = row.get("TransactionDate", row.get("Date", row.get("date", "")))
+            date_str = str(row.get("TransactionDate", row.get("Date", row.get("date", ""))))[:10]
             party = str(row.get("Party", row.get("party", "")))
             chamber = str(row.get("House", row.get("house", "")))
 
-            date_str = ""
-            if hasattr(date_val, "strftime"):
-                date_str = date_val.strftime("%Y-%m-%d")
-            elif date_val:
-                date_str = str(date_val)[:10]
-
-            party_short = "D" if "dem" in party.lower() else "R" if "rep" in party.lower() else ""
+            party_short = party if len(party) <= 2 else ("D" if "dem" in party.lower() else "R" if "rep" in party.lower() else "")
 
             trades.append({
                 "representative": representative,
@@ -95,7 +99,7 @@ async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> L
             return []
 
         import requests
-        headers = {"Authorization": f"Token {key}", "Accept": "application/json"}
+        headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
         url = "https://api.quiverquant.com/beta/live/insiders"
         if ticker:
             url = f"https://api.quiverquant.com/beta/historical/insiders/{ticker}"
@@ -149,10 +153,9 @@ async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> List[Di
         if not key:
             return []
 
-        # Use direct API call (library has parsing issues with large responses)
         import requests
-        headers = {"Authorization": f"Token {key}", "Accept": "application/json"}
-        url = f"https://api.quiverquant.com/beta/live/lobbying"
+        headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+        url = "https://api.quiverquant.com/beta/live/lobbying"
         if ticker:
             url = f"https://api.quiverquant.com/beta/historical/lobbying/{ticker}"
 

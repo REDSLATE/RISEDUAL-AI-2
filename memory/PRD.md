@@ -34,7 +34,12 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform b
 - Backend resilience: /api/ready health check, isolated startup, ErrorBoundary modals
 - Onboarding Tour with smart tooltip positioning (validated 2026-04-13)
 
+## QuiverQuant API Status (Updated 2026-04-13)
+- Auth changed from `Token` to `Bearer` — fixed in quiver_service.py
+- Congressional trading: WORKING (live data via QuiverQuant)
+- Insiders, Lobbying, Gov Contracts: Still HTTP 500 on QuiverQuant server — graceful fallback to Finnhub + scrapers active
+
 ## Backlog
 - P1: Configure Stripe webhook endpoint URL in Stripe Dashboard (production `/api/billing/webhook`)
-- P2: QuiverQuant API re-test (insiders/lobbying/contracts — external 500 errors)
+- P2: Monitor QuiverQuant insiders/lobbying/govcontracts endpoints for recovery (external server issue)
 - P0-Future: Deploy to `risedual.ai` (2.0 launch after beta)
