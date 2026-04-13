@@ -677,6 +677,27 @@ Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform. 
 
 **Phase 3 Complete**: Pre-built Screener (10 strategies) + Visual Rule Builder (23 indicators, AND/OR logic) + AI Validation Layer (GPT-5.2 adversarial scoring)
 
+### Trading Bots — Phase 4 (April 13, 2026)
+- **All bots default to OFF with toggle switch** (user requirement)
+- **Grid Bot**: Auto buy low / sell high in a configurable price range
+  - Configurable: symbol, upper/lower price, grid levels (2-10), qty per grid
+  - Runs every 30s via APScheduler when enabled
+  - Flips orders: buy fills → become sells, sell fills → become buys
+- **Signal Bot**: Scanner signals above AI confidence → auto-execute Smart Orders
+  - Configurable: min confidence % (default 70), qty, auto SL/TP %, symbol/strategy filters
+  - Creates Smart Orders with trailing SL when triggered
+  - Integrates with Phase 3 AI Validation layer
+- **TradingView Webhook Bot**: Receives external POST webhooks → executes trades
+  - Unique webhook_secret per bot (URL-based auth, no Bearer token needed)
+  - Payload: `{"action":"buy","symbol":"AAPL","qty":10}`
+  - Rate limited: max trades per day (configurable)
+  - Copy webhook URL button in UI
+- **Backend**: `POST/GET/PATCH/DELETE /api/bots`, `POST /api/bots/webhook/{id}/{secret}`, `POST /api/bots/signal/process`
+- **Frontend**: `TradingBotPanel.jsx` — My Bots / Create tabs, bot cards with stats, ON/OFF toggle, config summaries
+- **Verified (Iteration 113)**: 100% pass (15/15 backend, all frontend, all toggles default OFF)
+
+**All 4 Altrady-inspired phases complete**: Smart Orders → Risk Calculator → Market Scanner (with AI Validation) → Trading Bots
+
 ## Backlog
 - P1: Waitlist analytics dashboard (daily signups, referral conversion rate)
 - P1: Deploy to `risedual.ai` custom domain (user confirmed "Yes deploy")
