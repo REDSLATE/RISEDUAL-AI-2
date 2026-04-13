@@ -477,13 +477,27 @@ const CTA = ({ onGetStarted }) => (
 /* ─── Landing Footer ─── */
 const LandingFooter = ({ onOpenLegal }) => (
   <footer className="border-t border-white/5 py-8">
-    <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL CORPORATION. All rights reserved.</span>
-      <div className="flex items-center gap-6 text-xs text-slate-400">
-        <button onClick={() => onOpenLegal?.('privacy')} className="hover:text-slate-300 transition-colors" data-testid="landing-privacy-link">Privacy</button>
-        <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>
-        <button onClick={() => onOpenLegal?.('risk')} className="hover:text-slate-300 transition-colors" data-testid="landing-risk-link">Risk Disclosure</button>
-        <button onClick={() => onOpenLegal?.('disclaimer')} className="hover:text-slate-300 transition-colors" data-testid="landing-disclaimer-link">Disclaimer</button>
+    <div className="max-w-6xl mx-auto px-4">
+      {/* Investment Risk Disclosure */}
+      <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 mb-6" data-testid="footer-risk-disclosure">
+        <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wider mb-2">Investment Risk Disclosure</p>
+        <ul className="space-y-1.5 text-slate-400 text-[10px] leading-relaxed">
+          <li><strong className="text-slate-300">High Risk Warning:</strong> Trading stocks, options, and digital assets involves significant risk of loss.</li>
+          <li><strong className="text-slate-300">No Financial Advice:</strong> RISEDUAL AI is a <strong className="text-slate-300">financial research publishing platform</strong>. All content, including AI-generated signals and "4-Mind" insights, is for informational and educational purposes only.</li>
+          <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> RISEDUAL AI and Red Slate Holdings are not registered investment advisers (RIAs) or broker-dealers. We do not provide personalized investment recommendations.</li>
+          <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from AI models (GPT-5.2). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
+          <li><strong className="text-slate-300">Past Performance:</strong> Any displayed backtests or historical results are not indicative of future performance.</li>
+        </ul>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL CORPORATION. All rights reserved.</span>
+        <div className="flex items-center gap-6 text-xs text-slate-400">
+          <button onClick={() => onOpenLegal?.('privacy')} className="hover:text-slate-300 transition-colors" data-testid="landing-privacy-link">Privacy</button>
+          <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>
+          <button onClick={() => onOpenLegal?.('risk')} className="hover:text-slate-300 transition-colors" data-testid="landing-risk-link">Risk Disclosure</button>
+          <button onClick={() => onOpenLegal?.('disclaimer')} className="hover:text-slate-300 transition-colors" data-testid="landing-disclaimer-link">Disclaimer</button>
+        </div>
       </div>
     </div>
   </footer>

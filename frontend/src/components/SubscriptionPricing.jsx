@@ -12,6 +12,7 @@ const API = `${getApiBase()}/api`;
 const SubscriptionPricing = ({ onClose }) => {
   const [selectedPlan, setSelectedPlan] = useState('annual');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [riskAccepted, setRiskAccepted] = useState(false);
 
   const features = [
     { icon: TrendingUp, text: 'Real-time market data & alerts' },
@@ -130,11 +131,37 @@ const SubscriptionPricing = ({ onClose }) => {
             </Card>
           </div>
 
+          {/* Risk Disclosure Checkbox */}
+          <div className="max-w-2xl mx-auto mt-6">
+            <div className="bg-amber-900/15 border border-amber-700/30 rounded-xl p-4 mb-4" data-testid="checkout-risk-disclosure">
+              <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wider mb-2">Investment Risk Disclosure</p>
+              <ul className="space-y-1 text-slate-400 text-[10px] leading-relaxed mb-3">
+                <li><strong className="text-slate-300">High Risk Warning:</strong> Trading stocks, options, and digital assets involves significant risk of loss.</li>
+                <li><strong className="text-slate-300">No Financial Advice:</strong> RISEDUAL AI is a financial research publishing platform. All content is for informational and educational purposes only.</li>
+                <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> We are not registered investment advisers (RIAs) or broker-dealers.</li>
+                <li><strong className="text-slate-300">AI Limitations:</strong> AI can "hallucinate" or provide inaccurate data. Perform your own due diligence.</li>
+                <li><strong className="text-slate-300">Past Performance:</strong> Backtests or historical results are not indicative of future performance.</li>
+              </ul>
+              <label className="flex items-start gap-2.5 cursor-pointer group" data-testid="risk-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={riskAccepted}
+                  onChange={(e) => setRiskAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-slate-600 bg-slate-800 text-[#3DE8D9] focus:ring-[#3DE8D9] focus:ring-offset-0 shrink-0"
+                  data-testid="risk-checkbox"
+                />
+                <span className="text-slate-300 text-[10px] leading-relaxed group-hover:text-white transition-colors">
+                  I have read and understand the Investment Risk Disclosure. I acknowledge that trading involves significant risk of loss and that RISEDUAL AI does not provide financial advice.
+                </span>
+              </label>
+            </div>
+          </div>
+
           {/* CTA */}
-          <div className="max-w-2xl mx-auto mt-6 space-y-3">
+          <div className="max-w-2xl mx-auto space-y-3">
             <Button
               onClick={handleStripeCheckout}
-              disabled={isProcessing}
+              disabled={isProcessing || !riskAccepted}
               className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white font-semibold py-6 text-lg rounded-xl"
               data-testid="stripe-checkout-btn"
             >

@@ -1,0 +1,59 @@
+{
+  "summary": "Iteration 119: Investment Risk Disclosure Testing - All features PASS. Landing page footer, dashboard footer, and subscription modal all contain the required Investment Risk Disclosure with 5 bullet points. Checkbox gates Subscribe button correctly. Legal pages Terms and AI Transparency tabs work correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_119.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "React key warning in console: 'Encountered two children with the same key' for bid/ask elements - minor issue, not blocking"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (13/13 tests passed)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 119 tested Investment Risk Disclosure in footers and subscription modal. All tests pass. Owner account is Pro so subscription modal could not be tested via UI, but code review confirms implementation is correct (checkbox gates button, all data-testids present). Landing page and dashboard footers both show RISEDUAL CORPORATION copyright and full Investment Risk Disclosure with all 5 bullet points.",
+  "verified_features": {
+    "Landing page footer - Investment Risk Disclosure section exists": "PASS",
+    "Landing page footer - 'High Risk Warning' bullet": "PASS",
+    "Landing page footer - 'financial research publishing platform' (bold)": "PASS",
+    "Landing page footer - 'Red Slate Holdings' mentioned": "PASS",
+    "Landing page footer - 'not registered investment advisers (RIAs)'": "PASS",
+    "Landing page footer - 'GPT-5.2' mentioned": "PASS",
+    "Landing page footer - 'hallucinate' mentioned": "PASS",
+    "Landing page footer - 'Past Performance' bullet": "PASS",
+    "Landing page footer - copyright shows 'RISEDUAL CORPORATION'": "PASS",
+    "Dashboard footer - Investment Risk Disclosure section exists": "PASS",
+    "Dashboard footer - all 5 bullet points present": "PASS",
+    "Dashboard footer - copyright shows 'RISEDUAL CORPORATION'": "PASS",
+    "Login flow works (no regressions)": "PASS",
+    "Legal pages Terms tab shows RISEDUAL CORPORATION": "PASS",
+    "Legal pages AI Transparency tab exists and works": "PASS",
+    "Subscription modal - risk disclosure checkbox (code review)": "PASS - data-testid='risk-checkbox' present",
+    "Subscription modal - Subscribe button disabled when unchecked (code review)": "PASS - disabled={isProcessing || !riskAccepted}",
+    "Subscription modal - checkbox text mentions 'Investment Risk Disclosure' and 'significant risk of loss' (code review)": "PASS"
+  },
+  "notes": {
+    "subscription_modal_testing": "Owner account (managingdirector@redslateholdings.com) is already Pro, so the Upgrade button is not visible. Subscription modal could not be tested via UI. Code review of SubscriptionPricing.jsx confirms correct implementation: checkbox with data-testid='risk-checkbox', button disabled when !riskAccepted, checkbox label mentions 'Investment Risk Disclosure' and 'significant risk of loss'."
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}
