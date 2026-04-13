@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Zap, Shield, BarChart3, Radio, Brain, LineChart,
   Check, X, ArrowRight, ChevronDown, Menu, X as XIcon,
-  Star, TrendingUp, Clock, Users, Play
+  TrendingUp, Clock, Users, Play
 } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
@@ -386,55 +386,6 @@ const PlanCard = ({ name, price, period, credits, creditsLabel, desc, badge, fea
   </div>
 );
 
-/* ─── Testimonials ─── */
-const Testimonials = () => {
-  const testimonials = [
-    {
-      quote: 'The Auditor saved me from three liquidity traps in one week. My win rate went from 52% to 71% in the first month.',
-      name: 'Marcus Chen', role: 'Crypto Day Trader', stat: '+24% ROI',
-      img: 'https://images.unsplash.com/photo-1632087060431-4db51169e621?w=80&h=80&fit=crop&crop=face',
-    },
-    {
-      quote: 'I was paying $299/month elsewhere. RISEDUAL AI is 5x cheaper and actually catches the fake breakouts they missed.',
-      name: 'Sarah Williams', role: 'Algorithmic Trader', stat: 'Saved $3,048/yr',
-      img: 'https://images.pexels.com/photos/5831265/pexels-photo-5831265.jpeg?w=80&h=80&fit=crop',
-    },
-    {
-      quote: 'The nightly retraining is genius. The system adapts faster than any other platform I\'ve used. Worth every penny.',
-      name: 'David Park', role: 'Swing Trader', stat: '71% Win Rate',
-      img: 'https://images.pexels.com/photos/6918658/pexels-photo-6918658.jpeg?w=80&h=80&fit=crop',
-    },
-  ];
-  return (
-    <section className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-testimonials">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-3">Trusted by Winning Traders</h2>
-        <p className="text-sm text-slate-400 text-center mb-14">Real results from real traders using RISEDUAL AI.</p>
-        <div className="grid md:grid-cols-3 gap-6">
-          {testimonials.map(t => (
-            <div key={t.name} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/55">
-              <div className="flex gap-1 mb-4">
-                {[...Array(5)].map((_, i) => <Star key={`star-${i}`} className="w-3.5 h-3.5 fill-teal-400 text-teal-400" />)}
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed mb-5 italic">"{t.quote}"</p>
-              <div className="flex items-center gap-3">
-                <img src={t.img} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-slate-400/30" />
-                <div>
-                  <div className="text-xs font-semibold text-white">{t.name}</div>
-                  <div className="text-[10px] text-slate-400">{t.role}</div>
-                </div>
-                <div className="ml-auto">
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">{t.stat}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
 /* ─── FAQ ─── */
 const FAQ = () => {
   const [open, setOpen] = useState(null);
@@ -553,7 +504,6 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal }) => {
       <Features />
       <AboutUs embedded />
       <Pricing onGetStarted={onGetStarted} />
-      <Testimonials />
       <FAQ />
       <CTA onGetStarted={onGetStarted} />
       <LandingFooter onOpenLegal={onOpenLegal} />
