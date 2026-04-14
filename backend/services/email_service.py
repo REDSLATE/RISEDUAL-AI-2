@@ -1,25 +1,78 @@
-"""Email notification service using Resend for referral events."""
+"""Email notification service with ProviderRouter failover (Resend → SendGrid)."""
 import os
 import asyncio
 import logging
 import resend
+import httpx
 from dotenv import load_dotenv
 from pathlib import Path
+
+from services.providerrouter import ProviderRouter
+from services.provider_registry import get_email_provider_pool
 
 load_dotenv(Path(__file__).parent.parent / '.env')
 
 logger = logging.getLogger(__name__)
 
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 APP_NAME = "RISEDUAL AI"
 APP_URL = os.environ.get('FRONTEND_URL', 'https://risedual.ai')
 
-resend.api_key = RESEND_API_KEY
+# Initialize the email provider router
+email_router = ProviderRouter("email", get_email_provider_pool())
 
 
-def _is_configured():
-    return RESEND_API_KEY and not RESEND_API_KEY.startswith('re_YOUR')
+async def _send_via_resend(api_key: str, to: list, subject: str, html: str) -> dict:
+    """Send email through Resend API."""
+    resend.api_key = api_key
+    params = {"from": SENDER_EMAIL, "to": to, "subject": subject, "html": html}
+    result = await asyncio.to_thread(resend.Emails.send, params)
+    return result
+
+
+async def _send_via_sendgrid(api_key: str, to: list, subject: str, html: str) -> dict:
+    """Send email through SendGrid API."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "personalizations": [{"to": [{"email": e} for e in to]}],
+                "from": {"email": SENDER_EMAIL},
+                "subject": subject,
+                "content": [{"type": "text/html", "value": html}],
+            },
+        )
+        if resp.status_code not in (200, 201, 202):
+            raise RuntimeError(f"SendGrid {resp.status_code}: {resp.text[:200]}")
+        return {"id": "sendgrid", "status": resp.status_code}
+
+
+async def _routed_send(to: list, subject: str, html: str) -> bool:
+    """Send email through the ProviderRouter with failover."""
+    if not email_router.providers:
+        logger.info(f"Email skipped (no providers configured): {subject} to {to}")
+        return False
+
+    async def _dispatch(provider: dict):
+        p = provider.get("provider")
+        key = provider.get("api_key")
+        if p == "resend":
+            return await _send_via_resend(key, to, subject, html)
+        elif p == "sendgrid":
+            return await _send_via_sendgrid(key, to, subject, html)
+        else:
+            raise RuntimeError(f"Unknown email provider: {p}")
+
+    try:
+        routed = await email_router.run(_dispatch)
+        provider_name = routed["provider"]["name"]
+        result = routed["result"]
+        logger.info(f"Email sent via {provider_name}: '{subject}' to {to}, id: {result.get('id', '?')}")
+        return True
+    except Exception as e:
+        logger.error(f"All email providers failed for '{subject}' to {to}: {e}")
+        return False
 
 
 def _base_html(content: str) -> str:
@@ -131,42 +184,20 @@ Dive in and explore everything {APP_NAME} has to offer. Your Pro trial starts no
 
 async def send_referral_signup_email(referrer_email: str, referrer_name: str, referred_email: str):
     """Notify referrer when someone signs up via their link."""
-    if not _is_configured():
-        logger.info(f"Email skipped (no API key): referral signup notification to {referrer_email}")
-        return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [referrer_email],
-            "subject": f"Your friend just joined {APP_NAME}!",
-            "html": _referral_signup_html(referrer_name, referred_email),
-        }
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Referral signup email sent to {referrer_email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send referral signup email to {referrer_email}: {e}")
-        return False
+    return await _routed_send(
+        [referrer_email],
+        f"Your friend just joined {APP_NAME}!",
+        _referral_signup_html(referrer_name, referred_email),
+    )
 
 
 async def send_reward_earned_email(referrer_email: str, referrer_name: str, referred_email: str):
     """Notify referrer when they earn a free month."""
-    if not _is_configured():
-        logger.info(f"Email skipped (no API key): reward earned notification to {referrer_email}")
-        return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [referrer_email],
-            "subject": f"You earned a free month of {APP_NAME} Pro!",
-            "html": _reward_earned_html(referrer_name, referred_email),
-        }
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Reward earned email sent to {referrer_email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send reward email to {referrer_email}: {e}")
-        return False
+    return await _routed_send(
+        [referrer_email],
+        f"You earned a free month of {APP_NAME} Pro!",
+        _reward_earned_html(referrer_name, referred_email),
+    )
 
 
 def _password_reset_html(reset_url: str) -> str:
@@ -199,23 +230,14 @@ async def send_password_reset_email(user_email: str, reset_token: str, origin_ur
     """Send a password reset email with a secure link."""
     base_url = origin_url or os.environ.get('FRONTEND_URL', APP_URL)
     reset_url = f"{base_url}?reset_token={reset_token}"
-    if not _is_configured():
-        logger.info(f"Email skipped (no API key): password reset to {user_email}")
+    sent = await _routed_send(
+        [user_email],
+        f"Reset Your {APP_NAME} Password",
+        _password_reset_html(reset_url),
+    )
+    if not sent:
         logger.info(f"[PASSWORD RESET LINK] {reset_url}")
-        return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [user_email],
-            "subject": f"Reset Your {APP_NAME} Password",
-            "html": _password_reset_html(reset_url),
-        }
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Password reset email sent to {user_email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send password reset email to {user_email}: {e}")
-        return False
+    return sent
 
 
 def _toxic_spikes_html(toxic_count: int, obsolete_count: int, total_before: int, total_after: int, spike_details: list) -> str:
@@ -308,22 +330,11 @@ async def send_toxic_spikes_email(
 
 async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str):
     """Send welcome email to newly referred user."""
-    if not _is_configured():
-        logger.info(f"Email skipped (no API key): welcome email to {user_email}")
-        return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [user_email],
-            "subject": f"Welcome to {APP_NAME} — Your 7-Day Pro Trial is Active!",
-            "html": _welcome_referral_html(user_name, referrer_name),
-        }
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Welcome email sent to {user_email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send welcome email to {user_email}: {e}")
-        return False
+    return await _routed_send(
+        [user_email],
+        f"Welcome to {APP_NAME} — Your 7-Day Pro Trial is Active!",
+        _welcome_referral_html(user_name, referrer_name),
+    )
 
 
 # ── Waitlist Emails ──
@@ -422,22 +433,11 @@ Share Again &rarr;
 
 async def send_war_room_invite(email: str, name: str, beta_key: str, rank: int, referral_count: int) -> bool:
     """Send the War Room beta invite email with access key."""
-    if not _is_configured():
-        logger.warning("Resend not configured — skipping War Room invite email")
-        return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [email],
-            "subject": "You've been bumped to the front: Welcome to the War Room.",
-            "html": _war_room_invite_html(name, beta_key, rank, referral_count),
-        }
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"War Room invite sent to {email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send War Room invite to {email}: {e}")
-        return False
+    return await _routed_send(
+        [email],
+        "You've been bumped to the front: Welcome to the War Room.",
+        _war_room_invite_html(name, beta_key, rank, referral_count),
+    )
 
 
 async def send_referral_success(email: str, name: str, new_rank: int, referral_count: int, spots_skipped: int) -> bool:

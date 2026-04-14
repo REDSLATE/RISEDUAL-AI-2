@@ -76,13 +76,31 @@ def get_market_data_provider_pool() -> List[Dict]:
             "priority": 2,
         })
 
-    twelvedata = os.environ.get("TWELVEDATA_API_KEY")
-    if twelvedata:
+    return fallback
+
+
+def get_email_provider_pool() -> List[Dict]:
+    pool = _safe_json_list(os.environ.get("EMAIL_PROVIDER_POOL", ""))
+    if pool:
+        return pool
+
+    fallback = []
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if resend_key and not resend_key.startswith("re_YOUR"):
         fallback.append({
-            "name": "twelvedata-backup",
-            "provider": "twelvedata",
-            "api_key": twelvedata,
-            "priority": 3,
+            "name": "resend-primary",
+            "provider": "resend",
+            "api_key": resend_key,
+            "priority": 1,
+        })
+
+    sendgrid_key = os.environ.get("SENDGRID_API_KEY")
+    if sendgrid_key:
+        fallback.append({
+            "name": "sendgrid-backup",
+            "provider": "sendgrid",
+            "api_key": sendgrid_key,
+            "priority": 2,
         })
 
     return fallback
