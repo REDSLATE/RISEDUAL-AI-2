@@ -199,6 +199,19 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Index creation failed (non-critical): {e}")
 
+    # Restore dynamically registered providers from MongoDB
+    try:
+        from services.providerrouter import ProviderRouter
+        cursor = db.registered_providers.find({}, {"_id": 0})
+        restored = 0
+        async for doc in cursor:
+            ProviderRouter.register(doc["lane"], doc)
+            restored += 1
+        if restored:
+            logger.info(f"Restored {restored} dynamically registered providers from DB")
+    except Exception as e:
+        logger.warning(f"Provider restoration failed (non-critical): {e}")
+
     try:
         await seed_admin()
         logger.info("Admin seed complete")

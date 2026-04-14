@@ -1,5 +1,6 @@
 """ProviderRouter — Health-aware provider router with error classification,
-tiered cooldowns, latency tracking, MongoDB persistence, and admin snapshot.
+tiered cooldowns, latency tracking, MongoDB persistence, dynamic registration,
+external heartbeats, and parallel orchestration with deadlines.
 
 Static usage (admin health):
     ProviderRouter.snapshot()       → all lanes
@@ -8,7 +9,13 @@ Static usage (admin health):
 Instance usage (runtime failover):
     router = ProviderRouter("ai", get_ai_provider_pool(), db=db)
     result = await router.run(lambda provider: call_llm(provider))
-    # result = {"result": ..., "provider": {"lane": "ai", "name": "emergent-primary", ...}}
+
+Dynamic registration:
+    ProviderRouter.register("ai", {"name": "new-model", "provider": "openai", "api_key": "sk-...", "model": "gpt-4.1", "priority": 5})
+    ProviderRouter.deregister("ai", "new-model")
+
+Parallel orchestration:
+    results = await router.run_parallel(lambda p: call_model(p), deadline_ms=2000)
 """
 import asyncio
 import logging
@@ -17,9 +24,13 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Class-level registry: lane → ProviderRouter instance
+_registry: Dict[str, "ProviderRouter"] = {}
+
 
 class ProviderRouter:
     _state: Dict[str, Dict[str, dict]] = {}
+    _dynamic_configs: Dict[str, Dict[str, dict]] = {}  # lane → name → provider config
     _lock = asyncio.Lock()
 
     def __init__(self, lane: str, providers: List[Dict], db=None):
@@ -32,26 +43,137 @@ class ProviderRouter:
             if not p.get("api_key"):
                 logger.warning(f"[ProviderRouter:{lane}] Skipping {p.get('name')} — no API key")
                 continue
-            self._state[lane].setdefault(p["name"], {
-                "successes": 0,
-                "failures": 0,
-                "consecutive_failures": 0,
-                "avg_latency_ms": 0.0,
-                "last_error": None,
-                "last_error_type": None,
-                "last_success_at": None,
-                "last_failure_at": None,
-                "cooldown_until": None,
-                "disabled": False,
-            })
+            self._state[lane].setdefault(p["name"], _new_health_entry())
 
-        # Filter out providers without keys
         self.providers = [p for p in self.providers if p.get("api_key")]
+        _registry[lane] = self
 
         if self.providers:
             logger.info(f"[ProviderRouter:{lane}] {len(self.providers)} providers: {[p['name'] for p in self.providers]}")
         else:
             logger.info(f"[ProviderRouter:{lane}] No providers configured")
+
+    # ── Dynamic Registration ──
+
+    @classmethod
+    def register(cls, lane: str, provider: Dict) -> Dict:
+        """Hot-register a new provider into a lane without restart."""
+        name = provider.get("name")
+        if not name or not provider.get("api_key"):
+            return {"error": "name and api_key are required"}
+
+        if lane not in cls._state:
+            cls._state[lane] = {}
+        if lane not in cls._dynamic_configs:
+            cls._dynamic_configs[lane] = {}
+
+        # Add to state
+        cls._state[lane][name] = _new_health_entry()
+        
+        # Store provider config for list_models
+        cls._dynamic_configs[lane][name] = provider
+
+        # Add to instance if it exists
+        instance = _registry.get(lane)
+        if instance:
+            existing_names = {p["name"] for p in instance.providers}
+            if name not in existing_names:
+                instance.providers.append(provider)
+                instance.providers.sort(key=lambda x: x.get("priority", 999))
+
+        logger.info(f"[ProviderRouter:{lane}] Registered: {name} (priority={provider.get('priority', 999)})")
+        return {"registered": True, "lane": lane, "name": name}
+
+    @classmethod
+    def deregister(cls, lane: str, name: str) -> Dict:
+        """Remove a provider from a lane at runtime."""
+        if lane in cls._state and name in cls._state[lane]:
+            del cls._state[lane][name]
+        
+        # Remove from dynamic configs
+        if lane in cls._dynamic_configs and name in cls._dynamic_configs[lane]:
+            del cls._dynamic_configs[lane][name]
+
+        instance = _registry.get(lane)
+        if instance:
+            instance.providers = [p for p in instance.providers if p["name"] != name]
+
+        logger.info(f"[ProviderRouter:{lane}] Deregistered: {name}")
+        return {"deregistered": True, "lane": lane, "name": name}
+
+    @classmethod
+    def heartbeat(cls, lane: str, name: str, status: str = "ok", latency_ms: float = 0, error_rate: float = 0) -> Dict:
+        """External health heartbeat — services self-report their status."""
+        if lane not in cls._state or name not in cls._state[lane]:
+            return {"accepted": False, "error": "provider not found"}
+
+        state = cls._state[lane][name]
+        now = datetime.now(timezone.utc)
+        state["last_heartbeat"] = now
+
+        if status == "ok":
+            state["disabled"] = False
+            state["cooldown_until"] = None
+            state["consecutive_failures"] = 0
+            if latency_ms > 0:
+                if state["avg_latency_ms"]:
+                    state["avg_latency_ms"] = round((state["avg_latency_ms"] * 0.7) + (latency_ms * 0.3), 2)
+                else:
+                    state["avg_latency_ms"] = round(latency_ms, 2)
+        elif status == "degraded":
+            state["consecutive_failures"] = max(state.get("consecutive_failures", 0), 1)
+            state["cooldown_until"] = now + timedelta(seconds=30)
+        elif status == "failed":
+            state["disabled"] = True
+            state["last_error"] = f"self-reported failure at {now.isoformat()}"
+            state["last_error_type"] = "heartbeat_failed"
+
+        return {"accepted": True, "lane": lane, "name": name, "status": status}
+
+    @classmethod
+    def list_models(cls, lane: Optional[str] = None) -> List[Dict]:
+        """List all registered providers with health across all or one lane."""
+        results = []
+        target_lanes = {lane: cls._state.get(lane, {})} if lane else cls._state
+
+        for lane_name, providers in target_lanes.items():
+            instance = _registry.get(lane_name)
+            # Merge instance providers with dynamic configs
+            provider_configs = {p["name"]: p for p in (instance.providers if instance else [])}
+            # Also include dynamically registered providers
+            dynamic_configs = cls._dynamic_configs.get(lane_name, {})
+            for name, config in dynamic_configs.items():
+                if name not in provider_configs:
+                    provider_configs[name] = config
+
+            for pname, state in providers.items():
+                config = provider_configs.get(pname, {})
+                entry = {
+                    "lane": lane_name,
+                    "name": pname,
+                    "provider": config.get("provider", "unknown"),
+                    "model": config.get("model", ""),
+                    "priority": config.get("priority", 999),
+                    "has_key": bool(config.get("api_key")),
+                    "available": cls._is_available_static(lane_name, pname),
+                }
+                for k, v in state.items():
+                    entry[k] = v.isoformat() if isinstance(v, datetime) else v
+                results.append(entry)
+
+        return results
+
+    @staticmethod
+    def _is_available_static(lane: str, name: str) -> bool:
+        state = ProviderRouter._state.get(lane, {}).get(name, {})
+        if state.get("disabled"):
+            return False
+        cd = state.get("cooldown_until")
+        if cd and cd > datetime.now(timezone.utc):
+            return False
+        return True
+
+    # ── Core routing (unchanged) ──
 
     def _classify_error(self, exc: Exception) -> str:
         msg = str(exc).lower()
@@ -75,13 +197,7 @@ class ProviderRouter:
         return 60
 
     def _is_available(self, name: str) -> bool:
-        state = self._state[self.lane].get(name, {})
-        if state.get("disabled"):
-            return False
-        cd = state.get("cooldown_until")
-        if cd and cd > datetime.now(timezone.utc):
-            return False
-        return True
+        return self._is_available_static(self.lane, name)
 
     def _score_provider(self, provider: Dict) -> tuple:
         state = self._state[self.lane].get(provider["name"], {})
@@ -101,20 +217,11 @@ class ProviderRouter:
             return
         try:
             state = self._state[self.lane][provider_name]
-            doc = {
-                "lane": self.lane,
-                "provider": provider_name,
-                "updatedAt": datetime.now(timezone.utc),
-            }
+            doc = {"lane": self.lane, "provider": provider_name, "updatedAt": datetime.now(timezone.utc)}
             for k, v in state.items():
-                if isinstance(v, datetime):
-                    doc[k] = v.isoformat()
-                else:
-                    doc[k] = v
+                doc[k] = v.isoformat() if isinstance(v, datetime) else v
             await self.db.provider_health.update_one(
-                {"lane": self.lane, "provider": provider_name},
-                {"$set": doc},
-                upsert=True,
+                {"lane": self.lane, "provider": provider_name}, {"$set": doc}, upsert=True,
             )
         except Exception as e:
             logger.warning(f"Failed to persist provider health for {provider_name}: {e}")
@@ -149,6 +256,7 @@ class ProviderRouter:
         await self._persist_health(provider_name)
 
     async def run(self, operation: Callable[[Dict], Awaitable[Any]]) -> Any:
+        """Execute operation with sequential failover across ranked providers."""
         ranked = self.get_ranked_providers()
         last_exc: Optional[Exception] = None
 
@@ -164,10 +272,8 @@ class ProviderRouter:
                 return {
                     "result": result,
                     "provider": {
-                        "lane": self.lane,
-                        "name": provider["name"],
-                        "type": provider.get("provider"),
-                        "model": provider.get("model"),
+                        "lane": self.lane, "name": provider["name"],
+                        "type": provider.get("provider"), "model": provider.get("model"),
                     },
                 }
             except Exception as exc:
@@ -180,6 +286,51 @@ class ProviderRouter:
             raise last_exc
         raise RuntimeError(f"No providers configured for lane '{self.lane}'")
 
+    # ── Parallel orchestration with deadline ──
+
+    async def run_parallel(self, operation: Callable[[Dict], Awaitable[Any]],
+                           deadline_ms: int = 2000) -> List[Dict]:
+        """Call ALL available providers in parallel with a hard deadline.
+        Returns a list of results — one per provider. Providers that miss the
+        deadline are marked as 'timeout'. Failed providers are marked as 'error'.
+
+        Returns: [{"name": "...", "status": "ok"|"timeout"|"error"|"unavailable", "result": ..., "latency_ms": ...}, ...]
+        """
+        results = []
+
+        async def _call_one(provider: Dict) -> Dict:
+            name = provider["name"]
+            if not self._is_available(name):
+                return {"name": name, "status": "unavailable", "result": None, "latency_ms": 0}
+            started = datetime.now(timezone.utc)
+            try:
+                result = await asyncio.wait_for(
+                    operation(provider),
+                    timeout=deadline_ms / 1000,
+                )
+                latency_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
+                await self.mark_success(name, latency_ms)
+                return {
+                    "name": name, "status": "ok", "result": result,
+                    "latency_ms": round(latency_ms, 1),
+                    "provider": provider.get("provider"), "model": provider.get("model"),
+                }
+            except asyncio.TimeoutError:
+                latency_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
+                await self.mark_failure(name, TimeoutError(f"Deadline {deadline_ms}ms exceeded"))
+                return {"name": name, "status": "timeout", "result": None, "latency_ms": round(latency_ms, 1)}
+            except Exception as exc:
+                latency_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
+                await self.mark_failure(name, exc)
+                return {"name": name, "status": "error", "result": None, "latency_ms": round(latency_ms, 1),
+                        "error": str(exc)[:200]}
+
+        tasks = [_call_one(p) for p in self.providers]
+        results = await asyncio.gather(*tasks)
+        return list(results)
+
+    # ── Snapshot ──
+
     @classmethod
     def snapshot(cls, lane: Optional[str] = None):
         if lane:
@@ -191,14 +342,26 @@ class ProviderRouter:
 
     @classmethod
     def _serialize_state(cls, lane_state: Dict) -> Dict:
-        """Convert datetime objects to ISO strings for JSON serialization."""
         serialized = {}
         for provider_name, state in lane_state.items():
             entry = {}
             for k, v in state.items():
-                if isinstance(v, datetime):
-                    entry[k] = v.isoformat()
-                else:
-                    entry[k] = v
+                entry[k] = v.isoformat() if isinstance(v, datetime) else v
             serialized[provider_name] = entry
         return serialized
+
+
+def _new_health_entry() -> dict:
+    return {
+        "successes": 0,
+        "failures": 0,
+        "consecutive_failures": 0,
+        "avg_latency_ms": 0.0,
+        "last_error": None,
+        "last_error_type": None,
+        "last_success_at": None,
+        "last_failure_at": None,
+        "last_heartbeat": None,
+        "cooldown_until": None,
+        "disabled": False,
+    }

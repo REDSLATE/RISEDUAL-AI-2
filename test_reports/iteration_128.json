@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 128: Dynamic Model Registration, Heartbeat, and Enable/Disable APIs - 23/23 BACKEND TESTS PASSED. Fixed 1 bug in services/providerrouter.py: dynamically registered providers to new lanes were not storing their config data, causing list_models to return 'unknown' provider and default priority. Added _dynamic_configs class-level storage to persist provider configs for lanes without existing ProviderRouter instances.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration128_dynamic_registration.py",
+    "/app/test_reports/pytest/iteration128_dynamic_registration_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/services/providerrouter.py",
+    "/app/backend/tests/test_iteration128_dynamic_registration.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "N/A (backend only testing)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None - used test providers with prefix 'test-agent-model-128' and 'persistence-test-provider'",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 128 tested the NEW dynamic model registration, heartbeat, and enable/disable APIs. All 23 tests pass: (1) Auth tests verify admin-only access for GET /api/provider-health, GET /api/provider-health/models, POST /register, POST /deregister, POST /enable, (2) Heartbeat endpoint is intentionally unauthenticated (services call it themselves), (3) Register persists to MongoDB and appears in /models list with correct provider/model/priority, (4) Heartbeat with status=failed disables provider, (5) Enable re-enables disabled provider, (6) Deregister removes provider from list and DB. Fixed bug: added _dynamic_configs class-level storage to ProviderRouter to store provider configs for dynamically registered providers in lanes without existing instances.",
+  "verified_features": {
+    "GET /api/provider-health requires admin auth": "PASS",
+    "GET /api/provider-health/models requires admin auth": "PASS",
+    "POST /api/provider-health/register requires admin auth": "PASS",
+    "POST /api/provider-health/deregister requires admin auth": "PASS",
+    "POST /api/provider-health/enable requires admin auth": "PASS",
+    "POST /api/provider-health/heartbeat does NOT require auth": "PASS",
+    "GET /api/provider-health returns full lane snapshot": "PASS",
+    "GET /api/provider-health/models lists all models": "PASS",
+    "GET /api/provider-health/models?lane=ai filters by lane": "PASS",
+    "POST /api/provider-health/register hot-registers provider": "PASS",
+    "Registered provider appears in /models list with correct data": "PASS",
+    "POST /api/provider-health/heartbeat status=ok updates health": "PASS",
+    "POST /api/provider-health/heartbeat status=degraded sets cooldown": "PASS",
+    "POST /api/provider-health/heartbeat status=failed disables provider": "PASS",
+    "POST /api/provider-health/enable re-enables disabled provider": "PASS",
+    "POST /api/provider-health/enable for nonexistent returns 404": "PASS",
+    "POST /api/provider-health/deregister removes provider": "PASS",
+    "Heartbeat for deregistered provider returns 404": "PASS",
+    "Provider persistence to MongoDB": "PASS",
+    "Register with missing fields returns 422": "PASS",
+    "Heartbeat with unknown status is accepted (no-op)": "PASS"
+  },
+  "bugs_fixed": [
+    {
+      "file": "/app/backend/services/providerrouter.py",
+      "issue": "Dynamically registered providers to new lanes (without existing ProviderRouter instance) were not storing their config data. list_models returned 'unknown' provider and default priority 999.",
+      "fix": "Added _dynamic_configs class-level dict to store provider configs. Updated register() to store in _dynamic_configs, deregister() to remove from _dynamic_configs, and list_models() to merge _dynamic_configs with instance.providers."
+    }
+  ],
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}
