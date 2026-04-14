@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from services.search_war_room.schemas import SearchWarRoomResponse, EngineResult
-from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo
+from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo, ai_analysis
 from services.search_war_room.synthesizer import build_brief
 
 logger = logging.getLogger(__name__)
@@ -14,9 +14,10 @@ ENGINE_TIMEOUTS = {
     "ddg": 7.0,
     "ddg_news": 7.0,
     "yahoo": 5.0,
+    "ai_analysis": 18.0,
 }
 
-NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo"}
+NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "ai_analysis"}
 
 
 def classify_mode(query: str, mode: str):
@@ -101,7 +102,27 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
         for r in normalized
     )
 
+    # Phase 2: AI Analysis — synthesize all engine results through LLM failover chain
+    ai_result = await _run_engine(
+        "ai_analysis", "analysis",
+        ai_analysis.run(query, [r.model_dump() for r in normalized]),
+    )
+    if ai_result.status == "ok":
+        normalized.append(ai_result)
+
     brief = build_brief(query, normalized)
+
+    # If AI analysis succeeded, upgrade the brief with AI-generated content
+    if ai_result.status == "ok" and ai_result.title:
+        brief.headline = ai_result.title
+        if ai_result.summary:
+            brief.summary = ai_result.summary
+        for item in ai_result.items:
+            if isinstance(item, dict):
+                if item.get("type") == "signals":
+                    brief.signals = item["data"][:8]
+                elif item.get("type") == "risks":
+                    brief.risks = item["data"][:5]
 
     if not successful:
         brief.summary = "All live engines failed or were unavailable. No useful research results were returned."

@@ -76,11 +76,13 @@ async def war_room_cache():
 @router.get("/status")
 async def web_intel_status():
     """Check which providers are available."""
-    import os
+    from services.search_war_room.adapters.fred import fred_rotator
+    from services.search_war_room.adapters import ai_analysis
     return {
         "duckduckgo": True,
         "wikipedia": True,
         "sec_edgar": True,
-        "fred": bool(os.environ.get("FRED_API_KEY", "")),
+        "fred": fred_rotator.status(),
         "yahoo": True,
+        "ai_analysis": ai_analysis.status(),
     }
