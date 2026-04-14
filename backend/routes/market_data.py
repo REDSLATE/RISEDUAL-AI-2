@@ -182,11 +182,14 @@ async def get_real_estate_data() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Error fetching real estate data")
 
 
-# --- Market Prediction ---
+# --- Market Prediction (cached to avoid 30s+ AI call on every request) ---
+import time as _time
+_prediction_cache = {"general": None, "ts": 0}
+_PREDICTION_CACHE_TTL = 300  # 5 minutes
+
 @router.get("/market/prediction")
 async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
-        # Deduct credits for prediction
         from services.auth_helpers import get_optional_user
         from services.credit_service import deduct_credits, get_user_plan
         user = await get_optional_user(request)
@@ -196,15 +199,23 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
             if not cr["allowed"]:
                 raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
+        # Return cached prediction if fresh
+        now = _time.time()
+        if _prediction_cache["general"] and (now - _prediction_cache["ts"]) < _PREDICTION_CACHE_TTL:
+            return _prediction_cache["general"]
+
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
         _enrich_prediction_metadata(prediction, scrape_results)
 
-        # Log prediction for accuracy tracking (uses SPY as market proxy)
+        # Cache the result
+        _prediction_cache["general"] = prediction
+        _prediction_cache["ts"] = now
+
+        # Log prediction for accuracy tracking
         if prediction.get("overall_direction"):
             try:
                 from services.prediction_tracker import log_market_prediction
-                from services.auth_helpers import get_optional_user
                 user = await get_optional_user(request)
                 uid = str(user.get("_id", "")) if user else None
                 await log_market_prediction(
@@ -217,8 +228,13 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
                 logger.warning(f"Prediction tracking failed: {track_err}")
 
         return prediction
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating prediction: {e}")
+        # Return stale cache if available
+        if _prediction_cache["general"]:
+            return _prediction_cache["general"]
         raise HTTPException(status_code=500, detail="Error generating market prediction")
 
 
@@ -255,6 +271,8 @@ async def _log_ticker_prediction(request: Request, prediction: dict, symbol: str
         pass
 
 
+_ticker_prediction_cache = {}
+
 @router.get("/market/prediction/{symbol}")
 async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]:
     """Generate an AI market prediction focused on a specific ticker/asset."""
@@ -262,7 +280,6 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
     if not symbol or len(symbol) > 10:
         raise HTTPException(status_code=400, detail="Invalid symbol")
 
-    # Deduct credits
     from services.auth_helpers import get_optional_user
     from services.credit_service import deduct_credits, get_user_plan
     user = await get_optional_user(request)
@@ -271,6 +288,12 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
         if not cr["allowed"]:
             raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+
+    # Return cached ticker prediction if fresh
+    now = _time.time()
+    cached = _ticker_prediction_cache.get(symbol)
+    if cached and (now - cached["ts"]) < _PREDICTION_CACHE_TTL:
+        return cached["data"]
 
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=False)
@@ -300,6 +323,13 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         prediction["ticker_focused"] = True
         _enrich_prediction_metadata(prediction, {**scrape_results, "real_estate": {}})
 
+        # Cache the result
+        _ticker_prediction_cache[symbol] = {"data": prediction, "ts": now}
+        # Evict old entries
+        if len(_ticker_prediction_cache) > 50:
+            oldest_key = min(_ticker_prediction_cache, key=lambda k: _ticker_prediction_cache[k]["ts"])
+            del _ticker_prediction_cache[oldest_key]
+
         if prediction.get("overall_direction"):
             await _log_ticker_prediction(request, prediction, symbol)
 
@@ -308,6 +338,9 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         raise
     except Exception as e:
         logger.error(f"Error generating ticker prediction for {symbol}: {e}")
+        # Return stale cache if available
+        if cached:
+            return cached["data"]
         raise HTTPException(status_code=500, detail=f"Error generating prediction for {symbol}")
 
 
