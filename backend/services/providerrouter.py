@@ -97,7 +97,7 @@ class ProviderRouter:
         return sorted(self.providers, key=self._score_provider)
 
     async def _persist_health(self, provider_name: str):
-        if not self.db:
+        if self.db is None:
             return
         try:
             state = self._state[self.lane][provider_name]

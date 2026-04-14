@@ -167,6 +167,35 @@ async def chat(
         raise HTTPException(status_code=500, detail="Error processing chat request")
 
 
+
+@router.get("/chat/agent-stream")
+async def agent_stream(request: Request, message: str, sessionId: str = "stream"):
+    """SSE endpoint: streams financial tools agent execution in real-time.
+    Each event shows which tool is being called and its result."""
+    from sse_starlette.sse import EventSourceResponse
+    from services.financial_tools_agent import FinancialToolsAgent
+    import json as json_mod
+
+    user = await get_optional_user(request)
+    if user:
+        from services.credit_service import deduct_credits, get_user_plan
+        plan_key = get_user_plan(user)
+        cr = await deduct_credits(str(user["_id"]), "chat", plan_key)
+        if not cr["allowed"]:
+            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+
+    agent = FinancialToolsAgent(db=db)
+
+    async def event_generator():
+        try:
+            async for event in agent.stream(message, session_id=sessionId):
+                yield {"event": event.get("node", "update"), "data": json_mod.dumps(event, default=str)}
+        except Exception as e:
+            yield {"event": "error", "data": json_mod.dumps({"error": str(e)[:200]})}
+
+    return EventSourceResponse(event_generator())
+
+
 @router.get("/chat/history/{session_id}")
 async def get_chat_history(session_id: str, request: Request):
     try:
