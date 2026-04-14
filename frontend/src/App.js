@@ -10,43 +10,35 @@ import StockTicker from './components/StockTicker';
 import CryptoTicker from './components/CryptoTicker';
 import Watchlist from './components/Watchlist';
 import AlertsPanel from './components/AlertsPanel';
-import MarketPrediction from './components/MarketPrediction';
-import OptionsRadar from './components/OptionsRadar';
-import OptionsFlowScreener from './components/OptionsFlowScreener';
-import AdditionalSections from './components/AdditionalSections';
-import DarkPoolData from './components/DarkPoolData';
-import CryptoSection from './components/CryptoSection';
 import RiseDualGPTChat from './components/RiseDualGPTChat';
-import CompanyResearch from './components/CompanyResearch';
-import MacroDashboard from './components/MacroDashboard';
 import MobileBottomNav from './components/MobileBottomNav';
-import AIHypothesis from './components/AIHypothesis';
-import PromoBanner from './components/PromoBanner';
-import AuthModal from './components/AuthModal';
-import WaitlistModal from './components/WaitlistModal';
-import ResetPasswordModal from './components/ResetPasswordModal';
 import AIWarRoom from './components/AIWarRoom';
 import AIIntelligence from './components/AIIntelligence';
-import WatchlistIntelligence from './components/WatchlistIntelligence';
-import ReferralLeaderboard from './components/ReferralLeaderboard';
 import SectorHeatmap from './components/SectorHeatmap';
-import PnLTracker from './components/PnLTracker';
 import FearGreedGauge from './components/FearGreedGauge';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
-import BotsDashboard from './components/BotsDashboard';
+import CryptoSection from './components/CryptoSection';
+import AdditionalSections from './components/AdditionalSections';
+import PromoBanner from './components/PromoBanner';
+import AuthModal from './components/AuthModal';
+import WaitlistModal from './components/WaitlistModal';
+import ResetPasswordModal from './components/ResetPasswordModal';
 import LandingPage from './components/LandingPage';
 import LegalPages from './components/LegalPages';
 import ModalManager from './components/ModalManager';
 import OnboardingTour, { STORAGE_KEY as TOUR_KEY } from './components/OnboardingTour';
 import useModals from './hooks/useModals';
 
-// Register service worker & force-update stale ones
+// Hub pages
+import ResearchHub from './components/hubs/ResearchHub';
+import OptionsHub from './components/hubs/OptionsHub';
+import WorkspaceHub from './components/hubs/WorkspaceHub';
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js').then((reg) => {
-      // Force check for updates immediately
       reg.update().catch(() => {});
     }).catch(() => {});
   });
@@ -85,7 +77,20 @@ function AppContent() {
   const [showWaitlist, setShowWaitlist] = React.useState(false);
   const [tourActive, setTourActive] = React.useState(false);
 
-  // Auto-trigger tour on first login
+  // View state: 'dashboard' | 'research' | 'options' | 'workspace'
+  const [activeView, setActiveView] = React.useState('dashboard');
+  const [researchTab, setResearchTab] = React.useState(null);
+  const [optionsTab, setOptionsTab] = React.useState(null);
+  const [workspaceTab, setWorkspaceTab] = React.useState(null);
+
+  const navigateTo = React.useCallback((view, subTab) => {
+    setActiveView(view);
+    if (view === 'research') setResearchTab(subTab || null);
+    else if (view === 'options') setOptionsTab(subTab || null);
+    else if (view === 'workspace') setWorkspaceTab(subTab || null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   React.useEffect(() => {
     if (user && !localStorage.getItem(TOUR_KEY)) {
       const timer = setTimeout(() => setTourActive(true), 2000);
@@ -93,7 +98,6 @@ function AppContent() {
     }
   }, [user]);
 
-  // Show landing page for unauthenticated users
   if (!user) {
     const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
     return (
@@ -108,80 +112,132 @@ function AppContent() {
     );
   }
 
+  const sub = () => setShowSubscription(true);
+
   return (
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
-      <PromoBanner onSubscribe={() => setShowSubscription(true)} />
+      <PromoBanner onSubscribe={sub} />
       <div id="stock-ticker"><StockTicker /></div>
-      <Navbar onLogin={openLogin} onRegister={openRegister} onSubscribe={() => setShowSubscription(true)} onOpenAdmin={() => setShowAdmin(true)} onOpenWorkspace={() => setShowWorkspace(true)} onOpenPortfolio={() => setShowPortfolio(true)} onOpenSignals={() => setShowSignals(true)} onOpenJournal={() => setShowJournal(true)} onOpenStrategy={() => setShowStrategy(true)} onOpenMarketplace={() => setShowMarketplace(true)} onOpenMemory={() => setShowMemory(true)} onOpenPaperTrading={() => setShowPaperTrading(true)} onOpenSmartOrders={() => setShowSmartOrders(true)} onOpenRiskCalc={() => setShowRiskCalc(true)} onOpenScanner={() => setShowScanner(true)} onOpenBots={() => setShowBots(true)} onOpenHelp={() => setShowHelp(true)} onOpenDeveloper={() => setShowDeveloper(true)} onOpenCredits={() => setShowCredits(true)} onOpenFailureLoop={() => setShowFailureLoop(true)} onOpenSearchWarRoom={() => setShowSearchWarRoom(true)} onStartTour={() => { localStorage.removeItem(TOUR_KEY); setTourActive(true); }} onOpenAbout={() => setShowAbout(true)} />
+      <Navbar
+        activeView={activeView}
+        onNavigate={navigateTo}
+        onLogin={openLogin}
+        onRegister={openRegister}
+        onSubscribe={sub}
+        onOpenAdmin={() => setShowAdmin(true)}
+        onOpenSignals={() => setShowSignals(true)}
+        onOpenStrategy={() => setShowStrategy(true)}
+        onOpenMarketplace={() => setShowMarketplace(true)}
+        onOpenMemory={() => setShowMemory(true)}
+        onOpenHelp={() => setShowHelp(true)}
+        onOpenDeveloper={() => setShowDeveloper(true)}
+        onOpenCredits={() => setShowCredits(true)}
+        onOpenSearchWarRoom={() => setShowSearchWarRoom(true)}
+        onStartTour={() => { localStorage.removeItem(TOUR_KEY); setTourActive(true); }}
+        onOpenAbout={() => setShowAbout(true)}
+        onOpenPortfolio={() => setShowPortfolio(true)}
+        onOpenJournal={() => setShowJournal(true)}
+        onOpenPaperTrading={() => setShowPaperTrading(true)}
+        onOpenSmartOrders={() => setShowSmartOrders(true)}
+        onOpenRiskCalc={() => setShowRiskCalc(true)}
+        onOpenScanner={() => setShowScanner(true)}
+        onOpenBots={() => setShowBots(true)}
+        onOpenFailureLoop={() => setShowFailureLoop(true)}
+      />
       <CryptoTicker />
-      <AlertsPanel onSubscribe={() => setShowSubscription(true)} />
+      <AlertsPanel onSubscribe={sub} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-        <div className="mb-6 sm:mb-8 animate-enter" data-testid="watchlist-section"><Watchlist onSubscribe={() => setShowSubscription(true)} /></div>
 
-        <div className="mb-6 sm:mb-8 animate-enter animate-enter-d1">
-          <WatchlistIntelligence onSubscribe={() => setShowSubscription(true)} />
-        </div>
-
-        <div className="mb-6 sm:mb-8 animate-enter animate-enter-d2"><ReferralLeaderboard /></div>
-
-        <div id="ai-war-room" className="mb-6 sm:mb-8 animate-enter">
-          <AIWarRoom onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
-        </div>
-
-        <div id="ai-hypothesis" className="mb-6 sm:mb-8 animate-enter relative z-20">
-          <AIHypothesis onSubscribe={() => setShowSubscription(true)} onLogin={openLogin} />
-        </div>
-
-        <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter relative z-10">
-          <AIIntelligence onSubscribe={() => setShowSubscription(true)} />
-        </div>
-
-        <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3">
-              <SectorHeatmap />
+        {/* ═══ DASHBOARD ═══ */}
+        {activeView === 'dashboard' && (
+          <>
+            {/* Compact Watchlist */}
+            <div className="mb-6 sm:mb-8 animate-enter" data-testid="watchlist-section">
+              <Watchlist onSubscribe={sub} />
             </div>
-            <div className="lg:col-span-1">
-              <FearGreedGauge />
+
+            {/* AI War Room */}
+            <div id="ai-war-room" className="mb-6 sm:mb-8 animate-enter">
+              <AIWarRoom onSubscribe={sub} onLogin={openLogin} />
             </div>
-          </div>
-        </div>
 
-        <div id="pnl-tracker" className="mb-6 sm:mb-8 animate-enter">
-          <PnLTracker />
-        </div>
+            {/* Sector Heatmap + Fear/Greed */}
+            <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-3"><SectorHeatmap /></div>
+                <div className="lg:col-span-1"><FearGreedGauge /></div>
+              </div>
+            </div>
 
-        <div id="live-insights" className="mb-6 sm:mb-8 animate-enter">
-          <LiveInsightsFeed />
-        </div>
-        <div id="order-flow" className="mb-6 sm:mb-8 animate-enter">
-          <OrderFlowPanel />
-        </div>
-        <div id="whale-radar" className="mb-6 sm:mb-8 animate-enter">
-          <WhaleRadar />
-        </div>
-        {user && (
-          <div id="trading-bots" className="mb-6 sm:mb-8 animate-enter">
-            <BotsDashboard onOpenBots={() => setShowBots(true)} />
-          </div>
+            {/* Key Signals */}
+            <div id="live-insights" className="mb-6 sm:mb-8 animate-enter"><LiveInsightsFeed /></div>
+            <div id="order-flow" className="mb-6 sm:mb-8 animate-enter"><OrderFlowPanel /></div>
+            <div id="whale-radar" className="mb-6 sm:mb-8 animate-enter"><WhaleRadar /></div>
+
+            {/* AI Intelligence */}
+            <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter relative z-10">
+              <AIIntelligence onSubscribe={sub} />
+            </div>
+
+            {/* Crypto summary */}
+            <div id="crypto" className="mb-6 sm:mb-8 animate-enter"><CryptoSection /></div>
+
+            {/* Quick-nav into hubs */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-enter">
+              <button onClick={() => navigateTo('research')} className="group p-5 rounded-2xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 hover:border-[#3DE8D9]/30 transition-all text-left" data-testid="nav-to-research">
+                <div className="text-[#3DE8D9] text-lg font-bold mb-1">Research Hub</div>
+                <p className="text-slate-400 text-xs">AI Hypothesis, Market Prediction, Company Research, Macro</p>
+              </button>
+              <button onClick={() => navigateTo('options')} className="group p-5 rounded-2xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 hover:border-violet-400/30 transition-all text-left" data-testid="nav-to-options">
+                <div className="text-violet-400 text-lg font-bold mb-1">Options Hub</div>
+                <p className="text-slate-400 text-xs">Options Radar, Flow Screener, Dark Pool Analytics</p>
+              </button>
+              <button onClick={() => navigateTo('workspace')} className="group p-5 rounded-2xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 hover:border-amber-400/30 transition-all text-left" data-testid="nav-to-workspace">
+                <div className="text-amber-400 text-lg font-bold mb-1">Workspace</div>
+                <p className="text-slate-400 text-xs">Portfolio, Journal, Bots, Paper Trading, Risk Tools</p>
+              </button>
+            </div>
+
+            <AdditionalSections />
+          </>
         )}
 
+        {/* ═══ RESEARCH ═══ */}
+        {activeView === 'research' && (
+          <ResearchHub onSubscribe={sub} onLogin={openLogin} initialTab={researchTab} />
+        )}
 
-        <div id="market-prediction" className="mb-6 sm:mb-8 animate-enter"><MarketPrediction /></div>
-        <div id="company-research" className="mb-6 sm:mb-8 animate-enter"><CompanyResearch /></div>
-        <div id="macro-dashboard" className="mb-6 sm:mb-8 animate-enter"><MacroDashboard onSubscribe={() => setShowSubscription(true)} /></div>
-        <div id="options-radar" className="animate-enter"><OptionsRadar /></div>
-        <div id="options-flow" className="animate-enter"><OptionsFlowScreener /></div>
-        <AdditionalSections />
-        <div id="dark-pool" className="animate-enter"><DarkPoolData onSubscribe={() => setShowSubscription(true)} /></div>
-        <div id="crypto" className="animate-enter"><CryptoSection /></div>
+        {/* ═══ OPTIONS ═══ */}
+        {activeView === 'options' && (
+          <OptionsHub onSubscribe={sub} initialTab={optionsTab} />
+        )}
+
+        {/* ═══ WORKSPACE ═══ */}
+        {activeView === 'workspace' && (
+          <WorkspaceHub
+            onSubscribe={sub}
+            initialTab={workspaceTab}
+            onOpenPortfolio={() => setShowPortfolio(true)}
+            onOpenJournal={() => setShowJournal(true)}
+            onOpenPaperTrading={() => setShowPaperTrading(true)}
+            onOpenBots={() => setShowBots(true)}
+            onOpenSmartOrders={() => setShowSmartOrders(true)}
+            onOpenRiskCalc={() => setShowRiskCalc(true)}
+            onOpenScanner={() => setShowScanner(true)}
+            onOpenFailureLoop={() => setShowFailureLoop(true)}
+          />
+        )}
       </main>
 
       <Footer onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />
 
-      <RiseDualGPTChat onSubscribe={() => setShowSubscription(true)} />
-      <MobileBottomNav onOpenChat={openChat} />
+      <RiseDualGPTChat onSubscribe={sub} />
+      <MobileBottomNav
+        onOpenChat={openChat}
+        activeView={activeView}
+        onNavigate={navigateTo}
+      />
       <ScrollToTop />
       <Toaster />
       <OnboardingTour active={tourActive} onComplete={() => setTourActive(false)} />
