@@ -272,7 +272,7 @@ const Navbar = ({
         <MobileMenu
           searchValue={searchValue} setSearchValue={setSearchValue}
           handleSearch={handleSearch}
-          mobileNav={(id) => { setMobileMenuOpen(false); }}
+          onNavigate={onNavigate}
           close={() => setMobileMenuOpen(false)}
           user={user} isPro={isPro} logout={logout}
           onOpenAdmin={onOpenAdmin} onOpenWorkspace={() => { onNavigate('workspace'); setMobileMenuOpen(false); }}

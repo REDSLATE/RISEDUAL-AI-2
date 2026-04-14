@@ -1,32 +1,19 @@
 import React from 'react';
-import { Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator } from 'lucide-react';
+import { Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, TrendingUp, Globe, BarChart3, Radar, Bot } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import UserBadge from './UserBadge';
 
-const MOBILE_NAV_ITEMS = [
-  { label: 'AI War Room', id: 'ai-war-room' },
-  { label: 'AI Hypothesis', id: 'ai-hypothesis' },
-  { label: 'Market Prediction', id: 'market-prediction' },
-  { label: 'Company Research', id: 'company-research' },
-  { label: 'Macro Intelligence', id: 'macro-dashboard' },
-  { label: 'Sector Heatmap', id: 'sector-heatmap' },
-  { label: 'P&L Tracker', id: 'pnl-tracker' },
-  { label: 'Order Flow', id: 'order-flow' },
-  { label: 'Whale Radar', id: 'whale-radar' },
-  { label: 'Options Radar', id: 'options-radar' },
-  { label: 'Dark Pool', id: 'dark-pool' },
-  { label: 'Crypto Market', id: 'crypto' },
-];
-
 const MobileMenu = ({
-  searchValue, setSearchValue, handleSearch, mobileNav, close,
-  user, isPro, logout,
+  searchValue, setSearchValue, handleSearch, close,
+  user, isPro, logout, onNavigate,
   onOpenAdmin, onOpenWorkspace, onOpenPortfolio, onOpenSignals,
   onOpenJournal, onOpenStrategy, onOpenMarketplace, onOpenMemory,
-  onOpenPaperTrading, onOpenAbout, onLogin, onRegister,
+  onOpenPaperTrading, onOpenSmartOrders, onOpenRiskCalc, onOpenScanner,
+  onOpenBots, onOpenHelp, onOpenAbout, onLogin, onRegister,
 }) => {
   const act = (fn) => { fn(); close(); };
+  const nav = (view, subTab) => { onNavigate(view, subTab); close(); };
 
   return (
     <div className="lg:hidden mt-3 pb-20 border-t border-slate-400/25 pt-3 space-y-3" data-testid="mobile-menu">
@@ -35,18 +22,60 @@ const MobileMenu = ({
         <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}
           className="pl-10 bg-slate-800 border-slate-600 text-white placeholder-slate-500 focus:border-[#3DE8D9] rounded-xl w-full" data-testid="mobile-search-input" />
       </form>
+
+      {/* Primary destinations */}
       <div className="grid grid-cols-2 gap-2">
-        {MOBILE_NAV_ITEMS.map(item => (
-          <button key={item.id} onClick={() => mobileNav(item.id)}
-            className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors">
-            {item.label}
-          </button>
-        ))}
+        <button onClick={() => nav('dashboard')}
+          className="text-left text-white text-sm py-2.5 px-3 rounded-lg bg-[#3DE8D9]/10 border border-[#3DE8D9]/25 font-medium">
+          <TrendingUp className="w-4 h-4 inline mr-1.5 text-[#3DE8D9]" />Dashboard
+        </button>
+        <button onClick={() => nav('research')}
+          className="text-left text-white text-sm py-2.5 px-3 rounded-lg bg-[#3DE8D9]/10 border border-[#3DE8D9]/25 font-medium">
+          <Search className="w-4 h-4 inline mr-1.5 text-[#3DE8D9]" />Research
+        </button>
+        <button onClick={() => nav('options')}
+          className="text-left text-white text-sm py-2.5 px-3 rounded-lg bg-violet-500/10 border border-violet-400/25 font-medium">
+          <BarChart3 className="w-4 h-4 inline mr-1.5 text-violet-400" />Options
+        </button>
+        <button onClick={() => nav('workspace')}
+          className="text-left text-white text-sm py-2.5 px-3 rounded-lg bg-amber-500/10 border border-amber-400/25 font-medium">
+          <Briefcase className="w-4 h-4 inline mr-1.5 text-amber-400" />Workspace
+        </button>
+      </div>
+
+      {/* Quick links within hubs */}
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => nav('research', 'hypothesis')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          AI Hypothesis
+        </button>
+        <button onClick={() => nav('research', 'prediction')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          Market Prediction
+        </button>
+        <button onClick={() => nav('research', 'company')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          Company Research
+        </button>
+        <button onClick={() => nav('research', 'macro')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          Macro Intelligence
+        </button>
+        <button onClick={() => nav('options', 'radar')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          Options Radar
+        </button>
+        <button onClick={() => nav('options', 'darkpool')}
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25">
+          Dark Pool
+        </button>
         <button onClick={() => act(onOpenAbout)}
-          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25 hover:bg-slate-700/60 active:bg-slate-600/50 transition-colors" data-testid="mobile-about-btn">
+          className="text-left text-slate-300 text-sm py-2.5 px-3 rounded-lg bg-slate-700/60 border border-slate-400/25" data-testid="mobile-about-btn">
           About Us
         </button>
       </div>
+
+      {/* User tools */}
       <div className="space-y-3 pt-1">
         {user ? (
           <>
@@ -55,7 +84,7 @@ const MobileMenu = ({
               <UserBadge user={user} size="sm" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => act(onOpenWorkspace)} data-testid="mobile-workspace-btn"
+              <button onClick={() => nav('workspace')} data-testid="mobile-workspace-btn"
                 className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20">
                 <Briefcase className="w-3.5 h-3.5" /> Workspace
               </button>
@@ -86,6 +115,10 @@ const MobileMenu = ({
               <button onClick={() => act(onOpenPaperTrading)} data-testid="mobile-paper-trading-btn"
                 className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium bg-lime-900/20 text-lime-400 border border-lime-700/30">
                 <LineChart className="w-3.5 h-3.5" /> Paper
+              </button>
+              <button onClick={() => act(onOpenBots)} data-testid="mobile-bots-btn"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium bg-amber-900/20 text-amber-400 border border-amber-700/30">
+                <Bot className="w-3.5 h-3.5" /> Bots
               </button>
               {(user.role === 'owner' || user.role === 'admin') && (
                 <button onClick={() => act(onOpenAdmin)} data-testid="mobile-admin-btn"
