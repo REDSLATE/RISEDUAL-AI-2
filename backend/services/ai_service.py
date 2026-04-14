@@ -1,10 +1,21 @@
 import os
+import re
 import logging
 from typing import Optional
 from services.providerrouter import ProviderRouter
 from services.provider_registry import get_ai_provider_pool
 
 logger = logging.getLogger(__name__)
+
+# Pattern to detect messages that benefit from tool-calling agent
+_TOOLS_PATTERN = re.compile(
+    r'\b(compound|cagr|future value|growth rate|invest(ment|ing)?.*worth|'
+    r'calculate|projection|project(ed)?|annualized|what would.*be worth|'
+    r'how much.*in \d+ years|rate of return|roi\b|'
+    r'current (stock )?price.*then|find.*price.*calculate|'
+    r'look up.*price.*and|worth in \d+)',
+    re.IGNORECASE
+)
 
 
 class AIService:
@@ -107,9 +118,21 @@ class AIService:
 
     async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None,
                    memory_context: str = "", user_id: str = "") -> str:
-        """Send a message to the AI and get a response, with provider failover."""
+        """Send a message to the AI and get a response, with provider failover.
+        Auto-routes to the Financial Tools Agent for calculation-heavy queries."""
         try:
-            # Build failure loop warnings
+            # Route to tools agent for calculation/projection queries (skip if image attached)
+            if not image_base64 and _TOOLS_PATTERN.search(message):
+                try:
+                    from services.financial_tools_agent import FinancialToolsAgent
+                    agent = FinancialToolsAgent(db=self.db)
+                    result = await agent.run(message, session_id)
+                    if result.get("text"):
+                        return result
+                except Exception as e:
+                    logger.warning(f"Tools agent failed, falling back to standard chat: {e}")
+
+            # Standard chat path
             failure_warnings = None
             if user_id:
                 try:

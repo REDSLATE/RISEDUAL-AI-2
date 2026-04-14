@@ -124,7 +124,8 @@ const TradeGPTChat = ({ onLimitReached }) => {
       const data = await res.json();
       const aiText = data.response || data.message || 'No response generated.';
       const providerInfo = data.provider;
-      setMessages(prev => [...prev, { role: 'assistant', content: aiText, provider: providerInfo }]);
+      const toolsUsed = data.tools_used;
+      setMessages(prev => [...prev, { role: 'assistant', content: aiText, provider: providerInfo, tools_used: toolsUsed }]);
       // Speak the response if voice is enabled
       if (voiceMode) playTTS(aiText);
     } catch (err) {

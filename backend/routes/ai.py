@@ -144,6 +144,7 @@ async def chat(
 
         assistant_text = ai_response["text"] if isinstance(ai_response, dict) else ai_response
         provider_meta = ai_response.get("provider") if isinstance(ai_response, dict) else None
+        tools_used = ai_response.get("tools_used") if isinstance(ai_response, dict) else None
 
         user_message = ChatMessage(role="user", content=message, image_base64="[image_attached]" if image_base64 else None)
         assistant_message = ChatMessage(role="assistant", content=assistant_text)
@@ -155,7 +156,10 @@ async def chat(
         )
 
         await _trigger_memory_extraction(user, [user_message.dict(), assistant_message.dict()], sessionId)
-        return {"response": assistant_text, "sessionId": sessionId, "provider": provider_meta}
+        response = {"response": assistant_text, "sessionId": sessionId, "provider": provider_meta}
+        if tools_used:
+            response["tools_used"] = tools_used
+        return response
     except HTTPException:
         raise
     except Exception as e:
