@@ -231,8 +231,9 @@ async def _start_schedulers():
         scheduler.add_job(_check_smart_orders, 'interval', seconds=30, id='smart_order_monitor')
         scheduler.add_job(_run_grid_bots, 'interval', seconds=30, id='grid_bot_monitor')
         scheduler.add_job(_run_headlines_pipeline, 'interval', minutes=15, id='headlines_pipeline')
+        scheduler.add_job(_run_prediction_prewarm, 'interval', minutes=10, id='prediction_prewarm')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -265,6 +266,15 @@ async def _run_headlines_pipeline():
             logger.info(f"Headlines pipeline: {result['total_new']} new / {result['total_scraped']} scraped")
     except Exception as e:
         logger.debug(f"Headlines pipeline error: {e}")
+
+
+async def _run_prediction_prewarm():
+    """Background: Keep predictions warm every 10 minutes."""
+    try:
+        from routes.market_data import ensure_prediction_refresh
+        await ensure_prediction_refresh()
+    except Exception as e:
+        logger.debug(f"Prediction prewarm error: {e}")
 
 
 def _start_cache_warmup():

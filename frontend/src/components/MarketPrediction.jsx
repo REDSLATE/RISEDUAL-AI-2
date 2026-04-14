@@ -25,6 +25,9 @@ const MarketPrediction = ({ onSubscribe }) => {
   const [searchSymbol, setSearchSymbol] = useState('');
   const [activeSymbol, setActiveSymbol] = useState(null); // null = general market
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [jobId, setJobId] = useState(null);
+
   const fetchPrediction = useCallback(async (symbol = null) => {
     setLoading(true);
     setError('');
@@ -32,10 +35,7 @@ const MarketPrediction = ({ onSubscribe }) => {
       const endpoint = symbol
         ? `${API}/market/prediction/${symbol.toUpperCase()}`
         : `${API}/market/prediction`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
-      const res = await authFetch(endpoint, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await authFetch(endpoint);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `Server returned ${res.status}`);
@@ -44,20 +44,63 @@ const MarketPrediction = ({ onSubscribe }) => {
       setPrediction(data);
       setLastUpdated(new Date());
       setActiveSymbol(symbol ? symbol.toUpperCase() : null);
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        setError('Prediction timed out — AI models are taking longer than usual. Try again.');
+      // Track background job if running
+      if (data.jobRunning && data.jobId) {
+        setJobId(data.jobId);
+        setRefreshing(true);
       } else {
-        setError(err.message);
+        setRefreshing(false);
+        setJobId(null);
       }
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const triggerRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const res = await authFetch(`${API}/market/prediction/refresh`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.jobId) setJobId(data.jobId);
+      }
+    } catch {
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     fetchPrediction();
   }, [fetchPrediction]);
+
+  // Poll job status when a background refresh is running
+  useEffect(() => {
+    if (!jobId) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await authFetch(`${API}/market/prediction/status/${jobId}`);
+        if (!res.ok) { clearInterval(timer); setRefreshing(false); return; }
+        const data = await res.json();
+        if (data.status === 'ready') {
+          clearInterval(timer);
+          setRefreshing(false);
+          setJobId(null);
+          fetchPrediction(activeSymbol);
+        } else if (data.status === 'failed') {
+          clearInterval(timer);
+          setRefreshing(false);
+          setJobId(null);
+        }
+      } catch {
+        clearInterval(timer);
+        setRefreshing(false);
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [jobId, activeSymbol, fetchPrediction]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -92,19 +135,29 @@ const MarketPrediction = ({ onSubscribe }) => {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isPro && <AccuracyBadge feature="market_prediction" />}
-          {prediction?._cache?.hit && (
+          {prediction?.isStale && !refreshing && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30 font-medium" data-testid="stale-badge">
+              Stale
+            </span>
+          )}
+          {refreshing && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-400/30 font-medium animate-pulse" data-testid="refreshing-badge">
+              Refreshing...
+            </span>
+          )}
+          {prediction?._cache?.hit && !prediction?.isStale && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-400/30 font-medium" data-testid="cache-badge">
               Cached
             </span>
           )}
           {prediction?._cache?.policy && (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800/60 text-slate-500 font-mono" data-testid="prediction-source-badge">
-              {prediction._cache.hit ? 'instant' : 'live'}
+              {prediction._cache.hit && !prediction.isStale ? 'instant' : refreshing ? 'updating' : 'live'}
             </span>
           )}
           {lastUpdated && <span className="text-slate-300 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
-          <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={() => fetchPrediction(activeSymbol)} disabled={loading} data-testid="prediction-refresh">
-            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={() => refreshing ? null : triggerRefresh()} disabled={loading || refreshing} data-testid="prediction-refresh">
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading || refreshing ? 'animate-spin' : ''}`} /> {refreshing ? 'Refreshing' : 'Refresh'}
           </Button>
         </div>
       </div>

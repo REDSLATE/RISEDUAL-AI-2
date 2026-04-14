@@ -1,9 +1,10 @@
 """Market data routes: scraping endpoints, macro data, predictions."""
 from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 import os
+import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -13,6 +14,151 @@ db = None
 def set_db(database) -> None:
     global db
     db = database
+
+
+# ── Prediction job helpers ──
+
+PREDICTION_SCOPE = "market_overview"
+PREDICTION_TTL_MINUTES = 15
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
+async def _get_latest_prediction(scope: str = PREDICTION_SCOPE):
+    if db is None:
+        return None
+    return await db.prediction_cache.find_one(
+        {"scope": scope}, sort=[("updatedAt", -1)], projection={"_id": 0}
+    )
+
+
+async def _get_running_job(scope: str = PREDICTION_SCOPE):
+    if db is None:
+        return None
+    return await db.prediction_jobs.find_one(
+        {"scope": scope, "status": {"$in": ["pending", "running"]}},
+        sort=[("createdAt", -1)], projection={"_id": 0}
+    )
+
+
+async def _create_job(scope: str, requested_by: str = "system") -> str:
+    job_id = str(uuid.uuid4())
+    now = _utcnow()
+    await db.prediction_jobs.insert_one({
+        "jobId": job_id,
+        "scope": scope,
+        "status": "pending",
+        "requestedBy": requested_by,
+        "createdAt": now.isoformat(),
+        "updatedAt": now.isoformat(),
+        "completedAt": None,
+        "error": None,
+    })
+    return job_id
+
+
+async def run_prediction_job(job_id: str, scope: str = PREDICTION_SCOPE):
+    """Background task: run the full prediction engine and store results."""
+    await db.prediction_jobs.update_one(
+        {"jobId": job_id},
+        {"$set": {"status": "running", "updatedAt": _utcnow().isoformat()}},
+    )
+    try:
+        scrape_results = await _collect_all_scrape_data(include_real_estate=True)
+        prediction = await _run_prediction_model(scrape_results)
+        _enrich_prediction_metadata(prediction, scrape_results)
+
+        prediction["realEstateSummary"] = {
+            "housingHealth": scrape_results.get("real_estate", {}).get("housing", {}).get("market_health", "unknown"),
+            "commercialTrend": "mixed",
+            "dataSources": len(scrape_results.get("real_estate", {}).get("housing", {}).get("sources", [])),
+            "implications": scrape_results.get("real_estate", {}).get("trends", {}).get("market_implications", []),
+        }
+        prediction["macroData"] = {
+            "worldEvents": {
+                "total": scrape_results.get("world_events", {}).get("total_events", 0),
+                "highImpact": scrape_results.get("world_events", {}).get("high_impact_count", 0),
+                "topSectors": scrape_results.get("world_events", {}).get("affected_sectors", [])[:5],
+            },
+            "foreignMarkets": {
+                "correlationSignals": scrape_results.get("foreign_markets", {}).get("correlation_signals", [])[:5],
+                "totalIndices": len(
+                    scrape_results.get("foreign_markets", {}).get("asia", [])
+                    + scrape_results.get("foreign_markets", {}).get("europe", [])
+                    + scrape_results.get("foreign_markets", {}).get("americas", [])
+                ),
+            },
+            "govFilings": {
+                "congressionalTrades": scrape_results.get("gov_filings", {}).get("congressional_count", 0),
+                "fedAnnouncements": scrape_results.get("gov_filings", {}).get("fed_count", 0),
+                "insiderTrades": scrape_results.get("gov_filings", {}).get("insider_count", 0),
+            },
+        }
+
+        now = _utcnow()
+        doc = {
+            "scope": scope,
+            "status": "ready",
+            "jobId": job_id,
+            "prediction": prediction,
+            "isStale": False,
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+            "expiresAt": (now + timedelta(minutes=PREDICTION_TTL_MINUTES)).isoformat(),
+            "lastError": None,
+        }
+        await db.prediction_cache.update_one({"scope": scope}, {"$set": doc}, upsert=True)
+        await db.prediction_jobs.update_one(
+            {"jobId": job_id},
+            {"$set": {"status": "ready", "updatedAt": now.isoformat(), "completedAt": now.isoformat()}},
+        )
+
+        # Log for accuracy tracking
+        if prediction.get("overall_direction"):
+            try:
+                from services.prediction_tracker import log_market_prediction
+                await log_market_prediction(db, prediction["overall_direction"], prediction.get("confidence_score", 0))
+            except Exception:
+                pass
+
+        logger.info(f"Prediction job {job_id} completed: {prediction.get('overall_direction')} @ {prediction.get('confidence_score')}")
+
+    except Exception as e:
+        now = _utcnow()
+        err_msg = str(e)[:1000]
+        await db.prediction_jobs.update_one(
+            {"jobId": job_id},
+            {"$set": {"status": "failed", "updatedAt": now.isoformat(), "completedAt": now.isoformat(), "error": err_msg}},
+        )
+        await db.prediction_cache.update_one(
+            {"scope": scope},
+            {"$set": {"isStale": True, "updatedAt": now.isoformat(), "lastError": err_msg}},
+            upsert=True,
+        )
+        logger.error(f"Prediction job {job_id} failed: {e}")
+
+
+async def ensure_prediction_refresh():
+    """Called by APScheduler every 10 minutes to keep predictions warm."""
+    if db is None:
+        return
+    latest = await _get_latest_prediction()
+    running = await _get_running_job()
+    if running:
+        return
+    now = _utcnow()
+    if latest:
+        expires_at = latest.get("expiresAt")
+        if expires_at:
+            try:
+                if datetime.fromisoformat(expires_at) > now:
+                    return
+            except Exception:
+                pass
+    job_id = await _create_job(PREDICTION_SCOPE, "scheduler")
+    await run_prediction_job(job_id, PREDICTION_SCOPE)
 
 
 # --- World Events & Macro ---
@@ -187,112 +333,110 @@ PREDICTION_TTL_SECONDS = 300
 PREDICTION_MAX_AGE_SECONDS = 900
 
 @router.get("/market/prediction")
-async def get_market_prediction(request: Request) -> Dict[str, Any]:
-    try:
-        from services.auth_helpers import get_optional_user
-        from services.credit_service import deduct_credits, get_user_plan
-        from services.ai_cache_service import AICacheService
+async def get_market_prediction(request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """Cache-first prediction: returns instantly, refreshes in background if stale."""
+    from services.auth_helpers import get_optional_user
+    from services.credit_service import deduct_credits, get_user_plan
 
-        user = await get_optional_user(request)
-        if user:
-            plan_key = get_user_plan(user)
-            cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
-            if not cr["allowed"]:
-                raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+    user = await get_optional_user(request)
+    if user:
+        plan_key = get_user_plan(user)
+        cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
+        if not cr["allowed"]:
+            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
-        force_refresh = request.query_params.get("force_refresh") == "true"
-        cache = AICacheService(request.app.state.db)
-        cache_key = cache.build_key("prediction", {"scope": "global"})
+    force_refresh = request.query_params.get("force_refresh") == "true"
+    now = _utcnow()
 
-        if not force_refresh:
-            cached = await cache.get(
-                cache_key,
-                ttl_seconds=PREDICTION_TTL_SECONDS,
-                sliding=True,
-                max_age_seconds=PREDICTION_MAX_AGE_SECONDS,
-            )
-            if cached:
-                cached["_cache"] = {
-                    "hit": True,
-                    "policy": "sliding",
-                    "ttlSeconds": PREDICTION_TTL_SECONDS,
-                    "maxAgeSeconds": PREDICTION_MAX_AGE_SECONDS,
-                }
-                return cached
+    latest = await _get_latest_prediction()
+    running = await _get_running_job()
 
-        scrape_results = await _collect_all_scrape_data(include_real_estate=True)
-        prediction = await _run_prediction_model(scrape_results)
-        _enrich_prediction_metadata(prediction, scrape_results)
-
-        prediction["realEstateSummary"] = {
-            "housingHealth": scrape_results.get("real_estate", {}).get("housing", {}).get("market_health", "unknown"),
-            "commercialTrend": "mixed",
-            "dataSources": len(scrape_results.get("real_estate", {}).get("housing", {}).get("sources", [])),
-            "implications": scrape_results.get("real_estate", {}).get("trends", {}).get("market_implications", []),
-        }
-        prediction["macroData"] = {
-            "worldEvents": {
-                "total": scrape_results.get("world_events", {}).get("total_events", 0),
-                "highImpact": scrape_results.get("world_events", {}).get("high_impact_count", 0),
-                "topSectors": scrape_results.get("world_events", {}).get("affected_sectors", [])[:5],
-            },
-            "foreignMarkets": {
-                "correlationSignals": scrape_results.get("foreign_markets", {}).get("correlation_signals", [])[:5],
-                "totalIndices": len(
-                    scrape_results.get("foreign_markets", {}).get("asia", [])
-                    + scrape_results.get("foreign_markets", {}).get("europe", [])
-                    + scrape_results.get("foreign_markets", {}).get("americas", [])
-                ),
-            },
-            "govFilings": {
-                "congressionalTrades": scrape_results.get("gov_filings", {}).get("congressional_count", 0),
-                "fedAnnouncements": scrape_results.get("gov_filings", {}).get("fed_count", 0),
-                "insiderTrades": scrape_results.get("gov_filings", {}).get("insider_count", 0),
-            },
-        }
-        prediction["_cache"] = {
-            "hit": False,
-            "policy": "sliding",
-            "ttlSeconds": PREDICTION_TTL_SECONDS,
-            "maxAgeSeconds": PREDICTION_MAX_AGE_SECONDS,
-        }
-
-        await cache.set(
-            cache_key,
-            namespace="prediction",
-            data=prediction,
-            ttl_seconds=PREDICTION_TTL_SECONDS,
-            meta={"scope": "global"},
-        )
-
-        # Log prediction for accuracy tracking
-        if prediction.get("overall_direction"):
+    # If we have a cached prediction and not forcing refresh
+    if latest and not force_refresh:
+        expires_at = latest.get("expiresAt")
+        is_stale = True
+        if expires_at:
             try:
-                from services.prediction_tracker import log_market_prediction
-                uid = str(user.get("_id", "")) if user else None
-                await log_market_prediction(
-                    request.app.state.db,
-                    prediction["overall_direction"],
-                    prediction.get("confidence_score", 0),
-                    user_id=uid,
-                )
-            except Exception as track_err:
-                logger.warning(f"Prediction tracking failed: {track_err}")
+                is_stale = datetime.fromisoformat(expires_at) <= now
+            except Exception:
+                is_stale = True
 
-        return prediction
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error generating prediction: {e}")
-        try:
-            cache = AICacheService(request.app.state.db)
-            stale = await cache.get_stale(cache.build_key("prediction", {"scope": "global"}))
-            if stale:
-                stale["_cache"] = {"hit": True, "stale": True}
-                return stale
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail="Error generating market prediction")
+        # Return the prediction data directly (not nested under "prediction")
+        result = latest.get("prediction", latest)
+        if isinstance(result, dict):
+            result["isStale"] = is_stale
+            result["jobRunning"] = bool(running)
+            result["_cache"] = {
+                "hit": True,
+                "policy": "stale-while-revalidate",
+                "stale": is_stale,
+                "ttlMinutes": PREDICTION_TTL_MINUTES,
+            }
+
+        # Kick off background refresh if stale
+        if is_stale and not running:
+            user_id = str(user.get("_id", "")) if user else "system"
+            job_id = await _create_job(PREDICTION_SCOPE, user_id)
+            background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+            if isinstance(result, dict):
+                result["jobRunning"] = True
+                result["jobId"] = job_id
+
+        return result
+
+    # No cached prediction — check if a job is running
+    if running and not force_refresh:
+        return {
+            "status": "pending",
+            "jobId": running["jobId"],
+            "jobRunning": True,
+            "isStale": True,
+            "overall_direction": None,
+            "confidence_score": 0,
+            "_cache": {"hit": False, "policy": "stale-while-revalidate"},
+        }
+
+    # Start a new job
+    user_id = str(user.get("_id", "")) if user else "system"
+    job_id = await _create_job(PREDICTION_SCOPE, user_id)
+    background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+
+    return {
+        "status": "pending",
+        "jobId": job_id,
+        "jobRunning": True,
+        "isStale": True,
+        "overall_direction": None,
+        "confidence_score": 0,
+        "_cache": {"hit": False, "policy": "stale-while-revalidate"},
+    }
+
+
+@router.get("/market/prediction/status/{job_id}")
+async def get_prediction_status(job_id: str, request: Request):
+    """Check the status of a prediction job."""
+    from services.auth_helpers import get_optional_user
+    await get_optional_user(request)
+    job = await db.prediction_jobs.find_one({"jobId": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Prediction job not found")
+    return job
+
+
+@router.post("/market/prediction/refresh")
+async def refresh_prediction(request: Request, background_tasks: BackgroundTasks):
+    """Manually trigger a prediction refresh."""
+    from services.auth_helpers import get_current_user
+    user = await get_current_user(request)
+
+    running = await _get_running_job()
+    if running:
+        return {"status": "already_running", "jobId": running["jobId"]}
+
+    user_id = str(user.get("_id", "")) if user else "user"
+    job_id = await _create_job(PREDICTION_SCOPE, user_id)
+    background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+    return {"status": "started", "jobId": job_id}
 
 
 async def _fetch_ticker_context(symbol: str) -> str:
