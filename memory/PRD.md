@@ -1,40 +1,36 @@
 # RISEDUAL AI — Product Requirements Document
 
-## Original Problem Statement
-Build **RISEDUAL AI** — an advanced AI-powered trading intelligence platform.
-
 ## Architecture
-- **Frontend**: React + TailwindCSS + Shadcn UI (port 3000)
-- **Backend**: FastAPI + MongoDB via Motor Async (port 8001)
-- **AI**: Emergent LLM Key (GPT-5.2) + ProviderRouter failover + Financial Tools Agent v2
-- **Payments**: Stripe Live Mode (4 tiers + credit top-ups)
-- **Market Data**: Alpha Vantage, Finnhub, TwelveData (via ProviderRouter)
-- **Web Intelligence**: Search War Room (DDG + Wikipedia + SEC + FRED + Yahoo + AI Analysis)
+- **Frontend**: React + TailwindCSS + Shadcn UI
+- **Backend**: FastAPI + MongoDB + APScheduler
+- **AI**: Emergent GPT-5.2 + ProviderRouter failover + Financial Tools Agent v2
+- **Payments**: Stripe Live Mode
+- **Market Data**: Alpha Vantage → Finnhub → TwelveData (ProviderRouter)
+- **Search**: War Room (DDG + Tavily + Wikipedia + SEC + FRED + Yahoo + AI Analysis)
 - **Domain**: risedual.ai
 
-## RiseDualGPT Chat (renamed from TradeGPT)
-- Main component: `RiseDualGPTChat.jsx`
-- Old `TradeGPTChat.jsx` deleted (dead file)
-- Branding: "RiseDualGPT" in header, help center, welcome screen
+## ProviderRouter System (Complete)
+- Error classification, tiered cooldowns, latency tracking, MongoDB persistence
+- **Dynamic Registration**: `POST /register` hot-swaps providers without restart, persists to MongoDB, restores on boot
+- **Health Heartbeat**: `POST /heartbeat` — services self-report ok/degraded/failed (no auth)
+- **Enable/Disable**: `POST /enable` re-enables disabled providers
+- **Parallel Orchestration**: `run_parallel(fn, deadline_ms)` calls all providers simultaneously with hard deadline
+- **Model List**: `GET /models?lane=ai` lists all providers with full health
+- Wired into: ai_service, market_data_service, company_research, prediction, war room, email, financial tools agent
 
-## Financial Tools Agent v2 (LangGraph-Inspired)
-State graph: `START → agent → tools_condition → tools → agent → ... → END`
-- **Tools**: `get_stock_quote`, `web_search`, `calculate_compound_growth`, `calculate_cagr`, `get_daily_history`
-- **Evidence-based**: Derives growth rates from actual price history via `get_daily_history` CAGR calculation
-- **Step limit**: MAX_STEPS = 8 (prevents infinite loops)
-- **SSE streaming**: `GET /api/chat/agent-stream` streams real-time tool execution events
-- **Frontend trace UI**: Live "Agent Working" panel showing tool execution with spinners → checkmarks + result values
-- **Auto-routing**: Pattern regex in chat detects calculation queries → uses SSE stream → falls back to standard chat
+## Predictions — Stale-While-Revalidate
+- Instant cache-first responses (119ms vs 40s+), background refresh jobs
+- APScheduler prewarm every 10 minutes
+- `POST /refresh`, `GET /status/{job_id}` for manual trigger + polling
+
+## Financial Tools Agent v2
+- State graph with 5 tools, SSE streaming, Tavily + DDG search
 
 ## Headlines Pipeline
-Background scrape → clean → store (8 financial sources), 15min scheduler, feeds prediction engine
-
-## ProviderRouter System
-Error classification, tiered cooldowns, latency tracking, MongoDB persistence
+- 8 sources, 15min scheduler, content-hash dedup, feeds prediction engine
 
 ## Deployment: PASS — ready for risedual.ai
 
 ## Backlog
-- P1: Add API keys (OPENAI, ANTHROPIC, TWELVEDATA, FRED)
-- P1: Extend ProviderRouter to email_service
+- P1: Add API keys (OPENAI, ANTHROPIC, TWELVEDATA, FRED, SENDGRID)
 - P0: Deploy to risedual.ai
