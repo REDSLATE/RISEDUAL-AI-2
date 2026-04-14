@@ -117,12 +117,7 @@ export default function SearchWarRoom({ onClose }) {
       </div>
 
       {brief && (
-        <WarRoomBriefHeader
-          brief={brief}
-          degraded={result.degraded}
-          engineCount={engines.length}
-          okCount={okCount}
-        />
+        <WarRoomBriefHeader brief={brief} degraded={result.degraded} />
       )}
 
       {engines.length > 0 && (

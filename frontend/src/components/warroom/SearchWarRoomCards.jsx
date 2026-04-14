@@ -166,7 +166,7 @@ export function WarRoomSourceCard({ result }) {
   );
 }
 
-export function WarRoomBriefHeader({ brief, degraded, engineCount, okCount }) {
+export function WarRoomBriefHeader({ brief, degraded }) {
   return (
     <div className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(25,37,62,0.96),rgba(10,18,34,0.96))] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -181,50 +181,65 @@ export function WarRoomBriefHeader({ brief, degraded, engineCount, okCount }) {
 
         <div className="flex flex-wrap gap-2">
           <Badge
-            config={degraded
-              ? { label: "Degraded", icon: AlertTriangle, className: "border-yellow-400/25 bg-yellow-500/12 text-yellow-200" }
-              : { label: "All Clear", icon: CheckCircle2, className: "border-emerald-400/25 bg-emerald-500/12 text-emerald-200" }
+            config={
+              degraded
+                ? statusBadgeMap.partial
+                : statusBadgeMap.live
             }
           />
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300">
-            {okCount}/{engineCount} engines
-          </span>
         </div>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-slate-300">
+      <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200">
         {brief.summary}
       </p>
 
-      {brief.signals?.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {brief.signals.map((s, i) => (
+      {!!brief.signals?.length && (
+        <div className="mt-5 flex flex-wrap gap-2">
+          {brief.signals.map((signal, idx) => (
             <span
-              key={`signal-${i}`}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-slate-300"
+              key={`signal-${idx}`}
+              className="inline-flex items-center rounded-full border border-cyan-400/15 bg-cyan-400/[0.08] px-3 py-1.5 text-xs text-cyan-100"
             >
-              {s}
+              {signal}
             </span>
           ))}
         </div>
       )}
 
-      {brief.risks?.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {brief.risks.map((r, i) => (
-            <div key={`risk-${i}`} className="flex items-center gap-2 text-xs text-amber-300/90">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {r}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {brief.sources_used?.length > 0 && (
-        <div className="mt-3 text-[11px] text-slate-500">
-          Sources: {brief.sources_used.join(" / ")}
+      {!!brief.risks?.length && (
+        <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-500/[0.08] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/80">
+            Caveats
+          </p>
+          <ul className="mt-2 space-y-1">
+            {brief.risks.map((risk, idx) => (
+              <li key={`risk-${idx}`} className="text-sm text-amber-100">
+                {risk}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
+  );
+}
+
+export default function WarRoomResults({ data }) {
+  const results = data?.engine_results || [];
+  const brief = data?.brief;
+
+  return (
+    <section className="space-y-5">
+      {brief && (
+        <WarRoomBriefHeader brief={brief} degraded={data?.degraded} />
+      )}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {results.map((result, idx) => (
+          <WarRoomSourceCard key={`${result.engine}-${idx}`} result={result} />
+        ))}
+      </div>
+    </section>
   );
 }
