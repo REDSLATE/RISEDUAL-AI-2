@@ -90,8 +90,13 @@ const MarketPrediction = ({ onSubscribe }) => {
             <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist predicts, Auditor vetoes weak signals</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isPro && <AccuracyBadge feature="market_prediction" />}
+          {prediction?._cache?.hit && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-400/30 font-medium" data-testid="cache-badge">
+              Cached
+            </span>
+          )}
           {lastUpdated && <span className="text-slate-300 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={() => fetchPrediction(activeSymbol)} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh

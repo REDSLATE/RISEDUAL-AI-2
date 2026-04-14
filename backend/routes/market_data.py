@@ -207,8 +207,8 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
                 result = cached["data"]
                 result["_cache"] = {
                     "hit": True,
-                    "created_at": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
-                    "expires_at": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
+                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
+                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
                 }
                 return result
 
