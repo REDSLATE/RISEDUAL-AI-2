@@ -297,7 +297,7 @@ def _eval_condition(cond: str, ctx: Dict) -> bool:
     Only allows: numeric literals, whitelisted indicator names,
     comparisons (<, <=, >, >=, ==, !=), arithmetic (+, -, *, /),
     and boolean operators (and, or).
-    No eval(), no builtins, no function calls, no attribute access.
+    No dangerous builtins, no function calls, no attribute access.
     """
     if not cond or not isinstance(cond, str):
         return False
