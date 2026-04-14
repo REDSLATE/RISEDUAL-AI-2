@@ -20,6 +20,7 @@ import HelpCenter from './HelpCenter';
 import DeveloperPortal from './DeveloperPortal';
 import CreditStore from './CreditStore';
 import FailureLoopDashboard from './FailureLoopDashboard';
+import SearchWarRoom from './SearchWarRoom';
 import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -47,6 +48,7 @@ const ModalManager = ({ user, modals }) => {
     showCredits, setShowCredits,
     showFailureLoop, setShowFailureLoop,
     showAbout, setShowAbout,
+    showSearchWarRoom, setShowSearchWarRoom,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
     resetToken, setResetToken,
@@ -75,6 +77,13 @@ const ModalManager = ({ user, modals }) => {
         {showDeveloper && user && <DeveloperPortal onClose={() => setShowDeveloper(false)} />}
         {showCredits && user && <CreditStore onClose={() => setShowCredits(false)} onSubscribe={() => { setShowCredits(false); modals.setShowSubscription(true); }} />}
         {showFailureLoop && user && <FailureLoopDashboard onClose={() => setShowFailureLoop(false)} />}
+        {showSearchWarRoom && user && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowSearchWarRoom(false)}>
+            <div className="bg-[#0A1628] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <SearchWarRoom onClose={() => setShowSearchWarRoom(false)} />
+            </div>
+          </div>
+        )}
         {showAbout && <AboutUs onClose={() => setShowAbout(false)} />}
         {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
         {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}

@@ -23,6 +23,7 @@ export default function useModals() {
   const [showCredits, setShowCredits] = useState(false);
   const [showFailureLoop, setShowFailureLoop] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showSearchWarRoom, setShowSearchWarRoom] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   const [legalTab, setLegalTab] = useState('terms');
   const [resetToken, setResetToken] = useState(null);
@@ -70,6 +71,7 @@ export default function useModals() {
     showCredits, setShowCredits,
     showFailureLoop, setShowFailureLoop,
     showAbout, setShowAbout,
+    showSearchWarRoom, setShowSearchWarRoom,
     showLegal, setShowLegal,
     legalTab, setLegalTab,
     resetToken, setResetToken,
