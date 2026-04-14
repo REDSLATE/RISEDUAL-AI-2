@@ -182,7 +182,10 @@ async def get_real_estate_data() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Error fetching real estate data")
 
 
-# --- Market Prediction (MongoDB-cached to survive restarts) ---
+# --- Market Prediction (MongoDB sliding cache) ---
+PREDICTION_TTL_SECONDS = 300
+PREDICTION_MAX_AGE_SECONDS = 900
+
 @router.get("/market/prediction")
 async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
@@ -199,30 +202,67 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
 
         force_refresh = request.query_params.get("force_refresh") == "true"
         cache = AICacheService(request.app.state.db)
-        cache_key = cache.build_key("predictions")
+        cache_key = cache.build_key("prediction", {"scope": "global"})
 
         if not force_refresh:
-            cached = await cache.get(cache_key)
+            cached = await cache.get(
+                cache_key,
+                ttl_seconds=PREDICTION_TTL_SECONDS,
+                sliding=True,
+                max_age_seconds=PREDICTION_MAX_AGE_SECONDS,
+            )
             if cached:
-                result = cached["data"]
-                result["_cache"] = {
+                cached["_cache"] = {
                     "hit": True,
-                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
-                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
+                    "policy": "sliding",
+                    "ttlSeconds": PREDICTION_TTL_SECONDS,
+                    "maxAgeSeconds": PREDICTION_MAX_AGE_SECONDS,
                 }
-                return result
+                return cached
 
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
         _enrich_prediction_metadata(prediction, scrape_results)
-        prediction["_cache"] = {"hit": False}
+
+        prediction["realEstateSummary"] = {
+            "housingHealth": scrape_results.get("real_estate", {}).get("housing", {}).get("market_health", "unknown"),
+            "commercialTrend": "mixed",
+            "dataSources": len(scrape_results.get("real_estate", {}).get("housing", {}).get("sources", [])),
+            "implications": scrape_results.get("real_estate", {}).get("trends", {}).get("market_implications", []),
+        }
+        prediction["macroData"] = {
+            "worldEvents": {
+                "total": scrape_results.get("world_events", {}).get("total_events", 0),
+                "highImpact": scrape_results.get("world_events", {}).get("high_impact_count", 0),
+                "topSectors": scrape_results.get("world_events", {}).get("affected_sectors", [])[:5],
+            },
+            "foreignMarkets": {
+                "correlationSignals": scrape_results.get("foreign_markets", {}).get("correlation_signals", [])[:5],
+                "totalIndices": len(
+                    scrape_results.get("foreign_markets", {}).get("asia", [])
+                    + scrape_results.get("foreign_markets", {}).get("europe", [])
+                    + scrape_results.get("foreign_markets", {}).get("americas", [])
+                ),
+            },
+            "govFilings": {
+                "congressionalTrades": scrape_results.get("gov_filings", {}).get("congressional_count", 0),
+                "fedAnnouncements": scrape_results.get("gov_filings", {}).get("fed_count", 0),
+                "insiderTrades": scrape_results.get("gov_filings", {}).get("insider_count", 0),
+            },
+        }
+        prediction["_cache"] = {
+            "hit": False,
+            "policy": "sliding",
+            "ttlSeconds": PREDICTION_TTL_SECONDS,
+            "maxAgeSeconds": PREDICTION_MAX_AGE_SECONDS,
+        }
 
         await cache.set(
-            cache_key=cache_key,
-            endpoint="predictions",
+            cache_key,
+            namespace="prediction",
             data=prediction,
-            ttl_seconds=300,
-            meta={"ttl_seconds": 300, "scope": "global"},
+            ttl_seconds=PREDICTION_TTL_SECONDS,
+            meta={"scope": "global"},
         )
 
         # Log prediction for accuracy tracking
@@ -244,14 +284,12 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Error generating prediction: {e}")
-        # Fallback to stale cache on error
         try:
             cache = AICacheService(request.app.state.db)
-            stale = await cache.get_stale(cache.build_key("predictions"))
+            stale = await cache.get_stale(cache.build_key("prediction", {"scope": "global"}))
             if stale:
-                result = stale["data"]
-                result["_cache"] = {"hit": True, "stale": True}
-                return result
+                stale["_cache"] = {"hit": True, "stale": True}
+                return stale
         except Exception:
             pass
         raise HTTPException(status_code=500, detail="Error generating market prediction")
@@ -290,6 +328,9 @@ async def _log_ticker_prediction(request: Request, prediction: dict, symbol: str
         pass
 
 
+TICKER_PREDICTION_TTL_SECONDS = 300
+TICKER_PREDICTION_MAX_AGE_SECONDS = 900
+
 @router.get("/market/prediction/{symbol}")
 async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]:
     """Generate an AI market prediction focused on a specific ticker/asset."""
@@ -310,14 +351,23 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
 
     force_refresh = request.query_params.get("force_refresh") == "true"
     cache = AICacheService(request.app.state.db)
-    cache_key = cache.build_key("predictions", symbol=symbol)
+    cache_key = cache.build_key("prediction", {"scope": "ticker", "symbol": symbol})
 
     if not force_refresh:
-        cached = await cache.get(cache_key)
+        cached = await cache.get(
+            cache_key,
+            ttl_seconds=TICKER_PREDICTION_TTL_SECONDS,
+            sliding=True,
+            max_age_seconds=TICKER_PREDICTION_MAX_AGE_SECONDS,
+        )
         if cached:
-            result = cached["data"]
-            result["_cache"] = {"hit": True}
-            return result
+            cached["_cache"] = {
+                "hit": True,
+                "policy": "sliding",
+                "ttlSeconds": TICKER_PREDICTION_TTL_SECONDS,
+                "maxAgeSeconds": TICKER_PREDICTION_MAX_AGE_SECONDS,
+            }
+            return cached
 
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=False)
@@ -346,14 +396,19 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         prediction["symbol"] = symbol
         prediction["ticker_focused"] = True
         _enrich_prediction_metadata(prediction, {**scrape_results, "real_estate": {}})
-        prediction["_cache"] = {"hit": False}
+        prediction["_cache"] = {
+            "hit": False,
+            "policy": "sliding",
+            "ttlSeconds": TICKER_PREDICTION_TTL_SECONDS,
+            "maxAgeSeconds": TICKER_PREDICTION_MAX_AGE_SECONDS,
+        }
 
         await cache.set(
-            cache_key=cache_key,
-            endpoint="predictions",
+            cache_key,
+            namespace="prediction",
             data=prediction,
-            ttl_seconds=300,
-            meta={"ttl_seconds": 300, "scope": "ticker", "symbol": symbol},
+            ttl_seconds=TICKER_PREDICTION_TTL_SECONDS,
+            meta={"scope": "ticker", "symbol": symbol},
         )
 
         if prediction.get("overall_direction"):
@@ -366,9 +421,8 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         logger.error(f"Error generating ticker prediction for {symbol}: {e}")
         stale = await cache.get_stale(cache_key)
         if stale:
-            result = stale["data"]
-            result["_cache"] = {"hit": True, "stale": True}
-            return result
+            stale["_cache"] = {"hit": True, "stale": True}
+            return stale
         raise HTTPException(status_code=500, detail=f"Error generating prediction for {symbol}")
 
 

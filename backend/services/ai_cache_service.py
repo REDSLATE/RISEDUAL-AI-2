@@ -1,12 +1,15 @@
-"""AICacheService — MongoDB-backed cache for expensive AI results.
+"""AICacheService — MongoDB-backed cache with sliding TTL for expensive AI results.
 
-Stores predictions, search results, and other AI outputs with TTL expiration.
-Survives server restarts and deployments.
+Supports:
+- Sliding TTL: extends expiration on each read
+- Max age: hard expiration regardless of reads
+- Stale fallback: returns expired data on error
+- Survives server restarts and deployments
 """
 import logging
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +20,49 @@ class AICacheService:
     def __init__(self, db):
         self.db = db
 
-    def build_key(self, endpoint: str, **params) -> str:
-        """Build a deterministic cache key from endpoint + params."""
-        parts = [endpoint]
-        for k in sorted(params.keys()):
-            parts.append(f"{k}={params[k]}")
+    def build_key(self, namespace: str, params: Union[Dict, None] = None, **kwargs) -> str:
+        """Build a deterministic cache key from namespace + params."""
+        merged = {**(params or {}), **kwargs}
+        parts = [namespace]
+        for k in sorted(merged.keys()):
+            parts.append(f"{k}={merged[k]}")
         raw = ":".join(parts)
         return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
-    async def get(self, cache_key: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a cached result if not expired."""
+    async def get(self, cache_key: str, ttl_seconds: int = 300,
+                  sliding: bool = False, max_age_seconds: int = 0) -> Optional[Dict[str, Any]]:
+        """Retrieve a cached result. Supports sliding TTL and max age.
+
+        Args:
+            cache_key: The cache key to look up
+            ttl_seconds: TTL for sliding window (only used if sliding=True)
+            sliding: If True, extend expires_at on each read
+            max_age_seconds: Hard max age from created_at (0 = no limit)
+        """
         if self.db is None:
             return None
         try:
-            doc = await self.db[self.COLLECTION].find_one(
-                {"cache_key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc)}},
-                {"_id": 0},
-            )
-            return doc
+            now = datetime.now(timezone.utc)
+            query = {"cache_key": cache_key, "expires_at": {"$gt": now}}
+
+            # If max_age set, also enforce hard creation time limit
+            if max_age_seconds > 0:
+                oldest = now - timedelta(seconds=max_age_seconds)
+                query["created_at"] = {"$gt": oldest}
+
+            doc = await self.db[self.COLLECTION].find_one(query, {"_id": 0})
+            if not doc:
+                return None
+
+            # Sliding TTL: extend expiration on read
+            if sliding and ttl_seconds > 0:
+                new_expires = now + timedelta(seconds=ttl_seconds)
+                await self.db[self.COLLECTION].update_one(
+                    {"cache_key": cache_key},
+                    {"$set": {"expires_at": new_expires}},
+                )
+
+            return doc.get("data")
         except Exception as e:
             logger.warning(f"Cache get error: {e}")
             return None
@@ -49,12 +77,12 @@ class AICacheService:
                 {"_id": 0},
                 sort=[("created_at", -1)],
             )
-            return doc
+            return doc.get("data") if doc else None
         except Exception as e:
             logger.warning(f"Cache get_stale error: {e}")
             return None
 
-    async def set(self, cache_key: str, endpoint: str, data: Dict[str, Any],
+    async def set(self, cache_key: str, namespace: str, data: Dict[str, Any],
                   ttl_seconds: int = 300, meta: Optional[Dict] = None):
         """Store a result in cache with TTL."""
         if self.db is None:
@@ -62,7 +90,7 @@ class AICacheService:
         now = datetime.now(timezone.utc)
         doc = {
             "cache_key": cache_key,
-            "endpoint": endpoint,
+            "namespace": namespace,
             "data": data,
             "created_at": now,
             "expires_at": now + timedelta(seconds=ttl_seconds),
