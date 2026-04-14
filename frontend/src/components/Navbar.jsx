@@ -67,7 +67,7 @@ const Navbar = ({
             <div className="w-[50px] h-[50px] rounded-lg bg-slate-800/80 border border-slate-600/40 flex items-center justify-center p-1" style={{boxShadow: '0 0 12px rgba(0,82,255,0.3)'}}>
               <img src="/logo-icon.png" alt="RISEDUAL AI" className="w-full h-full object-contain brightness-125" />
             </div>
-            <span className="text-white font-bold text-[23px] tracking-wide hidden sm:inline" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUAL <span className="text-[#3DE8D9]">AI</span></span>
+            <span className="text-white font-bold text-[23px] tracking-wide" style={{fontFamily: 'Manrope, sans-serif'}}>RISEDUAL <span className="text-[#3DE8D9]">AI</span></span>
           </div>
 
           {/* Primary destinations */}
