@@ -170,8 +170,7 @@ async def chat(
 
 @router.get("/chat/agent-stream")
 async def agent_stream(request: Request, message: str, sessionId: str = "stream"):
-    """SSE endpoint: streams financial tools agent execution in real-time.
-    Each event shows which tool is being called and its result."""
+    """SSE endpoint: streams financial tools agent execution in real-time."""
     from sse_starlette.sse import EventSourceResponse
     from services.financial_tools_agent import FinancialToolsAgent
     import json as json_mod
