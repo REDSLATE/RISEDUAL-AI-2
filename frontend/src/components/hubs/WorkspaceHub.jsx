@@ -6,13 +6,13 @@ const TABS = [
   { key: 'portfolio', label: 'Portfolio', icon: PieChart },
   { key: 'journal', label: 'Journal', icon: BookOpen },
   { key: 'pnl', label: 'P&L', icon: LineChart },
-  { key: 'paper', label: 'Paper Trading', icon: LineChart },
+  { key: 'paper', label: 'Paper', icon: LineChart },
   { key: 'bots', label: 'Bots', icon: Bot },
-  { key: 'orders', label: 'Smart Orders', icon: Layers },
-  { key: 'risk', label: 'Risk Calc', icon: Calculator },
+  { key: 'orders', label: 'Orders', icon: Layers },
+  { key: 'risk', label: 'Risk', icon: Calculator },
   { key: 'scanner', label: 'Scanner', icon: RadarIcon },
   { key: 'referral', label: 'Referrals', icon: Users },
-  { key: 'failureloop', label: 'Failure Loop', icon: AlertTriangle },
+  { key: 'failureloop', label: 'Loops', icon: AlertTriangle },
 ];
 
 export default function WorkspaceHub({
@@ -52,21 +52,21 @@ export default function WorkspaceHub({
 
   return (
     <div data-testid="workspace-hub">
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 border-b border-slate-700/50">
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 border-b border-slate-700/50 scrollbar-hide">
         {TABS.map(t => {
           const Icon = t.icon;
           return (
             <button
               key={t.key}
               onClick={() => handleTabClick(t.key)}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-t-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-1 px-2 py-2 rounded-t-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
                 tab === t.key
                   ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
                   : 'text-slate-400 hover:text-white'
               }`}
               data-testid={`workspace-tab-${t.key}`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-3 h-3" />
               {t.label}
             </button>
           );

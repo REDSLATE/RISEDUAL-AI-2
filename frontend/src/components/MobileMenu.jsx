@@ -16,7 +16,7 @@ const MobileMenu = ({
   const nav = (view, subTab) => { onNavigate(view, subTab); close(); };
 
   return (
-    <div className="lg:hidden mt-3 pb-20 border-t border-slate-400/25 pt-3 space-y-3" data-testid="mobile-menu">
+    <div className="space-y-3" data-testid="mobile-menu">
       <form onSubmit={handleSearch} className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
         <Input type="text" placeholder="Search Symbol" value={searchValue} onChange={(e) => setSearchValue(e.target.value)}

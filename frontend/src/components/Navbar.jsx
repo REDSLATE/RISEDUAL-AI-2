@@ -267,21 +267,23 @@ const Navbar = ({
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu — Full-screen overlay below navbar */}
       {mobileMenuOpen && (
-        <MobileMenu
-          searchValue={searchValue} setSearchValue={setSearchValue}
-          handleSearch={handleSearch}
-          onNavigate={onNavigate}
-          close={() => setMobileMenuOpen(false)}
-          user={user} isPro={isPro} logout={logout}
-          onOpenAdmin={onOpenAdmin} onOpenWorkspace={() => { onNavigate('workspace'); setMobileMenuOpen(false); }}
-          onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
-          onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
-          onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
-          onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenHelp={onOpenHelp} onOpenAbout={onOpenAbout}
-          onLogin={onLogin} onRegister={onRegister}
-        />
+        <div className="lg:hidden fixed inset-x-0 top-[72px] bottom-0 z-50 bg-slate-950/[0.98] border-t border-slate-700/50 overflow-y-auto px-3 py-4">
+          <MobileMenu
+            searchValue={searchValue} setSearchValue={setSearchValue}
+            handleSearch={handleSearch}
+            onNavigate={onNavigate}
+            close={() => setMobileMenuOpen(false)}
+            user={user} isPro={isPro} logout={logout}
+            onOpenAdmin={onOpenAdmin} onOpenWorkspace={() => { onNavigate('workspace'); setMobileMenuOpen(false); }}
+            onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
+            onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
+            onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
+            onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenHelp={onOpenHelp} onOpenAbout={onOpenAbout}
+            onLogin={onLogin} onRegister={onRegister}
+          />
+        </div>
       )}
     </nav>
   );
