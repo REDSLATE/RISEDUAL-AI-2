@@ -63,6 +63,8 @@ ACTION_COSTS: Dict[str, int] = {
     "ai_intelligence": 2,
     "scanner_validation": 2,
     "api_call": 1,
+    "web_search": 1,
+    "web_research": 2,
 }
 
 # Map internal action keys used by endpoints to the canonical ACTION_COSTS keys

@@ -23,11 +23,13 @@ chromadb==1.1.1
 click==8.1.8
 cryptography==46.0.5
 curl_cffi==0.15.0
+ddgs==9.13.0
 defusedxml==0.7.1
 deprecation==2.1.0
 distro==1.9.0
 dnspython==2.8.0
 docstring_parser==0.17.0
+duckduckgo_search==8.1.1
 durationpy==0.10
 ecdsa==0.19.1
 email-validator==2.3.0
@@ -126,6 +128,7 @@ pluggy==1.6.0
 polygon-api-client==1.16.3
 portalocker==2.7.0
 posthog==5.4.0
+primp==1.2.2
 propcache==0.4.1
 proto-plus==1.27.1
 protobuf==5.29.6
