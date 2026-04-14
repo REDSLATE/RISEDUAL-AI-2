@@ -1,13 +1,16 @@
 import os
 import logging
 from typing import Optional
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from services.providerrouter import ProviderRouter
+from services.provider_registry import get_ai_provider_pool
 
 logger = logging.getLogger(__name__)
 
+
 class AIService:
-    def __init__(self):
-        self.api_key = os.environ.get('EMERGENT_LLM_KEY')
+    def __init__(self, db=None):
+        self.db = db
+        self.router = ProviderRouter("ai", get_ai_provider_pool(), db=db)
         self.system_message = """You are RISEDUAL AI, an advanced AI-powered trading research assistant. 
         You specialize in:
         - Stock market analysis and insights
@@ -46,47 +49,85 @@ class AIService:
         Present clear, data-driven insights while always reminding users that trading involves risk. 
         Be professional, knowledgeable, and helpful. Use data-driven observations when possible.
         Your responses should be informative yet concise."""
-        
+
         from services.ai_guardrails import inject_guardrails
         self.system_message = inject_guardrails(self.system_message)
-    
-    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None, memory_context: str = "", user_id: str = "") -> str:
-        """Send a message to the AI and get a response, optionally with an image and memory context"""
-        try:
-            system = self.system_message
-            if memory_context:
-                system = f"{self.system_message}\n\n{memory_context}"
 
-            # Inject failure loop warnings as caution layer
-            if user_id:
-                try:
-                    from services.failure_loop_service import build_memory_warnings
-                    warnings = await build_memory_warnings(user_id)
-                    if warnings:
-                        warning_text = "\n\nCAUTION FROM REVIEWED TRADE HISTORY:\n" + "\n".join(f"- {w}" for w in warnings)
-                        warning_text += "\nUse these patterns as a caution layer when analyzing similar setups. Do not auto-override user judgment."
-                        system = system + warning_text
-                except Exception:
-                    pass
+    def _build_system(self, memory_context: str = "", user_id: str = "", failure_warnings: list = None) -> str:
+        system = self.system_message
+        if memory_context:
+            system = f"{system}\n\n{memory_context}"
+        if failure_warnings:
+            warning_text = "\n\nCAUTION FROM REVIEWED TRADE HISTORY:\n" + "\n".join(f"- {w}" for w in failure_warnings)
+            warning_text += "\nUse these patterns as a caution layer when analyzing similar setups. Do not auto-override user judgment."
+            system = system + warning_text
+        return system
 
-            chat = LlmChat(
-                api_key=self.api_key,
+    async def _call_provider(self, provider: dict, message: str, session_id: str,
+                             system: str, image_base64: str = None):
+        p = provider.get("provider")
+
+        if p == "openai":
+            from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+            llm = LlmChat(
+                api_key=provider["api_key"],
                 session_id=session_id,
-                system_message=system
-            ).with_model("openai", "gpt-5.2")
-            
+                system_message=system,
+            ).with_model("openai", provider.get("model", "gpt-5.2"))
+
             if image_base64:
                 image_content = ImageContent(image_base64=image_base64)
                 user_message = UserMessage(
                     text=message or "Please analyze this chart/image and provide trading insights.",
-                    file_contents=[image_content]
+                    file_contents=[image_content],
                 )
             else:
                 user_message = UserMessage(text=message)
-            
-            response = await chat.send_message(user_message)
-            return response
-            
+
+            return await llm.send_message(user_message)
+
+        if p == "anthropic":
+            from anthropic import AsyncAnthropic
+            client = AsyncAnthropic(api_key=provider["api_key"])
+            messages_content = [{"type": "text", "text": message}]
+            if image_base64:
+                messages_content.insert(0, {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": image_base64},
+                })
+            resp = await client.messages.create(
+                model=provider.get("model", "claude-sonnet-4"),
+                max_tokens=1200,
+                system=system,
+                messages=[{"role": "user", "content": messages_content}],
+            )
+            return "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+
+        raise RuntimeError(f"Unsupported AI provider: {p}")
+
+    async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None,
+                   memory_context: str = "", user_id: str = "") -> str:
+        """Send a message to the AI and get a response, with provider failover."""
+        try:
+            # Build failure loop warnings
+            failure_warnings = None
+            if user_id:
+                try:
+                    from services.failure_loop_service import build_memory_warnings
+                    failure_warnings = await build_memory_warnings(user_id)
+                except Exception:
+                    pass
+
+            system = self._build_system(memory_context, user_id, failure_warnings)
+
+            routed = await self.router.run(
+                lambda provider: self._call_provider(provider, message, session_id, system, image_base64)
+            )
+            return {
+                "text": routed["result"],
+                "provider": routed["provider"],
+            }
+
         except Exception as e:
             logger.error(f"Error in AI chat: {str(e)}")
             return "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."
