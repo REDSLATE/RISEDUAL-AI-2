@@ -374,14 +374,55 @@ async def _run_portfolio_analysis(prompt: str, user_id: str) -> dict:
 
 # --- Company Research ---
 @router.get("/research/{symbol}")
-async def research_company(symbol: str):
+async def research_company(symbol: str, request: Request):
     try:
         from services.company_research_service import CompanyResearchService
+        from services.ai_cache_service import AICacheService
+
+        symbol = symbol.upper()
+        force_refresh = request.query_params.get("force_refresh") == "true"
+        cache = AICacheService(request.app.state.db)
+        cache_key = cache.build_key("research", symbol=symbol)
+
+        if not force_refresh:
+            cached = await cache.get(cache_key)
+            if cached:
+                result = cached["data"]
+                result["_cache"] = {
+                    "hit": True,
+                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
+                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
+                }
+                return result
+
         service = CompanyResearchService()
         session_id = f"research_{symbol}_{datetime.now(timezone.utc).isoformat()}"
-        return await service.research_company(symbol, session_id)
+        result = await service.research_company(symbol, session_id)
+        result["_cache"] = {"hit": False}
+
+        await cache.set(
+            cache_key=cache_key,
+            endpoint="research",
+            data=result,
+            ttl_seconds=900,
+            meta={"ttl_seconds": 900, "symbol": symbol},
+        )
+
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error researching {symbol}: {e}")
+        # Fallback to stale cache
+        try:
+            cache = AICacheService(request.app.state.db)
+            stale = await cache.get_stale(cache.build_key("research", symbol=symbol.upper()))
+            if stale:
+                result = stale["data"]
+                result["_cache"] = {"hit": True, "stale": True}
+                return result
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -402,10 +443,35 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
         if not is_pro:
             return _build_hypothesis_teaser(symbol, data)
 
+        from services.ai_cache_service import AICacheService
+        force_refresh = request.query_params.get("force_refresh") == "true"
+        cache = AICacheService(request.app.state.db)
+        cache_key = cache.build_key("hypothesis", symbol=symbol.upper(), model=model)
+
+        if not force_refresh:
+            cached = await cache.get(cache_key)
+            if cached:
+                result = cached["data"]
+                result["_cache"] = {
+                    "hit": True,
+                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
+                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
+                }
+                return result
+
         from services.multi_model_hypothesis_service import generate_hypothesis
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         hypothesis = await generate_hypothesis(api_key, symbol, data, model=model)
         hypothesis["is_pro"] = True
+        hypothesis["_cache"] = {"hit": False}
+
+        await cache.set(
+            cache_key=cache_key,
+            endpoint="hypothesis",
+            data=hypothesis,
+            ttl_seconds=600,
+            meta={"ttl_seconds": 600, "symbol": symbol.upper(), "model": model},
+        )
 
         # Log prediction for accuracy tracking
         if hypothesis.get("verdict") and db is not None:
