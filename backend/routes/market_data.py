@@ -182,16 +182,14 @@ async def get_real_estate_data() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Error fetching real estate data")
 
 
-# --- Market Prediction (cached to avoid 30s+ AI call on every request) ---
-import time as _time
-_prediction_cache = {"general": None, "ts": 0}
-_PREDICTION_CACHE_TTL = 300  # 5 minutes
-
+# --- Market Prediction (MongoDB-cached to survive restarts) ---
 @router.get("/market/prediction")
 async def get_market_prediction(request: Request) -> Dict[str, Any]:
     try:
         from services.auth_helpers import get_optional_user
         from services.credit_service import deduct_credits, get_user_plan
+        from services.ai_cache_service import AICacheService
+
         user = await get_optional_user(request)
         if user:
             plan_key = get_user_plan(user)
@@ -199,30 +197,44 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
             if not cr["allowed"]:
                 raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
-        # Return cached prediction if fresh
-        now = _time.time()
-        if _prediction_cache["general"] and (now - _prediction_cache["ts"]) < _PREDICTION_CACHE_TTL:
-            return _prediction_cache["general"]
+        force_refresh = request.query_params.get("force_refresh") == "true"
+        cache = AICacheService(request.app.state.db)
+        cache_key = cache.build_key("predictions")
+
+        if not force_refresh:
+            cached = await cache.get(cache_key)
+            if cached:
+                result = cached["data"]
+                result["_cache"] = {
+                    "hit": True,
+                    "created_at": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
+                    "expires_at": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
+                }
+                return result
 
         scrape_results = await _collect_all_scrape_data(include_real_estate=True)
         prediction = await _run_prediction_model(scrape_results)
         _enrich_prediction_metadata(prediction, scrape_results)
+        prediction["_cache"] = {"hit": False}
 
-        # Cache the result
-        _prediction_cache["general"] = prediction
-        _prediction_cache["ts"] = now
+        await cache.set(
+            cache_key=cache_key,
+            endpoint="predictions",
+            data=prediction,
+            ttl_seconds=300,
+            meta={"ttl_seconds": 300, "scope": "global"},
+        )
 
         # Log prediction for accuracy tracking
         if prediction.get("overall_direction"):
             try:
                 from services.prediction_tracker import log_market_prediction
-                user = await get_optional_user(request)
                 uid = str(user.get("_id", "")) if user else None
                 await log_market_prediction(
                     request.app.state.db,
                     prediction["overall_direction"],
                     prediction.get("confidence_score", 0),
-                    user_id=uid
+                    user_id=uid,
                 )
             except Exception as track_err:
                 logger.warning(f"Prediction tracking failed: {track_err}")
@@ -232,9 +244,16 @@ async def get_market_prediction(request: Request) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Error generating prediction: {e}")
-        # Return stale cache if available
-        if _prediction_cache["general"]:
-            return _prediction_cache["general"]
+        # Fallback to stale cache on error
+        try:
+            cache = AICacheService(request.app.state.db)
+            stale = await cache.get_stale(cache.build_key("predictions"))
+            if stale:
+                result = stale["data"]
+                result["_cache"] = {"hit": True, "stale": True}
+                return result
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail="Error generating market prediction")
 
 
@@ -271,8 +290,6 @@ async def _log_ticker_prediction(request: Request, prediction: dict, symbol: str
         pass
 
 
-_ticker_prediction_cache = {}
-
 @router.get("/market/prediction/{symbol}")
 async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]:
     """Generate an AI market prediction focused on a specific ticker/asset."""
@@ -282,6 +299,8 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
 
     from services.auth_helpers import get_optional_user
     from services.credit_service import deduct_credits, get_user_plan
+    from services.ai_cache_service import AICacheService
+
     user = await get_optional_user(request)
     if user:
         plan_key = get_user_plan(user)
@@ -289,11 +308,16 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         if not cr["allowed"]:
             raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
 
-    # Return cached ticker prediction if fresh
-    now = _time.time()
-    cached = _ticker_prediction_cache.get(symbol)
-    if cached and (now - cached["ts"]) < _PREDICTION_CACHE_TTL:
-        return cached["data"]
+    force_refresh = request.query_params.get("force_refresh") == "true"
+    cache = AICacheService(request.app.state.db)
+    cache_key = cache.build_key("predictions", symbol=symbol)
+
+    if not force_refresh:
+        cached = await cache.get(cache_key)
+        if cached:
+            result = cached["data"]
+            result["_cache"] = {"hit": True}
+            return result
 
     try:
         scrape_results = await _collect_all_scrape_data(include_real_estate=False)
@@ -322,13 +346,15 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         prediction["symbol"] = symbol
         prediction["ticker_focused"] = True
         _enrich_prediction_metadata(prediction, {**scrape_results, "real_estate": {}})
+        prediction["_cache"] = {"hit": False}
 
-        # Cache the result
-        _ticker_prediction_cache[symbol] = {"data": prediction, "ts": now}
-        # Evict old entries
-        if len(_ticker_prediction_cache) > 50:
-            oldest_key = min(_ticker_prediction_cache, key=lambda k: _ticker_prediction_cache[k]["ts"])
-            del _ticker_prediction_cache[oldest_key]
+        await cache.set(
+            cache_key=cache_key,
+            endpoint="predictions",
+            data=prediction,
+            ttl_seconds=300,
+            meta={"ttl_seconds": 300, "scope": "ticker", "symbol": symbol},
+        )
 
         if prediction.get("overall_direction"):
             await _log_ticker_prediction(request, prediction, symbol)
@@ -338,9 +364,11 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         raise
     except Exception as e:
         logger.error(f"Error generating ticker prediction for {symbol}: {e}")
-        # Return stale cache if available
-        if cached:
-            return cached["data"]
+        stale = await cache.get_stale(cache_key)
+        if stale:
+            result = stale["data"]
+            result["_cache"] = {"hit": True, "stale": True}
+            return result
         raise HTTPException(status_code=500, detail=f"Error generating prediction for {symbol}")
 
 
