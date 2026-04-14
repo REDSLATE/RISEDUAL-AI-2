@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -267,23 +268,29 @@ const Navbar = ({
         </div>
       </div>
 
-      {/* Mobile Menu — Full-screen overlay below navbar */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-x-0 top-[72px] bottom-0 z-50 bg-slate-950/[0.98] border-t border-slate-700/50 overflow-y-auto px-3 py-4">
-          <MobileMenu
-            searchValue={searchValue} setSearchValue={setSearchValue}
-            handleSearch={handleSearch}
-            onNavigate={onNavigate}
-            close={() => setMobileMenuOpen(false)}
-            user={user} isPro={isPro} logout={logout}
-            onOpenAdmin={onOpenAdmin} onOpenWorkspace={() => { onNavigate('workspace'); setMobileMenuOpen(false); }}
-            onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
-            onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
-            onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
-            onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenHelp={onOpenHelp} onOpenAbout={onOpenAbout}
-            onLogin={onLogin} onRegister={onRegister}
-          />
-        </div>
+      {/* Mobile Menu — Portal to body to escape sticky nav stacking context */}
+      {mobileMenuOpen && createPortal(
+        <div className="lg:hidden fixed inset-0 z-[9999] bg-slate-950/[0.98] overflow-y-auto" style={{ paddingTop: '72px' }}>
+          <button onClick={() => setMobileMenuOpen(false)} className="absolute top-4 right-4 text-white p-2 z-10" aria-label="Close menu">
+            <X className="w-6 h-6" />
+          </button>
+          <div className="px-3 py-4 pb-24">
+            <MobileMenu
+              searchValue={searchValue} setSearchValue={setSearchValue}
+              handleSearch={handleSearch}
+              onNavigate={onNavigate}
+              close={() => setMobileMenuOpen(false)}
+              user={user} isPro={isPro} logout={logout}
+              onOpenAdmin={onOpenAdmin} onOpenWorkspace={() => { onNavigate('workspace'); setMobileMenuOpen(false); }}
+              onOpenPortfolio={onOpenPortfolio} onOpenSignals={onOpenSignals}
+              onOpenJournal={onOpenJournal} onOpenStrategy={onOpenStrategy}
+              onOpenMarketplace={onOpenMarketplace} onOpenMemory={onOpenMemory}
+              onOpenPaperTrading={onOpenPaperTrading} onOpenSmartOrders={onOpenSmartOrders} onOpenRiskCalc={onOpenRiskCalc} onOpenScanner={onOpenScanner} onOpenBots={onOpenBots} onOpenHelp={onOpenHelp} onOpenAbout={onOpenAbout}
+              onLogin={onLogin} onRegister={onRegister}
+            />
+          </div>
+        </div>,
+        document.body
       )}
     </nav>
   );
