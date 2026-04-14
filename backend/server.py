@@ -230,8 +230,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
         scheduler.add_job(_check_smart_orders, 'interval', seconds=30, id='smart_order_monitor')
         scheduler.add_job(_run_grid_bots, 'interval', seconds=30, id='grid_bot_monitor')
+        scheduler.add_job(_run_headlines_pipeline, 'interval', minutes=15, id='headlines_pipeline')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -252,6 +253,18 @@ async def _run_grid_bots():
         await run_grid_bots()
     except Exception as e:
         logger.debug(f"Grid bot error: {e}")
+
+
+async def _run_headlines_pipeline():
+    """Background: Scrape, clean, and store financial headlines every 15 minutes."""
+    try:
+        from services.headlines_pipeline import HeadlinesPipeline
+        pipeline = HeadlinesPipeline(db)
+        result = await pipeline.run_cycle()
+        if result.get("total_new", 0) > 0:
+            logger.info(f"Headlines pipeline: {result['total_new']} new / {result['total_scraped']} scraped")
+    except Exception as e:
+        logger.debug(f"Headlines pipeline error: {e}")
 
 
 def _start_cache_warmup():

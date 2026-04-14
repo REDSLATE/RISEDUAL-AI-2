@@ -464,6 +464,14 @@ async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[st
         from services.real_estate_scraping_service import RealEstateScrapingService
         result["real_estate"] = await RealEstateScrapingService().scrape_all_real_estate_data()
 
+    # Inject stored headlines from the pipeline (last 6 hours)
+    try:
+        from services.headlines_pipeline import HeadlinesPipeline
+        pipeline = HeadlinesPipeline(db)
+        result["headlines_digest"] = await pipeline.get_for_prediction(hours=6)
+    except Exception:
+        result["headlines_digest"] = ""
+
     return result
 
 

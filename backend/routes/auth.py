@@ -480,6 +480,9 @@ async def create_indexes():
     await db.login_attempts.create_index("identifier")
     await db.waitlist.create_index("email", unique=True, name="unique_email")
     await db.waitlist.create_index("referral_code", unique=True, name="unique_referral_code")
+    await db.headlines.create_index("content_hash", unique=True)
+    await db.headlines.create_index("expires_at", expireAfterSeconds=0)
+    await db.headlines.create_index([("scraped_at", -1)])
 
 # --- Owner-only guard ---
 async def require_owner(request: Request):
