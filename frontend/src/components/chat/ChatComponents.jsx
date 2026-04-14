@@ -108,6 +108,11 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy, isPro, onPin }) => {
                 {pinned ? 'Pinned' : 'Pin'}
               </button>
             )}
+            {msg.provider && (
+              <span className="text-[9px] text-slate-500 ml-auto font-mono" data-testid={`provider-badge-${idx}`}>
+                {msg.provider.model || msg.provider.name || 'AI'}
+              </span>
+            )}
           </div>
         )}
       </div>

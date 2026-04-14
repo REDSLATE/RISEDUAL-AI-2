@@ -226,6 +226,23 @@ export function WarRoomBriefHeader({ brief, degraded }) {
           </ul>
         </div>
       )}
+
+      {!!brief.sources_used?.length && (
+        <div className="mt-4 flex flex-wrap items-center gap-1.5" data-testid="warroom-source-badges">
+          <span className="text-[10px] text-slate-500 mr-1">Sources:</span>
+          {brief.sources_used.map((src, idx) => (
+            <span
+              key={`src-${idx}`}
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                src.includes('ai_analysis') ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20'
+                : 'bg-slate-800/60 text-slate-400 border border-slate-700/40'
+              }`}
+            >
+              {src.replace('ai_analysis:', '')}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

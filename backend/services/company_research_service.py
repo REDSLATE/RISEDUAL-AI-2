@@ -66,15 +66,18 @@ class CompanyResearchService:
 
         prompt = self._build_synthesis_prompt(symbol, company_name, sources, data_context)
         ai_response = await self.ai.chat(prompt, f"research_{session_id}_{symbol}")
+        synthesis_text = ai_response["text"] if isinstance(ai_response, dict) else ai_response
+        provider_meta = ai_response.get("provider") if isinstance(ai_response, dict) else None
 
         return {
             'symbol': symbol.upper(),
             'company_name': company_name,
             'overview': overview,
             'quote': quote,
-            'synthesis': ai_response,
+            'synthesis': synthesis_text,
             'sources': sources,
             'news_count': len(relevant_news),
+            'provider': provider_meta,
         }
 
     def _filter_relevant_news(self, news_data, symbol: str, company_name: str) -> list:

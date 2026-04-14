@@ -123,7 +123,8 @@ const TradeGPTChat = ({ onLimitReached }) => {
       if (!res.ok) throw new Error('Chat request failed');
       const data = await res.json();
       const aiText = data.response || data.message || 'No response generated.';
-      setMessages(prev => [...prev, { role: 'assistant', content: aiText }]);
+      const providerInfo = data.provider;
+      setMessages(prev => [...prev, { role: 'assistant', content: aiText, provider: providerInfo }]);
       // Speak the response if voice is enabled
       if (voiceMode) playTTS(aiText);
     } catch (err) {

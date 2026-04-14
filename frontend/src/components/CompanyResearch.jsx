@@ -130,6 +130,11 @@ const ResearchCard = ({ data, compact = false }) => {
               <p className="text-xs font-bold text-[#3DE8D9] uppercase tracking-wider" style={{fontFamily:'Manrope,sans-serif'}}>
                 AI Research Summary
               </p>
+              {data.provider && (
+                <span className="ml-auto text-[9px] font-mono text-slate-500 bg-slate-800/60 px-1.5 py-0.5 rounded" data-testid="research-provider-badge">
+                  {data.provider.model || data.provider.name || 'AI'}
+                </span>
+              )}
             </div>
             <div className="prose prose-sm prose-invert max-w-none text-slate-300 text-sm leading-relaxed research-content">
               {data.synthesis?.split('\n').map((line, i) => {

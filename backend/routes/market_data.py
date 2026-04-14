@@ -374,8 +374,11 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         ticker_context = await _fetch_ticker_context(symbol)
 
         from services.market_prediction_service import MarketPredictionService
+        from services.provider_registry import get_ai_provider_pool
+        pool = get_ai_provider_pool()
+        api_key = pool[0]["api_key"] if pool else os.environ.get('EMERGENT_LLM_KEY')
         all_crypto = scrape_results["crypto_data"] + [scrape_results["crypto_sentiment"]] + scrape_results["whale_txns"]
-        prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
+        prediction_service = MarketPredictionService(api_key)
 
         if scrape_results.get("fear_greed"):
             prediction_service._fear_greed = scrape_results["fear_greed"]
@@ -467,9 +470,14 @@ async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[st
 async def _run_prediction_model(data: Dict[str, Any]) -> Dict[str, Any]:
     """Run the AI market prediction model on collected data."""
     from services.market_prediction_service import MarketPredictionService
+    from services.provider_registry import get_ai_provider_pool
+
+    # Get the best available AI key from the provider pool
+    pool = get_ai_provider_pool()
+    api_key = pool[0]["api_key"] if pool else os.environ.get('EMERGENT_LLM_KEY')
 
     all_crypto = data["crypto_data"] + [data["crypto_sentiment"]] + data["whale_txns"]
-    prediction_service = MarketPredictionService(os.environ.get('EMERGENT_LLM_KEY'))
+    prediction_service = MarketPredictionService(api_key)
 
     # Attach fear & greed data so the prompt builder can use it
     if data.get("fear_greed"):

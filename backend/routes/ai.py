@@ -405,7 +405,7 @@ async def research_company(symbol: str, request: Request):
 
         await cache.set(
             cache_key=cache_key,
-            endpoint="research",
+            namespace="research",
             data=result,
             ttl_seconds=900,
             meta={"ttl_seconds": 900, "symbol": symbol},
@@ -421,7 +421,8 @@ async def research_company(symbol: str, request: Request):
             cache = AICacheService(request.app.state.db)
             stale = await cache.get_stale(cache.build_key("research", symbol=symbol.upper()))
             if stale:
-                result = stale["data"]
+                # get_stale returns the data directly, not a wrapper
+                result = stale if isinstance(stale, dict) and "symbol" in stale else stale
                 result["_cache"] = {"hit": True, "stale": True}
                 return result
         except Exception:

@@ -97,6 +97,11 @@ const MarketPrediction = ({ onSubscribe }) => {
               Cached
             </span>
           )}
+          {prediction?._cache?.policy && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800/60 text-slate-500 font-mono" data-testid="prediction-source-badge">
+              {prediction._cache.hit ? 'instant' : 'live'}
+            </span>
+          )}
           {lastUpdated && <span className="text-slate-300 text-xs">Updated {lastUpdated.toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" className="border-slate-600 text-white hover:bg-slate-700 rounded-xl" onClick={() => fetchPrediction(activeSymbol)} disabled={loading} data-testid="prediction-refresh">
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
