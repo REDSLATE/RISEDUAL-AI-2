@@ -3,11 +3,22 @@ import logging
 import math
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
+from dataclasses import dataclass
 from typing import Optional
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/risk-calc", tags=["risk-calculator"])
+
+
+@dataclass
+class SizingConfig:
+    method: str = "risk_pct"
+    risk_pct: float = 2.0
+    fixed_dollar_risk: Optional[float] = None
+    win_rate: Optional[float] = None
+    avg_wl_ratio: Optional[float] = None
+    rr_ratio: float = 0
 
 _db = None
 
@@ -82,20 +93,18 @@ def _validate_trade_direction(side: str, entry: float, sl: float, tp: float):
         return sl - entry, entry - tp
 
 
-def _calculate_position_size(method: str, account_value: float, risk_per_share: float,
-                             risk_pct: float, fixed_dollar_risk: float = None,
-                             win_rate: float = None, avg_wl_ratio: float = None, rr_ratio: float = 0):
+def _calculate_position_size(account_value: float, risk_per_share: float, cfg: SizingConfig):
     """Calculate position size and dollar risk based on sizing method."""
-    if method == "fixed_dollar":
-        dollar_risk = fixed_dollar_risk or (account_value * risk_pct / 100)
-    elif method == "kelly":
-        wr = (win_rate or 55) / 100
-        wl = avg_wl_ratio or rr_ratio
+    if cfg.method == "fixed_dollar":
+        dollar_risk = cfg.fixed_dollar_risk or (account_value * cfg.risk_pct / 100)
+    elif cfg.method == "kelly":
+        wr = (cfg.win_rate or 55) / 100
+        wl = cfg.avg_wl_ratio or cfg.rr_ratio
         kelly_pct = (wr * wl - (1 - wr)) / wl if wl > 0 else 0
         kelly_pct = max(0, min(kelly_pct, 0.25))
         dollar_risk = account_value * kelly_pct
     else:
-        dollar_risk = account_value * risk_pct / 100
+        dollar_risk = account_value * cfg.risk_pct / 100
     position_size = dollar_risk / risk_per_share if risk_per_share > 0 else 0
     return math.floor(position_size * 100) / 100, dollar_risk
 
@@ -139,8 +148,10 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
     account_value = await _get_account_value(user_id)
 
     position_size, dollar_risk = _calculate_position_size(
-        calc.sizing_method, account_value, risk_per_share, calc.risk_pct,
-        calc.fixed_dollar_risk, calc.win_rate, calc.avg_win_loss_ratio, rr_ratio,
+        account_value, risk_per_share,
+        SizingConfig(method=calc.sizing_method, risk_pct=calc.risk_pct,
+                     fixed_dollar_risk=calc.fixed_dollar_risk, win_rate=calc.win_rate,
+                     avg_wl_ratio=calc.avg_win_loss_ratio, rr_ratio=rr_ratio),
     )
 
     total_cost = round(entry * position_size, 2)
@@ -188,7 +199,9 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
 
     account_value = await _get_account_value(user_id)
     position_size, _ = _calculate_position_size(
-        calc.sizing_method, account_value, risk_per_share, calc.risk_pct, calc.fixed_dollar_risk,
+        account_value, risk_per_share,
+        SizingConfig(method=calc.sizing_method, risk_pct=calc.risk_pct,
+                     fixed_dollar_risk=calc.fixed_dollar_risk),
     )
     total_cost = round(entry * position_size, 2)
     max_loss = round(risk_per_share * position_size, 2)
