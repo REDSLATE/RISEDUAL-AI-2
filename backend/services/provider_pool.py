@@ -1,17 +1,11 @@
 """Provider Pool — Priority-based failover engine for any external service.
 
-Reads a JSON array from an env var, resolves ${VAR} references,
-tracks provider health, and executes with automatic failover.
-
-Env format:
-    AI_PROVIDER_POOL=[{"name":"primary","provider":"openai","api_key":"${KEY}","model":"gpt-5.2","priority":1}, ...]
+Accepts a pre-built list of provider dicts (from pool_config.py) or reads
+from an env var. Tracks provider health and executes with automatic failover.
 """
-import os
-import re
-import json
 import time
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Dict
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -38,49 +32,35 @@ class ProviderEntry:
 class ProviderPool:
     """Generic priority-based provider pool with failover and health tracking."""
 
-    def __init__(self, env_var: str, cooldown: int = COOLDOWN_SECONDS):
-        self.env_var = env_var
+    def __init__(self, entries: List[Dict], name: str = "pool", cooldown: int = COOLDOWN_SECONDS):
+        self.name = name
         self.cooldown = cooldown
         self.providers: list[ProviderEntry] = []
-        self._load_from_env()
+        self._load(entries)
 
-    def _resolve_env_refs(self, value: str) -> str:
-        """Replace ${VAR_NAME} with actual env values."""
-        def replacer(match):
-            var_name = match.group(1)
-            return os.environ.get(var_name, "")
-        return re.sub(r'\$\{(\w+)\}', replacer, value)
-
-    def _load_from_env(self):
-        raw = os.environ.get(self.env_var, "")
-        if not raw:
-            logger.info(f"[ProviderPool:{self.env_var}] No config found — pool disabled")
-            return
-
-        try:
-            resolved = self._resolve_env_refs(raw)
-            entries = json.loads(resolved)
-            for entry in sorted(entries, key=lambda e: e.get("priority", 99)):
-                api_key = entry.get("api_key", "")
-                if not api_key:
-                    logger.warning(f"[ProviderPool:{self.env_var}] Skipping {entry.get('name')} — no API key")
-                    continue
-                known_keys = {"name", "provider", "api_key", "model", "priority"}
-                extra = {k: v for k, v in entry.items() if k not in known_keys}
-                self.providers.append(ProviderEntry(
-                    name=entry["name"],
-                    provider=entry["provider"],
-                    api_key=api_key,
-                    model=entry.get("model", ""),
-                    priority=entry.get("priority", 99),
-                    extra=extra,
-                ))
+    def _load(self, entries: List[Dict]):
+        for entry in sorted(entries, key=lambda e: e.get("priority", 99)):
+            api_key = entry.get("api_key", "")
+            if not api_key:
+                logger.warning(f"[ProviderPool:{self.name}] Skipping {entry.get('name')} — no API key")
+                continue
+            known_keys = {"name", "provider", "api_key", "model", "priority"}
+            extra = {k: v for k, v in entry.items() if k not in known_keys}
+            self.providers.append(ProviderEntry(
+                name=entry["name"],
+                provider=entry["provider"],
+                api_key=api_key,
+                model=entry.get("model", ""),
+                priority=entry.get("priority", 99),
+                extra=extra,
+            ))
+        if self.providers:
             logger.info(
-                f"[ProviderPool:{self.env_var}] Loaded {len(self.providers)} providers: "
+                f"[ProviderPool:{self.name}] Loaded {len(self.providers)} providers: "
                 f"{[p.name for p in self.providers]}"
             )
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"[ProviderPool:{self.env_var}] Invalid config: {e}")
+        else:
+            logger.info(f"[ProviderPool:{self.name}] No providers configured")
 
     @property
     def available(self) -> bool:
@@ -95,7 +75,6 @@ class ProviderPool:
         """Return providers in priority order, healthy first."""
         healthy = [p for p in self.providers if self._is_healthy(p)]
         if not healthy:
-            # All in cooldown — return all sorted by least recent failure
             return sorted(self.providers, key=lambda p: p.last_failure)
         return healthy
 
@@ -111,7 +90,7 @@ class ProviderPool:
         provider.total_calls += 1
         healthy_count = sum(1 for p in self.providers if self._is_healthy(p))
         logger.warning(
-            f"[ProviderPool:{self.env_var}] {provider.name} failed ({provider.failures}x): {error[:100]}. "
+            f"[ProviderPool:{self.name}] {provider.name} failed ({provider.failures}x): {error[:100]}. "
             f"{healthy_count}/{len(self.providers)} healthy."
         )
 
@@ -122,7 +101,7 @@ class ProviderPool:
         """
         providers = self.get_healthy_providers()
         if not providers:
-            raise RuntimeError(f"[ProviderPool:{self.env_var}] No providers available")
+            raise RuntimeError(f"[ProviderPool:{self.name}] No providers available")
 
         last_error = None
         for provider in providers:
@@ -136,13 +115,13 @@ class ProviderPool:
                 continue
 
         raise RuntimeError(
-            f"[ProviderPool:{self.env_var}] All {len(providers)} providers exhausted. "
+            f"[ProviderPool:{self.name}] All {len(providers)} providers exhausted. "
             f"Last error: {last_error}"
         )
 
     def status(self) -> dict:
         return {
-            "pool": self.env_var,
+            "pool": self.name,
             "total_providers": len(self.providers),
             "healthy_providers": sum(1 for p in self.providers if self._is_healthy(p)),
             "providers": [

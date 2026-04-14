@@ -17,10 +17,11 @@ import requests
 import httpx
 
 from services.provider_pool import ProviderPool, ProviderEntry
+from services.pool_config import get_market_data_provider_pool
 
 logger = logging.getLogger(__name__)
 
-market_pool = ProviderPool("MARKET_DATA_PROVIDER_POOL")
+market_pool = ProviderPool(get_market_data_provider_pool(), name="MARKET_DATA_PROVIDER_POOL")
 
 # Module-level db reference
 _db = None

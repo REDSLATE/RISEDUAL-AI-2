@@ -14,11 +14,12 @@ import httpx
 from typing import Optional
 
 from services.provider_pool import ProviderPool, ProviderEntry
+from services.pool_config import get_ai_provider_pool
 
 logger = logging.getLogger(__name__)
 
-# Singleton pool — loaded once at import
-ai_pool = ProviderPool("AI_PROVIDER_POOL")
+# Singleton pool — assembled from pool_config
+ai_pool = ProviderPool(get_ai_provider_pool(), name="AI_PROVIDER_POOL")
 
 
 async def _call_emergent(provider: ProviderEntry, system_msg: str, user_msg: str,
