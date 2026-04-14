@@ -32,14 +32,24 @@ const MarketPrediction = ({ onSubscribe }) => {
       const endpoint = symbol
         ? `${API}/market/prediction/${symbol.toUpperCase()}`
         : `${API}/market/prediction`;
-      const res = await authFetch(endpoint);
-      if (!res.ok) throw new Error('Failed to fetch prediction');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      const res = await authFetch(endpoint, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server returned ${res.status}`);
+      }
       const data = await res.json();
       setPrediction(data);
       setLastUpdated(new Date());
       setActiveSymbol(symbol ? symbol.toUpperCase() : null);
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        setError('Prediction timed out — AI models are taking longer than usual. Try again.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
