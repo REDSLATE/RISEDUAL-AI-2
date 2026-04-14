@@ -4,14 +4,18 @@ import secrets as _secrets
 from typing import Dict, List, Optional
 from datetime import datetime
 
+import httpx
 from services.price_provider import get_quote as pp_get_quote, get_crypto_quote as pp_get_crypto_quote
+from services.providerrouter import ProviderRouter
+from services.provider_registry import get_market_data_provider_pool
 
 logger = logging.getLogger(__name__)
 _rng = _secrets.SystemRandom()
 
 class MarketDataService:
-    def __init__(self):
-        pass
+    def __init__(self, db=None):
+        self.db = db
+        self.router = ProviderRouter("market_data", get_market_data_provider_pool(), db=db)
     
     async def get_quote(self, symbol: str) -> Optional[Dict]:
         """Get real-time quote via smart price provider (AV -> yfinance -> cache)."""
@@ -69,7 +73,42 @@ class MarketDataService:
             if isinstance(quote, dict) and quote:
                 crypto_data.append(quote)
         return crypto_data
-    
+
+    async def _fetch_top_stocks(self, provider: dict):
+        p = provider.get("provider")
+        key = provider.get("api_key")
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            if p == "alphavantage":
+                url = "https://www.alphavantage.co/query"
+                params = {"function": "TOP_GAINERS_LOSERS", "apikey": key}
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                return r.json()
+
+            if p == "finnhub":
+                url = "https://finnhub.io/api/v1/scan/technical-indicator"
+                params = {"symbol": "AAPL", "resolution": "D", "token": key}
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                return r.json()
+
+            if p == "twelvedata":
+                url = "https://api.twelvedata.com/time_series"
+                params = {"symbol": "AAPL", "interval": "1day", "apikey": key}
+                r = await client.get(url, params=params)
+                r.raise_for_status()
+                return r.json()
+
+        raise RuntimeError(f"Unsupported market data provider: {p}")
+
+    async def get_top_stocks(self):
+        routed = await self.router.run(self._fetch_top_stocks)
+        return {
+            "data": routed["result"],
+            "provider": routed["provider"],
+        }
+
     def generate_dark_pool_data(self) -> List[Dict]:
         """Generate dark pool trading data"""
         symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'SPY']
