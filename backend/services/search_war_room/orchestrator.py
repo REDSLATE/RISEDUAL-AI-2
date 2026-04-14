@@ -33,34 +33,19 @@ def classify_mode(query: str, mode: str):
     return "company"
 
 
-async def _run_engine(name: str, coro):
+async def _run_engine(name: str, source_type: str, coro):
     try:
         async with asyncio.timeout(ENGINE_TIMEOUTS.get(name, 6.0)):
-            result = await coro
-            return result
+            return await coro
     except asyncio.TimeoutError:
         return EngineResult(
-            engine=name,
-            status="timeout",
-            source_type="unknown",
-            query="",
-            summary=f"{name} timed out",
-            confidence=0.0,
-            authoritative=False,
-            cached=False,
-            error="timeout",
+            engine=name, status="timeout", source_type=source_type, query="",
+            summary=f"{name} timed out", confidence=0.0, error="timeout",
         )
     except Exception as exc:
         return EngineResult(
-            engine=name,
-            status="error",
-            source_type="unknown",
-            query="",
-            summary=f"{name} failed",
-            confidence=0.0,
-            authoritative=False,
-            cached=False,
-            error=str(exc),
+            engine=name, status="error", source_type=source_type, query="",
+            summary=f"{name} failed", confidence=0.0, error=str(exc),
         )
 
 
@@ -68,39 +53,39 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     resolved = classify_mode(query, mode)
 
     engine_jobs = [
-        ("wikipedia", wikipedia.run(symbol or query)),
+        ("wikipedia", "knowledge", wikipedia.run(symbol or query)),
     ]
 
     if resolved in {"company", "filing"}:
         engine_jobs.extend([
-            ("sec", sec.run(query, symbol)),
-            ("ddg", ddg.run(query)),
-            ("yahoo", yahoo.run(query, symbol)),
-            ("ddg_news", ddg.run_news(f"{symbol or query} stock news")),
+            ("sec", "filing", sec.run(query, symbol)),
+            ("ddg", "search", ddg.run(query)),
+            ("yahoo", "market", yahoo.run(query, symbol)),
+            ("ddg_news", "news", ddg.run_news(f"{symbol or query} stock news")),
         ])
     elif resolved == "macro":
         engine_jobs.extend([
-            ("fred", fred.run(query)),
-            ("ddg", ddg.run(query)),
-            ("ddg_news", ddg.run_news(query)),
+            ("fred", "macro", fred.run(query)),
+            ("ddg", "search", ddg.run(query)),
+            ("ddg_news", "news", ddg.run_news(query)),
         ])
     elif resolved == "news":
         engine_jobs.extend([
-            ("ddg", ddg.run(query)),
-            ("ddg_news", ddg.run_news(query)),
-            ("yahoo", yahoo.run(query, symbol)),
+            ("ddg", "search", ddg.run(query)),
+            ("ddg_news", "news", ddg.run_news(query)),
+            ("yahoo", "market", yahoo.run(query, symbol)),
         ])
     else:
-        engine_jobs.append(("ddg", ddg.run(query)))
+        engine_jobs.append(("ddg", "search", ddg.run(query)))
 
-    tasks = [asyncio.create_task(_run_engine(name, coro)) for name, coro in engine_jobs]
+    tasks = [asyncio.create_task(_run_engine(name, stype, coro)) for name, stype, coro in engine_jobs]
     results = await asyncio.gather(*tasks, return_exceptions=False)
 
     normalized = []
     warnings = []
     degraded = False
 
-    for (name, _), result in zip(engine_jobs, results):
+    for (name, _, __), result in zip(engine_jobs, results):
         if not result.query:
             result.query = query
 
