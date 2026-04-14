@@ -46,6 +46,7 @@ from routes.failure_loop import router as failure_loop_router, set_db as set_fai
 from routes.billing import router as billing_router, set_db as set_billing_db
 from routes.web_intelligence import router as web_intel_router, set_db as set_web_intel_db
 from routes.success_fee import router as success_fee_router, set_db as set_success_fee_db
+from routes.provider_health import router as provider_health_router, set_db as set_provider_health_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
@@ -69,6 +70,7 @@ ALL_ROUTERS = [
     failure_loop_router,
     billing_router,
     web_intel_router,
+    provider_health_router,
 ]
 
 
@@ -93,6 +95,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_risk_calc_db, set_scanner_db, set_trading_bots_db,
         set_success_fee_db, set_public_api_db, set_credits_db,
         set_failure_loop_db, set_billing_db, set_web_intel_db,
+        set_provider_health_db,
     ]
     for setter in _setters:
         try:
