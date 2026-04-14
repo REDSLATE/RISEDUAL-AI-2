@@ -1,3 +1,4 @@
+
 import React from "react";
 import {
   ShieldCheck,
@@ -13,26 +14,22 @@ const trustBadgeMap = {
   official: {
     label: "Official",
     icon: ShieldCheck,
-    className:
-      "border-emerald-400/25 bg-emerald-500/12 text-emerald-200",
+    tone: "wr-badge-official",
   },
   search: {
     label: "Search",
     icon: Search,
-    className:
-      "border-sky-400/25 bg-sky-500/12 text-sky-200",
+    tone: "wr-badge-search",
   },
   fallback: {
     label: "Fallback",
     icon: Database,
-    className:
-      "border-amber-400/25 bg-amber-500/12 text-amber-200",
+    tone: "wr-badge-fallback",
   },
   cached: {
     label: "Cached",
     icon: Clock3,
-    className:
-      "border-violet-400/25 bg-violet-500/12 text-violet-200",
+    tone: "wr-badge-cached",
   },
 };
 
@@ -40,26 +37,22 @@ const statusBadgeMap = {
   live: {
     label: "Live",
     icon: CheckCircle2,
-    className:
-      "border-teal-400/25 bg-teal-500/12 text-teal-200",
+    tone: "wr-status-live",
   },
   partial: {
     label: "Partial",
     icon: AlertTriangle,
-    className:
-      "border-yellow-400/25 bg-yellow-500/12 text-yellow-100",
+    tone: "wr-status-partial",
   },
   timeout: {
     label: "Timeout",
     icon: Clock3,
-    className:
-      "border-orange-400/25 bg-orange-500/12 text-orange-200",
+    tone: "wr-status-timeout",
   },
   error: {
     label: "Error",
     icon: XCircle,
-    className:
-      "border-rose-400/25 bg-rose-500/12 text-rose-200",
+    tone: "wr-status-error",
   },
 };
 
@@ -77,14 +70,11 @@ function getStatusKind(result) {
   return "partial";
 }
 
-function Badge({ config }) {
-  const Icon = config.icon;
+function Badge({ icon: Icon, label, tone }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium tracking-wide ${config.className}`}
-    >
+    <span className={`wr-badge ${tone}`}>
       <Icon className="h-3.5 w-3.5" />
-      {config.label}
+      {label}
     </span>
   );
 }
@@ -100,7 +90,6 @@ function formatFreshness(seconds) {
 export function WarRoomSourceCard({ result }) {
   const trustKind = getTrustKind(result);
   const statusKind = getStatusKind(result);
-
   const trustConfig = trustBadgeMap[trustKind];
   const statusConfig = statusBadgeMap[statusKind];
 
@@ -119,8 +108,16 @@ export function WarRoomSourceCard({ result }) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Badge config={trustConfig} />
-          <Badge config={statusConfig} />
+          <Badge
+            icon={trustConfig.icon}
+            label={trustConfig.label}
+            tone={trustConfig.tone}
+          />
+          <Badge
+            icon={statusConfig.icon}
+            label={statusConfig.label}
+            tone={statusConfig.tone}
+          />
         </div>
       </div>
 
@@ -175,6 +172,8 @@ export function WarRoomSourceCard({ result }) {
 }
 
 export function WarRoomBriefHeader({ brief, degraded }) {
+  const headerStatus = degraded ? statusBadgeMap.partial : statusBadgeMap.live;
+
   return (
     <div className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(25,37,62,0.96),rgba(10,18,34,0.96))] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -189,11 +188,9 @@ export function WarRoomBriefHeader({ brief, degraded }) {
 
         <div className="flex flex-wrap gap-2">
           <Badge
-            config={
-              degraded
-                ? statusBadgeMap.partial
-                : statusBadgeMap.live
-            }
+            icon={headerStatus.icon}
+            label={headerStatus.label}
+            tone={headerStatus.tone}
           />
         </div>
       </div>
@@ -239,9 +236,7 @@ export default function WarRoomResults({ data }) {
 
   return (
     <section className="space-y-5">
-      {brief && (
-        <WarRoomBriefHeader brief={brief} degraded={data?.degraded} />
-      )}
+      {brief && <WarRoomBriefHeader brief={brief} degraded={data?.degraded} />}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {results.map((result, idx) => (
