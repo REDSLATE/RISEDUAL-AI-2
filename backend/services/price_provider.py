@@ -131,12 +131,22 @@ def _yf_quote(symbol: str) -> Optional[Dict]:
 
 async def get_quote(symbol: str) -> Optional[Dict]:
     """
-    Smart quote: AV → yfinance → cache.
-    Caches successful results in MongoDB for 5 minutes.
+    Smart quote: Market Data Pool → AV → yfinance → cache.
+    Pool provides priority-based failover across AV, Finnhub, TwelveData.
     """
+    # Try the provider pool first (it has its own caching)
+    try:
+        from services.market_data_pool import market_quote, market_pool
+        if market_pool.available:
+            pool_result = await market_quote(symbol)
+            if pool_result:
+                return pool_result
+    except Exception as e:
+        logger.warning(f"Market data pool failed for {symbol}: {e}")
+
     cache_key = f"quote_{symbol.upper()}"
 
-    # Check MongoDB cache first
+    # Check MongoDB cache
     if _db is not None:
         cached = await _db.price_cache.find_one(
             {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
@@ -146,15 +156,12 @@ async def get_quote(symbol: str) -> Optional[Dict]:
             cached["data"]["source"] = "cache"
             return cached["data"]
 
-    # Try AV first
+    # Legacy fallback: AV → yfinance
     quote = await asyncio.to_thread(_av_quote, symbol)
-
-    # Fallback to yfinance
     if not quote:
         logger.info(f"AV failed for {symbol}, trying yfinance")
         quote = await asyncio.to_thread(_yf_quote, symbol)
 
-    # Cache successful result
     if quote and _db is not None:
         await _db.price_cache.update_one(
             {"key": cache_key},
@@ -237,9 +244,18 @@ def _yf_daily(symbol: str, period: str = "3mo") -> Optional[List[Dict]]:
 
 async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
     """
-    Smart daily history: AV → yfinance → cache.
-    Caches in MongoDB for 30 minutes.
+    Smart daily history: Market Data Pool → AV → yfinance → cache.
     """
+    # Try the provider pool first
+    try:
+        from services.market_data_pool import market_daily, market_pool
+        if market_pool.available:
+            pool_result = await market_daily(symbol, outputsize)
+            if pool_result:
+                return pool_result
+    except Exception as e:
+        logger.warning(f"Market data pool daily failed for {symbol}: {e}")
+
     cache_key = f"daily_{symbol.upper()}_{outputsize}"
 
     if _db is not None:

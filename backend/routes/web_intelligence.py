@@ -78,11 +78,16 @@ async def web_intel_status():
     """Check which providers are available."""
     from services.search_war_room.adapters.fred import fred_rotator
     from services.search_war_room.adapters import ai_analysis
+    from services.ai_pool import ai_pool_status
+    from services.market_data_pool import market_pool_status
     return {
-        "duckduckgo": True,
-        "wikipedia": True,
-        "sec_edgar": True,
-        "fred": fred_rotator.status(),
-        "yahoo": True,
-        "ai_analysis": ai_analysis.status(),
+        "engines": {
+            "duckduckgo": True,
+            "wikipedia": True,
+            "sec_edgar": True,
+            "fred": fred_rotator.status(),
+            "yahoo": True,
+        },
+        "ai_pool": ai_pool_status(),
+        "market_data_pool": market_pool_status(),
     }

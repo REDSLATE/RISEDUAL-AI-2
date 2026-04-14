@@ -47,6 +47,7 @@ from routes.billing import router as billing_router, set_db as set_billing_db
 from routes.web_intelligence import router as web_intel_router, set_db as set_web_intel_db
 from routes.success_fee import router as success_fee_router, set_db as set_success_fee_db
 from services.price_provider import set_db as set_price_provider_db
+from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
 
 # Ordered list of all routers to register
@@ -87,7 +88,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_subscription_db, set_referral_db, set_promo_db, set_digest_db,
         set_push_db, set_journal_db, set_strategy_db, set_intelligence_db,
         set_broker_db, set_market_data_db, set_admin_db, set_accuracy_db,
-        set_stream_db, set_price_provider_db, set_paper_trading_db,
+        set_stream_db, set_price_provider_db, set_market_data_pool_db, set_paper_trading_db,
         set_sectors_db, set_security_audit_db, set_smart_orders_db,
         set_risk_calc_db, set_scanner_db, set_trading_bots_db,
         set_success_fee_db, set_public_api_db, set_credits_db,
