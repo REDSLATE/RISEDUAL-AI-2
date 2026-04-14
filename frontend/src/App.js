@@ -189,32 +189,32 @@ function AppContent() {
                 <h3 className="text-sm font-semibold text-white">Explore</h3>
                 <span className="text-[10px] text-slate-500">Jump to a destination</span>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <button onClick={() => navigateTo('research')} className="group flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-[#3DE8D9]/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-research">
-                  <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button onClick={() => navigateTo('research')} className="group flex items-center gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-[#3DE8D9]/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-research">
+                  <div className="w-9 h-9 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center shrink-0">
                     <span className="text-[#3DE8D9] text-sm font-bold">R</span>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-white text-xs font-semibold">Research</div>
-                    <p className="text-slate-500 text-[10px]">AI Hypothesis, Predictions, Macro</p>
+                    <p className="text-slate-500 text-[10px] truncate">AI Hypothesis, Predictions, Macro</p>
                   </div>
                 </button>
-                <button onClick={() => navigateTo('options')} className="group flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-violet-400/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-options">
-                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                <button onClick={() => navigateTo('options')} className="group flex items-center gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-violet-400/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-options">
+                  <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
                     <span className="text-violet-400 text-sm font-bold">O</span>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-white text-xs font-semibold">Options</div>
-                    <p className="text-slate-500 text-[10px]">Radar, Flow, Dark Pool</p>
+                    <p className="text-slate-500 text-[10px] truncate">Radar, Flow, Dark Pool</p>
                   </div>
                 </button>
-                <button onClick={() => navigateTo('workspace')} className="group flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-amber-400/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-workspace">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                <button onClick={() => navigateTo('workspace')} className="group flex items-center gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 hover:border-amber-400/30 hover:bg-slate-800/70 transition-all text-left" data-testid="nav-to-workspace">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
                     <span className="text-amber-400 text-sm font-bold">W</span>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-white text-xs font-semibold">Workspace</div>
-                    <p className="text-slate-500 text-[10px]">Portfolio, Journal, Bots, Tools</p>
+                    <p className="text-slate-500 text-[10px] truncate">Portfolio, Journal, Bots, Tools</p>
                   </div>
                 </button>
               </div>
