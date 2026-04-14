@@ -8,6 +8,43 @@
     --brand-deep-blue: #155F85;
     --brand-teal: #3DE8D9;
     --brand-teal-light: #7AEEE0;
+
+    /* War Room surfaces */
+    --wr-bg: 10 18 34;
+    --wr-surface-1: 11 20 38;
+    --wr-surface-2: 16 26 49;
+    --wr-surface-3: 22 34 61;
+    --wr-border: 255 255 255;
+    --wr-text: 241 245 249;
+    --wr-text-muted: 148 163 184;
+
+    /* Trust badges */
+    --wr-badge-official-bg: 16 185 129;
+    --wr-badge-official-text: 209 250 229;
+    --wr-badge-official-border: 52 211 153;
+    --wr-badge-search-bg: 14 165 233;
+    --wr-badge-search-text: 224 242 254;
+    --wr-badge-search-border: 56 189 248;
+    --wr-badge-fallback-bg: 245 158 11;
+    --wr-badge-fallback-text: 254 243 199;
+    --wr-badge-fallback-border: 251 191 36;
+    --wr-badge-cached-bg: 139 92 246;
+    --wr-badge-cached-text: 237 233 254;
+    --wr-badge-cached-border: 167 139 250;
+
+    /* Status badges */
+    --wr-status-live-bg: 20 184 166;
+    --wr-status-live-text: 204 251 241;
+    --wr-status-live-border: 45 212 191;
+    --wr-status-partial-bg: 234 179 8;
+    --wr-status-partial-text: 254 249 195;
+    --wr-status-partial-border: 250 204 21;
+    --wr-status-timeout-bg: 249 115 22;
+    --wr-status-timeout-text: 255 237 213;
+    --wr-status-timeout-border: 251 146 60;
+    --wr-status-error-bg: 244 63 94;
+    --wr-status-error-text: 255 228 230;
+    --wr-status-error-border: 251 113 133;
 }
 
 html,
