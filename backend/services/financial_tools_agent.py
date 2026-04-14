@@ -12,6 +12,7 @@ Usage:
 import json
 import logging
 import asyncio
+import os
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -197,6 +198,39 @@ async def _exec_daily_history(symbol: str, period: str = "compact") -> dict:
 
 
 async def _exec_web_search(query: str) -> dict:
+    """Search with Tavily (advanced) → DDG fallback."""
+    # Try Tavily first
+    tavily_key = os.environ.get("TAVILY_API_KEY", "")
+    if tavily_key:
+        try:
+            async with httpx.AsyncClient(timeout=12) as client:
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": tavily_key,
+                        "query": query,
+                        "search_depth": "advanced",
+                        "max_results": 4,
+                        "include_answer": True,
+                        "topic": "finance",
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return {
+                        "query": query,
+                        "answer": data.get("answer", ""),
+                        "source": "tavily",
+                        "results": [
+                            {"title": r.get("title", ""), "body": r.get("content", ""), "url": r.get("url", ""),
+                             "score": r.get("score", 0)}
+                            for r in data.get("results", [])
+                        ],
+                    }
+        except Exception as e:
+            logger.debug(f"Tavily search failed, falling back to DDG: {e}")
+
+    # DDG fallback
     try:
         from ddgs import DDGS
         results = await asyncio.to_thread(
@@ -204,6 +238,7 @@ async def _exec_web_search(query: str) -> dict:
         )
         return {
             "query": query,
+            "source": "duckduckgo",
             "results": [
                 {"title": r.get("title", ""), "body": r.get("body", ""), "url": r.get("href", "")}
                 for r in results

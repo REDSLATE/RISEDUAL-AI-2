@@ -80,6 +80,7 @@ async def web_intel_status():
     from services.search_war_room.adapters import ai_analysis
     from services.ai_pool import ai_pool_status
     from services.market_data_pool import market_pool_status
+    import os
     return {
         "engines": {
             "duckduckgo": True,
@@ -87,6 +88,7 @@ async def web_intel_status():
             "sec_edgar": True,
             "fred": fred_rotator.status(),
             "yahoo": True,
+            "tavily": bool(os.environ.get("TAVILY_API_KEY", "")),
         },
         "ai_pool": ai_pool_status(),
         "market_data_pool": market_pool_status(),

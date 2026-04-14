@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from services.search_war_room.schemas import SearchWarRoomResponse, EngineResult
-from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo, ai_analysis
+from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo, ai_analysis, tavily
 from services.search_war_room.synthesizer import build_brief
 
 logger = logging.getLogger(__name__)
@@ -14,10 +14,11 @@ ENGINE_TIMEOUTS = {
     "ddg": 7.0,
     "ddg_news": 7.0,
     "yahoo": 5.0,
+    "tavily": 10.0,
     "ai_analysis": 18.0,
 }
 
-NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "ai_analysis"}
+NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "tavily", "ai_analysis"}
 
 
 def classify_mode(query: str, mode: str):
@@ -60,6 +61,7 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     if resolved in {"company", "filing"}:
         engine_jobs.extend([
             ("sec", "filing", sec.run(query, symbol)),
+            ("tavily", "search", tavily.run(f"{symbol or query} stock analysis financial")),
             ("ddg", "search", ddg.run(query)),
             ("yahoo", "market", yahoo.run(query, symbol)),
             ("ddg_news", "news", ddg.run_news(f"{symbol or query} stock news")),
@@ -67,17 +69,22 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     elif resolved == "macro":
         engine_jobs.extend([
             ("fred", "macro", fred.run(query)),
+            ("tavily", "search", tavily.run(query)),
             ("ddg", "search", ddg.run(query)),
             ("ddg_news", "news", ddg.run_news(query)),
         ])
     elif resolved == "news":
         engine_jobs.extend([
+            ("tavily", "search", tavily.run(query)),
             ("ddg", "search", ddg.run(query)),
             ("ddg_news", "news", ddg.run_news(query)),
             ("yahoo", "market", yahoo.run(query, symbol)),
         ])
     else:
-        engine_jobs.append(("ddg", "search", ddg.run(query)))
+        engine_jobs.extend([
+            ("tavily", "search", tavily.run(query)),
+            ("ddg", "search", ddg.run(query)),
+        ])
 
     tasks = [asyncio.create_task(_run_engine(name, stype, coro)) for name, stype, coro in engine_jobs]
     results = await asyncio.gather(*tasks, return_exceptions=False)
