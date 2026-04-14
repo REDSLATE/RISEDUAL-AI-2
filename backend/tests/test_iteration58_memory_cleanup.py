@@ -48,7 +48,7 @@ class TestMemoryCleanupFeature:
         data = response.json()
         assert "total_episodes" in data, "Missing total_episodes field"
         assert data["total_episodes"] == 2919, f"Expected 2919 episodes, got {data['total_episodes']}"
-        assert data.get("initialized") is True, "Memory should be initialized"
+        assert data.get("initialized") == True, "Memory should be initialized"
         assert data.get("collection_name") == "market_regimes"
         
         # Verify last_cleanup info is present

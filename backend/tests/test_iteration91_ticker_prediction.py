@@ -34,7 +34,7 @@ class TestTickerPredictionEndpoint:
         
         data = response.json()
         assert data.get("symbol") == "AAPL", f"Expected symbol=AAPL, got {data.get('symbol')}"
-        assert data.get("ticker_focused") is True, f"Expected ticker_focused=True, got {data.get('ticker_focused')}"
+        assert data.get("ticker_focused") == True, f"Expected ticker_focused=True, got {data.get('ticker_focused')}"
         assert "overall_direction" in data, "Missing overall_direction"
         assert "confidence_score" in data, "Missing confidence_score"
         print(f"✓ AAPL prediction: {data['overall_direction']} ({data['confidence_score']}%)")
@@ -46,7 +46,7 @@ class TestTickerPredictionEndpoint:
         
         data = response.json()
         assert data.get("symbol") == "BTC", f"Expected symbol=BTC, got {data.get('symbol')}"
-        assert data.get("ticker_focused") is True, f"Expected ticker_focused=True, got {data.get('ticker_focused')}"
+        assert data.get("ticker_focused") == True, f"Expected ticker_focused=True, got {data.get('ticker_focused')}"
         assert "overall_direction" in data, "Missing overall_direction"
         print(f"✓ BTC prediction: {data['overall_direction']} ({data.get('confidence_score', 'N/A')}%)")
     
@@ -57,7 +57,7 @@ class TestTickerPredictionEndpoint:
         
         data = response.json()
         assert data.get("symbol") == "TSLA", f"Expected symbol=TSLA (uppercase), got {data.get('symbol')}"
-        assert data.get("ticker_focused") is True
+        assert data.get("ticker_focused") == True
         print(f"✓ Lowercase 'tsla' normalized to TSLA")
     
     def test_invalid_symbol_graceful_handling(self):

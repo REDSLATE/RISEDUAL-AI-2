@@ -82,7 +82,7 @@ class TestMemoryTrainingWithAuth:
         print(f"PASS: Embedding model is '{embedding_model}'")
         
         # Verify initialized
-        assert data.get("initialized") is True, "Memory should be initialized"
+        assert data.get("initialized") == True, "Memory should be initialized"
         print(f"PASS: Memory is initialized")
     
     def test_memory_train_status_shows_complete_or_idle(self):
