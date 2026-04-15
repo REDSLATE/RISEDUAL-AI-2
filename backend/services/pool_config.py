@@ -86,6 +86,15 @@ def get_market_data_provider_pool() -> List[Dict]:
             "priority": 2,
         })
 
+    ms = os.environ.get("MARKETSTACK_API_KEY")
+    if ms:
+        fallback.append({
+            "name": "marketstack-backup",
+            "provider": "marketstack",
+            "api_key": ms,
+            "priority": 3,
+        })
+
     return fallback
 
 

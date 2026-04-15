@@ -27,6 +27,7 @@ const COMMON_KEYS = [
   { name: 'SENDGRID_API_KEY', category: 'email', description: 'SendGrid email backup', helpUrl: 'https://app.sendgrid.com/settings/api_keys' },
   { name: 'TAVILY_API_KEY', category: 'search', description: 'Tavily advanced web search', helpUrl: 'https://app.tavily.com/home' },
   { name: 'NEWSAPI_API_KEY', category: 'search', description: 'NewsAPI global news feed', helpUrl: 'https://newsapi.org/register' },
+  { name: 'MARKETSTACK_API_KEY', category: 'market_data', description: 'Marketstack EOD/intraday data', helpUrl: 'https://marketstack.com/signup' },
 ];
 
 const getCategoryConfig = (cat) => CATEGORIES.find(c => c.value === cat) || CATEGORIES[4];

@@ -232,6 +232,80 @@ async def _twelvedata_daily(api_key: str, symbol: str, outputsize: int = 90) -> 
 
 
 # ─────────────────────────────────────────────
+#  MARKETSTACK QUOTE & DAILY
+# ─────────────────────────────────────────────
+MS_BASE = "https://api.marketstack.com/v2"
+
+
+async def _marketstack_quote(api_key: str, symbol: str) -> Optional[Dict]:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{MS_BASE}/eod/latest",
+                params={"access_key": api_key, "symbols": symbol.upper(), "limit": 1},
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Marketstack HTTP {resp.status_code}")
+            data = resp.json()
+            if "error" in data:
+                raise RuntimeError(f"Marketstack error: {data['error'].get('message', '')}")
+            rows = data.get("data", [])
+            if not rows:
+                raise RuntimeError("No data from Marketstack")
+            row = rows[0]
+            price = float(row.get("close", 0))
+            if price <= 0:
+                raise RuntimeError("No price data")
+            prev = float(row.get("open", 0))
+            change = round(price - prev, 2) if prev > 0 else 0
+            change_pct = round((change / prev * 100), 2) if prev > 0 else 0
+            return {
+                "symbol": symbol.upper(),
+                "price": round(price, 2),
+                "change": change,
+                "change_pct": change_pct,
+                "volume": int(row.get("volume", 0)),
+                "open": round(float(row.get("open", 0)), 2),
+                "high": round(float(row.get("high", 0)), 2),
+                "low": round(float(row.get("low", 0)), 2),
+                "prev_close": round(prev, 2),
+                "source": "marketstack",
+            }
+    except Exception as e:
+        raise RuntimeError(f"Marketstack quote failed: {e}")
+
+
+async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Optional[List[Dict]]:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{MS_BASE}/eod",
+                params={"access_key": api_key, "symbols": symbol.upper(), "limit": limit},
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Marketstack HTTP {resp.status_code}")
+            data = resp.json()
+            if "error" in data:
+                raise RuntimeError(f"Marketstack error: {data['error'].get('message', '')}")
+            values = data.get("data", [])
+            if not values:
+                raise RuntimeError("No time series data")
+            rows = []
+            for v in values:
+                rows.append({
+                    "date": v.get("date", "")[:10],
+                    "open": round(float(v.get("open", 0)), 2),
+                    "high": round(float(v.get("high", 0)), 2),
+                    "low": round(float(v.get("low", 0)), 2),
+                    "close": round(float(v.get("close", 0)), 2),
+                    "volume": int(v.get("volume", 0)),
+                })
+            return rows
+    except Exception as e:
+        raise RuntimeError(f"Marketstack daily failed: {e}")
+
+
+# ─────────────────────────────────────────────
 #  PROVIDER DISPATCH
 # ─────────────────────────────────────────────
 
@@ -242,6 +316,8 @@ async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> Dict:
         result = await _finnhub_quote(provider.api_key, symbol)
     elif provider.provider == "twelvedata":
         result = await _twelvedata_quote(provider.api_key, symbol)
+    elif provider.provider == "marketstack":
+        result = await _marketstack_quote(provider.api_key, symbol)
     else:
         raise RuntimeError(f"Unknown market provider: {provider.provider}")
     if not result:
@@ -259,6 +335,9 @@ async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str)
     elif provider.provider == "twelvedata":
         size = 365 if outputsize == "full" else 90
         result = await _twelvedata_daily(provider.api_key, symbol, size)
+    elif provider.provider == "marketstack":
+        size = 365 if outputsize == "full" else 90
+        result = await _marketstack_daily(provider.api_key, symbol, size)
     else:
         raise RuntimeError(f"Unknown market provider: {provider.provider}")
     if not result:

@@ -95,6 +95,7 @@ async def _validate_key(name: str, value: str) -> dict:
         "POLYGON_API_KEY": _validate_polygon,
         "QUIVERQUANT_API_KEY": _validate_quiverquant,
         "NEWSAPI_API_KEY": _validate_newsapi,
+        "MARKETSTACK_API_KEY": _validate_marketstack,
     }
     fn = validators.get(name)
     if not fn:
@@ -241,6 +242,17 @@ async def _validate_newsapi(key: str) -> dict:
         ok = r.status_code == 200
         return {"valid": ok, "name": "NEWSAPI_API_KEY", "status": r.status_code,
                 "message": "Connected to NewsAPI.ai" if ok else f"HTTP {r.status_code}"}
+
+
+async def _validate_marketstack(key: str) -> dict:
+    import httpx
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get("https://api.marketstack.com/v2/eod/latest",
+                        params={"access_key": key, "symbols": "AAPL", "limit": 1})
+        data = r.json() if r.status_code == 200 else {}
+        ok = r.status_code == 200 and "data" in data
+        return {"valid": ok, "name": "MARKETSTACK_API_KEY", "status": r.status_code,
+                "message": "Connected to Marketstack" if ok else data.get("error", {}).get("message", f"HTTP {r.status_code}")}
 
 
 @router.delete("/keys/{name}")

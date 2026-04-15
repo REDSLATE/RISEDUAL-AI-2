@@ -127,6 +127,7 @@ class KeyVault:
                 "ALPHAVANTAGEAPIKEY": ("market_data", get_market_data_provider_pool),
                 "FINNHUB_API_KEY": ("market_data", get_market_data_provider_pool),
                 "TWELVEDATA_API_KEY": ("market_data", get_market_data_provider_pool),
+                "MARKETSTACK_API_KEY": ("market_data", get_market_data_provider_pool),
                 "RESEND_API_KEY": ("email", get_email_provider_pool),
                 "SENDGRID_API_KEY": ("email", get_email_provider_pool),
             }
