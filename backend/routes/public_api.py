@@ -346,3 +346,64 @@ async def api_sectors(request: Request):
     from services.sector_service import get_sector_heatmap
     data = await get_sector_heatmap()
     return data
+
+
+@router.get("/quote/{symbol}")
+async def api_quote(symbol: str, request: Request):
+    """Get real-time stock quote."""
+    await _auth_via_key(request)
+
+    from services.price_provider import get_quote
+    quote = await get_quote(symbol.upper())
+    if not quote:
+        raise HTTPException(status_code=404, detail=f"No quote data for {symbol}")
+    return quote
+
+
+@router.get("/research/{symbol}")
+async def api_research(symbol: str, request: Request):
+    """Get AI company research. Pro only."""
+    auth = await _auth_via_key(request)
+    if not auth["is_pro"]:
+        raise HTTPException(status_code=403, detail="Research requires Pro subscription")
+
+    cached = await db.research_cache.find_one({"symbol": symbol.upper()}, {"_id": 0})
+    if cached:
+        return cached
+    return {"symbol": symbol.upper(), "status": "no_cached_research", "hint": "Run research via the dashboard first"}
+
+
+@router.get("/search")
+async def api_search(request: Request, q: str = "", symbol: str = ""):
+    """Run a War Room search query. Pro only."""
+    auth = await _auth_via_key(request)
+    if not auth["is_pro"]:
+        raise HTTPException(status_code=403, detail="Search requires Pro subscription")
+    if not q:
+        raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
+
+    from services.search_war_room.orchestrator import run_war_room
+    result = await run_war_room(query=q, symbol=symbol or None, mode="auto")
+    return result.model_dump()
+
+
+@router.get("/headlines")
+async def api_headlines(request: Request, hours: int = 24, limit: int = 50):
+    """Get recent scraped headlines."""
+    await _auth_via_key(request)
+
+    from services.headlines_pipeline import HeadlinesPipeline
+    pipeline = HeadlinesPipeline(db)
+    headlines = await pipeline.get_recent(hours=min(hours, 168), limit=min(limit, 200))
+    return {"headlines": headlines, "count": len(headlines)}
+
+
+@router.get("/provider-status")
+async def api_provider_status(request: Request):
+    """Get provider health summary. Pro only."""
+    auth = await _auth_via_key(request)
+    if not auth["is_pro"]:
+        raise HTTPException(status_code=403, detail="Provider status requires Pro subscription")
+
+    from services.providerrouter import ProviderRouter
+    return {"lanes": ProviderRouter.snapshot()}

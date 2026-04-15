@@ -212,6 +212,14 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Provider restoration failed (non-critical): {e}")
 
+    # Load encrypted keys from vault into environment
+    try:
+        from services.key_vault import KeyVault
+        vault = KeyVault(db)
+        loaded = await vault.load_into_env()
+    except Exception as e:
+        logger.warning(f"Vault key loading failed (non-critical): {e}")
+
     try:
         await seed_admin()
         logger.info("Admin seed complete")
