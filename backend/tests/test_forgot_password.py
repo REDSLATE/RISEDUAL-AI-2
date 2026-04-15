@@ -91,7 +91,7 @@ class TestForgotPasswordEndpoint:
         assert token_record is not None, "Token record should be created in MongoDB"
         assert "token" in token_record, "Token record should have 'token' field"
         assert "expires_at" in token_record, "Token record should have 'expires_at' field"
-        assert token_record["used"] == False, "Token should not be marked as used"
+        assert token_record["used"] is False, "Token should not be marked as used"
         
         # Verify expiration is ~1 hour from now
         expires_at = token_record["expires_at"]
@@ -153,7 +153,7 @@ class TestResetPasswordEndpoint:
         # Verify token is now marked as used
         admin_user = mongo_client.users.find_one({"email": ADMIN_EMAIL})
         token_record = mongo_client.password_reset_tokens.find_one({"token": valid_reset_token})
-        assert token_record["used"] == True, "Token should be marked as used after reset"
+        assert token_record["used"] is True, "Token should be marked as used after reset"
         print("✓ Token marked as used in MongoDB")
         
         # Reset password back to original
@@ -317,7 +317,7 @@ class TestLoginAfterPasswordReset:
         data = response.json()
         assert "access_token" in data, "Login should return access_token"
         assert data["email"] == ADMIN_EMAIL
-        print(f"✓ Successfully logged in with new password")
+        print("✓ Successfully logged in with new password")
         
         # Step 5: Reset password back to original
         mongo_client.password_reset_tokens.delete_many({"user_id": admin_user["_id"]})
@@ -346,4 +346,3 @@ class TestLoginAfterPasswordReset:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
-e__, "-v", "--tb=short"])

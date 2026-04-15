@@ -8,7 +8,7 @@ import os
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_BROKER_CLIENT_ID, TEST_BROKER_CLIENT_SECRET
 
 # Test credentials from test_credentials.md
 class TestAuthSetup:
@@ -180,8 +180,8 @@ class TestBrokerOAuthCRUD:
     
     def test_save_broker_oauth_credentials(self):
         """POST /api/admin/broker-oauth/alpaca saves encrypted credentials"""
-        test_client_id = "TEST_CLIENT_ID_12345678"
-        test_client_secret = "TEST_CLIENT_SECRET_ABCDEFGH"
+        test_client_id = TEST_BROKER_CLIENT_ID
+        test_client_secret = TEST_BROKER_CLIENT_SECRET
         
         response = self.session.post(
             f"{BASE_URL}/api/admin/broker-oauth/alpaca",

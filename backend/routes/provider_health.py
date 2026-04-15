@@ -12,6 +12,7 @@ Admin endpoints:
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime, timezone
 from routes.auth import get_current_user
 from services.providerrouter import ProviderRouter
 
@@ -95,7 +96,7 @@ async def register_model(req: RegisterRequest, request: Request):
                 "lane": req.lane, "name": req.name, "provider": req.provider,
                 "api_key": req.api_key, "model": req.model, "priority": req.priority,
                 "registered_by": user.get("email", "admin"),
-                "registered_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                "registered_at": datetime.now(timezone.utc).isoformat(),
             }},
             upsert=True,
         )

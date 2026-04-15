@@ -15,3 +15,7 @@ FREE_USER_PASSWORD = os.environ.get("FREE_USER_PASSWORD", "Test1234!")
 
 # Ephemeral test user password for registration tests
 TEST_USER_PASSWORD = os.environ.get("TEST_USER_PASSWORD", "TestPass2026!")
+
+# Dummy broker test fixtures (not real secrets)
+TEST_BROKER_CLIENT_ID = os.environ.get("TEST_BROKER_CLIENT_ID", "TEST_CLIENT_ID_12345678")
+TEST_BROKER_CLIENT_SECRET = os.environ.get("TEST_BROKER_CLIENT_SECRET", "TEST_CLIENT_SECRET_ABCDEFGH")

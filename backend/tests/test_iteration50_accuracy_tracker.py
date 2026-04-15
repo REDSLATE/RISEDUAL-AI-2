@@ -17,7 +17,7 @@ import time
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_USER_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestAccuracyTrackerAuth:
@@ -249,7 +249,7 @@ class TestNonProUserAccess:
         
         # Create a test user (non-Pro)
         test_email = f"test_accuracy_{int(time.time())}@test.com"
-        test_password = "TestPass123!"
+        test_password = TEST_USER_PASSWORD
         
         # Register
         register_response = session.post(
