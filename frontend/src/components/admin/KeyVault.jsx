@@ -26,6 +26,7 @@ const COMMON_KEYS = [
   { name: 'FRED_API_KEYS', category: 'market_data', description: 'FRED macroeconomic data (comma-separated)', helpUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html' },
   { name: 'SENDGRID_API_KEY', category: 'email', description: 'SendGrid email backup', helpUrl: 'https://app.sendgrid.com/settings/api_keys' },
   { name: 'TAVILY_API_KEY', category: 'search', description: 'Tavily advanced web search', helpUrl: 'https://app.tavily.com/home' },
+  { name: 'NEWSAPI_API_KEY', category: 'search', description: 'NewsAPI global news feed', helpUrl: 'https://newsapi.org/register' },
 ];
 
 const getCategoryConfig = (cat) => CATEGORIES.find(c => c.value === cat) || CATEGORIES[4];

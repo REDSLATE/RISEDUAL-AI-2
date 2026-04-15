@@ -102,7 +102,7 @@ def _bootstrap():
     """Register all built-in adapters. Called once at import time."""
     from services.search_war_room.adapters import (
         ddg, wikipedia, fred, sec, yahoo, tavily,
-        av_news, finnhub_news, stockfit,
+        av_news, finnhub_news, stockfit, newsapi,
     )
 
     _ALL_COMPANY = {"company", "filing", "news"}
@@ -166,6 +166,12 @@ def _bootstrap():
         modes={"macro"},
         run_fn=lambda q, s=None: fred.run(q),
         env_key="FRED_API_KEYS", timeout=6.0, critical=True,
+    ))
+    register(ProviderEntry(
+        name="newsapi", source_type="news",
+        modes={"company", "filing", "news"},
+        run_fn=newsapi.run, env_key="NEWSAPI_API_KEY",
+        timeout=15.0,
     ))
 
     logger.info(f"War Room registry: {len(_REGISTRY)} providers registered")
