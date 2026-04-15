@@ -4,29 +4,33 @@
 - **Frontend**: React + TailwindCSS + Shadcn UI
 - **Backend**: FastAPI + MongoDB + APScheduler
 - **AI**: Emergent GPT-5.2 + ProviderRouter failover + Financial Tools Agent v2
+- **ML**: risedual_core (XGBoost signal model + Platt calibration + regime model)
 - **Payments**: Stripe Live Mode
-- **Market Data**: Alpha Vantage -> Finnhub -> TwelveData (ProviderRouter)
-- **Search**: War Room (Registry-based provider pattern, 10 adapters, AI synthesis)
+- **Market Data**: Alpha Vantage -> Finnhub -> TwelveData -> Marketstack (ProviderRouter)
+- **Search**: War Room (Registry-based, 12 adapters including NewsAPI.ai)
 - **Domain**: risedual.ai
 
-## Search War Room — Registry Pattern (Complete)
-- `registry.py`: Dynamic provider registration with enable/disable, config-driven adapter loading
-- Providers specify: name, source_type, modes, timeout, critical flag, env_key dependency
-- `orchestrator.py`: Uses registry instead of hardcoded imports, parallel execution with per-provider timeouts
-- `GET /api/web-intel/status` returns full registry status (active/inactive, key availability)
-- 10 providers registered: wikipedia, sec, stockfit, tavily, av_news, finnhub_news, ddg, ddg_news, yahoo, fred
-- AI analysis runs as second phase after all engines
+## ML Pipeline (NEW — Wired In)
+- `hypothesis_logger.py`: Captures FeaturesSnapshot (price, RSI, MACD, SMA-20/50) to MongoDB after every `get_hypothesis()` call
+- `prediction_labeler.py`: Hourly APScheduler job labels snapshots with up/down/flat outcomes (±1.5% band, 4h delay)
+- `GET /api/signal/{ticker}`: Returns calibrated ML signal or graceful "no_model" status
+- `scripts/train_signal_model.py`: Standalone training script (run after 100+ labeled snapshots)
+- Model hot-reloads from disk — no restart needed after training
+- `risedual_core` installed as editable dependency with XGBoost, scikit-learn, joblib
 
-## Other Completed Systems
-- ProviderRouter (multi-key failover), Predictions (stale-while-revalidate)
-- Financial Tools Agent v2 (split modules, 7 StockFit data types)
-- Headlines Pipeline, KeyVault (bulk + validate), enforce_credits helper
-- Code quality reviews applied (3 rounds)
+## ML Pipeline Status
+- Day 1: Data collection active (snapshots being written)
+- Day N: Train model once 100+ labels exist, signal endpoint goes live
 
-## Deployment: PASS — ready for risedual.ai
+## Completed Systems
+- ProviderRouter, Predictions (stale-while-revalidate), Financial Tools Agent v2
+- War Room (registry pattern, 12 providers), Headlines Pipeline, KeyVault
+- Code quality reviews (3 rounds), Watchlist sync, Owner credits fix
+
+## Deployment: LIVE at risedual.ai
 
 ## Backlog
-- P0: Deploy to risedual.ai (pending user production testing)
-- P2: QuiverQuant monitoring (blocked on their server stability)
-- P2: StockFit 13F holder tracking & SEC filing alerts
+- P0: Collect 100+ labeled snapshots -> train first signal model
+- P2: RegimeModel integration (bull/bear/sideways conditioning)
+- P2: QuiverQuant monitoring, StockFit 13F tracking
 - P3: Component splitting, hook dependency audit

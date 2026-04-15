@@ -253,8 +253,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_grid_bots, 'interval', seconds=30, id='grid_bot_monitor')
         scheduler.add_job(_run_headlines_pipeline, 'interval', minutes=15, id='headlines_pipeline')
         scheduler.add_job(_run_prediction_prewarm, 'interval', minutes=10, id='prediction_prewarm')
+        scheduler.add_job(_run_prediction_labeler, 'interval', hours=1, id='prediction_labeler')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -296,6 +297,15 @@ async def _run_prediction_prewarm():
         await ensure_prediction_refresh()
     except Exception as e:
         logger.debug(f"Prediction prewarm error: {e}")
+
+
+async def _run_prediction_labeler():
+    """Background: Label FeaturesSnapshots with ground-truth outcomes (hourly)."""
+    try:
+        from services.prediction_labeler import label_pending_snapshots
+        await label_pending_snapshots(db)
+    except Exception as e:
+        logger.debug(f"Prediction labeler error: {e}")
 
 
 def _start_cache_warmup():

@@ -430,3 +430,64 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[Lis
 
 def market_pool_status() -> dict:
     return market_pool.status()
+
+
+async def get_technical_indicators(ticker: str) -> dict:
+    """Return RSI, MACD, SMA-20, SMA-50 for ticker via Alpha Vantage pool.
+
+    Best-effort: returns whatever indicators are available. Missing fields are None.
+    Added for ML signal pipeline — does not modify existing pool internals.
+    """
+    result = {}
+    symbol = ticker.upper()
+    av_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
+    if not av_key:
+        return result
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # RSI
+            resp = await client.get(
+                "https://www.alphavantage.co/query",
+                params={"function": "RSI", "symbol": symbol, "interval": "daily",
+                        "time_period": 14, "series_type": "close", "apikey": av_key},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                rsi_data = data.get("Technical Analysis: RSI", {})
+                if rsi_data:
+                    latest = next(iter(rsi_data.values()), {})
+                    result["rsi_14"] = float(latest.get("RSI", 0)) if latest.get("RSI") else None
+
+            # MACD
+            resp = await client.get(
+                "https://www.alphavantage.co/query",
+                params={"function": "MACD", "symbol": symbol, "interval": "daily",
+                        "series_type": "close", "apikey": av_key},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                macd_data = data.get("Technical Analysis: MACD", {})
+                if macd_data:
+                    latest = next(iter(macd_data.values()), {})
+                    result["macd"] = float(latest.get("MACD", 0)) if latest.get("MACD") else None
+                    result["macd_signal"] = float(latest.get("MACD_Signal", 0)) if latest.get("MACD_Signal") else None
+
+            # SMA 20 + 50
+            for period in [20, 50]:
+                resp = await client.get(
+                    "https://www.alphavantage.co/query",
+                    params={"function": "SMA", "symbol": symbol, "interval": "daily",
+                            "time_period": period, "series_type": "close", "apikey": av_key},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    sma_data = data.get("Technical Analysis: SMA", {})
+                    if sma_data:
+                        latest = next(iter(sma_data.values()), {})
+                        result[f"sma_{period}"] = float(latest.get("SMA", 0)) if latest.get("SMA") else None
+    except Exception as e:
+        logger.warning(f"Technical indicators fetch failed for {symbol}: {e}")
+
+    return result
+
