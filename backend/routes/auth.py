@@ -474,6 +474,21 @@ async def seed_admin():
             updates["password_hash"] = hash_password(OWNER_PASSWORD)
         await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
 
+    # Ensure admin & owner have credit wallets (Pro Max allocation)
+    for email in [admin_email, OWNER_EMAIL]:
+        user = await db.users.find_one({"email": email}, {"_id": 1})
+        if user:
+            uid = str(user["_id"])
+            existing_credits = await db.user_credits.find_one({"user_id": uid})
+            if not existing_credits:
+                await db.user_credits.insert_one({
+                    "user_id": uid,
+                    "credits": 50000,
+                    "total_earned": 50000,
+                    "total_spent": 0,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+
 async def create_indexes():
     await db.users.create_index("email", unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
