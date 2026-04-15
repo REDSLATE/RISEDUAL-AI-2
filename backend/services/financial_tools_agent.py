@@ -214,29 +214,31 @@ async def _exec_daily_history(symbol: str, period: str = "compact") -> dict:
 
 
 
-async def _exec_sec_fundamentals(symbol: str, data_type: str = "ownership") -> dict:
+async def _exec_sec_fundamentals(symbol: str, data_type: str = "financials") -> dict:
     """Get SEC EDGAR data via StockFit API."""
     try:
-        from services.search_war_room.adapters.stockfit import get_financials, get_insider_transactions
+        from services.search_war_room.adapters.stockfit import (
+            get_financials, get_insider_transactions, get_insider_summary,
+            get_earnings, get_health_scores, get_earnings_calendar,
+            get_fund_reverse_lookup,
+        )
         key = os.environ.get("STOCKFIT_API_KEY", "")
         if not key:
             return {"error": "StockFit API key not configured"}
 
-        if data_type == "financials":
-            return await get_financials(symbol)
-        elif data_type == "insiders":
-            return await get_insider_transactions(symbol)
-        else:
-            # Default: ownership summary
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    "https://api.stockfit.io/v1/api/ownership/summary",
-                    params={"symbol": symbol.upper()},
-                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
-                )
-                if resp.status_code != 200:
-                    return {"error": f"StockFit HTTP {resp.status_code}"}
-                return resp.json()
+        dispatch = {
+            "financials": lambda: get_financials(symbol),
+            "insiders": lambda: get_insider_transactions(symbol),
+            "insider_summary": lambda: get_insider_summary(symbol),
+            "earnings": lambda: get_earnings(symbol),
+            "scores": lambda: get_health_scores(symbol),
+            "earnings_calendar": lambda: get_earnings_calendar(symbol),
+            "fund_holders": lambda: get_fund_reverse_lookup(symbol),
+        }
+        handler = dispatch.get(data_type)
+        if handler:
+            return await handler()
+        return {"error": f"Unknown data_type: {data_type}"}
     except Exception as e:
         return {"error": f"SEC fundamentals failed: {str(e)[:100]}"}
 
@@ -304,7 +306,7 @@ async def _run_tool(name: str, args: dict) -> str:
     elif name == "web_search":
         result = await _exec_web_search(args["query"])
     elif name == "get_sec_fundamentals":
-        result = await _exec_sec_fundamentals(args["symbol"], args.get("data_type", "ownership"))
+        result = await _exec_sec_fundamentals(args["symbol"], args.get("data_type", "financials"))
     else:
         result = {"error": f"Unknown tool: {name}"}
     return json.dumps(result)
