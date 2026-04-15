@@ -3,6 +3,7 @@ import asyncio
 import logging
 from services.search_war_room.schemas import SearchWarRoomResponse, EngineResult
 from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo, ai_analysis, tavily
+from services.search_war_room.adapters import av_news, finnhub_news
 from services.search_war_room.synthesizer import build_brief
 
 logger = logging.getLogger(__name__)
@@ -15,10 +16,12 @@ ENGINE_TIMEOUTS = {
     "ddg_news": 7.0,
     "yahoo": 5.0,
     "tavily": 10.0,
+    "av_news": 12.0,
+    "finnhub_news": 10.0,
     "ai_analysis": 18.0,
 }
 
-NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "tavily", "ai_analysis"}
+NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "tavily", "av_news", "finnhub_news", "ai_analysis"}
 
 
 def classify_mode(query: str, mode: str):
@@ -62,6 +65,8 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
         engine_jobs.extend([
             ("sec", "filing", sec.run(query, symbol)),
             ("tavily", "search", tavily.run(f"{symbol or query} stock analysis financial")),
+            ("av_news", "news", av_news.run(query, symbol)),
+            ("finnhub_news", "news", finnhub_news.run(query, symbol)),
             ("ddg", "search", ddg.run(query)),
             ("yahoo", "market", yahoo.run(query, symbol)),
             ("ddg_news", "news", ddg.run_news(f"{symbol or query} stock news")),
@@ -76,6 +81,8 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     elif resolved == "news":
         engine_jobs.extend([
             ("tavily", "search", tavily.run(query)),
+            ("av_news", "news", av_news.run(query, symbol)),
+            ("finnhub_news", "news", finnhub_news.run(query, symbol)),
             ("ddg", "search", ddg.run(query)),
             ("ddg_news", "news", ddg.run_news(query)),
             ("yahoo", "market", yahoo.run(query, symbol)),
@@ -143,7 +150,27 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     return SearchWarRoomResponse(
         query=query,
         brief=brief,
-        engine_results=[r.model_dump() for r in normalized],
+        engine_results=_dedupe_engine_results([r.model_dump() for r in normalized]),
         degraded=degraded,
         warnings=warnings[:10],
     )
+
+
+def _dedupe_engine_results(results: list) -> list:
+    """Deduplicate results across engines by URL (from artifact pattern)."""
+    seen_urls = set()
+    deduped = []
+    for r in results:
+        items = r.get("items", [])
+        if isinstance(items, list):
+            unique_items = []
+            for item in items:
+                url = item.get("url", "") if isinstance(item, dict) else ""
+                if url and url in seen_urls:
+                    continue
+                if url:
+                    seen_urls.add(url)
+                unique_items.append(item)
+            r["items"] = unique_items
+        deduped.append(r)
+    return deduped
