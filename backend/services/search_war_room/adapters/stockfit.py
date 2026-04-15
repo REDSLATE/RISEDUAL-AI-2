@@ -1,19 +1,20 @@
 """StockFit adapter — SEC EDGAR structured data for the Search War Room.
 
-Uses StockFit API for ownership intelligence, financials, research summaries,
-and insider transactions. Provides fundamental data that price APIs don't cover.
+Uses StockFit API for financials, insider transactions, earnings, ownership,
+and fund data. Provides fundamental data that price APIs don't cover.
 
 API: https://api.stockfit.io/v1
 Auth: Bearer fl_xxx
 """
 import os
+import asyncio
 import httpx
 import logging
 from services.search_war_room.schemas import EngineResult
 from services.search_war_room.cache import get_cached, set_cached
 
 logger = logging.getLogger(__name__)
-TTL = 1800  # 30 min cache — SEC data doesn't change fast
+TTL = 1800  # 30 min cache
 BASE = "https://api.stockfit.io/v1"
 
 
@@ -25,8 +26,19 @@ def _headers(key: str) -> dict:
     return {"Authorization": f"Bearer {key}", "Accept": "application/json"}
 
 
+async def _safe_get(client: httpx.AsyncClient, url: str, params: dict, headers: dict) -> dict:
+    """Safe GET that returns {} on any error."""
+    try:
+        resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return {}
+
+
 async def run(query: str, symbol: str = None):
-    """War Room adapter: pull research summary + ownership for a ticker."""
+    """War Room adapter: pull financials + insider summary + earnings for a ticker."""
     key = _get_key()
     if not key:
         return EngineResult(engine="stockfit", status="skipped", source_type="fundamental",
@@ -42,63 +54,72 @@ async def run(query: str, symbol: str = None):
         return EngineResult(**cached)
 
     try:
+        h = _headers(key)
         async with httpx.AsyncClient(timeout=15) as client:
-            # Parallel: financials + insider transactions (available on free tier)
-            import asyncio
-            financials_task = client.get(f"{BASE}/api/financials/income-statement",
-                                         params={"symbol": ticker, "period": "annual", "limit": 2},
-                                         headers=_headers(key))
-            insiders_task = client.get(f"{BASE}/api/ownership/insider-transactions",
-                                       params={"symbol": ticker, "pageSize": 5},
-                                       headers=_headers(key))
-
-            financials_resp, insiders_resp = await asyncio.gather(
-                financials_task, insiders_task, return_exceptions=True
+            financials, insider_summary, earnings, scores = await asyncio.gather(
+                _safe_get(client, f"{BASE}/api/financials/income-statement",
+                          {"symbol": ticker, "period": "annual", "limit": 2}, h),
+                _safe_get(client, f"{BASE}/api/insider-transactions/summary",
+                          {"symbol": ticker}, h),
+                _safe_get(client, f"{BASE}/api/earnings/snapshot",
+                          {"symbol": ticker}, h),
+                _safe_get(client, f"{BASE}/api/financials/scores",
+                          {"symbol": ticker}, h),
             )
 
         items = []
-        summary_parts = [f"{ticker} SEC Data"]
+        summary_parts = [f"{ticker} SEC Intelligence"]
 
-        # Parse financials
-        if not isinstance(financials_resp, Exception) and financials_resp.status_code == 200:
-            fin_data = financials_resp.json()
-            if isinstance(fin_data, list) and fin_data:
-                latest = fin_data[0]
-                facts = latest.get("facts", {})
-                rev = facts.get("revenue", 0)
-                net = facts.get("netIncome", 0)
-                if rev:
-                    rev_b = rev / 1e9
-                    summary_parts.append(f"Revenue: ${rev_b:.1f}B")
-                if net:
-                    net_b = net / 1e9
-                    summary_parts.append(f"Net Income: ${net_b:.1f}B")
-                if rev and net:
-                    margin = (net / rev * 100)
-                    summary_parts.append(f"Margin: {margin:.1f}%")
-                items.append({"type": "financials", "period": latest.get("period"), "data": {
-                    "revenue": rev, "netIncome": net,
-                    "grossProfit": facts.get("grossProfit", 0),
-                    "operatingIncome": facts.get("operatingIncome", 0),
-                    "eps": facts.get("eps", 0),
-                }})
+        # Financials
+        if isinstance(financials, list) and financials:
+            facts = financials[0].get("facts", {})
+            rev = facts.get("revenue", 0)
+            net = facts.get("netIncome", 0)
+            if rev:
+                summary_parts.append(f"Rev: ${rev / 1e9:.1f}B")
+            if net:
+                summary_parts.append(f"Net: ${net / 1e9:.1f}B")
+            if rev and net:
+                summary_parts.append(f"Margin: {net / rev * 100:.1f}%")
+            items.append({"type": "financials", "period": financials[0].get("period"), "data": {
+                "revenue": rev, "netIncome": net,
+                "grossProfit": facts.get("grossProfit", 0),
+                "operatingIncome": facts.get("operatingIncome", 0),
+                "eps": facts.get("eps", 0),
+            }})
 
-        # Parse insider transactions
-        if not isinstance(insiders_resp, Exception) and insiders_resp.status_code == 200:
-            insider_data = insiders_resp.json()
-            txns = insider_data if isinstance(insider_data, list) else insider_data.get("transactions", [])
-            if txns:
-                buys = sum(1 for t in txns if t.get("transactionType", "").lower() in ("purchase", "buy", "p"))
-                sells = sum(1 for t in txns if t.get("transactionType", "").lower() in ("sale", "sell", "s"))
-                summary_parts.append(f"Insiders: {buys} buys, {sells} sells (recent)")
-                items.append({"type": "insiders", "data": [
-                    {"name": t.get("ownerName", ""), "type": t.get("transactionType", ""),
-                     "shares": t.get("sharesTraded", 0), "value": t.get("value", 0),
-                     "date": t.get("transactionDate", "")}
-                    for t in txns[:5]
-                ]})
+        # Insider summary (aggregated)
+        if insider_summary and not insider_summary.get("error"):
+            buys_3m = insider_summary.get("last3Months", {}).get("buyCount", 0)
+            sells_3m = insider_summary.get("last3Months", {}).get("sellCount", 0)
+            buys_12m = insider_summary.get("last12Months", {}).get("buyCount", 0)
+            sells_12m = insider_summary.get("last12Months", {}).get("sellCount", 0)
+            if buys_3m or sells_3m:
+                summary_parts.append(f"Insiders(3m): {buys_3m}B/{sells_3m}S")
+            items.append({"type": "insider_summary", "data": insider_summary})
 
-        if not summary_parts:
+        # Earnings snapshot
+        if earnings and not earnings.get("error"):
+            eps = earnings.get("eps")
+            rev_growth = earnings.get("revenueGrowth")
+            if eps:
+                summary_parts.append(f"EPS: ${eps}")
+            if rev_growth:
+                summary_parts.append(f"RevGrowth: {rev_growth:.1f}%")
+            items.append({"type": "earnings", "data": earnings})
+
+        # Financial health scores
+        if scores and not scores.get("error"):
+            f_score = scores.get("piotroskiFScore")
+            z_score = scores.get("altmanZScore")
+            if f_score is not None:
+                summary_parts.append(f"F-Score: {f_score}/9")
+            if z_score is not None:
+                zone = "safe" if z_score > 2.99 else "grey" if z_score > 1.81 else "distress"
+                summary_parts.append(f"Z-Score: {z_score:.2f} ({zone})")
+            items.append({"type": "scores", "data": scores})
+
+        if len(summary_parts) <= 1:
             return EngineResult(engine="stockfit", status="error", source_type="fundamental",
                                 query=query, error="no_data_returned")
 
@@ -117,8 +138,9 @@ async def run(query: str, symbol: str = None):
                             query=query, error=str(exc)[:100])
 
 
+# ── Standalone endpoints for tools agent and research ──
+
 async def get_financials(symbol: str, period: str = "annual", limit: int = 4) -> dict:
-    """Standalone: pull income statement for research/prediction."""
     key = _get_key()
     if not key:
         return {"error": "missing_stockfit_api_key"}
@@ -135,14 +157,93 @@ async def get_financials(symbol: str, period: str = "annual", limit: int = 4) ->
 
 
 async def get_insider_transactions(symbol: str, limit: int = 10) -> dict:
-    """Standalone: pull insider transactions."""
     key = _get_key()
     if not key:
         return {"error": "missing_stockfit_api_key"}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(f"{BASE}/api/ownership/insider-transactions",
+            resp = await client.get(f"{BASE}/api/insider-transactions",
                                     params={"symbol": symbol.upper(), "pageSize": limit},
+                                    headers=_headers(key))
+            if resp.status_code != 200:
+                return {"error": f"http_{resp.status_code}"}
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)[:100]}
+
+
+async def get_insider_summary(symbol: str) -> dict:
+    key = _get_key()
+    if not key:
+        return {"error": "missing_stockfit_api_key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BASE}/api/insider-transactions/summary",
+                                    params={"symbol": symbol.upper()},
+                                    headers=_headers(key))
+            if resp.status_code != 200:
+                return {"error": f"http_{resp.status_code}"}
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)[:100]}
+
+
+async def get_earnings(symbol: str) -> dict:
+    key = _get_key()
+    if not key:
+        return {"error": "missing_stockfit_api_key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BASE}/api/earnings/snapshot",
+                                    params={"symbol": symbol.upper()},
+                                    headers=_headers(key))
+            if resp.status_code != 200:
+                return {"error": f"http_{resp.status_code}"}
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)[:100]}
+
+
+async def get_health_scores(symbol: str) -> dict:
+    key = _get_key()
+    if not key:
+        return {"error": "missing_stockfit_api_key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BASE}/api/financials/scores",
+                                    params={"symbol": symbol.upper()},
+                                    headers=_headers(key))
+            if resp.status_code != 200:
+                return {"error": f"http_{resp.status_code}"}
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)[:100]}
+
+
+async def get_earnings_calendar(symbols: str) -> dict:
+    key = _get_key()
+    if not key:
+        return {"error": "missing_stockfit_api_key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BASE}/api/earnings/calendar",
+                                    params={"symbols": symbols},
+                                    headers=_headers(key))
+            if resp.status_code != 200:
+                return {"error": f"http_{resp.status_code}"}
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)[:100]}
+
+
+async def get_fund_reverse_lookup(symbol: str) -> dict:
+    key = _get_key()
+    if not key:
+        return {"error": "missing_stockfit_api_key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(f"{BASE}/api/fund/reverse-lookup",
+                                    params={"symbol": symbol.upper()},
                                     headers=_headers(key))
             if resp.status_code != 200:
                 return {"error": f"http_{resp.status_code}"}

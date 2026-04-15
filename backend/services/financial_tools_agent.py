@@ -105,23 +105,23 @@ TOOL_SCHEMAS = [
     },
     {
         "type": "function",
-
-# LangGraph-inspired system prompt
         "function": {
             "name": "get_sec_fundamentals",
-            "description": "Get SEC EDGAR fundamental data: financials, ownership, institutional holders, insider transactions for a stock. Use this for company research, due diligence, or understanding who owns a stock.",
+            "description": "Get SEC EDGAR fundamental data for a stock. Types: 'financials' (income statement), 'insiders' (recent insider trades), 'insider_summary' (aggregated buy/sell stats 3/6/12 months), 'earnings' (EPS snapshot), 'scores' (Piotroski F-Score, Altman Z-Score), 'earnings_calendar' (upcoming dates), 'fund_holders' (which ETFs hold this stock).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "description": "Stock ticker symbol"},
-                    "data_type": {"type": "string", "description": "Type of data to retrieve",
-                                  "enum": ["financials", "ownership", "insiders"]},
+                    "data_type": {"type": "string", "description": "Type of SEC data",
+                                  "enum": ["financials", "insiders", "insider_summary", "earnings", "scores", "earnings_calendar", "fund_holders"]},
                 },
                 "required": ["symbol"],
             },
         },
     },
-]: evidence-based, no guessing
+]
+
+# LangGraph-inspired system prompt: evidence-based, no guessing
 SYSTEM_PROMPT = (
     "You are a precise financial research assistant inside the RISEDUAL AI trading platform. "
     "Use tools for all math and external data lookups — never guess numbers. "
