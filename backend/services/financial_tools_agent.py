@@ -301,6 +301,15 @@ class FinancialToolsAgent:
                 base_url=f"{proxy_url}/llm",
                 default_headers={"x-emergent-api-key": api_key},
             )
+        elif p == "openrouter":
+            client = AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1",
+                default_headers={
+                    "HTTP-Referer": "https://risedual.ai",
+                    "X-Title": "RISEDUAL AI",
+                },
+            )
         elif p == "anthropic":
             return await self._call_anthropic_tools(api_key, model, messages)
         else:

@@ -49,6 +49,16 @@ def get_ai_provider_pool() -> List[Dict]:
             "priority": 3,
         })
 
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        fallback.append({
+            "name": "openrouter-backup",
+            "provider": "openrouter",
+            "api_key": openrouter_key,
+            "model": "anthropic/claude-3.5-sonnet",
+            "priority": 4,
+        })
+
     return fallback
 
 

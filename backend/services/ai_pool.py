@@ -101,24 +101,58 @@ async def _call_anthropic_direct(provider: ProviderEntry, system_msg: str, user_
         return content.strip()
 
 
+async def _call_openrouter(provider: ProviderEntry, system_msg: str, user_msg: str,
+                           temperature: float, max_tokens: int, json_mode: bool) -> str:
+    """Call OpenRouter — OpenAI-compatible endpoint with custom headers."""
+    body = {
+        "model": provider.model,
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {provider.api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://risedual.ai",
+                "X-Title": "RISEDUAL AI",
+            },
+            json=body,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"OpenRouter {resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        if not content:
+            raise ValueError(f"Empty content from {provider.name}")
+        return content.strip()
+
+
 # Dispatch map: provider type → call function
 _DISPATCH = {
     "emergent": _call_emergent,
     "openai_direct": _call_openai_direct,
     "anthropic": _call_anthropic_direct,
+    "openrouter": _call_openrouter,
 }
 
 
 def _get_caller(provider: ProviderEntry):
     """Determine which caller to use based on provider config."""
-    # Emergent key detection: check if key starts with sk-emergent
     if provider.api_key.startswith("sk-emergent"):
         return _call_emergent
+    if provider.provider == "openrouter":
+        return _call_openrouter
     if provider.provider == "anthropic":
         return _call_anthropic_direct
     if provider.provider == "openai":
         return _call_openai_direct
-    # Default to Emergent (supports openai/anthropic/gemini models)
     return _call_emergent
 
 
