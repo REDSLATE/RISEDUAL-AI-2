@@ -12,13 +12,7 @@ import requests
 import os
 import uuid
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
-# Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RedSlate2026!"
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_USER_PASSWORD
 
 
 class TestProviderHealthEndpoint:
@@ -73,7 +67,7 @@ class TestProviderHealthEndpoint:
         # Create a test user or use a known non-admin user
         # First, try to register a test user
         test_email = f"test_user_{uuid.uuid4().hex[:8]}@test.com"
-        test_password = "TestPass123!"
+        test_password = TEST_USER_PASSWORD
         
         # Register test user
         reg_resp = self.session.post(f"{BASE_URL}/api/auth/register", json={

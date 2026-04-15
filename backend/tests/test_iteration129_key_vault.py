@@ -11,11 +11,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
-# Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, TEST_USER_PASSWORD
 
 # Test key data
 TEST_KEY_NAME = "TEST_E2E_KEY_129"
@@ -247,7 +243,7 @@ class TestVaultNonAdminAccess:
         
         # Try to register a test user (may already exist)
         test_email = "test_vault_user_129@test.com"
-        test_password = "TestPassword123!"
+        test_password = TEST_USER_PASSWORD
         
         # Try to register
         register_response = self.session.post(f"{BASE_URL}/api/auth/register", json={

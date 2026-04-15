@@ -5,20 +5,16 @@ Tests: POST /api/auth/forgot-password, POST /api/auth/reset-password
 import pytest
 import requests
 import os
+import uuid
 from pymongo import MongoClient
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
-
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL, TEST_USER_PASSWORD
 
 # MongoDB connection for direct token verification
 MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 DB_NAME = os.environ.get('DB_NAME', 'risedual_db')
 
-# Test credentials
-ADMIN_EMAIL = ADMIN_EMAIL
-ADMIN_PASSWORD = ADMIN_PASSWORD
 TEST_EMAIL_NONEXISTENT = "nonexistent_user_test@example.com"
 
 
@@ -138,7 +134,7 @@ class TestResetPasswordEndpoint:
     
     def test_reset_password_with_valid_token(self, api_client, mongo_client, valid_reset_token):
         """Reset password with valid token should succeed"""
-        new_password = "NewTestPassword123!"
+        new_password = TEST_USER_PASSWORD
         
         response = api_client.post(f"{BASE_URL}/api/auth/reset-password", json={
             "token": valid_reset_token,
@@ -252,7 +248,7 @@ class TestResetPasswordEndpoint:
         """Reset password with expired token should return 400"""
         # Create an expired token directly in MongoDB
         admin_user = mongo_client.users.find_one({"email": ADMIN_EMAIL})
-        expired_token = "expired_test_token_12345"
+        expired_token = f"expired_test_token_{uuid.uuid4().hex[:8]}"
         
         # Insert expired token (expired 1 hour ago)
         mongo_client.password_reset_tokens.insert_one({
@@ -285,7 +281,7 @@ class TestLoginAfterPasswordReset:
     
     def test_login_with_new_password_after_reset(self, api_client, mongo_client):
         """After password reset, user should be able to login with new password"""
-        new_password = "ResetTestPassword2026!"
+        new_password = TEST_USER_PASSWORD
         
         # Step 1: Request password reset
         response = api_client.post(f"{BASE_URL}/api/auth/forgot-password", json={
@@ -350,3 +346,4 @@ class TestLoginAfterPasswordReset:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+e__, "-v", "--tb=short"])

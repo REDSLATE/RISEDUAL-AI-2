@@ -115,8 +115,8 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy, isPro, onPin }) => {
             )}
             {msg.tools_used && msg.tools_used.length > 0 && (
               <div className="flex items-center gap-1 ml-auto" data-testid={`tools-badge-${idx}`}>
-                {[...new Set(msg.tools_used)].map((tool, i) => (
-                  <span key={i} className="text-[8px] px-1 py-0.5 rounded bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20 font-mono">
+                {[...new Set(msg.tools_used)].map((tool) => (
+                  <span key={tool} className="text-[8px] px-1 py-0.5 rounded bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20 font-mono">
                     {tool.replace('calculate_', '').replace('get_', '').replace('_', ' ')}
                   </span>
                 ))}

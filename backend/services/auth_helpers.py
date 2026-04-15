@@ -65,3 +65,21 @@ def is_pro_user(user: dict) -> bool:
                     return False
             return expires > datetime.now(timezone.utc)
     return False
+
+
+async def enforce_credits(user: dict, action: str) -> None:
+    """Deduct credits for a given action. Raises HTTPException(402) if insufficient.
+    No-op if user is None (unauthenticated). Pro users get certain actions free."""
+    if not user:
+        return
+    from services.credit_service import deduct_credits, get_user_plan
+    plan_key = get_user_plan(user)
+    cr = await deduct_credits(str(user["_id"]), action, plan_key)
+    if not cr["allowed"]:
+        raise HTTPException(status_code=402, detail={
+            "error": "insufficient_credits",
+            "detail": cr.get("error", "Not enough credits"),
+            "cost": cr["cost"],
+            "remaining": cr["remaining"],
+            "upgrade_options": cr.get("upgrade_options", []),
+        })

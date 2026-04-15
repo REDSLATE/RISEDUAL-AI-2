@@ -335,15 +335,10 @@ PREDICTION_MAX_AGE_SECONDS = 900
 @router.get("/market/prediction")
 async def get_market_prediction(request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """Cache-first prediction: returns instantly, refreshes in background if stale."""
-    from services.auth_helpers import get_optional_user
-    from services.credit_service import deduct_credits, get_user_plan
+    from services.auth_helpers import get_optional_user, enforce_credits
 
     user = await get_optional_user(request)
-    if user:
-        plan_key = get_user_plan(user)
-        cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
-        if not cr["allowed"]:
-            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+    await enforce_credits(user, "prediction")
 
     force_refresh = request.query_params.get("force_refresh") == "true"
     now = _utcnow()
@@ -482,16 +477,11 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
     if not symbol or len(symbol) > 10:
         raise HTTPException(status_code=400, detail="Invalid symbol")
 
-    from services.auth_helpers import get_optional_user
-    from services.credit_service import deduct_credits, get_user_plan
+    from services.auth_helpers import get_optional_user, enforce_credits
     from services.ai_cache_service import AICacheService
 
     user = await get_optional_user(request)
-    if user:
-        plan_key = get_user_plan(user)
-        cr = await deduct_credits(str(user["_id"]), "prediction", plan_key)
-        if not cr["allowed"]:
-            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+    await enforce_credits(user, "prediction")
 
     force_refresh = request.query_params.get("force_refresh") == "true"
     cache = AICacheService(request.app.state.db)

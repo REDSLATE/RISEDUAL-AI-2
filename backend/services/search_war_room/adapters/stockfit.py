@@ -92,8 +92,6 @@ async def run(query: str, symbol: str = None):
         if insider_summary and not insider_summary.get("error"):
             buys_3m = insider_summary.get("last3Months", {}).get("buyCount", 0)
             sells_3m = insider_summary.get("last3Months", {}).get("sellCount", 0)
-            buys_12m = insider_summary.get("last12Months", {}).get("buyCount", 0)
-            sells_12m = insider_summary.get("last12Months", {}).get("sellCount", 0)
             if buys_3m or sells_3m:
                 summary_parts.append(f"Insiders(3m): {buys_3m}B/{sells_3m}S")
             items.append({"type": "insider_summary", "data": insider_summary})

@@ -6,12 +6,9 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
-
-# Test credentials from test_credentials.md
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
-REGULAR_USER_EMAIL = "testuser@example.com"
-REGULAR_USER_PASSWORD = "TestUser2026!"
+REGULAR_USER_EMAIL = os.environ.get("REGULAR_USER_EMAIL", "testuser@example.com")
+REGULAR_USER_PASSWORD = os.environ.get("REGULAR_USER_PASSWORD", "TestUser2026!")
 
 
 class TestSuccessFeeEndpoints:

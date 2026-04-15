@@ -347,7 +347,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
               </div>
               <div className="space-y-1">
                 {agentTrace.map((t, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11px]">
+                  <div key={`${t.type}-${t.label}-${i}`} className="flex items-center gap-2 text-[11px]">
                     {t.type === 'calling' ? (
                       <>
                         <div className="w-3 h-3 border border-[#3DE8D9]/40 border-t-[#3DE8D9] rounded-full animate-spin" />

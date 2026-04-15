@@ -12,3 +12,6 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "RiseDual2026!")
 
 FREE_USER_EMAIL = os.environ.get("FREE_USER_EMAIL", "freeuser_test@test.com")
 FREE_USER_PASSWORD = os.environ.get("FREE_USER_PASSWORD", "Test1234!")
+
+# Ephemeral test user password for registration tests
+TEST_USER_PASSWORD = os.environ.get("TEST_USER_PASSWORD", "TestPass2026!")

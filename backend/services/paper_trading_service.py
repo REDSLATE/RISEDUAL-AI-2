@@ -53,7 +53,6 @@ async def get_portfolio_snapshot(user_id: str) -> Dict:
     positions_enriched = []
     total_market_value = 0.0
     total_cost_basis = 0.0
-    day_pnl = 0.0
 
     for pos in portfolio.get("positions", []):
         symbol = pos["symbol"]
@@ -202,7 +201,7 @@ async def get_portfolio_context(user_id: str) -> str:
     try:
         snap = await get_portfolio_snapshot(user_id)
         lines = [
-            f"=== USER'S PAPER TRADING PORTFOLIO ===",
+            "=== USER'S PAPER TRADING PORTFOLIO ===",
             f"Cash: ${snap['cash']:,.2f}",
             f"Total Equity: ${snap['equity']:,.2f}",
             f"Total P&L: ${snap['total_pnl']:+,.2f} ({snap['total_pnl_pct']:+.2f}%)",
@@ -220,7 +219,7 @@ async def get_portfolio_context(user_id: str) -> str:
         # Recent trades
         trades = await get_trade_history(user_id, limit=5)
         if trades:
-            lines.append(f"\nRecent Trades:")
+            lines.append("\nRecent Trades:")
             for t in trades:
                 lines.append(f"  {t['side']} {t['qty']} {t['symbol']} @ ${t['price']:.2f} ({t['timestamp'][:10]})")
 

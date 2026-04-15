@@ -308,8 +308,8 @@ async def send_toxic_spikes_email(
     spike_details: list = None,
 ):
     """Send toxic spikes alert email after nightly cleanup detects bad predictions."""
-    if not _is_configured():
-        logger.info(f"Email skipped (no API key): toxic spikes alert to {recipient_email}")
+    if not email_router.providers:
+        logger.info(f"Email skipped (no providers configured): toxic spikes alert to {recipient_email}")
         return False
     try:
         params = {
@@ -442,8 +442,8 @@ async def send_war_room_invite(email: str, name: str, beta_key: str, rank: int, 
 
 async def send_referral_success(email: str, name: str, new_rank: int, referral_count: int, spots_skipped: int) -> bool:
     """Send referral success notification — you just skipped the line."""
-    if not _is_configured():
-        logger.warning("Resend not configured — skipping referral success email")
+    if not email_router.providers:
+        logger.warning("No email providers configured — skipping referral success email")
         return False
     try:
         params = {

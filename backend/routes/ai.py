@@ -12,7 +12,7 @@ from services.ai_service import AIService
 from services.paper_trading_service import get_portfolio_context
 from services.portfolio_agent import run_portfolio_agent
 from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
-from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
+from services.auth_helpers import get_current_user, get_optional_user, is_pro_user, enforce_credits
 from routes.market_data import _collect_all_scrape_data
 
 router = APIRouter(prefix="/api")
@@ -109,20 +109,7 @@ async def chat(
     try:
         user = await get_optional_user(request)
         await _enforce_rate_limit(user)
-
-        # Deduct credits (Pro/Pro Max get chat FREE)
-        if user:
-            from services.credit_service import deduct_credits, get_user_plan
-            plan_key = get_user_plan(user)
-            credit_result = await deduct_credits(str(user["_id"]), "chat", plan_key)
-            if not credit_result["allowed"]:
-                return JSONResponse(status_code=402, content={
-                    "error": "insufficient_credits",
-                    "detail": credit_result.get("error", "Not enough credits"),
-                    "cost": credit_result["cost"],
-                    "remaining": credit_result["remaining"],
-                    "upgrade_options": credit_result.get("upgrade_options", []),
-                })
+        await enforce_credits(user, "chat")
 
         image_base64 = None
         if image and image.filename:
@@ -176,12 +163,7 @@ async def agent_stream(request: Request, message: str, sessionId: str = "stream"
     import json as json_mod
 
     user = await get_optional_user(request)
-    if user:
-        from services.credit_service import deduct_credits, get_user_plan
-        plan_key = get_user_plan(user)
-        cr = await deduct_credits(str(user["_id"]), "chat", plan_key)
-        if not cr["allowed"]:
-            raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
+    await enforce_credits(user, "chat")
 
     agent = FinancialToolsAgent(db=db)
 
