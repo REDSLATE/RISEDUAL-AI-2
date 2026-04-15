@@ -19,13 +19,13 @@ const CATEGORIES = [
 ];
 
 const COMMON_KEYS = [
-  { name: 'OPENAI_API_KEY', category: 'ai', description: 'OpenAI GPT-4.1 backup' },
-  { name: 'ANTHROPIC_API_KEY', category: 'ai', description: 'Anthropic Claude Sonnet 4 backup' },
-  { name: 'OPENROUTER_API_KEY', category: 'ai', description: 'OpenRouter multi-model access' },
-  { name: 'TWELVEDATA_API_KEY', category: 'market_data', description: 'TwelveData market data backup' },
-  { name: 'FRED_API_KEYS', category: 'market_data', description: 'FRED macroeconomic data (comma-separated)' },
-  { name: 'SENDGRID_API_KEY', category: 'email', description: 'SendGrid email backup' },
-  { name: 'TAVILY_API_KEY', category: 'search', description: 'Tavily advanced web search' },
+  { name: 'OPENAI_API_KEY', category: 'ai', description: 'OpenAI GPT-4.1 backup', helpUrl: 'https://platform.openai.com/api-keys' },
+  { name: 'ANTHROPIC_API_KEY', category: 'ai', description: 'Anthropic Claude Sonnet 4 backup', helpUrl: 'https://console.anthropic.com/settings/keys' },
+  { name: 'OPENROUTER_API_KEY', category: 'ai', description: 'OpenRouter multi-model access', helpUrl: 'https://openrouter.ai/keys' },
+  { name: 'TWELVEDATA_API_KEY', category: 'market_data', description: 'TwelveData market data backup', helpUrl: 'https://twelvedata.com/account/api-keys' },
+  { name: 'FRED_API_KEYS', category: 'market_data', description: 'FRED macroeconomic data (comma-separated)', helpUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html' },
+  { name: 'SENDGRID_API_KEY', category: 'email', description: 'SendGrid email backup', helpUrl: 'https://app.sendgrid.com/settings/api_keys' },
+  { name: 'TAVILY_API_KEY', category: 'search', description: 'Tavily advanced web search', helpUrl: 'https://app.tavily.com/home' },
 ];
 
 const getCategoryConfig = (cat) => CATEGORIES.find(c => c.value === cat) || CATEGORIES[4];
@@ -37,6 +37,8 @@ const KeyVault = () => {
   const [newKey, setNewKey] = useState({ name: '', value: '', category: 'general', description: '' });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [validateResult, setValidateResult] = useState(null);
 
   const fetchKeys = useCallback(async () => {
     setLoading(true);
@@ -107,6 +109,35 @@ const KeyVault = () => {
       category: common.category,
       description: common.description,
     }));
+    setValidateResult(null);
+  };
+
+  const validateKey = async () => {
+    if (!newKey.name || !newKey.value) return;
+    setValidating(true);
+    setValidateResult(null);
+    try {
+      const res = await authFetch(`${API}/vault/keys/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newKey),
+      });
+      const data = await res.json();
+      setValidateResult(data);
+      if (data.valid === true) toast.success(data.message || 'Key validated');
+      else if (data.valid === false) toast.error(data.message || data.error || 'Validation failed');
+      else toast.info(data.message || 'No validator — key will be stored as-is');
+    } catch (e) {
+      setValidateResult({ valid: false, error: 'Validation request failed' });
+      toast.error('Validation request failed');
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const getHelpUrl = () => {
+    const common = COMMON_KEYS.find(k => k.name === newKey.name);
+    return common?.helpUrl || null;
   };
 
   if (loading && keys.length === 0) {
@@ -206,9 +237,15 @@ const KeyVault = () => {
 
           <div>
             <label className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">API Key Value</label>
-            <input type="password" value={newKey.value} onChange={e => setNewKey(p => ({ ...p, value: e.target.value }))}
+            <input type="password" value={newKey.value} onChange={e => { setNewKey(p => ({ ...p, value: e.target.value })); setValidateResult(null); }}
               placeholder="sk-..." className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:border-[#3DE8D9] focus:outline-none font-mono"
               data-testid="vault-key-value" />
+            {getHelpUrl() && (
+              <a href={getHelpUrl()} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] text-[#3DE8D9]/70 hover:text-[#3DE8D9] mt-1 inline-flex items-center gap-1">
+                Get your {newKey.name.replace(/_/g, ' ').replace('API KEY', '').replace('API KEYS', '').trim()} key &rarr;
+              </a>
+            )}
           </div>
 
           <div>
@@ -218,13 +255,33 @@ const KeyVault = () => {
               data-testid="vault-key-desc" />
           </div>
 
+          {/* Validation result */}
+          {validateResult && (
+            <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+              validateResult.valid === true ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+              validateResult.valid === false ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+              'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+            }`} data-testid="validate-result">
+              {validateResult.valid === true ? <Check className="w-3.5 h-3.5" /> :
+               validateResult.valid === false ? <AlertTriangle className="w-3.5 h-3.5" /> :
+               <Shield className="w-3.5 h-3.5" />}
+              <span>{validateResult.message || validateResult.error || 'Unknown result'}</span>
+              {validateResult.status && <span className="font-mono text-[10px] opacity-70">HTTP {validateResult.status}</span>}
+            </div>
+          )}
+
           <div className="flex gap-2 pt-1">
+            <Button size="sm" onClick={validateKey} disabled={validating || !newKey.name || !newKey.value}
+              className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold border border-slate-600" data-testid="vault-validate-btn">
+              {validating ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : <Eye className="w-3 h-3 mr-1" />}
+              {validating ? 'Testing...' : 'Validate'}
+            </Button>
             <Button size="sm" onClick={storeKey} disabled={saving || !newKey.name || !newKey.value}
               className="bg-[#3DE8D9] hover:bg-[#3DE8D9]/80 text-black text-xs font-semibold" data-testid="vault-store-btn">
               {saving ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : <Shield className="w-3 h-3 mr-1" />}
               {saving ? 'Encrypting...' : 'Encrypt & Store'}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => { setShowAdd(false); setNewKey({ name: '', value: '', category: 'general', description: '' }); }}
+            <Button size="sm" variant="outline" onClick={() => { setShowAdd(false); setNewKey({ name: '', value: '', category: 'general', description: '' }); setValidateResult(null); }}
               className="bg-slate-800 border-slate-600 text-slate-300 text-xs">
               Cancel
             </Button>
