@@ -68,7 +68,7 @@ const WatchlistIntelligence = ({ onSubscribe }) => {
           <div>
             <h3 className="text-white text-sm sm:text-base font-bold" style={{ fontFamily: 'Manrope, sans-serif' }}>Watchlist Intelligence</h3>
             <p className="text-slate-400 text-[10px] sm:text-xs">
-              {data ? `Last updated ${new Date(data.generated_at).toLocaleString()}` : 'AI-powered analysis of your watchlist'}
+              {data?.generated_at ? `Last updated ${new Date(data.generated_at).toLocaleString()}` : 'AI-powered analysis of your watchlist'}
             </p>
           </div>
         </div>

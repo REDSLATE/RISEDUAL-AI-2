@@ -3,7 +3,7 @@ import { Star, X, Plus, TrendingUp, TrendingDown, Lock, RefreshCw } from 'lucide
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
@@ -50,16 +50,67 @@ const Watchlist = ({ onSubscribe }) => {
     }
   }, []);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('risedualai_watchlist');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setWatchlist(parsed);
-      // Fetch live prices on load
-      const symbols = parsed.map(item => item.symbol);
-      fetchQuotes(symbols);
-    }
+  // Sync a ticker add to the backend (fire-and-forget)
+  const syncAdd = useCallback((symbol) => {
+    if (!user) return;
+    authFetch(`${API}/workspace/watchlist/add`, {
+      method: 'POST',
+      body: JSON.stringify({ ticker: symbol }),
+    }).catch((e) => logger.warn('Watchlist sync add failed:', e));
+  }, [user]);
 
+  // Sync a ticker remove to the backend (fire-and-forget)
+  const syncRemove = useCallback((symbol) => {
+    if (!user) return;
+    authFetch(`${API}/workspace/watchlist/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ ticker: symbol }),
+    }).catch((e) => logger.warn('Watchlist sync remove failed:', e));
+  }, [user]);
+
+  // Load watchlist: backend first (if logged in), localStorage fallback
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (user) {
+        try {
+          const res = await authFetch(`${API}/workspace/watchlist`);
+          if (res.ok) {
+            const data = await res.json();
+            const tickers = data.tickers || [];
+            if (tickers.length > 0 && !cancelled) {
+              const items = tickers.map(sym => ({ symbol: sym, addedAt: '', price: 0, change: 0, changePercent: 0 }));
+              setWatchlist(items);
+              localStorage.setItem('risedualai_watchlist', JSON.stringify(items));
+              fetchQuotes(tickers);
+              return;
+            }
+          }
+        } catch (e) {
+          logger.warn('Backend watchlist load failed, falling back to local:', e);
+        }
+      }
+      // Fallback: localStorage
+      const saved = localStorage.getItem('risedualai_watchlist');
+      if (saved && !cancelled) {
+        const parsed = JSON.parse(saved);
+        setWatchlist(parsed);
+        const symbols = parsed.map(item => item.symbol);
+        fetchQuotes(symbols);
+        // If logged in, sync local watchlist to backend
+        if (user && parsed.length > 0) {
+          for (const item of parsed) {
+            syncAdd(item.symbol);
+          }
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user, fetchQuotes, syncAdd]);
+
+  // Listen for external add-to-watchlist events
+  useEffect(() => {
     const handleAdd = (e) => {
       if (!e.detail) return;
       const symbol = e.detail.toUpperCase().trim();
@@ -67,7 +118,7 @@ const Watchlist = ({ onSubscribe }) => {
         if (prev.find(item => item.symbol === symbol)) return prev;
         const updated = [...prev, { symbol, addedAt: new Date().toISOString(), price: 0, change: 0, changePercent: 0 }];
         localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
-        // Fetch quote for new symbol
+        syncAdd(symbol);
         fetch(`${API}/stocks/quote/${symbol}`).then(r => r.ok ? r.json() : null).then(data => {
           if (!data) return;
           setWatchlist(prev2 => {
@@ -82,7 +133,7 @@ const Watchlist = ({ onSubscribe }) => {
     };
     window.addEventListener('risedualai-add-watchlist', handleAdd);
     return () => window.removeEventListener('risedualai-add-watchlist', handleAdd);
-  }, [fetchQuotes]);
+  }, [syncAdd]);
 
   // Refresh quotes every 60 seconds when expanded
   useEffect(() => {
@@ -110,6 +161,7 @@ const Watchlist = ({ onSubscribe }) => {
     const updated = [...watchlist, newItem];
     setWatchlist(updated);
     localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
+    syncAdd(symbol);
     setNewSymbol('');
     setCapWarning('');
   };
@@ -118,6 +170,7 @@ const Watchlist = ({ onSubscribe }) => {
     const updated = watchlist.filter(item => item.symbol !== symbol);
     setWatchlist(updated);
     localStorage.setItem('risedualai_watchlist', JSON.stringify(updated));
+    syncRemove(symbol);
   };
 
   return (
