@@ -235,11 +235,12 @@ async def _validate_quiverquant(key: str) -> dict:
 async def _validate_newsapi(key: str) -> dict:
     import httpx
     async with httpx.AsyncClient(timeout=10) as c:
-        r = await c.get("https://newsapi.org/v2/top-headlines",
-                        params={"country": "us", "pageSize": 1, "apiKey": key})
+        r = await c.get("https://newsapi.ai/api/v1/article/getArticles",
+                        params={"keyword": "test", "lang": "eng", "resultType": "articles",
+                                "articlesCount": 1, "apiKey": key})
         ok = r.status_code == 200
         return {"valid": ok, "name": "NEWSAPI_API_KEY", "status": r.status_code,
-                "message": "Connected to NewsAPI" if ok else f"HTTP {r.status_code}"}
+                "message": "Connected to NewsAPI.ai" if ok else f"HTTP {r.status_code}"}
 
 
 @router.delete("/keys/{name}")
