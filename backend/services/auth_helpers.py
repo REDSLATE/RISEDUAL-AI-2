@@ -76,10 +76,7 @@ async def enforce_credits(user: dict, action: str) -> None:
     plan_key = get_user_plan(user)
     cr = await deduct_credits(str(user["_id"]), action, plan_key)
     if not cr["allowed"]:
-        raise HTTPException(status_code=402, detail={
-            "error": "insufficient_credits",
-            "detail": cr.get("error", "Not enough credits"),
-            "cost": cr["cost"],
-            "remaining": cr["remaining"],
-            "upgrade_options": cr.get("upgrade_options", []),
-        })
+        raise HTTPException(
+            status_code=402,
+            detail=cr.get("error", "Not enough credits"),
+        )

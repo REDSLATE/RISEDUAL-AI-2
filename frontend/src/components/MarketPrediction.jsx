@@ -232,7 +232,11 @@ const MarketPrediction = ({ onSubscribe }) => {
         ))}
       </div>
 
-      {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
+      {error && (
+        <div className={`border text-sm p-3 rounded-lg ${error.toLowerCase().includes('credit') ? 'bg-amber-900/30 border-amber-600/30 text-amber-300' : 'bg-orange-800 border-orange-700/50 text-orange-400'}`} data-testid="prediction-error">
+          {error.toLowerCase().includes('credit') ? `${error} — Go to Settings to top up or upgrade your plan.` : error}
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
