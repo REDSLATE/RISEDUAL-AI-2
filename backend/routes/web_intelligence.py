@@ -1,7 +1,7 @@
 """Web Intelligence Routes — Search War Room + single-engine endpoints."""
 import logging
 from fastapi import APIRouter, Request, HTTPException, Query
-from services.auth_helpers import get_current_user
+from services.auth_helpers import get_current_user, enforce_credits
 from services import web_intelligence_service
 from services.search_war_room.orchestrator import run_search
 from services.search_war_room.schemas import SearchWarRoomRequest
@@ -22,13 +22,7 @@ def set_db(database):
 async def search_war_room(request: Request, payload: SearchWarRoomRequest):
     """Search War Room — fires all engines in parallel, returns unified brief."""
     user = await get_current_user(request)
-
-    from services.credit_service import deduct_credits, get_user_plan
-    plan_key = get_user_plan(user)
-    cr = await deduct_credits(str(user["_id"]), "web_search", plan_key)
-    if not cr["allowed"]:
-        raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
-
+    await enforce_credits(user, "web_search")
     return await run_search(query=payload.query, symbol=payload.symbol, mode=payload.mode)
 
 
@@ -36,13 +30,7 @@ async def search_war_room(request: Request, payload: SearchWarRoomRequest):
 async def web_search(request: Request, q: str = Query(..., min_length=2), max_results: int = Query(default=8, le=20)):
     """Simple web search via DuckDuckGo."""
     user = await get_current_user(request)
-
-    from services.credit_service import deduct_credits, get_user_plan
-    plan_key = get_user_plan(user)
-    cr = await deduct_credits(str(user["_id"]), "web_search", plan_key)
-    if not cr["allowed"]:
-        raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
-
+    await enforce_credits(user, "web_search")
     return await web_intelligence_service.search(q, max_results)
 
 
@@ -57,13 +45,7 @@ async def ticker_news(request: Request, symbol: str, max_results: int = Query(de
 async def research(request: Request, topic: str = Query(..., min_length=3), max_results: int = Query(default=8, le=15)):
     """Deep research on a financial topic."""
     user = await get_current_user(request)
-
-    from services.credit_service import deduct_credits, get_user_plan
-    plan_key = get_user_plan(user)
-    cr = await deduct_credits(str(user["_id"]), "web_research", plan_key)
-    if not cr["allowed"]:
-        raise HTTPException(status_code=402, detail=cr.get("error", "Not enough credits"))
-
+    await enforce_credits(user, "web_research")
     return await web_intelligence_service.research_topic(topic, max_results)
 
 
@@ -75,21 +57,12 @@ async def war_room_cache():
 
 @router.get("/status")
 async def web_intel_status():
-    """Check which providers are available."""
-    from services.search_war_room.adapters.fred import fred_rotator
-    from services.search_war_room.adapters import ai_analysis
+    """Full status: registry providers + AI pool + market pool."""
+    from services.search_war_room.registry import registry_status
     from services.ai_pool import ai_pool_status
     from services.market_data_pool import market_pool_status
-    import os
     return {
-        "engines": {
-            "duckduckgo": True,
-            "wikipedia": True,
-            "sec_edgar": True,
-            "fred": fred_rotator.status(),
-            "yahoo": True,
-            "tavily": bool(os.environ.get("TAVILY_API_KEY", "")),
-        },
+        "war_room_registry": registry_status(),
         "ai_pool": ai_pool_status(),
         "market_data_pool": market_pool_status(),
     }

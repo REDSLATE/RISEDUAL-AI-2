@@ -382,8 +382,8 @@ async def api_search(request: Request, q: str = "", symbol: str = ""):
     if not q:
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
 
-    from services.search_war_room.orchestrator import run_war_room
-    result = await run_war_room(query=q, symbol=symbol or None, mode="auto")
+    from services.search_war_room.orchestrator import run_search
+    result = await run_search(query=q, symbol=symbol or None, mode="auto")
     return result.model_dump()
 
 

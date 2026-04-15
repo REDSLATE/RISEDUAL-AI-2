@@ -1,28 +1,18 @@
-"""Search War Room — Orchestrator fires all engines in parallel with per-engine timeouts."""
+"""Search War Room — Orchestrator fires registered engines in parallel.
+
+Uses the provider registry instead of hardcoded adapter imports.
+AI analysis runs as a second phase after all engines complete.
+"""
 import asyncio
 import logging
 from services.search_war_room.schemas import SearchWarRoomResponse, EngineResult
-from services.search_war_room.adapters import ddg, wikipedia, fred, sec, yahoo, ai_analysis, tavily
-from services.search_war_room.adapters import av_news, finnhub_news, stockfit
+from services.search_war_room.registry import get_enabled_providers, ProviderEntry
+from services.search_war_room.adapters import ai_analysis
 from services.search_war_room.synthesizer import build_brief
 
 logger = logging.getLogger(__name__)
 
-ENGINE_TIMEOUTS = {
-    "wikipedia": 4.0,
-    "fred": 6.0,
-    "sec": 8.0,
-    "ddg": 7.0,
-    "ddg_news": 7.0,
-    "yahoo": 5.0,
-    "tavily": 10.0,
-    "av_news": 12.0,
-    "finnhub_news": 10.0,
-    "stockfit": 12.0,
-    "ai_analysis": 18.0,
-}
-
-NON_CRITICAL_ENGINES = {"ddg", "ddg_news", "yahoo", "tavily", "av_news", "finnhub_news", "stockfit", "ai_analysis"}
+AI_ANALYSIS_TIMEOUT = 18.0
 
 
 def classify_mode(query: str, mode: str):
@@ -39,97 +29,63 @@ def classify_mode(query: str, mode: str):
     return "company"
 
 
-async def _run_engine(name: str, source_type: str, coro):
+async def _run_provider(provider: ProviderEntry, query: str, symbol: str | None) -> EngineResult:
+    """Execute a single provider with its configured timeout."""
     try:
-        async with asyncio.timeout(ENGINE_TIMEOUTS.get(name, 6.0)):
-            return await coro
+        async with asyncio.timeout(provider.timeout):
+            return await provider.run_fn(query, symbol)
     except asyncio.TimeoutError:
         return EngineResult(
-            engine=name, status="timeout", source_type=source_type, query="",
-            summary=f"{name} timed out", confidence=0.0, error="timeout",
+            engine=provider.name, status="timeout", source_type=provider.source_type,
+            query=query, summary=f"{provider.name} timed out", error="timeout",
         )
     except Exception as exc:
         return EngineResult(
-            engine=name, status="error", source_type=source_type, query="",
-            summary=f"{name} failed", confidence=0.0, error=str(exc),
+            engine=provider.name, status="error", source_type=provider.source_type,
+            query=query, summary=f"{provider.name} failed", error=str(exc)[:200],
         )
 
 
 async def run_search(query: str, symbol: str | None = None, mode: str = "auto") -> SearchWarRoomResponse:
     resolved = classify_mode(query, mode)
 
-    engine_jobs = [
-        ("wikipedia", "knowledge", wikipedia.run(symbol or query)),
-    ]
-
-    if resolved in {"company", "filing"}:
-        engine_jobs.extend([
-            ("sec", "filing", sec.run(query, symbol)),
-            ("stockfit", "fundamental", stockfit.run(query, symbol)),
-            ("tavily", "search", tavily.run(f"{symbol or query} stock analysis financial")),
-            ("av_news", "news", av_news.run(query, symbol)),
-            ("finnhub_news", "news", finnhub_news.run(query, symbol)),
-            ("ddg", "search", ddg.run(query)),
-            ("yahoo", "market", yahoo.run(query, symbol)),
-            ("ddg_news", "news", ddg.run_news(f"{symbol or query} stock news")),
-        ])
-    elif resolved == "macro":
-        engine_jobs.extend([
-            ("fred", "macro", fred.run(query)),
-            ("tavily", "search", tavily.run(query)),
-            ("ddg", "search", ddg.run(query)),
-            ("ddg_news", "news", ddg.run_news(query)),
-        ])
-    elif resolved == "news":
-        engine_jobs.extend([
-            ("tavily", "search", tavily.run(query)),
-            ("stockfit", "fundamental", stockfit.run(query, symbol)),
-            ("av_news", "news", av_news.run(query, symbol)),
-            ("finnhub_news", "news", finnhub_news.run(query, symbol)),
-            ("ddg", "search", ddg.run(query)),
-            ("ddg_news", "news", ddg.run_news(query)),
-            ("yahoo", "market", yahoo.run(query, symbol)),
-        ])
-    else:
-        engine_jobs.extend([
-            ("tavily", "search", tavily.run(query)),
-            ("ddg", "search", ddg.run(query)),
-        ])
-
-    tasks = [asyncio.create_task(_run_engine(name, stype, coro)) for name, stype, coro in engine_jobs]
+    # Phase 1: Get all enabled providers for this mode and fire in parallel
+    providers = get_enabled_providers(resolved, symbol)
+    tasks = [asyncio.create_task(_run_provider(p, query, symbol)) for p in providers]
     results = await asyncio.gather(*tasks, return_exceptions=False)
 
+    # Normalize results
     normalized = []
     warnings = []
     degraded = False
 
-    for (name, _, __), result in zip(engine_jobs, results):
+    for provider, result in zip(providers, results):
         if not result.query:
             result.query = query
-
         if result.status in {"error", "timeout"}:
-            warnings.append(f"{name}: {result.error or result.status}")
-            degraded = True
-
+            warnings.append(f"{provider.name}: {result.error or result.status}")
+            if provider.critical:
+                degraded = True
         normalized.append(result)
 
     successful = [r for r in normalized if r.status in {"ok", "cached"}]
-    critical_failed = any(
-        r.status in {"error", "timeout"} and r.engine not in NON_CRITICAL_ENGINES
-        for r in normalized
-    )
 
-    # Phase 2: AI Analysis — synthesize all engine results through LLM failover chain
-    ai_result = await _run_engine(
-        "ai_analysis", "analysis",
-        ai_analysis.run(query, [r.model_dump() for r in normalized]),
-    )
+    # Phase 2: AI Analysis — synthesize all engine results through LLM
+    try:
+        async with asyncio.timeout(AI_ANALYSIS_TIMEOUT):
+            ai_result = await ai_analysis.run(query, [r.model_dump() for r in normalized])
+    except (asyncio.TimeoutError, Exception) as exc:
+        ai_result = EngineResult(
+            engine="ai_analysis", status="error", source_type="analysis",
+            query=query, error=str(exc)[:200],
+        )
+
     if ai_result.status == "ok":
         normalized.append(ai_result)
 
     brief = build_brief(query, normalized)
 
-    # If AI analysis succeeded, upgrade the brief with AI-generated content
+    # Upgrade brief with AI-generated content
     if ai_result.status == "ok" and ai_result.title:
         brief.headline = ai_result.title
         if ai_result.summary:
@@ -145,9 +101,9 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
         brief.summary = "All live engines failed or were unavailable. No useful research results were returned."
         brief.risks = brief.risks + ["No engines returned usable data"]
         degraded = True
-    elif critical_failed:
-        brief.risks = brief.risks + ["Some critical engines were unavailable; brief may be incomplete"]
     elif degraded:
+        brief.risks = brief.risks + ["Some critical engines were unavailable; brief may be incomplete"]
+    elif any(r.status in {"error", "timeout"} for r in normalized if r.engine != "ai_analysis"):
         brief.risks = brief.risks + ["Some non-critical engines were unavailable; fallback data used where possible"]
 
     return SearchWarRoomResponse(
@@ -159,8 +115,12 @@ async def run_search(query: str, symbol: str | None = None, mode: str = "auto") 
     )
 
 
+# Alias for backwards compatibility
+run_war_room = run_search
+
+
 def _dedupe_engine_results(results: list) -> list:
-    """Deduplicate results across engines by URL (from artifact pattern)."""
+    """Deduplicate results across engines by URL."""
     seen_urls = set()
     deduped = []
     for r in results:
