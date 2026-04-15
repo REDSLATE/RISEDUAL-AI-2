@@ -485,10 +485,10 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
 
         await cache.set(
             cache_key=cache_key,
-            endpoint="hypothesis",
+            namespace="hypothesis",
             data=hypothesis,
             ttl_seconds=600,
-            meta={"ttl_seconds": 600, "symbol": symbol.upper(), "model": model},
+            meta={"symbol": symbol.upper(), "model": model},
         )
 
         # Log prediction for accuracy tracking
