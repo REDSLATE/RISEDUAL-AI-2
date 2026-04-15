@@ -103,9 +103,25 @@ TOOL_SCHEMAS = [
             },
         },
     },
-]
+    {
+        "type": "function",
 
-# LangGraph-inspired system prompt: evidence-based, no guessing
+# LangGraph-inspired system prompt
+        "function": {
+            "name": "get_sec_fundamentals",
+            "description": "Get SEC EDGAR fundamental data: financials, ownership, institutional holders, insider transactions for a stock. Use this for company research, due diligence, or understanding who owns a stock.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "Stock ticker symbol"},
+                    "data_type": {"type": "string", "description": "Type of data to retrieve",
+                                  "enum": ["financials", "ownership", "insiders"]},
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
+]: evidence-based, no guessing
 SYSTEM_PROMPT = (
     "You are a precise financial research assistant inside the RISEDUAL AI trading platform. "
     "Use tools for all math and external data lookups — never guess numbers. "
@@ -197,6 +213,34 @@ async def _exec_daily_history(symbol: str, period: str = "compact") -> dict:
         return {"error": f"History fetch failed: {str(e)[:100]}"}
 
 
+
+async def _exec_sec_fundamentals(symbol: str, data_type: str = "ownership") -> dict:
+    """Get SEC EDGAR data via StockFit API."""
+    try:
+        from services.search_war_room.adapters.stockfit import get_financials, get_insider_transactions
+        key = os.environ.get("STOCKFIT_API_KEY", "")
+        if not key:
+            return {"error": "StockFit API key not configured"}
+
+        if data_type == "financials":
+            return await get_financials(symbol)
+        elif data_type == "insiders":
+            return await get_insider_transactions(symbol)
+        else:
+            # Default: ownership summary
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    "https://api.stockfit.io/v1/api/ownership/summary",
+                    params={"symbol": symbol.upper()},
+                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+                )
+                if resp.status_code != 200:
+                    return {"error": f"StockFit HTTP {resp.status_code}"}
+                return resp.json()
+    except Exception as e:
+        return {"error": f"SEC fundamentals failed: {str(e)[:100]}"}
+
+
 async def _exec_web_search(query: str) -> dict:
     """Search with Tavily (advanced) → DDG fallback."""
     # Try Tavily first
@@ -259,6 +303,8 @@ async def _run_tool(name: str, args: dict) -> str:
         result = await _exec_daily_history(args["symbol"], args.get("period", "compact"))
     elif name == "web_search":
         result = await _exec_web_search(args["query"])
+    elif name == "get_sec_fundamentals":
+        result = await _exec_sec_fundamentals(args["symbol"], args.get("data_type", "ownership"))
     else:
         result = {"error": f"Unknown tool: {name}"}
     return json.dumps(result)
