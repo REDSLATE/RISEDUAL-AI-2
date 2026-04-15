@@ -102,7 +102,7 @@ def _bootstrap():
     """Register all built-in adapters. Called once at import time."""
     from services.search_war_room.adapters import (
         ddg, wikipedia, fred, sec, yahoo, tavily,
-        av_news, finnhub_news, stockfit, newsapi, marketstack,
+        av_news, finnhub_news, stockfit, newsapi,
     )
 
     _ALL_COMPANY = {"company", "filing", "news"}
@@ -172,12 +172,6 @@ def _bootstrap():
         modes={"company", "filing", "news"},
         run_fn=newsapi.run, env_key="NEWSAPI_API_KEY",
         timeout=15.0,
-    ))
-    register(ProviderEntry(
-        name="marketstack", source_type="market",
-        modes={"company", "filing"},
-        run_fn=marketstack.run, env_key="MARKETSTACK_API_KEY",
-        timeout=30.0,
     ))
 
     logger.info(f"War Room registry: {len(_REGISTRY)} providers registered")
