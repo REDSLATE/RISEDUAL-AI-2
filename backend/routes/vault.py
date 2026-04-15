@@ -43,7 +43,7 @@ async def store_vault_key(req: StoreKeyRequest, request: Request):
         raise HTTPException(status_code=403, detail="Admin access required")
     from services.key_vault import KeyVault
     vault = KeyVault(db)
-    await vault.inject_and_reload(req.name, req.value)
+    await vault.inject_and_reload(req.name, req.value, req.category, req.description, user.get("email", "admin"))
     return {"stored": True, "name": req.name, "message": "Key stored and providers reloaded"}
 
 

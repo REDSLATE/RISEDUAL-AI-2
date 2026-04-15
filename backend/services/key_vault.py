@@ -108,9 +108,10 @@ class KeyVault:
             logger.info(f"Vault: loaded {loaded} keys into environment")
         return loaded
 
-    async def inject_and_reload(self, name: str, value: str):
+    async def inject_and_reload(self, name: str, value: str, category: str = "general",
+                                description: str = "", stored_by: str = "admin"):
         """Store a key, inject into env, and reload affected provider pools."""
-        await self.store(name, value)
+        await self.store(name, value, category, description, stored_by)
         os.environ[name] = value
 
         # Reload provider pools that depend on this key
