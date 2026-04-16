@@ -1,19 +1,12 @@
 # Test Credentials
 
-## Owner (REDSLATE)
-- Email: managingdirector@redslateholdings.com
-- Password: RedSlate2026!
-- Role: owner
-- Subscription: pro
-- Can activate/deactivate users and grant/revoke Pro
-
-## Admin
+## Admin Account
 - Email: admin@risedual.ai
 - Password: RiseDual2026!
-- Role: admin
-- Subscription: pro
 
-## Auth Method
-- httpOnly secure cookies (primary)
-- POST /api/auth/login → sets access_token + refresh_token cookies
-- CORS: credentials: 'include' required on all fetch calls
+## Alpaca Paper Trading
+- API Key: PKVKUZRKPU67THAVQT4UT6OKVU
+- Secret Key: DFomUCQN5TZzPtjD7ai1ZhAEffvuTJmnJDbhj5YUMhr7
+- Base URL: https://paper-api.alpaca.markets
+- Account Status: ACTIVE
+- Equity: $102,101.72
