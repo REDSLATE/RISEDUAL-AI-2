@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
+import PanelShell from './PanelShell';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api/risk-calc`;
@@ -88,15 +89,15 @@ const RiskCalculator = ({ onClose, onApplyToSmartOrder }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="risk-calculator">
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
+    <PanelShell onClose={onClose} testId="risk-calculator" maxWidth="max-w-lg">
+      <div className="w-full max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-400/20">
           <div className="flex items-center gap-2">
             <Calculator className="w-5 h-5 text-[#3DE8D9]" />
             <h2 className="text-white font-bold text-base">Risk Calculator</h2>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+          {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>}
         </div>
 
         <div className="p-5 space-y-4">
@@ -246,7 +247,7 @@ const RiskCalculator = ({ onClose, onApplyToSmartOrder }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

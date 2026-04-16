@@ -7,6 +7,7 @@ import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import RuleBuilder from './scanner/RuleBuilder';
 import { ValidatedMatchRow, ValidationSummary } from './scanner/ValidationResults';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api/scanner`;
 
@@ -144,8 +145,8 @@ const MarketScanner = ({ onClose }) => {
   }, [selectedData]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="market-scanner">
-      <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden bg-[#0B1426] border border-slate-600/30 rounded-2xl flex flex-col">
+    <PanelShell onClose={onClose} testId="market-scanner" maxWidth="max-w-4xl">
+      <div className="w-full max-h-[90vh] overflow-hidden bg-[#0B1426] border border-slate-600/30 rounded-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-400/20 shrink-0">
           <div className="flex items-center gap-2">
@@ -176,7 +177,7 @@ const MarketScanner = ({ onClose }) => {
                 <RefreshCw className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} /> {scanning ? 'Scanning...' : 'Scan'}
               </Button>
             )}
-            <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>}
           </div>
         </div>
 
@@ -310,7 +311,7 @@ const MarketScanner = ({ onClose }) => {
         </>
         )}
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

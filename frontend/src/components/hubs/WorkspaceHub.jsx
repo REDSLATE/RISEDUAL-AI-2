@@ -15,40 +15,23 @@ const TABS = [
   { key: 'failureloop', label: 'Loops', icon: AlertTriangle },
 ];
 
-export default function WorkspaceHub({
-  onSubscribe, initialTab,
-  onOpenPortfolio, onOpenJournal, onOpenPaperTrading, onOpenBots,
-  onOpenSmartOrders, onOpenRiskCalc, onOpenScanner, onOpenFailureLoop,
-}) {
+// Lazy-load all components
+const Watchlist = React.lazy(() => import('../Watchlist'));
+const WatchlistIntelligence = React.lazy(() => import('../WatchlistIntelligence'));
+const PortfolioAnalyzer = React.lazy(() => import('../PortfolioAnalyzer'));
+const TradingJournal = React.lazy(() => import('../TradingJournal'));
+const PnLTracker = React.lazy(() => import('../PnLTracker'));
+const PaperTrading = React.lazy(() => import('../PaperTrading'));
+const TradingBotPanel = React.lazy(() => import('../TradingBotPanel'));
+const SmartOrderPanel = React.lazy(() => import('../SmartOrderPanel'));
+const RiskCalculator = React.lazy(() => import('../RiskCalculator'));
+const MarketScanner = React.lazy(() => import('../MarketScanner'));
+const ReferralLeaderboard = React.lazy(() => import('../ReferralLeaderboard'));
+const FailureLoopDashboard = React.lazy(() => import('../FailureLoopDashboard'));
+
+export default function WorkspaceHub({ onSubscribe, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'watchlist');
-
-  // Lazy-load heavy components
-  const Watchlist = React.lazy(() => import('../Watchlist'));
-  const WatchlistIntelligence = React.lazy(() => import('../WatchlistIntelligence'));
-  const PnLTracker = React.lazy(() => import('../PnLTracker'));
-  const ReferralLeaderboard = React.lazy(() => import('../ReferralLeaderboard'));
-  const BotsDashboard = React.lazy(() => import('../BotsDashboard'));
-  const FailureLoopDashboard = React.lazy(() => import('../FailureLoopDashboard'));
-
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
-
-  // Some tools open as modals — trigger them and show a message
-  const modalTabs = {
-    portfolio: { fn: onOpenPortfolio, label: 'Portfolio Analyzer' },
-    journal: { fn: onOpenJournal, label: 'Trading Journal' },
-    paper: { fn: onOpenPaperTrading, label: 'Paper Trading' },
-    orders: { fn: onOpenSmartOrders, label: 'Smart Orders' },
-    risk: { fn: onOpenRiskCalc, label: 'Risk Calculator' },
-    scanner: { fn: onOpenScanner, label: 'Market Scanner' },
-  };
-
-  const handleTabClick = (key) => {
-    if (modalTabs[key]) {
-      modalTabs[key].fn?.();
-    } else {
-      setTab(key);
-    }
-  };
 
   return (
     <div data-testid="workspace-hub">
@@ -58,7 +41,7 @@ export default function WorkspaceHub({
           return (
             <button
               key={t.key}
-              onClick={() => handleTabClick(t.key)}
+              onClick={() => setTab(t.key)}
               className={`flex items-center gap-1 px-2 py-2 rounded-t-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
                 tab === t.key
                   ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
@@ -81,10 +64,16 @@ export default function WorkspaceHub({
               <WatchlistIntelligence onSubscribe={onSubscribe} />
             </div>
           )}
+          {tab === 'portfolio' && <PortfolioAnalyzer onSubscribe={onSubscribe} />}
+          {tab === 'journal' && <TradingJournal onSubscribe={onSubscribe} />}
           {tab === 'pnl' && <PnLTracker />}
-          {tab === 'bots' && <BotsDashboard onOpenBots={onOpenBots} />}
+          {tab === 'paper' && <PaperTrading />}
+          {tab === 'bots' && <TradingBotPanel />}
+          {tab === 'orders' && <SmartOrderPanel />}
+          {tab === 'risk' && <RiskCalculator onApplyToSmartOrder={() => setTab('orders')} />}
+          {tab === 'scanner' && <MarketScanner />}
           {tab === 'referral' && <ReferralLeaderboard />}
-          {tab === 'failureloop' && <FailureLoopDashboard onClose={() => setTab('watchlist')} />}
+          {tab === 'failureloop' && <FailureLoopDashboard />}
         </div>
       </React.Suspense>
     </div>

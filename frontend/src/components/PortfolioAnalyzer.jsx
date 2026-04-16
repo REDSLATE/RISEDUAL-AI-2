@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api`;
 
@@ -54,8 +55,8 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="portfolio-analyzer">
-      <div className="bg-slate-900 rounded-2xl max-w-2xl w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="portfolio-analyzer">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         <div className="p-5 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-[#3DE8D9] to-cyan-500 rounded-xl flex items-center justify-center">
@@ -68,7 +69,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
           </div>
           <div className="flex items-center gap-2">
             <Badge className="bg-gradient-to-r from-[#3DE8D9] to-cyan-500 text-white border-0 text-xs">PRO</Badge>
-            <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">×</button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">x</button>}
           </div>
         </div>
 
@@ -155,7 +156,7 @@ const PortfolioAnalyzer = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

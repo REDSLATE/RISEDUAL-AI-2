@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import PanelShell from './PanelShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
@@ -137,8 +138,8 @@ const SmartOrderPanel = ({ onClose }) => {
   const updateTp = (i, field, val) => setTpLevels(tpLevels.map((tp, idx) => idx === i ? { ...tp, [field]: val } : tp));
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="smart-order-panel">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
+    <PanelShell onClose={onClose} testId="smart-order-panel" maxWidth="max-w-2xl">
+      <div className="w-full max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-400/20">
           <div className="flex items-center gap-2">
@@ -148,7 +149,7 @@ const SmartOrderPanel = ({ onClose }) => {
           <div className="flex items-center gap-2">
             <button onClick={() => setView('create')} className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${view === 'create' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`} data-testid="smart-order-tab-create">Create</button>
             <button onClick={() => { setView('orders'); loadOrders(); }} className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${view === 'orders' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`} data-testid="smart-order-tab-orders">Orders ({orders.length})</button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white ml-2"><X className="w-5 h-5" /></button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white ml-2"><X className="w-5 h-5" /></button>}
           </div>
         </div>
 
@@ -435,7 +436,7 @@ const SmartOrderPanel = ({ onClose }) => {
           </div>
         )}
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

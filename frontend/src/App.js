@@ -236,18 +236,7 @@ function AppContent() {
 
         {/* ═══ WORKSPACE ═══ */}
         {activeView === 'workspace' && (
-          <WorkspaceHub
-            onSubscribe={sub}
-            initialTab={workspaceTab}
-            onOpenPortfolio={() => setShowPortfolio(true)}
-            onOpenJournal={() => setShowJournal(true)}
-            onOpenPaperTrading={() => setShowPaperTrading(true)}
-            onOpenBots={() => setShowBots(true)}
-            onOpenSmartOrders={() => setShowSmartOrders(true)}
-            onOpenRiskCalc={() => setShowRiskCalc(true)}
-            onOpenScanner={() => setShowScanner(true)}
-            onOpenFailureLoop={() => setShowFailureLoop(true)}
-          />
+          <WorkspaceHub onSubscribe={sub} initialTab={workspaceTab} />
         )}
       </main>
 

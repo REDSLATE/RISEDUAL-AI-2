@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api/bots`;
 
@@ -262,8 +263,8 @@ const TradingBotPanel = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" data-testid="trading-bot-panel">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
+    <PanelShell onClose={onClose} testId="trading-bot-panel" maxWidth="max-w-2xl">
+      <div className="w-full max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-400/20">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-[#3DE8D9]" />
@@ -276,7 +277,7 @@ const TradingBotPanel = ({ onClose }) => {
             <Button size="sm" variant="outline" onClick={loadBots} className="bg-slate-800 border-slate-400/30 text-slate-300 h-7 ml-1">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             </Button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white ml-1"><X className="w-5 h-5" /></button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white ml-1"><X className="w-5 h-5" /></button>}
           </div>
         </div>
 
@@ -302,7 +303,7 @@ const TradingBotPanel = ({ onClose }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 
 const API = `${getApiBase()}/api`;
 
+import PanelShell from './PanelShell';
+
 const PaperTrading = ({ onClose }) => {
   const { user } = useAuth();
   const [portfolio, setPortfolio] = useState(null);
@@ -84,8 +86,8 @@ const PaperTrading = ({ onClose }) => {
   const pnlBg = (val) => val > 0 ? 'bg-green-600 border-lime-700/30' : val < 0 ? 'bg-orange-900 border-orange-700/30' : 'bg-slate-700/60 border-slate-400/30/40';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="paper-trading-modal">
-      <div className="bg-[#0F1A2E] border border-slate-400/25 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+    <PanelShell onClose={onClose} testId="paper-trading-modal" maxWidth="max-w-3xl">
+      <div className="bg-[#0F1A2E] border border-slate-400/25 rounded-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-400/25">
           <div className="flex items-center gap-3">
@@ -101,9 +103,9 @@ const PaperTrading = ({ onClose }) => {
             <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white" onClick={resetPortfolio} data-testid="paper-reset-btn">
               <RotateCcw className="w-4 h-4 mr-1" /> Reset
             </Button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white p-1" data-testid="paper-close-btn">
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white p-1" data-testid="paper-close-btn">
               <X className="w-5 h-5" />
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -291,7 +293,7 @@ const PaperTrading = ({ onClose }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import PanelShell from './PanelShell';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
@@ -110,8 +111,8 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="trading-journal">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="trading-journal" maxWidth="max-w-4xl">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         {/* Header */}
         <div className="p-5 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -128,7 +129,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
               disabled={tradeLimit > 0 && trades.length >= tradeLimit}>
               <Plus className="w-3.5 h-3.5 mr-1" /> Log Trade
             </Button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white px-2 text-xl">x</button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white px-2 text-xl">x</button>}
           </div>
         </div>
 
@@ -221,7 +222,7 @@ const TradingJournal = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 
