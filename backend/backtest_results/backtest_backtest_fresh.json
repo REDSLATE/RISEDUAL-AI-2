@@ -1,27 +1,27 @@
 {
-  "sharpe_ratio": 1.4222,
-  "max_drawdown": 0.1242,
-  "win_rate_overall": 0.5475,
+  "sharpe_ratio": 1.5569,
+  "max_drawdown": 0.1116,
+  "win_rate_overall": 0.5508,
   "win_rate_by_regime": [
     {
       "regime": "bull",
-      "win_rate": 0.3223,
+      "win_rate": 0.3215,
       "n_trades": 18367
     },
     {
       "regime": "bear",
-      "win_rate": 0.4009,
+      "win_rate": 0.401,
       "n_trades": 22814
     },
     {
       "regime": "sideways",
-      "win_rate": 0.3385,
+      "win_rate": 0.3367,
       "n_trades": 36802
     }
   ],
-  "n_trades": 3262,
+  "n_trades": 2734,
   "train_size": 193200,
   "test_size": 82800,
   "model_version": "backtest_fresh",
-  "computed_at": "2026-04-16T12:46:27.824350+00:00"
+  "computed_at": "2026-04-16T13:01:53.689991+00:00"
 }

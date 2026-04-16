@@ -104,7 +104,8 @@ def _effective_conf_gate(row: pd.Series) -> float:
 def _position_multiplier(row: pd.Series) -> float:
     """Concentrate capital on high-lift pattern+regime alignments.
 
-    Returns a multiplier (1.0 = normal, up to 2.5x for best setups).
+    Returns a multiplier (1.0 = normal, up to 2.2x for best setups).
+    Returns 0.0 to SKIP the trade entirely for known drag combos.
     """
     regime = str(row.get("regime_label", "")).lower()
     mult = 1.0
@@ -116,8 +117,6 @@ def _position_multiplier(row: pd.Series) -> float:
             # Regime alignment bonus
             if pat == "pattern_rsi_divergence" and regime in ("sideways", "bear"):
                 mult = 2.2  # RSI divergence in sideways/bear = strongest setup
-            elif pat == "pattern_double_bottom" and regime == "sideways":
-                mult = 2.0
             elif pat == "pattern_head_and_shoulders" and regime in ("bull", "sideways"):
                 mult = 2.0
             break
@@ -126,6 +125,11 @@ def _position_multiplier(row: pd.Series) -> float:
     if mult == 1.0:
         for pat in MEDIUM_ALPHA_PATTERNS:
             if row.get(pat, False):
+                # SKIP known drag combos
+                if pat == "pattern_bull_flag" and regime == "bear":
+                    return 0.0  # 37.5% WR, -0.031 PnL — proven drag
+                if pat == "pattern_volume_surge" and regime == "sideways":
+                    return 0.0  # 49.4% WR, -0.015 PnL — net negative
                 mult = 1.6
                 if regime == "sideways":
                     mult = 1.9
@@ -136,7 +140,7 @@ def _position_multiplier(row: pd.Series) -> float:
         if regime == "bear":
             mult = 0.5  # reduce exposure in bear w/o pattern confirmation
         elif regime == "bull":
-            mult = 0.8  # slightly reduce — bull underperforms in backtest
+            mult = 0.6  # bull underperforms — tighter sizing
 
     return mult
 
@@ -190,12 +194,16 @@ def simulate_pnl(df_test: pd.DataFrame, predictions: list[int], probabilities: l
         # Position size: base Kelly * pattern/regime multiplier
         base_size = min(0.12, max(0.03, (conf - 0.5) * 1.5))
         multiplier = _position_multiplier(row)
+        if multiplier == 0.0:
+            returns.append(0.0)
+            skipped_by_gate += 1
+            continue
         position_size = min(0.20, base_size * multiplier)  # hard cap at 20%
 
-        # Per-trade stop-loss: cap max loss at 2% of portfolio
+        # Per-trade stop-loss: cap max loss at 1.5% of portfolio
         weighted_return = pct_return * position_size
-        if weighted_return < -0.02:
-            weighted_return = -0.02  # stop-loss triggered
+        if weighted_return < -0.015:
+            weighted_return = -0.015  # tighter stop-loss
 
         returns.append(weighted_return)
         is_win = pct_return > 0
