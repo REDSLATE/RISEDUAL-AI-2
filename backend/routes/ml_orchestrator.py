@@ -1,191 +1,291 @@
-"""ML Autonomous Action Orchestrator — ties the signal model to all 3 tiers.
+"""ML status endpoints — Phase 3 observability.
 
-Called from the signal endpoint after a prediction. Checks each tier's gate
-and dispatches the appropriate action (alert, paper trade, or live trade).
-Also provides a status endpoint showing current gate readiness.
+Routes
+------
+GET /api/ml/gate-status
+    Returns tier unlock status, thresholds, and next milestone.
+
+GET /api/ml/stats
+    Returns data progress, pattern detection counts, label counts, and
+    the model's CalibrationStats if a trained model is available.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from risedual_core.ml.calibration_gate import gate_status
-from risedual_core.schemas.market import BacktestResult, CalibrationStats, SignalResult
 
-logger = logging.getLogger(__name__)
+from risedual_core.ml.calibration import (
+    GateResult,
+    Tier,
+    check_all_gates,
+    _T1_MIN_ACCURACY,
+    _T1_MIN_PREDICTIONS,
+    _T1_MAX_ECE,
+    _T2_MIN_ACCURACY,
+    _T2_MIN_SHARPE,
+    _T2_MAX_DRAWDOWN,
+    _T3_MIN_ACCURACY,
+    _T3_MIN_SHARPE,
+    _T3_MAX_DRAWDOWN,
+    _T3_MIN_LIVE_DAYS,
+)
+from risedual_core.ml.features import PATTERN_COLUMNS
+from risedual_core.ml.signal_model import SignalModel
+
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ml"])
-db = None
 
-BACKTEST_DIR = Path("/app/backend/backtest_results")
+db: AsyncIOMotorDatabase | None = None
+_MODELS_DIR: Path = Path(os.getenv("MODELS_DIR", "models"))
 
 
-def set_db(database):
+def set_db(database: AsyncIOMotorDatabase) -> None:
     global db
     db = database
 
 
-def _load_latest_backtest() -> BacktestResult | None:
-    """Load the most recent backtest result from disk."""
-    if not BACKTEST_DIR.exists():
-        return None
-    files = list(BACKTEST_DIR.glob("backtest_*.json"))
-    if not files:
-        return None
-    latest = max(files, key=lambda f: f.stat().st_mtime)
-    try:
-        with open(latest) as f:
-            data = json.load(f)
-        return BacktestResult(**data)
-    except Exception:
-        return None
+# ── Model loader ──────────────────────────────────────────────────────────────
 
-
-def _load_model_stats() -> CalibrationStats | None:
-    """Load calibration stats from the latest trained model."""
-    models_dir = Path(os.environ.get("MODELS_DIR", "/app/backend/models"))
-    candidates = list(models_dir.glob("signal_model_v*.joblib"))
+def _latest_model() -> SignalModel | None:
+    """Load the most recently modified signal model from disk."""
+    if not _MODELS_DIR.exists():
+        return None
+    candidates = sorted(
+        _MODELS_DIR.glob("signal_model_v*.joblib"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     if not candidates:
         return None
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
     try:
-        from risedual_core.ml.signal_model import SignalModel
-        model = SignalModel.load(str(latest))
-        return model.calibration_stats
-    except Exception:
+        return SignalModel.load(candidates[0])
+    except Exception as exc:
+        log.warning("[ml_api] Model load failed: %s", exc)
         return None
 
 
-async def _get_days_live(database: AsyncIOMotorDatabase) -> int:
-    """Count days since first ML alert was sent."""
-    first_alert = await database["ml_alerts"].find_one(
-        {}, sort=[("created_at", 1)], projection={"created_at": 1}
-    )
-    if not first_alert or "created_at" not in first_alert:
-        return 0
-    first_date = first_alert["created_at"]
-    if isinstance(first_date, str):
-        first_date = datetime.fromisoformat(first_date)
-    delta = datetime.now(timezone.utc) - first_date.replace(tzinfo=timezone.utc)
-    return max(0, delta.days)
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-
-@router.get("/gate-status", summary="Get ML tier gate readiness")
-async def get_gate_status():
-    """Returns current calibration gate status for all 3 tiers."""
-    stats = _load_model_stats()
-    backtest = _load_latest_backtest()
-    days_live = await _get_days_live(db) if db is not None else 0
-
-    return gate_status(stats, backtest, days_live)
-
-
-@router.get("/stats", summary="Get ML pipeline statistics")
-async def get_ml_stats():
-    """Returns data collection stats and model readiness."""
-    if db is None:
-        return {"error": "Database not available"}
-
-    total_snapshots = await db["features_snapshots"].count_documents({})
-    labeled = await db["features_snapshots"].count_documents({"outcome": {"$ne": None}})
-    unlabeled = await db["features_snapshots"].count_documents({"outcome": None})
-    errors = await db["features_snapshots"].count_documents({"outcome": "error"})
-
-    # Pattern stats
-    pattern_fields = [
-        "pattern_double_bottom", "pattern_bullish_engulfing", "pattern_bearish_engulfing",
-        "pattern_bull_flag", "pattern_rsi_divergence", "pattern_macd_crossover",
-        "pattern_volume_surge", "pattern_head_and_shoulders",
-    ]
-    pattern_counts = {}
-    for field in pattern_fields:
-        count = await db["features_snapshots"].count_documents({field: True})
-        pattern_counts[field] = count
-
-    # Tier activity
-    alerts_count = await db["ml_alerts"].count_documents({})
-    paper_trades = await db["ml_paper_trades"].count_documents({})
-    live_trades = await db["ml_live_trades"].count_documents({})
-
-    stats = _load_model_stats()
-    backtest = _load_latest_backtest()
-
+def _gate_thresholds() -> dict[str, Any]:
     return {
-        "snapshots": {"total": total_snapshots, "labeled": labeled, "unlabeled": unlabeled, "errors": errors},
-        "patterns": pattern_counts,
-        "model": {"trained": stats is not None, "stats": stats.model_dump() if stats else None},
-        "backtest": backtest.model_dump() if backtest else None,
-        "activity": {"alerts": alerts_count, "paper_trades": paper_trades, "live_trades": live_trades},
-        "milestones": {
-            "first_train": labeled >= 100,
-            "first_backtest": labeled >= 200,
-            "pattern_significance": labeled >= 300,
-            "tier1_eligible": labeled >= 500,
-            "tier3_eligible": labeled >= 1000,
+        "tier1": {
+            "min_accuracy": _T1_MIN_ACCURACY,
+            "min_predictions": _T1_MIN_PREDICTIONS,
+            "max_ece": _T1_MAX_ECE,
+        },
+        "tier2": {
+            "min_accuracy": _T2_MIN_ACCURACY,
+            "min_sharpe": _T2_MIN_SHARPE,
+            "max_drawdown": _T2_MAX_DRAWDOWN,
+        },
+        "tier3": {
+            "min_accuracy": _T3_MIN_ACCURACY,
+            "min_sharpe": _T3_MIN_SHARPE,
+            "max_drawdown": _T3_MAX_DRAWDOWN,
+            "min_live_days": _T3_MIN_LIVE_DAYS,
         },
     }
 
 
-async def run_autonomous_actions(
-    signal: SignalResult,
-    database: AsyncIOMotorDatabase,
-    user_id: str | None = None,
-) -> dict[str, Any]:
-    """Orchestrate all 3 tiers based on current gate status."""
-    results: dict[str, Any] = {"tier1": None, "tier2": None, "tier3": None}
+def _next_milestone(gate: GateResult, n_predictions: int) -> dict[str, Any]:
+    """Return the single next action the user should take."""
+    if not gate.tier1.unlocked:
+        remaining = max(0, _T1_MIN_PREDICTIONS - n_predictions)
+        return {
+            "milestone": "Unlock Tier 1 Alerts",
+            "description": (
+                f"Collect {remaining} more labeled snapshots, "
+                "then run train_signal_model.py"
+            ),
+            "predictions_needed": remaining,
+        }
+    if not gate.tier2.unlocked:
+        return {
+            "milestone": "Unlock Tier 2 Paper Trading",
+            "description": (
+                "Run scripts/backtest.py — Sharpe >= 1.0 and DD < 15% required"
+            ),
+            "predictions_needed": 0,
+        }
+    if not gate.tier3.unlocked:
+        return {
+            "milestone": "Unlock Tier 3 Live Execution",
+            "description": (
+                "Achieve 30 days of paper trading with Sharpe >= 1.2, "
+                "DD < 12%, and set RISEDUAL_LIVE_EXECUTION=1"
+            ),
+            "predictions_needed": 0,
+        }
+    return {
+        "milestone": "All tiers unlocked",
+        "description": "Live execution is active",
+        "predictions_needed": 0,
+    }
 
-    stats = _load_model_stats()
-    if not stats:
-        return results
 
-    backtest = _load_latest_backtest()
-    days_live = await _get_days_live(database)
+# ── Routes ────────────────────────────────────────────────────────────────────
 
-    # Tier 1: Alerts
+
+@router.get("/gate-status")
+async def get_gate_status() -> dict[str, Any]:
+    """Return current tier unlock status and thresholds.
+
+    No database queries — reads from the trained model artefact only.
+    Returns locked status with zero-filled stats if no model exists yet.
+    """
+    model = _latest_model()
+    stats = model.calibration_stats if model else None
+
+    accuracy = stats.accuracy if stats else 0.0
+    n_predictions = stats.n_predictions if stats else 0
+    ece = stats.ece if stats else 1.0
+    live_days = int(os.getenv("RISEDUAL_LIVE_DAYS", "0"))
+    user_opted_in = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
+
+    meta: dict[str, Any] = getattr(model, "_metadata", {}) or {} if model else {}
+    sharpe = float(meta.get("sharpe", 0.0))
+    max_drawdown = float(meta.get("max_drawdown", 1.0))
+
+    gate = check_all_gates(
+        accuracy=accuracy,
+        n_predictions=n_predictions,
+        ece=ece,
+        sharpe=sharpe,
+        max_drawdown=max_drawdown,
+        live_days=live_days,
+        user_opted_in=user_opted_in,
+    )
+
+    return {
+        "highest_tier": gate.highest_unlocked.value,
+        "tiers": {
+            "tier1_alerts": {
+                "unlocked": gate.tier1.unlocked,
+                "reason": gate.tier1.reason,
+            },
+            "tier2_paper": {
+                "unlocked": gate.tier2.unlocked,
+                "reason": gate.tier2.reason,
+            },
+            "tier3_live": {
+                "unlocked": gate.tier3.unlocked,
+                "reason": gate.tier3.reason,
+            },
+        },
+        "current_stats": {
+            "accuracy": round(accuracy, 4),
+            "n_predictions": n_predictions,
+            "ece": round(ece, 4),
+            "sharpe": round(sharpe, 4),
+            "max_drawdown": round(max_drawdown, 4),
+            "live_days": live_days,
+        },
+        "thresholds": _gate_thresholds(),
+        "next_milestone": _next_milestone(gate, n_predictions),
+        "model_available": model is not None,
+    }
+
+
+@router.get("/stats")
+async def get_ml_stats() -> dict[str, Any]:
+    """Return data progress, pattern counts, and calibration stats."""
+    if db is None:
+        return {"error": "Database not available"}
+
+    snapshots_coll = db["features_snapshots"]
+
+    # ── Label counts ─────────────────────────────────────────────────────────
+    total_snapshots: int = await snapshots_coll.count_documents({})
+    labeled: int = await snapshots_coll.count_documents(
+        {"outcome": {"$nin": [None, "error", "pending"]}}
+    )
+    pending: int = await snapshots_coll.count_documents({"outcome": None})
+    schema_v2: int = await snapshots_coll.count_documents({"schema_version": 2})
+
+    # ── Outcome distribution ─────────────────────────────────────────────────
+    outcome_pipeline = [
+        {"$match": {"outcome": {"$nin": [None, "error", "pending"]}}},
+        {"$group": {"_id": "$outcome", "count": {"$sum": 1}}},
+    ]
+    outcome_dist: dict[str, int] = {}
+    async for doc in snapshots_coll.aggregate(outcome_pipeline):
+        outcome_dist[doc["_id"]] = doc["count"]
+
+    # ── Pattern detection counts (Phase 2 snapshots only) ────────────────────
+    pattern_counts: dict[str, int] = {}
+    for col in PATTERN_COLUMNS:
+        count = await snapshots_coll.count_documents(
+            {"schema_version": 2, col: True}
+        )
+        pattern_counts[col.replace("pattern_", "")] = count
+
+    # ── Paper trades ─────────────────────────────────────────────────────────
+    paper_open: int = 0
+    paper_total: int = 0
+    paper_pnl: float = 0.0
     try:
-        from services.ml_alert_service import maybe_send_alert
-        alert = await maybe_send_alert(signal, stats, database, user_id)
-        if alert:
-            results["tier1"] = {"action": "alert_sent", "ticker": signal.ticker}
-    except Exception as exc:
-        logger.warning("Tier 1 alert failed: %s", exc)
+        paper_open = await db["paper_trades"].count_documents({"status": "open"})
+        paper_total = await db["paper_trades"].count_documents({})
+        pnl_pipeline = [
+            {"$match": {"pnl_usd": {"$ne": None}}},
+            {"$group": {"_id": None, "total_pnl": {"$sum": "$pnl_usd"}}},
+        ]
+        async for doc in db["paper_trades"].aggregate(pnl_pipeline):
+            paper_pnl = round(float(doc.get("total_pnl", 0.0)), 2)
+    except Exception:
+        pass
 
-    # Tier 2: Paper Trading
-    if backtest:
-        try:
-            from services.ml_paper_trader import maybe_paper_trade
-            trade = await maybe_paper_trade(signal, stats, backtest, database)
-            if trade:
-                results["tier2"] = {"action": "paper_trade", "ticker": signal.ticker,
-                                     "shares": trade["shares"], "dollar_amount": trade["dollar_amount"]}
-        except Exception as exc:
-            logger.warning("Tier 2 paper trade failed: %s", exc)
+    # ── Live orders ───────────────────────────────────────────────────────────
+    live_orders: int = 0
+    try:
+        live_orders = await db["live_orders"].count_documents({})
+    except Exception:
+        pass
 
-    # Tier 3: Live Execution
-    if backtest:
-        try:
-            # Check user opt-in from database
-            user_opt_in = False
-            if user_id:
-                user_doc = await database["users"].find_one(
-                    {"_id": __import__("bson").ObjectId(user_id)},
-                    {"ml_live_trading_opt_in": 1},
-                )
-                user_opt_in = bool(user_doc and user_doc.get("ml_live_trading_opt_in"))
+    # ── CalibrationStats from model ───────────────────────────────────────────
+    model = _latest_model()
+    stats = model.calibration_stats if model else None
+    calibration: dict[str, Any] = {}
+    if stats:
+        calibration = {
+            "accuracy": round(stats.accuracy, 4),
+            "brier_score": round(stats.brier_score, 4),
+            "ece": round(stats.ece, 4),
+            "n_predictions": stats.n_predictions,
+            "model_version": stats.model_version,
+            "evaluated_at": stats.evaluated_at.isoformat() if stats.evaluated_at else None,
+        }
 
-            from services.ml_alpaca_broker import maybe_live_trade
-            live = await maybe_live_trade(
-                signal, stats, backtest, days_live, database, user_opt_in,
-            )
-            if live:
-                results["tier3"] = {"action": "live_order", "ticker": signal.ticker,
-                                     "side": live["side"], "shares": live["shares"]}
-        except Exception as exc:
-            logger.warning("Tier 3 live trade failed: %s", exc)
+    # ── Phase 3 progress milestones ───────────────────────────────────────────
+    milestones = {
+        "first_train_ready": labeled >= 100,
+        "first_backtest_ready": labeled >= 200,
+        "tier1_prediction_count": labeled >= _T1_MIN_PREDICTIONS,
+    }
 
-    return results
+    return {
+        "data_progress": {
+            "total_snapshots": total_snapshots,
+            "labeled": labeled,
+            "pending_labels": pending,
+            "schema_v2_snapshots": schema_v2,
+            "outcome_distribution": outcome_dist,
+        },
+        "pattern_detection_counts": pattern_counts,
+        "paper_trading": {
+            "open_trades": paper_open,
+            "total_trades": paper_total,
+            "total_pnl_usd": paper_pnl,
+        },
+        "live_execution": {
+            "total_orders": live_orders,
+        },
+        "calibration": calibration,
+        "milestones": milestones,
+    }

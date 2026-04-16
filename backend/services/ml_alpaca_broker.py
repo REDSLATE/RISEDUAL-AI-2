@@ -1,11 +1,34 @@
-"""Alpaca Broker (Tier 3) — thin async wrapper for live order execution.
+"""Tier 3 autonomous action: live execution via Alpaca REST API.
 
-Activated when CalibrationGate.is_live_ready() returns True AND user has
-opted in via their account settings.
+This module is intentionally conservative.  Every decision path either exits
+early or logs at WARNING level before submitting an order.  A hard 2% position
+cap is enforced regardless of Kelly output.
 
-Position sizing: half-Kelly, hard cap at 2% of portfolio value.
-Requires ALPACA_API_KEY and ALPACA_SECRET_KEY in environment.
+Architecture
+------------
+- Alpaca REST v2 endpoint: ``https://paper-api.alpaca.markets`` (paper) or
+  ``https://api.alpaca.markets`` (live), controlled by ``ALPACA_BASE_URL``.
+- API credentials: ``ALPACA_API_KEY`` + ``ALPACA_SECRET_KEY`` env vars.
+  Credentials are NEVER logged.
+- Called by :mod:`app.services.ml_orchestrator` after Tier 2 paper trade.
+
+Gate requirements (Tier 3)
+---------------------------
+- All Tier 2 gates cleared.
+- accuracy   >= 62%
+- Sharpe     >= 1.2  (30-day live paper period)
+- Max DD     <  12%
+- live_days  >= 30
+- user_opted_in == True (explicit env var ``RISEDUAL_LIVE_EXECUTION=1``)
+
+Safety controls
+---------------
+- Hard position cap: 2% of portfolio equity (NOT Kelly-derived).
+- Market orders only — no limit/stop logic in this version.
+- Duplicate prevention: checks for an existing open position before ordering.
+- All order errors are caught and logged; they NEVER propagate to HTTP responses.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,162 +37,265 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from risedual_core.ml.calibration_gate import is_live_ready, kelly_fraction
-from risedual_core.schemas.market import BacktestResult, CalibrationStats, SignalResult
 
-logger = logging.getLogger(__name__)
-LIVE_TRADES_COLLECTION = "ml_live_trades"
-MIN_SIGNAL_CONFIDENCE = 0.65
-MAX_POSITION_PCT = 0.02  # Hard cap: 2% of portfolio
+from risedual_core.schemas.market import FeaturesSnapshot, SignalResult
 
-ALPACA_BASE_URL = "https://paper-api.alpaca.markets"  # Switch to live URL for production
-ALPACA_DATA_URL = "https://data.alpaca.markets"
+log = logging.getLogger(__name__)
 
+# ── Configuration ─────────────────────────────────────────────────────────────
 
-class AlpacaBroker:
-    """Async wrapper for Alpaca REST API."""
+_ALPACA_API_KEY: str | None = os.getenv("ALPACA_API_KEY")
+_ALPACA_SECRET_KEY: str | None = os.getenv("ALPACA_SECRET_KEY")
+_ALPACA_BASE_URL: str = os.getenv(
+    "ALPACA_BASE_URL", "https://paper-api.alpaca.markets"
+)
 
-    def __init__(self):
-        self.api_key = os.environ.get("ALPACA_API_KEY", "")
-        self.secret_key = os.environ.get("ALPACA_SECRET_KEY", "")
+# Hard position size cap as fraction of portfolio equity
+_HARD_CAP_FRACTION: float = 0.02   # 2%
 
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.api_key and self.secret_key)
+# Minimum confidence for live execution
+_MIN_LIVE_CONFIDENCE: float = 0.70
 
-    def _headers(self) -> dict:
-        return {
-            "APCA-API-KEY-ID": self.api_key,
-            "APCA-API-SECRET-KEY": self.secret_key,
-            "Content-Type": "application/json",
-        }
+# User must explicitly set RISEDUAL_LIVE_EXECUTION=1
+_LIVE_OPT_IN: bool = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
-    async def get_account(self) -> dict:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(f"{ALPACA_BASE_URL}/v2/account", headers=self._headers())
-            resp.raise_for_status()
-            return resp.json()
-
-    async def get_portfolio_value(self) -> float:
-        account = await self.get_account()
-        return float(account.get("portfolio_value", 0))
-
-    async def submit_order(
-        self, symbol: str, qty: int, side: str, order_type: str = "market",
-        time_in_force: str = "day",
-    ) -> dict:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{ALPACA_BASE_URL}/v2/orders",
-                headers=self._headers(),
-                json={
-                    "symbol": symbol,
-                    "qty": str(qty),
-                    "side": side,
-                    "type": order_type,
-                    "time_in_force": time_in_force,
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()
-
-    async def get_position(self, symbol: str) -> dict | None:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{ALPACA_BASE_URL}/v2/positions/{symbol}",
-                    headers=self._headers(),
-                )
-                if resp.status_code == 404:
-                    return None
-                resp.raise_for_status()
-                return resp.json()
-        except Exception:
-            return None
+# Regimes eligible for live execution (same as paper trading)
+_TRADEABLE_REGIMES: frozenset[str] = frozenset({"trending_up", "trending_down"})
 
 
-_broker = AlpacaBroker()
+# ── Alpaca REST helpers ───────────────────────────────────────────────────────
 
 
-async def maybe_live_trade(
-    signal: SignalResult,
-    stats: CalibrationStats,
-    backtest: BacktestResult,
-    days_live: int,
-    db: AsyncIOMotorDatabase,
-    user_opt_in: bool = False,
-) -> dict[str, Any] | None:
-    """Check Tier 3 gate and submit a live order if all conditions are met."""
-    if not user_opt_in:
-        return None
-
-    if not _broker.is_configured:
-        logger.warning("Alpaca broker not configured (missing API keys)")
-        return None
-
-    if not is_live_ready(stats, backtest, days_live):
-        return None
-
-    if signal.confidence < MIN_SIGNAL_CONFIDENCE:
-        return None
-
-    try:
-        portfolio_value = await _broker.get_portfolio_value()
-    except Exception as exc:
-        logger.error("Failed to get Alpaca portfolio value: %s", exc)
-        return None
-
-    # Position sizing: half-Kelly, hard cap at 2%
-    kelly = kelly_fraction(signal.confidence)
-    dollar_amount = portfolio_value * kelly
-    max_dollar = portfolio_value * MAX_POSITION_PCT
-    dollar_amount = min(dollar_amount, max_dollar)
-
-    assert dollar_amount <= portfolio_value * MAX_POSITION_PCT, "Position size exceeds 2% cap"
-
-    if signal.price is None or signal.price <= 0 or dollar_amount < signal.price:
-        return None
-
-    shares = int(dollar_amount / signal.price)
-    if shares == 0:
-        return None
-
-    side = "buy" if signal.direction.value == "up" else "sell"
-
-    try:
-        order = await _broker.submit_order(signal.ticker, shares, side)
-        logger.info(
-            "LIVE ORDER: %s %d %s @ ~$%.2f (Kelly=%.2f, $%.0f, portfolio=$%.0f)",
-            side.upper(), shares, signal.ticker, signal.price,
-            kelly, dollar_amount, portfolio_value,
-        )
-    except Exception as exc:
-        logger.error("Alpaca order failed for %s: %s", signal.ticker, exc)
-        return None
-
-    trade_doc = {
-        "ticker": signal.ticker,
-        "direction": signal.direction.value,
-        "side": side,
-        "shares": shares,
-        "confidence": signal.confidence,
-        "kelly_fraction": kelly,
-        "dollar_amount": round(dollar_amount, 2),
-        "entry_price": signal.price,
-        "alpaca_order_id": order.get("id"),
-        "alpaca_status": order.get("status"),
-        "model_version": signal.model_version,
-        "regime": signal.regime,
-        "patterns": signal.patterns_detected,
-        "status": "submitted",
-        "submitted_at": datetime.now(timezone.utc),
-        "tier": 3,
+def _alpaca_headers() -> dict[str, str]:
+    """Build Alpaca auth headers.  Returns empty dict if keys are absent."""
+    if not _ALPACA_API_KEY or not _ALPACA_SECRET_KEY:
+        return {}
+    return {
+        "APCA-API-KEY-ID": _ALPACA_API_KEY,
+        "APCA-API-SECRET-KEY": _ALPACA_SECRET_KEY,
+        "Content-Type": "application/json",
     }
 
-    try:
-        await db[LIVE_TRADES_COLLECTION].insert_one(trade_doc)
-    except Exception:
-        logger.exception("Failed to persist live trade record")
 
-    return trade_doc
+async def _get_account(client: httpx.AsyncClient) -> dict[str, Any] | None:
+    """Fetch Alpaca account object.  Returns ``None`` on error."""
+    try:
+        resp = await client.get(
+            f"{_ALPACA_BASE_URL}/v2/account",
+            headers=_alpaca_headers(),
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        log.warning("[ml_alpaca] /v2/account returned %d", resp.status_code)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[ml_alpaca] Account fetch failed: %s", exc)
+    return None
+
+
+async def _get_open_position(
+    client: httpx.AsyncClient, ticker: str
+) -> dict[str, Any] | None:
+    """Return existing open position for ``ticker``, or ``None``."""
+    try:
+        resp = await client.get(
+            f"{_ALPACA_BASE_URL}/v2/positions/{ticker}",
+            headers=_alpaca_headers(),
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code == 404:
+            return None   # no position — expected
+        log.warning("[ml_alpaca] /v2/positions/%s returned %d", ticker, resp.status_code)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[ml_alpaca] Position check failed for %s: %s", ticker, exc)
+    return None
+
+
+async def _submit_market_order(
+    client: httpx.AsyncClient,
+    ticker: str,
+    side: str,          # "buy" or "sell"
+    notional_usd: float,
+) -> str | None:
+    """Submit a market order by notional value.
+
+    Returns the Alpaca order ID on success, ``None`` on failure.
+    """
+    payload = {
+        "symbol": ticker,
+        "notional": str(round(notional_usd, 2)),
+        "side": side,
+        "type": "market",
+        "time_in_force": "day",
+    }
+    try:
+        resp = await client.post(
+            f"{_ALPACA_BASE_URL}/v2/orders",
+            headers=_alpaca_headers(),
+            json=payload,
+            timeout=15.0,
+        )
+        if resp.status_code in (200, 201):
+            order = resp.json()
+            order_id: str = order.get("id", "unknown")
+            log.info(
+                "[ml_alpaca] Order submitted — ticker=%s side=%s notional=$%.2f order_id=%s",
+                ticker,
+                side,
+                notional_usd,
+                order_id,
+            )
+            return order_id
+        log.error(
+            "[ml_alpaca] Order rejected — status=%d body=%s",
+            resp.status_code,
+            resp.text[:200],
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.error("[ml_alpaca] Order submission raised: %s", exc)
+    return None
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+
+async def maybe_execute_live(
+    ticker: str,
+    signal: SignalResult,
+    snapshot: FeaturesSnapshot,
+    regime: str,
+    db: Any,
+    http_client: httpx.AsyncClient | None = None,
+) -> str | None:
+    """Submit a live market order if all Tier 3 conditions are met.
+
+    Gate-level conditions are verified by the orchestrator before this
+    function is called.  This function checks:
+
+    1. ``RISEDUAL_LIVE_EXECUTION=1`` env var is set (user opt-in).
+    2. Alpaca credentials present.
+    3. Confidence >= 70%.
+    4. No duplicate open position for this ticker.
+    5. Account equity available.
+
+    Parameters
+    ----------
+    ticker:
+        Trading symbol.
+    signal:
+        :class:`SignalResult` from signal model.
+    snapshot:
+        Enriched :class:`FeaturesSnapshot`.
+    regime:
+        Current market regime label.
+    db:
+        Motor AsyncIOMotorDatabase (used to log the order record).
+    http_client:
+        Optional shared httpx client.
+
+    Returns
+    -------
+    str | None
+        Alpaca order ID on success, ``None`` otherwise.
+    """
+    # ── Opt-in guard ─────────────────────────────────────────────────────────
+    if not _LIVE_OPT_IN:
+        log.debug(
+            "[ml_alpaca] RISEDUAL_LIVE_EXECUTION not set — live execution disabled."
+        )
+        return None
+
+    # ── Credential guard ─────────────────────────────────────────────────────
+    if not _ALPACA_API_KEY or not _ALPACA_SECRET_KEY:
+        log.warning(
+            "[ml_alpaca] ALPACA_API_KEY / ALPACA_SECRET_KEY not configured."
+        )
+        return None
+
+    # ── Per-signal gate ──────────────────────────────────────────────────────
+    if signal.confidence < _MIN_LIVE_CONFIDENCE:
+        log.debug(
+            "[ml_alpaca] Confidence %.2f < %.2f — skipping live execution for %s.",
+            signal.confidence,
+            _MIN_LIVE_CONFIDENCE,
+            ticker,
+        )
+        return None
+
+    if regime not in _TRADEABLE_REGIMES:
+        log.debug(
+            "[ml_alpaca] Regime %r not tradeable — skipping live execution for %s.",
+            regime,
+            ticker,
+        )
+        return None
+
+    # ── Execute ──────────────────────────────────────────────────────────────
+    _own_client = http_client is None
+    client = http_client or httpx.AsyncClient()
+
+    try:
+        # Duplicate position check
+        existing = await _get_open_position(client, ticker)
+        if existing:
+            log.info(
+                "[ml_alpaca] Open position already exists for %s — skipping.",
+                ticker,
+            )
+            return None
+
+        # Fetch account equity for position sizing
+        account = await _get_account(client)
+        if not account:
+            log.warning(
+                "[ml_alpaca] Cannot fetch account equity — aborting for %s.", ticker
+            )
+            return None
+
+        equity = float(account.get("equity", 0))
+        if equity <= 0:
+            log.warning("[ml_alpaca] Account equity $0 — aborting order for %s.", ticker)
+            return None
+
+        notional = round(equity * _HARD_CAP_FRACTION, 2)
+        direction_val = str(signal.direction.value)
+        side = "buy" if direction_val == "up" else "sell"
+
+        order_id = await _submit_market_order(
+            client=client,
+            ticker=ticker,
+            side=side,
+            notional_usd=notional,
+        )
+
+        if order_id:
+            # Persist execution record to MongoDB
+            try:
+                await db["live_orders"].insert_one(
+                    {
+                        "order_id": order_id,
+                        "ticker": ticker,
+                        "direction": direction_val,
+                        "side": side,
+                        "notional_usd": notional,
+                        "equity_at_order": equity,
+                        "confidence": signal.confidence,
+                        "prediction_id": signal.prediction_id,
+                        "regime": regime,
+                        "submitted_at": datetime.now(timezone.utc),
+                        "alpaca_base_url": _ALPACA_BASE_URL,
+                        "schema_version": 1,
+                    }
+                )
+            except Exception as db_exc:  # noqa: BLE001
+                log.warning(
+                    "[ml_alpaca] Order submitted but DB write failed: %s", db_exc
+                )
+
+        return order_id
+
+    finally:
+        if _own_client:
+            await client.aclose()

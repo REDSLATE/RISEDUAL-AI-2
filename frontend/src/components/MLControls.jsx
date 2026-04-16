@@ -54,11 +54,32 @@ export default function MLControls() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const snapshots = stats?.snapshots || {};
-  const model = stats?.model || {};
-  const activity = stats?.activity || {};
+  // Map v6 response shapes to UI variables
+  const dataProgress = stats?.data_progress || {};
+  const snapshots = {
+    total: dataProgress.total_snapshots || 0,
+    labeled: dataProgress.labeled || 0,
+    unlabeled: dataProgress.pending_labels || 0,
+    errors: 0,
+  };
+  const calibration = stats?.calibration || {};
+  const model = {
+    trained: Object.keys(calibration).length > 0,
+    stats: Object.keys(calibration).length > 0 ? calibration : null,
+  };
+  const activity = {
+    alerts: 0,
+    paper_trades: stats?.paper_trading?.total_trades || 0,
+    live_trades: stats?.live_execution?.total_orders || 0,
+  };
   const milestones = stats?.milestones || {};
-  const patterns = stats?.patterns || {};
+  const patterns = stats?.pattern_detection_counts || {};
+
+  // Gate tiers from nested v6 response
+  const gateTiers = gate?.tiers || {};
+  const gateBlockers = Object.values(gateTiers)
+    .filter(t => !t?.unlocked && t?.reason)
+    .map(t => t.reason);
 
   const totalPatternDetections = Object.values(patterns).reduce((a, b) => a + b, 0);
 
@@ -84,7 +105,7 @@ export default function MLControls() {
       {/* Tier Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {TIER_CONFIG.map(tier => {
-          const unlocked = gate?.[tier.key] || false;
+          const unlocked = gateTiers?.[tier.key]?.unlocked || false;
           const Icon = tier.icon;
           return (
             <Card key={tier.key} className={`p-4 border ${unlocked ? `border-${tier.color}-500/30 bg-${tier.color}-500/5` : 'border-slate-700/40 bg-slate-800/30'}`}
@@ -112,14 +133,25 @@ export default function MLControls() {
       </div>
 
       {/* Blockers */}
-      {gate?.blockers?.length > 0 && (
+      {gateBlockers.length > 0 && (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
           <div>
-            <p className="text-amber-300 text-xs font-semibold mb-1">Tier 1 blockers:</p>
-            {gate.blockers.map((b, i) => (
+            <p className="text-amber-300 text-xs font-semibold mb-1">Gate blockers:</p>
+            {gateBlockers.map((b, i) => (
               <p key={i} className="text-amber-400/80 text-[10px]">{b}</p>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Next Milestone */}
+      {gate?.next_milestone && (
+        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 flex items-start gap-2">
+          <Activity className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-violet-300 text-xs font-semibold">{gate.next_milestone.milestone}</p>
+            <p className="text-violet-400/70 text-[10px]">{gate.next_milestone.description}</p>
           </div>
         </div>
       )}

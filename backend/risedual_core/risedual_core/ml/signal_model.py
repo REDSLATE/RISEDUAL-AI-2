@@ -27,6 +27,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from datetime import datetime, timezone
+
 from pydantic import BaseModel, Field
 
 from risedual_core.ml.features import (
@@ -43,6 +45,25 @@ if TYPE_CHECKING:
     import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+# ── Calibration stats ─────────────────────────────────────────────────────────
+
+
+class CalibrationStats(BaseModel):
+    """Evaluation metrics produced by :meth:`SignalModel.evaluate`.
+
+    Stored alongside the trained model in the joblib artefact and exposed
+    via :attr:`SignalModel.calibration_stats` so the API and CLI can surface
+    these numbers without re-computing them.
+    """
+
+    accuracy: float = Field(ge=0.0, le=1.0, description="Fraction of correct directional calls.")
+    brier_score: float = Field(ge=0.0, le=1.0, description="Brier score (lower is better).")
+    ece: float = Field(ge=0.0, le=1.0, description="Expected Calibration Error (lower is better).")
+    n_predictions: int = Field(ge=0, description="Total labeled predictions used in evaluation.")
+    model_version: str = Field(description="Model version string from SignalModelConfig.")
+    evaluated_at: datetime = Field(description="UTC datetime when evaluation was performed.")
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -100,6 +121,7 @@ class SignalModel:
         self._raw_model: object | None = None      # underlying XGBClassifier
         self._feature_medians: dict[str, float] = {}
         self._feature_importances: dict[str, float] = {}
+        self._calibration_stats: CalibrationStats | None = None
 
     # ── Training ──────────────────────────────────────────────────────────────
 
@@ -359,6 +381,9 @@ class SignalModel:
             "config": self._config.model_dump(),
             "feature_medians": self._feature_medians,
             "feature_importances": self._feature_importances,
+            "calibration_stats": (
+                self._calibration_stats.model_dump() if self._calibration_stats else None
+            ),
         }
         joblib.dump(payload, Path(path), compress=3)
         logger.info("SignalModel saved to %s.", path)
@@ -403,6 +428,8 @@ class SignalModel:
         instance._model = payload["model"]
         instance._feature_medians = payload.get("feature_medians", {})
         instance._feature_importances = payload.get("feature_importances", {})
+        raw_stats = payload.get("calibration_stats")
+        instance._calibration_stats = CalibrationStats(**raw_stats) if raw_stats else None
 
         logger.info("SignalModel loaded from %s (version=%s).", path, config.model_version)
         return instance
@@ -418,3 +445,62 @@ class SignalModel:
     def config(self) -> SignalModelConfig:
         """Return the model configuration."""
         return self._config
+
+    @property
+    def calibration_stats(self) -> CalibrationStats | None:
+        """Return post-training calibration stats, or ``None`` if not yet computed.
+
+        Populated automatically by :meth:`evaluate` after a training run.
+        Pass the held-out evaluation set to :meth:`evaluate` to compute
+        Brier score and ECE against ground-truth outcomes.
+        """
+        return self._calibration_stats
+
+    def evaluate(
+        self,
+        X_eval: "pd.DataFrame",
+        y_eval: "pd.Series",
+        n_predictions: int = 0,
+    ) -> CalibrationStats:
+        """Compute and store calibration stats against a held-out evaluation set.
+
+        Should be called after :meth:`fit` with a held-out split.
+        Results are stored in :attr:`calibration_stats` and also persisted
+        by :meth:`save` so they survive serialization.
+
+        Parameters
+        ----------
+        X_eval:
+            Feature DataFrame (same schema as training data).
+        y_eval:
+            Ground-truth binary labels (1 = correct prediction).
+        n_predictions:
+            Total number of labeled predictions in the dataset (for reporting).
+
+        Returns
+        -------
+        CalibrationStats
+            The computed statistics.
+        """
+        from risedual_core.ml.calibration import brier_score, expected_calibration_error  # noqa: PLC0415
+
+        probas = self.predict_proba(X_eval)
+        preds = (probas > 0.5).astype(int)
+        accuracy = float((preds == y_eval.values).mean())
+        brier = brier_score(y_eval.values.tolist(), probas.tolist())
+        ece = expected_calibration_error(y_eval.values.tolist(), probas.tolist())
+
+        stats = CalibrationStats(
+            accuracy=accuracy,
+            brier_score=brier,
+            ece=ece,
+            n_predictions=n_predictions or len(y_eval),
+            model_version=self._config.model_version,
+            evaluated_at=datetime.now(timezone.utc),
+        )
+        self._calibration_stats = stats
+        logger.info(
+            "CalibrationStats: accuracy=%.3f brier=%.4f ece=%.4f n=%d",
+            accuracy, brier, ece, stats.n_predictions,
+        )
+        return stats

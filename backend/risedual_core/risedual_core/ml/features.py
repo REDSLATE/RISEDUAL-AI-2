@@ -20,6 +20,22 @@ if TYPE_CHECKING:
 
 # ── Column definitions ────────────────────────────────────────────────────────
 
+PATTERN_COLUMNS: list[str] = [
+    "pattern_double_bottom",
+    "pattern_bullish_engulfing",
+    "pattern_bearish_engulfing",
+    "pattern_bull_flag",
+    "pattern_rsi_divergence",
+    "pattern_macd_crossover",
+    "pattern_volume_surge",
+    "pattern_head_and_shoulders",
+]
+"""Phase 2 pattern boolean columns appended to :data:`FEATURE_COLUMNS`.
+
+All default to ``None`` on :class:`~risedual_core.schemas.market.FeaturesSnapshot`
+and are imputed to ``False`` (0) before XGBoost sees them.
+"""
+
 FEATURE_COLUMNS: list[str] = [
     "rsi_14",
     "macd",
@@ -30,11 +46,15 @@ FEATURE_COLUMNS: list[str] = [
     "sentiment_score",
     "insider_activity",
     "sector_momentum",
+    *PATTERN_COLUMNS,
 ]
-"""Ordered list of numeric feature columns consumed by the ML models.
+"""Ordered list of feature columns consumed by the ML models.
 
+Numeric indicators come first (Phase 1), pattern booleans follow (Phase 2).
 The order is significant — any array constructed from a snapshot must follow
-this ordering to remain compatible with saved model artefacts.
+this ordering to remain compatible with saved model artefacts.  Snapshots
+logged before Phase 2 deployment will have ``None`` for pattern columns,
+which :func:`impute_features` fills with ``False`` (0.0) automatically.
 """
 
 REGIME_COLUMN: str = "regime_label"
@@ -174,18 +194,29 @@ def impute_features(
 
     df = df.copy()
 
-    feature_cols_present = [c for c in FEATURE_COLUMNS if c in df.columns]
+    # ── Numeric feature columns — fill with median (or 0.0 if all null) ─────────
+    numeric_cols_present = [
+        c for c in FEATURE_COLUMNS
+        if c in df.columns and c not in PATTERN_COLUMNS
+    ]
 
     if medians is None:
         # Fit medians from the current DataFrame (training-time usage)
         medians = {
             col: float(df[col].median())
-            for col in feature_cols_present
+            for col in numeric_cols_present
             if not df[col].isna().all()
         }
 
-    for col in feature_cols_present:
+    for col in numeric_cols_present:
         fill_value = medians.get(col, 0.0)
         df[col] = df[col].fillna(fill_value)
+
+    # ── Pattern boolean columns — fill None / NaN with False (0.0) ────────────
+    # Pattern columns are boolean features; median imputation is meaningless.
+    # Pre-Phase-2 snapshots have None here; treat as "pattern not detected".
+    pattern_cols_present = [c for c in PATTERN_COLUMNS if c in df.columns]
+    for col in pattern_cols_present:
+        df[col] = df[col].fillna(False).astype(float)
 
     return df

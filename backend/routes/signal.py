@@ -101,8 +101,15 @@ async def get_ai_signal(ticker: str, request: Request):
     autonomous_results = {}
     if db is not None:
         try:
-            from routes.ml_orchestrator import run_autonomous_actions
-            autonomous_results = await run_autonomous_actions(result, db)
+            from services.ml_orchestrator import run_post_signal_pipeline
+            orch_result = await run_post_signal_pipeline(
+                ticker=ticker,
+                signal=result,
+                snapshot=snapshot,
+                regime=snapshot.regime_label or "unknown",
+                db=db,
+            )
+            autonomous_results = orch_result.as_dict()
         except Exception as exc:
             logger.warning("Autonomous actions failed for %s: %s", ticker, exc)
 
