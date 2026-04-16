@@ -187,6 +187,7 @@ sseclient-py==1.9.0
 starlette==0.37.2
 stripe==14.4.0
 sympy==1.14.0
+ta==0.11.0
 tenacity==9.1.4
 textual==8.2.3
 threadpoolctl==3.6.0
