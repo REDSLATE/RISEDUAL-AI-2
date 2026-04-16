@@ -39,7 +39,7 @@ RESULTS_DIR = Path("/app/backend/backtest_results")
 FEATURE_COLS = [
     "rsi_14", "macd", "macd_signal", "sma_20", "sma_50",
     "volume_ratio", "sentiment_score", "insider_activity", "sector_momentum",
-    "pattern_double_bottom", "pattern_bullish_engulfing", "pattern_bearish_engulfing",
+    "pattern_bullish_engulfing", "pattern_bearish_engulfing",
     "pattern_bull_flag", "pattern_rsi_divergence", "pattern_macd_crossover",
     "pattern_volume_surge", "pattern_head_and_shoulders",
 ]
