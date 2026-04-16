@@ -29,6 +29,18 @@ async def fred_indicators():
     return data
 
 
+@router.get("/snapshots")
+async def fred_snapshots(limit: int = Query(30, le=365)):
+    """Get stored daily FRED snapshots from MongoDB."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    cursor = db.fred_snapshots.find({}, {"_id": 0}).sort("date", -1).limit(limit)
+    snapshots = []
+    async for doc in cursor:
+        snapshots.append(doc)
+    return {"snapshots": snapshots, "count": len(snapshots)}
+
+
 @router.get("/series/{series_id}")
 async def fred_series(series_id: str, limit: int = Query(60, le=500)):
     """Get detailed observations for a specific FRED series."""

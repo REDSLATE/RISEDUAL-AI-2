@@ -254,8 +254,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_headlines_pipeline, 'interval', minutes=15, id='headlines_pipeline')
         scheduler.add_job(_run_prediction_prewarm, 'interval', minutes=10, id='prediction_prewarm')
         scheduler.add_job(_run_prediction_labeler, 'interval', hours=1, id='prediction_labeler')
+        scheduler.add_job(_run_fred_snapshot, 'cron', hour=7, minute=0, id='fred_daily_snapshot')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -306,6 +307,48 @@ async def _run_prediction_labeler():
         await label_pending_snapshots(db)
     except Exception as e:
         logger.debug(f"Prediction labeler error: {e}")
+
+
+async def _run_fred_snapshot():
+    """Background: Store daily FRED macro indicators snapshot to MongoDB (7:00 AM UTC)."""
+    try:
+        from services.fred_service import get_macro_indicators
+        from datetime import datetime, timezone
+
+        data = await get_macro_indicators()
+        if data.get("error") or not data.get("indicators"):
+            logger.warning(f"FRED snapshot skipped: {data.get('error', 'no indicators')}")
+            return
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # Check if we already snapshotted today
+        existing = await db.fred_snapshots.find_one({"date": today})
+        if existing:
+            logger.debug("FRED snapshot already exists for today")
+            return
+
+        snapshot = {
+            "date": today,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "indicators": {},
+        }
+
+        for ind in data["indicators"]:
+            snapshot["indicators"][ind["id"]] = {
+                "name": ind["name"],
+                "category": ind["category"],
+                "value": ind["raw_value"],
+                "display_value": ind["value"],
+                "unit": ind["unit"],
+                "date": ind["date"],
+                "change_pct": ind.get("change_pct"),
+            }
+
+        await db.fred_snapshots.insert_one(snapshot)
+        logger.info(f"FRED daily snapshot saved: {len(data['indicators'])} indicators for {today}")
+    except Exception as e:
+        logger.warning(f"FRED snapshot error: {e}")
 
 
 def _start_cache_warmup():
