@@ -1,30 +1,31 @@
 # RISEDUAL AI — Product Requirements Document
 
 ## Architecture
-- **Frontend**: React + TailwindCSS + Shadcn UI
-- **Backend**: FastAPI + MongoDB + APScheduler
+- **Frontend**: React + TailwindCSS + Shadcn UI (inline tabs, no modals for workspace)
+- **Backend**: FastAPI + MongoDB + APScheduler (278 routes)
 - **AI**: Emergent GPT-5.2 + ProviderRouter failover + Financial Tools Agent v2
 - **ML**: risedual_core (XGBoost + Platt calibration + 8 pattern detectors + CalibrationGate + 3 autonomous tiers)
-- **Payments**: Stripe Live Mode
-- **Market Data**: Alpha Vantage -> Finnhub -> TwelveData -> Marketstack
-- **Search**: War Room (Registry-based, 12 adapters)
 - **Domain**: risedual.ai
 
-## ML Pipeline (LIVE)
-- Phase 1: Data collection + labeling (17 features, schema v2)
-- Phase 2: 8 pattern detectors enriching every snapshot
-- Phase 3: CalibrationGate + Alert Service (Tier 1) + Paper Trader (Tier 2) + Alpaca Broker (Tier 3)
-- Status endpoints: GET /api/ml/gate-status, GET /api/ml/stats
+## ML Pipeline (LIVE — collecting data)
+- Phase 1: FeaturesSnapshot capture (17 features, schema v2)
+- Phase 2: 8 pattern detectors (2 detections so far: rsi_divergence, macd_crossover)
+- Phase 3: CalibrationGate + Alerts + Paper Trader + Alpaca Broker (all gated)
 
-## UI: Modals → Inline Tabs (DONE)
-- Created PanelShell component (modal/inline dual mode via onClose prop)
-- Converted 7 workspace components: Portfolio, Journal, Paper Trading, Bots, Smart Orders, Risk Calculator, Market Scanner
-- All render inline within WorkspaceHub tabs
-- Still work as modals when opened from other parts of the app (backwards compatible)
+## ML Controls Panel (NEW)
+- Tier gate cards (3 tiers with lock/unlock + requirements)
+- Data collection progress bars (100/500/1000 milestones)
+- Model status (trained/collecting with accuracy stats)
+- Pattern detection heatmap (8 detectors with counts)
+- Autonomous activity counters (alerts, paper trades, live trades)
+- Milestone tracker (5 checkpoints)
 
-## Deployment: LIVE at risedual.ai (278 routes)
+## Workspace: Modals → Inline Tabs (DONE)
+- PanelShell dual-mode component
+- 7 components converted: Portfolio, Journal, Paper, Bots, Orders, Risk, Scanner
+- ML Controls added as dedicated tab
+- 12 tabs total in WorkspaceHub
 
 ## Backlog
-- P0: Collect 100+ labeled snapshots → train first model
-- P1: Add more workspace tabs (Strategies, Memory, Signals) to inline view
-- P1: ML Controls panel with bot toggle switches
+- P0: Collect 100+ snapshots → first training
+- P1: Convert remaining modals (Strategies, Memory, Signals, Credits, Auth) to inline tabs
