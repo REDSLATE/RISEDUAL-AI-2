@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Brain, Shield, BarChart3, Activity, Power, Lock, Unlock, RefreshCw, Zap, TrendingUp, AlertTriangle, Bot } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -6,6 +6,9 @@ import { Card } from './ui/card';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+
+const MLPaperPnL = lazy(() => import('./MLPaperPnL'));
+const CalibrationChart = lazy(() => import('./CalibrationChart'));
 
 const API = getApiBase();
 
@@ -252,6 +255,16 @@ export default function MLControls() {
           </div>
         </div>
       </Card>
+
+      {/* ML Paper Trading P&L Dashboard */}
+      <Suspense fallback={<Card className="p-4 border border-slate-700/40 bg-slate-800/20 animate-pulse h-32" />}>
+        <MLPaperPnL />
+      </Suspense>
+
+      {/* Calibration Curve Visualization */}
+      <Suspense fallback={<Card className="p-4 border border-slate-700/40 bg-slate-800/20 animate-pulse h-32" />}>
+        <CalibrationChart />
+      </Suspense>
 
       {/* Milestones */}
       <Card className="p-4 border border-slate-700/40 bg-slate-800/20">
