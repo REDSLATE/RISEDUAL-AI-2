@@ -17,14 +17,10 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-
-# Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Pre-existing API key for admin user (Pro tier)
-EXISTING_API_KEY = "rsd_live_4df5f5298f15f229816796dbcdd66cc7886956bf46ce06f4"
+EXISTING_API_KEY = os.environ.get("TEST_API_KEY", "")
 
 
 class TestPublicAPIInfo:
@@ -124,7 +120,7 @@ class TestDeveloperKeyManagement:
         if response.status_code == 400:
             data = response.json()
             assert "Maximum 3 active API keys" in data.get("detail", ""), "Should indicate max keys reached"
-            print(f"✓ /api/developer/keys/generate returns 400 - max keys reached (expected)")
+            print("✓ /api/developer/keys/generate returns 400 - max keys reached (expected)")
             return None
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
@@ -236,7 +232,7 @@ class TestProTierEndpoints:
         data = response.json()
         # Could return actual signal or "no_model" status
         if data.get("status") == "no_model":
-            print(f"✓ /api/v1/ml-signal/AAPL returns no_model status (model not trained yet)")
+            print("✓ /api/v1/ml-signal/AAPL returns no_model status (model not trained yet)")
         else:
             assert "direction" in data or "ticker" in data, "Signal should have direction or ticker"
             print(f"✓ /api/v1/ml-signal/AAPL returns ML signal: {data}")
@@ -252,7 +248,7 @@ class TestProTierEndpoints:
         data = response.json()
         assert "gate_status" in data or "stats" in data, "Response should have gate_status or stats"
         
-        print(f"✓ /api/v1/ml-stats returns ML pipeline status")
+        print("✓ /api/v1/ml-stats returns ML pipeline status")
     
     def test_sectors_endpoint_valid_period(self):
         """GET /api/v1/sectors?period=1d - Pro tier required, validates period"""
@@ -266,7 +262,7 @@ class TestProTierEndpoints:
         assert "period" in data, "Response should contain 'period'"
         assert data["period"] == "1d", "Period should be '1d'"
         
-        print(f"✓ /api/v1/sectors?period=1d returns sector data")
+        print("✓ /api/v1/sectors?period=1d returns sector data")
     
     def test_sectors_endpoint_invalid_period(self):
         """GET /api/v1/sectors?period=invalid - should return 400"""

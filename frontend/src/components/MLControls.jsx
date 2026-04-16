@@ -142,7 +142,7 @@ export default function MLControls() {
           <div>
             <p className="text-amber-300 text-xs font-semibold mb-1">Gate blockers:</p>
             {gateBlockers.map((b, i) => (
-              <p key={i} className="text-amber-400/80 text-[10px]">{b}</p>
+              <p key={`blocker-${b.slice(0, 20)}`} className="text-amber-400/80 text-[10px]">{b}</p>
             ))}
           </div>
         </div>

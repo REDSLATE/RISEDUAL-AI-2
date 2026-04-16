@@ -367,10 +367,10 @@ async def market_quote(symbol: str) -> Optional[Dict]:
         return None
 
     try:
-        async def _exec(provider: ProviderEntry) -> Dict:
+        async def _dispatch_quote_task(provider: ProviderEntry) -> Dict:
             return await _dispatch_quote(provider, symbol)
 
-        result = await market_pool.execute(_exec)
+        result = await market_pool.execute(_dispatch_quote_task)
 
         # Cache successful result (5 min)
         if result and _db is not None:
@@ -406,10 +406,10 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[Lis
         return None
 
     try:
-        async def _exec(provider: ProviderEntry) -> List[Dict]:
+        async def _dispatch_daily_task(provider: ProviderEntry) -> List[Dict]:
             return await _dispatch_daily(provider, symbol, outputsize)
 
-        result = await market_pool.execute(_exec)
+        result = await market_pool.execute(_dispatch_daily_task)
 
         if result and _db is not None:
             await _db.price_cache.update_one(

@@ -144,7 +144,7 @@ const CalibrationChart = () => {
               <Bar dataKey="actual" name="actual" radius={[3, 3, 0, 0]}>
                 {chartData.map((entry, idx) => (
                   <Cell
-                    key={idx}
+                    key={`cell-${entry.bin || idx}`}
                     fill={entry.actual >= entry.predicted ? '#3DE8D9' : '#f97316'}
                   />
                 ))}

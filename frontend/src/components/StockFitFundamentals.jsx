@@ -73,7 +73,7 @@ const IncomeTable = ({ data }) => {
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+              <tr key={row.period || i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                 <td className="py-2 pr-4 text-slate-300 font-medium">{row.period?.slice(0, 4) || '—'}</td>
                 <td className="py-2 px-2 text-right text-white">{fmt(row.revenue)}</td>
                 <td className="py-2 px-2 text-right text-white">{fmt(row.grossProfit)}</td>
@@ -110,7 +110,7 @@ const BalanceTable = ({ data }) => {
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+              <tr key={row.period || i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                 <td className="py-2 pr-4 text-slate-300 font-medium">{row.period?.slice(0, 4) || '—'}</td>
                 <td className="py-2 px-2 text-right text-white">{fmt(row.assets)}</td>
                 <td className="py-2 px-2 text-right text-emerald-400">{fmt(row.cash)}</td>

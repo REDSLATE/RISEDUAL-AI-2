@@ -12,12 +12,9 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
-# Test credentials
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-PRO_API_KEY = "rsd_live_4df5f5298f15f229816796dbcdd66cc7886956bf46ce06f4"
+PRO_API_KEY = os.environ.get("TEST_API_KEY", "")
 
 
 class TestStockFitFundamentalsEndpoints:
