@@ -118,7 +118,6 @@ DB_NAME: str = os.getenv("DB_NAME", "risedual_db")
 COLLECTION: str = "features_snapshots"
 
 FINNHUB_API_KEY: str | None = os.getenv("FINNHUB_API_KEY")
-FINNHUB_API_KEY_2: str | None = os.getenv("FINNHUB_API_KEY_2")   # optional second key
 FINNHUB_BASE_URL: str = "https://finnhub.io/api/v1"
 
 _DEFAULT_CACHE_DIR: Path = (
@@ -605,10 +604,14 @@ async def main() -> None:
         )
         sys.exit(1)
 
-    # Build key rotator and size bucket accordingly
+    # Build key rotator — collect FINNHUB_API_KEY, FINNHUB_API_KEY_2, _3, ... _N
     keys = [FINNHUB_API_KEY]
-    if FINNHUB_API_KEY_2:
-        keys.append(FINNHUB_API_KEY_2)
+    for i in range(2, 20):
+        extra = os.getenv(f"FINNHUB_API_KEY_{i}")
+        if extra:
+            keys.append(extra)
+        else:
+            break
     rotator = _KeyRotator(*keys)
 
     # Rate: 55 req/min per key; bucket capacity scales with key count
