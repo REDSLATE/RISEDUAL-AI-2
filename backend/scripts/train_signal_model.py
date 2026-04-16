@@ -103,41 +103,35 @@ async def main() -> None:
         sys.exit(0)
 
     print("[train_signal_model] Training SignalModel (XGBoost + Platt calibration)...")
+
+    # Train/test split first, then train final model on full data
+    from sklearn.model_selection import train_test_split
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    print(f"  Train: {len(X_train)} | Test: {len(X_test)}")
+
+    # Train on full data for production model
     model = SignalModel()
     model.fit(X, y)
 
-    # Evaluate on 80/20 split
-    from sklearn.metrics import accuracy_score
-    from sklearn.model_selection import train_test_split
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    model_eval = SignalModel()
-    model_eval.fit(X_train, y_train)
-
-    X_test_filled = X_test.fillna(X_test.median())
-    raw_probs, predictions = [], []
-    for _, row in X_test_filled.iterrows():
-        snapshot = FeaturesSnapshot(
-            ticker="EVAL", timestamp=datetime.now(timezone.utc),
-            **{col: (float(row[col]) if pd.notna(row[col]) else None) for col in FEATURE_COLS},
-        )
-        result = model_eval.predict(snapshot)
-        raw_probs.append(result.raw_probability)
-        predictions.append(1 if result.direction.value == "up" else 0)
-
-    acc = accuracy_score(y_test.tolist(), predictions)
-    bs = brier_score(y_test.tolist(), raw_probs)
-    ece = expected_calibration_error(y_test.tolist(), raw_probs)
+    # Evaluate on held-out test set using batch predict_proba
+    print("[train_signal_model] Evaluating on test set...")
+    stats = model.evaluate(X_test, y_test, n_predictions=len(y))
 
     print(f"\n{'='*60}")
-    print(f"  Accuracy: {acc:.4f} | Brier: {bs:.4f} | ECE: {ece:.4f}")
+    print(f"  Accuracy : {stats.accuracy:.4f}")
+    print(f"  Brier    : {stats.brier_score:.4f}")
+    print(f"  ECE      : {stats.ece:.4f}")
+    print(f"  N preds  : {stats.n_predictions}")
     print(f"{'='*60}\n")
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     version = next_model_version(MODELS_DIR)
     model_path = MODELS_DIR / f"signal_model_v{version}.joblib"
     model.save(str(model_path))
-    print(f"[train_signal_model] Saved {model_path} (v{version}, {len(X)} samples)")
+    print(f"[train_signal_model] Saved {model_path} (v{version}, {len(X)} samples, acc={stats.accuracy:.4f})")
 
 
 if __name__ == "__main__":
