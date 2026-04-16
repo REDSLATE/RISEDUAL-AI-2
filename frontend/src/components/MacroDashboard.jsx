@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Globe, RefreshCw, Clock, Radio, BarChart3, Landmark } from 'lucide-react';
+import { Globe, RefreshCw, Clock, Radio, BarChart3, Landmark, Activity } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth } from '../contexts/AuthContext';
 import WorldEventsTab from './macro/WorldEventsTab';
 import ForeignMarketsTab from './macro/ForeignMarketsTab';
 import CongressTab from './macro/CongressTab';
+import FredEconomyTab from './macro/FredEconomyTab';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 import InfoTooltip from './InfoTooltip';
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'world', label: 'World Events', icon: Globe },
   { id: 'markets', label: 'Foreign Markets', icon: BarChart3 },
   { id: 'congress', label: 'Congress Trades', icon: Landmark },
+  { id: 'fred', label: 'FRED Economy', icon: Activity },
 ];
 
 const MacroDashboard = ({ onSubscribe }) => {
@@ -181,6 +183,7 @@ const MacroDashboard = ({ onSubscribe }) => {
       {activeTab === 'world' && <WorldEventsTab data={worldEvents} loading={loading.world} />}
       {activeTab === 'markets' && <ForeignMarketsTab data={foreignMarkets} loading={loading.markets} changedSymbols={changedSymbols} />}
       {activeTab === 'congress' && <CongressTab data={govFilings} loading={loading.congress} isPro={isPro} onSubscribe={onSubscribe} />}
+      {activeTab === 'fred' && <FredEconomyTab />}
 
       {lastRefresh && (
         <div className="flex items-center justify-center gap-2 text-slate-400 text-[10px]">
