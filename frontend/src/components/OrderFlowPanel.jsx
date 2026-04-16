@@ -120,7 +120,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
             <div className="flex gap-1.5 flex-wrap">
               {['SPY', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'BTC', 'ETH'].map(t => (
                 <button key={t} onClick={() => setTicker(t)}
-                  className={`text-[10px] px-2 py-1 rounded transition-colors ${ticker === t
+                  className={`text-[10px] px-3 py-2 min-h-[36px] rounded transition-colors ${ticker === t
                     ? 'bg-[#3DE8D9] text-white'
                     : 'bg-slate-700/60 text-slate-400 hover:text-white hover:bg-slate-700'}`}
                   data-testid={`flow-ticker-${t}`}
@@ -132,7 +132,7 @@ const OrderFlowPanel = ({ symbol = 'SPY' }) => {
             {/* View tabs */}
             <div className="flex gap-1 ml-auto mr-2">
               <button onClick={() => setTab('snapshot')}
-                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                className={`text-[10px] px-3 py-2 min-h-[36px] rounded transition-colors ${
                   tab === 'snapshot' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-300'}`}
                 data-testid="tab-snapshot">
                 Snapshot

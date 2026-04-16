@@ -28,7 +28,7 @@ const HeatmapHeader = ({ period, setPeriod, isAI, loading, sentimentLoading, onR
         <button
           key={p.key}
           onClick={() => setPeriod(p.key)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+          className={`px-3 py-2 min-h-[36px] min-w-[40px] rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
             period === p.key
               ? p.key === 'ai_sentiment'
                 ? 'bg-purple-600 text-white ring-1 ring-purple-400/50'
