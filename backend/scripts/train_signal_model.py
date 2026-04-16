@@ -430,11 +430,13 @@ async def main(target_field: str = "outcome_1d", min_samples: int = MIN_SAMPLES,
     model.fit(X_train, y_train)
 
     stats: CalibrationStats = model.evaluate(X_eval, y_eval, n_predictions=len(df))
-    print_eval_report(stats, X_eval, y_eval, df_eval, model)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     save_path = MODELS_DIR / f"signal_model_v{version}.joblib"
     model.save(save_path)
+
+    print_eval_report(stats, X_eval, y_eval, df_eval, model)
+
     print(f"\n[train] Model saved → {save_path}")
     print(f"[train] Done at {stats.evaluated_at.isoformat()}")
 
