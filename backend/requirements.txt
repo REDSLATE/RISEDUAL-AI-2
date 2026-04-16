@@ -170,7 +170,8 @@ requests==2.32.5
 requests-oauthlib==2.0.0
 resend==2.27.0
 rich==14.3.3
-# risedual-core - installed from local directory during build
+# Editable install with no version control (risedual-core==0.1.0)
+-e /tmp/risedual-v4/risedual_core
 rpds-py==0.30.0
 rsa==4.9.1
 s3transfer==0.16.0

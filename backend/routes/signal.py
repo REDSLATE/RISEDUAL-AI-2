@@ -86,8 +86,29 @@ async def get_ai_signal(ticker: str, request: Request):
         logger.exception("signal endpoint: model.predict() raised for ticker=%s", ticker)
         raise HTTPException(status_code=500, detail=f"Model inference failed: {exc}") from exc
 
+    # Add detected patterns to signal result
+    if any(getattr(snapshot, f"pattern_{p}", False) for p in [
+        "double_bottom", "bullish_engulfing", "bearish_engulfing", "bull_flag",
+        "rsi_divergence", "macd_crossover", "volume_surge", "head_and_shoulders",
+    ]):
+        result.patterns_detected = [
+            p for p in ["double_bottom", "bullish_engulfing", "bearish_engulfing", "bull_flag",
+                        "rsi_divergence", "macd_crossover", "volume_surge", "head_and_shoulders"]
+            if getattr(snapshot, f"pattern_{p}", False)
+        ]
+
+    # Run autonomous action pipeline (non-blocking)
+    autonomous_results = {}
+    if db is not None:
+        try:
+            from routes.ml_orchestrator import run_autonomous_actions
+            autonomous_results = await run_autonomous_actions(result, db)
+        except Exception as exc:
+            logger.warning("Autonomous actions failed for %s: %s", ticker, exc)
+
     payload = result.model_dump()
     payload["trained_at"] = _cached_trained_at
+    payload["autonomous_actions"] = autonomous_results
     return payload
 
 
