@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api`;
 
@@ -310,23 +311,23 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
 
   if (!isPro) {
     return (
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" data-testid="memory-dashboard">
-        <Card className="bg-[#0F1A2E] border-slate-800 max-w-md w-full p-8 text-center">
+      <PanelShell onClose={onClose} testId="memory-dashboard" maxWidth="max-w-md">
+        <Card className="bg-[#0F1A2E] border-slate-800 w-full p-8 text-center">
           <Lock className="w-10 h-10 text-slate-400 mx-auto mb-4" />
           <h3 className="text-white text-lg font-semibold mb-2">Memory Dashboard</h3>
           <p className="text-slate-300 text-sm mb-6">Visualize AI memory episodes, cleanup history, and failure analysis. Available for Pro users.</p>
           <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={onClose} className="bg-transparent border-slate-400/30 text-slate-300">Close</Button>
+            {onClose && <Button variant="outline" onClick={onClose} className="bg-transparent border-slate-400/30 text-slate-300">Close</Button>}
             <Button onClick={onSubscribe} className="bg-[#3DE8D9] hover:bg-[#3DE8D9]/80 text-white">Upgrade to Pro</Button>
           </div>
         </Card>
-      </div>
+      </PanelShell>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="memory-dashboard">
-      <div className="bg-[#0F1A2E] border border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden">
+    <PanelShell onClose={onClose} testId="memory-dashboard" maxWidth="max-w-4xl">
+      <div className="bg-[#0F1A2E] border border-slate-800 rounded-2xl w-full overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-600/30">
           <div className="flex items-center gap-3">
@@ -336,9 +337,9 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
               <p className="text-slate-300 text-xs">Vector memory, cleanup history, failure analysis</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-1" data-testid="memory-dashboard-close">
+          {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-1" data-testid="memory-dashboard-close">
             <X className="w-5 h-5" />
-          </button>
+          </button>}
         </div>
 
         {/* Tabs */}
@@ -373,7 +374,7 @@ const MemoryDashboard = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

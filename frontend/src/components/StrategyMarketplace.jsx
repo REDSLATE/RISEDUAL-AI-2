@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import PanelShell from './PanelShell';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api`;
@@ -66,8 +67,8 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
     : strategies;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="strategy-marketplace">
-      <div className="bg-slate-900 rounded-2xl max-w-4xl w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="strategy-marketplace" maxWidth="max-w-4xl">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         {/* Header */}
         <div className="p-6 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -79,9 +80,9 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
               <p className="text-slate-300 text-xs">{total} strategies published by the community</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid="marketplace-close">
+          {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid="marketplace-close">
             <X className="w-5 h-5" />
-          </button>
+          </button>}
         </div>
 
         <div className="p-6 space-y-5">
@@ -142,7 +143,7 @@ const StrategyMarketplace = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import BacktestResults from './BacktestResults';
 import StrategyPreview from './strategy/StrategyPreview';
+import PanelShell from './PanelShell';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -156,8 +157,8 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
   const toggle = (section) => setExpandedSection(prev => prev === section ? null : section);
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="strategy-builder">
-      <div className="bg-slate-900 rounded-2xl max-w-3xl w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="strategy-builder" maxWidth="max-w-3xl">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         {/* Header */}
         <div className="p-6 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -173,7 +174,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
             <Button size="sm" variant="outline" className="text-slate-400 border-slate-600 hover:text-white h-8 text-xs" onClick={() => setShowSaved(!showSaved)} data-testid="toggle-saved">
               <Layers className="w-3.5 h-3.5 mr-1" /> Saved ({savedStrategies.length})
             </Button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>}
           </div>
         </div>
 
@@ -320,7 +321,7 @@ const StrategyBuilder = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

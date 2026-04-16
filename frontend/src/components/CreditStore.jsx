@@ -5,6 +5,7 @@ import { toast } from './ui/sonner';
 import { authFetch, useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api`;
 
@@ -87,8 +88,8 @@ const CreditStore = ({ onClose, onSubscribe }) => {
   const lowCredits = credits < 10 && credits > 0;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="credit-store">
-      <div className="bg-slate-900 rounded-2xl max-w-2xl w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="credit-store" maxWidth="max-w-2xl">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         {/* Header */}
         <div className="p-5 border-b border-slate-400/30">
           <div className="flex items-center justify-between">
@@ -106,9 +107,9 @@ const CreditStore = ({ onClose, onSubscribe }) => {
                 <p className="text-[9px] text-slate-400">Balance</p>
                 <p className={`text-xl font-bold ${lowCredits ? 'text-red-400' : 'text-amber-400'}`}>{credits.toLocaleString()}</p>
               </div>
-              <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid="credit-store-close">
+              {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid="credit-store-close">
                 <X className="w-5 h-5" />
-              </button>
+              </button>}
             </div>
           </div>
         </div>
@@ -231,7 +232,7 @@ const CreditStore = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 

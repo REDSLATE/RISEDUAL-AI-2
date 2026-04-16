@@ -1,19 +1,29 @@
 import React, { useState } from 'react';
-import { BookOpen, TrendingUp, Building2, Globe2 } from 'lucide-react';
+import { BookOpen, TrendingUp, Building2, Globe2, Radio, Wand2, Store, Database } from 'lucide-react';
 import AIHypothesis from '../AIHypothesis';
 import MarketPrediction from '../MarketPrediction';
 import CompanyResearch from '../CompanyResearch';
 import MacroDashboard from '../MacroDashboard';
+
+const MarketSignals = React.lazy(() => import('../MarketSignals'));
+const StrategyBuilder = React.lazy(() => import('../StrategyBuilder'));
+const StrategyMarketplace = React.lazy(() => import('../StrategyMarketplace'));
+const MemoryDashboard = React.lazy(() => import('../MemoryDashboard'));
 
 const TABS = [
   { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen },
   { key: 'prediction', label: 'Predictions', icon: TrendingUp },
   { key: 'company', label: 'Company', icon: Building2 },
   { key: 'macro', label: 'Macro', icon: Globe2 },
+  { key: 'signals', label: 'Signals', icon: Radio },
+  { key: 'strategy', label: 'Strategy', icon: Wand2 },
+  { key: 'marketplace', label: 'Marketplace', icon: Store },
+  { key: 'memory', label: 'Memory', icon: Database },
 ];
 
 export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'hypothesis');
+  const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   return (
     <div data-testid="research-hub">
@@ -38,12 +48,18 @@ export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
         })}
       </div>
 
-      <div className="animate-enter">
-        {tab === 'hypothesis' && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
-        {tab === 'prediction' && <MarketPrediction />}
-        {tab === 'company' && <CompanyResearch />}
-        {tab === 'macro' && <MacroDashboard onSubscribe={onSubscribe} />}
-      </div>
+      <React.Suspense fallback={fallback}>
+        <div className="animate-enter">
+          {tab === 'hypothesis' && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
+          {tab === 'prediction' && <MarketPrediction />}
+          {tab === 'company' && <CompanyResearch />}
+          {tab === 'macro' && <MacroDashboard onSubscribe={onSubscribe} />}
+          {tab === 'signals' && <MarketSignals onSubscribe={onSubscribe} />}
+          {tab === 'strategy' && <StrategyBuilder onSubscribe={onSubscribe} />}
+          {tab === 'marketplace' && <StrategyMarketplace />}
+          {tab === 'memory' && <MemoryDashboard onSubscribe={onSubscribe} />}
+        </div>
+      </React.Suspense>
     </div>
   );
 }

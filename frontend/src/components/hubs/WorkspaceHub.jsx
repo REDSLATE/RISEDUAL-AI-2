@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, PieChart, BookOpen, LineChart, Users, Bot, Layers, Calculator, Radar as RadarIcon, AlertTriangle, Brain } from 'lucide-react';
+import { Briefcase, PieChart, BookOpen, LineChart, Users, Bot, Layers, Calculator, Radar as RadarIcon, AlertTriangle, Brain, Coins } from 'lucide-react';
 
 const TABS = [
   { key: 'watchlist', label: 'Watchlist', icon: Briefcase },
@@ -12,6 +12,7 @@ const TABS = [
   { key: 'orders', label: 'Orders', icon: Layers },
   { key: 'risk', label: 'Risk', icon: Calculator },
   { key: 'scanner', label: 'Scanner', icon: RadarIcon },
+  { key: 'credits', label: 'Credits', icon: Coins },
   { key: 'referral', label: 'Referrals', icon: Users },
   { key: 'failureloop', label: 'Loops', icon: AlertTriangle },
 ];
@@ -28,6 +29,7 @@ const SmartOrderPanel = React.lazy(() => import('../SmartOrderPanel'));
 const RiskCalculator = React.lazy(() => import('../RiskCalculator'));
 const MarketScanner = React.lazy(() => import('../MarketScanner'));
 const MLControls = React.lazy(() => import('../MLControls'));
+const CreditStore = React.lazy(() => import('../CreditStore'));
 const ReferralLeaderboard = React.lazy(() => import('../ReferralLeaderboard'));
 const FailureLoopDashboard = React.lazy(() => import('../FailureLoopDashboard'));
 
@@ -75,6 +77,7 @@ export default function WorkspaceHub({ onSubscribe, initialTab }) {
           {tab === 'orders' && <SmartOrderPanel />}
           {tab === 'risk' && <RiskCalculator onApplyToSmartOrder={() => setTab('orders')} />}
           {tab === 'scanner' && <MarketScanner />}
+          {tab === 'credits' && <CreditStore />}
           {tab === 'referral' && <ReferralLeaderboard />}
           {tab === 'failureloop' && <FailureLoopDashboard />}
         </div>

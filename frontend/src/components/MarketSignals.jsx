@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api`;
 
@@ -57,8 +58,8 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="market-signals">
-      <div className="bg-slate-900 rounded-2xl max-w-lg w-full my-4 border border-slate-400/25">
+    <PanelShell onClose={onClose} testId="market-signals" maxWidth="max-w-lg">
+      <div className="bg-slate-900 rounded-2xl w-full border border-slate-400/25">
         <div className="p-5 border-b border-slate-400/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-red-500 rounded-xl flex items-center justify-center">
@@ -71,7 +72,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
           </div>
           <div className="flex items-center gap-2">
             <Badge className="bg-gradient-to-r from-amber-500 to-red-500 text-white border-0 text-xs">PRO</Badge>
-            <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">×</button>
+            {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white text-xl px-2">x</button>}
           </div>
         </div>
 
@@ -128,7 +129,7 @@ const MarketSignals = ({ onClose, onSubscribe }) => {
           )}
         </div>
       </div>
-    </div>
+    </PanelShell>
   );
 };
 
