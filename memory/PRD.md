@@ -4,25 +4,24 @@
 - **Frontend**: React + TailwindCSS + Shadcn UI + Recharts
 - **Backend**: FastAPI + MongoDB + APScheduler (278+ routes)
 - **AI**: Emergent GPT-5.2 + ProviderRouter failover + Financial Tools Agent v2
-- **ML**: risedual_core v6 + XGBoost signal_model_v1 (TRAINED, 62% accuracy, 276K samples)
+- **ML**: risedual_core v6 + signal_model_v3 (TRAINED, 62.09% acc, 276K samples, chronological split)
 - **Domain**: risedual.ai
 
 ## ML Pipeline Status
-- **Signal Model v1**: TRAINED (Apr 16, 2026) — 62% accuracy, 0.245 Brier, 0.090 ECE
-- **Tier 1 (Smart Alerts): UNLOCKED** — accuracy 0.620 > 0.55, n=276K > 100, ECE 0.090 < 0.15
-- **Tier 2 (Paper Trading): LOCKED** — needs backtest with Sharpe >= 1.0, DD < 15%
-- **Tier 3 (Live Execution): LOCKED** — needs Tier 2 + 30 days live + user opt-in
-- Data: 276,298 snapshots (276K labeled), 80 tickers, 15 years history
+- **Signal Model v3**: 62.09% accuracy, 0.234 Brier, 0.013 ECE (chronological eval — no look-ahead)
+- **Tier 1 (Smart Alerts): UNLOCKED**
+- **Tier 2 (Paper Trading): LOCKED** — accuracy gate passed, needs backtest Sharpe/DD
+- **Tier 3 (Live Execution): LOCKED**
+- Data: 276,298 snapshots, 80 tickers, 15 years, balanced outcomes
 
-## Historical Backfill (DONE — Apr 16, 2026)
-- Script: `/app/backend/scripts/backfill_historical.py`
-- 276K+ rows: 50 S&P 500 + 10 ETFs + 20 crypto, daily OHLCV via yfinance
-- Indicators: RSI-14, MACD, SMA-20/50, volume ratio (via `ta` library)
-- Labels: 1-day and 5-day forward outcomes (up/down/flat)
-- Balanced: Up 100K | Down 89K | Flat 87K
+## v8 Upgrade (DONE — Apr 16, 2026)
+- `train_signal_model.py` — v8: chronological split, multi-schema support, --target flag, per-regime/pattern accuracy, gate readiness report
+- `backfill_regimes.py` — NEW: labels regime_label on all snapshots using trained RegimeModel
+- `GET /api/ml/backfill-status` — NEW: backfill progress, ticker coverage, schema breakdown, regime coverage, readiness milestones
 
 ## Backlog
-- **P0: Run backtest** (`python scripts/backtest.py`) to unlock Tier 2 Paper Trading
+- **P0: Run backtest** (`python scripts/backtest.py`) to unlock Tier 2
+- P0: Train regime model + run `backfill_regimes.py` for regime labels
 - P0: Run pattern detection pass on historical data
-- P1: Connect Alpaca API keys via KeyVault (once Tier 3 unlocked)
-- P2: StockFit 13F holder tracking & SEC filing change alerts
+- P1: Connect Alpaca API keys via KeyVault
+- P2: StockFit 13F holder tracking

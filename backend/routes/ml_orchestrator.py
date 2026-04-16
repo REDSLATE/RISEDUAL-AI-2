@@ -465,3 +465,105 @@ async def get_calibration_curve() -> dict[str, Any]:
             "model_version": stats.model_version,
         },
     }
+
+
+
+@router.get("/backfill-status")
+async def get_backfill_status() -> dict[str, Any]:
+    """Return backfill progress, ticker coverage, and training readiness."""
+    if db is None:
+        return {"error": "Database not available"}
+
+    coll = db["features_snapshots"]
+
+    total: int = await coll.count_documents({})
+    labeled_1d: int = await coll.count_documents(
+        {"outcome_1d": {"$nin": [None, "error", "pending"]}}
+    )
+    labeled_5d: int = await coll.count_documents(
+        {"outcome_5d": {"$nin": [None, "error", "pending"]}}
+    )
+    labeled_live: int = await coll.count_documents(
+        {"outcome": {"$nin": [None, "error", "pending"]}}
+    )
+    with_regime: int = await coll.count_documents(
+        {"regime_label": {"$nin": [None, ""]}}
+    )
+    backfill_rows: int = await coll.count_documents({"schema_version": 3})
+    live_rows: int = await coll.count_documents(
+        {"schema_version": {"$in": [1, 2, None]}}
+    )
+
+    all_tickers: list[str] = await coll.distinct("ticker")
+    backfill_tickers: list[str] = await coll.distinct("ticker", {"schema_version": 3})
+
+    outcome_pipeline = [
+        {"$match": {"outcome_1d": {"$nin": [None, "error", "pending"]}}},
+        {"$group": {"_id": "$outcome_1d", "count": {"$sum": 1}}},
+    ]
+    outcome_1d_dist: dict[str, int] = {}
+    async for doc in coll.aggregate(outcome_pipeline):
+        outcome_1d_dist[doc["_id"]] = doc["count"]
+
+    source_pipeline = [
+        {"$group": {"_id": {"$ifNull": ["$source", "live"]}, "count": {"$sum": 1}}},
+    ]
+    source_dist: dict[str, int] = {}
+    async for doc in coll.aggregate(source_pipeline):
+        source_dist[doc["_id"]] = doc["count"]
+
+    oldest = await coll.find_one(
+        {"timestamp": {"$ne": None}}, sort=[("timestamp", 1)], projection={"timestamp": 1},
+    )
+    newest = await coll.find_one(
+        {"timestamp": {"$ne": None}}, sort=[("timestamp", -1)], projection={"timestamp": 1},
+    )
+    date_range = {
+        "oldest": oldest["timestamp"].isoformat() if oldest and oldest.get("timestamp") else None,
+        "newest": newest["timestamp"].isoformat() if newest and newest.get("timestamp") else None,
+    }
+
+    total_labeled = max(labeled_1d, labeled_live)
+    milestones = {
+        "first_train_ready": {"threshold": 100, "current": total_labeled, "ready": total_labeled >= 100},
+        "first_backtest_ready": {"threshold": 200, "current": total_labeled, "ready": total_labeled >= 200},
+        "tier1_gate_sample_met": {"threshold": 100, "current": total_labeled, "ready": total_labeled >= 100},
+        "tier2_gate_sample_met": {"threshold": 500, "current": total_labeled, "ready": total_labeled >= 500},
+        "regime_labels_complete": {"threshold": total, "current": with_regime, "ready": total > 0 and with_regime >= total * 0.95},
+    }
+
+    next_action = (
+        f"Run train_signal_model.py — {total_labeled:,} labeled rows ready"
+        if total_labeled >= 100
+        else f"Need {100 - total_labeled} more labeled rows before first training run"
+    )
+    if with_regime < total * 0.5 and total > 0:
+        next_action = "Run backfill_regimes.py — less than 50% of rows have regime labels"
+
+    return {
+        "total_rows": total,
+        "labeled_rows": {
+            "outcome_1d": labeled_1d,
+            "outcome_5d": labeled_5d,
+            "live_outcome": labeled_live,
+            "total_usable": total_labeled,
+        },
+        "regime_coverage": {
+            "rows_with_regime": with_regime,
+            "total_rows": total,
+            "coverage_pct": round(with_regime / total * 100, 1) if total > 0 else 0.0,
+        },
+        "schema_breakdown": {
+            "backfill_v3": backfill_rows,
+            "live_v1_v2": live_rows,
+        },
+        "source_breakdown": source_dist,
+        "ticker_coverage": {
+            "total_tickers": len(all_tickers),
+            "backfill_tickers": len(backfill_tickers),
+        },
+        "outcome_1d_distribution": outcome_1d_dist,
+        "date_range": date_range,
+        "milestones": milestones,
+        "next_action": next_action,
+    }
