@@ -8,6 +8,7 @@ Sub-packages
 - :mod:`risedual_core.schemas` — Pydantic v2 domain models (canonical types)
 - :mod:`risedual_core.ml`      — signal model, regime model, calibration
 - :mod:`risedual_core.adapters`— CLI and FastAPI wiring helpers
+- :mod:`risedual_core.secrets` — KeyVault: encrypted at-rest secret storage
 """
 
 from __future__ import annotations

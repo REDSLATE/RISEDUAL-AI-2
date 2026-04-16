@@ -8,8 +8,23 @@ Architecture
 ------------
 - Alpaca REST v2 endpoint: ``https://paper-api.alpaca.markets`` (paper) or
   ``https://api.alpaca.markets`` (live), controlled by ``ALPACA_BASE_URL``.
-- API credentials: ``ALPACA_API_KEY`` + ``ALPACA_SECRET_KEY`` env vars.
+- API credentials: resolved via :class:`~risedual_core.secrets.KeyVault` in
+  priority order:
+
+      1. Environment variables ``ALPACA_API_KEY`` / ``ALPACA_SECRET_KEY``
+      2. Encrypted vault file at ``~/.risedual/vault.enc``
+
+  To store keys permanently::
+
+      from risedual_core.secrets import KeyVault
+      vault = KeyVault()
+      vault.set("ALPACA_API_KEY",    "PK…")
+      vault.set("ALPACA_SECRET_KEY", "SK…")
+
+  Or via the CLI helper (see ``risedual_cli/commands/vault.py``).
+
   Credentials are NEVER logged.
+
 - Called by :mod:`app.services.ml_orchestrator` after Tier 2 paper trade.
 
 Gate requirements (Tier 3)
@@ -39,13 +54,30 @@ from typing import Any
 import httpx
 
 from risedual_core.schemas.market import FeaturesSnapshot, SignalResult
+from risedual_core.secrets import KeyVault, SecretNotFoundError
 
 log = logging.getLogger(__name__)
 
+# ── KeyVault singleton ────────────────────────────────────────────────────────
+
+_vault = KeyVault()
+
+
+def _resolve_alpaca_creds() -> tuple[str | None, str | None]:
+    """Resolve Alpaca credentials from KeyVault (env → vault file).
+
+    Returns
+    -------
+    tuple[str | None, str | None]
+        ``(api_key, secret_key)``  — either may be ``None`` if not configured.
+    """
+    api_key = _vault.get_optional("ALPACA_API_KEY")
+    secret_key = _vault.get_optional("ALPACA_SECRET_KEY")
+    return api_key, secret_key
+
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-_ALPACA_API_KEY: str | None = os.getenv("ALPACA_API_KEY")
-_ALPACA_SECRET_KEY: str | None = os.getenv("ALPACA_SECRET_KEY")
 _ALPACA_BASE_URL: str = os.getenv(
     "ALPACA_BASE_URL", "https://paper-api.alpaca.markets"
 )
@@ -67,12 +99,17 @@ _TRADEABLE_REGIMES: frozenset[str] = frozenset({"trending_up", "trending_down"})
 
 
 def _alpaca_headers() -> dict[str, str]:
-    """Build Alpaca auth headers.  Returns empty dict if keys are absent."""
-    if not _ALPACA_API_KEY or not _ALPACA_SECRET_KEY:
+    """Build Alpaca auth headers, resolving keys via KeyVault.
+
+    Returns empty dict if keys are absent so callers can detect missing creds
+    without raising.
+    """
+    api_key, secret_key = _resolve_alpaca_creds()
+    if not api_key or not secret_key:
         return {}
     return {
-        "APCA-API-KEY-ID": _ALPACA_API_KEY,
-        "APCA-API-SECRET-KEY": _ALPACA_SECRET_KEY,
+        "APCA-API-KEY-ID": api_key,
+        "APCA-API-SECRET-KEY": secret_key,
         "Content-Type": "application/json",
     }
 
@@ -158,6 +195,30 @@ async def _submit_market_order(
     return None
 
 
+# ── Credential management helpers (called from vault CLI command) ─────────────
+
+
+def store_alpaca_keys(api_key: str, secret_key: str) -> None:
+    """Persist Alpaca credentials to the KeyVault.
+
+    Parameters
+    ----------
+    api_key:
+        Alpaca API key ID (starts with ``PK``).
+    secret_key:
+        Alpaca secret key (starts with ``SK``).
+    """
+    _vault.set("ALPACA_API_KEY", api_key)
+    _vault.set("ALPACA_SECRET_KEY", secret_key)
+    log.info("[ml_alpaca] Alpaca credentials stored in KeyVault.")
+
+
+def alpaca_keys_configured() -> bool:
+    """Return ``True`` if both Alpaca credentials are resolvable."""
+    api_key, secret_key = _resolve_alpaca_creds()
+    return bool(api_key and secret_key)
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -175,7 +236,7 @@ async def maybe_execute_live(
     function is called.  This function checks:
 
     1. ``RISEDUAL_LIVE_EXECUTION=1`` env var is set (user opt-in).
-    2. Alpaca credentials present.
+    2. Alpaca credentials present (env or vault).
     3. Confidence >= 70%.
     4. No duplicate open position for this ticker.
     5. Account equity available.
@@ -208,9 +269,11 @@ async def maybe_execute_live(
         return None
 
     # ── Credential guard ─────────────────────────────────────────────────────
-    if not _ALPACA_API_KEY or not _ALPACA_SECRET_KEY:
+    api_key, secret_key = _resolve_alpaca_creds()
+    if not api_key or not secret_key:
         log.warning(
-            "[ml_alpaca] ALPACA_API_KEY / ALPACA_SECRET_KEY not configured."
+            "[ml_alpaca] Alpaca credentials not configured. "
+            "Run: vault.set('ALPACA_API_KEY', '...') / vault.set('ALPACA_SECRET_KEY', '...')"
         )
         return None
 
