@@ -1,0 +1,11 @@
+{
+  "sharpe_ratio": -0.0005,
+  "max_drawdown": 0.0763,
+  "win_rate_overall": 0.5241,
+  "win_rate_by_regime": [],
+  "n_trades": 704,
+  "train_size": 193200,
+  "test_size": 82800,
+  "model_version": "backtest_fresh",
+  "computed_at": "2026-04-16T09:57:02.005505+00:00"
+}

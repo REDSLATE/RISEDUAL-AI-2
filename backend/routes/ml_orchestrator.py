@@ -217,12 +217,10 @@ async def get_ml_stats() -> dict[str, Any]:
     async for doc in snapshots_coll.aggregate(outcome_pipeline):
         outcome_dist[doc["_id"]] = doc["count"]
 
-    # ── Pattern detection counts (Phase 2 snapshots only) ────────────────────
+    # ── Pattern detection counts (all snapshots with patterns) ────────────────
     pattern_counts: dict[str, int] = {}
     for col in PATTERN_COLUMNS:
-        count = await snapshots_coll.count_documents(
-            {"schema_version": 2, col: True}
-        )
+        count = await snapshots_coll.count_documents({col: True})
         pattern_counts[col.replace("pattern_", "")] = count
 
     # ── Paper trades ─────────────────────────────────────────────────────────

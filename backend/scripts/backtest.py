@@ -47,15 +47,26 @@ FEATURE_COLS = [
 
 async def load_labeled_data(db) -> pd.DataFrame:
     cursor = db[COLLECTION].find(
-        {"outcome": {"$in": ["up", "down", "flat"]}},
-        projection={"_id": 0, "ticker": 1, "outcome": 1, "captured_at": 1,
+        {"$or": [
+            {"outcome": {"$in": ["up", "down", "flat"]}},
+            {"outcome_1d": {"$in": ["up", "down", "flat"]}},
+        ]},
+        projection={"_id": 0, "ticker": 1, "outcome": 1, "outcome_1d": 1,
+                     "captured_at": 1, "timestamp": 1,
                      "regime_label": 1, "prediction_price": 1, "outcome_price": 1,
+                     "price": 1, "return_1d": 1,
                      **{col: 1 for col in FEATURE_COLS}},
-    )
+    ).sort("timestamp", 1)
     docs = await cursor.to_list(length=None)
     if not docs:
         return pd.DataFrame()
-    return pd.DataFrame(docs)
+    df = pd.DataFrame(docs)
+    # Normalize: use outcome_1d if outcome is missing
+    if "outcome" not in df.columns or df["outcome"].isna().all():
+        df["outcome"] = df.get("outcome_1d")
+    else:
+        df["outcome"] = df["outcome"].fillna(df.get("outcome_1d"))
+    return df
 
 
 def simulate_pnl(df_test: pd.DataFrame, predictions: list[int], probabilities: list[float]) -> dict:
@@ -75,7 +86,10 @@ def simulate_pnl(df_test: pd.DataFrame, predictions: list[int], probabilities: l
         # Calculate actual return
         pred_price = row.get("prediction_price")
         out_price = row.get("outcome_price")
-        if pred_price and out_price and pred_price > 0:
+        return_1d = row.get("return_1d")
+        if return_1d is not None and not pd.isna(return_1d):
+            pct_return = float(return_1d)
+        elif pred_price and out_price and pred_price > 0:
             pct_return = (out_price - pred_price) / pred_price
         else:
             outcome = row.get("outcome", "flat")
@@ -165,7 +179,10 @@ async def main():
     y = (df["outcome"] == "up").astype(int)
 
     # 70/30 walk-forward split (chronological)
-    df = df.sort_values("captured_at").reset_index(drop=True)
+    if "timestamp" in df.columns:
+        df = df.sort_values("timestamp").reset_index(drop=True)
+    elif "captured_at" in df.columns:
+        df = df.sort_values("captured_at").reset_index(drop=True)
     split_idx = int(len(df) * 0.7)
     X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
@@ -196,6 +213,8 @@ async def main():
 
     # Generate predictions for P&L simulation
     probas = model.predict_proba(X_test)
+    if probas.ndim == 2:
+        probas = probas[:, 1]
     predictions = (probas > 0.5).astype(int).tolist()
 
     pnl = simulate_pnl(df_test, predictions, probas.tolist())
