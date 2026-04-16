@@ -199,9 +199,21 @@ async def fetch_form4_xml(
     primary_doc = accession_info.get("primary_doc", "")
 
     # Try primary_doc first (from submissions JSON)
-    if primary_doc and primary_doc.endswith(".xml"):
+    # primaryDocument can be "xslF345X03/wf-form4_167883310220723.xml" (XSLT path)
+    # The actual XML is the filename part without the xsl prefix
+    xml_candidates = []
+    if primary_doc:
+        # Strip XSL prefix if present: "xslF345X03/wf-form4_xxx.xml" → "wf-form4_xxx.xml"
+        actual_name = primary_doc.split("/")[-1] if "/" in primary_doc else primary_doc
+        if actual_name.endswith(".xml"):
+            xml_candidates.append(actual_name)
+
+    # Standard fallbacks
+    xml_candidates.extend(["form4.xml", "doc4.xml"])
+
+    for fname in xml_candidates:
         await limiter.acquire()
-        url = f"{ARCHIVES_BASE}/{cik_num}/{acc_nodash}/{primary_doc}"
+        url = f"{ARCHIVES_BASE}/{cik_num}/{acc_nodash}/{fname}"
         try:
             resp = await client.get(url, timeout=10.0)
             if resp.status_code == 429:
@@ -211,19 +223,6 @@ async def fetch_form4_xml(
                 return parse_form4_xml(resp.text, ticker)
         except Exception:
             pass
-
-    # Fallback: form4.xml
-    await limiter.acquire()
-    url = f"{ARCHIVES_BASE}/{cik_num}/{acc_nodash}/form4.xml"
-    try:
-        resp = await client.get(url, timeout=10.0)
-        if resp.status_code == 429:
-            await asyncio.sleep(30)
-            return []
-        if resp.status_code == 200 and "<ownershipDocument" in resp.text:
-            return parse_form4_xml(resp.text, ticker)
-    except Exception:
-        pass
 
     return []
 
