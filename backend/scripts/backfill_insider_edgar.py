@@ -57,7 +57,7 @@ DB_NAME = os.getenv("DB_NAME", "risedual_db")
 COLLECTION = "features_snapshots"
 
 USER_AGENT = "RISEDUAL risedual@risedual.ai"
-SEC_BASE = "https://data.sec.gov"
+EFTS_BASE = "https://efts.sec.gov/LATEST/search-index"
 ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data"
 
 CACHE_DIR: Path = Path.home() / ".risedual" / "edgar_cache"
@@ -157,69 +157,92 @@ _ticker_to_cik_cache: dict[str, str] = {
 
 # ── Fetch Form 4 filings list ────────────────────────────────────────────────
 
-async def fetch_form4_accessions(
+async def fetch_form4_filings_efts(
     client: httpx.AsyncClient,
-    cik: str,
+    ticker: str,
     limiter: _RateLimiter,
     max_filings: int = MAX_FILINGS_PER_TICKER,
 ) -> list[dict]:
-    """Fetch Form 4 filing accession numbers + dates from EDGAR submissions."""
-    accessions = []
-    await limiter.acquire()
+    """Fetch Form 4 filing metadata via EFTS search-index.
 
-    try:
-        resp = await client.get(
-            f"{SEC_BASE}/submissions/CIK{cik}.json",
-            timeout=20.0,
-        )
-        if resp.status_code != 200:
-            return []
+    Returns list of dicts with 'adsh', 'xml_filename', 'cik', 'file_date'.
+    EFTS returns the actual XML filename in the _id field, so we don't need
+    to guess filenames on www.sec.gov.
+    """
+    filings: list[dict] = []
+    page_size = 100
+    offset = 0
 
-        data = resp.json()
-        recent = data.get("filings", {}).get("recent", {})
-        forms = recent.get("form", [])
-        dates = recent.get("filingDate", [])
-        accession_nums = recent.get("accessionNumber", [])
-
-        for i, form in enumerate(forms):
-            if form == "4" and len(accessions) < max_filings:
-                accessions.append({
-                    "accession": accession_nums[i],
-                    "date": dates[i],
-                })
-
-        # Check for older filings in separate files
-        older_files = data.get("filings", {}).get("files", [])
-        for file_info in older_files[:5]:  # limit to 5 older filing pages
-            if len(accessions) >= max_filings:
+    while len(filings) < max_filings:
+        await limiter.acquire()
+        try:
+            resp = await client.get(
+                EFTS_BASE,
+                params={
+                    "q": f'"{ticker}"',
+                    "dateRange": "custom",
+                    "startdt": "2009-01-01",
+                    "enddt": "2025-12-31",
+                    "forms": "4",
+                    "from": str(offset),
+                    "size": str(page_size),
+                },
+                timeout=20.0,
+            )
+            if resp.status_code != 200:
+                log.warning("[%s] EFTS returned %d", ticker, resp.status_code)
                 break
-            fname = file_info.get("name")
-            if not fname:
-                continue
-            await limiter.acquire()
-            try:
-                resp2 = await client.get(
-                    f"{SEC_BASE}/submissions/{fname}",
-                    timeout=20.0,
-                )
-                if resp2.status_code == 200:
-                    old_data = resp2.json()
-                    old_forms = old_data.get("form", [])
-                    old_dates = old_data.get("filingDate", [])
-                    old_accessions = old_data.get("accessionNumber", [])
-                    for j, f in enumerate(old_forms):
-                        if f == "4" and len(accessions) < max_filings:
-                            accessions.append({
-                                "accession": old_accessions[j],
-                                "date": old_dates[j],
-                            })
-            except Exception:
-                pass
 
-    except Exception as exc:
-        log.warning("Failed to fetch submissions for CIK %s: %s", cik, exc)
+            data = resp.json()
+            hits = data.get("hits", {}).get("hits", [])
+            total = data.get("hits", {}).get("total", {}).get("value", 0)
 
-    return accessions
+            if not hits:
+                break
+
+            for hit in hits:
+                src = hit.get("_source", {})
+                doc_id = hit.get("_id", "")
+                adsh = src.get("adsh", "")
+
+                # Extract XML filename from _id: "ADSH:filename.xml"
+                xml_filename = ""
+                if ":" in doc_id:
+                    xml_filename = doc_id.split(":", 1)[1]
+
+                # Extract issuer CIK (usually the company, not the insider)
+                ciks = src.get("ciks", [])
+                # The issuer CIK is typically in display_names
+                cik = ""
+                for dn in src.get("display_names", []):
+                    if ticker.upper() in dn.upper():
+                        # Extract CIK from "Apple Inc.  (AAPL)  (CIK 0000320193)"
+                        import re
+                        m = re.search(r"CIK\s+(\d+)", dn)
+                        if m:
+                            cik = m.group(1)
+                            break
+                if not cik and ciks:
+                    cik = ciks[-1].lstrip("0") or "0"
+
+                if adsh and cik:
+                    filings.append({
+                        "adsh": adsh,
+                        "xml_filename": xml_filename,
+                        "cik": cik.lstrip("0") or "0",
+                        "file_date": src.get("file_date", ""),
+                    })
+
+            offset += page_size
+            if offset >= total or offset >= max_filings:
+                break
+
+        except Exception as exc:
+            log.warning("[%s] EFTS search failed: %s", ticker, exc)
+            break
+
+    log.info("[%s] EFTS found %d Form 4 filings", ticker, len(filings))
+    return filings
 
 
 # ── Parse Form 4 XML ─────────────────────────────────────────────────────────
@@ -275,35 +298,34 @@ def parse_form4_xml(xml_text: str, ticker: str) -> list[dict]:
 
 async def fetch_and_parse_form4(
     client: httpx.AsyncClient,
-    cik: str,
-    accession: str,
+    filing: dict,
     ticker: str,
     limiter: _RateLimiter,
 ) -> list[dict]:
-    """Download a single Form 4 XML and parse transactions."""
-    acc_nodash = accession.replace("-", "")
-    cik_num = cik.lstrip("0") or "0"
+    """Download a single Form 4 XML using the filename from EFTS."""
+    cik = filing["cik"]
+    adsh = filing["adsh"]
+    acc_nodash = adsh.replace("-", "")
+    xml_filename = filing.get("xml_filename", "")
 
-    # Try common XML filenames
-    for fname in ["form4.xml"]:
+    # Primary: use the exact filename from EFTS _id
+    if xml_filename:
         await limiter.acquire()
-        url = f"{ARCHIVES_BASE}/{cik_num}/{acc_nodash}/{fname}"
+        url = f"{ARCHIVES_BASE}/{cik}/{acc_nodash}/{xml_filename}"
         try:
             resp = await client.get(url, timeout=10.0)
             if resp.status_code == 429:
-                log.debug("[%s] 429 — sleeping 30s", ticker)
                 await asyncio.sleep(30)
-                await limiter.acquire()
-                resp = await client.get(url, timeout=10.0)
+                return []
             if resp.status_code == 200 and "<ownershipDocument" in resp.text:
                 return parse_form4_xml(resp.text, ticker)
         except Exception:
             pass
 
-    # Single fallback try with doc4.xml
+    # Fallback: try form4.xml
     await limiter.acquire()
+    url = f"{ARCHIVES_BASE}/{cik}/{acc_nodash}/form4.xml"
     try:
-        url = f"{ARCHIVES_BASE}/{cik_num}/{acc_nodash}/doc4.xml"
         resp = await client.get(url, timeout=10.0)
         if resp.status_code == 429:
             await asyncio.sleep(30)
@@ -343,33 +365,21 @@ async def process_ticker(
             all_transactions = []
 
     if not all_transactions:
-        # Look up CIK
-        cik = _ticker_to_cik_cache.get(ticker)
-        if not cik:
-            cik = await lookup_cik(client, ticker, limiter)
-        if not cik:
-            result["error"] = "CIK not found"
-            return result
+        # Use EFTS search-index for filing discovery
+        filings = await fetch_form4_filings_efts(client, ticker, limiter)
+        result["filings"] = len(filings)
 
-        # Get Form 4 accessions
-        accessions = await fetch_form4_accessions(client, cik, limiter)
-        result["filings"] = len(accessions)
-
-        if not accessions:
+        if not filings:
             log.info("[%s] No Form 4 filings found", ticker)
             return result
 
-        log.info("[%s] Found %d Form 4 filings", ticker, len(accessions))
-
         # Fetch XMLs sequentially (respect EDGAR rate limit)
-        for acc_info in accessions:
-            txns = await fetch_and_parse_form4(
-                client, cik, acc_info["accession"], ticker, limiter
-            )
+        for idx, filing in enumerate(filings):
+            txns = await fetch_and_parse_form4(client, filing, ticker, limiter)
             all_transactions.extend(txns)
-            if len(all_transactions) % 100 == 0 and all_transactions:
-                log.info("[%s] Progress: %d transactions from %d filings so far",
-                         ticker, len(all_transactions), accessions.index(acc_info) + 1)
+            if (idx + 1) % 50 == 0:
+                log.info("[%s] Progress: %d transactions from %d/%d filings",
+                         ticker, len(all_transactions), idx + 1, len(filings))
 
         # Cache to disk
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
