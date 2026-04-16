@@ -166,6 +166,22 @@ async def run_post_signal_pipeline(
     sharpe: float = float(meta.get("sharpe", 0.0))
     max_drawdown: float = float(meta.get("max_drawdown", 1.0))
 
+    # Load backtest results if available (sidecar JSON produced by backtest.py)
+    if sharpe == 0.0:
+        import json as _json
+        _bt_dir = Path(os.getenv("BACKTEST_RESULTS_DIR", "backtest_results"))
+        if _bt_dir.exists():
+            bt_files = sorted(_bt_dir.glob("backtest_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if bt_files:
+                try:
+                    with open(bt_files[0]) as f:
+                        bt_data = _json.load(f)
+                    sharpe = float(bt_data.get("sharpe_ratio", sharpe))
+                    max_drawdown = float(bt_data.get("max_drawdown", max_drawdown))
+                    log.info("[orchestrator] Loaded backtest: sharpe=%.3f dd=%.3f", sharpe, max_drawdown)
+                except Exception:
+                    pass
+
     try:
         gate = check_all_gates(
             accuracy=stats.accuracy,
@@ -214,8 +230,9 @@ async def run_post_signal_pipeline(
                 log.warning("[orchestrator] Alert service error: %s", exc)
                 result.errors.append(f"alert_error:{exc}")
 
-        # ── Tier 2: Paper trading ────────────────────────────────────────────
+        # ── Tier 2: Paper trading (MongoDB + Alpaca paper account) ────────────
         if gate.tier2.unlocked:
+            log.info("[orchestrator] Tier 2 unlocked — executing paper trade for %s", ticker)
             try:
                 result.paper_trade_id = await maybe_paper_trade(
                     ticker=ticker,
@@ -229,7 +246,28 @@ async def run_post_signal_pipeline(
                 log.warning("[orchestrator] Paper trader error: %s", exc)
                 result.errors.append(f"paper_error:{exc}")
 
-        # ── Tier 3: Live execution ────────────────────────────────────────────
+            # Also execute on Alpaca paper account if configured
+            try:
+                from services.ml_alpaca_broker import alpaca_keys_configured
+                if alpaca_keys_configured():
+                    result.live_order_id = await maybe_execute_live(
+                        ticker=ticker,
+                        signal=signal,
+                        snapshot=snapshot,
+                        regime=regime,
+                        db=db,
+                        http_client=client,
+                    )
+                    if result.live_order_id:
+                        log.info(
+                            "[orchestrator] Alpaca paper order placed for %s: %s",
+                            ticker, result.live_order_id,
+                        )
+            except Exception as exc:
+                log.warning("[orchestrator] Alpaca paper execution error: %s", exc)
+                result.errors.append(f"alpaca_paper_error:{exc}")
+
+        # ── Tier 3: Live execution (kept for future live account) ─────────────
         if gate.tier3.unlocked:
             try:
                 result.live_order_id = await maybe_execute_live(

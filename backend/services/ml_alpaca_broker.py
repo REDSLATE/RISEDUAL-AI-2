@@ -85,14 +85,15 @@ _ALPACA_BASE_URL: str = os.getenv(
 # Hard position size cap as fraction of portfolio equity
 _HARD_CAP_FRACTION: float = 0.02   # 2%
 
-# Minimum confidence for live execution
-_MIN_LIVE_CONFIDENCE: float = 0.70
+# Minimum confidence for execution (lowered for paper account)
+_MIN_LIVE_CONFIDENCE: float = 0.50
 
-# User must explicitly set RISEDUAL_LIVE_EXECUTION=1
-_LIVE_OPT_IN: bool = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
+# Paper mode: skip the opt-in check when ALPACA_BASE_URL is paper
+_IS_PAPER: bool = "paper" in os.getenv("ALPACA_BASE_URL", "paper").lower()
+_LIVE_OPT_IN: bool = _IS_PAPER or os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
-# Regimes eligible for live execution (same as paper trading)
-_TRADEABLE_REGIMES: frozenset[str] = frozenset({"trending_up", "trending_down"})
+# Regimes eligible for execution
+_TRADEABLE_REGIMES: frozenset[str] = frozenset({"bull", "bear", "sideways", "trending_up", "trending_down", "unknown", ""})
 
 
 # ── Alpaca REST helpers ───────────────────────────────────────────────────────
@@ -156,17 +157,61 @@ async def _submit_market_order(
     side: str,          # "buy" or "sell"
     notional_usd: float,
 ) -> str | None:
-    """Submit a market order by notional value.
+    """Submit a market order by notional value (buy) or qty (sell/short).
+
+    For buy orders: uses notional (fractional shares OK).
+    For sell orders: converts to whole share qty (Alpaca paper doesn't support
+    fractional short selling).
 
     Returns the Alpaca order ID on success, ``None`` on failure.
     """
-    payload = {
-        "symbol": ticker,
-        "notional": str(round(notional_usd, 2)),
-        "side": side,
-        "type": "market",
-        "time_in_force": "day",
-    }
+    if side == "buy":
+        payload = {
+            "symbol": ticker,
+            "notional": str(round(notional_usd, 2)),
+            "side": side,
+            "type": "market",
+            "time_in_force": "day",
+        }
+    else:
+        # For sell/short: get current price and convert to whole shares
+        try:
+            resp = await client.get(
+                f"{_ALPACA_BASE_URL}/v2/stocks/{ticker}/quotes/latest",
+                headers=_alpaca_headers(),
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                quote = resp.json().get("quote", {})
+                price = float(quote.get("ap", 0) or quote.get("bp", 0))
+            else:
+                # Fallback: use snapshot
+                resp = await client.get(
+                    f"https://data.alpaca.markets/v2/stocks/{ticker}/snapshot",
+                    headers=_alpaca_headers(),
+                    timeout=10.0,
+                )
+                price = float(resp.json().get("latestTrade", {}).get("p", 0)) if resp.status_code == 200 else 0
+        except Exception:
+            price = 0
+
+        if price <= 0:
+            log.warning("[ml_alpaca] Could not get price for %s — skipping sell order", ticker)
+            return None
+
+        qty = int(notional_usd / price)
+        if qty < 1:
+            log.info("[ml_alpaca] Notional $%.2f < 1 share of %s ($%.2f) — skipping", notional_usd, ticker, price)
+            return None
+
+        payload = {
+            "symbol": ticker,
+            "qty": str(qty),
+            "side": side,
+            "type": "market",
+            "time_in_force": "day",
+        }
+
     try:
         resp = await client.post(
             f"{_ALPACA_BASE_URL}/v2/orders",
@@ -278,10 +323,13 @@ async def maybe_execute_live(
         return None
 
     # ── Per-signal gate ──────────────────────────────────────────────────────
-    if signal.confidence < _MIN_LIVE_CONFIDENCE:
+    # signal.confidence = P(up). For 'down' signals, true confidence = 1 - P(up)
+    directional_conf = signal.confidence if signal.direction.value == "up" else (1.0 - signal.confidence)
+
+    if directional_conf < _MIN_LIVE_CONFIDENCE:
         log.debug(
-            "[ml_alpaca] Confidence %.2f < %.2f — skipping live execution for %s.",
-            signal.confidence,
+            "[ml_alpaca] Directional confidence %.2f < %.2f — skipping for %s.",
+            directional_conf,
             _MIN_LIVE_CONFIDENCE,
             ticker,
         )

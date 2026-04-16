@@ -45,10 +45,10 @@ _PAPER_PORTFOLIO_VALUE: float = float(
 )
 
 # Per-signal confidence threshold above gate accuracy
-_MIN_PAPER_CONFIDENCE: float = 0.65
+_MIN_PAPER_CONFIDENCE: float = 0.55
 
 # Regimes eligible for paper trades
-_TRADEABLE_REGIMES: frozenset[str] = frozenset({"trending_up", "trending_down"})
+_TRADEABLE_REGIMES: frozenset[str] = frozenset({"bull", "bear", "sideways", "trending_up", "trending_down", "unknown", ""})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,18 +123,24 @@ async def maybe_paper_trade(
         conditions were not met or the write failed.
     """
     # ── Per-signal gate ──────────────────────────────────────────────────────
-    if signal.confidence < _MIN_PAPER_CONFIDENCE:
+    # signal.confidence = P(up). For 'down' signals, true confidence = 1 - P(up)
+    directional_conf = signal.confidence if signal.direction.value == "up" else (1.0 - signal.confidence)
+    log.info("[ml_paper] %s: direction=%s raw_conf=%.3f directional=%.3f regime=%s",
+             ticker, signal.direction.value, signal.confidence, directional_conf, regime)
+
+    if directional_conf < _MIN_PAPER_CONFIDENCE:
         log.debug(
-            "[ml_paper] Confidence %.2f < %.2f — skipping paper trade for %s.",
-            signal.confidence,
+            "[ml_paper] Directional confidence %.2f < %.2f — skipping paper trade for %s.",
+            directional_conf,
             _MIN_PAPER_CONFIDENCE,
             ticker,
         )
         return None
 
     patterns = _detected_patterns(snapshot)
-    if not patterns:
-        log.debug("[ml_paper] No patterns on %s — skipping paper trade.", ticker)
+    # Allow trades without patterns if confidence is high enough (> 60%)
+    if not patterns and directional_conf < 0.60:
+        log.debug("[ml_paper] No patterns on %s and conf %.2f < 0.60 — skipping paper trade.", ticker, directional_conf)
         return None
 
     if regime not in _TRADEABLE_REGIMES:
@@ -148,7 +154,7 @@ async def maybe_paper_trade(
     # ── Position sizing ──────────────────────────────────────────────────────
     portfolio_value = await _current_portfolio_value(db)
     position_usd = half_kelly_position(
-        win_probability=signal.confidence,
+        win_probability=directional_conf,
         portfolio_value=portfolio_value,
     )
 
