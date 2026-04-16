@@ -302,6 +302,41 @@ def print_eval_report(
                 acc = (preds[mask] == y_eval.values[mask]).mean()
                 print(f"    {regime:<12} n={mask.sum():>5,}  acc={acc:.1%}")
 
+    # Feature importance from underlying XGBoost model
+    print()
+    print("  Feature importance (XGBoost):")
+    try:
+        import joblib
+        model_path = sorted(
+            Path("models").glob("signal_model_v*.joblib"),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+        if model_path:
+            artefact = joblib.load(model_path[0])
+
+            # Method 1: Use pre-computed importances from artefact
+            importances = artefact.get("feature_importances", {})
+
+            # Method 2: Extract from CalibratedClassifierCV → XGBClassifier
+            if not importances:
+                underlying = artefact["model"]
+                base = None
+                if hasattr(underlying, "calibrated_classifiers_"):
+                    base = underlying.calibrated_classifiers_[0].estimator
+                elif hasattr(underlying, "estimator"):
+                    base = underlying.estimator
+                if base and hasattr(base, "feature_importances_"):
+                    importances = dict(zip(X_eval.columns, base.feature_importances_))
+
+            if importances:
+                for feat, imp in sorted(importances.items(), key=lambda x: -x[1]):
+                    bar = "=" * int(imp * 80)
+                    print(f"    {feat:<38} {imp:.4f}  {bar}")
+            else:
+                print("    (no feature importances available)")
+    except Exception as exc:
+        print(f"    (feature importance extraction failed: {exc})")
+
     # Phase 3 gate readiness
     print()
     print("  Phase 3 calibration gate:")
