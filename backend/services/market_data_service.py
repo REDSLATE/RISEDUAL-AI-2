@@ -64,8 +64,9 @@ class MarketDataService:
             return None
     
     async def get_crypto_data(self) -> List[Dict]:
-        """Get top crypto currencies data (parallel fetch)"""
-        cryptos = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE']
+        """Get top 15 crypto currencies data (parallel fetch)"""
+        cryptos = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE',
+                    'AVAX', 'DOT', 'MATIC', 'LINK', 'SHIB', 'LTC', 'UNI', 'ATOM']
         tasks = [self.get_crypto_quote(crypto) for crypto in cryptos]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         crypto_data = []
