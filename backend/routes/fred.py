@@ -8,7 +8,7 @@ GET /api/fred/search?q=...     — search FRED series
 import logging
 from fastapi import APIRouter, HTTPException, Query
 
-from services.fred_service import get_macro_indicators, get_series_detail, get_release_series, search_series
+from services.fred_service import get_macro_indicators, get_series_detail, get_release_series, search_series, get_vintage_comparison, detect_revisions
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/fred", tags=["fred"])
@@ -66,3 +66,31 @@ async def fred_search(q: str = Query(..., min_length=2), limit: int = Query(20, 
     if data.get("error"):
         raise HTTPException(status_code=503, detail=data["error"])
     return data
+
+
+@router.get("/vintage/{series_id}")
+async def fred_vintage(series_id: str, dates: str = Query(..., description="Comma-separated YYYY-MM-DD vintage dates")):
+    """ALFRED vintage comparison — see how data looked on specific past dates vs. current revisions.
+
+    Example: /api/fred/vintage/GDP?dates=2025-01-01,2025-07-01,2026-01-01
+    """
+    date_list = [d.strip() for d in dates.split(",") if d.strip()]
+    if not date_list or len(date_list) > 10:
+        raise HTTPException(status_code=400, detail="Provide 1-10 comma-separated dates (YYYY-MM-DD)")
+    data = await get_vintage_comparison(series_id, date_list)
+    if data.get("error"):
+        raise HTTPException(status_code=503, detail=data["error"])
+    return data
+
+
+@router.get("/revisions")
+async def fred_revisions():
+    """Detect data revisions — compare current FRED values against last stored snapshot."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    revisions = await detect_revisions(db)
+    return {
+        "revisions": revisions,
+        "count": len(revisions),
+        "has_revisions": len(revisions) > 0,
+    }

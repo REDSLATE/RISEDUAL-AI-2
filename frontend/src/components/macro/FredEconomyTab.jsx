@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Minus, Loader2, Search, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Loader2, Search, AlertTriangle, History } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
 import { getApiBase } from '../../utils/apiBase';
 
 const API = getApiBase();
@@ -162,10 +163,129 @@ const FredSearchResults = ({ results }) => {
   );
 };
 
+const VintageCompare = ({ seriesId, onClose }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      // Compare 3 vintage points: 6 months ago, 3 months ago, 1 month ago
+      const now = new Date();
+      const dates = [6, 3, 1].map(m => {
+        const d = new Date(now);
+        d.setMonth(d.getMonth() - m);
+        return d.toISOString().slice(0, 10);
+      });
+      try {
+        const res = await fetch(`${API}/api/fred/vintage/${seriesId}?dates=${dates.join(',')}`);
+        if (res.ok) setData(await res.json());
+      } catch (e) { /* ignore */ }
+      setLoading(false);
+    };
+    load();
+  }, [seriesId]);
+
+  if (loading) return <div className="text-center py-6"><Loader2 className="w-5 h-5 animate-spin text-[#3DE8D9] mx-auto" /></div>;
+  if (!data) return null;
+
+  const totalRevisions = (data.vintages || []).reduce((sum, v) => sum + (v.revision_count || 0), 0);
+
+  return (
+    <Card className="bg-slate-900/80 border-slate-700/40 p-4 mt-3" data-testid={`vintage-${seriesId}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-amber-400" />
+            <h4 className="text-white font-medium text-sm">ALFRED Vintage: {data.title}</h4>
+          </div>
+          <p className="text-slate-500 text-[10px] mt-0.5">{data.units} · {data.frequency} · {totalRevisions} total revisions detected</p>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800">Close</button>
+      </div>
+
+      {data.vintages?.map((v, vi) => (
+        <div key={v.date} className="mb-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Badge className="bg-slate-800 text-slate-300 border-slate-700 text-[10px]">
+              Vintage: {v.date}
+            </Badge>
+            {v.revision_count > 0 && (
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[10px]">
+                {v.revision_count} revisions
+              </Badge>
+            )}
+          </div>
+          {v.revisions?.length > 0 ? (
+            <div className="space-y-1">
+              {v.revisions.slice(0, 5).map(r => (
+                <div key={r.observation_date} className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-1.5 text-xs">
+                  <span className="text-slate-400">{r.observation_date}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-500">was <span className="text-white">{r.original_value?.toLocaleString()}</span></span>
+                    <span className="text-slate-600">-&gt;</span>
+                    <span className="text-slate-500">now <span className="text-white">{r.revised_value?.toLocaleString()}</span></span>
+                    <span className={`font-medium ${r.revision > 0 ? 'text-lime-400' : 'text-orange-400'}`}>
+                      {r.revision_pct > 0 ? '+' : ''}{r.revision_pct}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-slate-600 text-xs pl-2">No revisions from this vintage</p>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+};
+
+const RevisionAlerts = () => {
+  const [revisions, setRevisions] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`${API}/api/fred/revisions`);
+        if (res.ok) {
+          const d = await res.json();
+          setRevisions(d);
+        }
+      } catch (e) { /* ignore */ }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  if (loading || !revisions?.has_revisions) return null;
+
+  return (
+    <Card className="bg-amber-500/5 border-amber-500/20 p-3" data-testid="fred-revision-alerts">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle className="w-4 h-4 text-amber-400" />
+        <span className="text-amber-400 font-medium text-sm">Data Revisions Detected</span>
+        <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[10px]">{revisions.count}</Badge>
+      </div>
+      <div className="space-y-1">
+        {revisions.revisions.map(r => (
+          <div key={r.series_id} className="flex items-center justify-between text-xs bg-slate-800/40 rounded px-3 py-1.5">
+            <span className="text-slate-300">{r.name}</span>
+            <span className={`font-medium ${r.revision > 0 ? 'text-lime-400' : 'text-orange-400'}`}>
+              {r.stored_value?.toLocaleString()} -&gt; {r.current_value?.toLocaleString()} ({r.revision > 0 ? '+' : ''}{r.revision})
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
 export default function FredEconomyTab({ loading: parentLoading }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeries, setSelectedSeries] = useState(null);
+  const [vintageSeries, setVintageSeries] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
@@ -240,6 +360,14 @@ export default function FredEconomyTab({ loading: parentLoading }) {
         </Card>
       )}
 
+      {/* Revision Alerts */}
+      <RevisionAlerts />
+
+      {/* Vintage Compare (if active) */}
+      {vintageSeries && (
+        <VintageCompare seriesId={vintageSeries} onClose={() => setVintageSeries(null)} />
+      )}
+
       {/* Categories */}
       {CAT_ORDER.filter(c => categories[c]).map(cat => {
         const items = categories[cat];
@@ -253,8 +381,18 @@ export default function FredEconomyTab({ loading: parentLoading }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {items.map(ind => (
-                <div key={ind.id} onClick={() => setSelectedSeries(selectedSeries === ind.id ? null : ind.id)} className="cursor-pointer">
-                  <IndicatorCard ind={ind} />
+                <div key={ind.id} className="relative group">
+                  <div onClick={() => setSelectedSeries(selectedSeries === ind.id ? null : ind.id)} className="cursor-pointer">
+                    <IndicatorCard ind={ind} />
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setVintageSeries(vintageSeries === ind.id ? null : ind.id); }}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-700/80 hover:bg-amber-500/20 text-slate-400 hover:text-amber-400 rounded p-1"
+                    title="ALFRED Vintage Compare"
+                    data-testid={`vintage-btn-${ind.id}`}
+                  >
+                    <History className="w-3 h-3" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -266,7 +404,7 @@ export default function FredEconomyTab({ loading: parentLoading }) {
       })}
 
       <p className="text-slate-600 text-[10px] text-center">
-        Data from Federal Reserve Economic Data (FRED), Federal Reserve Bank of St. Louis.
+        Data from Federal Reserve Economic Data (FRED) &amp; ALFRED, Federal Reserve Bank of St. Louis.
       </p>
     </div>
   );

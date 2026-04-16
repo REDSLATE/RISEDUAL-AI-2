@@ -302,3 +302,169 @@ async def search_series(query: str, limit: int = 20) -> dict:
         ],
         "count": len(series_list),
     }
+
+
+# ── ALFRED Vintage Functions ──────────────────────────────────────────────────
+
+# Series most likely to be revised (GDP, employment, CPI are frequently revised)
+REVISION_WATCH_SERIES = ["GDP", "GDPC1", "CPIAUCSL", "PAYEMS", "UNRATE", "HOUST", "BOPGSTB"]
+
+
+async def _fetch_vintage(client: httpx.AsyncClient, series_id: str, key: str,
+                         realtime_date: str, limit: int = 1) -> Optional[dict]:
+    """Fetch ALFRED vintage — what a series looked like on a specific past date."""
+    try:
+        resp = await client.get(f"{BASE}/series/observations", params={
+            "series_id": series_id,
+            "api_key": key,
+            "file_type": "json",
+            "realtime_start": realtime_date,
+            "realtime_end": realtime_date,
+            "sort_order": "desc",
+            "limit": limit,
+        })
+        if resp.status_code == 200:
+            data = resp.json()
+            obs = data.get("observations", [])
+            valid = [o for o in obs if o.get("value") not in (".", "", None)]
+            return {"series_id": series_id, "realtime_date": realtime_date, "observations": valid}
+    except Exception as e:
+        logger.warning(f"ALFRED vintage fetch failed for {series_id} @ {realtime_date}: {e}")
+    return None
+
+
+async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> dict:
+    """Compare a FRED series across multiple vintage dates.
+
+    Shows how the same observation period looked at different points in time
+    (i.e., before and after revisions).
+    """
+    key = _get_key()
+    if not key:
+        return {"error": "FRED API key not configured"}
+
+    series_id = series_id.upper()
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        # Fetch current (latest revised) data
+        current = await _fetch_series(client, series_id, key, limit=24)
+
+        # Fetch vintage for each requested date
+        vintage_tasks = [
+            _fetch_vintage(client, series_id, key, d, limit=24)
+            for d in vintage_dates
+        ]
+        vintages = await asyncio.gather(*vintage_tasks, return_exceptions=True)
+
+        # Also fetch series info
+        info_resp = await client.get(f"{BASE}/series", params={
+            "series_id": series_id, "api_key": key, "file_type": "json",
+        })
+        series_info = {}
+        if info_resp.status_code == 200:
+            seriess = info_resp.json().get("seriess", [])
+            if seriess:
+                series_info = seriess[0]
+
+    # Build current values map: observation_date -> value
+    current_map = {}
+    if current:
+        for o in current["observations"]:
+            try:
+                current_map[o["date"]] = float(o["value"])
+            except (ValueError, TypeError):
+                pass
+
+    # Build vintage maps
+    vintage_results = []
+    for vdate, vdata in zip(vintage_dates, vintages):
+        if isinstance(vdata, Exception) or vdata is None:
+            vintage_results.append({"date": vdate, "observations": [], "revisions": []})
+            continue
+
+        vmap = {}
+        for o in vdata.get("observations", []):
+            try:
+                vmap[o["date"]] = float(o["value"])
+            except (ValueError, TypeError):
+                pass
+
+        # Find revisions: where vintage value differs from current
+        revisions = []
+        for obs_date, vintage_val in vmap.items():
+            current_val = current_map.get(obs_date)
+            if current_val is not None and abs(current_val - vintage_val) > 0.001:
+                revisions.append({
+                    "observation_date": obs_date,
+                    "original_value": vintage_val,
+                    "revised_value": current_val,
+                    "revision": round(current_val - vintage_val, 4),
+                    "revision_pct": round(((current_val - vintage_val) / abs(vintage_val)) * 100, 2) if vintage_val != 0 else None,
+                })
+
+        obs_list = [{"date": o["date"], "value": float(o["value"])} for o in vdata.get("observations", [])
+                    if o.get("value") not in (".", "", None)]
+
+        vintage_results.append({
+            "date": vdate,
+            "observations": obs_list,
+            "revisions": sorted(revisions, key=lambda r: r["observation_date"], reverse=True),
+            "revision_count": len(revisions),
+        })
+
+    return {
+        "series_id": series_id,
+        "title": series_info.get("title", series_id),
+        "units": series_info.get("units", ""),
+        "frequency": series_info.get("frequency", ""),
+        "current_observations": [{"date": d, "value": v} for d, v in sorted(current_map.items(), reverse=True)[:24]],
+        "vintages": vintage_results,
+    }
+
+
+async def detect_revisions(db) -> list[dict]:
+    """Compare today's FRED data against the most recent stored snapshot to detect revisions.
+
+    Returns a list of indicators where the current value differs from what was stored.
+    """
+    key = _get_key()
+    if not key:
+        return []
+
+    # Get latest snapshot from DB
+    latest_snap = await db.fred_snapshots.find_one({}, sort=[("date", -1)], projection={"_id": 0})
+    if not latest_snap:
+        return []
+
+    snap_indicators = latest_snap.get("indicators", {})
+
+    # Fetch current values
+    current_data = await get_macro_indicators()
+    if current_data.get("error"):
+        return []
+
+    revisions = []
+    for ind in current_data.get("indicators", []):
+        sid = ind["id"]
+        if sid not in snap_indicators:
+            continue
+
+        stored = snap_indicators[sid]
+        stored_val = stored.get("value")
+        current_val = ind.get("raw_value")
+
+        if stored_val is not None and current_val is not None:
+            if abs(current_val - stored_val) > 0.001:
+                revisions.append({
+                    "series_id": sid,
+                    "name": ind["name"],
+                    "category": ind["category"],
+                    "stored_value": stored_val,
+                    "stored_date": stored.get("date"),
+                    "current_value": current_val,
+                    "current_date": ind.get("date"),
+                    "revision": round(current_val - stored_val, 4),
+                    "snapshot_date": latest_snap.get("date"),
+                })
+
+    return revisions

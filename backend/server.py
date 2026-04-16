@@ -310,9 +310,10 @@ async def _run_prediction_labeler():
 
 
 async def _run_fred_snapshot():
-    """Background: Store daily FRED macro indicators snapshot to MongoDB (7:00 AM UTC)."""
+    """Background: Store daily FRED macro indicators snapshot to MongoDB (7:00 AM UTC).
+    Also stores ALFRED vintage data for revision-prone series."""
     try:
-        from services.fred_service import get_macro_indicators
+        from services.fred_service import get_macro_indicators, REVISION_WATCH_SERIES, _fetch_vintage, _get_key
         from datetime import datetime, timezone
 
         data = await get_macro_indicators()
@@ -332,6 +333,7 @@ async def _run_fred_snapshot():
             "date": today,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "indicators": {},
+            "vintages": {},
         }
 
         for ind in data["indicators"]:
@@ -345,8 +347,47 @@ async def _run_fred_snapshot():
                 "change_pct": ind.get("change_pct"),
             }
 
+        # Fetch ALFRED vintage for revision-watch series (as-reported today)
+        import httpx
+        key = _get_key()
+        if key:
+            async with httpx.AsyncClient(timeout=20) as client:
+                for sid in REVISION_WATCH_SERIES:
+                    try:
+                        vdata = await _fetch_vintage(client, sid, key, today, limit=3)
+                        if vdata and vdata.get("observations"):
+                            snapshot["vintages"][sid] = [
+                                {"date": o["date"], "value": float(o["value"])}
+                                for o in vdata["observations"]
+                                if o.get("value") not in (".", "", None)
+                            ]
+                    except Exception:
+                        pass
+
+        # Check for revisions against previous snapshot
+        prev_snap = await db.fred_snapshots.find_one(
+            {"date": {"$lt": today}}, sort=[("date", -1)], projection={"_id": 0}
+        )
+        if prev_snap:
+            revision_alerts = []
+            prev_inds = prev_snap.get("indicators", {})
+            for sid, curr in snapshot["indicators"].items():
+                prev = prev_inds.get(sid)
+                if prev and prev.get("value") is not None and curr.get("value") is not None:
+                    if abs(curr["value"] - prev["value"]) > 0.001:
+                        revision_alerts.append({
+                            "series_id": sid,
+                            "name": curr["name"],
+                            "old_value": prev["value"],
+                            "new_value": curr["value"],
+                            "revision": round(curr["value"] - prev["value"], 4),
+                        })
+            if revision_alerts:
+                snapshot["revision_alerts"] = revision_alerts
+                logger.info(f"FRED revision alerts: {len(revision_alerts)} indicators revised")
+
         await db.fred_snapshots.insert_one(snapshot)
-        logger.info(f"FRED daily snapshot saved: {len(data['indicators'])} indicators for {today}")
+        logger.info(f"FRED daily snapshot saved: {len(data['indicators'])} indicators, {len(snapshot.get('vintages', {}))} vintages for {today}")
     except Exception as e:
         logger.warning(f"FRED snapshot error: {e}")
 
