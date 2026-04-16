@@ -22,6 +22,30 @@ db = None
 
 FREE_DAILY_LIMIT = 100
 PRO_DAILY_LIMIT = 5000
+ENTERPRISE_DAILY_LIMIT = 50000
+
+TIER_CONFIG = {
+    "free": {
+        "daily_limit": FREE_DAILY_LIMIT,
+        "endpoints": ["watchlist", "predictions", "quote", "market", "headlines"],
+        "label": "Free",
+    },
+    "pro": {
+        "daily_limit": PRO_DAILY_LIMIT,
+        "endpoints": ["watchlist", "predictions", "quote", "market", "headlines",
+                       "signals", "hypothesis", "war_room", "research", "search",
+                       "ml_signal", "sectors", "provider_status"],
+        "label": "Pro",
+    },
+    "enterprise": {
+        "daily_limit": ENTERPRISE_DAILY_LIMIT,
+        "endpoints": ["watchlist", "predictions", "quote", "market", "headlines",
+                       "signals", "hypothesis", "war_room", "research", "search",
+                       "ml_signal", "sectors", "provider_status",
+                       "paper_trades", "ml_stats", "backtest", "batch_signals"],
+        "label": "Enterprise",
+    },
+}
 
 
 def set_db(database):
@@ -53,13 +77,23 @@ async def _resolve_api_key(api_key: str) -> Optional[dict]:
     return key_doc
 
 
-async def _check_rate_limit(user_id: str, is_pro: bool) -> bool:
+def _get_tier(user: dict) -> str:
+    """Determine API tier from user's subscription status."""
+    sub = user.get("subscription_status", "")
+    if sub == "enterprise":
+        return "enterprise"
+    if sub in ("pro", "active"):
+        return "pro"
+    return "free"
+
+
+async def _check_rate_limit(user_id: str, tier: str) -> bool:
     """Check and increment daily rate limit. Returns True if allowed."""
     if db is None:
         return False
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    limit = PRO_DAILY_LIMIT if is_pro else FREE_DAILY_LIMIT
+    limit = TIER_CONFIG.get(tier, TIER_CONFIG["free"])["daily_limit"]
 
     doc = await db.api_usage.find_one(
         {"user_id": user_id, "date": today},
@@ -72,14 +106,14 @@ async def _check_rate_limit(user_id: str, is_pro: bool) -> bool:
 
     await db.api_usage.update_one(
         {"user_id": user_id, "date": today},
-        {"$inc": {"count": 1}, "$set": {"limit": limit}},
+        {"$inc": {"count": 1}, "$set": {"limit": limit, "tier": tier}},
         upsert=True
     )
     return True
 
 
 async def _auth_via_key(request: Request, x_api_key: Optional[str] = None) -> dict:
-    """Authenticate via API key header. Returns user dict with _is_pro flag."""
+    """Authenticate via API key header. Returns user dict with tier info."""
     api_key = x_api_key or request.headers.get("x-api-key", "")
     if not api_key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header")
@@ -90,14 +124,14 @@ async def _auth_via_key(request: Request, x_api_key: Optional[str] = None) -> di
 
     user = key_doc["user"]
     user_id = str(user["_id"])
-    is_pro = user.get("subscription_status") == "pro"
+    tier = _get_tier(user)
 
-    allowed = await _check_rate_limit(user_id, is_pro)
+    allowed = await _check_rate_limit(user_id, tier)
     if not allowed:
-        limit = PRO_DAILY_LIMIT if is_pro else FREE_DAILY_LIMIT
+        limit = TIER_CONFIG[tier]["daily_limit"]
         raise HTTPException(
             status_code=429,
-            detail=f"Daily rate limit exceeded ({limit} calls/day). Resets at midnight UTC."
+            detail=f"Daily rate limit exceeded ({limit} calls/day on {tier} tier). Resets at midnight UTC."
         )
 
     # Track usage on key
@@ -106,7 +140,19 @@ async def _auth_via_key(request: Request, x_api_key: Optional[str] = None) -> di
         {"$inc": {"total_calls": 1}, "$set": {"last_used": datetime.now(timezone.utc).isoformat()}}
     )
 
-    return {"user": user, "user_id": user_id, "is_pro": is_pro}
+    return {"user": user, "user_id": user_id, "tier": tier, "is_pro": tier in ("pro", "enterprise")}
+
+
+def _require_tier(auth: dict, min_tier: str) -> None:
+    """Raise 403 if user's tier is below the required minimum."""
+    tier_order = {"free": 0, "pro": 1, "enterprise": 2}
+    user_level = tier_order.get(auth["tier"], 0)
+    required_level = tier_order.get(min_tier, 0)
+    if user_level < required_level:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This endpoint requires {min_tier} tier. Current tier: {auth['tier']}."
+        )
 
 
 # ══════════════════════════════════════════════════
@@ -189,7 +235,7 @@ async def get_api_usage(request: Request):
     """Get API usage stats for the logged-in user."""
     user = await get_current_user(request)
     user_id = str(user["_id"])
-    is_pro = user.get("subscription_status") == "pro"
+    tier = _get_tier(user)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     usage_today = await db.api_usage.find_one(
@@ -207,14 +253,16 @@ async def get_api_usage(request: Request):
     async for doc in cursor:
         history.append(doc)
 
-    limit = PRO_DAILY_LIMIT if is_pro else FREE_DAILY_LIMIT
+    config = TIER_CONFIG[tier]
     used = usage_today.get("count", 0) if usage_today else 0
 
     return {
         "today": used,
-        "limit": limit,
-        "remaining": max(0, limit - used),
-        "tier": "pro" if is_pro else "free",
+        "limit": config["daily_limit"],
+        "remaining": max(0, config["daily_limit"] - used),
+        "tier": tier,
+        "tier_label": config["label"],
+        "endpoints_available": config["endpoints"],
         "history": history,
     }
 
@@ -294,8 +342,7 @@ async def api_get_symbol_predictions(symbol: str, request: Request):
 async def api_war_room(symbol: str, request: Request):
     """Get AI War Room analysis for a symbol. Pro only."""
     auth = await _auth_via_key(request)
-    if not auth["is_pro"]:
-        raise HTTPException(status_code=403, detail="AI signals require Pro subscription")
+    _require_tier(auth, "pro")
 
     # Check cache first
     cached = await db.war_room_cache.find_one(
@@ -312,8 +359,7 @@ async def api_war_room(symbol: str, request: Request):
 async def api_hypothesis(symbol: str, request: Request):
     """Get AI Investment Hypothesis for a symbol. Pro only."""
     auth = await _auth_via_key(request)
-    if not auth["is_pro"]:
-        raise HTTPException(status_code=403, detail="AI signals require Pro subscription")
+    _require_tier(auth, "pro")
 
     cursor = db.hypothesis_history.find(
         {"symbol": symbol.upper()},
@@ -364,8 +410,7 @@ async def api_quote(symbol: str, request: Request):
 async def api_research(symbol: str, request: Request):
     """Get AI company research. Pro only."""
     auth = await _auth_via_key(request)
-    if not auth["is_pro"]:
-        raise HTTPException(status_code=403, detail="Research requires Pro subscription")
+    _require_tier(auth, "pro")
 
     cached = await db.research_cache.find_one({"symbol": symbol.upper()}, {"_id": 0})
     if cached:
@@ -377,8 +422,7 @@ async def api_research(symbol: str, request: Request):
 async def api_search(request: Request, q: str = "", symbol: str = ""):
     """Run a War Room search query. Pro only."""
     auth = await _auth_via_key(request)
-    if not auth["is_pro"]:
-        raise HTTPException(status_code=403, detail="Search requires Pro subscription")
+    _require_tier(auth, "pro")
     if not q:
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
 
@@ -402,8 +446,119 @@ async def api_headlines(request: Request, hours: int = 24, limit: int = 50):
 async def api_provider_status(request: Request):
     """Get provider health summary. Pro only."""
     auth = await _auth_via_key(request)
-    if not auth["is_pro"]:
-        raise HTTPException(status_code=403, detail="Provider status requires Pro subscription")
+    _require_tier(auth, "pro")
 
     from services.providerrouter import ProviderRouter
     return {"lanes": ProviderRouter.snapshot()}
+
+
+
+# ── ML Signal Endpoints (Pro + Enterprise) ────────────────────────────────────
+
+
+@router.get("/ml-signal/{ticker}")
+async def api_ml_signal(ticker: str, request: Request):
+    """Get ML signal prediction for a ticker.
+
+    Returns direction (up/down/flat), confidence, feature importance,
+    detected patterns, and model version. Pro tier required.
+
+    This is the core ML prediction endpoint — trained on 276K+ snapshots
+    with 62% accuracy and Sharpe 1.56.
+    """
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "pro")
+
+    from routes.signal import get_ai_signal
+    return await get_ai_signal(ticker, request)
+
+
+@router.post("/ml-signal/batch")
+async def api_ml_signal_batch(request: Request):
+    """Batch ML signal predictions for multiple tickers. Enterprise only.
+
+    Body: {"tickers": ["AAPL", "NVDA", "TSLA"]}
+    Max 20 tickers per request.
+    """
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "enterprise")
+
+    body = await request.json()
+    tickers = body.get("tickers", [])
+    if not tickers or len(tickers) > 20:
+        raise HTTPException(status_code=400, detail="Provide 1-20 tickers in 'tickers' array")
+
+    from routes.signal import get_ai_signal
+
+    signals = []
+    for ticker in tickers:
+        try:
+            result = await get_ai_signal(ticker.upper(), request)
+            signals.append(result)
+        except Exception as exc:
+            signals.append({"ticker": ticker.upper(), "error": str(exc)})
+
+    return {"signals": signals, "count": len(signals)}
+
+
+@router.get("/ml-stats")
+async def api_ml_stats(request: Request):
+    """Get ML pipeline status — data coverage, model stats, tier gates. Pro only."""
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "pro")
+
+    from routes.ml_orchestrator import get_gate_status, get_ml_stats
+    gate = await get_gate_status()
+    stats = await get_ml_stats()
+    return {"gate_status": gate, "stats": stats}
+
+
+@router.get("/paper-trades")
+async def api_paper_trades(request: Request, limit: int = 50):
+    """Get recent ML paper trade history. Enterprise only.
+
+    Returns trade log with entry/exit, P&L, confidence, pattern data.
+    """
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "enterprise")
+
+    from routes.ml_orchestrator import get_ml_paper_trades
+    return await get_ml_paper_trades(limit=min(limit, 200))
+
+
+@router.get("/sectors")
+async def api_sectors(request: Request, period: str = "1d"):
+    """Get sector heatmap data. Pro only."""
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "pro")
+
+    valid_periods = ["1d", "1w", "1m", "3m", "ytd"]
+    if period not in valid_periods:
+        raise HTTPException(status_code=400, detail=f"Invalid period. Use: {valid_periods}")
+
+    from services.sector_service import get_sector_heatmap
+    data = await get_sector_heatmap()
+    return {"period": period, "sectors": data}
+
+
+# ── API Info & Documentation ──────────────────────────────────────────────────
+
+
+@router.get("/info")
+async def api_info():
+    """Public endpoint — returns API version and available tier details."""
+    return {
+        "api": "RISEDUAL AI Public API",
+        "version": "1.0.0",
+        "docs": "https://risedual.ai/api-docs",
+        "tiers": {
+            tier: {
+                "daily_limit": cfg["daily_limit"],
+                "endpoints": cfg["endpoints"],
+                "label": cfg["label"],
+            }
+            for tier, cfg in TIER_CONFIG.items()
+        },
+        "authentication": "Include 'X-API-Key: <your_key>' header in all requests",
+        "base_url": "/api/v1",
+    }
