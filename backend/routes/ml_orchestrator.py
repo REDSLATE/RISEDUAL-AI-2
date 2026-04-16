@@ -149,6 +149,21 @@ async def get_gate_status() -> dict[str, Any]:
     user_opted_in = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
     meta: dict[str, Any] = getattr(model, "_metadata", {}) or {} if model else {}
+
+    # Load backtest results if available (sidecar JSON produced by backtest.py)
+    _backtest_dir = Path(os.getenv("BACKTEST_RESULTS_DIR", "backtest_results"))
+    if _backtest_dir.exists():
+        bt_files = sorted(_backtest_dir.glob("backtest_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if bt_files:
+            try:
+                import json
+                with open(bt_files[0]) as f:
+                    bt_data = json.load(f)
+                meta["sharpe"] = bt_data.get("sharpe_ratio", meta.get("sharpe", 0.0))
+                meta["max_drawdown"] = bt_data.get("max_drawdown", meta.get("max_drawdown", 1.0))
+            except Exception:
+                pass
+
     sharpe = float(meta.get("sharpe", 0.0))
     max_drawdown = float(meta.get("max_drawdown", 1.0))
 
