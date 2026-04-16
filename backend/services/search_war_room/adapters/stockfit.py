@@ -56,16 +56,18 @@ async def run(query: str, symbol: str = None):
     try:
         h = _headers(key)
         async with httpx.AsyncClient(timeout=15) as client:
-            financials, insider_summary, earnings, scores = await asyncio.gather(
+            # Only hit endpoints available on the free plan (insider endpoints return 403)
+            financials, earnings, scores, balance = await asyncio.gather(
                 _safe_get(client, f"{BASE}/api/financials/income-statement",
                           {"symbol": ticker, "period": "annual", "limit": 2}, h),
-                _safe_get(client, f"{BASE}/api/insider-transactions/summary",
-                          {"symbol": ticker}, h),
                 _safe_get(client, f"{BASE}/api/earnings/snapshot",
                           {"symbol": ticker}, h),
                 _safe_get(client, f"{BASE}/api/financials/scores",
                           {"symbol": ticker}, h),
+                _safe_get(client, f"{BASE}/api/financials/balance-sheet",
+                          {"symbol": ticker, "period": "annual", "limit": 1}, h),
             )
+        insider_summary = {}  # Not available on free plan
 
         items = []
         summary_parts = [f"{ticker} SEC Intelligence"]
@@ -116,6 +118,21 @@ async def run(query: str, symbol: str = None):
                 zone = "safe" if z_score > 2.99 else "grey" if z_score > 1.81 else "distress"
                 summary_parts.append(f"Z-Score: {z_score:.2f} ({zone})")
             items.append({"type": "scores", "data": scores})
+
+        # Balance sheet highlights
+        if isinstance(balance, list) and balance:
+            facts = balance[0].get("facts", {})
+            cash = facts.get("cash", 0)
+            debt = facts.get("totalDebt", 0)
+            equity = facts.get("totalEquity", 0)
+            if cash:
+                summary_parts.append(f"Cash: ${cash / 1e9:.1f}B")
+            if debt:
+                summary_parts.append(f"Debt: ${debt / 1e9:.1f}B")
+            items.append({"type": "balance_sheet", "period": balance[0].get("period"), "data": {
+                "cash": cash, "totalDebt": debt, "totalEquity": equity,
+                "assets": facts.get("assets", 0),
+            }})
 
         if len(summary_parts) <= 1:
             return EngineResult(engine="stockfit", status="error", source_type="fundamental",

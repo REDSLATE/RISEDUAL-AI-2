@@ -145,3 +145,14 @@ export const researchCompany = async (symbol) => {
   }
 };
 
+// StockFit Fundamentals API
+export const getStockFitFundamentals = async (symbol) => {
+  try {
+    const response = await axios.get(`${API}/stockfit/fundamentals/${symbol}`);
+    return response.data;
+  } catch (error) {
+    logger.error('Error fetching StockFit fundamentals:', error);
+    throw error;
+  }
+};
+

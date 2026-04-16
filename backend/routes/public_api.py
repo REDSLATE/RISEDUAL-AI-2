@@ -34,7 +34,7 @@ TIER_CONFIG = {
         "daily_limit": PRO_DAILY_LIMIT,
         "endpoints": ["watchlist", "predictions", "quote", "market", "headlines",
                        "signals", "hypothesis", "war_room", "research", "search",
-                       "ml_signal", "sectors", "provider_status"],
+                       "ml_signal", "sectors", "provider_status", "fundamentals"],
         "label": "Pro",
     },
     "enterprise": {
@@ -539,6 +539,19 @@ async def api_sectors_pro(request: Request, period: str = "1d"):
     from services.sector_service import get_sector_heatmap
     data = await get_sector_heatmap()
     return {"period": period, "sectors": data}
+
+
+# ── StockFit Fundamentals (Pro) ───────────────────────────────────────────────
+
+@router.get("/fundamentals/{symbol}")
+async def api_fundamentals(symbol: str, request: Request):
+    """Get StockFit SEC fundamentals (income, balance sheet, scores, earnings). Pro only."""
+    auth = await _auth_via_key(request)
+    _require_tier(auth, "pro")
+
+    from routes.stockfit import get_fundamentals
+    return await get_fundamentals(symbol)
+
 
 
 # ── API Info & Documentation ──────────────────────────────────────────────────
