@@ -60,16 +60,16 @@ const StrategyCard = ({ id, info, matches, matchCount, isSelected, onSelect, isS
 };
 
 const MatchRow = ({ match }) => (
-  <div className="flex items-center justify-between py-2 px-3 bg-slate-800/30 rounded-lg border border-slate-600/10" data-testid={`match-${match.symbol}`}>
-    <div className="flex items-center gap-3 min-w-0">
-      <span className="text-white text-sm font-bold w-14">{match.symbol}</span>
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2.5 px-3 bg-slate-800/30 rounded-lg border border-slate-600/10" data-testid={`match-${match.symbol}`}>
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-white text-sm font-bold w-14 shrink-0">{match.symbol}</span>
       <span className="text-slate-300 text-xs">${match.price}</span>
-      <Badge className={`text-[8px] ${match.trend === 'bullish' || match.trend === 'strong_bullish' ? 'bg-lime-500/10 text-lime-400' : match.trend === 'bearish' ? 'bg-red-500/10 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
+      <Badge className={`text-[8px] shrink-0 ${match.trend === 'bullish' || match.trend === 'strong_bullish' ? 'bg-lime-500/10 text-lime-400' : match.trend === 'bearish' ? 'bg-red-500/10 text-red-400' : 'bg-slate-700 text-slate-400'}`}>
         {match.trend}
       </Badge>
     </div>
-    <div className="flex items-center gap-3">
-      <span className="text-slate-400 text-[10px] max-w-[200px] truncate">{match.detail}</span>
+    <div className="flex items-center gap-2 sm:gap-3">
+      <span className="text-slate-400 text-[10px] truncate flex-1 sm:max-w-[200px]">{match.detail}</span>
       <StrengthBar strength={match.strength} />
     </div>
   </div>
@@ -148,33 +148,33 @@ const MarketScanner = ({ onClose }) => {
     <PanelShell onClose={onClose} testId="market-scanner" maxWidth="max-w-4xl">
       <div className="w-full max-h-[90vh] overflow-hidden bg-[#0B1426] border border-slate-600/30 rounded-2xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-400/20 shrink-0">
-          <div className="flex items-center gap-2">
-            <Search className="w-5 h-5 text-[#3DE8D9]" />
-            <h2 className="text-white font-bold text-base">Market Scanner</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 md:px-5 py-3 border-b border-slate-400/20 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Search className="w-4 h-4 md:w-5 md:h-5 text-[#3DE8D9] shrink-0" />
+            <h2 className="text-white font-bold text-sm md:text-base">Market Scanner</h2>
             {results && (
-              <span className="text-slate-400 text-[10px]">
+              <span className="text-slate-400 text-[10px] whitespace-nowrap">
                 {results.scanned} symbols | {totalMatches} signals
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-slate-800/60 rounded-lg p-0.5">
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <div className="flex items-center gap-0.5 md:gap-1 bg-slate-800/60 rounded-lg p-0.5">
               <button onClick={() => setMode('presets')}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'presets' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`}
+                className={`px-2 md:px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'presets' ? 'bg-[#3DE8D9] text-white' : 'text-slate-400 hover:text-white'}`}
                 data-testid="scanner-mode-presets">
-                <Search className="w-3 h-3 inline mr-1" />Presets
+                <Search className="w-3 h-3 inline mr-0.5" />Presets
               </button>
               <button onClick={() => setMode('custom')}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'custom' ? 'bg-violet-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                className={`px-2 md:px-2.5 py-1 rounded-md text-[10px] font-medium ${mode === 'custom' ? 'bg-violet-500 text-white' : 'text-slate-400 hover:text-white'}`}
                 data-testid="scanner-mode-custom">
-                <Wrench className="w-3 h-3 inline mr-1" />Builder
+                <Wrench className="w-3 h-3 inline mr-0.5" />Builder
               </button>
             </div>
             {mode === 'presets' && (
               <Button size="sm" variant="outline" onClick={runFullScan} disabled={scanning}
                 className="bg-slate-800 border-slate-400/30 text-slate-300 text-xs rounded-xl h-7" data-testid="scanner-refresh">
-                <RefreshCw className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} /> {scanning ? 'Scanning...' : 'Scan'}
+                <RefreshCw className={`w-3 h-3 mr-1 ${scanning ? 'animate-spin' : ''}`} /> {scanning ? '...' : 'Scan'}
               </Button>
             )}
             {onClose && <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>}
@@ -183,8 +183,8 @@ const MarketScanner = ({ onClose }) => {
 
         {mode === 'custom' ? (
           /* Custom Rule Builder Mode */
-          <div className="flex flex-1 min-h-0">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex flex-col md:flex-row flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4">
               <RuleBuilder onScanResults={setCustomResults} />
               {customResults && customResults.matches?.length > 0 && (
                 <div className="space-y-1.5">
@@ -206,7 +206,7 @@ const MarketScanner = ({ onClose }) => {
         ) : (
         <>
         {/* Filter Bar */}
-        <div className="flex items-center gap-1.5 px-5 py-2 border-b border-slate-400/15 shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-1.5 px-4 md:px-5 py-2 border-b border-slate-400/15 shrink-0 overflow-x-auto scrollbar-hide">
           {[
             { id: 'all', label: 'All' },
             { id: 'bullish', label: 'Bullish' },
@@ -227,9 +227,9 @@ const MarketScanner = ({ onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0">
           {/* Strategy List */}
-          <div className="w-72 border-r border-slate-400/15 overflow-y-auto p-3 space-y-2 shrink-0" data-testid="strategy-list">
+          <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-slate-400/15 overflow-y-auto max-h-[35vh] md:max-h-none p-3 space-y-2 shrink-0" data-testid="strategy-list">
             {scanning && !results ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <RefreshCw className="w-6 h-6 text-[#3DE8D9] animate-spin" />
@@ -250,21 +250,21 @@ const MarketScanner = ({ onClose }) => {
           </div>
 
           {/* Results Panel */}
-          <div className="flex-1 overflow-y-auto p-4" data-testid="scanner-results">
+          <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-[30vh] md:min-h-0" data-testid="scanner-results">
             {!selected ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="flex flex-col items-center justify-center h-full text-center py-8 md:py-0">
                 <Search className="w-10 h-10 text-slate-600 mb-3" />
                 <p className="text-slate-400 text-sm">Select a strategy to view matches</p>
-                <p className="text-slate-500 text-[10px] mt-1">Click any strategy card on the left</p>
+                <p className="text-slate-500 text-[10px] mt-1">Tap any strategy card above</p>
               </div>
             ) : selectedData ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <h3 className="text-white font-semibold text-sm">{selectedData.info?.name}</h3>
                     <p className="text-slate-400 text-[10px]">{selectedData.info?.description}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {selectedData.match_count > 0 && (
                       <Button size="sm" variant="outline" onClick={validateMatches} disabled={validating}
                         className="bg-violet-900/20 text-violet-400 border-violet-800/50 hover:bg-violet-800/30 h-7 text-[10px]" data-testid="scanner-validate-btn">

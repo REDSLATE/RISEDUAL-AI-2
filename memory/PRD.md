@@ -29,21 +29,21 @@
 - `schemas/market.py` — Pattern booleans, PatternResult, convenience properties
 
 ## ML Controls Panel Enhancements (DONE — Apr 16, 2026)
-### Paper Trading PnL Dashboard (NEW):
-- Summary cards: Total PnL, Win Rate, Best/Worst Trade
-- Cumulative PnL chart (Recharts AreaChart with gradient)
-- Position sizing breakdown (avg/max/min from Kelly)
-- Recent trades table with direction, confidence, PnL
-- Empty state: "No ML paper trades yet" when Tier 2 is locked
+### Paper Trading PnL Dashboard:
+- Summary cards, cumulative PnL chart (Recharts AreaChart), position sizing, trade history table
 - Backend: GET /api/ml/paper-trades (filters ML autonomous trades by prediction_id)
 
-### Calibration Curve Visualization (NEW):
+### Calibration Curve Visualization:
 - Grouped bar chart: Predicted confidence vs Actual accuracy per bucket
-- Color coding: green (well-calibrated), orange (overconfident)
-- Stats row: Accuracy, Brier Score, ECE, N Predictions
-- Model version badge
-- Empty state: "Awaiting trained model" when no model exists
-- Backend: GET /api/ml/calibration-curve (returns curve_data + summary)
+- Backend: GET /api/ml/calibration-curve
+
+## Mobile Responsiveness Fix — Market Scanner (DONE — Apr 16, 2026)
+- Fixed two-column layout overlapping on mobile (flex-col md:flex-row)
+- Strategy list: full-width stacked cards on mobile, w-72 sidebar on desktop
+- Results panel: below strategies on mobile, side-by-side on desktop
+- Header: flex-wrap with compact spacing on mobile
+- MatchRow: stacks vertically on small screens
+- Filter tabs: scrollbar-hide for clean horizontal scroll
 
 ## Workspace: Modals -> Inline Tabs (DONE)
 - PanelShell dual-mode component
