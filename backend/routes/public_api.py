@@ -385,7 +385,7 @@ async def api_fear_greed(request: Request):
 
 
 @router.get("/market/sectors")
-async def api_sectors(request: Request):
+async def api_market_sectors(request: Request):
     """Get sector heatmap data."""
     await _auth_via_key(request)
 
@@ -527,8 +527,8 @@ async def api_paper_trades(request: Request, limit: int = 50):
 
 
 @router.get("/sectors")
-async def api_sectors(request: Request, period: str = "1d"):
-    """Get sector heatmap data. Pro only."""
+async def api_sectors_pro(request: Request, period: str = "1d"):
+    """Get sector heatmap data with period filter. Pro only."""
     auth = await _auth_via_key(request)
     _require_tier(auth, "pro")
 
