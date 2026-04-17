@@ -32,6 +32,7 @@ import OnboardingTour, { STORAGE_KEY as TOUR_KEY } from './components/Onboarding
 import useModals from './hooks/useModals';
 
 const AlpacaOAuthDemo = React.lazy(() => import('./components/AlpacaOAuthDemo'));
+const LiveDemoOverlay = React.lazy(() => import('./components/LiveDemoOverlay'));
 
 // Hub pages
 import ResearchHub from './components/hubs/ResearchHub';
@@ -84,6 +85,7 @@ function AppContent() {
   const [researchTab, setResearchTab] = React.useState(null);
   const [optionsTab, setOptionsTab] = React.useState(null);
   const [workspaceTab, setWorkspaceTab] = React.useState(null);
+  const [showDemo, setShowDemo] = React.useState(false);
 
   const navigateTo = React.useCallback((view, subTab) => {
     setActiveView(view);
@@ -113,8 +115,21 @@ function AppContent() {
     const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
     return (
       <div>
-        <LandingPage onGetStarted={() => setShowWaitlist(true)} onLogin={() => { setAuthTab('login'); setShowAuth(true); }} onOpenLegal={openLegalTab} />
+        <LandingPage
+          onGetStarted={() => setShowWaitlist(true)}
+          onLogin={() => { setAuthTab('login'); setShowAuth(true); }}
+          onOpenLegal={openLegalTab}
+          onTryDemo={() => setShowDemo(true)}
+        />
         <Toaster />
+        {showDemo && (
+          <React.Suspense fallback={null}>
+            <LiveDemoOverlay
+              onClose={() => setShowDemo(false)}
+              onJoinWaitlist={() => { setShowDemo(false); setShowWaitlist(true); }}
+            />
+          </React.Suspense>
+        )}
         {showWaitlist && <WaitlistModal onClose={() => setShowWaitlist(false)} onOpenBetaKey={() => { setShowWaitlist(false); setAuthTab('beta'); setShowAuth(true); }} />}
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
         {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}

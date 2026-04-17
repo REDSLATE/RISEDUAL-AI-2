@@ -94,8 +94,8 @@ async def admin_invite(request: Request):
 async def admin_select_founding(request: Request):
     """Admin: Select the Founding 100 members."""
     await _require_admin(request)
-    from services.waitlist_service import select_founding_100
-    founders = await select_founding_100()
+    from services.waitlist_service import select_founding_50
+    founders = await select_founding_50()
     return {"founders": founders, "count": len(founders)}
 
 

@@ -111,7 +111,7 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
             </div>
             <div>
               <h2 className="text-white text-sm font-bold">RISEDUAL AI Beta</h2>
-              <p className="text-slate-400 text-[10px]">Join the Founding 100</p>
+              <p className="text-slate-400 text-[10px]">Join the Founding 50</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white" data-testid="waitlist-close">
@@ -126,7 +126,7 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
               <div className="text-center mb-4">
                 <h3 className="text-white text-base font-semibold mb-1">Jump the Line</h3>
                 <p className="text-slate-400 text-xs leading-relaxed">
-                  Be among the first 100 to test RISEDUAL AI's adversarial trading system.
+                  Be among the first 50 to test RISEDUAL AI's adversarial trading system.
                   <span className="text-[#3DE8D9] font-medium"> Refer friends to move up faster.</span>
                 </p>
               </div>
@@ -227,7 +227,7 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
                 <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
                   <Crown className="w-5 h-5 text-amber-400" />
                   <div>
-                    <span className="text-amber-300 text-xs font-bold">Founding 100 Member</span>
+                    <span className="text-amber-300 text-xs font-bold">Founding 50 Member</span>
                     <p className="text-amber-400/70 text-[10px]">You're part of the elite founding group!</p>
                   </div>
                 </div>
@@ -300,7 +300,7 @@ const WaitlistModal = ({ onClose, onOpenBetaKey }) => {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-700/30 bg-slate-900/40">
           <div className="flex items-center justify-center gap-4 text-[10px] text-slate-500">
-            <span>Founding 100 get exclusive perks</span>
+            <span>Founding 50 get exclusive perks</span>
             <span className="w-1 h-1 rounded-full bg-slate-700" />
             <span>30-day launch window</span>
           </div>

@@ -215,14 +215,14 @@ async def invite_users(count: int = 10) -> List[Dict]:
     return invited
 
 
-async def select_founding_100() -> List[Dict]:
-    """Select the top 100 users as Founding Members based on priority score."""
+async def select_founding_50() -> List[Dict]:
+    """Select the top 50 users as Founding Members based on priority score."""
     cursor = db.waitlist.find(
         {"status": {"$in": ["invited", "active"]}},
         {"_id": 0},
-    ).sort("priority_score", 1).limit(100)
+    ).sort("priority_score", 1).limit(50)
 
-    founders = await cursor.to_list(length=100)
+    founders = await cursor.to_list(length=50)
     codes = [f["referral_code"] for f in founders]
 
     if codes:

@@ -1,8 +1,8 @@
 # Test Credentials
 
-## Owner (REDSLATE)
+## Owner (RISEDUAL)
 - Email: managingdirector@redslateholdings.com
-- Password: RedSlate2026!
+- Password: RiseDual2026!
 - Role: owner
 - Subscription: pro
 - Can activate/deactivate users and grant/revoke Pro
