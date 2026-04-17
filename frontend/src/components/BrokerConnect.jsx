@@ -4,7 +4,7 @@ import {
   Building2, CheckCircle, X, ArrowRight, Shield, Eye, EyeOff,
   RefreshCw, TrendingUp, TrendingDown, DollarSign, BarChart3,
   Wallet, FileText, Trash2, Loader2, ExternalLink, AlertCircle,
-  ArrowUpDown, Clock, Briefcase, Link2
+  ArrowUpDown, Clock, Briefcase, Link2, AlertTriangle, Lock
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -131,6 +131,81 @@ const ORDER_STATUS_CLASSES = {
 };
 const getOrderStatusClass = (status) => ORDER_STATUS_CLASSES[status] || 'bg-amber-900/50 text-amber-300';
 
+// ─── Authorization Disclosure ───
+
+const AuthorizationDisclosure = ({ brokerName, onAllow, onDeny }) => (
+  <div className="space-y-4" data-testid="authorization-disclosure">
+    <div className="bg-amber-50 border-l-4 border-red-600 rounded-r-lg p-5">
+      <h3 className="text-red-700 font-bold text-base mb-3">Authorize RISEDUAL AI</h3>
+      <p className="text-red-700 font-bold text-sm leading-relaxed mb-3">
+        By allowing RISEDUAL AI to access your {brokerName} account, you are granting RISEDUAL AI
+        access to your account information and authorization to place transactions
+        at your direction.
+      </p>
+      <p className="text-red-700 font-bold text-sm leading-relaxed mb-4">
+        {brokerName} does not warrant or guarantee that RISEDUAL AI will work as advertised or
+        expected. Before authorizing, learn more about{' '}
+        <a href="https://risedual.ai" target="_blank" rel="noreferrer" className="underline">RISEDUAL AI</a>.
+      </p>
+      <div className="flex gap-6 justify-center">
+        <button onClick={onDeny} className="text-gray-700 font-bold text-sm uppercase tracking-wide hover:text-gray-900 transition-colors px-6 py-2" data-testid="disclosure-deny">
+          DENY
+        </button>
+        <button onClick={onAllow} className="text-red-700 font-bold text-sm uppercase tracking-wide hover:text-red-900 transition-colors px-6 py-2" data-testid="disclosure-allow">
+          ALLOW
+        </button>
+      </div>
+    </div>
+    <p className="text-slate-500 text-[10px] italic">
+      *Acknowledgement of this disclosure is required prior to connecting your {brokerName} account.
+    </p>
+  </div>
+);
+
+// ─── Disconnect Confirmation ───
+
+const DisconnectConfirmation = ({ brokerName, onConfirm, onCancel, loading }) => (
+  <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4" data-testid="disconnect-confirmation">
+    <div className="flex items-start gap-3 mb-4">
+      <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+      <div>
+        <h4 className="text-red-400 font-semibold text-sm mb-1">Disconnect {brokerName} Account?</h4>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          This will revoke RISEDUAL AI's access to your {brokerName} account. All active orders placed
+          through RISEDUAL will remain open on {brokerName}. Autonomous trading will be paused.
+          You can reconnect at any time.
+        </p>
+      </div>
+    </div>
+    <div className="bg-slate-800/40 rounded-lg p-3 mb-4 space-y-1.5">
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <CheckCircle className="w-3 h-3 text-slate-500 shrink-0" />
+        <span>OAuth tokens will be revoked immediately</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <CheckCircle className="w-3 h-3 text-slate-500 shrink-0" />
+        <span>No stored credentials will remain — KeyVault entry deleted</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <CheckCircle className="w-3 h-3 text-slate-500 shrink-0" />
+        <span>You can also revoke from {brokerName} → Settings → Connected Apps</span>
+      </div>
+    </div>
+    <div className="flex gap-3">
+      <button onClick={onCancel}
+        className="flex-1 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-700 transition-colors"
+        data-testid="disconnect-cancel">
+        Cancel
+      </button>
+      <button onClick={onConfirm} disabled={loading}
+        className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+        data-testid="disconnect-confirm">
+        {loading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Disconnecting...</> : 'Confirm Disconnect'}
+      </button>
+    </div>
+  </div>
+);
+
 // ─── Sub-components ───
 
 const ConnectForm = ({ broker, onConnect, onCancel }) => {
@@ -141,6 +216,8 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthAvailable, setOauthAvailable] = useState(false);
+  const [showDisclosure, setShowDisclosure] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -216,7 +293,7 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
       {/* OAuth Connect Button */}
       {oauthAvailable && (
         <div className="mb-4">
-          <Button onClick={handleOAuth} disabled={oauthLoading}
+          <Button onClick={() => { setShowDisclosure(true); setPendingAction('oauth'); }} disabled={oauthLoading}
             className="w-full bg-gradient-to-r from-[#3DE8D9] to-[#7AEEE0] hover:from-[#7AEEE0] hover:to-[#3B82F6] text-white text-sm rounded-lg py-3 font-semibold"
             data-testid={`broker-oauth-btn-${broker.id}`}>
             {oauthLoading ? (
@@ -233,7 +310,22 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      {/* Authorization Disclosure */}
+      {showDisclosure && (
+        <div className="mb-4">
+          <AuthorizationDisclosure
+            brokerName={broker.name}
+            onAllow={() => {
+              setShowDisclosure(false);
+              if (pendingAction === 'oauth') handleOAuth();
+              else if (pendingAction === 'manual') document.getElementById(`broker-form-${broker.id}`)?.requestSubmit();
+            }}
+            onDeny={() => { setShowDisclosure(false); setPendingAction(null); }}
+          />
+        </div>
+      )}
+
+      <form id={`broker-form-${broker.id}`} onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="text-slate-300 text-xs mb-1 block">{broker.keyLabel}</label>
           <Input
@@ -269,7 +361,11 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
         )}
 
         <div className="flex gap-2 pt-1">
-          <Button type="submit" disabled={loading}
+          <Button type="button" disabled={loading}
+            onClick={() => {
+              if (!apiKey.trim() || !apiSecret.trim()) { setError('Both fields are required'); return; }
+              setShowDisclosure(true); setPendingAction('manual');
+            }}
             className="flex-1 bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white text-sm rounded-lg"
             data-testid={`broker-connect-submit-${broker.id}`}>
             {loading ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Connecting...</> : <>Connect<ArrowRight className="w-3.5 h-3.5 ml-1.5" /></>}
@@ -552,6 +648,7 @@ const BrokerConnect = () => {
   const [syncResult, setSyncResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [oauthMessage, setOauthMessage] = useState(null);
+  const [disconnecting, setDisconnecting] = useState(null);
 
   // Handle OAuth redirect callback
   useEffect(() => {
@@ -600,9 +697,12 @@ const BrokerConnect = () => {
     try {
       await authFetch(`${API}/broker/disconnect/${brokerId}`, { method: 'DELETE' });
       setActiveBroker(null);
+      setDisconnecting(null);
+      toast.success('Broker disconnected — all OAuth tokens revoked');
       fetchConnections();
     } catch (err) {
       logger.error('Broker disconnect failed:', err);
+      toast.error('Failed to disconnect broker');
     } finally {
       setLoading(false);
     }
@@ -674,9 +774,20 @@ const BrokerConnect = () => {
                   </div>
                   <AccountDashboard
                     brokerId={activeBroker}
-                    onDisconnect={() => handleDisconnect(activeBroker)}
+                    onDisconnect={() => setDisconnecting(activeBroker)}
                     onSync={setSyncResult}
                   />
+                  {/* Disconnect Confirmation */}
+                  {disconnecting === activeBroker && (
+                    <div className="mt-4">
+                      <DisconnectConfirmation
+                        brokerName={BROKERS.find(b => b.id === activeBroker)?.name || 'Broker'}
+                        onConfirm={() => handleDisconnect(activeBroker)}
+                        onCancel={() => setDisconnecting(null)}
+                        loading={loading}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Broker Cards Grid */
@@ -739,12 +850,23 @@ const BrokerConnect = () => {
               {!activeBroker && (
                 <div className="p-4 bg-slate-700/55 border border-slate-400/30/30 rounded-xl">
                   <h3 className="text-white font-semibold text-sm mb-2">How it works</h3>
-                  <ol className="text-slate-300 text-xs space-y-1 list-decimal list-inside">
+                  <ol className="text-slate-300 text-xs space-y-1 list-decimal list-inside mb-3">
                     <li>Sign up with your broker and get your API keys from their developer portal</li>
-                    <li>Enter your API credentials above — they are encrypted at rest</li>
+                    <li>Review the authorization disclosure and accept to proceed</li>
+                    <li>Enter your API credentials — they are encrypted at rest with AES-256</li>
                     <li>View your account, manage positions, and execute trades from RISEDUAL AI</li>
-                    <li>Sync your portfolio to power AI strategy recommendations</li>
+                    <li>Revoke access anytime from Settings or your broker's dashboard</li>
                   </ol>
+                  <div className="space-y-1.5 pt-2 border-t border-slate-600/50">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Lock className="w-3 h-3 text-[#3DE8D9] shrink-0" />
+                      <span>We never see or store your broker password — OAuth2 industry standard</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Shield className="w-3 h-3 text-[#3DE8D9] shrink-0" />
+                      <span>All credentials encrypted with AES-256 in our secure KeyVault</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
