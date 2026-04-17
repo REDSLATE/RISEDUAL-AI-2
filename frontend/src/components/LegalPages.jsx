@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { X, FileText, Shield, AlertTriangle, Scale } from 'lucide-react';
+import { X, FileText, Shield, AlertTriangle, Scale, Lock } from 'lucide-react';
 
-const ENTITY = 'RISEDUAL CORPORATION';
+const ENTITY = 'RISEDUAL INC.';
 const STATE = 'Florida';
 const SITE = 'risedual.ai';
 const EMAIL = 'legal@risedual.ai';
 const PRICE = '$55';
 const UPDATED = 'April 13, 2026';
+const SECURITY_UPDATED = 'April 3, 2026';
 
 const TABS = [
   { id: 'terms', label: 'Terms of Service', icon: FileText },
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'privacy', label: 'Privacy Policy', icon: Shield },
   { id: 'risk', label: 'Risk Disclosure', icon: AlertTriangle },
   { id: 'disclaimer', label: 'Disclaimer', icon: Scale },
+  { id: 'security', label: 'Security & Compliance', icon: Lock },
 ];
 
 /* ─── Section helper ─── */
@@ -309,6 +311,205 @@ const DisclaimerContent = () => (
 );
 
 /* ═══════════════════════════════════════════════
+   SECURITY & COMPLIANCE
+   ═══════════════════════════════════════════════ */
+const SecurityContent = () => (
+  <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
+    <div className="bg-[#3DE8D9]/5 border border-[#3DE8D9]/20 rounded-lg p-4 mb-4">
+      <p className="text-[#3DE8D9] text-xs font-medium">RISEDUAL INC. Cybersecurity and AI Use Policy</p>
+      <p className="text-slate-400 text-[10px] mt-1">Effective: {SECURITY_UPDATED} | Approved by {ENTITY} management</p>
+    </div>
+
+    <S title="Purpose">
+      <p>This policy establishes the cybersecurity, data protection, and responsible artificial intelligence (AI) controls for {ENTITY}, a {STATE} profit corporation, to protect company systems, customer information, and connected third-party brokerage integrations used through the RISEDUAL platform.</p>
+    </S>
+
+    <S title="Scope">
+      <p>This policy applies to all personnel, contractors, administrators, systems, devices, applications, vendors, hosting providers, and third-party services used to build, host, maintain, or operate the RISEDUAL platform.</p>
+    </S>
+
+    <S title="Company Overview">
+      <p>{ENTITY} operates a web-based trading tool that helps users analyze markets, monitor portfolios, and automate parts of their trading workflow through integrations with third-party brokerage providers. RISEDUAL is a technology platform and does not itself provide brokerage, custody, or clearing services.</p>
+    </S>
+
+    <S title="Governance and Responsibility">
+      <p>Company leadership is responsible for oversight of cybersecurity, privacy, and AI-related risk. Administrative access to production systems must be limited to authorized personnel only. Access rights must be reviewed periodically and removed promptly when no longer required. Security incidents, suspected compromise, and material system weaknesses must be escalated immediately.</p>
+    </S>
+
+    <S title="Asset and Data Classification">
+      <p>{ENTITY} classifies information into the following categories:</p>
+      <ul className="list-disc pl-5 space-y-1 mt-2">
+        <li><strong>Public:</strong> Information approved for public release, such as marketing content.</li>
+        <li><strong>Internal:</strong> Non-public business information intended for routine internal use.</li>
+        <li><strong>Confidential:</strong> Sensitive operational, technical, financial, customer, or vendor information.</li>
+        <li><strong>Restricted:</strong> Highly sensitive data requiring enhanced safeguards, including authentication credentials, API secrets, OAuth tokens, security logs, and any regulated personal or financial account data.</li>
+      </ul>
+      <p className="mt-2">Confidential and Restricted data must only be accessed by authorized personnel with a legitimate business need. Restricted data must not be shared through unsecured channels. Data must be retained only as long as needed for business, legal, security, or compliance purposes.</p>
+    </S>
+
+    <S title="Access Control and Identity Management">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Unique user accounts must be used for administrative access.</li>
+        <li>Shared administrator credentials are prohibited except where technically unavoidable and separately secured.</li>
+        <li>Strong passwords must be used across company systems.</li>
+        <li>Multi-factor authentication should be enabled wherever supported, especially for email, domain, hosting, source code, payment, analytics, and administrative systems.</li>
+        <li>Role-based access control must be used to limit access based on job function.</li>
+        <li>Access to production databases, application backends, and hosting controls must be restricted to authorized administrators.</li>
+        <li>Secrets, tokens, and credentials must not be hardcoded into public code repositories.</li>
+      </ul>
+    </S>
+
+    <S title="Endpoint Security">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Company laptops and workstations must use supported operating systems and current security updates.</li>
+        <li>Antivirus or anti-malware protections must be enabled and kept current where available.</li>
+        <li>Local device encryption should be enabled where supported.</li>
+        <li>Devices used for administrative access must be protected by screen lock and password or biometric login.</li>
+        <li>Only approved software and browser extensions should be used on systems that access production environments.</li>
+      </ul>
+    </S>
+
+    <S title="Infrastructure and Hosting Security">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>The production environment is hosted through Emergent's managed hosting platform, with domain registration and DNS services managed through GoDaddy.</li>
+        <li>Administrative access to hosting, DNS, and application infrastructure must be restricted to authorized personnel only.</li>
+        <li>TLS/HTTPS must be enabled for public-facing application traffic.</li>
+        <li>System configurations should follow secure defaults and unnecessary services should be disabled where possible.</li>
+        <li>Backups of critical application data and configurations should be maintained on a regular basis.</li>
+        <li>Vendor access and third-party integrations must be reviewed before use in production.</li>
+      </ul>
+    </S>
+
+    <S title="Application Security">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Code changes should be tested before deployment to production.</li>
+        <li>Security-sensitive changes should be reviewed before release whenever feasible.</li>
+        <li>Dependencies and frameworks should be updated regularly to address known vulnerabilities.</li>
+        <li>Input validation, authentication, session handling, and authorization controls must be implemented for sensitive features.</li>
+        <li>Error messages returned to end users should avoid exposing secrets or internal system details.</li>
+        <li>Logs should capture relevant security and operational events without unnecessarily exposing sensitive credentials or tokens.</li>
+      </ul>
+    </S>
+
+    <S title="Encryption and Data Protection">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Data in transit must be protected using HTTPS/TLS or equivalent encrypted transport.</li>
+        <li>Sensitive credentials, OAuth tokens, API keys, and secrets must be stored securely and access-limited.</li>
+        <li>Encryption at rest should be enabled where supported for databases, storage volumes, backups, and managed services containing sensitive data.</li>
+        <li>Sensitive data should be minimized and collected only when necessary to support the service.</li>
+      </ul>
+    </S>
+
+    <S title="OAuth and Third-Party Brokerage Integrations">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Users must explicitly authorize brokerage connections through the brokerage provider's OAuth authorization flow.</li>
+        <li>{ENTITY} must not collect or request customer brokerage passwords directly when OAuth is available.</li>
+        <li>OAuth scopes and permissions should be limited to those reasonably necessary for the platform's stated functionality.</li>
+        <li>OAuth tokens and related credentials must be stored securely and protected from unauthorized disclosure.</li>
+        <li>Revoked, expired, or failed credentials must be handled safely and removed or refreshed through approved processes.</li>
+      </ul>
+    </S>
+
+    <S title="Vulnerability and Patch Management">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Operating systems, frameworks, plugins, libraries, and dependencies should be patched on a routine basis.</li>
+        <li>Critical vulnerabilities should be prioritized for expedited remediation.</li>
+        <li>Security issues identified through logs, vendor notices, bug reports, or testing should be tracked and resolved based on severity.</li>
+        <li>Unused accounts, keys, plugins, and services should be disabled or removed when no longer needed.</li>
+      </ul>
+    </S>
+
+    <S title="Monitoring, Logging, and Detection">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Administrative activity, authentication events, operational failures, and security-relevant application events should be logged where feasible.</li>
+        <li>Logs should be retained for a reasonable period based on operational and security needs.</li>
+        <li>Monitoring should be used to identify suspicious activity, service disruption, unauthorized access attempts, and abnormal system behavior.</li>
+        <li>Material alerts should be reviewed and escalated promptly.</li>
+      </ul>
+    </S>
+
+    <S title="Incident Response">
+      <p>{ENTITY} will maintain an incident response process that includes:</p>
+      <ul className="list-disc pl-5 space-y-1 mt-2">
+        <li>Identification and reporting of suspected incidents.</li>
+        <li>Containment of affected systems or credentials.</li>
+        <li>Investigation and impact assessment.</li>
+        <li>Remediation and recovery.</li>
+        <li>Documentation of the incident and corrective actions.</li>
+        <li>Notification to affected partners, vendors, or users when required by contract or law.</li>
+      </ul>
+      <p className="mt-2">Examples of incidents include unauthorized access, malware infection, token compromise, phishing, data exposure, service outages caused by malicious activity, or misuse of AI systems.</p>
+    </S>
+
+    <S title="Backup and Disaster Recovery">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Critical systems, configurations, and application data should be backed up regularly.</li>
+        <li>Backup restoration should be tested periodically where feasible.</li>
+        <li>Recovery priorities should focus on restoring user access, core application functionality, and security controls.</li>
+        <li>Domain, DNS, hosting, and source code access recovery procedures should be maintained by authorized personnel.</li>
+      </ul>
+    </S>
+
+    <S title="Vendor Risk Management">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Third-party vendors and service providers must be reviewed before being used for sensitive business or production functions.</li>
+        <li>The company should consider the vendor's security practices, access model, reputation, and business necessity.</li>
+        <li>Access granted to vendors must be limited to the minimum necessary scope and duration.</li>
+        <li>Vendors that process sensitive information or provide critical hosting, infrastructure, or AI functionality should be reassessed periodically.</li>
+      </ul>
+    </S>
+
+    <S title="AI Governance and Responsible Use">
+      <p>RISEDUAL uses or may use AI capabilities to assist with product functionality, analytics, automation, and user experience. The following controls apply:</p>
+      <ul className="list-disc pl-5 space-y-1 mt-2">
+        <li>AI features must support the platform's role as a technology tool and must not be represented as licensed brokerage, investment advisory, or custodial services.</li>
+        <li>AI outputs must be treated as system-generated assistance and reviewed before being relied upon for sensitive actions where appropriate.</li>
+        <li>AI systems must not be used to intentionally generate misleading, deceptive, discriminatory, harmful, or unauthorized content.</li>
+        <li>Sensitive credentials, OAuth tokens, customer account secrets, or unnecessary personal data must not be pasted into consumer AI tools unless approved and protected under appropriate controls.</li>
+        <li>Prompts, model outputs, logs, and training-related data should be handled according to the company's data classification rules.</li>
+        <li>Access to AI administration features, API keys, and model configuration settings must be restricted to authorized personnel.</li>
+        <li>Third-party AI providers must be assessed as vendors when they process company or customer data.</li>
+        <li>AI-assisted automation that can affect user accounts, orders, or account-connected workflows should include guardrails, approvals, validation checks, or other controls appropriate to the risk.</li>
+        <li>The company should monitor AI functionality for abnormal behavior, failure modes, prompt injection, unauthorized actions, and data leakage risk.</li>
+      </ul>
+    </S>
+
+    <S title="Secure Development and Change Management">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Production changes should be documented and deployed in a controlled manner.</li>
+        <li>Changes affecting authentication, OAuth, payments, AI behavior, or trading-related workflows should receive additional review.</li>
+        <li>Source code repositories must be access-controlled and protected by strong authentication.</li>
+        <li>Secrets should be managed outside source code whenever possible.</li>
+      </ul>
+    </S>
+
+    <S title="Privacy and Minimum Necessary Data Use">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Personal information should be collected, used, and retained only to the extent reasonably necessary for legitimate business and operational purposes.</li>
+        <li>Access to personal information must be limited to personnel with an authorized need.</li>
+        <li>Public privacy disclosures should remain consistent with actual data practices.</li>
+      </ul>
+    </S>
+
+    <S title="Security Awareness">
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Personnel with access to production systems, customer data, DNS, hosting, payments, or source code should follow security best practices for phishing awareness, password hygiene, device security, and secure handling of sensitive information.</li>
+        <li>Suspicious emails, login prompts, or access requests should be verified before action is taken.</li>
+      </ul>
+    </S>
+
+    <S title="Policy Maintenance">
+      <p>This policy should be reviewed at least annually and updated when there are material changes to the company's systems, vendors, regulatory requirements, or AI usage. Exceptions to this policy must be documented and approved by company leadership.</p>
+    </S>
+
+    <S title="Contact">
+      <p>For security inquiries: {EMAIL}</p>
+      <p>{ENTITY} | Incorporated in the State of {STATE}</p>
+    </S>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════ */
 const CONTENT = {
@@ -317,6 +518,7 @@ const CONTENT = {
   privacy: PrivacyContent,
   risk: RiskContent,
   disclaimer: DisclaimerContent,
+  security: SecurityContent,
 };
 
 const LegalPages = ({ onClose, initialTab = 'terms' }) => {

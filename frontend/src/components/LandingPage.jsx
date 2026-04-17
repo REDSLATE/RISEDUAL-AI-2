@@ -544,6 +544,7 @@ const LandingFooter = ({ onOpenLegal }) => (
           <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>
           <button onClick={() => onOpenLegal?.('risk')} className="hover:text-slate-300 transition-colors" data-testid="landing-risk-link">Risk Disclosure</button>
           <button onClick={() => onOpenLegal?.('disclaimer')} className="hover:text-slate-300 transition-colors" data-testid="landing-disclaimer-link">Disclaimer</button>
+          <button onClick={() => onOpenLegal?.('security')} className="hover:text-slate-300 transition-colors" data-testid="landing-security-link">Security</button>
         </div>
       </div>
     </div>
