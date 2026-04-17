@@ -4,7 +4,7 @@ GET /api/demo/dashboard — aggregated demo data for the public landing page dem
 """
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/demo", tags=["demo"])
@@ -100,3 +100,104 @@ async def demo_dashboard():
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+DEMO_SYSTEM_PROMPT = """You are RISEDUAL AI's trading assistant demo. You help visitors understand the platform and answer questions about markets, trading concepts, and the RISEDUAL platform.
+
+Key facts about RISEDUAL AI:
+- ML Signal Engine: XGBoost v4, 62.1% accuracy, Sharpe 1.56, 11.2% max drawdown
+- 276K+ training samples across 80 tickers, 15 years of data
+- Dual AI system: Strategist generates signals, Auditor kills bad ones
+- FRED/ALFRED macro economic data integration
+- SEC EDGAR fundamentals via StockFit
+- Autonomous paper trading (Tier 2 active)
+- $55/month Pro plan, no contracts
+
+Rules:
+- Be helpful, concise, and knowledgeable about markets
+- Mention RISEDUAL features naturally when relevant
+- If asked about specific trades, remind them this is a demo and not financial advice
+- Keep responses under 200 words
+- Do not provide specific buy/sell recommendations
+- Encourage joining the waitlist for full access"""
+
+DEMO_RATE_LIMIT = {}
+DEMO_RATE_MAX = 20  # max messages per IP per hour
+
+
+@router.post("/chat")
+async def demo_chat(request: Request):
+    """Free demo chat powered by NVIDIA Nemotron Nano 9B v2 via OpenRouter.
+    Rate-limited to prevent abuse. No auth required."""
+    import os
+    import httpx
+
+    # Rate limiting by IP
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now(timezone.utc)
+    hour_key = now.strftime("%Y%m%d%H")
+    rate_key = f"{client_ip}:{hour_key}"
+
+    count = DEMO_RATE_LIMIT.get(rate_key, 0)
+    if count >= DEMO_RATE_MAX:
+        return {"error": "Demo rate limit reached. Join the waitlist for unlimited AI access!", "limit": True}
+    DEMO_RATE_LIMIT[rate_key] = count + 1
+
+    # Clean old rate limit entries
+    stale = [k for k in DEMO_RATE_LIMIT if not k.endswith(hour_key)]
+    for k in stale:
+        del DEMO_RATE_LIMIT[k]
+
+    # Parse request
+    try:
+        body = await request.json()
+        messages = body.get("messages", [])
+        if not messages:
+            return {"error": "No messages provided"}
+    except Exception:
+        return {"error": "Invalid request"}
+
+    # Limit conversation length for demo
+    messages = messages[-6:]  # Keep last 6 messages
+
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return {"error": "Demo chat not configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://risedual.ai",
+                    "X-Title": "RISEDUAL AI Demo",
+                },
+                json={
+                    "model": "nvidia/nemotron-nano-9b-v2:free",
+                    "messages": [
+                        {"role": "system", "content": DEMO_SYSTEM_PROMPT},
+                        *[{"role": m.get("role", "user"), "content": m.get("content", "")} for m in messages],
+                    ],
+                    "max_tokens": 500,
+                    "temperature": 0.7,
+                },
+            )
+
+            if resp.status_code != 200:
+                logger.warning(f"OpenRouter demo chat failed: {resp.status_code}")
+                return {"error": "Demo AI temporarily unavailable. Try again shortly."}
+
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            return {
+                "response": content,
+                "model": "NVIDIA Nemotron Nano 9B",
+                "remaining": DEMO_RATE_MAX - DEMO_RATE_LIMIT.get(rate_key, 0),
+            }
+
+    except Exception as e:
+        logger.warning(f"Demo chat error: {e}")
+        return {"error": "Demo AI temporarily unavailable. Try again shortly."}

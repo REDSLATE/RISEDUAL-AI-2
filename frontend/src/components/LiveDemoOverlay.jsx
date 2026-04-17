@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Brain, BarChart3, Activity, Database, Zap, ArrowRight, X, Shield, Lock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { TrendingUp, TrendingDown, Brain, BarChart3, Activity, Database, Zap, ArrowRight, X, Shield, Lock, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
 const API = getApiBase();
@@ -12,6 +12,107 @@ const Sparkline = ({ up }) => {
     <svg width="64" height="22" className="shrink-0">
       <path d={d} fill="none" stroke={up ? '#84cc16' : '#f97316'} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
+  );
+};
+
+const DemoChat = () => {
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: "Welcome to RISEDUAL AI! I'm your trading assistant. Ask me about markets, our ML signals (62% accuracy, Sharpe 1.56), or how the platform works." }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [remaining, setRemaining] = useState(20);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    const userMsg = { role: 'user', content: text };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/demo/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages.filter(m => m.role !== 'assistant' || newMessages.indexOf(m) > 0).slice(-6) }),
+      });
+      const data = await res.json();
+      if (data.response) {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+        if (data.remaining != null) setRemaining(data.remaining);
+      } else if (data.limit) {
+        setMessages(prev => [...prev, { role: 'assistant', content: "You've reached the demo limit! Join the waitlist for unlimited AI access with GPT-5.2." }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.error || "Something went wrong. Try again!" }]);
+      }
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: "Connection error. Please try again." }]);
+    }
+    setLoading(false);
+  };
+
+  const suggestions = ['What is a Sharpe ratio?', 'How does RISEDUAL detect signals?', 'Explain the FRED data', 'What markets do you cover?'];
+
+  return (
+    <div className="bg-slate-800/70 border border-slate-700/40 rounded-xl overflow-hidden" data-testid="demo-chat">
+      <div ref={scrollRef} className="h-64 overflow-y-auto p-4 space-y-3">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm ${
+              m.role === 'user'
+                ? 'bg-[#3DE8D9]/20 text-[#3DE8D9]'
+                : 'bg-slate-700/60 text-slate-200'
+            }`}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-slate-700/60 rounded-xl px-3.5 py-2.5">
+              <Loader2 className="w-4 h-4 text-[#3DE8D9] animate-spin" />
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Suggestions */}
+      {messages.length <= 2 && (
+        <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+          {suggestions.map(s => (
+            <button key={s} onClick={() => { setInput(s); }}
+              className="text-[10px] px-2.5 py-1 rounded-full bg-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-600/50 transition-colors">
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Input */}
+      <div className="border-t border-slate-700/40 p-3 flex gap-2">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder="Ask about markets, signals, or the platform..."
+          className="flex-1 bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-[#3DE8D9]/50"
+          data-testid="demo-chat-input"
+        />
+        <button onClick={send} disabled={loading || !input.trim()}
+          className="bg-[#3DE8D9] hover:bg-[#2fd4c6] text-slate-900 rounded-lg px-3 py-2 disabled:opacity-40 transition-colors"
+          data-testid="demo-chat-send">
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="px-4 pb-2 flex items-center justify-between">
+        <span className="text-slate-600 text-[9px]">NVIDIA Nemotron Nano 9B · {remaining} messages remaining</span>
+        <span className="text-slate-600 text-[9px]">Not financial advice</span>
+      </div>
+    </div>
   );
 };
 
@@ -196,6 +297,15 @@ export default function LiveDemoOverlay({ onClose, onJoinWaitlist }) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* AI Demo Chat */}
+          <div>
+            <h2 className="text-white font-bold text-lg mb-3 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-[#3DE8D9]" /> Ask the AI
+              <span className="text-slate-500 text-xs font-normal ml-1">Powered by NVIDIA Nemotron</span>
+            </h2>
+            <DemoChat />
           </div>
 
           {/* CTA Banner */}
