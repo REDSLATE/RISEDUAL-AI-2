@@ -296,16 +296,36 @@ async def connect_broker(req: ConnectBrokerRequest, request: Request):
 
 @router.get("/connections")
 async def list_connections(request: Request):
-    """List all broker connections for the authenticated user."""
+    """List all broker connections for the authenticated user, with optional account data."""
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+    is_admin = user.get("role") in ("owner", "admin")
     cursor = db.broker_connections.find(
         {"user_id": user_id, "is_active": True},
         {"_id": 0, "api_key_enc": 0, "api_secret_enc": 0}
     )
     connections = []
     async for c in cursor:
-        connections.append(c)
+        conn_data = dict(c)
+        # For admin, try to fetch live account info
+        if is_admin:
+            try:
+                full_conn = await db.broker_connections.find_one(
+                    {"user_id": user_id, "broker_id": c["broker_id"], "is_active": True},
+                    {"_id": 0}
+                )
+                if full_conn:
+                    client = _build_client(full_conn)
+                    account = await asyncio.to_thread(client.get_account)
+                    if account:
+                        conn_data["account"] = {
+                            "equity": account.get("equity", 0),
+                            "buying_power": account.get("buying_power", 0),
+                            "portfolio_value": account.get("portfolio_value", 0),
+                        }
+            except Exception:
+                pass
+        connections.append(conn_data)
     return {"connections": connections}
 
 
