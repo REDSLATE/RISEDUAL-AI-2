@@ -31,6 +31,8 @@ import ModalManager from './components/ModalManager';
 import OnboardingTour, { STORAGE_KEY as TOUR_KEY } from './components/OnboardingTour';
 import useModals from './hooks/useModals';
 
+const AlpacaOAuthDemo = React.lazy(() => import('./components/AlpacaOAuthDemo'));
+
 // Hub pages
 import ResearchHub from './components/hubs/ResearchHub';
 import OptionsHub from './components/hubs/OptionsHub';
@@ -97,6 +99,15 @@ function AppContent() {
       return () => clearTimeout(timer);
     }
   }, [user]);
+
+  // OAuth Demo page — accessible without login at ?demo=oauth
+  if (window.location.search.includes('demo=oauth')) {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-[#060E1F] flex items-center justify-center text-slate-400">Loading demo...</div>}>
+        <AlpacaOAuthDemo />
+      </React.Suspense>
+    );
+  }
 
   if (!user) {
     const openLegalTab = (tab) => { setLegalTab(tab); setShowLegal(true); };
