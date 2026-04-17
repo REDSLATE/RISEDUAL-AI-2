@@ -244,6 +244,11 @@ async def connect_broker(req: ConnectBrokerRequest, request: Request):
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
 
+    # Admin-only brokers
+    ADMIN_ONLY_BROKERS = {"kraken"}
+    if req.broker_id in ADMIN_ONLY_BROKERS and user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail=f"{req.broker_id} is currently available to admin accounts only.")
+
     # Build a temporary client to validate credentials
     from services.broker_service import BrokerService
     credentials = {"api_key": req.api_key, "api_secret": req.api_secret, "paper": req.paper}
@@ -316,6 +321,37 @@ async def disconnect_broker(broker_id: str, request: Request):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Connection not found")
     return {"status": "disconnected", "broker_id": broker_id}
+
+
+
+# ============================================================
+# KRAKEN-SPECIFIC ENDPOINTS (Admin Only)
+# ============================================================
+
+@router.get("/kraken/balances")
+async def kraken_balances(request: Request):
+    """Get Kraken crypto balances. Admin only."""
+    user = await _get_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin only")
+    user_id = str(user["_id"]) if not isinstance(user["_id"], str) else user["_id"]
+    conn = await _get_user_broker(user_id, "kraken")
+    client = _build_client(conn)
+    balances = await asyncio.to_thread(client.get_balances)
+    return {"balances": balances, "count": len(balances)}
+
+
+@router.get("/kraken/trades")
+async def kraken_trade_history(request: Request, limit: int = 50):
+    """Get Kraken trade history. Admin only."""
+    user = await _get_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin only")
+    user_id = str(user["_id"]) if not isinstance(user["_id"], str) else user["_id"]
+    conn = await _get_user_broker(user_id, "kraken")
+    client = _build_client(conn)
+    trades = await asyncio.to_thread(client.get_trade_history, limit)
+    return {"trades": trades, "count": len(trades)}
 
 
 # ============================================================

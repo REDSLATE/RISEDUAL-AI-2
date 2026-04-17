@@ -818,7 +818,9 @@ class KrakenTradingService:
         try:
             balance = self._private("Balance")
             trade_balance = self._private("TradeBalance")
-            total = sum(float(v) for v in balance.values()) if balance else 0
+            # Filter out zero balances
+            holdings = {k: float(v) for k, v in balance.items() if float(v) > 0.0001}
+            total = sum(holdings.values()) if holdings else 0
             return {
                 "account_number": "kraken",
                 "id": "kraken",
@@ -826,10 +828,42 @@ class KrakenTradingService:
                 "buying_power": float(trade_balance.get("mf", trade_balance.get("c", 0))),
                 "equity": float(trade_balance.get("e", total)),
                 "portfolio_value": float(trade_balance.get("v", total)),
+                "holdings": holdings,
+                "holdings_count": len(holdings),
             }
         except Exception as e:
             logger.error(f"Kraken get_account error: {e}")
             return None
+
+    def get_balances(self) -> Dict:
+        """Get all non-zero crypto balances."""
+        try:
+            balance = self._private("Balance")
+            return {k: float(v) for k, v in balance.items() if float(v) > 0.0001}
+        except Exception as e:
+            logger.error(f"Kraken get_balances error: {e}")
+            return {}
+
+    def get_trade_history(self, limit: int = 50) -> List[Dict]:
+        """Get recent closed trades."""
+        try:
+            result = self._private("TradesHistory")
+            trades = []
+            for tid, t in list(result.get("trades", {}).items())[:limit]:
+                trades.append({
+                    "id": tid,
+                    "pair": t.get("pair", ""),
+                    "type": t.get("type", ""),
+                    "price": float(t.get("price", 0)),
+                    "volume": float(t.get("vol", 0)),
+                    "cost": float(t.get("cost", 0)),
+                    "fee": float(t.get("fee", 0)),
+                    "time": t.get("time", 0),
+                })
+            return trades
+        except Exception as e:
+            logger.error(f"Kraken get_trade_history error: {e}")
+            return []
 
     def get_positions(self) -> List[Dict]:
         try:

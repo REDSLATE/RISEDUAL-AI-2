@@ -10,7 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
-import { authFetch } from '../contexts/AuthContext';
+import { authFetch, useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -120,6 +120,7 @@ const BROKERS = [
     signupUrl: 'https://www.kraken.com/features/trading-api',
     color: '#7B61FF',
     recommended: false,
+    adminOnly: true,
   },
 ];
 
@@ -641,6 +642,8 @@ const AccountDashboard = ({ brokerId, onDisconnect, onSync }) => {
 // ─── Main Component ───
 
 const BrokerConnect = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [connections, setConnections] = useState([]);
   const [connectingBroker, setConnectingBroker] = useState(null);
@@ -792,7 +795,7 @@ const BrokerConnect = () => {
               ) : (
                 /* Broker Cards Grid */
                 <div className="space-y-3">
-                  {BROKERS.map(broker => {
+                  {BROKERS.filter(b => !b.adminOnly || isAdmin).map(broker => {
                     const isConnected = connectedIds.includes(broker.id);
                     const isConnecting = connectingBroker === broker.id;
                     return (
