@@ -438,7 +438,7 @@ def _write_test_credentials():
     creds_path.parent.mkdir(parents=True, exist_ok=True)
     creds_path.write_text(
         "# Test Credentials\n\n"
-        "## Owner (REDSLATE)\n"
+        "## Owner (RISEDUAL)\n"
         f"- Email: {os.environ.get('OWNER_EMAIL', 'managingdirector@redslateholdings.com')}\n"
         f"- Password: {os.environ.get('OWNER_PASSWORD', '')}\n"
         "- Role: owner\n- Subscription: pro\n"

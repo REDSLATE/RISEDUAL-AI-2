@@ -76,7 +76,7 @@ const Footer = ({ onOpenLegal }) => {
           <ul className="space-y-1.5 text-slate-400 text-[10px] leading-relaxed">
             <li><strong className="text-slate-300">High Risk Warning:</strong> Trading stocks, options, and digital assets involves significant risk of loss.</li>
             <li><strong className="text-slate-300">No Financial Advice:</strong> RISEDUAL AI is a <strong className="text-slate-300">financial research publishing platform</strong>. All content, including AI-generated signals and "4-Mind" insights, is for informational and educational purposes only.</li>
-            <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> RISEDUAL AI and Red Slate Holdings are not registered investment advisers (RIAs) or broker-dealers. We do not provide personalized investment recommendations.</li>
+            <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> RISEDUAL AI and RISEDUAL INC. are not registered investment advisers (RIAs) or broker-dealers. We do not provide personalized investment recommendations.</li>
             <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from AI models (GPT-5.2). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
             <li><strong className="text-slate-300">Past Performance:</strong> Any displayed backtests or historical results are not indicative of future performance.</li>
           </ul>
@@ -84,7 +84,7 @@ const Footer = ({ onOpenLegal }) => {
 
         {/* Divider + Bottom */}
         <div className="border-t border-slate-600/30/60 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-slate-400 text-[11px]">&copy; {year} RISEDUAL CORPORATION. All rights reserved. Not financial advice.</p>
+          <p className="text-slate-400 text-[11px]">&copy; {year} RISEDUAL INC. All rights reserved. Not financial advice.</p>
           <p className="text-slate-700 text-[10px]">Powered by AI Multi-Model Consensus Engine</p>
         </div>
       </div>

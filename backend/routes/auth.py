@@ -446,7 +446,7 @@ async def seed_admin():
         if needs_rehash:
             await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
-    # Seed REDSLATE owner
+    # Seed RISEDUAL owner
     if not OWNER_PASSWORD:
         logging.warning("OWNER_PASSWORD not set in .env, skipping owner seed")
         return
@@ -455,14 +455,14 @@ async def seed_admin():
         await db.users.insert_one({
             "email": OWNER_EMAIL,
             "password_hash": hash_password(OWNER_PASSWORD),
-            "name": "REDSLATE",
+            "name": "RISEDUAL",
             "role": "owner",
             "subscription_status": "pro",
             "is_active": True,
             "created_at": datetime.now(timezone.utc),
         })
     else:
-        updates = {"role": "owner", "subscription_status": "pro", "name": "REDSLATE", "is_active": True}
+        updates = {"role": "owner", "subscription_status": "pro", "name": "RISEDUAL", "is_active": True}
         existing_hash = existing_owner.get("password_hash")
         needs_rehash = True
         if existing_hash:
