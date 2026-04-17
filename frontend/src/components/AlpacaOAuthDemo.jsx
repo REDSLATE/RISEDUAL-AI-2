@@ -13,14 +13,16 @@ import { getApiBase } from '../utils/apiBase';
  */
 
 const DEMO_STEPS = [
-  { id: 'start', label: 'RISEDUAL Dashboard' },
+  { id: 'landing', label: 'Sign In' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'start', label: 'Broker Connect' },
   { id: 'alpaca_auth', label: 'Alpaca Authorization' },
   { id: 'authorizing', label: 'Processing' },
   { id: 'success', label: 'Connected' },
 ];
 
 export default function AlpacaOAuthDemo() {
-  const [step, setStep] = useState('start');
+  const [step, setStep] = useState('landing');
   const [animating, setAnimating] = useState(false);
 
   const goToStep = (next) => {
@@ -68,7 +70,158 @@ export default function AlpacaOAuthDemo() {
 
       <div className={`flex-1 flex items-center justify-center p-6 transition-opacity duration-300 ${animating ? 'opacity-0' : 'opacity-100'}`}>
 
-        {/* Step 1: Full RISEDUAL Dashboard with Broker Connect */}
+        {/* Step 0: Landing Page — Sign In */}
+        {step === 'landing' && (
+          <div className="w-full max-w-[1400px] mx-auto flex flex-col h-[calc(100vh-52px)]">
+            {/* Landing navbar */}
+            <div className="bg-slate-900/90 border-b border-slate-700/50 px-6 py-3 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/20 flex items-center justify-center">
+                  <span className="text-[#3DE8D9] font-bold text-sm">R</span>
+                </div>
+                <span className="text-white font-bold">RISEDUAL AI</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400 text-sm cursor-default">Features</span>
+                <span className="text-slate-400 text-sm cursor-default">Pricing</span>
+                <button
+                  onClick={() => goToStep('dashboard')}
+                  className="bg-[#3DE8D9] hover:bg-[#2fd4c6] text-slate-900 text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+                  data-testid="demo-sign-in"
+                >
+                  Sign In
+                </button>
+              </div>
+            </div>
+
+            {/* Landing hero */}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-lg">
+                <h1 className="text-white text-4xl font-bold mb-3">RISEDUAL AI</h1>
+                <p className="text-slate-400 text-lg mb-2">AI-Powered Trading Intelligence</p>
+                <p className="text-slate-500 text-sm mb-8">ML signals with Sharpe 1.56 · Autonomous paper trading · SEC EDGAR fundamentals</p>
+                <div className="bg-slate-800/60 border border-slate-700/40 rounded-xl p-6 max-w-sm mx-auto">
+                  <p className="text-slate-300 text-sm font-medium mb-4">Sign in to your account</p>
+                  <div className="space-y-3 mb-4">
+                    <div className="bg-slate-700/50 rounded-lg px-4 py-2.5 text-left">
+                      <span className="text-slate-300 text-sm">john.doe@example.com</span>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-lg px-4 py-2.5 text-left">
+                      <span className="text-slate-500 text-sm">••••••••••</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => goToStep('dashboard')}
+                    className="w-full bg-[#3DE8D9] hover:bg-[#2fd4c6] text-slate-900 text-sm font-bold py-2.5 rounded-lg transition-colors"
+                    data-testid="demo-login-btn"
+                  >
+                    Log In
+                  </button>
+                </div>
+                {/* Narration guide */}
+                <div className="mt-6 bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2.5 inline-block">
+                  <p className="text-blue-400 text-xs italic">"From the RISEDUAL home page at risedual.ai, the user signs in to their account."</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Dashboard — showing where to navigate */}
+        {step === 'dashboard' && (
+          <div className="w-full max-w-[1400px] mx-auto flex flex-col h-[calc(100vh-52px)]">
+            {/* Dashboard navbar */}
+            <div className="bg-slate-900/90 border-b border-slate-700/50 px-4 py-2.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-[#3DE8D9]/20 flex items-center justify-center">
+                    <span className="text-[#3DE8D9] font-bold text-xs">R</span>
+                  </div>
+                  <span className="text-white font-bold text-sm">RISEDUAL AI</span>
+                </div>
+                <div className="hidden md:flex items-center gap-1">
+                  <span className="px-3 py-1.5 rounded-lg text-white bg-slate-800 text-xs font-medium">Dashboard</span>
+                  {['Research', 'Workspace', 'Settings'].map(t => (
+                    <span key={t} className="px-3 py-1.5 rounded-lg text-slate-400 text-xs cursor-default">{t}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[#3DE8D9] text-xs font-medium px-2 py-1 rounded bg-[#3DE8D9]/10">PRO</span>
+                <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
+                  <span className="text-white text-xs font-medium">JD</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ticker */}
+            <div className="bg-[#060E1F] border-b border-slate-700/40 px-4 py-1.5 flex items-center gap-6 overflow-hidden shrink-0">
+              {[
+                { s: 'AAPL', p: '213.25', c: '+1.42%' },
+                { s: 'TSLA', p: '178.90', c: '-0.83%' },
+                { s: 'NVDA', p: '892.10', c: '+2.15%' },
+                { s: 'MSFT', p: '425.80', c: '+0.67%' },
+                { s: 'SPY', p: '533.20', c: '+0.48%' },
+              ].map(t => (
+                <div key={t.s} className="flex items-center gap-2 text-xs whitespace-nowrap">
+                  <span className="text-white font-medium">{t.s}</span>
+                  <span className="text-slate-300">${t.p}</span>
+                  <span className={t.c.startsWith('+') ? 'text-lime-400' : 'text-orange-400'}>{t.c}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Dashboard content with pointer to Settings */}
+            <div className="flex-1 p-6 overflow-y-auto">
+              <div className="max-w-4xl mx-auto">
+                {/* Dashboard summary cards */}
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  {[
+                    { label: 'Portfolio Value', val: '$127,450.00', chg: '+2.4%', up: true },
+                    { label: 'ML Signal', val: 'BULLISH', chg: '67% confidence', up: true },
+                    { label: 'Paper P&L', val: '+$4,280.50', chg: 'Sharpe 1.56', up: true },
+                    { label: 'Broker', val: 'Not Connected', chg: 'Setup required', up: false },
+                  ].map(c => (
+                    <div key={c.label} className={`bg-slate-900/60 border rounded-xl p-4 ${c.label === 'Broker' ? 'border-amber-500/40 ring-2 ring-amber-500/20' : 'border-slate-700/40'}`}>
+                      <p className="text-slate-400 text-[10px] uppercase tracking-wider">{c.label}</p>
+                      <p className={`font-bold text-lg mt-1 ${c.label === 'Broker' ? 'text-amber-400' : 'text-white'}`}>{c.val}</p>
+                      <p className={`text-xs mt-0.5 ${c.up ? 'text-lime-400' : 'text-amber-400'}`}>{c.chg}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Arrow pointing to Settings */}
+                <div className="flex items-center justify-center mb-4">
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-6 py-4 flex items-center gap-4">
+                    <div className="text-amber-400">
+                      <ArrowRight className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-white font-medium text-sm">No broker connected — connect one to start trading</p>
+                      <p className="text-slate-400 text-xs mt-0.5">Navigate to Settings → Broker Connect to link your Alpaca account</p>
+                    </div>
+                    <button
+                      onClick={() => goToStep('start')}
+                      className="bg-[#3DE8D9] hover:bg-[#2fd4c6] text-slate-900 text-sm font-bold px-5 py-2.5 rounded-lg transition-colors shrink-0"
+                      data-testid="demo-go-settings"
+                    >
+                      Open Settings
+                    </button>
+                  </div>
+                </div>
+
+                {/* Narration guide */}
+                <div className="text-center mt-4">
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2.5 inline-block">
+                    <p className="text-blue-400 text-xs italic">"Once logged in, they open the Settings area. Here, under Broker Connect, they select Alpaca from the list of available brokers."</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Settings > Broker Connect — select Alpaca */}
         {step === 'start' && (
           <div className="w-full max-w-[1400px] mx-auto flex flex-col h-[calc(100vh-52px)]">
             {/* Simulated Navbar */}
@@ -213,7 +366,7 @@ export default function AlpacaOAuthDemo() {
           </div>
         )}
 
-        {/* Step 2: Simulated Alpaca Authorization Page */}
+        {/* Step 3: Simulated Alpaca Authorization Page */}
         {step === 'alpaca_auth' && (
           <div className="max-w-md w-full">
             <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
@@ -288,6 +441,10 @@ export default function AlpacaOAuthDemo() {
                 </p>
               </div>
             </div>
+            {/* Narration guide */}
+            <div className="mt-4 bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2.5">
+              <p className="text-blue-400 text-xs italic text-center">"When the user clicks Connect Alpaca, RISEDUAL redirects them to Alpaca's secure OAuth page to complete the connection."</p>
+            </div>
           </div>
         )}
 
@@ -355,12 +512,17 @@ export default function AlpacaOAuthDemo() {
                   <span>You can disconnect anytime from Settings or your Alpaca dashboard</span>
                 </div>
 
-                <Button onClick={() => goToStep('start')}
+                <Button onClick={() => { setStep('landing'); setAnimating(false); }}
                   className="w-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-lg py-2.5"
                   data-testid="demo-restart"
                 >
                   Replay Demo
                 </Button>
+
+                {/* Narration guide */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2.5">
+                  <p className="text-blue-400 text-xs italic text-center">"The user is redirected back to RISEDUAL and Alpaca is shown as connected and ready to power trading services."</p>
+                </div>
               </div>
             </div>
           </div>
