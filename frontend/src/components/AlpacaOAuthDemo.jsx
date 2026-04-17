@@ -16,6 +16,7 @@ const DEMO_STEPS = [
   { id: 'landing', label: 'Sign In' },
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'start', label: 'Broker Connect' },
+  { id: 'disclosure', label: 'Disclosure' },
   { id: 'alpaca_auth', label: 'Alpaca Authorization' },
   { id: 'authorizing', label: 'Processing' },
   { id: 'success', label: 'Connected' },
@@ -335,7 +336,7 @@ export default function AlpacaOAuthDemo() {
                       </div>
 
                       <Button
-                        onClick={() => goToStep('alpaca_auth')}
+                        onClick={() => goToStep('disclosure')}
                         className="w-full bg-gradient-to-r from-[#3DE8D9] to-[#2fd4c6] hover:from-[#2fd4c6] hover:to-[#3B82F6] text-slate-900 text-sm rounded-lg py-3 font-bold"
                         data-testid="demo-oauth-start"
                       >
@@ -366,7 +367,82 @@ export default function AlpacaOAuthDemo() {
           </div>
         )}
 
-        {/* Step 3: Simulated Alpaca Authorization Page */}
+        {/* Step 3: Authorization Disclosure — must acknowledge before connecting */}
+        {step === 'disclosure' && (
+          <div className="max-w-xl w-full">
+            <div className="bg-slate-900 rounded-2xl border border-slate-700/50 overflow-hidden">
+              {/* Header */}
+              <div className="bg-slate-800/60 px-6 py-4 border-b border-slate-700/50 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/20 flex items-center justify-center">
+                  <span className="text-[#3DE8D9] font-bold text-sm">R</span>
+                </div>
+                <span className="text-white font-bold">RISEDUAL AI</span>
+                <span className="text-slate-500 text-xs ml-auto">Authorization Disclosure</span>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Disclosure box */}
+                <div className="bg-amber-50 border-l-4 border-red-600 rounded-r-lg p-5">
+                  <h3 className="text-red-700 font-bold text-lg mb-3">Authorize RISEDUAL AI</h3>
+
+                  <p className="text-red-700 font-bold text-sm leading-relaxed mb-4">
+                    By allowing RISEDUAL AI to access your Alpaca account, you are granting RISEDUAL AI
+                    access to your account information and authorization to place transactions
+                    at your direction.
+                  </p>
+
+                  <p className="text-red-700 font-bold text-sm leading-relaxed mb-5">
+                    Alpaca does not warrant or guarantee that RISEDUAL AI will work as advertised or
+                    expected. Before authorizing, learn more about{' '}
+                    <a href="https://risedual.ai" className="underline">RISEDUAL AI</a>.
+                  </p>
+
+                  {/* Deny / Allow buttons */}
+                  <div className="flex gap-6 justify-center">
+                    <button
+                      onClick={() => goToStep('start')}
+                      className="text-gray-700 font-bold text-sm uppercase tracking-wide hover:text-gray-900 transition-colors px-6 py-2"
+                    >
+                      DENY
+                    </button>
+                    <button
+                      onClick={() => goToStep('alpaca_auth')}
+                      className="text-red-700 font-bold text-sm uppercase tracking-wide hover:text-red-900 transition-colors px-6 py-2"
+                      data-testid="demo-disclosure-allow"
+                    >
+                      ALLOW
+                    </button>
+                  </div>
+                </div>
+
+                {/* Acknowledgement note */}
+                <div className="bg-slate-800/40 rounded-lg p-3">
+                  <p className="text-slate-400 text-xs italic">
+                    *Acknowledgement of the disclosure must be done prior to a client connecting their Alpaca account.
+                  </p>
+                </div>
+
+                {/* Security reminders */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Shield className="w-3 h-3 text-[#3DE8D9] shrink-0" />
+                    <span>RISEDUAL AI uses OAuth2 — we never access your Alpaca password</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <Lock className="w-3 h-3 text-[#3DE8D9] shrink-0" />
+                    <span>All credentials encrypted with AES-256 in our secure KeyVault</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <CheckCircle className="w-3 h-3 text-[#3DE8D9] shrink-0" />
+                    <span>You can revoke access at any time from your Alpaca dashboard</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Simulated Alpaca Authorization Page */}
         {step === 'alpaca_auth' && (
           <div className="max-w-md w-full">
             <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
