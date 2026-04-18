@@ -114,9 +114,31 @@ const FearGreedGauge = () => {
         )}
       </div>
 
-      {/* Verdict tab — matches War Room pill style: solid band colour + glowing text */}
-      <div
-        className={`rounded-xl border ${band.ring} ${band.soft} px-4 py-3`}
+      {/* Verdict tab — matches War Room pill style. Click routes to the
+          AI War Room with SPY as the S&P proxy so the user can immediately
+          ask "is the macro signal strong enough to act on?" */}
+      <button
+        type="button"
+        onClick={() => {
+          try {
+            fetch(`${API}/analytics/chip-event`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                action: 'action-clicked',
+                chip_text: `Open SPY War Room (Fear & Greed: ${band.label} ${Math.round(value)})`,
+                context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
+              }),
+            }).catch(() => { /* silent */ });
+          } catch { /* silent */ }
+          window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: 'SPY' }));
+          }, 180);
+        }}
+        className={`w-full text-left rounded-xl border ${band.ring} ${band.soft} px-4 py-3 transition-all hover:brightness-110 hover:scale-[1.01] cursor-pointer group`}
+        title={`Market reads ${band.label} — click to open SPY in War Room`}
         data-testid="fear-greed-verdict"
       >
         <div className="flex items-center justify-between gap-2">
@@ -138,11 +160,18 @@ const FearGreedGauge = () => {
             {Math.round(value)}
           </span>
           <span className="text-slate-500 text-xs font-semibold">/100</span>
-          {current.date && (
-            <span className="ml-auto text-slate-500 text-[10px]">{current.date}</span>
-          )}
+          <span className="ml-auto relative">
+            {current.date && (
+              <span className="text-slate-500 text-[10px] group-hover:opacity-0 transition-opacity">
+                {current.date}
+              </span>
+            )}
+            <span className={`absolute inset-0 flex items-center justify-end text-[10px] ${band.text} opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-0.5 font-semibold whitespace-nowrap`}>
+              Ask War Room <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+            </span>
+          </span>
         </div>
-      </div>
+      </button>
 
       {/* Split fear/greed track with current marker */}
       <SplitTrack value={value} />

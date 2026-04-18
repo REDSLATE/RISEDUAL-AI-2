@@ -54,24 +54,21 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
-### Fear & Greed Verdict Tab Redesign (COMPLETED Feb 19, 2026)
+### Fear & Greed Verdict Tab Redesign + Clickable Deep-Link (COMPLETED Feb 19, 2026)
 - Replaced the semi-circular gauge arc with a **verdict-tab card** that mirrors
-  the AI War Room PASS/VETO / BULLISH / BEARISH visual language:
-  - Band palette: EXTREME FEAR (red) → FEAR (orange) → NEUTRAL (amber) →
-    GREED (lime) → EXTREME GREED (green). Each band carries both a
-    sentiment label AND a verdict keyword (`VETO / BEARISH / HOLD / BULLISH / PASS`)
-    rendered as a solid pill badge on the right.
-  - Big tabular value (`68`) sized 4xl font-black, color-matched to its band.
-  - `SplitTrack`: gradient bar split left (Fear: red→orange→amber) and right
-    (Greed: amber→lime→green) with a glowing white vertical marker at the
-    current %.
-  - 7d / 30d averages now show both the numeric value AND the band word
-    ("67 GREED") color-matched.
-  - 90-day sparkline stroke colors itself from the last reading's band.
-- Test IDs: `fear-greed-gauge`, `fear-greed-verdict`, `fear-greed-signal`,
-  `fear-greed-value`.
-- Verified E2E: current reading 68 → "GREED" label, "BULLISH" pill, marker
-  sitting at 68% on the split track.
+  the AI War Room PASS/VETO / BULLISH / BEARISH visual language.
+- **Clickable**: the whole verdict tab is now a `<button>`. One click fires:
+  - `action-clicked` telemetry with a rich chip_text capturing the live
+    regime at click time, e.g. `"Open SPY War Room (Fear & Greed: GREED 68)"`
+    — so admin `Chip CTR` can track not just adoption but WHICH sentiment
+    regimes users act on.
+  - Navigates to War Room Adversarial subtab.
+  - Dispatches `risedualai-warroom` with `SPY` (S&P proxy).
+- Hover affordance: the date swaps to a subtle "Ask War Room →" hint (band-
+  colored) so the deep-link intent is discoverable without cluttering the
+  resting state.
+- Verified E2E: clicked verdict at 68 GREED → War Room opened → SPY
+  auto-analyzed ("Deploying War Room for SPY" running Strategist + Auditor).
 
 ### Markets Density Toggle (COMPLETED Feb 19, 2026)
 - New `MarketsSection.jsx` component hosts both heatmaps with a 3-way
