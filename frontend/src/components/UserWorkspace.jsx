@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users, Mail, Bell, BellOff } from 'lucide-react';
+import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users, Mail, Bell, BellOff, Send, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -10,6 +10,7 @@ import SocialShareButtons from './SocialShareButtons';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import { toast } from 'sonner';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -432,6 +433,7 @@ const DigestToggle = () => {
   const [subscribed, setSubscribed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -457,33 +459,71 @@ const DigestToggle = () => {
     finally { setToggling(false); }
   };
 
+  const sendNow = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await authFetch(`${API}/digest/send-now`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const cs = data.content_summary || {};
+        toast.success('Fresh digest is on its way', {
+          description: `${cs.predictions || 0} predictions · ${cs.smart_money || 0} smart-money alerts · ${cs.alerts || 0} market alerts${data.has_watchlist_intel ? ' · watchlist intel included' : ''}.`,
+          duration: 5000,
+        });
+      } else if (res.status === 429) {
+        toast.error('Already sent recently', { description: data.detail || 'Please wait before requesting another digest.' });
+      } else {
+        toast.error('Could not send digest', { description: data.detail || 'Please try again in a minute.' });
+      }
+    } catch (e) {
+      logger.error('On-demand digest send error:', e);
+      toast.error('Could not send digest');
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) return null;
 
   return (
     <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center shrink-0">
             <Mail className="w-4 h-4 text-[#3DE8D9]" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-white text-sm font-medium">Daily Market Digest</p>
-            <p className="text-slate-400 text-[10px]">Morning briefing at 6:00 AM UTC</p>
+            <p className="text-slate-400 text-[10px]">Morning briefing at 6:00 AM UTC · on-demand preview available</p>
           </div>
         </div>
-        <button
-          onClick={toggle}
-          disabled={toggling}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            subscribed
-              ? 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
-              : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
-          }`}
-          data-testid="digest-toggle-btn"
-        >
-          {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
-          {subscribed ? 'Subscribed' : 'Unsubscribed'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sendNow}
+            disabled={sending}
+            title="Send a fresh digest to your inbox right now (1 per hour)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/30 hover:bg-[#3DE8D9]/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            data-testid="digest-send-now-btn"
+          >
+            {sending
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending</>
+              : <><Send className="w-3.5 h-3.5" /> Send me one now</>}
+          </button>
+          <button
+            onClick={toggle}
+            disabled={toggling}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              subscribed
+                ? 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+                : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
+            }`}
+            data-testid="digest-toggle-btn"
+          >
+            {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+            {subscribed ? 'Subscribed' : 'Unsubscribed'}
+          </button>
+        </div>
       </div>
     </Card>
   );

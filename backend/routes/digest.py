@@ -1,4 +1,6 @@
-"""Digest routes: admin trigger, user opt-in/out, preview."""
+"""Digest routes: admin trigger, user opt-in/out, preview, on-demand send."""
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, HTTPException, Request
 from services.auth_helpers import get_current_user
 from bson import ObjectId
@@ -6,6 +8,10 @@ from bson import ObjectId
 router = APIRouter(prefix="/api/digest")
 
 db = None
+
+# Rate-limit: one on-demand digest per user per hour.
+ON_DEMAND_COOLDOWN = timedelta(hours=1)
+
 
 def set_db(database):
     global db
@@ -73,3 +79,47 @@ async def preview_digest(request: Request):
         "has_overview": bool(data.get("overview")),
         "has_watchlist_intel": wl_intel is not None,
     }}
+
+
+@router.post("/send-now")
+async def send_on_demand_digest(request: Request):
+    """Send a fresh market digest to the authenticated user's inbox now.
+
+    Rate-limited to one send per hour per user. Bypasses the opt-out flag
+    because the user is explicitly asking for this single email.
+    """
+    user = await get_current_user(request)
+    now = datetime.now(timezone.utc)
+
+    last = user.get("last_on_demand_digest_at")
+    if last:
+        try:
+            last_dt = datetime.fromisoformat(last) if isinstance(last, str) else last
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            if now - last_dt < ON_DEMAND_COOLDOWN:
+                retry_after = int((ON_DEMAND_COOLDOWN - (now - last_dt)).total_seconds())
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Please wait {retry_after // 60} min before requesting another digest.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Corrupted timestamp — treat as if never sent and move on.
+            pass
+
+    from services.digest_service import send_digest_to_user
+    result = await send_digest_to_user(db, user)
+
+    if result.get("sent"):
+        await db.users.update_one(
+            {"_id": ObjectId(user["_id"])},
+            {"$set": {"last_on_demand_digest_at": now.isoformat()}},
+        )
+        return {"status": "sent", **result}
+    # Surface a helpful reason instead of a 500.
+    reason = result.get("reason", "unknown")
+    raise HTTPException(status_code=503, detail=f"Digest could not be sent ({reason}). Please try again later.")
+

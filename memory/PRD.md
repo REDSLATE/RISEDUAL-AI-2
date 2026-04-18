@@ -576,3 +576,23 @@ See `/app/memory/test_credentials.md`.
   leaderboard) return 200 + correct payloads.
 * Lint: 0 issues across all new/modified files.
 
+### 2026-02-18 — On-demand digest "Send me one now" button
+* **Backend**: `POST /api/digest/send-now` — authed users trigger an immediate
+  personalized digest delivery to their own inbox. Rate-limited to 1/hour via
+  a `last_on_demand_digest_at` timestamp on the user doc. Bypasses the opt-out
+  flag because the request is explicit. Returns content summary (predictions,
+  smart-money, alerts, watchlist-intel) so the UI can toast-display it.
+* **Digest service**: extracted `send_digest_to_user(db, user)` helper (reuses
+  `collect_digest_data` + `build_digest_html` + `_routed_send`) so
+  single-user sends don't duplicate logic from the scheduled job.
+* **Frontend** (`UserWorkspace.jsx`): new teal "Send me one now" button next
+  to the existing subscribe/unsubscribe toggle. Shows spinner while sending,
+  `sonner` toast on success ("Fresh digest is on its way — 5 predictions, 6
+  smart-money alerts, 2 market alerts"), handles 429 gracefully, and a
+  subtitle clarifies the button exists ("Morning briefing at 6:00 AM UTC ·
+  on-demand preview available").
+* **Tested**: Live API returns 200 on first call (admin@risedual.ai received
+  digest with 5 predictions + 6 smart-money + 2 alerts + overview), 429 on
+  second with clean retry-after message.
+
+

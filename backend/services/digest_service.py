@@ -570,3 +570,47 @@ async def send_daily_digest(db) -> dict:
             "overview": bool(data.get("overview")),
         },
     }
+
+
+async def send_digest_to_user(db, user: dict) -> dict:
+    """Build and send a single on-demand digest to the supplied user.
+
+    Used by `POST /api/digest/send-now` — separate from the scheduled
+    `send_daily_digest` because it must: (a) bypass the opt-out check
+    (user explicitly asked for it), (b) not pace the outbound queue,
+    (c) return a payload the UI can show inline.
+    """
+    if not _is_configured():
+        return {"sent": False, "reason": "no_email_provider"}
+
+    email = (user.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return {"sent": False, "reason": "invalid_email"}
+
+    data = await collect_digest_data(db)
+    if not (data.get("overview") or data.get("predictions") or data.get("smart_money") or data.get("alerts")):
+        return {"sent": False, "reason": "no_content"}
+
+    name = user.get("name") or email.split("@")[0]
+    is_pro = user.get("subscription_status") in ("pro", "pro_max", "trial")
+    wl_intel = await get_user_watchlist_intel(db, user.get("_id"))
+    html = build_digest_html(data, is_pro, name, watchlist_intel=wl_intel)
+    subject = f"Your On-Demand Market Briefing — {datetime.now(timezone.utc).strftime('%b %d, %H:%M UTC')}"
+
+    try:
+        ok = await _routed_send([email], subject, html)
+    except Exception as e:
+        logger.error(f"On-demand digest send failed for {email}: {e}")
+        return {"sent": False, "reason": "send_error", "detail": str(e)}
+
+    return {
+        "sent": bool(ok),
+        "email": email,
+        "has_watchlist_intel": wl_intel is not None,
+        "content_summary": {
+            "predictions": len(data["predictions"]),
+            "smart_money": len(data["smart_money"]),
+            "alerts": len(data["alerts"]),
+            "overview": bool(data.get("overview")),
+        },
+    }
