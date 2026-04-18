@@ -255,8 +255,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_prediction_prewarm, 'interval', minutes=10, id='prediction_prewarm')
         scheduler.add_job(_run_prediction_labeler, 'interval', hours=1, id='prediction_labeler')
         scheduler.add_job(_run_fred_snapshot, 'cron', hour=7, minute=0, id='fred_daily_snapshot')
+        scheduler.add_job(_run_13f_scan, 'cron', hour=8, minute=0, id='sec_13f_daily_scan')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -390,6 +391,17 @@ async def _run_fred_snapshot():
         logger.info(f"FRED daily snapshot saved: {len(data['indicators'])} indicators, {len(snapshot.get('vintages', {}))} vintages for {today}")
     except Exception as e:
         logger.warning(f"FRED snapshot error: {e}")
+
+
+async def _run_13f_scan():
+    """Background: Daily SEC 13F scan — refreshes top institutions' filings and
+    emits alerts for watchlist symbols (8:00 AM UTC)."""
+    try:
+        from services.sec_13f_service import scan_and_alert
+        result = await scan_and_alert(db)
+        logger.info(f"13F scan complete: refreshed={result.get('refreshed',0)}, alerts_created={result.get('alerts_created',0)}, errors={result.get('errors',0)}")
+    except Exception as e:
+        logger.warning(f"13F scan error: {e}")
 
 
 def _start_cache_warmup():

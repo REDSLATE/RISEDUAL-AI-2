@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, TrendingUp, Building2, Globe2, Radio, Wand2, Store, Database, FileText } from 'lucide-react';
+import { BookOpen, TrendingUp, Building2, Globe2, Radio, Wand2, Store, Database, FileText, Users } from 'lucide-react';
 import AIHypothesis from '../AIHypothesis';
 import MarketPrediction from '../MarketPrediction';
 import CompanyResearch from '../CompanyResearch';
@@ -10,12 +10,14 @@ const StrategyBuilder = React.lazy(() => import('../StrategyBuilder'));
 const StrategyMarketplace = React.lazy(() => import('../StrategyMarketplace'));
 const MemoryDashboard = React.lazy(() => import('../MemoryDashboard'));
 const StockFitFundamentals = React.lazy(() => import('../StockFitFundamentals'));
+const StockFit13F = React.lazy(() => import('../StockFit13F'));
 
 const TABS = [
   { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen },
   { key: 'prediction', label: 'Predictions', icon: TrendingUp },
   { key: 'company', label: 'Company', icon: Building2 },
   { key: 'stockfit', label: 'StockFit', icon: FileText },
+  { key: '13f', label: '13F Holders', icon: Users },
   { key: 'macro', label: 'Macro', icon: Globe2 },
   { key: 'signals', label: 'Signals', icon: Radio },
   { key: 'strategy', label: 'Strategy', icon: Wand2 },
@@ -56,6 +58,7 @@ export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
           {tab === 'prediction' && <MarketPrediction />}
           {tab === 'company' && <CompanyResearch />}
           {tab === 'stockfit' && <StockFitFundamentals />}
+          {tab === '13f' && <StockFit13F />}
           {tab === 'macro' && <MacroDashboard onSubscribe={onSubscribe} />}
           {tab === 'signals' && <MarketSignals onSubscribe={onSubscribe} />}
           {tab === 'strategy' && <StrategyBuilder onSubscribe={onSubscribe} />}
