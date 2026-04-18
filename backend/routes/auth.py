@@ -419,32 +419,28 @@ OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "managingdirector@redslateholdings.c
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD")
 
 async def seed_admin():
-    # Seed original admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@risedual.ai")
-    admin_password = os.environ.get("ADMIN_PASSWORD")
-    if not admin_password:
-        logging.warning("ADMIN_PASSWORD not set in .env, skipping admin seed")
-        return
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "email": admin_email,
-            "password_hash": hash_password(admin_password),
-            "name": "Admin",
-            "role": "admin",
-            "subscription_status": "pro",
-            "created_at": datetime.now(timezone.utc),
+    """Seed the single RISEDUAL owner account.
+
+    Historical note: there used to be two separate seed blocks — `admin` and
+    `owner` (Red Slate Holdings). The Red Slate account was deactivated by
+    user directive in Feb 2026, and we consolidated to a single owner at
+    `admin@risedual.ai`. The cleanup below also deletes any lingering
+    `role: merged` Red Slate row on production so the bug where the only
+    `role: owner` user was deactivated (blocking broker live trades) cannot
+    recur.
+    """
+    # One-shot cleanup: remove the historical Red Slate row if it still exists.
+    # Safe on every startup: no-op once gone.
+    RED_SLATE_EMAIL = "managingdirector@redslateholdings.com"
+    try:
+        res = await db.users.delete_one({
+            "email": RED_SLATE_EMAIL,
+            "role": {"$in": ["merged", "free"]},
         })
-    else:
-        needs_rehash = True
-        existing_hash = existing.get("password_hash")
-        if existing_hash:
-            try:
-                needs_rehash = not verify_password(admin_password, existing_hash)
-            except Exception as e:
-                logging.warning(f"Admin password verify failed during seed: {e}")
-        if needs_rehash:
-            await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        if res.deleted_count:
+            logging.info(f"Seed cleanup: removed deactivated {RED_SLATE_EMAIL} row.")
+    except Exception as e:
+        logging.warning(f"Seed cleanup for Red Slate row failed (non-critical): {e}")
 
     # Seed RISEDUAL owner
     if not OWNER_PASSWORD:
@@ -462,20 +458,17 @@ async def seed_admin():
             "created_at": datetime.now(timezone.utc),
         })
     else:
-        # Respect prior merges — if this account was merged into another,
-        # do NOT resurrect it to owner on every restart. Only keep the password
-        # in sync so the audit trail stays accessible if the superuser ever
-        # needs to inspect it.
-        was_merged = (existing_owner.get("role") == "merged"
-                      or existing_owner.get("merged_into_email"))
-        updates = {}
-        if not was_merged:
-            updates.update({
-                "role": "owner",
-                "subscription_status": "pro",
-                "name": "RISEDUAL",
-                "is_active": True,
-            })
+        # Always promote to owner — this is the canonical single-admin account.
+        # (Previously this branch respected a "merged" flag, but we no longer
+        # run a second seeded user, so there's nothing to merge into.)
+        updates = {
+            "role": "owner",
+            "subscription_status": "pro",
+            "is_active": True,
+        }
+        # Preserve user-set name if non-default; otherwise set brand name.
+        if not existing_owner.get("name"):
+            updates["name"] = "RISEDUAL"
         existing_hash = existing_owner.get("password_hash")
         needs_rehash = True
         if existing_hash:
@@ -485,28 +478,21 @@ async def seed_admin():
                 logging.warning(f"Owner password verify failed during seed: {e}")
         if needs_rehash:
             updates["password_hash"] = hash_password(OWNER_PASSWORD)
-        if updates:
-            await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
-        if was_merged:
-            logging.info(
-                f"Owner seed: {OWNER_EMAIL} already merged into "
-                f"{existing_owner.get('merged_into_email')}, preserving merged state."
-            )
+        await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
 
-    # Ensure admin & owner have credit wallets (Pro Max allocation)
-    for email in [admin_email, OWNER_EMAIL]:
-        user = await db.users.find_one({"email": email}, {"_id": 1})
-        if user:
-            uid = str(user["_id"])
-            existing_credits = await db.user_credits.find_one({"user_id": uid})
-            if not existing_credits:
-                await db.user_credits.insert_one({
-                    "user_id": uid,
-                    "credits": 50000,
-                    "total_earned": 50000,
-                    "total_spent": 0,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                })
+    # Ensure owner has a credit wallet (Pro Max allocation)
+    user = await db.users.find_one({"email": OWNER_EMAIL}, {"_id": 1})
+    if user:
+        uid = str(user["_id"])
+        existing_credits = await db.user_credits.find_one({"user_id": uid})
+        if not existing_credits:
+            await db.user_credits.insert_one({
+                "user_id": uid,
+                "credits": 50000,
+                "total_earned": 50000,
+                "total_spent": 0,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
 
 async def create_indexes():
     await db.users.create_index("email", unique=True)

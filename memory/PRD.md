@@ -634,3 +634,26 @@ See `/app/memory/test_credentials.md`.
   Broker modal opens with all brokers listed. 0 lint issues.
 
 
+
+
+### 2026-02-18 — Removed Red Slate deactivated account (root cause of READ ONLY bug)
+* **Bug**: deployed site showed broker "READ ONLY" for `admin@risedual.ai`
+  because `_is_execution_allowed()` required `role == "owner"`, but the seed
+  logic had created that account with `role: "admin"`. The `owner` role was
+  assigned only to `managingdirector@redslateholdings.com`, which the user
+  deactivated in Feb 2026 — leaving production with no live `owner` account
+  and every broker connection locked to read-only.
+* **Fix**:
+  - `/app/backend/.env`: `OWNER_EMAIL=admin@risedual.ai`, removed now-unused
+    `ADMIN_EMAIL` / `ADMIN_PASSWORD` vars.
+  - `/app/backend/routes/auth.py` `seed_admin()`: consolidated to a single
+    owner seed. On every startup, promotes `admin@risedual.ai` to
+    `role: owner, is_active: True`. Added one-shot cleanup that deletes any
+    remaining Red Slate row with `role in [merged, free]` — no more
+    resurrection, no more confusion.
+* **Verified on preview**: Red Slate row deleted, `admin@risedual.ai`
+  role=owner, is_active=True, and `GET /api/broker/execution-status` returns
+  `{execution_allowed: true, mode: "live"}`.
+* **On production deploy**: seed cleanup runs automatically → Red Slate row
+  deleted → `admin@risedual.ai` promoted to `owner` → broker flips from
+  READ ONLY → LIVE TRADING with no manual intervention.
