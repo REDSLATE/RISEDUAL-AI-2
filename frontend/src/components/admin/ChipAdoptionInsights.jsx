@@ -174,8 +174,8 @@ export default function ChipAdoptionInsights() {
                 </tr>
               </thead>
               <tbody>
-                {stats.top_actions.map((r, i) => (
-                  <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                {stats.top_actions.map((r) => (
+                  <tr key={r.chip} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                     <td className="px-3 py-2 text-white text-sm font-medium">{r.chip}</td>
                     <td className="px-3 py-2 text-right text-amber-300 text-sm font-bold tabular-nums">{r.count}</td>
                   </tr>
@@ -211,13 +211,13 @@ export default function ChipAdoptionInsights() {
                 </tr>
               </thead>
               <tbody>
-                {stats.by_hub.map((r, i) => {
+                {stats.by_hub.map((r) => {
                   const l1Pct = (r.l1_ctr * 100).toFixed(0);
                   const l2Pct = (r.l2_ctr * 100).toFixed(0);
                   const mcRate = r.misclick_rate || 0;
                   const mcPct = (mcRate * 100).toFixed(0);
                   return (
-                    <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                    <tr key={r.hub} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                       <td className="px-3 py-2 text-white text-sm font-medium capitalize">{r.hub}</td>
                       <td className="px-3 py-2 text-right text-slate-300 text-xs tabular-nums">
                         {r.clicked}/{r.shown}

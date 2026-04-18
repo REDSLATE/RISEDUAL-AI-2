@@ -333,7 +333,7 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
                       <div className="space-y-1">
                         {suggestions.similar_answered.map((s, i) => (
                           <button
-                            key={i}
+                            key={s.q}
                             onClick={() => setQuery(s.q)}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-900/50 border border-slate-700/40 text-left hover:border-[#3DE8D9]/40 hover:bg-slate-800/60 transition-colors group"
                             data-testid={`help-suggest-${i}`}
@@ -366,7 +366,7 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
                 const Icon = r.section.icon;
                 return (
                   <div
-                    key={i}
+                    key={`${r.section.key || r.section.label}-${r.title || i}`}
                     className="rounded-xl border border-slate-700/40 bg-slate-900/30 p-3 hover:border-slate-500/60 transition-colors"
                     data-testid={`help-result-${i}`}
                   >

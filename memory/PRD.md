@@ -54,6 +54,32 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Code Review Pass (COMPLETED Feb 19, 2026)
+- **Fixed**: replaced array-index React `key`s with stable data-driven keys in
+  the components I own — `ChipAdoptionInsights.jsx` (3 tables),
+  `HelpSearchInsights.jsx` (2 tables), `ChatComponents.jsx` (chips +
+  actions using `${idx}-${text}`), `HelpCenter.jsx` (suggestions + results).
+  Prevents React reconciliation bugs when lists re-order.
+- **Reviewed & declined (false positives)**:
+  - "eval() in backtester_service.py line 193" — it's a COMMENT saying
+    "Safe Expression Evaluator (replaces eval())". The code is an
+    AST-based safe evaluator (`_CMP_OPS`, `_BIN_OPS` using `operator`
+    module), not eval. No security issue.
+  - "Hardcoded secrets in tests" — these are TEST credentials from
+    `test_credentials.md` (e.g. admin@risedual.ai) used by pytest
+    fixtures. Not production secrets.
+  - "exec/eval in test_iteration36_code_quality.py" — those are SECURITY
+    TESTS named `test_rejects_exec` / `test_rejects_eval` that verify the
+    app REJECTS dynamic code execution. Part of the safeguard, not a risk.
+  - "17 undefined variables" — zero in runtime code
+    (routes/services/server.py). All F821 errors are in standalone
+    `backend/scripts/` using string-forward-refs like `"pd.DataFrame"`.
+- **Reviewed & deferred (post-deploy)**: component size refactors
+  (Watchlist 428L, Navbar 346L, RiseDualGPTChat 350L), LLM `chat()`
+  function decomposition, `useV2Nav/useTTS/useStreamingAgent` missing
+  hook deps. These are real improvements but touch production-critical
+  paths on the eve of deploy — post-deploy work with proper QA.
+
 ### Misclick Rate + Pre-Deploy Cleanup (COMPLETED Feb 19, 2026)
 - **Backend stats**: `/api/analytics/chip-events/stats` now classifies
   `action-clicked` events into forward-clicks and undo-clicks (chip_text

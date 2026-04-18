@@ -118,7 +118,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
                 <div className="flex-1 flex flex-wrap gap-1.5">
                   {msg.actions.map((act, ai) => (
                     <button
-                      key={ai}
+                      key={`${idx}-${act.label}`}
                       onClick={() => onActionClick(act, idx)}
                       className="group text-[11px] font-semibold px-3 py-1.5 rounded-full bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/40 hover:bg-[#3DE8D9]/20 hover:border-[#3DE8D9] transition-colors inline-flex items-center gap-1.5"
                       data-testid={`action-btn-${idx}-${ai}`}
@@ -137,7 +137,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
                 <div className="flex-1 flex flex-wrap gap-1.5">
                   {msg.followups.map((chip, ci) => (
                     <button
-                      key={ci}
+                      key={`${idx}-${chip}`}
                       onClick={() => onFollowupClick(chip, idx)}
                       className="text-[11px] font-medium px-2.5 py-1.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60 hover:text-[#3DE8D9] hover:border-[#3DE8D9]/40 hover:bg-[#3DE8D9]/5 transition-colors"
                       data-testid={`followup-chip-${idx}-${ci}`}

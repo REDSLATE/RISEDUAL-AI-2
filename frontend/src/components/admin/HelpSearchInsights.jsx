@@ -147,8 +147,8 @@ export default function HelpSearchInsights() {
                 </tr>
               </thead>
               <tbody>
-                {stats.zero_result_top.map((r, i) => (
-                  <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                {stats.zero_result_top.map((r) => (
+                  <tr key={r.q} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                     <td className="px-3 py-2 text-white text-sm font-medium">{r.q}</td>
                     <td className="px-3 py-2 text-right text-orange-300 text-sm font-bold tabular-nums">{r.count}</td>
                     <td className="px-3 py-2 text-slate-400 text-xs hidden sm:table-cell">
@@ -183,8 +183,8 @@ export default function HelpSearchInsights() {
                 </tr>
               </thead>
               <tbody>
-                {stats.top_queries.map((r, i) => (
-                  <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                {stats.top_queries.map((r) => (
+                  <tr key={r.q} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                     <td className="px-3 py-2 text-white text-sm font-medium">{r.q}</td>
                     <td className="px-3 py-2 text-right text-[#3DE8D9] text-sm font-bold tabular-nums">{r.count}</td>
                     <td className="px-3 py-2 text-right text-slate-400 text-xs tabular-nums">{r.avg_results}</td>
