@@ -506,10 +506,20 @@ async def require_owner(request: Request):
         raise HTTPException(status_code=403, detail="Owner access required")
     return user
 
-# --- Admin Routes (Owner Only) ---
+async def require_admin(request: Request):
+    """Require owner OR admin role. 'owner' is the super-admin (the founder)."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+# --- Admin Routes (Owner + Admin) ---
 @auth_router.get("/admin/users")
 async def list_users(request: Request):
-    await require_owner(request)
+    await require_admin(request)
     cursor = db.users.find({}, {"password_hash": 0}).limit(200)
     users = []
     async for u in cursor:
@@ -519,7 +529,7 @@ async def list_users(request: Request):
 
 @auth_router.post("/admin/users/{user_id}/activate")
 async def activate_user(user_id: str, request: Request):
-    await require_owner(request)
+    await require_admin(request)
     result = await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": True}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -527,7 +537,7 @@ async def activate_user(user_id: str, request: Request):
 
 @auth_router.post("/admin/users/{user_id}/deactivate")
 async def deactivate_user(user_id: str, request: Request):
-    await require_owner(request)
+    await require_admin(request)
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -538,7 +548,7 @@ async def deactivate_user(user_id: str, request: Request):
 
 @auth_router.post("/admin/users/{user_id}/grant-pro")
 async def grant_pro(user_id: str, request: Request):
-    await require_owner(request)
+    await require_admin(request)
     result = await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"subscription_status": "pro"}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -546,7 +556,7 @@ async def grant_pro(user_id: str, request: Request):
 
 @auth_router.post("/admin/users/{user_id}/revoke-pro")
 async def revoke_pro(user_id: str, request: Request):
-    await require_owner(request)
+    await require_admin(request)
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
