@@ -102,9 +102,9 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
     } catch {
-      if (process.env.NODE_ENV === 'development') console.warn('localStorage unavailable'); // eslint-disable-line no-console
+      if (process.env.NODE_ENV === 'development') console.warn('localStorage unavailable');  
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const tryRefresh = useCallback(async () => {
     try {
@@ -122,7 +122,7 @@ export const AuthProvider = ({ children }) => {
       log.warn('Token refresh failed:', e.message);
     }
     return false;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const checkAuth = useCallback(async () => {
     try {
@@ -160,7 +160,7 @@ export const AuthProvider = ({ children }) => {
     clearLegacyTokens();
     setUser(data);
     return data;
-  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clearLegacyTokens]);  
 
   const register = useCallback(async (email, password, name, refCode) => {
     const body = { email, password, name };
@@ -179,7 +179,7 @@ export const AuthProvider = ({ children }) => {
     clearLegacyTokens();
     setUser(data);
     return data;
-  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clearLegacyTokens]);  
 
   const logout = useCallback(async () => {
     try {
@@ -189,7 +189,7 @@ export const AuthProvider = ({ children }) => {
     }
     clearLegacyTokens();
     setUser(false);
-  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clearLegacyTokens]);  
 
   const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 

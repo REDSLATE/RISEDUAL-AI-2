@@ -54,6 +54,19 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### React Hooks Exhaustive-Deps Sweep (COMPLETED Feb 19, 2026)
+- User asked to run `npx eslint src/hooks/ --rule '{"react-hooks/exhaustive-deps": "error"}'`.
+- **Result: 0 errors** across every custom hook flagged in the original
+  code review (`useTTS`, `useStreamingAgent`, `usePushNotifications`,
+  `useChatMemory`, `useReferralCapture`, `useModals`). The original
+  reviewer's "missing dependencies" claim was categorically wrong.
+- Ran the rule across all of `src/` — still 0 errors. Auto-fix removed
+  8 orphaned `// eslint-disable-next-line react-hooks/exhaustive-deps`
+  comments in `AuthContext.jsx`, `MobileBottomNav.jsx`, and
+  `ShareSmartMoneyBoard.jsx` that were suppressing warnings no longer
+  fired. Pure cosmetic cleanup.
+- Final state: **0 errors, 0 warnings** under strict exhaustive-deps.
+
 ### Pyflakes Deep Scan + Re-export Bug Fix (COMPLETED Feb 19, 2026)
 - User asked to run `pyflakes` across the whole backend. Found 12 actual
   undefined names (all in non-runtime code):

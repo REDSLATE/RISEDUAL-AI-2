@@ -31,7 +31,7 @@ export function usePushNotifications() {
     setSupported(ok);
     if (ok) setPermission(Notification.permission);
     setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +46,7 @@ export function usePushNotifications() {
     };
     check();
     return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const subscribe = useCallback(async () => {
     if (!supported || !isApiSupported()) return false;
@@ -76,7 +76,7 @@ export function usePushNotifications() {
       logger.error('Push subscribe error:', e);
       return false;
     }
-  }, [supported]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supported]);  
 
   const unsubscribe = useCallback(async () => {
     try {
@@ -91,7 +91,7 @@ export function usePushNotifications() {
       logger.error('Push unsubscribe error:', e);
       return false;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   return { permission, subscribed, loading, supported, subscribe, unsubscribe };
 }

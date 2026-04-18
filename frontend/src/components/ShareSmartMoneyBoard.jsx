@@ -100,7 +100,7 @@ export default function ShareSmartMoneyBoard({ watchlist = [], smartScores = {},
         setState('idle');
         return;
       }
-      // eslint-disable-next-line no-console
+       
       console.error('Share board error:', err);
       setState('error');
       setTimeout(() => setState('idle'), 2500);
