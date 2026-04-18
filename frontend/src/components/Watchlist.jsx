@@ -9,6 +9,7 @@ import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
 import SparkLine from './SparkLine';
 import ShareSmartMoneyBoard from './ShareSmartMoneyBoard';
+import ShareBoardLeaderboard from './ShareBoardLeaderboard';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -412,6 +413,7 @@ const Watchlist = ({ onSubscribe }) => {
               })
             )}
           </div>
+          <ShareBoardLeaderboard authenticated={!!user} />
         </>
       )}
     </Card>

@@ -48,6 +48,16 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
+## Referral Attribution + Share Leaderboard (COMPLETED Apr 18)
+- **Backend** `routes/analytics.py`:
+  - `POST /api/analytics/ref` — anonymous pixel-style hit logger. Dedupes per (IP + UA + ref + day) via SHA-256 visitor hash → one count per unique visitor per day. Validates ref pattern (`share-u{8chars}` or `share-anon{date}`), silently rejects anything else.
+  - `GET /api/analytics/ref-leaderboard?limit=5` — Top-N sharers by unique visitor count (90-day window). Returns anonymized `user_suffix` (last 8 chars of user id) — never leaks emails or full userIds.
+  - `GET /api/analytics/ref-me` (auth-required) — the current user's own ref code, hit count, and rank.
+- **Frontend**:
+  - `hooks/useReferralCapture.js` — one-shot hook mounted in `App.js` that POSTs `?ref=share-*` landings to the analytics endpoint, deduped via `sessionStorage`. Works for anonymous visitors too.
+  - `components/ShareBoardLeaderboard.jsx` — compact Trophy-iconed card appended to the Watchlist panel when expanded. Shows user's rank + hit count + global top-5 with a Crown 👑 on #1.
+- **Verified end-to-end**: seeded 4 test refs via curl → visited `/?ref=share-umainagent1` via browser → hook fired → session storage set → backend recorded 4th rank → leaderboard UI rendered all 4 rows with correct ranking (`udemo1234` 4 hits, `uadmin12` 2, `udemo5678` 1, `umainagent1` 1). Admin sees "Your rank: #5 · 0 hits" (admin hasn't shared yet). Invalid ref pattern (XSS attempt) correctly returned `{recorded: false}`. 0 JS errors.
+
 ## Share Board QR Code + Referral Tracking (COMPLETED Apr 18)
 - Added `qrcode` npm package; rendered a 60×60 px QR code in the share card footer
 - QR encodes a **trackable referral URL**: `https://risedual.ai/?ref=share-u{sanitized-user-id}` (sanitized to alphanumeric, last 8 chars) — lets us attribute signups back to the exact user who shared

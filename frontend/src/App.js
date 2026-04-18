@@ -1,6 +1,7 @@
 import React from 'react';
 import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import useReferralCapture from './hooks/useReferralCapture';
 import { Toaster } from './components/ui/sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
@@ -48,6 +49,8 @@ if ('serviceWorker' in navigator) {
 }
 
 function AppContent() {
+  // One-shot referral capture for `?ref=share-*` landings
+  useReferralCapture();
   const {
     paymentInfo, setPaymentInfo,
     showAuth, setShowAuth, authTab, setAuthTab,

@@ -53,6 +53,7 @@ from routes.signal import router as signal_router, set_db as set_signal_db
 from routes.ml_orchestrator import router as ml_router, set_db as set_ml_db
 from routes.stockfit import router as stockfit_router, set_db as set_stockfit_db
 from routes.stockfit_13f import router as stockfit_13f_router, set_db as set_stockfit_13f_db
+from routes.analytics import router as analytics_router, set_db as set_analytics_db
 from routes.fred import router as fred_router, set_db as set_fred_db
 from routes.demo import router as demo_router, set_db as set_demo_db
 from services.price_provider import set_db as set_price_provider_db
@@ -85,6 +86,7 @@ ALL_ROUTERS = [
     ml_router,
     stockfit_router,
     stockfit_13f_router,
+    analytics_router,
     fred_router,
     demo_router,
 ]
@@ -118,6 +120,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_ml_db,
         set_stockfit_db,
         set_stockfit_13f_db,
+        set_analytics_db,
         set_fred_db,
         set_demo_db,
     ]
