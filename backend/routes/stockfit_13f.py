@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/stockfit/13f", tags=["stockfit-13f"])
 db = None
 
 
-def set_db(database):
+def set_db(database) -> None:
     global db
     db = database
 
@@ -39,7 +39,7 @@ class RefreshRequest(BaseModel):
 
 
 @router.get("/institutions")
-async def list_institutions():
+async def list_institutions() -> dict:
     """List all tracked top institutions with their latest filing period_end if available."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
@@ -61,7 +61,7 @@ async def list_institutions():
 
 
 @router.get("/institution/{cik}")
-async def institution_holdings(cik: str, limit: int = 50):
+async def institution_holdings(cik: str, limit: int = 50) -> dict:
     """Top holdings for an institution (latest quarter)."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
@@ -80,7 +80,7 @@ async def institution_holdings(cik: str, limit: int = 50):
 
 
 @router.get("/holders/{symbol}")
-async def holders_of_symbol(symbol: str, limit: int = 50):
+async def holders_of_symbol(symbol: str, limit: int = 50) -> dict:
     """Which tracked institutions hold the given symbol (latest quarters)."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
@@ -89,7 +89,7 @@ async def holders_of_symbol(symbol: str, limit: int = 50):
 
 
 @router.get("/changes/{cik}")
-async def quarterly_changes(cik: str, limit: int = 30):
+async def quarterly_changes(cik: str, limit: int = 30) -> dict:
     """QoQ changes for an institution: new / exited / increased / decreased."""
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
@@ -106,7 +106,7 @@ async def quarterly_changes(cik: str, limit: int = 30):
 
 
 @router.get("/alerts")
-async def user_alerts(request: Request, limit: int = 30, unread_only: bool = False):
+async def user_alerts(request: Request, limit: int = 30, unread_only: bool = False) -> dict:
     """Return 13F alerts relevant to the authenticated user's watchlist."""
     user = await get_current_user(request)
     if not user:
@@ -133,7 +133,7 @@ async def user_alerts(request: Request, limit: int = 30, unread_only: bool = Fal
 
 
 @router.post("/refresh")
-async def trigger_refresh(body: RefreshRequest, request: Request):
+async def trigger_refresh(body: RefreshRequest, request: Request) -> dict:
     """Admin-only: force a refresh of 13F filings.
 
     If ``cik`` is provided, only that institution is refreshed. Otherwise all tracked

@@ -43,7 +43,16 @@
 - **AlpacaOAuthDemo.jsx** (830 lines) decomposed into `oauth-demo/` folder: `DemoShared.jsx`, `StepLanding.jsx`, `StepDashboard.jsx`, `StepBrokerConnect.jsx`, `StepDisclosure.jsx`, `StepAlpacaAuth.jsx`, `StepSuccessRevoke.jsx`
 - **SmartOrderPanel.jsx** (440 lines) decomposed into `smart-orders/SmartOrderList.jsx` and `smart-orders/SmartOrderPreview.jsx`
 - Fixed bug: previous session had created SmartOrderList/SmartOrderPreview files but didn't actually wire them into SmartOrderPanel (orders tab would have crashed due to missing Badge/ModeTag/StatusTag/Trash2 imports). Now properly integrated.
-- Verified: All 7 OAuth demo steps + Smart Orders Create/List/Preview views render with 0 JS errors.
+- **RiseDualGPTChat.jsx** (399 → 250 lines, -37%) decomposed into:
+  - `hooks/useTTS.js` (51 lines) — text-to-speech playback
+  - `hooks/useStreamingAgent.js` (106 lines) — SSE-based tool-call agent
+  - `components/chat/AgentTrace.jsx` (48 lines) — live agent-working UI
+- Verified: OAuth 7-step flow, Smart Orders Create/List/Preview, Chat standard path ("Chat works."), Chat streaming agent path (CAGR calc) — all render with 0 JS errors.
+
+## Python Type Hint Coverage (COMPLETED Apr 18)
+- **Actual measured coverage**: 59.9% return-type, **91.1% parameter-type** (much better than handoff's "<50%" claim)
+- New code (`sec_13f_service.py`, `stockfit_13f.py` routes): **100% return-type coverage**
+- Decided: blanket-hinting 559 existing `routes/` functions is high-risk/low-value since FastAPI uses Pydantic `response_model` for runtime validation anyway. Focus going forward: type-hint all new code at 100%.
 
 ## 13F Holder Tracking + SEC Filing Alerts (COMPLETED Apr 18)
 - **SEC EDGAR direct integration** — free, authoritative, no paywall (StockFit's fund endpoints require paid plan)
@@ -67,8 +76,6 @@
 - **21/21 backend tests passed** (iteration 134), 0 JS errors, 0 `_id` leaks in responses.
 
 ## Backlog
-- P1: Decompose `RiseDualGPTChat.jsx` (370 lines)
-- P1: Improve Python backend type hint coverage (<50%)
 - P1: Connect Alpaca LIVE API keys via KeyVault (blocked on user account approval)
 - P2: Improve CUSIP→ticker mapping (currently ~85% coverage; add SEC 13F Securities list for 100% coverage)
 - P2: Accumulate 30 live paper trading days for Tier 3 unlock
