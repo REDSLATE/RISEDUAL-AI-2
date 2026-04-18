@@ -9,7 +9,6 @@ Tests verify:
 """
 import pytest
 import requests
-import os
 
 # Import centralized credentials
 from conftest_creds import (
@@ -104,7 +103,7 @@ class TestPublicEndpoints:
         data = response.json()
         # Should return sectors array or similar structure
         assert isinstance(data, (dict, list)), "Expected dict or list response"
-        print(f"✓ Sectors heatmap endpoint working")
+        print("✓ Sectors heatmap endpoint working")
 
     def test_waitlist_stats(self):
         """GET /api/waitlist/stats returns stats"""
@@ -120,7 +119,7 @@ class TestPublicEndpoints:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert isinstance(data, dict), "Expected dict response"
-        print(f"✓ Chat limit endpoint working")
+        print("✓ Chat limit endpoint working")
 
     def test_fear_greed(self):
         """GET /api/fear-greed returns data"""
@@ -128,7 +127,7 @@ class TestPublicEndpoints:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert isinstance(data, dict), "Expected dict response"
-        print(f"✓ Fear & Greed endpoint working")
+        print("✓ Fear & Greed endpoint working")
 
 
 class TestRefactoredMarketData:

@@ -379,7 +379,7 @@ async def auto_invite_top_users(batch_size: int = 5) -> List[Dict]:
     Generates beta access keys, sends War Room invite emails, 
     and updates their status to 'invited'.
     """
-    from services.email_service import send_war_room_invite, _is_configured
+    from services.email_service import send_war_room_invite
 
     cursor = db.waitlist.find(
         {"status": "waiting"},

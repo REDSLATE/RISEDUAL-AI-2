@@ -54,6 +54,29 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Misclick Rate + Pre-Deploy Cleanup (COMPLETED Feb 19, 2026)
+- **Backend stats**: `/api/analytics/chip-events/stats` now classifies
+  `action-clicked` events into forward-clicks and undo-clicks (chip_text
+  starts with `"Undo "`) and returns:
+  - `undo_count` + global `misclick_rate` = undos / forward-clicks
+  - Per-hub `undo_clicked` + `misclick_rate`
+  - `top_actions` now EXCLUDES undo entries (leaderboard shows what users
+    actually want, not what they bounce from)
+- **Admin UI**: new `Misclick` column in Per-Hub Breakdown table — red ≥25%,
+  amber ≥10%, slate otherwise. Hover title shows raw counts.
+- **Bug found + fixed (pre-existing)**: `backend/routes/analytics.py` had a
+  broken duplicate `trigger_help_search_digest` endpoint at line 276 with no
+  success return body. FastAPI was registering two routes for the same
+  path — the stub could have taken precedence over the real one. Deleted.
+- **Auto-fixed 499 unused imports** across `backend/routes/*.py` via ruff.
+  All runtime code (routes/, services/, server.py) is now lint-clean except
+  1 cosmetic unused-local in server.py. Remaining backend lint noise is
+  entirely in standalone `backend/scripts/` which aren't imported at runtime.
+- Frontend lints 100% clean (`components/`, `utils/`, `App.js`).
+- **E2E verified**: stats endpoint returns `action_clicked=12, undo_count=1,
+  misclick_rate=0.083`, Misclick column renders correctly in the admin panel.
+- **Ready to deploy.** ✅
+
 ### Undo Last Deep-Link Toast (COMPLETED Feb 19, 2026)
 - Every call to `openWarRoomForTicker` now shows a sonner toast bottom-right
   ("Analyzing XLK · From Sector Heatmap · [Undo]") with a 5s duration and

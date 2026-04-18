@@ -8,9 +8,7 @@ Features tested:
 3. Non-admin user gets 403 on security endpoints
 4. Unlock account functionality
 """
-import pytest
 import requests
-import os
 
 # Import centralized credentials
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
@@ -84,7 +82,7 @@ class TestSecurityAuditAPI:
         data = response.json()
         assert "failed_logins_24h" in data
         assert "total_users" in data
-        print(f"✓ Security overview accessible by owner")
+        print("✓ Security overview accessible by owner")
     
     def test_security_overview_unauthenticated_denied(self):
         """Test unauthenticated user cannot access security overview"""
@@ -92,7 +90,7 @@ class TestSecurityAuditAPI:
         fresh_session = requests.Session()
         response = fresh_session.get(f"{BASE_URL}/api/admin/security/overview")
         assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
-        print(f"✓ Security overview correctly denied for unauthenticated user")
+        print("✓ Security overview correctly denied for unauthenticated user")
     
     # ==================== Failed Logins Endpoint ====================
     
@@ -117,7 +115,7 @@ class TestSecurityAuditAPI:
             assert "last_attempt" in fl, "Missing last_attempt in failed login"
             print(f"✓ Failed logins data: {len(data['failed_logins'])} records")
         else:
-            print(f"✓ Failed logins endpoint works (no records)")
+            print("✓ Failed logins endpoint works (no records)")
     
     def test_failed_logins_owner_access(self):
         """Test owner can access failed logins endpoint"""
@@ -126,7 +124,7 @@ class TestSecurityAuditAPI:
         
         response = session.get(f"{BASE_URL}/api/admin/security/failed-logins")
         assert response.status_code == 200, f"Failed logins failed for owner: {response.text}"
-        print(f"✓ Failed logins accessible by owner")
+        print("✓ Failed logins accessible by owner")
     
     # ==================== OAuth Rotations Endpoint ====================
     
@@ -152,7 +150,7 @@ class TestSecurityAuditAPI:
             assert "timestamp" in r, "Missing timestamp in rotation"
             print(f"✓ OAuth rotations data: {len(data['rotations'])} records")
         else:
-            print(f"✓ OAuth rotations endpoint works (no records)")
+            print("✓ OAuth rotations endpoint works (no records)")
     
     def test_oauth_rotations_owner_access(self):
         """Test owner can access OAuth rotations endpoint"""
@@ -161,7 +159,7 @@ class TestSecurityAuditAPI:
         
         response = session.get(f"{BASE_URL}/api/admin/security/oauth-rotations")
         assert response.status_code == 200, f"OAuth rotations failed for owner: {response.text}"
-        print(f"✓ OAuth rotations accessible by owner")
+        print("✓ OAuth rotations accessible by owner")
     
     # ==================== Broker Connections Endpoint ====================
     
@@ -190,7 +188,7 @@ class TestSecurityAuditAPI:
             assert "oauth_refresh_token_enc" not in c, "oauth_refresh_token_enc should be excluded"
             print(f"✓ Broker connections data: {len(data['connections'])} records (sensitive fields excluded)")
         else:
-            print(f"✓ Broker connections endpoint works (no records)")
+            print("✓ Broker connections endpoint works (no records)")
     
     def test_broker_connections_owner_access(self):
         """Test owner can access broker connections endpoint"""
@@ -199,7 +197,7 @@ class TestSecurityAuditAPI:
         
         response = session.get(f"{BASE_URL}/api/admin/security/broker-connections")
         assert response.status_code == 200, f"Broker connections failed for owner: {response.text}"
-        print(f"✓ Broker connections accessible by owner")
+        print("✓ Broker connections accessible by owner")
     
     # ==================== Unlock Account Endpoint ====================
     
@@ -210,14 +208,14 @@ class TestSecurityAuditAPI:
         
         response = session.post(f"{BASE_URL}/api/admin/security/unlock/nonexistent@test.com")
         assert response.status_code == 404, f"Expected 404 for non-existent account, got {response.status_code}"
-        print(f"✓ Unlock non-existent account correctly returns 404")
+        print("✓ Unlock non-existent account correctly returns 404")
     
     def test_unlock_unauthenticated_denied(self):
         """Test unauthenticated user cannot unlock accounts"""
         fresh_session = requests.Session()
         response = fresh_session.post(f"{BASE_URL}/api/admin/security/unlock/test@test.com")
         assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
-        print(f"✓ Unlock correctly denied for unauthenticated user")
+        print("✓ Unlock correctly denied for unauthenticated user")
     
     # ==================== Non-Admin Access Denied Tests ====================
     
@@ -236,7 +234,7 @@ class TestSecurityAuditAPI:
             response = fresh_session.get(f"{BASE_URL}{endpoint}")
             assert response.status_code in [401, 403], f"Expected 401/403 for {endpoint}, got {response.status_code}"
         
-        print(f"✓ All security endpoints correctly deny unauthenticated access")
+        print("✓ All security endpoints correctly deny unauthenticated access")
 
 
 class TestAdminPanelAccess:
@@ -260,7 +258,7 @@ class TestAdminPanelAccess:
         response = session.get(f"{BASE_URL}/api/auth/admin/users")
         # Admin users list is owner-only, admin should get 403
         assert response.status_code == 403, f"Expected 403 for admin, got {response.status_code}"
-        print(f"✓ Admin correctly denied access to users list (owner-only endpoint)")
+        print("✓ Admin correctly denied access to users list (owner-only endpoint)")
     
     def test_owner_can_access_admin_users_list(self):
         """Test owner can access the admin users list endpoint"""
@@ -316,4 +314,4 @@ class TestAPIHealthChecks:
         session = requests.Session()
         response = session.get(f"{BASE_URL}/api/sectors/heatmap")
         assert response.status_code == 200, f"Sectors heatmap failed: {response.text}"
-        print(f"✓ Sectors heatmap endpoint working")
+        print("✓ Sectors heatmap endpoint working")

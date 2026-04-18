@@ -3,7 +3,6 @@
 This module is imported once by server.py to keep the main entry point clean.
 """
 import logging
-from typing import Any
 
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -11,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 # ── Route imports ──
-from routes.auth import auth_router, set_db as set_auth_db, seed_admin, create_indexes
+from routes.auth import auth_router, set_db as set_auth_db
 from routes.market import router as market_router
 from routes.trading import router as trading_router
 from routes.ai import router as ai_router, set_db as set_ai_db

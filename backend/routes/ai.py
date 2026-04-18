@@ -1,6 +1,5 @@
 """AI routes: chat, hypothesis, research endpoints."""
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile
-from fastapi.responses import JSONResponse
 from typing import Optional
 import os
 import logging
@@ -11,9 +10,8 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from services.ai_service import AIService
-from services.paper_trading_service import get_portfolio_context
 from services.portfolio_agent import run_portfolio_agent
-from models.chat import ChatRequest, ChatResponse, ChatSession, ChatMessage
+from models.chat import ChatSession, ChatMessage
 from services.auth_helpers import get_current_user, get_optional_user, is_pro_user, enforce_credits
 from routes.market_data import _collect_all_scrape_data
 
@@ -613,7 +611,6 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
         if db is not None:
             try:
                 from services.hypothesis_logger import log_hypothesis_snapshot
-                from fastapi import BackgroundTasks
                 prediction_doc = {
                     "ticker": symbol.upper(),
                     "verdict": hypothesis.get("verdict"),

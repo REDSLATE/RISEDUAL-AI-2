@@ -11,7 +11,6 @@ import os
 import json as json_mod
 import logging
 import httpx
-from typing import Optional
 
 from services.provider_pool import ProviderPool, ProviderEntry
 from services.pool_config import get_ai_provider_pool

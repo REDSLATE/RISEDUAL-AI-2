@@ -80,7 +80,7 @@ class TestAuthRegister:
         assert data["email"] == unique_email
         assert data["subscription_status"] == "free", f"Expected free, got {data['subscription_status']}"
         assert data["role"] == "user"
-        print(f"PASSED: Register returns tokens + user with subscription_status=free")
+        print("PASSED: Register returns tokens + user with subscription_status=free")
     
     def test_register_duplicate_email(self):
         """POST /api/auth/register with existing email returns 400"""
@@ -125,7 +125,7 @@ class TestAuthMe:
         assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         assert data["subscription_status"] == "pro"
-        print(f"PASSED: /me with Bearer token returns user info")
+        print("PASSED: /me with Bearer token returns user info")
     
     def test_me_without_auth(self):
         """GET /api/auth/me without token returns 401"""
@@ -188,7 +188,7 @@ class TestHypothesisFreeUser:
         assert "data_sources_count" in data["teaser"]
         assert "world_events_count" in data["teaser"]
         assert "congressional_trades_count" in data["teaser"]
-        print(f"PASSED: Hypothesis without auth returns is_pro=false, verdict=LOCKED")
+        print("PASSED: Hypothesis without auth returns is_pro=false, verdict=LOCKED")
     
     def test_hypothesis_free_user_with_token(self):
         """GET /api/hypothesis/AAPL with free user token returns is_pro=false"""
@@ -208,7 +208,7 @@ class TestHypothesisFreeUser:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         
         data = response.json()
-        assert data["is_pro"] == False, f"Expected is_pro=false for free user"
+        assert data["is_pro"] == False, "Expected is_pro=false for free user"
         assert data["teaser"]["verdict"] == "LOCKED"
         print("PASSED: Free user with token gets is_pro=false, verdict=LOCKED")
 

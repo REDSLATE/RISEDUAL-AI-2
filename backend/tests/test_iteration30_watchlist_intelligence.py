@@ -56,7 +56,7 @@ class TestWatchlistIntelligence:
         assert "access_token" in data, f"No access_token in response: {data}"
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
-        print(f"✓ Login successful, got access_token")
+        print("✓ Login successful, got access_token")
     
     def test_02_get_watchlist_returns_tickers(self, auth_headers):
         """GET /api/workspace/watchlist returns tickers array for authenticated user"""
@@ -78,7 +78,7 @@ class TestWatchlistIntelligence:
             timeout=30
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}: {response.text}"
-        print(f"✓ Correctly returns 401 without auth")
+        print("✓ Correctly returns 401 without auth")
     
     def test_04_watchlist_intelligence_returns_summary(self, auth_headers):
         """GET /api/intelligence/watchlist returns watchlist intelligence summary with all required fields"""
@@ -125,7 +125,7 @@ class TestWatchlistIntelligence:
             # Verify generated_at timestamp
             assert "generated_at" in data, f"No generated_at in response: {data}"
             
-            print(f"✓ Watchlist intelligence returned:")
+            print("✓ Watchlist intelligence returned:")
             print(f"  - Health score: {summary.get('health_score')}")
             print(f"  - Headline: {summary.get('headline')}")
             print(f"  - Bullish: {summary.get('bullish_count')}, Bearish: {summary.get('bearish_count')}")
@@ -135,7 +135,7 @@ class TestWatchlistIntelligence:
         else:
             # Empty watchlist case
             assert summary.get("headline") == "Empty Watchlist" or "empty" in summary.get("headline", "").lower()
-            print(f"✓ Empty watchlist response received")
+            print("✓ Empty watchlist response received")
     
     def test_05_watchlist_intelligence_refresh_clears_cache(self, auth_headers):
         """GET /api/intelligence/watchlist?refresh=true clears cache and regenerates"""
@@ -175,7 +175,7 @@ class TestWatchlistIntelligence:
             else:
                 print(f"✓ Refresh successful - Generated at: {generated_at_2}")
         else:
-            print(f"✓ Refresh successful (empty watchlist)")
+            print("✓ Refresh successful (empty watchlist)")
     
     def test_06_verify_ticker_scores_in_range(self, auth_headers):
         """Verify ticker scores are in valid range (1-10)"""
@@ -198,7 +198,7 @@ class TestWatchlistIntelligence:
             
             print(f"✓ All {len(data['tickers'])} ticker scores are valid (1-10) with valid verdicts")
         else:
-            print(f"✓ Skipped - empty watchlist")
+            print("✓ Skipped - empty watchlist")
     
     def test_07_verify_alerts_structure(self, auth_headers):
         """Verify alerts have required fields"""
@@ -223,7 +223,7 @@ class TestWatchlistIntelligence:
             
             print(f"✓ All {len(alerts)} alerts have valid structure")
         else:
-            print(f"✓ No alerts to verify (may be normal)")
+            print("✓ No alerts to verify (may be normal)")
     
     def test_08_verify_top_movers_structure(self, auth_headers):
         """Verify top_movers have required fields"""
@@ -243,7 +243,7 @@ class TestWatchlistIntelligence:
             
             print(f"✓ All {len(movers)} top movers have valid structure")
         else:
-            print(f"✓ No top movers to verify (may be normal)")
+            print("✓ No top movers to verify (may be normal)")
 
 
 if __name__ == "__main__":

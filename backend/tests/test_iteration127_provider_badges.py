@@ -8,7 +8,6 @@ Tests:
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
@@ -100,7 +99,7 @@ class TestProviderBadges:
         data = response.json()
         
         assert "response" in data, "Missing 'response' field"
-        print(f"PASS: Sell message processed successfully")
+        print("PASS: Sell message processed successfully")
 
 
 class TestCompanyResearchSynthesis:

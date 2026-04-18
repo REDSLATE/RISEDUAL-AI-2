@@ -1,6 +1,6 @@
 """Search War Room — Pydantic schemas for multi-engine search."""
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, Any
+from typing import Optional, Literal
 
 
 class SearchWarRoomRequest(BaseModel):

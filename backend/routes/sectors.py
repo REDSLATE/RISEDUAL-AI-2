@@ -1,7 +1,7 @@
 """Sector rotation heatmap route."""
 import os
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 

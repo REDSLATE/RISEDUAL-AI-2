@@ -273,13 +273,6 @@ async def help_search_stats(request: Request, days: int = 30, limit: int = 20) -
     }
 
 
-@router.post("/help-search/send-digest")
-async def trigger_help_search_digest(request: Request) -> dict:
-    """Admin-only: manually trigger the weekly Help-Search digest email (on-demand)."""
-    user = await get_current_user(request)
-    if not user or user.get("role") not in ("admin", "owner"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-
 @router.get("/help-search/suggestions")
 async def help_search_suggestions(q: str, request: Request) -> dict:
     """Given a user's query, return:
@@ -417,10 +410,19 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "clicked"})
     ctr = round(clicked / shown, 3) if shown else 0
 
-    # Level-2 deep-link actions — separate funnel
+    # Level-2 deep-link actions — separate funnel. Split raw "action-clicked"
+    # events into forward-clicks and undo-clicks (chip_text starts with
+    # "Undo ") so we can compute a misclick rate per source/hub.
     action_shown = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-shown"})
-    action_clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-clicked"})
+    action_clicked_total = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-clicked"})
+    undo_count = await db.chip_events.count_documents({
+        "ts": {"$gte": since},
+        "action": "action-clicked",
+        "chip_text": {"$regex": "^Undo "},
+    })
+    action_clicked = max(0, action_clicked_total - undo_count)  # true forward clicks
     action_ctr = round(action_clicked / action_shown, 3) if action_shown else 0
+    misclick_rate = round(undo_count / action_clicked, 3) if action_clicked else 0
 
     # Top clicked chips
     clicked_pipeline = [
@@ -433,9 +435,14 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     async for row in db.chip_events.aggregate(clicked_pipeline):
         top_clicked.append({"chip": row["_id"], "count": row["count"]})
 
-    # Top clicked actions (Level-2)
+    # Top clicked actions (Level-2) — exclude undo events so the leaderboard
+    # shows what users actually want to open, not what they bounce from.
     action_pipeline = [
-        {"$match": {"ts": {"$gte": since}, "action": "action-clicked"}},
+        {"$match": {
+            "ts": {"$gte": since},
+            "action": "action-clicked",
+            "chip_text": {"$not": {"$regex": "^Undo "}},
+        }},
         {"$group": {"_id": "$chip_text", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": max(1, min(limit, 50))},
@@ -444,13 +451,17 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     async for row in db.chip_events.aggregate(action_pipeline):
         top_actions.append({"chip": row["_id"], "count": row["count"]})
 
-    # Per-hub adoption breakdown — groups by context_hub then splits shown vs
-    # clicked for both L1 (chip) and L2 (action) events so the admin can see
-    # which surfaces drive the strongest deep-link adoption.
+    # Per-hub adoption breakdown — groups by context_hub AND splits forward
+    # vs undo action-clicks so the admin can see which surfaces have the
+    # highest misclick rate (= "this tile confuses users").
     hub_pipeline = [
         {"$match": {"ts": {"$gte": since}, "context_hub": {"$ne": None}}},
         {"$group": {
-            "_id": {"hub": "$context_hub", "action": "$action"},
+            "_id": {
+                "hub": "$context_hub",
+                "action": "$action",
+                "is_undo": {"$regexMatch": {"input": {"$ifNull": ["$chip_text", ""]}, "regex": "^Undo "}},
+            },
             "count": {"$sum": 1},
         }},
     ]
@@ -458,16 +469,27 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     async for row in db.chip_events.aggregate(hub_pipeline):
         hub = row["_id"].get("hub") or "unknown"
         act = row["_id"].get("action") or ""
+        is_undo = bool(row["_id"].get("is_undo"))
         hub_totals.setdefault(hub, {
-            "shown": 0, "clicked": 0, "action_shown": 0, "action_clicked": 0,
+            "shown": 0, "clicked": 0,
+            "action_shown": 0, "action_clicked": 0, "undo_clicked": 0,
         })
-        if act in ("shown", "clicked", "action-shown", "action-clicked"):
-            key = act.replace("-", "_")
-            hub_totals[hub][key] = hub_totals[hub].get(key, 0) + row["count"]
+        if act == "shown":
+            hub_totals[hub]["shown"] += row["count"]
+        elif act == "clicked":
+            hub_totals[hub]["clicked"] += row["count"]
+        elif act == "action-shown":
+            hub_totals[hub]["action_shown"] += row["count"]
+        elif act == "action-clicked":
+            if is_undo:
+                hub_totals[hub]["undo_clicked"] += row["count"]
+            else:
+                hub_totals[hub]["action_clicked"] += row["count"]
     by_hub = []
     for hub, t in hub_totals.items():
         l1_ctr = round((t["clicked"] / t["shown"]) if t["shown"] else 0, 3)
         l2_ctr = round((t["action_clicked"] / t["action_shown"]) if t["action_shown"] else 0, 3)
+        misclick = round((t["undo_clicked"] / t["action_clicked"]) if t["action_clicked"] else 0, 3)
         total_events = sum(t.values())
         by_hub.append({
             "hub": hub,
@@ -477,6 +499,8 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
             "action_shown": t["action_shown"],
             "action_clicked": t["action_clicked"],
             "l2_ctr": l2_ctr,
+            "undo_clicked": t["undo_clicked"],
+            "misclick_rate": misclick,
             "total_events": total_events,
         })
     by_hub.sort(key=lambda r: r["total_events"], reverse=True)
@@ -489,6 +513,8 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
         "action_shown": action_shown,
         "action_clicked": action_clicked,
         "action_ctr": action_ctr,
+        "undo_count": undo_count,
+        "misclick_rate": misclick_rate,
         "top_clicked": top_clicked,
         "top_actions": top_actions,
         "by_hub": by_hub,

@@ -13,7 +13,6 @@ import pytest
 import requests
 import os
 import json
-import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -48,7 +47,7 @@ class TestSSEOrderFlowStream:
         assert len(event_lines) > 0, "Should have at least one event line"
         assert len(data_lines) > 0, "Should have at least one data line"
         assert "snapshot" in event_lines[0], "First event should be snapshot"
-        print(f"PASS: BTC SSE stream returns snapshot events")
+        print("PASS: BTC SSE stream returns snapshot events")
     
     def test_sse_eth_stream_returns_snapshot_events(self):
         """GET /api/stream/orderflow/ETH returns SSE stream (ETH is supported crypto)"""
@@ -73,7 +72,7 @@ class TestSSEOrderFlowStream:
         
         event_lines = [e for e in events if e.startswith("event:")]
         assert len(event_lines) > 0, "Should have at least one event line"
-        print(f"PASS: ETH SSE stream returns snapshot events")
+        print("PASS: ETH SSE stream returns snapshot events")
     
     def test_sse_aapl_returns_error(self):
         """GET /api/stream/orderflow/AAPL returns error (not crypto, not supported for live stream)"""
@@ -240,7 +239,7 @@ class TestSSEOrderFlowStream:
             assert wall["strength"] in ["major", "minor"], f"Wall strength should be major or minor, got {wall['strength']}"
             print(f"PASS: Walls have correct structure - {len(snapshot_data['walls'])} walls detected")
         else:
-            print(f"PASS: No walls detected (market conditions may vary)")
+            print("PASS: No walls detected (market conditions may vary)")
 
 
 class TestStaticOrderFlowEndpoint:
@@ -309,7 +308,7 @@ class TestSSECryptoValidation:
         content_type = response.headers.get("Content-Type", "")
         if "text/event-stream" in content_type:
             response.close()
-            print(f"PASS: SOL SSE stream is supported")
+            print("PASS: SOL SSE stream is supported")
         else:
             # Check if it's an error response
             data = response.json()

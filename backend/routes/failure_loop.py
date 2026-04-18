@@ -1,6 +1,6 @@
 """Failure Loop routes — trade idea memory, review, patterns, and warnings."""
 import logging
-from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 

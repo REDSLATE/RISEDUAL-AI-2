@@ -2,8 +2,7 @@
 import os
 import json
 import logging
-import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pywebpush import webpush, WebPushException
 
 logger = logging.getLogger(__name__)

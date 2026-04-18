@@ -9,7 +9,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 class TestMarketScannerAuth:
@@ -24,7 +24,7 @@ class TestMarketScannerAuth:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert "user" in data or "email" in data, "Response should contain user info"
-        print(f"PASS: Admin login returns 200")
+        print("PASS: Admin login returns 200")
     
     def test_scan_without_auth_returns_401(self):
         """POST /api/scanner/scan without auth returns 401"""
@@ -34,13 +34,13 @@ class TestMarketScannerAuth:
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: POST /api/scanner/scan without auth returns 401")
+        print("PASS: POST /api/scanner/scan without auth returns 401")
     
     def test_quick_scan_without_auth_returns_401(self):
         """GET /api/scanner/quick/rsi_overbought without auth returns 401"""
         response = requests.get(f"{BASE_URL}/api/scanner/quick/rsi_overbought")
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: GET /api/scanner/quick without auth returns 401")
+        print("PASS: GET /api/scanner/quick without auth returns 401")
 
 
 class TestMarketScannerStrategies:
@@ -55,7 +55,7 @@ class TestMarketScannerStrategies:
         assert "strategies" in data, "Response should contain 'strategies' key"
         strategies = data["strategies"]
         assert len(strategies) == 10, f"Expected 10 strategies, got {len(strategies)}"
-        print(f"PASS: GET /api/scanner/strategies returns 10 strategies")
+        print("PASS: GET /api/scanner/strategies returns 10 strategies")
     
     def test_strategies_have_required_fields(self):
         """Each strategy has id, name, description, signal, category"""
@@ -70,7 +70,7 @@ class TestMarketScannerStrategies:
             for field in required_fields:
                 assert field in strategy, f"Strategy missing field: {field}"
         
-        print(f"PASS: All strategies have required fields (id, name, description, signal, category)")
+        print("PASS: All strategies have required fields (id, name, description, signal, category)")
     
     def test_strategies_include_expected_types(self):
         """Strategies include RSI, MACD, Bollinger, EMA, volume, 52w, momentum"""
@@ -89,7 +89,7 @@ class TestMarketScannerStrategies:
         for expected in expected_strategies:
             assert expected in strategy_ids, f"Missing expected strategy: {expected}"
         
-        print(f"PASS: All 10 expected strategies present")
+        print("PASS: All 10 expected strategies present")
 
 
 class TestMarketScannerScan:
@@ -166,7 +166,7 @@ class TestMarketScannerScan:
                 break
         
         if not match_found:
-            print(f"INFO: No matches found in current scan (market conditions may not trigger any strategy)")
+            print("INFO: No matches found in current scan (market conditions may not trigger any strategy)")
             # This is acceptable - market conditions vary
 
 
@@ -239,7 +239,7 @@ class TestMarketScannerQuickScan:
             timeout=30
         )
         assert response.status_code == 400, f"Expected 400, got {response.status_code}"
-        print(f"PASS: GET /api/scanner/quick/invalid_strategy returns 400")
+        print("PASS: GET /api/scanner/quick/invalid_strategy returns 400")
 
 
 class TestMarketScannerRegression:
@@ -259,7 +259,7 @@ class TestMarketScannerRegression:
         """GET /api/smart-orders still works (no regression)"""
         response = self.session.get(f"{BASE_URL}/api/smart-orders")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        print(f"PASS: GET /api/smart-orders still works (no regression)")
+        print("PASS: GET /api/smart-orders still works (no regression)")
     
     def test_risk_calculator_still_works(self):
         """POST /api/risk-calc/calculate still works (no regression)"""
@@ -278,7 +278,7 @@ class TestMarketScannerRegression:
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"PASS: POST /api/risk-calc/calculate still works (no regression)")
+        print("PASS: POST /api/risk-calc/calculate still works (no regression)")
 
 
 if __name__ == "__main__":

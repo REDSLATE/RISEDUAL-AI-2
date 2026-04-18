@@ -1,13 +1,12 @@
 """Strategy Builder routes — AI-powered trading strategy generation + Marketplace."""
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
-from typing import Optional
 import os
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from services.auth_helpers import get_current_user, get_optional_user, is_pro_user
+from services.auth_helpers import get_current_user, is_pro_user
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)

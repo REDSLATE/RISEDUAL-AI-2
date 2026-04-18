@@ -9,7 +9,6 @@ Tests:
 """
 import pytest
 import requests
-import os
 import uuid
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_USER_PASSWORD

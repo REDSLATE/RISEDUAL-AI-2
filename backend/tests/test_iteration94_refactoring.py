@@ -14,7 +14,7 @@ import json
 import time
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from conftest_creds.py
 class TestWhaleRadarRefactoring:
@@ -57,7 +57,7 @@ class TestWhaleRadarRefactoring:
                     events_received.append(line)
                 if i > 10 or len(events_received) > 5:  # Limit iterations
                     break
-        except Exception as e:
+        except Exception:
             pass  # Timeout is expected
         finally:
             response.close()

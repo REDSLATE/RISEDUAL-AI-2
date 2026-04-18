@@ -22,7 +22,6 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from risedual_core.ml.calibration import (
     GateResult,
-    Tier,
     check_all_gates,
     _T1_MIN_ACCURACY,
     _T1_MIN_PREDICTIONS,

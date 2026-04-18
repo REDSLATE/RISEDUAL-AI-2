@@ -23,7 +23,7 @@ class TestLeaderboardEndpoint:
         data = response.json()
         assert "leaderboard" in data, "Response should contain 'leaderboard' key"
         assert "total_participants" in data, "Response should contain 'total_participants' key"
-        print(f"✓ Leaderboard is public (no auth required)")
+        print("✓ Leaderboard is public (no auth required)")
     
     def test_leaderboard_returns_array(self):
         """Leaderboard should return an array"""
@@ -168,7 +168,7 @@ class TestLeaderboardDataIntegrity:
         for entry in data["leaderboard"]:
             assert entry["referrals"] > 0, \
                 f"Entry with 0 referrals should not be on leaderboard: {entry}"
-        print(f"✓ All leaderboard entries have completed referrals > 0")
+        print("✓ All leaderboard entries have completed referrals > 0")
 
 
 if __name__ == "__main__":

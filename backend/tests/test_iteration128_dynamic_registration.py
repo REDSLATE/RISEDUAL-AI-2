@@ -202,7 +202,7 @@ class TestProviderHealthAdminOperations:
         assert test_provider.get("provider") == "test-provider", f"Wrong provider type: {test_provider}"
         assert test_provider.get("priority") == 50, f"Wrong priority: {test_provider}"
         assert test_provider.get("has_key") == True, f"Should have API key: {test_provider}"
-        print(f"PASS: Registered provider appears in /models list with correct data")
+        print("PASS: Registered provider appears in /models list with correct data")
     
     def test_12_heartbeat_ok_status(self):
         """POST /api/provider-health/heartbeat with status=ok updates health"""
@@ -259,10 +259,10 @@ class TestProviderHealthAdminOperations:
                 test_provider = model
                 break
         
-        assert test_provider is not None, f"Test provider not found"
+        assert test_provider is not None, "Test provider not found"
         assert test_provider.get("disabled") == True, f"Provider should be disabled after failed heartbeat: {test_provider}"
         assert test_provider.get("available") == False, f"Provider should not be available: {test_provider}"
-        print(f"PASS: Heartbeat with status=failed disables provider")
+        print("PASS: Heartbeat with status=failed disables provider")
     
     def test_15_enable_disabled_provider(self):
         """POST /api/provider-health/enable re-enables a disabled provider"""
@@ -285,10 +285,10 @@ class TestProviderHealthAdminOperations:
                 test_provider = model
                 break
         
-        assert test_provider is not None, f"Test provider not found"
+        assert test_provider is not None, "Test provider not found"
         assert test_provider.get("disabled") == False, f"Provider should be enabled: {test_provider}"
         assert test_provider.get("available") == True, f"Provider should be available: {test_provider}"
-        print(f"PASS: POST /api/provider-health/enable re-enables provider")
+        print("PASS: POST /api/provider-health/enable re-enables provider")
     
     def test_16_enable_nonexistent_provider_returns_404(self):
         """POST /api/provider-health/enable for nonexistent provider returns 404"""
@@ -297,7 +297,7 @@ class TestProviderHealthAdminOperations:
             "name": "nonexistent-provider"
         })
         assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
-        print(f"PASS: Enable nonexistent provider returns 404")
+        print("PASS: Enable nonexistent provider returns 404")
     
     def test_17_deregister_provider(self):
         """POST /api/provider-health/deregister removes provider"""
@@ -321,7 +321,7 @@ class TestProviderHealthAdminOperations:
                 break
         
         assert test_provider is None, f"Provider should be removed from models list: {models_data['models']}"
-        print(f"PASS: POST /api/provider-health/deregister removes provider")
+        print("PASS: POST /api/provider-health/deregister removes provider")
     
     def test_18_heartbeat_for_deregistered_provider_returns_404(self):
         """POST /api/provider-health/heartbeat for deregistered provider returns 404"""
@@ -333,7 +333,7 @@ class TestProviderHealthAdminOperations:
             "error_rate": 0
         })
         assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
-        print(f"PASS: Heartbeat for deregistered provider returns 404")
+        print("PASS: Heartbeat for deregistered provider returns 404")
 
 
 class TestProviderPersistence:
@@ -374,7 +374,7 @@ class TestProviderPersistence:
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
         assert data.get("registered") == True
-        print(f"PASS: Registered provider for persistence test")
+        print("PASS: Registered provider for persistence test")
     
     def test_20_verify_provider_in_models_list(self):
         """Verify the persistence test provider is in models list"""
@@ -389,8 +389,8 @@ class TestProviderPersistence:
                 assert model.get("priority") == 75
                 break
         
-        assert found, f"Persistence test provider not found"
-        print(f"PASS: Persistence test provider found in models list")
+        assert found, "Persistence test provider not found"
+        print("PASS: Persistence test provider found in models list")
     
     def test_21_cleanup_persistence_test_provider(self):
         """Clean up the persistence test provider"""
@@ -399,7 +399,7 @@ class TestProviderPersistence:
             "name": "persistence-test-provider"
         })
         assert resp.status_code == 200
-        print(f"PASS: Cleaned up persistence test provider")
+        print("PASS: Cleaned up persistence test provider")
 
 
 class TestProviderHealthValidation:
@@ -427,7 +427,7 @@ class TestProviderHealthValidation:
             # Missing name, provider, api_key
         })
         assert resp.status_code == 422, f"Expected 422 for missing fields, got {resp.status_code}: {resp.text}"
-        print(f"PASS: Register with missing fields returns 422")
+        print("PASS: Register with missing fields returns 422")
     
     def test_23_heartbeat_invalid_status(self):
         """POST /api/provider-health/heartbeat with invalid status"""
@@ -457,7 +457,7 @@ class TestProviderHealthValidation:
             "lane": "validation-test-lane",
             "name": "validation-test-provider"
         })
-        print(f"PASS: Heartbeat with unknown status is accepted (no-op)")
+        print("PASS: Heartbeat with unknown status is accepted (no-op)")
 
 
 if __name__ == "__main__":

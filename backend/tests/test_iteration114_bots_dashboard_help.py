@@ -10,8 +10,7 @@ Tests for:
 import pytest
 import requests
 import os
-import time
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 

@@ -7,7 +7,7 @@ import logging
 import asyncio
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Dict
 
 import yfinance as yf
 

@@ -23,9 +23,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestFearGreedEndpoint:
@@ -35,7 +34,7 @@ class TestFearGreedEndpoint:
         """GET /api/sentiment/fear-greed should return 200"""
         response = requests.get(f"{BASE_URL}/api/sentiment/fear-greed", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/sentiment/fear-greed returned 200")
+        print("✓ GET /api/sentiment/fear-greed returned 200")
     
     def test_fear_greed_response_structure(self):
         """Verify response contains fear_greed and vix objects"""
@@ -105,7 +104,7 @@ class TestSectorsHeatmap:
         """GET /api/sectors/heatmap should return 200"""
         response = requests.get(f"{BASE_URL}/api/sectors/heatmap", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/sectors/heatmap returned 200")
+        print("✓ GET /api/sectors/heatmap returned 200")
     
     def test_sectors_heatmap_returns_11_sectors(self):
         """GET /api/sectors/heatmap should return 11 sectors with real prices"""
@@ -134,7 +133,7 @@ class TestStocksQuote:
         """GET /api/stocks/quote/AAPL should return 200"""
         response = requests.get(f"{BASE_URL}/api/stocks/quote/AAPL", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/stocks/quote/AAPL returned 200")
+        print("✓ GET /api/stocks/quote/AAPL returned 200")
     
     def test_stocks_quote_aapl_has_price(self):
         """GET /api/stocks/quote/AAPL should return price data"""
@@ -157,7 +156,7 @@ class TestCryptoPrices:
         """GET /api/crypto/prices should return 200"""
         response = requests.get(f"{BASE_URL}/api/crypto/prices", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/crypto/prices returned 200")
+        print("✓ GET /api/crypto/prices returned 200")
     
     def test_crypto_prices_returns_7_cryptos(self):
         """GET /api/crypto/prices should return 7 cryptos"""
@@ -200,7 +199,7 @@ class TestAuthLogin:
             timeout=30
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"✓ POST /api/auth/login correctly rejects invalid credentials")
+        print("✓ POST /api/auth/login correctly rejects invalid credentials")
 
 
 class TestBrokerOAuthStatus:
@@ -223,7 +222,7 @@ class TestBrokerOAuthStatus:
         """GET /api/broker/oauth/alpaca/status should return 200"""
         response = requests.get(f"{BASE_URL}/api/broker/oauth/alpaca/status", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/broker/oauth/alpaca/status returned 200")
+        print("✓ GET /api/broker/oauth/alpaca/status returned 200")
     
     def test_broker_oauth_status_response_structure(self):
         """GET /api/broker/oauth/alpaca/status should return broker status fields"""

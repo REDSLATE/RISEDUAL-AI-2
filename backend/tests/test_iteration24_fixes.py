@@ -35,7 +35,7 @@ class TestHealthAndAuth:
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
         assert "access_token" in data, f"No access_token in response: {data}"
-        print(f"✓ Owner login successful, token received")
+        print("✓ Owner login successful, token received")
         return data["access_token"]
 
 
@@ -112,11 +112,11 @@ class TestMarketPrediction:
         gov_filings = macro_data["gov_filings"]
         
         # Verify counts
-        assert "congressional_trades" in gov_filings, f"Missing 'congressional_trades' count"
-        assert "fed_announcements" in gov_filings, f"Missing 'fed_announcements' count"
-        assert "insider_trades" in gov_filings, f"Missing 'insider_trades' count"
+        assert "congressional_trades" in gov_filings, "Missing 'congressional_trades' count"
+        assert "fed_announcements" in gov_filings, "Missing 'fed_announcements' count"
+        assert "insider_trades" in gov_filings, "Missing 'insider_trades' count"
         
-        print(f"✓ Market prediction macro_data.gov_filings:")
+        print("✓ Market prediction macro_data.gov_filings:")
         print(f"  - Congressional trades: {gov_filings.get('congressional_trades', 0)}")
         print(f"  - Fed announcements: {gov_filings.get('fed_announcements', 0)}")
         print(f"  - Insider trades: {gov_filings.get('insider_trades', 0)}")
@@ -199,10 +199,10 @@ class TestHypothesisEndpoint:
         
         # Pro user should get full hypothesis
         assert data.get("is_pro") == True, f"Expected is_pro=True, got: {data.get('is_pro')}"
-        assert "symbol" in data, f"Missing 'symbol' in response"
+        assert "symbol" in data, "Missing 'symbol' in response"
         assert data.get("symbol") == "AAPL", f"Expected symbol=AAPL, got: {data.get('symbol')}"
         
-        print(f"✓ Hypothesis for AAPL returned with is_pro=True")
+        print("✓ Hypothesis for AAPL returned with is_pro=True")
         print(f"  - Verdict: {data.get('verdict', 'N/A')}")
         print(f"  - Confidence: {data.get('confidence', 'N/A')}")
 

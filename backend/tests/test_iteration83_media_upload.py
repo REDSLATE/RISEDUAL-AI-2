@@ -137,7 +137,7 @@ class TestMediaEndpoints:
             if i + 1 < total_chunks:
                 # Intermediate chunk
                 assert result.get("complete") == False, f"Chunk {i} should not be complete"
-                assert result.get("chunk") == i, f"Chunk index mismatch"
+                assert result.get("chunk") == i, "Chunk index mismatch"
             else:
                 # Final chunk - should have file_id
                 assert result.get("complete") == True, "Final chunk should be complete"
@@ -197,7 +197,7 @@ class TestMediaEndpoints:
         data = response.json()
         assert data["has_video"] == True, "has_video should be True after uploading landing video"
         assert data["file_id"] == file_id, f"file_id mismatch: {data['file_id']} != {file_id}"
-        assert data["content_type"] == "video/mp4", f"content_type should be video/mp4"
+        assert data["content_type"] == "video/mp4", "content_type should be video/mp4"
         
         print(f"PASS: Landing video endpoint returns uploaded video {file_id}")
     

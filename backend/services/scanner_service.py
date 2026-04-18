@@ -8,9 +8,8 @@ import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from services.price_provider import get_quote, get_daily_history, get_crypto_quote
 from services.ai_intelligence_service import (
-    _fetch_daily, _compute_technicals, _calc_rsi, _calc_bollinger, _ema, _safe_sma
+    _fetch_daily, _compute_technicals, _calc_rsi, _calc_bollinger, _ema
 )
 
 logger = logging.getLogger(__name__)

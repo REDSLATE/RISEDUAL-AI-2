@@ -1,9 +1,8 @@
 """Trading Bot Routes — Grid Bot, Signal Bot, TradingView Webhook Bot."""
 import logging
-from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from pydantic import BaseModel
+from typing import Optional, Dict
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)

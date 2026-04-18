@@ -18,7 +18,6 @@ Features tested:
 """
 import pytest
 import requests
-import os
 import time
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
@@ -299,7 +298,7 @@ class TestWarRoomWithAIPool:
             # AI analysis might be in brief
             brief = data.get("brief", {})
             assert brief.get("headline") or brief.get("summary"), "No AI analysis found in response"
-            print(f"✓ War room returned brief with AI analysis")
+            print("✓ War room returned brief with AI analysis")
     
     def test_war_room_ai_engine_shows_provider(self, session):
         """Verify AI analysis engine shows which provider was used."""
@@ -420,9 +419,9 @@ class TestPoolProviderPriority:
             assert priorities == sorted(priorities), f"Providers not sorted by priority: {priorities}"
             
             # First should be alphavantage (priority 1)
-            assert providers[0]["name"] == "alphavantage-primary", f"First provider should be alphavantage-primary"
+            assert providers[0]["name"] == "alphavantage-primary", "First provider should be alphavantage-primary"
             # Second should be finnhub (priority 2)
-            assert providers[1]["name"] == "finnhub-backup", f"Second provider should be finnhub-backup"
+            assert providers[1]["name"] == "finnhub-backup", "Second provider should be finnhub-backup"
         
         print(f"✓ Market providers ordered by priority: {[p['name'] for p in providers]}")
 

@@ -49,7 +49,7 @@ class TestBinanceL2CryptoEndpoints:
             
             print(f"BTC: source={data['source']}, spread={spread.get('pct')}%, bias={summary.get('bias')}")
         else:
-            print(f"BTC: Binance unavailable, fell back to yfinance_profile")
+            print("BTC: Binance unavailable, fell back to yfinance_profile")
     
     def test_eth_returns_binance_l2_source(self):
         """GET /api/order-flow/ETH should return source=binance_l2"""
@@ -65,7 +65,7 @@ class TestBinanceL2CryptoEndpoints:
             assert "total_bids" in data
             print(f"ETH: source=binance_l2, walls={len(data.get('walls', []))}")
         else:
-            print(f"ETH: Binance unavailable, fell back to yfinance_profile")
+            print("ETH: Binance unavailable, fell back to yfinance_profile")
     
     def test_sol_returns_binance_l2_source(self):
         """GET /api/order-flow/SOL should return source=binance_l2 (SOL is in CRYPTO_TICKERS)"""
@@ -79,7 +79,7 @@ class TestBinanceL2CryptoEndpoints:
         if data.get("source") == "binance_l2":
             print(f"SOL: source=binance_l2, walls={len(data.get('walls', []))}")
         else:
-            print(f"SOL: Binance unavailable, fell back to yfinance_profile")
+            print("SOL: Binance unavailable, fell back to yfinance_profile")
 
 
 class TestYfinanceStockEndpoints:

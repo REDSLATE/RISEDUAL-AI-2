@@ -1,6 +1,5 @@
 """Workspace routes: watchlist, hypothesis history, notifications."""
 from fastapi import APIRouter, HTTPException, Request
-import logging
 from datetime import datetime, timezone
 
 from services.auth_helpers import get_current_user, is_pro_user

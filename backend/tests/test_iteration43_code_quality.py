@@ -11,9 +11,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from environment
 @pytest.fixture(scope="module")
@@ -178,7 +177,7 @@ class TestCoreAPIEndpoints:
         assert "europe" in data
         assert "americas" in data
         assert "commodities" in data
-        print(f"PASS: /api/foreign-markets - all regions present")
+        print("PASS: /api/foreign-markets - all regions present")
     
     def test_status_endpoint(self, session):
         """Verify /api/status returns 200"""

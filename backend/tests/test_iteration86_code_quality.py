@@ -8,7 +8,7 @@ Tests:
 import pytest
 import requests
 import os
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 # Override BASE_URL from environment if available
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', BASE_URL).rstrip('/')
@@ -73,7 +73,7 @@ class TestAccuracyEndpoints:
         data = res.json()
         # Should have overall stats
         assert "overall" in data or "war_room" in data, "Response should contain accuracy stats"
-        print(f"✓ Accuracy stats returned successfully")
+        print("✓ Accuracy stats returned successfully")
     
     def test_accuracy_memory_returns_200(self, pro_session):
         """GET /api/accuracy/memory returns memory stats for pro user"""

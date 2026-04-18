@@ -1,8 +1,7 @@
 import logging
 import asyncio
 import requests
-from typing import Dict, List
-from bs4 import BeautifulSoup
+from typing import Dict
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)

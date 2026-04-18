@@ -10,7 +10,6 @@ Key fixes tested:
 
 import pytest
 import requests
-import os
 import time
 
 from conftest_creds import BASE_URL, OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD

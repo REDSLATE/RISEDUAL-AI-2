@@ -24,7 +24,6 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -203,7 +202,7 @@ async def main(dry_run: bool) -> None:
     print(f"  Dry run      : {dry_run}")
 
     # Step 1: Load all ETF price series
-    print(f"\n  Loading ETF prices...")
+    print("\n  Loading ETF prices...")
     etf_prices = await load_etf_prices(db)
     print(f"  Loaded {len(etf_prices)} ETF price series")
 

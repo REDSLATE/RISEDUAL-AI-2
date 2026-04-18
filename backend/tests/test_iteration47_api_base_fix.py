@@ -10,9 +10,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 class TestAuthFlow:
     """Test authentication and cookie-based auth"""
@@ -60,7 +59,7 @@ class TestAuthFlow:
         assert response.status_code == 200, f"Refresh failed: {response.text}"
         data = response.json()
         assert "access_token" in data
-        print(f"PASS: Token refresh successful")
+        print("PASS: Token refresh successful")
 
 
 class TestAIWarRoom:
@@ -99,7 +98,7 @@ class TestAIWarRoom:
         """War Room should return 401 without auth"""
         response = requests.get(f"{BASE_URL}/api/intelligence/war-room/AAPL", timeout=10)
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: War Room correctly requires authentication")
+        print("PASS: War Room correctly requires authentication")
 
 
 class TestAIIntelligenceHub:
@@ -220,7 +219,7 @@ class TestErrorHandling:
         """Protected endpoints should return 401 without auth"""
         response = requests.get(f"{BASE_URL}/api/intelligence/score/AAPL", timeout=10)
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: Protected endpoint correctly returns 401 without auth")
+        print("PASS: Protected endpoint correctly returns 401 without auth")
     
     def test_error_message_is_descriptive(self):
         """Error messages should be descriptive, not generic"""

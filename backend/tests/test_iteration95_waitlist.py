@@ -11,7 +11,7 @@ import uuid
 import os
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestWaitlistPublicEndpoints:
@@ -60,7 +60,7 @@ class TestWaitlistPublicEndpoints:
         data = response.json()
         assert data.get("already_joined") == True, "Duplicate email should return already_joined=true"
         assert "referral_code" in data, "Should still return referral_code"
-        print(f"✓ Duplicate join correctly returns already_joined=true")
+        print("✓ Duplicate join correctly returns already_joined=true")
     
     def test_join_waitlist_with_referral_code(self):
         """POST /api/waitlist/join with referral_code credits the referrer"""

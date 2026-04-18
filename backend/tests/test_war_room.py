@@ -5,7 +5,6 @@ Tests: War Room endpoint, authentication, Pro subscription requirement, composit
 import pytest
 import requests
 import os
-import time
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -149,7 +148,7 @@ class TestWarRoomDataStructure:
         # AI score should have overall_score
         if ai_score:  # May be empty if API fails
             assert "overall_score" in ai_score or isinstance(ai_score, dict), "AI score should be a dict"
-        print(f"PASS: War Room has AI score data")
+        print("PASS: War Room has AI score data")
     
     def test_war_room_has_earnings(self, war_room_data):
         """War Room response should include earnings data with beat_rate and current_streak"""
@@ -207,7 +206,7 @@ class TestWarRoomDataStructure:
         """War Room response should include intelligence brief"""
         assert "brief" in war_room_data, "Missing 'brief' in response"
         assert isinstance(war_room_data["brief"], dict), "brief should be a dict"
-        print(f"PASS: War Room has intelligence brief")
+        print("PASS: War Room has intelligence brief")
     
     def test_war_room_has_generated_at(self, war_room_data):
         """War Room response should include generated_at timestamp"""
@@ -235,7 +234,7 @@ class TestExistingEndpointsStillWork:
         assert response.status_code == 200, f"Hypothesis endpoint failed: {response.status_code} - {response.text}"
         data = response.json()
         assert "verdict" in data or "hypothesis" in data, "Hypothesis response missing expected fields"
-        print(f"PASS: Hypothesis endpoint works")
+        print("PASS: Hypothesis endpoint works")
     
     def test_intelligence_score_endpoint_works(self, owner_token):
         """GET /api/intelligence/score/AAPL should still work"""
@@ -244,7 +243,7 @@ class TestExistingEndpointsStillWork:
         assert response.status_code == 200, f"Intelligence score endpoint failed: {response.status_code} - {response.text}"
         data = response.json()
         assert "scores" in data, "Intelligence score response missing 'scores'"
-        print(f"PASS: Intelligence score endpoint works")
+        print("PASS: Intelligence score endpoint works")
     
     def test_intelligence_patterns_endpoint_works(self, owner_token):
         """GET /api/intelligence/patterns/AAPL should still work"""
@@ -253,7 +252,7 @@ class TestExistingEndpointsStillWork:
         assert response.status_code == 200, f"Patterns endpoint failed: {response.status_code} - {response.text}"
         data = response.json()
         assert "patterns" in data, "Patterns response missing 'patterns'"
-        print(f"PASS: Intelligence patterns endpoint works")
+        print("PASS: Intelligence patterns endpoint works")
     
     def test_intelligence_brief_endpoint_works(self, owner_token):
         """GET /api/intelligence/brief/AAPL should still work"""
@@ -262,7 +261,7 @@ class TestExistingEndpointsStillWork:
         assert response.status_code == 200, f"Brief endpoint failed: {response.status_code} - {response.text}"
         data = response.json()
         assert "brief" in data, "Brief response missing 'brief'"
-        print(f"PASS: Intelligence brief endpoint works")
+        print("PASS: Intelligence brief endpoint works")
 
 
 if __name__ == "__main__":

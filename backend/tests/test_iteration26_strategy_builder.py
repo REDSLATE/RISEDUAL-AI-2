@@ -13,7 +13,6 @@ Tests for:
 import pytest
 import requests
 import os
-import time
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -278,7 +277,7 @@ class TestExistingEndpointsAfterRefactoring:
             assert has_expected, f"Unexpected response structure: {data.keys()}"
             print(f"SUCCESS: Hypothesis endpoint works, verdict={data.get('verdict')}, confidence={data.get('confidence')}")
         else:
-            print(f"SUCCESS: Hypothesis endpoint returns 403 (paywall working)")
+            print("SUCCESS: Hypothesis endpoint returns 403 (paywall working)")
     
     def test_gov_filings_endpoint_works(self):
         """GET /api/gov-filings — gov filings still works after service refactoring"""

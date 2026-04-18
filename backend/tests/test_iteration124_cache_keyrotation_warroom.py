@@ -9,7 +9,6 @@ Iteration 124: Testing sliding cache, key rotation, and War Room AI analysis
 """
 import pytest
 import requests
-import os
 import time
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD

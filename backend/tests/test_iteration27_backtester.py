@@ -10,7 +10,6 @@ Tests for:
 import pytest
 import requests
 import os
-import time
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -33,7 +32,7 @@ class TestOwnerLogin:
         data = response.json()
         assert "access_token" in data, "No access_token in response"
         assert len(data["access_token"]) > 0, "access_token is empty"
-        print(f"SUCCESS: Owner login returns access_token")
+        print("SUCCESS: Owner login returns access_token")
 
 
 @pytest.fixture(scope="module")
@@ -214,7 +213,7 @@ class TestBacktestSuccess:
         # Verify sharpe_ratio is numeric
         assert isinstance(metrics["sharpe_ratio"], (int, float)), "sharpe_ratio should be numeric"
         
-        print(f"SUCCESS: Backtest completed for AAPL")
+        print("SUCCESS: Backtest completed for AAPL")
         print(f"  Total trades: {metrics['total_trades']}")
         print(f"  Win rate: {metrics['win_rate']}%")
         print(f"  Total P&L: ${metrics['total_pnl']}")

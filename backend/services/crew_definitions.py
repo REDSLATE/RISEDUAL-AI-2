@@ -7,7 +7,7 @@ CrewEngine to run them sequentially or in parallel.
 
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from datetime import datetime, timezone
 
 from services.crew_engine import CrewEngine, AgentConfig

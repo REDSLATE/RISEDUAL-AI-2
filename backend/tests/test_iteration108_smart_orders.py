@@ -9,7 +9,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 class TestSmartOrdersAuth:
@@ -242,7 +242,7 @@ class TestSmartOrdersStopLoss:
         assert sl.get("price") == 180.0, f"SL price should be 180.0, got {sl.get('price')}"
         assert sl.get("trailing") == True, "SL trailing should be True"
         assert sl.get("trailing_pct") == 3.5, f"SL trailing_pct should be 3.5, got {sl.get('trailing_pct')}"
-        assert sl.get("emergency_price") == 170.0, f"SL emergency_price should be 170.0"
+        assert sl.get("emergency_price") == 170.0, "SL emergency_price should be 170.0"
 
 
 class TestSmartOrdersBreakEven:
@@ -318,7 +318,7 @@ class TestSmartOrdersTakeProfits:
         
         tps = data.get("take_profits", [])
         assert len(tps) == 3, f"Expected 3 TPs, got {len(tps)}"
-        assert data.get("tp_count") == 3, f"tp_count should be 3"
+        assert data.get("tp_count") == 3, "tp_count should be 3"
         
         # Verify TP chain structure
         assert tps[0]["price"] == 210.0

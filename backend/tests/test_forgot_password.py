@@ -7,7 +7,6 @@ import requests
 import os
 import uuid
 from pymongo import MongoClient
-from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL, TEST_USER_PASSWORD
 

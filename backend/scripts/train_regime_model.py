@@ -129,7 +129,7 @@ async def main(
         model.fit(price_series)
     except ImportError as exc:
         if "hmmlearn" in str(exc) and method == "hmm":
-            print(f"\n[WARNING] hmmlearn not installed — falling back to kmeans.")
+            print("\n[WARNING] hmmlearn not installed — falling back to kmeans.")
             cfg = RegimeConfig(
                 method="kmeans",
                 lookback_days=min(60, len(price_series) - 1),

@@ -12,7 +12,7 @@ import pytest
 import requests
 import os
 
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
+from conftest_creds import BASE_URL
 
 PRO_API_KEY = os.environ.get("TEST_API_KEY", "")
 

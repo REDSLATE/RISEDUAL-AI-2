@@ -7,7 +7,6 @@ Iteration 39: Testing new features and migrated endpoints
 import pytest
 import requests
 import os
-import time
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -121,7 +120,7 @@ class TestPnLTrackerAPI:
         """GET /api/broker/pnl-summary without auth should return 401"""
         response = requests.get(f"{BASE_URL}/api/broker/pnl-summary", timeout=10)
         assert response.status_code == 401, f"Expected 401 for unauthenticated, got {response.status_code}"
-        print(f"PASS: /api/broker/pnl-summary returns 401 for unauthenticated users")
+        print("PASS: /api/broker/pnl-summary returns 401 for unauthenticated users")
     
     def test_pnl_summary_authenticated(self, auth_token):
         """GET /api/broker/pnl-summary with auth should return valid structure"""
@@ -201,7 +200,7 @@ class TestAuthEndpoints:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         assert "access_token" in data or "token" in data, "Response should have token"
-        print(f"PASS: Owner login successful")
+        print("PASS: Owner login successful")
     
     def test_login_admin(self):
         """POST /api/auth/login with admin credentials"""
@@ -213,7 +212,7 @@ class TestAuthEndpoints:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         assert "access_token" in data or "token" in data, "Response should have token"
-        print(f"PASS: Admin login successful")
+        print("PASS: Admin login successful")
 
 
 if __name__ == "__main__":

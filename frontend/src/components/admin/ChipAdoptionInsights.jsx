@@ -207,12 +207,15 @@ export default function ChipAdoptionInsights() {
                   <th className="text-right px-3 py-2 font-semibold">L1 CTR</th>
                   <th className="text-right px-3 py-2 font-semibold hidden sm:table-cell">L2 (actions)</th>
                   <th className="text-right px-3 py-2 font-semibold">L2 CTR</th>
+                  <th className="text-right px-3 py-2 font-semibold" title="Undo clicks ÷ forward clicks — proxy for misclick rate">Misclick</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.by_hub.map((r, i) => {
                   const l1Pct = (r.l1_ctr * 100).toFixed(0);
                   const l2Pct = (r.l2_ctr * 100).toFixed(0);
+                  const mcRate = r.misclick_rate || 0;
+                  const mcPct = (mcRate * 100).toFixed(0);
                   return (
                     <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                       <td className="px-3 py-2 text-white text-sm font-medium capitalize">{r.hub}</td>
@@ -227,6 +230,9 @@ export default function ChipAdoptionInsights() {
                       </td>
                       <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${r.l2_ctr >= 0.20 ? 'text-amber-300' : r.l2_ctr >= 0.10 ? 'text-amber-400/70' : 'text-slate-500'}`}>
                         {r.action_shown > 0 ? `${l2Pct}%` : '—'}
+                      </td>
+                      <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${mcRate >= 0.25 ? 'text-red-400' : mcRate >= 0.10 ? 'text-amber-400' : 'text-slate-500'}`} title={`${r.undo_clicked || 0} undos of ${r.action_clicked} clicks`}>
+                        {r.action_clicked > 0 ? `${mcPct}%` : '—'}
                       </td>
                     </tr>
                   );

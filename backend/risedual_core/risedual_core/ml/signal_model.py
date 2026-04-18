@@ -297,7 +297,6 @@ class SignalModel:
         RuntimeError
             If the model has not been trained yet.
         """
-        from datetime import datetime, timezone  # noqa: PLC0415
 
         # Step 1 – convert snapshot to flat feature dict
         vector = snapshot_to_vector(snapshot)

@@ -358,8 +358,8 @@ class TestRollingCapEnforcement:
         data = info_res.json()
         
         assert data["reward_cap"] == 12, f"Expected reward_cap=12, got {data['reward_cap']}"
-        assert data["rewards_remaining"] <= 12, f"rewards_remaining should be <= 12"
-        assert data["rewards_remaining"] >= 0, f"rewards_remaining should be >= 0"
+        assert data["rewards_remaining"] <= 12, "rewards_remaining should be <= 12"
+        assert data["rewards_remaining"] >= 0, "rewards_remaining should be >= 0"
         assert data["rewards_earned"] + data["rewards_remaining"] <= 12, "earned + remaining should be <= cap"
         
         print(f"PASSED: Reward cap displayed correctly - cap=12, earned={data['rewards_earned']}, remaining={data['rewards_remaining']}")

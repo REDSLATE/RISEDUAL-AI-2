@@ -21,7 +21,7 @@ from uuid import uuid4
 
 # Add backend to path for service imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 # Test credentials
 class TestPostMortemServiceImports:
     """Test that post_mortem_service functions are importable and structured correctly"""
@@ -311,7 +311,7 @@ class TestFailureModeEndpoints:
         modes = data["failure_modes"]
         expected = {"TECH_FAKEOUT", "MACRO_SHOCK", "LIQUIDITY_GAP", "REGIME_SHIFT", "UNKNOWN"}
         assert set(modes.keys()) == expected
-        print(f"PASS: GET /api/accuracy/failure-modes returns all 5 categories")
+        print("PASS: GET /api/accuracy/failure-modes returns all 5 categories")
     
     def test_failure_breakdown_endpoint(self):
         """GET /api/accuracy/failure-breakdown returns proper structure"""
@@ -404,7 +404,7 @@ class TestDirectMongoDBInsertion:
             print(f"Post-mortem returned {resp.status_code}: {resp.text}")
             # Still pass if it's not a validation error (400/404)
             assert resp.status_code not in [400, 404], f"Unexpected validation error: {resp.text}"
-            print(f"PASS: Post-mortem endpoint reached (LLM may have failed)")
+            print("PASS: Post-mortem endpoint reached (LLM may have failed)")
 
 
 class TestPostMortemCorrectPredictionValidation:

@@ -14,12 +14,11 @@ Tests:
 
 import pytest
 import requests
-import os
 import sys
 
 # Add backend to path for direct imports
 sys.path.insert(0, '/app/backend')
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 class TestClassifyFailureFunction:
     """Test _classify_failure() function logic directly via Python imports."""
 
@@ -231,7 +230,7 @@ class TestRegimeToTextWithFailure:
         }
         text = _regime_to_text(regime)
         assert "Failure Mode: TECH_FAKEOUT" in text, f"Missing 'Failure Mode:' in: {text}"
-        print(f"PASS: _regime_to_text includes 'Failure Mode: TECH_FAKEOUT'")
+        print("PASS: _regime_to_text includes 'Failure Mode: TECH_FAKEOUT'")
 
     def test_regime_to_text_includes_failure_reason(self):
         """_regime_to_text() includes 'Failure Reason:' line when failure_reason present."""
@@ -246,7 +245,7 @@ class TestRegimeToTextWithFailure:
         }
         text = _regime_to_text(regime)
         assert "Failure Reason:" in text, f"Missing 'Failure Reason:' in: {text}"
-        print(f"PASS: _regime_to_text includes 'Failure Reason:'")
+        print("PASS: _regime_to_text includes 'Failure Reason:'")
 
     def test_regime_to_text_no_failure_when_absent(self):
         """_regime_to_text() does NOT include failure lines when not present."""

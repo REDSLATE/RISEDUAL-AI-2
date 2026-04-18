@@ -15,10 +15,9 @@ Thread Safety:
 """
 
 import os
-import json
 import logging
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List
 from dataclasses import dataclass
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 

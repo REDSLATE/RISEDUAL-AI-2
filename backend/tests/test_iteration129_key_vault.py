@@ -9,7 +9,6 @@ Tests for the secure API key vault feature:
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, TEST_USER_PASSWORD
 
@@ -133,7 +132,7 @@ class TestVaultAdminAccess:
         assert "preview" in test_key, "Key should have preview"
         assert "encrypted_value" not in test_key, "Encrypted value should NOT be exposed"
         
-        print(f"PASS: Stored key appears in list with correct data")
+        print("PASS: Stored key appears in list with correct data")
     
     def test_key_preview_format(self):
         """Key preview shows first 8 chars + ... + last 4 chars"""
@@ -151,7 +150,7 @@ class TestVaultAdminAccess:
         
         data = list_response.json()
         test_key = next((k for k in data.get("keys", []) if k.get("name") == TEST_KEY_NAME), None)
-        assert test_key is not None, f"Test key not found"
+        assert test_key is not None, "Test key not found"
         
         preview = test_key.get("preview", "")
         # Expected: "test-val...6789" (first 8 + ... + last 4)
@@ -202,7 +201,7 @@ class TestVaultAdminAccess:
         test_key = next((k for k in data.get("keys", []) if k.get("name") == TEST_KEY_NAME), None)
         assert test_key is None, f"Deleted key '{TEST_KEY_NAME}' should not appear in list"
         
-        print(f"PASS: Deleted key no longer in list")
+        print("PASS: Deleted key no longer in list")
     
     def test_delete_nonexistent_key_returns_404(self):
         """DELETE /api/vault/keys/{name} for nonexistent key returns 404"""

@@ -7,7 +7,6 @@ import pytest
 import requests
 import os
 import sys
-import asyncio
 
 # Add backend to path for imports
 sys.path.insert(0, '/app/backend')
@@ -54,7 +53,7 @@ class TestEmailServiceModule:
         assert RESEND_API_KEY is not None, "RESEND_API_KEY should not be None"
         assert len(RESEND_API_KEY) > 0, "RESEND_API_KEY should not be empty"
         assert RESEND_API_KEY == "re_YOUR_API_KEY_HERE", f"Expected placeholder, got {RESEND_API_KEY}"
-        print(f"PASS: RESEND_API_KEY is set to placeholder value")
+        print("PASS: RESEND_API_KEY is set to placeholder value")
     
     def test_sender_email_in_env(self):
         """Verify SENDER_EMAIL is set in environment"""
@@ -269,7 +268,7 @@ class TestResendPackageInstalled:
             import resend
             assert hasattr(resend, 'Emails'), "resend should have Emails attribute"
             assert hasattr(resend, 'api_key'), "resend should have api_key attribute"
-            print(f"PASS: resend package installed and importable")
+            print("PASS: resend package installed and importable")
         except ImportError as e:
             pytest.fail(f"resend package not installed: {e}")
 

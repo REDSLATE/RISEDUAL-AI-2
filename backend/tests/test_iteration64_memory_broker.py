@@ -6,7 +6,6 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_BROKER_CLIENT_ID, TEST_BROKER_CLIENT_SECRET
 
@@ -70,7 +69,7 @@ class TestMemoryDashboardEndpoints:
         data = response.json()
         # Should have overall stats
         assert "overall" in data or "accuracy" in data or isinstance(data, dict)
-        print(f"PASS: Accuracy stats endpoint returns data")
+        print("PASS: Accuracy stats endpoint returns data")
     
     def test_cleanup_history_endpoint(self):
         """GET /api/accuracy/memory/cleanup/history returns cleanup runs"""
@@ -88,7 +87,7 @@ class TestMemoryDashboardEndpoints:
         data = response.json()
         # Should have breakdown or total_failures
         assert "breakdown" in data or "total_failures" in data or "failure_modes" in data
-        print(f"PASS: Failure breakdown endpoint returns data")
+        print("PASS: Failure breakdown endpoint returns data")
     
     def test_post_mortem_history_endpoint(self):
         """GET /api/accuracy/post-mortem/history returns AI post-mortem results"""
@@ -152,13 +151,13 @@ class TestBrokerOAuthAdminOwnerOnly:
             json={"client_id": "test_id", "client_secret": "test_secret"}
         )
         assert response.status_code == 403, f"Expected 403 for admin POST, got {response.status_code}"
-        print(f"PASS: Admin correctly denied POST with 403")
+        print("PASS: Admin correctly denied POST with 403")
     
     def test_delete_broker_oauth_admin_denied(self, admin_session):
         """DELETE /api/admin/broker-oauth/alpaca returns 403 for admin"""
         response = admin_session.delete(f"{BASE_URL}/api/admin/broker-oauth/alpaca")
         assert response.status_code == 403, f"Expected 403 for admin DELETE, got {response.status_code}"
-        print(f"PASS: Admin correctly denied DELETE with 403")
+        print("PASS: Admin correctly denied DELETE with 403")
 
 
 class TestBrokerOAuthCRUD:
@@ -231,7 +230,7 @@ class TestBrokerOAuthCRUD:
         
         assert data.get("configured") == True
         assert data.get("available") == True
-        print(f"PASS: OAuth status shows configured=true after save")
+        print("PASS: OAuth status shows configured=true after save")
     
     def test_delete_broker_oauth_config(self):
         """DELETE /api/admin/broker-oauth/alpaca removes config"""
@@ -246,7 +245,7 @@ class TestBrokerOAuthCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data.get("status") == "deleted"
-        print(f"PASS: Deleted broker OAuth config")
+        print("PASS: Deleted broker OAuth config")
     
     def test_oauth_status_after_delete(self):
         """GET /api/broker/oauth/alpaca/status returns configured=false after delete"""
@@ -263,7 +262,7 @@ class TestBrokerOAuthCRUD:
         data = response.json()
         
         assert data.get("configured") == False
-        print(f"PASS: OAuth status shows configured=false after delete")
+        print("PASS: OAuth status shows configured=false after delete")
     
     def test_save_requires_both_fields(self):
         """POST /api/admin/broker-oauth/alpaca requires both client_id and client_secret"""
@@ -280,7 +279,7 @@ class TestBrokerOAuthCRUD:
             json={"client_secret": "ONLY_SECRET"}
         )
         assert response.status_code == 400
-        print(f"PASS: Save correctly requires both fields")
+        print("PASS: Save correctly requires both fields")
     
     def test_unsupported_broker_rejected(self):
         """POST /api/admin/broker-oauth/unsupported returns 400"""
@@ -289,7 +288,7 @@ class TestBrokerOAuthCRUD:
             json={"client_id": "test", "client_secret": "test"}
         )
         assert response.status_code == 400
-        print(f"PASS: Unsupported broker correctly rejected")
+        print("PASS: Unsupported broker correctly rejected")
 
 
 class TestBrokerOAuthUnauthenticated:
@@ -299,7 +298,7 @@ class TestBrokerOAuthUnauthenticated:
         """GET /api/admin/broker-oauth returns 401 without auth"""
         response = requests.get(f"{BASE_URL}/api/admin/broker-oauth")
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: Unauthenticated GET returns 401")
+        print("PASS: Unauthenticated GET returns 401")
     
     def test_post_broker_oauth_unauthenticated(self):
         """POST /api/admin/broker-oauth/alpaca returns 401 without auth"""
@@ -308,7 +307,7 @@ class TestBrokerOAuthUnauthenticated:
             json={"client_id": "test", "client_secret": "test"}
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: Unauthenticated POST returns 401")
+        print("PASS: Unauthenticated POST returns 401")
 
 
 if __name__ == "__main__":

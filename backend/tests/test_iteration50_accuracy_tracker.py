@@ -15,9 +15,8 @@ import requests
 import os
 import time
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD, TEST_USER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, TEST_USER_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestAccuracyTrackerAuth:
@@ -64,7 +63,7 @@ class TestAccuracyTrackerProUser:
             json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200, f"Admin login failed: {login_response.text}"
-        print(f"Admin login successful")
+        print("Admin login successful")
     
     def test_accuracy_stats_all_features(self):
         """GET /api/accuracy/stats returns stats for all features + overall"""
@@ -91,7 +90,7 @@ class TestAccuracyTrackerProUser:
             assert "pending" in stats, f"Missing pending in {feature}"
             assert "feature" in stats, f"Missing feature in {feature}"
         
-        print(f"PASS: /api/accuracy/stats returns all feature stats")
+        print("PASS: /api/accuracy/stats returns all feature stats")
         print(f"  - war_room: pending={data['war_room']['pending']}, total_24h={data['war_room']['total_24h']}")
         print(f"  - hypothesis: pending={data['hypothesis']['pending']}, total_24h={data['hypothesis']['total_24h']}")
         print(f"  - market_prediction: pending={data['market_prediction']['pending']}, total_24h={data['market_prediction']['total_24h']}")
@@ -108,7 +107,7 @@ class TestAccuracyTrackerProUser:
         assert "total_24h" in data
         assert "pending" in data
         
-        print(f"PASS: /api/accuracy/stats/war_room returns war_room stats")
+        print("PASS: /api/accuracy/stats/war_room returns war_room stats")
         print(f"  - pending: {data['pending']}, total_24h: {data['total_24h']}")
     
     def test_accuracy_stats_hypothesis(self):
@@ -119,7 +118,7 @@ class TestAccuracyTrackerProUser:
         data = response.json()
         assert data["feature"] == "hypothesis", f"Expected feature=hypothesis, got {data.get('feature')}"
         
-        print(f"PASS: /api/accuracy/stats/hypothesis returns hypothesis stats")
+        print("PASS: /api/accuracy/stats/hypothesis returns hypothesis stats")
     
     def test_accuracy_stats_market_prediction(self):
         """GET /api/accuracy/stats/market_prediction returns feature-specific stats"""
@@ -129,14 +128,14 @@ class TestAccuracyTrackerProUser:
         data = response.json()
         assert data["feature"] == "market_prediction", f"Expected feature=market_prediction, got {data.get('feature')}"
         
-        print(f"PASS: /api/accuracy/stats/market_prediction returns market_prediction stats")
+        print("PASS: /api/accuracy/stats/market_prediction returns market_prediction stats")
     
     def test_accuracy_stats_invalid_feature(self):
         """GET /api/accuracy/stats/{invalid} returns 400"""
         response = self.session.get(f"{BASE_URL}/api/accuracy/stats/invalid_feature")
         assert response.status_code == 400, f"Expected 400, got {response.status_code}"
         
-        print(f"PASS: /api/accuracy/stats/invalid_feature returns 400")
+        print("PASS: /api/accuracy/stats/invalid_feature returns 400")
     
     def test_accuracy_history(self):
         """GET /api/accuracy/history returns logged predictions"""
@@ -160,7 +159,7 @@ class TestAccuracyTrackerProUser:
             print(f"PASS: /api/accuracy/history returns {data['count']} predictions")
             print(f"  - First prediction: {pred['symbol']} {pred['direction']} ({pred['feature']})")
         else:
-            print(f"PASS: /api/accuracy/history returns empty predictions (count=0)")
+            print("PASS: /api/accuracy/history returns empty predictions (count=0)")
     
     def test_accuracy_history_with_feature_filter(self):
         """GET /api/accuracy/history?feature=war_room filters by feature"""
@@ -182,7 +181,7 @@ class TestAccuracyTrackerProUser:
         data = response.json()
         assert data.get("status") == "verification_complete", f"Expected verification_complete, got {data}"
         
-        print(f"PASS: POST /api/accuracy/verify returns verification_complete")
+        print("PASS: POST /api/accuracy/verify returns verification_complete")
 
 
 class TestWarRoomAutoLogging:
@@ -265,7 +264,7 @@ class TestNonProUserAccess:
             data = stats_response.json()
             assert "Pro subscription required" in data.get("detail", ""), f"Expected Pro required message, got {data}"
             
-            print(f"PASS: Non-Pro user gets 403 on /api/accuracy/stats")
+            print("PASS: Non-Pro user gets 403 on /api/accuracy/stats")
         else:
             # If registration fails (user exists), try login
             login_response = session.post(
@@ -275,7 +274,7 @@ class TestNonProUserAccess:
             if login_response.status_code == 200:
                 stats_response = session.get(f"{BASE_URL}/api/accuracy/stats")
                 assert stats_response.status_code == 403, f"Expected 403, got {stats_response.status_code}"
-                print(f"PASS: Non-Pro user gets 403 on /api/accuracy/stats")
+                print("PASS: Non-Pro user gets 403 on /api/accuracy/stats")
             else:
                 pytest.skip("Could not create/login test user")
 
@@ -332,7 +331,7 @@ class TestPredictionDataStructure:
         valid_directions = ["STRONG BUY", "BUY", "HOLD", "SELL", "STRONG SELL", "BULLISH", "BEARISH", "NEUTRAL"]
         assert pred["direction"].upper() in valid_directions, f"Invalid direction: {pred['direction']}"
         
-        print(f"PASS: Prediction has all required fields with correct types")
+        print("PASS: Prediction has all required fields with correct types")
         print(f"  - {pred['symbol']} {pred['direction']} ({pred['feature']}) @ ${pred['price_at_prediction']}")
 
 

@@ -14,8 +14,6 @@ from risedual_core.ml.calibration import (
     check_tier1,
     check_tier2,
     check_tier3,
-    kelly_fraction,
-    half_kelly_position,
 )
 
 logger = logging.getLogger(__name__)

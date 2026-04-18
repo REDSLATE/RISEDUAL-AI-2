@@ -8,11 +8,10 @@ Tests:
 import pytest
 import requests
 import os
-import time
 import uuid
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestEmbedWidget:
@@ -50,7 +49,7 @@ class TestEmbedWidget:
         assert 'widget.js' in snippet, "Snippet should reference widget.js"
         assert 'RiseDualWaitlist.init' in snippet, "Snippet should call init function"
         
-        print(f"PASS: embed/snippet returns valid JSON with snippet")
+        print("PASS: embed/snippet returns valid JSON with snippet")
 
 
 class TestBetaKeyRedemption:
@@ -143,7 +142,7 @@ class TestBetaKeyRedemption:
         assert 'id' in data, "Response should include user id"
         assert data.get('email') == new_email, "Email should match"
         
-        print(f"PASS: Beta key redeemed successfully, user has pro status")
+        print("PASS: Beta key redeemed successfully, user has pro status")
     
     def test_redeem_invalid_beta_key(self):
         """POST /api/auth/redeem-beta-key with invalid key returns 400"""
@@ -262,7 +261,7 @@ class TestBetaKeyRedemption:
         
         assert after_data.get('status') == 'active', \
             f"Expected status='active', got '{after_data.get('status')}'"
-        print(f"PASS: Waitlist entry status updated to 'active' after redemption")
+        print("PASS: Waitlist entry status updated to 'active' after redemption")
 
 
 class TestBetaKeyFormat:

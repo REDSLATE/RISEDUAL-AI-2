@@ -10,7 +10,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 class TestTradingBotsPhase4:
@@ -245,7 +245,7 @@ class TestTradingBotsPhase4:
         bots = list_resp.json()
         found = any(b.get("bot_id") == bot_id for b in bots)
         assert not found, "Deleted bot should not be in the list"
-        print(f"PASS: Bot deleted successfully")
+        print("PASS: Bot deleted successfully")
     
     # ── Webhook Endpoint Tests ──
     
@@ -279,7 +279,7 @@ class TestTradingBotsPhase4:
         assert resp.status_code == 200, f"Webhook execution failed: {resp.text}"
         data = resp.json()
         assert data.get("status") == "executed", f"Expected status=executed, got {data}"
-        print(f"PASS: Webhook executed trade when bot enabled")
+        print("PASS: Webhook executed trade when bot enabled")
     
     def test_11_webhook_fails_when_bot_disabled(self):
         """POST /api/bots/webhook/{bot_id}/{secret} returns error when bot is disabled"""
@@ -305,7 +305,7 @@ class TestTradingBotsPhase4:
         assert resp.status_code == 400, f"Expected 400 for disabled bot, got {resp.status_code}"
         data = resp.json()
         assert "disabled" in data.get("detail", "").lower(), f"Expected 'disabled' in error, got {data}"
-        print(f"PASS: Webhook returns error when bot is disabled")
+        print("PASS: Webhook returns error when bot is disabled")
     
     def test_12_webhook_fails_with_wrong_secret(self):
         """POST /api/bots/webhook/{bot_id}/wrong_secret returns error for invalid secret"""
@@ -333,7 +333,7 @@ class TestTradingBotsPhase4:
         assert resp.status_code == 400, f"Expected 400 for wrong secret, got {resp.status_code}"
         data = resp.json()
         assert "secret" in data.get("detail", "").lower() or "invalid" in data.get("detail", "").lower(), f"Expected secret error, got {data}"
-        print(f"PASS: Webhook returns error for invalid secret")
+        print("PASS: Webhook returns error for invalid secret")
     
     # ── Signal Processing Test ──
     

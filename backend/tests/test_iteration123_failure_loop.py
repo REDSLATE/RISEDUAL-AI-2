@@ -5,12 +5,11 @@ Tests for trade idea memory, review, patterns, warnings, and timeline endpoints.
 import pytest
 import requests
 import os
-from uuid import uuid4
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 class TestFailureLoopEndpoints:
@@ -47,7 +46,7 @@ class TestFailureLoopEndpoints:
                         "high_volatility", "poor_risk_reward", "trend_fade", "news_risk"]
         for tag in expected_tags:
             assert tag in data["tags"], f"Missing tag: {tag}"
-        print(f"✓ GET /api/failure-loop/reason-tags - PASS (7 tags returned)")
+        print("✓ GET /api/failure-loop/reason-tags - PASS (7 tags returned)")
     
     # ==================== POST /api/failure-loop/ideas ====================
     def test_create_trade_idea(self):
@@ -99,7 +98,7 @@ class TestFailureLoopEndpoints:
         data = response.json()
         assert data["direction"] == "short"
         assert data["source"] == "ai"
-        print(f"✓ POST /api/failure-loop/ideas (short) - PASS")
+        print("✓ POST /api/failure-loop/ideas (short) - PASS")
     
     def test_create_trade_idea_validation(self):
         """POST /api/failure-loop/ideas - validates confidence range"""
@@ -117,7 +116,7 @@ class TestFailureLoopEndpoints:
             json=payload
         )
         assert response.status_code == 422, f"Expected 422 for invalid confidence, got {response.status_code}"
-        print(f"✓ POST /api/failure-loop/ideas validation - PASS (rejects confidence > 1)")
+        print("✓ POST /api/failure-loop/ideas validation - PASS (rejects confidence > 1)")
     
     # ==================== GET /api/failure-loop/ideas ====================
     def test_get_ideas(self):
@@ -185,7 +184,7 @@ class TestFailureLoopEndpoints:
         assert "overconfidence" in data["reason_tags"]
         assert data["approved_for_learning"] == True
         assert "reviewed_at" in data
-        print(f"✓ POST /api/failure-loop/review - PASS (reviewed as loss with tags)")
+        print("✓ POST /api/failure-loop/review - PASS (reviewed as loss with tags)")
     
     def test_review_trade_win(self):
         """POST /api/failure-loop/review - reviews a winning trade"""
@@ -219,7 +218,7 @@ class TestFailureLoopEndpoints:
         data = response.json()
         assert data["status"] == "win"
         assert data["pnl"] == 500.00
-        print(f"✓ POST /api/failure-loop/review (win) - PASS")
+        print("✓ POST /api/failure-loop/review (win) - PASS")
     
     def test_review_invalid_idea_id(self):
         """POST /api/failure-loop/review - returns 404 for unknown idea_id"""
@@ -235,7 +234,7 @@ class TestFailureLoopEndpoints:
             }
         )
         assert response.status_code == 404, f"Expected 404, got {response.status_code}"
-        print(f"✓ POST /api/failure-loop/review (invalid id) - PASS (returns 404)")
+        print("✓ POST /api/failure-loop/review (invalid id) - PASS (returns 404)")
     
     # ==================== GET /api/failure-loop/patterns ====================
     def test_get_patterns(self):
@@ -256,7 +255,7 @@ class TestFailureLoopEndpoints:
             assert "symbols" in pattern
             print(f"✓ GET /api/failure-loop/patterns - PASS ({len(data['patterns'])} patterns, top: {pattern['tag']})")
         else:
-            print(f"✓ GET /api/failure-loop/patterns - PASS (0 patterns - no approved losses yet)")
+            print("✓ GET /api/failure-loop/patterns - PASS (0 patterns - no approved losses yet)")
     
     # ==================== GET /api/failure-loop/warnings ====================
     def test_get_warnings(self):
@@ -275,7 +274,7 @@ class TestFailureLoopEndpoints:
             assert "flagged" in warning.lower() or "past" in warning.lower()
             print(f"✓ GET /api/failure-loop/warnings - PASS ({len(data['warnings'])} warnings)")
         else:
-            print(f"✓ GET /api/failure-loop/warnings - PASS (0 warnings - no patterns yet)")
+            print("✓ GET /api/failure-loop/warnings - PASS (0 warnings - no patterns yet)")
     
     # ==================== GET /api/failure-loop/timeline ====================
     def test_get_timeline(self):
@@ -295,7 +294,7 @@ class TestFailureLoopEndpoints:
             assert event["type"] in ["trade_idea_created", "trade_reviewed"]
             print(f"✓ GET /api/failure-loop/timeline - PASS ({len(data['events'])} events)")
         else:
-            print(f"✓ GET /api/failure-loop/timeline - PASS (0 events)")
+            print("✓ GET /api/failure-loop/timeline - PASS (0 events)")
     
     # ==================== Auth Required Tests ====================
     def test_endpoints_require_auth(self):
@@ -321,14 +320,14 @@ class TestFailureLoopEndpoints:
             
             assert response.status_code == 401, f"{method} {endpoint} should require auth, got {response.status_code}"
         
-        print(f"✓ Auth required for all endpoints - PASS")
+        print("✓ Auth required for all endpoints - PASS")
     
     def test_reason_tags_public(self):
         """GET /api/failure-loop/reason-tags is public (no auth required)"""
         unauth_session = requests.Session()
         response = unauth_session.get(f"{BASE_URL}/api/failure-loop/reason-tags")
         assert response.status_code == 200, f"reason-tags should be public, got {response.status_code}"
-        print(f"✓ GET /api/failure-loop/reason-tags (public) - PASS")
+        print("✓ GET /api/failure-loop/reason-tags (public) - PASS")
 
 
 class TestFailureLoopIntegration:
@@ -404,7 +403,7 @@ class TestFailureLoopIntegration:
         event_types = [e["type"] for e in events]
         assert "trade_idea_created" in event_types or "trade_reviewed" in event_types
         
-        print(f"✓ Full workflow integration test - PASS")
+        print("✓ Full workflow integration test - PASS")
 
 
 if __name__ == "__main__":

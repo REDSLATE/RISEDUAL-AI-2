@@ -7,7 +7,7 @@ Webhook Bot receives external POST requests.
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 

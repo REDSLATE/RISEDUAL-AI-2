@@ -10,10 +10,9 @@ Usage:
 """
 import os
 import logging
-from dataclasses import dataclass, field
-from typing import Callable, Awaitable, Optional
+from dataclasses import dataclass
+from typing import Callable, Optional
 
-from services.search_war_room.schemas import EngineResult
 
 logger = logging.getLogger(__name__)
 

@@ -342,7 +342,7 @@ class TestJournalAnalytics:
         for field in required_fields:
             assert field in data, f"Analytics should have '{field}' field"
         
-        print(f"PASSED: Analytics structure correct")
+        print("PASSED: Analytics structure correct")
         print(f"  - Total trades: {data['total_trades']}")
         print(f"  - Open: {data['open_trades']}, Closed: {data['closed_trades']}")
         print(f"  - Total P&L: ${data['total_pnl']}")

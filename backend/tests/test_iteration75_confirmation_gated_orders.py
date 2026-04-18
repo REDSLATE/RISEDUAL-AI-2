@@ -9,9 +9,8 @@ import time
 import re
 import uuid
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestConfirmationGatedOrders:
@@ -71,7 +70,7 @@ class TestConfirmationGatedOrders:
             print(f"✓ Proposal ID found: {proposal_id}")
         else:
             # Check if proposal ID is mentioned differently
-            print(f"Note: Proposal ID pattern not found in response")
+            print("Note: Proposal ID pattern not found in response")
         
         # Verify portfolio was NOT changed (no immediate execution)
         portfolio_after = self.session.get(f"{BASE_URL}/api/paper/portfolio")
@@ -390,7 +389,7 @@ class TestPendingOrdersCollection:
         if executed:
             print(f"✓ Order {proposal_id} confirmed and executed (status should be CONFIRMED)")
         else:
-            print(f"Note: Execution confirmation not clear in response")
+            print("Note: Execution confirmation not clear in response")
 
 
 class TestEdgeCases:

@@ -346,9 +346,9 @@ async def main() -> None:
     print(f"\n{'='*60}")
     print("  SEC EDGAR SUBMISSIONS API INSIDER BACKFILL")
     print(f"{'='*60}")
-    print(f"  Endpoint     : data.sec.gov/submissions")
+    print("  Endpoint     : data.sec.gov/submissions")
     print(f"  Tickers      : {len(tickers)}")
-    print(f"  Rate limit   : 8 req/sec")
+    print("  Rate limit   : 8 req/sec")
     print(f"  Cache        : {CACHE_DIR}")
     print(f"{'='*60}\n")
 

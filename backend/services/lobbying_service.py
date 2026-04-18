@@ -1,7 +1,7 @@
 """Lobbying data service — queries imported lobbying disclosure data from MongoDB."""
 import os
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)

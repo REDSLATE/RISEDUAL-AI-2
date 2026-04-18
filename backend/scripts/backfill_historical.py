@@ -56,7 +56,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from motor.motor_asyncio import AsyncIOMotorClient  # type: ignore[import-untyped]
 
 from risedual_core.ml.patterns import _run_all_sync  # synchronous runner
-from risedual_core.schemas.market import FeaturesSnapshot
 
 log = logging.getLogger(__name__)
 logging.basicConfig(
@@ -589,11 +588,11 @@ def _print_summary(summaries: list[dict[str, Any]]) -> None:
     print(f"  Total time        : {total_t:.0f}s ({total_t/60:.1f} min)")
 
     if failed:
-        print(f"\n  Failed tickers:")
+        print("\n  Failed tickers:")
         for s in failed:
             print(f"    {s['ticker']:<12} {s['error']}")
 
-    print(f"\n  Top performers by row count:")
+    print("\n  Top performers by row count:")
     top = sorted(succeeded, key=lambda s: s["rows_inserted"], reverse=True)[:10]
     for s in top:
         print(f"    {s['ticker']:<12} {s['rows_inserted']:>6} rows  ({s['elapsed_s']:.0f}s)")

@@ -1,8 +1,6 @@
 """Push notification routes: subscribe, unsubscribe, status, test."""
-import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from bson import ObjectId
 from datetime import datetime, timezone
 from services.auth_helpers import get_current_user
 

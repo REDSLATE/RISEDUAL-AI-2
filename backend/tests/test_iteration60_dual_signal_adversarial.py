@@ -23,7 +23,6 @@ Instead they test:
 import pytest
 import asyncio
 import sys
-import os
 import inspect
 
 # Add backend to path for direct imports
@@ -81,7 +80,6 @@ class TestVetoContext:
     async def test_veto_context_filters_by_outcome_toxic_lesson(self, init_memory_service):
         """Verify the ChromaDB query uses outcome='toxic_lesson' filter."""
         from services.market_memory_service import get_strategist_veto_context
-        import services.market_memory_service as mms
         
         # Check the function source code for the filter
         source = inspect.getsource(get_strategist_veto_context)

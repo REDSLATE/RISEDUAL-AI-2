@@ -11,7 +11,7 @@ import asyncio
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from services.market_memory_service import save_regime, _collection, init_memory
 

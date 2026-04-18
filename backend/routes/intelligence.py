@@ -4,7 +4,6 @@ import os
 import logging
 
 from services.auth_helpers import get_current_user
-from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ import requests
 import re
 from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 

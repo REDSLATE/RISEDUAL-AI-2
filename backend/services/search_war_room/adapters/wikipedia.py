@@ -1,6 +1,5 @@
 """Wikipedia adapter — free knowledge summaries, no key required."""
 import httpx
-import asyncio
 from services.search_war_room.schemas import EngineResult
 from services.search_war_room.cache import get_cached, set_cached
 

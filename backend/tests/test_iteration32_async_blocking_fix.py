@@ -9,8 +9,6 @@ import pytest
 import requests
 import os
 import time
-import asyncio
-import aiohttp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 

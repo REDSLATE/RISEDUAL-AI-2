@@ -34,7 +34,6 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +52,6 @@ EVAL_SPLIT: float = 0.20
 
 from risedual_core.ml.features import FEATURE_COLUMNS, PATTERN_COLUMNS
 from risedual_core.ml.signal_model import CalibrationStats, SignalModel, SignalModelConfig
-from risedual_core.schemas.market import PredictionDirection
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -151,7 +149,6 @@ def build_Xy(df: "pd.DataFrame") -> tuple["pd.DataFrame", "pd.Series"]:  # noqa:
     when outcome == "up" (positive class) for backfill rows without a
     predicted_direction.
     """
-    import pandas as pd
 
     # Binary target: correct prediction or up-move for backfill
     if "predicted_direction" in df.columns and df["predicted_direction"].notna().any():
@@ -275,7 +272,6 @@ def print_eval_report(
     model: SignalModel,
 ) -> None:
     """Print a full evaluation report after training."""
-    import numpy as np
 
     print()
     print("=" * 65)

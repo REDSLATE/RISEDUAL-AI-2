@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from bson import ObjectId
 
 JWT_ALGORITHM = "HS256"

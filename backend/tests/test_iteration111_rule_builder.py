@@ -15,7 +15,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 class TestAuth:
@@ -31,7 +31,7 @@ class TestAuth:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert "user" in data or "email" in data, "Response should contain user info"
-        print(f"PASS: Admin login returns 200")
+        print("PASS: Admin login returns 200")
 
 
 class TestIndicatorsEndpoint:
@@ -89,7 +89,7 @@ class TestIndicatorsEndpoint:
         # Check category operators include is, is_not
         category_ops = [op["id"] for op in operators["category"]]
         assert "is" in category_ops, "Category operators should include 'is'"
-        print(f"PASS: Operators returned for all types")
+        print("PASS: Operators returned for all types")
 
 
 class TestCustomRuleRun:

@@ -14,9 +14,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestFearGreedEndpoint:
@@ -26,7 +25,7 @@ class TestFearGreedEndpoint:
         """GET /api/sentiment/fear-greed should return 200"""
         response = requests.get(f"{BASE_URL}/api/sentiment/fear-greed", timeout=30)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"✓ GET /api/sentiment/fear-greed returned 200")
+        print("✓ GET /api/sentiment/fear-greed returned 200")
     
     def test_fear_greed_response_structure(self):
         """Verify response contains fear_greed and vix objects"""
@@ -148,7 +147,7 @@ class TestRegressionEndpoints:
         cookies = response.cookies
         assert "access_token" in cookies or response.json().get("access_token"), "No access_token in response"
         
-        print(f"✓ POST /api/auth/login succeeded")
+        print("✓ POST /api/auth/login succeeded")
     
     def test_auth_login_invalid_credentials(self):
         """POST /api/auth/login with invalid credentials should fail"""
@@ -158,7 +157,7 @@ class TestRegressionEndpoints:
             timeout=30
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"✓ POST /api/auth/login correctly rejects invalid credentials")
+        print("✓ POST /api/auth/login correctly rejects invalid credentials")
     
     def test_sectors_heatmap_returns_11_sectors(self):
         """GET /api/sectors/heatmap should return 11 sectors"""
@@ -180,7 +179,7 @@ class TestRegressionEndpoints:
         assert "symbol" in data or "ticker" in data, "Response missing symbol/ticker"
         assert "price" in data or "regularMarketPrice" in data, "Response missing price"
         
-        print(f"✓ GET /api/stocks/quote/AAPL returned quote data")
+        print("✓ GET /api/stocks/quote/AAPL returned quote data")
     
     def test_crypto_prices(self):
         """GET /api/crypto/prices should return crypto data"""

@@ -1,6 +1,6 @@
 """Web Intelligence Routes — Search War Room + single-engine endpoints."""
 import logging
-from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi import APIRouter, Request, Query
 from services.auth_helpers import get_current_user, enforce_credits
 from services import web_intelligence_service
 from services.search_war_room.orchestrator import run_search

@@ -1,8 +1,6 @@
 """Strategy Backtester Service — simulates trading strategies against historical price data."""
-import os
 import logging
 import asyncio
-import requests
 import numpy as np
 from datetime import datetime, timezone
 from typing import Dict, List, Optional

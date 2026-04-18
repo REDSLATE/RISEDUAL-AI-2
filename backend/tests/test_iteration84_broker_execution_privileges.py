@@ -7,7 +7,6 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
@@ -139,7 +138,7 @@ class TestBrokerExecutionPrivileges:
             "paper": True
         })
         # Should NOT be 403 - admin can connect brokers (read-only sync)
-        assert response.status_code != 403, f"Admin should be able to connect broker, got 403"
+        assert response.status_code != 403, "Admin should be able to connect broker, got 403"
         # Expected: 400 (invalid credentials) - not 403 (forbidden)
         assert response.status_code == 400, f"Expected 400 for invalid credentials, got {response.status_code}"
         print(f"✓ Admin broker connect returns {response.status_code} (not 403 - connection allowed)")
@@ -153,7 +152,7 @@ class TestBrokerExecutionPrivileges:
             "paper": True
         })
         # Should NOT be 403
-        assert response.status_code != 403, f"Owner should be able to connect broker, got 403"
+        assert response.status_code != 403, "Owner should be able to connect broker, got 403"
         # Expected: 400 (invalid credentials)
         assert response.status_code == 400, f"Expected 400 for invalid credentials, got {response.status_code}"
         print(f"✓ Owner broker connect returns {response.status_code} (connection allowed)")
@@ -178,7 +177,7 @@ class TestBrokerExecutionPrivileges:
         """Admin can access account endpoint (will fail with 404 if no connection)"""
         response = admin_session.get(f"{BASE_URL}/api/broker/account/alpaca")
         # Should NOT be 403 - read-only endpoint
-        assert response.status_code != 403, f"Admin should access account endpoint, got 403"
+        assert response.status_code != 403, "Admin should access account endpoint, got 403"
         # Expected: 404 (no connection)
         assert response.status_code == 404, f"Expected 404 for no connection, got {response.status_code}"
         print(f"✓ Admin account endpoint returns {response.status_code} (read-only access allowed)")
@@ -187,7 +186,7 @@ class TestBrokerExecutionPrivileges:
         """Admin can access positions endpoint (will fail with 404 if no connection)"""
         response = admin_session.get(f"{BASE_URL}/api/broker/positions/alpaca")
         # Should NOT be 403 - read-only endpoint
-        assert response.status_code != 403, f"Admin should access positions endpoint, got 403"
+        assert response.status_code != 403, "Admin should access positions endpoint, got 403"
         # Expected: 404 (no connection)
         assert response.status_code == 404, f"Expected 404 for no connection, got {response.status_code}"
         print(f"✓ Admin positions endpoint returns {response.status_code} (read-only access allowed)")
@@ -196,7 +195,7 @@ class TestBrokerExecutionPrivileges:
         """Admin can access orders endpoint (will fail with 404 if no connection)"""
         response = admin_session.get(f"{BASE_URL}/api/broker/orders/alpaca")
         # Should NOT be 403 - read-only endpoint
-        assert response.status_code != 403, f"Admin should access orders endpoint, got 403"
+        assert response.status_code != 403, "Admin should access orders endpoint, got 403"
         # Expected: 404 (no connection)
         assert response.status_code == 404, f"Expected 404 for no connection, got {response.status_code}"
         print(f"✓ Admin orders endpoint returns {response.status_code} (read-only access allowed)")
@@ -205,7 +204,7 @@ class TestBrokerExecutionPrivileges:
         """Admin can access portfolio-sync endpoint (will fail with 404 if no connection)"""
         response = admin_session.get(f"{BASE_URL}/api/broker/portfolio-sync/alpaca")
         # Should NOT be 403 - read-only endpoint
-        assert response.status_code != 403, f"Admin should access portfolio-sync endpoint, got 403"
+        assert response.status_code != 403, "Admin should access portfolio-sync endpoint, got 403"
         # Expected: 404 (no connection)
         assert response.status_code == 404, f"Expected 404 for no connection, got {response.status_code}"
         print(f"✓ Admin portfolio-sync endpoint returns {response.status_code} (read-only access allowed)")

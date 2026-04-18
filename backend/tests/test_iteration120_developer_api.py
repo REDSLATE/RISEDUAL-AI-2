@@ -168,7 +168,7 @@ class TestDeveloperAPIKeyManagement:
             # Verify masked format: rsd_live_XXX...XXXX
             preview = key["key_preview"]
             assert "..." in preview, f"Key preview should be masked with '...', got: {preview}"
-            assert preview.startswith("rsd_live_"), f"Preview should start with 'rsd_live_'"
+            assert preview.startswith("rsd_live_"), "Preview should start with 'rsd_live_'"
         
         print(f"Found {len(data['keys'])} API keys")
     
@@ -328,7 +328,7 @@ class TestPublicAPIEndpoints:
         
         # Fear & Greed should return some data (structure may vary)
         assert data is not None, "Response should not be None"
-        print(f"Fear & Greed data received")
+        print("Fear & Greed data received")
     
     def test_get_sectors(self):
         """GET /api/v1/market/sectors - returns sector data"""
@@ -341,7 +341,7 @@ class TestPublicAPIEndpoints:
         
         # Sectors should return some data
         assert data is not None, "Response should not be None"
-        print(f"Sectors data received")
+        print("Sectors data received")
 
 
 class TestProOnlyEndpoints:

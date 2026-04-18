@@ -9,7 +9,6 @@ Tests verify:
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
@@ -37,7 +36,7 @@ class TestServerRefactoring:
         assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         assert "access_token" in data
-        print(f"✓ Auth login: Admin logged in successfully")
+        print("✓ Auth login: Admin logged in successfully")
     
     def test_auth_login_invalid(self):
         """POST /api/auth/login - Invalid credentials should return 401"""
@@ -46,7 +45,7 @@ class TestServerRefactoring:
             json={"email": "invalid@test.com", "password": "wrongpassword"}
         )
         assert response.status_code == 401
-        print(f"✓ Auth invalid: Returns 401 as expected")
+        print("✓ Auth invalid: Returns 401 as expected")
     
     def test_sectors_heatmap(self):
         """GET /api/sectors/heatmap - Sector data should be returned"""
@@ -148,7 +147,7 @@ class TestSectorHeatmapSubComponents:
             data = response.json()
             print(f"✓ Sentiment history: {data.get('snapshots_count', 0)} snapshots")
         else:
-            print(f"✓ Sentiment history: No history yet (404)")
+            print("✓ Sentiment history: No history yet (404)")
 
 
 class TestAllRoutersRegistered:

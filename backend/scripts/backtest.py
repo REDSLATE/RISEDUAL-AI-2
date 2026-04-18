@@ -29,7 +29,7 @@ load_dotenv("/app/backend/.env")
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from risedual_core.ml.signal_model import SignalModel
-from risedual_core.schemas.market import BacktestResult, RegimeMetrics, FeaturesSnapshot
+from risedual_core.schemas.market import BacktestResult, RegimeMetrics
 
 MONGO_URI = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "risedual_db")
@@ -384,7 +384,7 @@ async def main():
     )
 
     print(f"\n{'='*60}")
-    print(f"  STRATEGY: Pattern-Concentrated + Regime-Aligned")
+    print("  STRATEGY: Pattern-Concentrated + Regime-Aligned")
     print(f"{'='*60}")
     print(f"  Sharpe: {result.sharpe_ratio} | Max DD: {result.max_drawdown:.1%}")
     print(f"  Win Rate: {result.win_rate_overall:.1%} | Trades: {result.n_trades}")
@@ -392,7 +392,7 @@ async def main():
     print(f"  Skipped by adaptive gate: {pnl.get('skipped_by_gate', 0)}")
 
     # ── Per-Pattern Diagnostics ──────────────────────────────────────────────
-    print(f"\n  -- PER-PATTERN TRADE BREAKDOWN --")
+    print("\n  -- PER-PATTERN TRADE BREAKDOWN --")
     print(f"  {'Pattern':<30} {'Trades':>6} {'WinR':>6} {'PnL':>10} {'Avg':>8}")
     for pat, st in sorted(pnl["pattern_stats"].items(), key=lambda x: -x[1]["pnl"]):
         if st["trades"] == 0:
@@ -404,7 +404,7 @@ async def main():
         print(f"  {name:<30} {st['trades']:>6} {wr:>5.1f}% {st['pnl']:>+9.4f} {avg:>+7.5f}{flag}")
 
     # ── Per-Regime Trade PnL ─────────────────────────────────────────────────
-    print(f"\n  -- PER-REGIME TRADE PnL --")
+    print("\n  -- PER-REGIME TRADE PnL --")
     print(f"  {'Regime':<12} {'Trades':>6} {'WinR':>6} {'PnL':>10}")
     for regime, st in sorted(pnl["regime_trade_stats"].items(), key=lambda x: -x[1]["pnl"]):
         if st["trades"] == 0:
@@ -413,7 +413,7 @@ async def main():
         print(f"  {regime or 'unknown':<12} {st['trades']:>6} {wr:>5.1f}% {st['pnl']:>+9.4f}")
 
     # ── Pattern+Regime Combo Analysis ────────────────────────────────────────
-    print(f"\n  -- TOP/BOTTOM PATTERN+REGIME COMBOS --")
+    print("\n  -- TOP/BOTTOM PATTERN+REGIME COMBOS --")
     sorted_combos = sorted(pnl["combo_stats"].items(), key=lambda x: -x[1]["pnl"])
     # Top 5
     for combo, st in sorted_combos[:5]:

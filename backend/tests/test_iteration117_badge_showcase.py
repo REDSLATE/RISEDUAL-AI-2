@@ -12,7 +12,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL
 ADMIN_USER_ID = "69d8c194e0cdcd6613a00891"
 
 
@@ -55,7 +55,7 @@ class TestLeaderboardWithBadges:
             assert entry["badge"] in valid_badges, f"Invalid badge type: {entry['badge']}"
             
             # Validate user_id is present and non-empty
-            assert entry["user_id"], f"user_id should not be empty"
+            assert entry["user_id"], "user_id should not be empty"
             
         print(f"PASS: All {len(data['leaderboard'])} entries have required fields including badge")
 
@@ -83,7 +83,7 @@ class TestPublicProfile:
         """Profile endpoint should return 200 for valid user_id"""
         response = requests.get(f"{BASE_URL}/api/referral/profile/{ADMIN_USER_ID}")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        print(f"PASS: Profile for admin user returns 200")
+        print("PASS: Profile for admin user returns 200")
 
     def test_profile_invalid_user_returns_404(self):
         """Profile endpoint should return 404 for invalid user_id"""
@@ -124,7 +124,7 @@ class TestPublicProfile:
         
         assert data["badge"] == "creator", f"Expected 'creator' badge for admin, got '{data['badge']}'"
         assert data["role"] == "admin", f"Expected 'admin' role, got '{data['role']}'"
-        print(f"PASS: Admin user has creator badge and admin role")
+        print("PASS: Admin user has creator badge and admin role")
 
     def test_profile_name_is_masked(self):
         """Profile name should be masked (e.g., 'J*** D***')"""

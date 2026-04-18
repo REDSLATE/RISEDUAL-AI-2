@@ -3,7 +3,6 @@ import logging
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 import requests
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 

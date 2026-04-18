@@ -1,7 +1,6 @@
 """DuckDuckGo adapter — text + news search with retry, semaphore, and stale cache fallback."""
 import asyncio
 import logging
-from typing import Any
 
 from tenacity import (
     retry,

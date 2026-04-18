@@ -4,13 +4,12 @@ Uses LiteLLM (Emergent key) with OpenAI function calling for agentic portfolio q
 import os
 import json
 import logging
-from typing import Optional
 import litellm
 from emergentintegrations.llm.utils import get_integration_proxy_url
 
 from services.paper_trading_service import (
     get_portfolio_snapshot, get_trade_history, get_portfolio_context,
-    place_paper_order_intent, confirm_paper_order, get_pending_orders
+    place_paper_order_intent, confirm_paper_order
 )
 
 logger = logging.getLogger(__name__)

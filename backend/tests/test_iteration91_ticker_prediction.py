@@ -58,7 +58,7 @@ class TestTickerPredictionEndpoint:
         data = response.json()
         assert data.get("symbol") == "TSLA", f"Expected symbol=TSLA (uppercase), got {data.get('symbol')}"
         assert data.get("ticker_focused") == True
-        print(f"✓ Lowercase 'tsla' normalized to TSLA")
+        print("✓ Lowercase 'tsla' normalized to TSLA")
     
     def test_invalid_symbol_graceful_handling(self):
         """Verify invalid symbols are handled gracefully (returns prediction or 500)"""
@@ -69,15 +69,15 @@ class TestTickerPredictionEndpoint:
         if response.status_code == 200:
             data = response.json()
             assert data.get("symbol") == "FAKEXYZ", "Symbol should be preserved"
-            print(f"✓ Invalid symbol handled gracefully with prediction")
+            print("✓ Invalid symbol handled gracefully with prediction")
         else:
-            print(f"✓ Invalid symbol returned 500 (expected behavior)")
+            print("✓ Invalid symbol returned 500 (expected behavior)")
     
     def test_symbol_too_long_rejected(self):
         """Verify symbols >10 chars are rejected with 400"""
         response = requests.get(f"{BASE_URL}/api/market/prediction/VERYLONGSYMBOL123", timeout=30)
         assert response.status_code == 400, f"Expected 400 for long symbol, got {response.status_code}"
-        print(f"✓ Long symbol rejected with 400")
+        print("✓ Long symbol rejected with 400")
     
     def test_prediction_response_structure(self):
         """Verify ticker prediction has expected response structure"""
@@ -106,9 +106,9 @@ class TestTickerPredictionEndpoint:
         if "macro_data" in data:
             macro = data["macro_data"]
             assert "world_events" in macro or "foreign_markets" in macro or "gov_filings" in macro
-            print(f"✓ SPY prediction includes macro_data")
+            print("✓ SPY prediction includes macro_data")
         else:
-            print(f"⚠ macro_data not present (may be optional)")
+            print("⚠ macro_data not present (may be optional)")
 
 
 class TestWarRoomRegressionCheck:

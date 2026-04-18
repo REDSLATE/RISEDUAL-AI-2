@@ -12,9 +12,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, OWNER_EMAIL, OWNER_PASSWORD
 
 class TestMarketDataService:
     """Tests for refactored market_data_service.py - generate_mock_options_data"""
@@ -50,7 +49,7 @@ class TestMarketDataService:
         assert 'dteEdge' in data
         assert 'volatilityLow' in data
         assert 'volatilityHigh' in data
-        print(f"✓ Options flow endpoint working")
+        print("✓ Options flow endpoint working")
 
     def test_options_momentum_endpoint(self):
         """GET /api/options/momentum - uses refactored generate_mock_options_data('momentum')"""
@@ -71,7 +70,7 @@ class TestMarketDataService:
         if len(data) > 0:
             assert 'sentiment' in data[0], "Missing sentiment field from _generate_contracts_with_sentiment"
             assert data[0]['sentiment'] in ['Bullish', 'Bearish'], f"Invalid sentiment: {data[0]['sentiment']}"
-        print(f"✓ Options unusual volume endpoint working with sentiment field")
+        print("✓ Options unusual volume endpoint working with sentiment field")
 
 
 class TestGovFilingsService:
@@ -243,7 +242,7 @@ class TestHealthAndCore:
         response = requests.get(f"{BASE_URL}/", timeout=10)
         # Root may return 200 or redirect
         assert response.status_code in [200, 301, 302, 307, 308], f"Expected success, got {response.status_code}"
-        print(f"✓ Root endpoint accessible")
+        print("✓ Root endpoint accessible")
 
     def test_sectors_heatmap_endpoint(self):
         """GET /api/sectors/heatmap"""

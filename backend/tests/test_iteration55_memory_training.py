@@ -15,9 +15,8 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from /app/memory/test_credentials.md
 class TestMemoryTrainingAuth:
@@ -54,7 +53,7 @@ class TestMemoryTrainingWithAuth:
             json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
-        print(f"PASS: Admin login successful")
+        print("PASS: Admin login successful")
         yield
         self.session.close()
     
@@ -83,7 +82,7 @@ class TestMemoryTrainingWithAuth:
         
         # Verify initialized
         assert data.get("initialized") == True, "Memory should be initialized"
-        print(f"PASS: Memory is initialized")
+        print("PASS: Memory is initialized")
     
     def test_memory_train_status_shows_complete_or_idle(self):
         """GET /api/accuracy/memory/train/status should show training status."""
@@ -127,7 +126,7 @@ class TestRegressionEndpoints:
             json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
         )
         assert response.status_code == 200, f"Login failed: {response.status_code} - {response.text}"
-        print(f"PASS: POST /api/auth/login returns 200")
+        print("PASS: POST /api/auth/login returns 200")
     
     def test_auth_login_invalid_credentials(self):
         """POST /api/auth/login with invalid credentials should return 401."""
@@ -136,7 +135,7 @@ class TestRegressionEndpoints:
             json={"email": "invalid@test.com", "password": "wrongpassword"}
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"PASS: POST /api/auth/login with invalid creds returns 401")
+        print("PASS: POST /api/auth/login with invalid creds returns 401")
     
     def test_sectors_heatmap_returns_11_sectors(self):
         """GET /api/sectors/heatmap should return 11 sectors."""
@@ -155,7 +154,7 @@ class TestRegressionEndpoints:
         
         data = response.json()
         assert "symbol" in data or "price" in data or "currentPrice" in data, f"Missing expected fields: {data}"
-        print(f"PASS: GET /api/stocks/quote/AAPL returns quote data")
+        print("PASS: GET /api/stocks/quote/AAPL returns quote data")
 
 
 if __name__ == "__main__":

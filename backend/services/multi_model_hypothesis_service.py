@@ -1,5 +1,4 @@
 """Multi-model hypothesis service — runs GPT-5.2, Claude, Gemini individually or in Consensus Mode."""
-import os
 import json
 import asyncio
 import logging

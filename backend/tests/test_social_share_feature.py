@@ -93,7 +93,7 @@ class TestReferralInfoAPI:
         for field in required_fields:
             assert field in data, f"Response should contain '{field}'"
         
-        print(f"PASS: Referral info has all required fields for social sharing")
+        print("PASS: Referral info has all required fields for social sharing")
         print(f"  - Code: {data['code']}")
         print(f"  - Total referrals: {data['total_referrals']}")
         print(f"  - Completed: {data['completed_referrals']}")

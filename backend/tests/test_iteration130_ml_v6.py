@@ -174,7 +174,7 @@ class TestMLStats:
             assert pattern in patterns, f"Missing pattern: {pattern}"
             assert isinstance(patterns[pattern], int), f"{pattern} count should be int"
         
-        print(f"PASS: pattern_detection_counts has all 8 patterns")
+        print("PASS: pattern_detection_counts has all 8 patterns")
     
     def test_stats_has_paper_trading(self):
         """Response should have paper_trading with open_trades, total_trades, total_pnl_usd"""
@@ -264,7 +264,7 @@ class TestSignalEndpoint:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         
         data = response.json()
-        assert data.get("status") == "no_model", f"Expected no_model status"
+        assert data.get("status") == "no_model", "Expected no_model status"
         
         print("PASS: /api/signal/TSLA returns no_model status gracefully")
 

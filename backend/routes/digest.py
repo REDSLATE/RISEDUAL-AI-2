@@ -1,5 +1,4 @@
 """Digest routes: admin trigger, user opt-in/out, preview."""
-import logging
 from fastapi import APIRouter, HTTPException, Request
 from services.auth_helpers import get_current_user
 from bson import ObjectId

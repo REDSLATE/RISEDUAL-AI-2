@@ -1,5 +1,4 @@
 """Trading Journal routes: trade CRUD, analytics, hypothesis attachment."""
-import logging
 from datetime import datetime, timezone
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request

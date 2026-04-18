@@ -5,7 +5,6 @@ Tests: /api/gov-filings, /api/world-events, /api/foreign-markets, /api/market/pr
 import pytest
 import requests
 import os
-import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 

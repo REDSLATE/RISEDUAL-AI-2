@@ -8,14 +8,13 @@ Flow:
 4. API returns rolling accuracy stats per feature (Pro only)
 """
 
-import os
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from services.price_provider import get_quote, get_quote_sync
+from services.price_provider import get_quote_sync
 
 logger = logging.getLogger(__name__)
 

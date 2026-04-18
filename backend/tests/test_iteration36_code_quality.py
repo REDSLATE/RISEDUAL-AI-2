@@ -85,7 +85,7 @@ class TestCookieBasedAuth:
         
         data = refresh_res.json()
         assert "access_token" in data, "Refresh should return new access_token"
-        print(f"Cookie-based refresh works: new access_token received")
+        print("Cookie-based refresh works: new access_token received")
     
     def test_logout_clears_cookies(self):
         """POST /api/auth/logout should clear auth cookies"""

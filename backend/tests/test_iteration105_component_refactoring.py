@@ -8,7 +8,6 @@ Tests for code quality fixes Round 2:
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 
@@ -51,7 +50,7 @@ class TestPublicEndpoints:
         data = response.json()
         assert "message" in data
         assert "Ready" in data["message"]
-        print(f"PASS: Root endpoint returns ready message")
+        print("PASS: Root endpoint returns ready message")
     
     def test_sectors_heatmap(self):
         """GET /api/sectors/heatmap returns data"""

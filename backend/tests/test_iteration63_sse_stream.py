@@ -12,13 +12,11 @@ Tests:
 import pytest
 import requests
 import os
-import time
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestSSEStreamEndpoints:
@@ -90,7 +88,7 @@ class TestSSEStreamEndpoints:
         has_connected = "connected" in content
         has_heartbeat = "heartbeat" in content
         
-        print(f"PASS: /api/stream/insights SSE endpoint")
+        print("PASS: /api/stream/insights SSE endpoint")
         print(f"  Has 'connected' event: {has_connected}")
         print(f"  Has 'heartbeat' event: {has_heartbeat}")
         
@@ -134,7 +132,7 @@ class TestToxicAlertInBuffer:
         
         if toxic_alerts:
             alert = toxic_alerts[0]
-            print(f"PASS: Found toxic_alert in buffer")
+            print("PASS: Found toxic_alert in buffer")
             print(f"  toxic_count: {alert['data'].get('toxic_count')}")
             print(f"  affected_tickers: {alert['data'].get('affected_tickers')}")
             print(f"  total_before: {alert['data'].get('total_before')}")
@@ -292,7 +290,7 @@ class TestRecentEventsOrdering:
             except ValueError:
                 pytest.fail(f"Invalid timestamp format: {ts}")
         
-        print(f"PASS: All event timestamps are valid ISO format")
+        print("PASS: All event timestamps are valid ISO format")
 
 
 if __name__ == "__main__":

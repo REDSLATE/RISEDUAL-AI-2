@@ -10,7 +10,7 @@ import logging
 import asyncio
 import random
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

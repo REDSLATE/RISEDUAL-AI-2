@@ -14,7 +14,6 @@ Features tested:
 import pytest
 import requests
 import os
-import time
 from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
@@ -83,7 +82,7 @@ class TestDigestWatchlistIntelligence:
         # Check for health score badge (color-coded)
         assert "Health" in html, "HTML missing health score badge"
         
-        print(f"PASS: Digest preview contains Watchlist Intelligence section")
+        print("PASS: Digest preview contains Watchlist Intelligence section")
         print(f"  - HTML length: {len(html)} chars")
     
     # Test 3: Digest preview data_summary has has_watchlist_intel flag
@@ -109,7 +108,7 @@ class TestDigestWatchlistIntelligence:
         assert "dark_pool" in summary
         assert "signals" in summary
         
-        print(f"PASS: data_summary has has_watchlist_intel=True")
+        print("PASS: data_summary has has_watchlist_intel=True")
         print(f"  - predictions: {summary['predictions']}, dark_pool: {summary['dark_pool']}, signals: {summary['signals']}")
     
     # Test 4: Digest trigger sends emails with watchlist intel
@@ -138,7 +137,7 @@ class TestDigestWatchlistIntelligence:
         # At least 1 user should have watchlist intel
         assert wl_count >= 1, f"Expected with_watchlist >= 1, got {wl_count}"
         
-        print(f"PASS: Digest trigger completed")
+        print("PASS: Digest trigger completed")
         print(f"  - sent: {sent_count}, errors: {errors}, with_watchlist: {wl_count}")
     
     # Test 5: Digest status returns subscription status
@@ -180,7 +179,7 @@ class TestDigestWatchlistIntelligence:
         status_data = status_response.json()
         assert status_data.get("subscribed") == False, f"User should be unsubscribed: {status_data}"
         
-        print(f"PASS: Opt-out successful, subscribed=False")
+        print("PASS: Opt-out successful, subscribed=False")
     
     # Test 7: Opt-in to digest
     def test_07_digest_opt_in(self):
@@ -205,7 +204,7 @@ class TestDigestWatchlistIntelligence:
         status_data = status_response.json()
         assert status_data.get("subscribed") == True, f"User should be subscribed: {status_data}"
         
-        print(f"PASS: Opt-in successful, subscribed=True")
+        print("PASS: Opt-in successful, subscribed=True")
     
     # Test 8: Watchlist intelligence returns cached data
     def test_08_watchlist_intelligence_cached_data(self):
@@ -237,7 +236,7 @@ class TestDigestWatchlistIntelligence:
             assert "symbol" in ticker, f"Ticker missing symbol: {ticker}"
             assert "score" in ticker, f"Ticker missing score: {ticker}"
         
-        print(f"PASS: Watchlist intelligence returned cached data")
+        print("PASS: Watchlist intelligence returned cached data")
         print(f"  - health_score: {summary['health_score']}")
         print(f"  - tickers: {len(tickers)}, alerts: {len(data['alerts'])}, top_movers: {len(data['top_movers'])}")
     
@@ -249,7 +248,7 @@ class TestDigestWatchlistIntelligence:
             timeout=30
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}: {response.text}"
-        print(f"PASS: Digest preview requires authentication (401)")
+        print("PASS: Digest preview requires authentication (401)")
     
     # Test 10: Digest trigger without auth returns 401
     def test_10_digest_trigger_requires_auth(self):
@@ -259,7 +258,7 @@ class TestDigestWatchlistIntelligence:
             timeout=30
         )
         assert response.status_code == 401, f"Expected 401, got {response.status_code}: {response.text}"
-        print(f"PASS: Digest trigger requires authentication (401)")
+        print("PASS: Digest trigger requires authentication (401)")
 
 
 if __name__ == "__main__":

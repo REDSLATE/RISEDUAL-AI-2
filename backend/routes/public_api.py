@@ -3,12 +3,11 @@
 Free users: watchlist + predictions, 100 calls/day
 Pro users: watchlist + AI signals (War Room, Hypothesis, Predictions), 5,000 calls/day
 """
-import os
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi import APIRouter, Request, HTTPException
 from bson import ObjectId
 
 from services.auth_helpers import get_current_user

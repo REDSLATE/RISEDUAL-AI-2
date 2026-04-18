@@ -13,7 +13,7 @@ import requests
 import os
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 # Test credentials from test_credentials.md
 class TestChatMemoryEndpoints:
     """Test chat memory CRUD endpoints (Pro only feature)"""
@@ -209,7 +209,7 @@ class TestChatEndpointWithMemory:
         assert response.status_code == 200, f"Chat failed: {response.status_code} - {response.text}"
         data = response.json()
         assert "response" in data
-        print(f"✓ POST /api/chat works for unauthenticated users")
+        print("✓ POST /api/chat works for unauthenticated users")
 
 
 class TestChatMemoryService:

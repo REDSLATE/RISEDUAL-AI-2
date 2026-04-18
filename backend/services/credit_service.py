@@ -9,7 +9,7 @@ Uses frozen dataclasses for plan config and pure functions for credit logic.
 import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from typing import Dict, Set, Tuple, Optional
+from typing import Dict, Set, Tuple
 
 logger = logging.getLogger(__name__)
 

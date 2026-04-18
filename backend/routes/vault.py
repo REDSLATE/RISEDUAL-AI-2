@@ -79,7 +79,6 @@ async def validate_key(req: StoreKeyRequest, request: Request):
 
 async def _validate_key(name: str, value: str) -> dict:
     """Probe a key against its provider's cheapest endpoint."""
-    import httpx
     validators = {
         "OPENAI_API_KEY": _validate_openai,
         "ANTHROPIC_API_KEY": _validate_anthropic,

@@ -7,11 +7,10 @@ get_trade_history, get_watchlist_news) instead of keyword-based context injectio
 import pytest
 import requests
 import os
-import time
 import uuid
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 class TestPortfolioAgentToolCalling:
     """Test the portfolio agent with AI tool calling for portfolio queries."""
     
@@ -53,7 +52,7 @@ class TestPortfolioAgentToolCalling:
                                 "aapl", "nvda", "btc", "$", "shares", "unrealized"]
         has_portfolio_content = any(indicator in ai_response for indicator in portfolio_indicators)
         assert has_portfolio_content, f"Response should contain portfolio data. Got: {data['response'][:500]}"
-        print(f"SUCCESS: Portfolio query returned personalized response with portfolio data")
+        print("SUCCESS: Portfolio query returned personalized response with portfolio data")
     
     def test_trade_history_query_triggers_agent(self):
         """POST /api/chat with 'Show me my recent trades' should trigger get_trade_history tool."""
@@ -75,7 +74,7 @@ class TestPortfolioAgentToolCalling:
                            "recent", "transaction", "order", "executed"]
         has_trade_content = any(indicator in ai_response for indicator in trade_indicators)
         assert has_trade_content, f"Response should contain trade history data. Got: {data['response'][:500]}"
-        print(f"SUCCESS: Trade history query returned actual trade records")
+        print("SUCCESS: Trade history query returned actual trade records")
     
     def test_specific_position_query_triggers_agent(self):
         """POST /api/chat with 'How is my AAPL position?' should trigger get_position_detail tool."""
@@ -97,7 +96,7 @@ class TestPortfolioAgentToolCalling:
                           "value", "gain", "loss", "p&l", "pnl"]
         has_aapl_content = any(indicator in ai_response for indicator in aapl_indicators)
         assert has_aapl_content, f"Response should contain AAPL position data. Got: {data['response'][:500]}"
-        print(f"SUCCESS: AAPL position query returned specific position details")
+        print("SUCCESS: AAPL position query returned specific position details")
     
     def test_non_portfolio_query_uses_standard_ai(self):
         """POST /api/chat with 'What is a put option?' should use standard AI (no tool calling)."""
@@ -124,7 +123,7 @@ class TestPortfolioAgentToolCalling:
         personal_indicators = ["your portfolio", "your position", "you own", "you have"]
         has_personal_data = any(indicator in ai_response for indicator in personal_indicators)
         # This is a general question, so it shouldn't reference personal portfolio
-        print(f"SUCCESS: Non-portfolio query used standard AI service")
+        print("SUCCESS: Non-portfolio query used standard AI service")
 
 
 class TestChatWithImageBypassesAgent:
@@ -166,7 +165,7 @@ class TestChatWithImageBypassesAgent:
         result = response.json()
         assert "response" in result
         # The response should still work (standard AI handles it)
-        print(f"SUCCESS: Image upload with portfolio keywords bypassed agent correctly")
+        print("SUCCESS: Image upload with portfolio keywords bypassed agent correctly")
 
 
 class TestPaperTradingEndpointsStillWork:
@@ -201,7 +200,7 @@ class TestPaperTradingEndpointsStillWork:
         assert isinstance(data["equity"], (int, float))
         assert isinstance(data["positions"], list)
         
-        print(f"SUCCESS: GET /api/paper/portfolio returns valid snapshot")
+        print("SUCCESS: GET /api/paper/portfolio returns valid snapshot")
         print(f"  Cash: ${data['cash']:,.2f}, Equity: ${data['equity']:,.2f}, Positions: {len(data['positions'])}")
     
     def test_post_paper_trade_buy(self):
@@ -284,7 +283,7 @@ class TestPortfolioAgentErrorHandling:
         assert "response" in data
         # Should get a response even for complex queries
         assert len(data["response"]) > 50, "Response should be substantive"
-        print(f"SUCCESS: Agent handled complex multi-part query")
+        print("SUCCESS: Agent handled complex multi-part query")
     
     def test_agent_handles_nonexistent_position_query(self):
         """Portfolio agent should handle queries about positions user doesn't have."""
@@ -302,7 +301,7 @@ class TestPortfolioAgentErrorHandling:
         # Should gracefully indicate no position or provide helpful response
         ai_response = data["response"].lower()
         # Either says no position, or provides general info
-        print(f"SUCCESS: Agent handled query about non-existent position gracefully")
+        print("SUCCESS: Agent handled query about non-existent position gracefully")
 
 
 class TestUnauthenticatedChatBehavior:
@@ -326,7 +325,7 @@ class TestUnauthenticatedChatBehavior:
         assert "response" in data
         # Without auth, portfolio keywords won't trigger agent (user is None)
         # Should still get a response from standard AI
-        print(f"SUCCESS: Unauthenticated chat works (uses standard AI)")
+        print("SUCCESS: Unauthenticated chat works (uses standard AI)")
         session.close()
 
 

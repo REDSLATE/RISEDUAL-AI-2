@@ -2,9 +2,8 @@ import logging
 import asyncio
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
-import re
+from typing import Dict, List
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

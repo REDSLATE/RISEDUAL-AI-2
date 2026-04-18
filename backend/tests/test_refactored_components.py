@@ -49,7 +49,7 @@ class TestMacroDashboardAPIs:
         data = response.json()
         # Check expected fields
         assert "total_events" in data or "all_events" in data
-        print(f"PASS: World events API working")
+        print("PASS: World events API working")
     
     def test_foreign_markets(self):
         """Test foreign markets endpoint"""
@@ -58,7 +58,7 @@ class TestMacroDashboardAPIs:
         data = response.json()
         # Check for market regions
         assert any(key in data for key in ["asia", "europe", "americas", "commodities", "currencies"])
-        print(f"PASS: Foreign markets API working")
+        print("PASS: Foreign markets API working")
     
     def test_gov_filings(self):
         """Test government filings endpoint (Congress trades)"""
@@ -67,7 +67,7 @@ class TestMacroDashboardAPIs:
         data = response.json()
         # Check expected fields
         assert "congressional_trades" in data or "congressional_count" in data
-        print(f"PASS: Gov filings API working")
+        print("PASS: Gov filings API working")
 
 
 class TestAIIntelligenceAPIs:

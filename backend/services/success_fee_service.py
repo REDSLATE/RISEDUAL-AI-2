@@ -5,7 +5,7 @@ Only applies to users with active broker connections.
 Billing period: Monthly, resets on the 1st.
 """
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)

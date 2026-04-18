@@ -13,9 +13,8 @@ import requests
 import os
 import re
 import time
-from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 
 # Test credentials from test_credentials.md
 class TestAutoInviteEndpoint:
@@ -144,11 +143,11 @@ class TestAutoInviteEndpoint:
                 assert user_entry["status"] == "invited", f"Status should be 'invited': {user_entry}"
                 assert "beta_key" in user_entry, f"Should have beta_key: {user_entry}"
                 assert "beta_key_expires" in user_entry, f"Should have beta_key_expires: {user_entry}"
-                print(f"PASS: User status updated to 'invited' with beta_key and expiry")
+                print("PASS: User status updated to 'invited' with beta_key and expiry")
             else:
-                print(f"INFO: User not found in admin list (may have been cleaned up)")
+                print("INFO: User not found in admin list (may have been cleaned up)")
         else:
-            print(f"INFO: Test user not in this batch (other users had higher priority)")
+            print("INFO: Test user not in this batch (other users had higher priority)")
     
     def test_auto_invite_empty_queue(self):
         """Auto-invite with no waiting users should return empty list"""

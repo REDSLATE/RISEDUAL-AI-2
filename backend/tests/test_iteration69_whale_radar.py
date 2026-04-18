@@ -11,8 +11,6 @@ import pytest
 import requests
 import os
 import json
-import time
-from datetime import datetime
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -162,7 +160,7 @@ class TestOrderFlowContextInjection:
         
         # Verify Binance L2 source
         assert data.get('source') == 'binance_l2', f"Expected binance_l2 source, got {data.get('source')}"
-        assert data.get('ticker') == 'BTC', f"Expected BTC ticker"
+        assert data.get('ticker') == 'BTC', "Expected BTC ticker"
         
         # Verify walls with intensity
         walls = data.get('walls', [])
@@ -191,7 +189,7 @@ class TestOrderFlowContextInjection:
         
         # Verify yfinance source
         assert data.get('source') == 'yfinance_profile', f"Expected yfinance_profile source, got {data.get('source')}"
-        assert data.get('ticker') == 'AAPL', f"Expected AAPL ticker"
+        assert data.get('ticker') == 'AAPL', "Expected AAPL ticker"
         
         # Verify walls with intensity
         walls = data.get('walls', [])
@@ -215,7 +213,7 @@ class TestOrderFlowContextInjection:
         
         # Verify yfinance source (SPY is not crypto)
         assert data.get('source') == 'yfinance_profile', f"Expected yfinance_profile source, got {data.get('source')}"
-        assert data.get('ticker') == 'SPY', f"Expected SPY ticker"
+        assert data.get('ticker') == 'SPY', "Expected SPY ticker"
         
         # Verify walls with intensity
         walls = data.get('walls', [])
@@ -224,7 +222,7 @@ class TestOrderFlowContextInjection:
             assert 'intensity' in wall, "wall should have intensity field"
             print(f"PASS: SPY order flow has {len(walls)} walls with intensity field")
         
-        print(f"PASS: SPY order flow context available for market predictions")
+        print("PASS: SPY order flow context available for market predictions")
 
 
 class TestExistingOrderFlowRegression:
@@ -366,7 +364,7 @@ class TestCrewOrderFlowInjection:
             print(f"PASS: Market Prediction endpoint exists (status {response.status_code})")
         except requests.exceptions.Timeout:
             # Timeout is acceptable for this AI-heavy endpoint - it means the endpoint exists
-            print(f"PASS: Market Prediction endpoint exists (timed out - AI processing)")
+            print("PASS: Market Prediction endpoint exists (timed out - AI processing)")
 
 
 if __name__ == "__main__":

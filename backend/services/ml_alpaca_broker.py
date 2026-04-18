@@ -54,7 +54,7 @@ from typing import Any
 import httpx
 
 from risedual_core.schemas.market import FeaturesSnapshot, SignalResult
-from risedual_core.secrets import KeyVault, SecretNotFoundError
+from risedual_core.secrets import KeyVault
 
 log = logging.getLogger(__name__)
 

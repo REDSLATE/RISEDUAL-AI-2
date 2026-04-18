@@ -8,8 +8,7 @@ Tests all 21 features mentioned in the review request:
 import pytest
 import requests
 import os
-import time
-from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', BASE_URL).rstrip('/')
 
@@ -83,7 +82,7 @@ class TestMarketData:
         assert response.status_code == 200, f"Sector heatmap failed: {response.text}"
         data = response.json()
         assert "sectors" in data or isinstance(data, list), f"Unexpected response: {data}"
-        print(f"PASS: Sector heatmap returned data")
+        print("PASS: Sector heatmap returned data")
 
 
 class TestAIWarRoom:
@@ -149,7 +148,7 @@ class TestAIIntelligence:
         assert response.status_code == 200, f"Intelligence patterns failed: {response.text}"
         data = response.json()
         # Should have some analysis data
-        assert len(data) > 0, f"Empty patterns response"
+        assert len(data) > 0, "Empty patterns response"
         print(f"PASS: Intelligence patterns returned with keys: {list(data.keys())}")
     
     def test_intelligence_brief(self):
@@ -160,7 +159,7 @@ class TestAIIntelligence:
         )
         assert response.status_code == 200, f"Intelligence brief failed: {response.text}"
         data = response.json()
-        assert len(data) > 0, f"Empty brief response"
+        assert len(data) > 0, "Empty brief response"
         print(f"PASS: Intelligence brief returned with keys: {list(data.keys())}")
 
 

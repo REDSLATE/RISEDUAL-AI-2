@@ -248,7 +248,7 @@ class TestWorkspaceWatchlist:
         )
         tickers = res2.json().get("tickers", [])
         assert "GOOG" not in tickers, f"GOOG still in watchlist: {tickers}"
-        print(f"Verified GOOG removed from watchlist")
+        print("Verified GOOG removed from watchlist")
 
 
 class TestWorkspaceHistory:
@@ -296,7 +296,7 @@ class TestWorkspaceHistory:
         )
         history = res2.json().get("history", [])
         aapl_entries = [h for h in history if h.get("symbol") == "AAPL"]
-        assert len(aapl_entries) > 0, f"AAPL not found in history"
+        assert len(aapl_entries) > 0, "AAPL not found in history"
         print(f"Verified AAPL in history: {aapl_entries[0]}")
 
 

@@ -151,7 +151,7 @@ class TestChatFollowupsEndpoint:
             if action["kind"] in ("research", "watchlist"):
                 assert "ticker" in action and action["ticker"], f"research/watchlist action missing ticker: {action}"
         
-        print(f"✓ Ticker requirement validated for research/watchlist actions")
+        print("✓ Ticker requirement validated for research/watchlist actions")
 
 
 class TestChipEventTelemetry:

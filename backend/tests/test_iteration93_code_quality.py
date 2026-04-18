@@ -5,7 +5,6 @@ Tests that ai.py chat() refactoring (4 helpers) didn't break functionality.
 import pytest
 import requests
 import os
-import time
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
@@ -98,7 +97,7 @@ class TestMarketEndpoints:
         data = response.json()
         # API returns current, avg_7d, avg_30d fields
         assert "current" in data or "avg_7d" in data
-        print(f"PASS: Fear greed endpoint works")
+        print("PASS: Fear greed endpoint works")
 
 
 class TestAdminEndpoints:

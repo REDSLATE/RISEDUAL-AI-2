@@ -31,7 +31,6 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -472,7 +471,7 @@ async def main() -> None:
     print(f"{'='*60}")
     print(f"  Tickers      : {len(tickers)}")
     print(f"  Max filings  : {MAX_FILINGS_PER_TICKER}/ticker")
-    print(f"  Rate limit   : 9 req/sec (EDGAR fair use)")
+    print("  Rate limit   : 9 req/sec (EDGAR fair use)")
     print(f"  Cache        : {CACHE_DIR}")
     print(f"  Dry run      : {args.dry_run}")
     print(f"{'='*60}\n")

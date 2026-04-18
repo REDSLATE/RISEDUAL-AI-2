@@ -8,7 +8,6 @@ Supports 3 execution modes:
 Smart orders are stored in MongoDB and monitored by a background price checker.
 """
 import logging
-import math
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 

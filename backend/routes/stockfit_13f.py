@@ -22,7 +22,6 @@ from services.sec_13f_service import (
     get_quarterly_changes,
     compute_smart_money_score,
     compute_smart_money_scores_batch,
-    snapshot_smart_money_scores,
     detect_smart_money_shifts,
 )
 from services.cusip_mapper import backfill_from_holdings

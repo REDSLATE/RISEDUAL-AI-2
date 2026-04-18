@@ -1,4 +1,3 @@
-import os
 import logging
 from typing import Dict
 from emergentintegrations.llm.chat import LlmChat, UserMessage

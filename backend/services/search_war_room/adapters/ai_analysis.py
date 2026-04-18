@@ -3,9 +3,7 @@
 Failover chain is configured via AI_PROVIDER_POOL env var.
 Falls back to Emergent LLM key if no pool is configured.
 """
-import os
 import logging
-from typing import Optional
 from services.search_war_room.schemas import EngineResult
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
 from services.auth_helpers import get_current_user
 
 router = APIRouter(prefix="/api/promo")

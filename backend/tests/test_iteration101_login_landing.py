@@ -8,7 +8,6 @@ Iteration 101: Test Login from Landing Page Feature
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 

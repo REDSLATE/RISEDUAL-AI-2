@@ -11,7 +11,6 @@ import pytest
 import requests
 import os
 import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
 
@@ -49,7 +48,7 @@ class TestToxicSpikesAlertSystem:
         
         # Verify active_episodes field exists
         assert "active_episodes" in data, f"Missing active_episodes field. Got: {data.keys()}"
-        assert isinstance(data["active_episodes"], int), f"active_episodes should be int"
+        assert isinstance(data["active_episodes"], int), "active_episodes should be int"
         
         # Verify total_episodes = toxic_lessons + active_episodes
         total = data.get("total_episodes", 0)
@@ -193,7 +192,7 @@ class TestToxicSpikesAlertSystem:
             
             meta = n.get("metadata", {})
             assert "affected_tickers" in meta, "Missing affected_tickers in metadata"
-            print(f"✓ Toxic spike notification has all required fields for frontend")
+            print("✓ Toxic spike notification has all required fields for frontend")
         
         # Check verdict_change notifications
         verdict_notifs = [n for n in notifications if n.get("type") == "verdict_change"]
@@ -203,7 +202,7 @@ class TestToxicSpikesAlertSystem:
             assert "symbol" in n, "Missing symbol field"
             assert "new_verdict" in n, "Missing new_verdict field"
             assert "old_verdict" in n, "Missing old_verdict field"
-            print(f"✓ Verdict notification has all required fields for frontend")
+            print("✓ Verdict notification has all required fields for frontend")
     
     # ── 6. Cleanup history shows toxic details ──
     def test_cleanup_history_shows_toxic_details(self):

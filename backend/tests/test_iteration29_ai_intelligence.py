@@ -35,25 +35,25 @@ class TestAIIntelligenceAuth:
         assert "access_token" in data, "Response missing access_token"
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
-        print(f"✓ Login successful, got access_token")
+        print("✓ Login successful, got access_token")
     
     def test_score_endpoint_requires_auth(self):
         """GET /api/intelligence/score/AAPL returns 401 without token"""
         response = self.session.get(f"{BASE_URL}/api/intelligence/score/AAPL")
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"✓ Score endpoint correctly requires auth (401)")
+        print("✓ Score endpoint correctly requires auth (401)")
     
     def test_patterns_endpoint_requires_auth(self):
         """GET /api/intelligence/patterns/AAPL returns 401 without token"""
         response = self.session.get(f"{BASE_URL}/api/intelligence/patterns/AAPL")
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"✓ Patterns endpoint correctly requires auth (401)")
+        print("✓ Patterns endpoint correctly requires auth (401)")
     
     def test_brief_endpoint_requires_auth(self):
         """GET /api/intelligence/brief/AAPL returns 401 without token"""
         response = self.session.get(f"{BASE_URL}/api/intelligence/brief/AAPL")
         assert response.status_code == 401, f"Expected 401, got {response.status_code}"
-        print(f"✓ Brief endpoint correctly requires auth (401)")
+        print("✓ Brief endpoint correctly requires auth (401)")
 
 
 class TestAIScoreEndpoint:

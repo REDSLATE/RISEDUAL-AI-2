@@ -13,10 +13,9 @@ import pytest
 import requests
 import os
 import json
-import time
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 # Test credentials
 def ratio_to_intensity(ratio: float) -> int:
     """Expected intensity calculation formula."""

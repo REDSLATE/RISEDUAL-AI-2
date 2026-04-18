@@ -7,7 +7,6 @@ Tests for:
 """
 import pytest
 import requests
-import os
 
 from conftest_creds import BASE_URL, OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 

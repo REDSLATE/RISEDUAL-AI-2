@@ -1,8 +1,8 @@
 """Media upload/download routes — admin media manager for videos, images, etc."""
 import os
 import logging
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response, Request
-from services.storage_service import MediaService, get_object, init_storage
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response
+from services.storage_service import MediaService, get_object
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["media"])
@@ -48,7 +48,6 @@ async def upload_chunk(
     content_type: str = Form("application/octet-stream"),
 ):
     """Upload a file in chunks for large files. Assembles on last chunk."""
-    import tempfile
     import shutil
 
     chunk_dir = f"/tmp/uploads/{upload_id}"

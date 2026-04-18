@@ -107,7 +107,7 @@ class TestChatAPIBasic:
         
         assert "response" in data
         assert len(data["response"]) > 0
-        print(f"✓ Chat with null image_base64 works (backward compat)")
+        print("✓ Chat with null image_base64 works (backward compat)")
     
     def test_chat_without_image_base64_field(self):
         """Test POST /api/chat without image_base64 field at all (backward compatibility)"""
@@ -122,7 +122,7 @@ class TestChatAPIBasic:
         
         assert "response" in data
         assert len(data["response"]) > 0
-        print(f"✓ Chat without image_base64 field works (backward compat)")
+        print("✓ Chat without image_base64 field works (backward compat)")
 
 
 class TestChatAPIWithImage:
@@ -168,7 +168,7 @@ class TestChatAPIWithImage:
         
         assert "response" in data
         assert len(data["response"]) > 0
-        print(f"✓ Chat with JPEG image works")
+        print("✓ Chat with JPEG image works")
     
     def test_chat_image_only_no_text(self):
         """Test POST /api/chat with image but minimal text"""
@@ -185,9 +185,9 @@ class TestChatAPIWithImage:
         if response.status_code == 200:
             data = response.json()
             assert "response" in data
-            print(f"✓ Chat with image-only (empty message) works")
+            print("✓ Chat with image-only (empty message) works")
         elif response.status_code == 422:
-            print(f"⚠ Chat requires non-empty message (validation error) - this is acceptable")
+            print("⚠ Chat requires non-empty message (validation error) - this is acceptable")
         else:
             print(f"⚠ Unexpected status {response.status_code}: {response.text}")
 
@@ -222,7 +222,7 @@ class TestChatHistory:
         data = response.json()
         assert "messages" in data
         assert len(data["messages"]) == 0
-        print(f"✓ Non-existent session returns empty messages array")
+        print("✓ Non-existent session returns empty messages array")
 
 
 if __name__ == "__main__":
