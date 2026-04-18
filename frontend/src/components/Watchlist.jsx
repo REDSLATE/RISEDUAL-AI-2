@@ -349,19 +349,19 @@ const Watchlist = ({ onSubscribe }) => {
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-white font-medium">{item.symbol}</span>
-                    <button
-                      onClick={() => {
-                        if (!hasScore) return;
-                        const prompt = `Break down the Smart Money Score for ${item.symbol} (currently ${sm.score}/100, ${sm.signal}). ${sm.bullish_count} tracked institutions increased their position last quarter and ${sm.bearish_count} reduced. What's the likely thesis behind the biggest moves?`;
-                        window.dispatchEvent(new CustomEvent('risedualai-open-chat', { detail: { prefill: prompt, autoSend: true } }));
-                      }}
-                      disabled={!hasScore}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold tabular-nums transition-colors ${scoreColor} ${hasScore ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'}`}
-                      title={scoreTooltip}
-                      data-testid={`watchlist-smart-score-${item.symbol}`}
-                    >
-                      SM {hasScore ? sm.score : '—'}
-                    </button>
+                    {hasScore ? (
+                      <button
+                        onClick={() => {
+                          const prompt = `Break down the Smart Money Score for ${item.symbol} (currently ${sm.score}/100, ${sm.signal}). ${sm.bullish_count} tracked institutions increased their position last quarter and ${sm.bearish_count} reduced. What's the likely thesis behind the biggest moves?`;
+                          window.dispatchEvent(new CustomEvent('risedualai-open-chat', { detail: { prefill: prompt, autoSend: true } }));
+                        }}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold tabular-nums transition-colors ${scoreColor} hover:brightness-125 cursor-pointer`}
+                        title={scoreTooltip}
+                        data-testid={`watchlist-smart-score-${item.symbol}`}
+                      >
+                        SM {sm.score}
+                      </button>
+                    ) : null}
                     {smsHistory[item.symbol]?.length >= 2 && (
                       <SparkLine
                         points={smsHistory[item.symbol]}
