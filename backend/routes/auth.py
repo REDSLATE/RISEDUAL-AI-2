@@ -477,16 +477,12 @@ async def seed_admin():
         })
     else:
         # Always promote to owner — this is the canonical single-admin account.
-        # (Previously this branch respected a "merged" flag, but we no longer
-        # run a second seeded user, so there's nothing to merge into.)
         updates = {
             "role": "owner",
             "subscription_status": "pro",
+            "name": "RISEDUAL",
             "is_active": True,
         }
-        # Preserve user-set name if non-default; otherwise set brand name.
-        if not existing_owner.get("name"):
-            updates["name"] = "RISEDUAL"
         existing_hash = existing_owner.get("password_hash")
         needs_rehash = True
         if existing_hash:
