@@ -39,16 +39,21 @@
 - 276,298 ML snapshots, 80 tickers, 15 years, 98.2% regime coverage, 57,854 patterns
 - FRED snapshots accumulating daily (first snapshot: Apr 16, 2026)
 
-## AI Agent Delegation from Watchlist + 13F Tables (COMPLETED Apr 18)
+## AI Agent Delegation + Smart Money Score (COMPLETED Apr 18)
 - Added sparkle ✨ button to each watchlist row (`watchlist-delegate-ai-{SYMBOL}` test ID)
 - **Extended to 13F tables**: sparkle ✨ button on every ticker cell in both Holdings table and QoQ Changes table of the 13F Research Hub tab
 - Context-aware prompts:
   - Watchlist: _"Analyze {SYMBOL}: current price, technical levels, recent news, latest 13F moves"_
   - 13F Holdings cell: _"Walk me through {SYMBOL}: current price, recent performance, technical setup, why major institutions hold it"_
-  - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter? Give me a concise take on the likely thesis"_
-- Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload
-- Chat listens for the event, prefills the input, and fires a 2nd event `risedualai-autosend` after a 400ms settle delay
-- Verified live: 40 sparkle buttons rendered in Berkshire view; click → chat opens → message auto-sends → 0 JS errors.
+  - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
+- Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
+
+### Smart Money Score (0–100) per symbol
+- New `services/sec_13f_service.compute_smart_money_score(db, symbol)` — aggregates QoQ position changes across tracked institutions, weighted by `log10(AUM/$1B + 1)` so BlackRock/Vanguard don't dominate but still count more than smaller funds. Maps signed-weighted-sum to 0–100 where 50 = neutral, ≥60 = bullish institutional consensus, ≤40 = bearish.
+- Endpoints: `GET /api/stockfit/13f/smart-money-score/{symbol}`, `GET /api/stockfit/13f/smart-money-scores?symbols=AAPL,NVDA,...` (batch, 50 max)
+- Returns: `{score, signal, bullish_count, bearish_count, holder_count, net_flow_usd, total_value_usd, contributors[]}`
+- **Watchlist integration**: color-coded SM badge on each row (green ≥60, amber 40-60, red ≤40, gray = insufficient data). Hover tooltip explains the score and shows bullish/bearish counts. **Click the badge** → delegates to AI with a prompt that includes the score and counts so the AI can explain the institutional thesis.
+- Verified live: AAPL=44 (BlackRock/Vanguard adding, Berkshire exited -4.3%), NVDA=58, TSLA=56, MSFT=49, META=no data.
 
 ## CUSIP→Ticker Mapping Upgrade (COMPLETED Apr 18)
 - **Integrated OpenFIGI API** (free, no key needed at 25 req/min; free key bumps to 250 req/6s — settable via `OPENFIGI_API_KEY` env var)

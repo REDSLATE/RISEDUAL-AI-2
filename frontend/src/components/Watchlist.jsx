@@ -18,6 +18,20 @@ const Watchlist = ({ onSubscribe }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [capWarning, setCapWarning] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [smartScores, setSmartScores] = useState({});
+
+  // Fetch Smart Money Scores for all watchlist symbols (from 13F data)
+  const fetchSmartScores = useCallback(async (symbols) => {
+    if (!symbols.length) return;
+    try {
+      const res = await fetch(`${API}/stockfit/13f/smart-money-scores?symbols=${symbols.join(',')}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSmartScores(data.scores || {});
+    } catch (e) {
+      logger.warn('Smart money score fetch failed:', e);
+    }
+  }, []);
 
   // Fetch live quotes for all watchlist symbols
   const fetchQuotes = useCallback(async (symbols) => {
@@ -139,11 +153,13 @@ const Watchlist = ({ onSubscribe }) => {
   useEffect(() => {
     if (!isExpanded || !watchlist.length) return;
     const symbols = watchlist.map(item => item.symbol);
+    // Fetch smart scores once per expand
+    fetchSmartScores(symbols);
     const interval = setInterval(() => {
       fetchQuotes(symbols);
     }, 60000);
     return () => clearInterval(interval);
-  }, [isExpanded, watchlist, fetchQuotes]);
+  }, [isExpanded, watchlist, fetchQuotes, fetchSmartScores]);
 
   const addSymbol = () => {
     if (!newSymbol.trim()) return;
@@ -239,13 +255,36 @@ const Watchlist = ({ onSubscribe }) => {
                 <p className="text-slate-300 text-xs">Search for a stock symbol above or use the search bar to add tickers to your watchlist</p>
               </div>
             ) : (
-              watchlist.map((item) => (
+              watchlist.map((item) => {
+                const sm = smartScores[item.symbol];
+                const hasScore = sm && sm.score != null;
+                const scoreColor = !hasScore ? 'text-slate-500 bg-slate-700/30 border-slate-600/30'
+                  : sm.score >= 60 ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
+                  : sm.score <= 40 ? 'text-red-400 bg-red-500/15 border-red-500/30'
+                  : 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+                const scoreTooltip = hasScore
+                  ? `Smart Money Score ${sm.score}/100 — ${sm.signal.toUpperCase()} (${sm.bullish_count} institutions adding · ${sm.bearish_count} trimming${sm.holder_count ? ` · ${sm.holder_count} tracked holders` : ''})`
+                  : 'Smart Money Score: insufficient 13F data';
+                return (
                 <div
                   key={item.symbol}
                   className="flex items-center justify-between p-3 bg-[#1E293B] rounded-lg hover:bg-slate-700 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-white font-medium">{item.symbol}</span>
+                    <button
+                      onClick={() => {
+                        if (!hasScore) return;
+                        const prompt = `Break down the Smart Money Score for ${item.symbol} (currently ${sm.score}/100, ${sm.signal}). ${sm.bullish_count} tracked institutions increased their position last quarter and ${sm.bearish_count} reduced. What's the likely thesis behind the biggest moves?`;
+                        window.dispatchEvent(new CustomEvent('risedualai-open-chat', { detail: { prefill: prompt, autoSend: true } }));
+                      }}
+                      disabled={!hasScore}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold tabular-nums transition-colors ${scoreColor} ${hasScore ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'}`}
+                      title={scoreTooltip}
+                      data-testid={`watchlist-smart-score-${item.symbol}`}
+                    >
+                      SM {hasScore ? sm.score : '—'}
+                    </button>
                     {item.changePercent !== 0 && (
                       <div className={`flex items-center gap-1 text-sm ${
                         item.changePercent >= 0 ? 'text-lime-400' : 'text-orange-400'
@@ -284,7 +323,8 @@ const Watchlist = ({ onSubscribe }) => {
                     </button>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </>

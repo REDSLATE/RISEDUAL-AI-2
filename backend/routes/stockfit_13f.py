@@ -20,6 +20,8 @@ from services.sec_13f_service import (
     get_institution_holdings,
     get_holders_of_symbol,
     get_quarterly_changes,
+    compute_smart_money_score,
+    compute_smart_money_scores_batch,
 )
 from services.cusip_mapper import backfill_from_holdings
 from services.auth_helpers import get_current_user
@@ -194,3 +196,27 @@ async def cusip_coverage() -> dict:
         "mapped_cusips": mapped_count,
         "coverage_pct": round(mapped_count / total * 100, 2) if total else 0.0,
     }
+
+
+@router.get("/smart-money-score/{symbol}")
+async def smart_money_score(symbol: str) -> dict:
+    """Return the Smart Money Score (0-100) for a single symbol.
+
+    50 = neutral. >=60 = bullish institutional consensus. <=40 = bearish.
+    Includes top contributor institutions for drill-down.
+    """
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return await compute_smart_money_score(db, symbol)
+
+
+@router.get("/smart-money-scores")
+async def smart_money_scores_batch(symbols: str) -> dict:
+    """Batch Smart Money Score lookup. Pass ``symbols=AAPL,NVDA,MSFT`` (max 50)."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
+    if not syms:
+        raise HTTPException(status_code=400, detail="symbols query parameter is required (comma-separated)")
+    scores = await compute_smart_money_scores_batch(db, syms)
+    return {"scores": scores, "count": len(scores)}

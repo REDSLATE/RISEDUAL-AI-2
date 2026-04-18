@@ -621,6 +621,173 @@ async def get_quarterly_changes(db, cik: str, limit: int = 30) -> dict:
     }
 
 
+async def compute_smart_money_score(db, symbol: str) -> dict:
+    """Smart Money Score (0-100) for a symbol, based on QoQ institutional flow.
+
+    Algorithm:
+      1. Resolve symbol → CUSIPs via cusip_ticker_map
+      2. For each tracked institution that holds the symbol in the latest filing,
+         compute ``delta_value = current_value_usd - previous_value_usd`` (0 if
+         new/exited on that side)
+      3. Normalize the delta by previous position size (cap at -100% / +200%)
+      4. Weight each institution's contribution by ``log10(AUM/1B + 1)``
+      5. Map signed-weighted-sum to 0-100 (50 = neutral)
+
+    Returns:
+        {
+          symbol, score (int 0-100 or None if no data),
+          signal: 'bullish' | 'neutral' | 'bearish' | 'no_data',
+          bullish_count, bearish_count, neutral_count,
+          net_flow_usd (delta_value sum), total_value_usd,
+          contributors: list of {institution, type, delta_shares, delta_pct, value_usd}
+        }
+    """
+    from math import log10
+
+    symbol_u = symbol.upper()
+
+    # 1) Resolve CUSIPs for this ticker
+    cusips_cursor = db.cusip_ticker_map.find({"ticker": symbol_u}, {"_id": 0, "cusip": 1})
+    cusips = [d["cusip"] async for d in cusips_cursor if d.get("cusip")]
+    if not cusips:
+        return {"symbol": symbol_u, "score": None, "signal": "no_data",
+                "bullish_count": 0, "bearish_count": 0, "neutral_count": 0,
+                "net_flow_usd": 0, "total_value_usd": 0, "contributors": []}
+
+    # 2) For each tracked institution, compare latest 2 filings
+    total_weight = 0.0
+    net_flow_weighted = 0.0
+    net_flow_usd = 0.0
+    total_value_usd = 0.0
+    bull, bear, neutral = 0, 0, 0
+    contributors: list[dict] = []
+
+    for inst_name, cik in TOP_INSTITUTIONS.items():
+        filings = await db.sec_13f_filings.find(
+            {"cik": cik}, {"_id": 0, "accession": 1, "period_end": 1, "total_value_usd": 1},
+            sort=[("period_end", -1)],
+        ).to_list(3)
+        if not filings:
+            continue
+        latest = filings[0]
+        previous = filings[1] if len(filings) > 1 else None
+
+        # Aggregate positions by CUSIP for this institution across our target CUSIPs
+        curr_val, curr_sh = 0, 0
+        async for h in db.sec_13f_holdings.find(
+            {"accession": latest["accession"], "cusip": {"$in": cusips}, "put_call": {"$in": ["", None]}},
+            {"_id": 0, "value_usd": 1, "shares": 1},
+        ):
+            curr_val += h.get("value_usd", 0) or 0
+            curr_sh += h.get("shares", 0) or 0
+
+        prev_val, prev_sh = 0, 0
+        if previous:
+            async for h in db.sec_13f_holdings.find(
+                {"accession": previous["accession"], "cusip": {"$in": cusips}, "put_call": {"$in": ["", None]}},
+                {"_id": 0, "value_usd": 1, "shares": 1},
+            ):
+                prev_val += h.get("value_usd", 0) or 0
+                prev_sh += h.get("shares", 0) or 0
+
+        if curr_val == 0 and prev_val == 0:
+            continue  # not a holder either quarter
+
+        # Classify change
+        delta_sh = curr_sh - prev_sh
+        delta_val = curr_val - prev_val
+        net_flow_usd += delta_val
+        total_value_usd += curr_val
+
+        if prev_sh == 0 and curr_sh > 0:
+            change_type = "new"
+            norm_delta = 1.0  # treat as +100% signal
+            delta_pct = None
+        elif curr_sh == 0 and prev_sh > 0:
+            change_type = "exited"
+            norm_delta = -1.0  # full exit = -100% signal
+            delta_pct = -100.0
+        else:
+            delta_pct = (delta_sh / prev_sh * 100.0) if prev_sh else None
+            raw = (delta_sh / prev_sh) if prev_sh else 0.0
+            norm_delta = max(-1.0, min(2.0, raw)) / 2.0  # squash to [-0.5, 1.0]
+            if delta_sh > 0:
+                change_type = "increased"
+            elif delta_sh < 0:
+                change_type = "decreased"
+            else:
+                change_type = "unchanged"
+                norm_delta = 0.0
+
+        if change_type in ("new", "increased"):
+            bull += 1
+        elif change_type in ("exited", "decreased"):
+            bear += 1
+        else:
+            neutral += 1
+
+        # Weight institution contribution by log-scaled AUM
+        inst_aum = latest.get("total_value_usd", 0) or 0
+        weight = log10(inst_aum / 1e9 + 1) if inst_aum > 0 else 0.1
+        net_flow_weighted += norm_delta * weight
+        total_weight += weight
+
+        # Only record non-trivial contributors
+        if change_type != "unchanged":
+            contributors.append({
+                "institution_name": inst_name,
+                "cik": cik,
+                "type": change_type,
+                "shares": curr_sh,
+                "prev_shares": prev_sh,
+                "delta_shares": delta_sh,
+                "delta_pct": delta_pct,
+                "value_usd": curr_val,
+                "delta_value_usd": delta_val,
+            })
+
+    if total_weight == 0:
+        return {"symbol": symbol_u, "score": None, "signal": "no_data",
+                "bullish_count": 0, "bearish_count": 0, "neutral_count": 0,
+                "net_flow_usd": 0, "total_value_usd": 0, "contributors": []}
+
+    normalized = max(-1.0, min(1.0, net_flow_weighted / total_weight))
+    score = int(round(50 + 50 * normalized))
+    if score >= 60:
+        signal = "bullish"
+    elif score <= 40:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    # Sort contributors by |delta_value_usd| desc
+    contributors.sort(key=lambda c: abs(c.get("delta_value_usd", 0) or 0), reverse=True)
+    return {
+        "symbol": symbol_u,
+        "score": score,
+        "signal": signal,
+        "bullish_count": bull,
+        "bearish_count": bear,
+        "neutral_count": neutral,
+        "holder_count": bull + bear + neutral,
+        "net_flow_usd": net_flow_usd,
+        "total_value_usd": total_value_usd,
+        "contributors": contributors[:10],
+    }
+
+
+async def compute_smart_money_scores_batch(db, symbols: list[str]) -> dict:
+    """Batch version — returns {symbol: score_dict}."""
+    out: dict[str, dict] = {}
+    for s in symbols[:50]:
+        try:
+            out[s.upper()] = await compute_smart_money_score(db, s)
+        except Exception as e:
+            logger.debug(f"Smart money score error for {s}: {e}")
+            out[s.upper()] = {"symbol": s.upper(), "score": None, "signal": "no_data"}
+    return out
+
+
 async def scan_and_alert(db) -> dict:
     """Daily scheduler job: refresh all tracked institutions and emit alerts for
     notable activity on symbols present in any user's watchlist.
