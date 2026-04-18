@@ -191,6 +191,24 @@ const Navbar = ({
             </div>
           )}
 
+          {/* Desktop v2 toggle pill — compact always-visible entry */}
+          <button
+            onClick={() => {
+              if (v2Nav) localStorage.removeItem('risedualai_v2_nav');
+              else localStorage.setItem('risedualai_v2_nav', '1');
+              window.location.reload();
+            }}
+            className={`hidden lg:inline-flex text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border transition-colors ${
+              v2Nav
+                ? 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/30'
+                : 'bg-slate-800/60 text-slate-400 border-slate-600/40 hover:text-orange-300 hover:border-orange-500/30'
+            }`}
+            data-testid="desktop-v2-toggle"
+            title={v2Nav ? 'War Room v2 ON — click to disable' : 'Enable War Room v2 (beta)'}
+          >
+            {v2Nav ? 'v2 ON' : 'Try v2'}
+          </button>
+
           {!isPro && (
             <Button variant="outline" className="bg-[#3DE8D9] text-white hover:bg-[#7AEEE0] border-0 font-semibold rounded-xl"
               onClick={onSubscribe} data-testid="upgrade-btn">
@@ -281,6 +299,23 @@ const Navbar = ({
 
         {/* Mobile */}
         <div className="flex lg:hidden items-center gap-2">
+          {/* Mobile v2 toggle pill — always visible for quick access */}
+          <button
+            onClick={() => {
+              if (v2Nav) localStorage.removeItem('risedualai_v2_nav');
+              else localStorage.setItem('risedualai_v2_nav', '1');
+              window.location.reload();
+            }}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border transition-colors ${
+              v2Nav
+                ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                : 'bg-slate-800/60 text-slate-400 border-slate-600/40'
+            }`}
+            data-testid="mobile-v2-toggle"
+            title={v2Nav ? 'War Room v2 ON — tap to disable' : 'Enable War Room v2'}
+          >
+            {v2Nav ? 'v2' : 'v1'}
+          </button>
           {!isPro && (
             <Button variant="outline" size="sm" className="bg-[#3DE8D9] text-white hover:bg-[#7AEEE0] border-0 rounded-xl text-xs px-3"
               onClick={onSubscribe} data-testid="mobile-upgrade-btn">
