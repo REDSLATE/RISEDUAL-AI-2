@@ -48,6 +48,19 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
+## Tiered Referral Rewards (COMPLETED Apr 18)
+- **Backend** `services/referral_rewards.py`:
+  - `scan_hit_threshold_rewards(db)` — any user whose share-ref crosses 5 unique-visitor hits in current calendar month → auto-grants **7-day Pro trial** (at most once per user per month, stacks onto any existing trial)
+  - `scan_monthly_leaderboard_rewards(db)` — runs on 1st of each month for prior month:
+    - #1 → **30-day Pro Max trial**
+    - #2, #3 → **30-day Pro trial**
+    - #4, #5 → **100 credits** each (credited to `user_credits` + logged in `credit_events`)
+  - Skips users already on paid plans (doesn't downgrade), stacks trial expirations correctly, fires in-app + VAPID push notifications on each reward
+- **3 new endpoints**: `POST /api/analytics/ref-scan-hits` (admin), `POST /api/analytics/ref-scan-monthly` (admin), extended `GET /ref-me` to include `recent_reward`
+- **2 new schedulers**: daily 9:00 UTC (hit-threshold scan) + 1st-of-month 9:30 UTC (monthly leaderboard scan)
+- **Frontend**: ShareBoardLeaderboard now shows a 🏆 reward badge next to the title when user has earned anything (`Pro Max · 30d` / `Pro · 30d` / `100 credits`), plus a methodology footer explaining the tiered scheme
+- **Verified end-to-end** with 5 seeded test users: #1 → Pro Max trial, #2 & #3 → Pro trial, #4 & #5 → 100 credits each in wallet. Hit-threshold also granted 7d Pro to 3 users with ≥5 hits. All rewards logged in `referral_rewards` with audit fields. Trial expirations stack correctly (Pro Max → 2026-05-25 from prior +7d hit reward). Test data cleaned after verification.
+
 ## Referral Attribution + Share Leaderboard (COMPLETED Apr 18)
 - **Backend** `routes/analytics.py`:
   - `POST /api/analytics/ref` — anonymous pixel-style hit logger. Dedupes per (IP + UA + ref + day) via SHA-256 visitor hash → one count per unique visitor per day. Validates ref pattern (`share-u{8chars}` or `share-anon{date}`), silently rejects anything else.

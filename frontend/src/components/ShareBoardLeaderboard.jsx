@@ -40,14 +40,32 @@ export default function ShareBoardLeaderboard({ authenticated = true }) {
   const hasData = (me?.hits ?? 0) > 0 || top.length > 0;
   if (!hasData) return null;
 
+  const rewardBadge = me?.recent_reward ? (() => {
+    const r = me.recent_reward;
+    const label = r.kind === 'trial_pro_max' ? `Pro Max · ${r.amount}d`
+      : r.kind === 'trial_pro' ? `Pro · ${r.amount}d`
+      : r.kind === 'credits' ? `${r.amount} credits`
+      : r.tier;
+    return (
+      <span
+        className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#3DE8D9]/40 bg-[#3DE8D9]/10 text-[#3DE8D9] text-[9px] font-bold"
+        title={`You earned: ${r.tier} (${r.period || 'current'})`}
+        data-testid="share-board-reward-badge"
+      >
+        🏆 {label}
+      </span>
+    );
+  })() : null;
+
   return (
     <div
       className="mt-3 rounded-lg border border-slate-700/50 bg-slate-900/40 p-3 space-y-2"
       data-testid="share-board-leaderboard"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Trophy className="w-3.5 h-3.5 text-[#3DE8D9]" />
         <span className="text-white text-xs font-semibold">Share Leaderboard</span>
+        {rewardBadge}
         {me?.rank != null && (
           <span className="ml-auto text-[10px] text-slate-400">
             Your rank: <span className="text-white font-bold">#{me.rank}</span>
@@ -81,7 +99,10 @@ export default function ShareBoardLeaderboard({ authenticated = true }) {
         </div>
       )}
 
-      <p className="text-slate-600 text-[9px] text-center pt-1">Tracks anonymous visitor hits from shared boards · Last 90 days</p>
+      <p className="text-slate-600 text-[9px] text-center pt-1">
+        Tracks anonymous visitor hits from shared boards · Last 90 days<br />
+        <span className="text-slate-500">#1 earns 30d Pro Max · #2-3 earn 30d Pro · #4-5 earn 100 credits · 5+ hits any month = 7d Pro</span>
+      </p>
     </div>
   );
 }

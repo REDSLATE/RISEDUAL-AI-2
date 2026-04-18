@@ -256,8 +256,10 @@ async def _start_schedulers():
         scheduler.add_job(_run_prediction_labeler, 'interval', hours=1, id='prediction_labeler')
         scheduler.add_job(_run_fred_snapshot, 'cron', hour=7, minute=0, id='fred_daily_snapshot')
         scheduler.add_job(_run_13f_scan, 'cron', hour=8, minute=0, id='sec_13f_daily_scan')
+        scheduler.add_job(_run_referral_hit_rewards, 'cron', hour=9, minute=0, id='referral_hit_rewards_daily')
+        scheduler.add_job(_run_referral_monthly_rewards, 'cron', day=1, hour=9, minute=30, id='referral_monthly_rewards')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -402,6 +404,28 @@ async def _run_13f_scan():
         logger.info(f"13F scan complete: refreshed={result.get('refreshed',0)}, alerts_created={result.get('alerts_created',0)}, errors={result.get('errors',0)}")
     except Exception as e:
         logger.warning(f"13F scan error: {e}")
+
+
+async def _run_referral_hit_rewards():
+    """Background: daily at 9:00 UTC — grant 7-day Pro to users whose share-ref
+    crosses the monthly hit threshold."""
+    try:
+        from services.referral_rewards import scan_hit_threshold_rewards
+        result = await scan_hit_threshold_rewards(db)
+        logger.info(f"Referral hit rewards: granted={result.get('granted',0)}, skipped={result.get('skipped',0)}")
+    except Exception as e:
+        logger.warning(f"Referral hit rewards error: {e}")
+
+
+async def _run_referral_monthly_rewards():
+    """Background: 1st of each month at 9:30 UTC — grant tiered rewards to the
+    top 5 sharers of the just-closed month."""
+    try:
+        from services.referral_rewards import scan_monthly_leaderboard_rewards
+        result = await scan_monthly_leaderboard_rewards(db)
+        logger.info(f"Referral monthly rewards: period={result.get('period')}, granted={result.get('count',0)}")
+    except Exception as e:
+        logger.warning(f"Referral monthly rewards error: {e}")
 
 
 def _start_cache_warmup():

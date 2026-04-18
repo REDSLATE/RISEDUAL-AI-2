@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from services.auth_helpers import get_current_user
+from services.referral_rewards import scan_hit_threshold_rewards, scan_monthly_leaderboard_rewards
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -136,4 +137,33 @@ async def my_ref_stats(request: Request) -> dict:
     ]
     above = await db.referral_hits.aggregate(pipeline).to_list(1)
     rank = (above[0]["above"] + 1) if above else 1
-    return {"ref": my_ref, "hits": my_hits, "rank": rank}
+
+    # Also surface most-recent reward for the user
+    recent_reward = await db.referral_rewards.find_one(
+        {"user_id": user["_id"]},
+        {"_id": 0, "tier": 1, "kind": 1, "amount": 1, "period": 1, "granted_at": 1, "trial_expires_at": 1},
+        sort=[("granted_at", -1)],
+    )
+    return {"ref": my_ref, "hits": my_hits, "rank": rank, "recent_reward": recent_reward}
+
+
+@router.post("/ref-scan-hits")
+async def trigger_hit_scan(request: Request) -> dict:
+    """Admin-only: run the rolling-month hit-threshold reward scan now."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"ok": True, "summary": await scan_hit_threshold_rewards(db)}
+
+
+@router.post("/ref-scan-monthly")
+async def trigger_monthly_scan(request: Request) -> dict:
+    """Admin-only: run the prior-month leaderboard reward scan now (for testing)."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"ok": True, "summary": await scan_monthly_leaderboard_rewards(db)}
