@@ -54,6 +54,22 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Level-1 AI Chat Follow-up Chips + Adoption Telemetry (COMPLETED Feb 19, 2026)
+- **Backend** `POST /api/chat/followups` (Emergent LLM, `gpt-4o-mini`) generates 3
+  contextual follow-up suggestions after every assistant reply.
+- **Backend** `POST /api/analytics/chip-event` logs `shown` + `clicked` events to
+  `chip_events` collection (non-blocking, accepts anon + authed users).
+- **Backend** `GET /api/analytics/chip-events/stats?days=N` — admin-only; returns
+  shown/clicked counts, CTR, top clicked chips.
+- **Frontend**:
+  * `RiseDualGPTChat.jsx` fires `clicked` telemetry in `onFollowupClick` before
+    dispatching the prefill → sendMessage flow.
+  * `ChatComponents.jsx` fires `shown` telemetry via a `useEffect` + `Set` ref
+    (dedupe by `msgIdx::chipText`) so each rendered chip is counted exactly once.
+  * Both calls are fire-and-forget (silent on failure).
+- **Purpose**: CTR from this loop gates the decision to build Level-2 inline
+  deep-link action buttons. Low CTR → skip Level-2; high CTR → invest.
+
 ### Help Search Weekly Digest — Proactive Admin Push (COMPLETED Feb 18, 2026)
 - **New service** `/app/backend/services/help_search_digest.py`:
   - Aggregates last-7-days `help_search_events` via $group pipeline.

@@ -2,13 +2,44 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX, Pin, AlertCircle, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { authFetch } from '../../contexts/AuthContext';
+import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
+
+const CHIP_API = `${getApiBase()}/api/analytics/chip-event`;
 
 const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick, onFollowupClick }) => {
   const endRef = useRef(null);
+  const shownChipsRef = useRef(new Set());
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Log "shown" telemetry once per (message_idx, chip) pair when follow-up chips
+  // are rendered. Fire-and-forget; silent on failure.
+  useEffect(() => {
+    const ctx = typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null;
+    messages.forEach((msg, idx) => {
+      if (msg.role !== 'assistant' || !Array.isArray(msg.followups)) return;
+      msg.followups.forEach((chip) => {
+        const key = `${idx}::${chip}`;
+        if (shownChipsRef.current.has(key)) return;
+        shownChipsRef.current.add(key);
+        try {
+          fetch(CHIP_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              action: 'shown',
+              chip_text: chip,
+              message_idx: idx,
+              context_hub: ctx,
+            }),
+          }).catch(() => { /* silent */ });
+        } catch { /* silent */ }
+      });
+    });
   }, [messages]);
 
   if (messages.length === 0 && !showPatterns) {
@@ -63,7 +94,7 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
                   {msg.followups.map((chip, ci) => (
                     <button
                       key={ci}
-                      onClick={() => onFollowupClick(chip)}
+                      onClick={() => onFollowupClick(chip, idx)}
                       className="text-[11px] font-medium px-2.5 py-1.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60 hover:text-[#3DE8D9] hover:border-[#3DE8D9]/40 hover:bg-[#3DE8D9]/5 transition-colors"
                       data-testid={`followup-chip-${idx}-${ci}`}
                     >

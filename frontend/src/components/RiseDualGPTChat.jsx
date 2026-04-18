@@ -285,7 +285,23 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             isPro={isPro}
             onPin={(content) => pinToMemory(content, setMessages)}
             onSuggestionClick={handleSuggestionClick}
-            onFollowupClick={(chip) => {
+            onFollowupClick={(chip, msgIdx) => {
+              // Fire-and-forget adoption telemetry — non-blocking, silent on failure.
+              try {
+                fetch(`${API}/analytics/chip-event`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    action: 'clicked',
+                    chip_text: chip,
+                    message_idx: typeof msgIdx === 'number' ? msgIdx : null,
+                    context_hub: typeof window !== 'undefined'
+                      ? (window.__risedualActiveView || null)
+                      : null,
+                  }),
+                }).catch(() => { /* silent */ });
+              } catch { /* silent */ }
               setInput(chip);
               // Defer one tick so setInput lands before sendMessage reads it
               setTimeout(() => sendMessage(), 0);
