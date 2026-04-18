@@ -54,6 +54,20 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Heatmap Tiles with War Room Deep-Link (COMPLETED Feb 19, 2026)
+- Rebuilt `CryptoTicker.jsx` from an auto-scrolling horizontal marquee into a
+  responsive grid (`grid-cols-2 sm:grid-cols-4 lg:grid-cols-8`) matching the
+  `SectorTile` visual language — color-coded by % change (heat scale tuned
+  tighter for crypto volatility: ≥5% deep green, ≤-5% deep red).
+- Each tile is now a clickable `<button>` → same deep-link bundle:
+  telemetry `action-clicked` with source `"Crypto Heatmap"` → navigate to
+  War Room Adversarial → dispatch ticker broadcast. BTC / ETH / BNB / SOL /
+  XRP / ADA / DOGE / AVAX all route correctly.
+- Verified E2E: clicked BTC tile → War Room opened → BTC auto-analyzed.
+  Mobile + desktop layouts confirmed.
+- Admin `Chip CTR` panel now differentiates three heat-source flavours in
+  top-actions: `Sector Heatmap`, `AI Sector Heatmap`, `Crypto Heatmap`.
+
 ### Sector Heatmap Deep-Link + Recent Tickers Strip (COMPLETED Feb 19, 2026)
 - **Sector Heatmap tiles** (`SectorTile.jsx`) are now clickable `<button>`s.
   One click on any sector ETF (XLK, XLF, XLV, etc.) — either the "AI sentiment"
