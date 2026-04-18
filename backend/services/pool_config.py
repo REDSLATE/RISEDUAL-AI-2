@@ -52,10 +52,10 @@ def get_ai_provider_pool() -> List[Dict]:
     openrouter_key = os.environ.get("OPENROUTER_API_KEY")
     if openrouter_key:
         fallback.append({
-            "name": "openrouter-backup",
+            "name": "openrouter-gpt52",
             "provider": "openrouter",
             "api_key": openrouter_key,
-            "model": "anthropic/claude-3.5-sonnet",
+            "model": "openai/gpt-5.2",
             "priority": 4,
         })
 

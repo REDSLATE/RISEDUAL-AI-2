@@ -114,6 +114,33 @@ class AIService:
             )
             return "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
 
+        if p == "openrouter":
+            import httpx
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": message},
+            ]
+            async with httpx.AsyncClient(timeout=45) as client:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {provider['api_key']}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://risedual.ai",
+                        "X-Title": "RISEDUAL AI",
+                    },
+                    json={
+                        "model": provider.get("model", "openai/gpt-5.2"),
+                        "messages": messages,
+                        "max_tokens": 1200,
+                        "temperature": 0.7,
+                    },
+                )
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OpenRouter returned {resp.status_code}: {resp.text[:200]}")
+                data = resp.json()
+                return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
         raise RuntimeError(f"Unsupported AI provider: {p}")
 
     async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None,
