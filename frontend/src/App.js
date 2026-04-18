@@ -8,7 +8,7 @@ import ScrollToTop from './components/ScrollToTop';
 import Footer from './components/Footer';
 import Navbar from './components/Navbar';
 import StockTicker from './components/StockTicker';
-import CryptoTicker from './components/CryptoTicker';
+import MarketsSection from './components/MarketsSection';
 import Watchlist from './components/Watchlist';
 import AlertsPanel from './components/AlertsPanel';
 import RiseDualGPTChat from './components/RiseDualGPTChat';
@@ -195,7 +195,6 @@ function AppContent() {
         onOpenBots={() => setShowBots(true)}
         onOpenFailureLoop={() => setShowFailureLoop(true)}
       />
-      <CryptoTicker />
       <AlertsPanel onSubscribe={sub} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
@@ -238,10 +237,10 @@ function AppContent() {
               </div>
             )}
 
-            {/* Sector Heatmap + Fear/Greed */}
+            {/* Markets — Crypto + Sector heatmaps with density toggle */}
             <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div className="lg:col-span-3"><SectorHeatmap /></div>
+                <div className="lg:col-span-3"><MarketsSection /></div>
                 <div className="lg:col-span-1"><FearGreedGauge /></div>
               </div>
             </div>

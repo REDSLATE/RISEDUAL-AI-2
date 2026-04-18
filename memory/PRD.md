@@ -54,6 +54,20 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Markets Density Toggle (COMPLETED Feb 19, 2026)
+- New `MarketsSection.jsx` component hosts both heatmaps with a 3-way
+  segmented toggle: Both · Crypto · Sectors (icons: LayoutGrid · Bitcoin ·
+  BarChart3). Default is "Both". Persisted in `localStorage` under
+  `risedual:markets-view`.
+- Moved `CryptoTicker` out of the global top-of-app strip (was rendered on
+  every view under the navbar) into the Dashboard Markets section — reclaims
+  vertical space on Research/Options/Workspace views where it wasn't needed.
+- `CryptoTicker` component slimmed: removed its own `bg/border/padding`
+  chrome so it can be embedded cleanly inside the new wrapper.
+- Verified E2E: default `Both` shows both heatmaps; clicking `Crypto`
+  collapses sectors; clicking `Sectors` collapses crypto. localStorage
+  persistence confirmed across reloads.
+
 ### Crypto Heatmap Tiles with War Room Deep-Link (COMPLETED Feb 19, 2026)
 - Rebuilt `CryptoTicker.jsx` from an auto-scrolling horizontal marquee into a
   responsive grid (`grid-cols-2 sm:grid-cols-4 lg:grid-cols-8`) matching the

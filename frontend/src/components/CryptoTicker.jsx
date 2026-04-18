@@ -112,21 +112,15 @@ const CryptoTicker = () => {
   }, [fetchCryptoData]);
 
   if (loading && cryptos.length === 0) {
-    return (
-      <div className="bg-[#060E1F] border-b border-slate-400/30 px-3 sm:px-6 py-3">
-        <span className="text-slate-300 text-sm">Loading crypto data...</span>
-      </div>
-    );
+    return <div className="text-slate-400 text-sm py-4">Loading crypto data...</div>;
   }
   if (!cryptos.length) return null;
 
   return (
-    <div className="bg-[#060E1F] border-b border-slate-400/30 px-3 sm:px-6 py-3" data-testid="crypto-heatmap">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        {cryptos.slice(0, 8).map((c) => (
-          <CryptoTile key={c.symbol} crypto={c} />
-        ))}
-      </div>
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2" data-testid="crypto-heatmap">
+      {cryptos.slice(0, 8).map((c) => (
+        <CryptoTile key={c.symbol} crypto={c} />
+      ))}
     </div>
   );
 };
