@@ -100,6 +100,9 @@ function AppContent() {
     else if (view === 'options') setOptionsTab(subTab || null);
     else if (view === 'workspace') setWorkspaceTab(subTab || null);
     else if (view === 'warroom') setWarRoomTab(subTab || null);
+    if (typeof window !== 'undefined') {
+      window.__risedualActiveView = view;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 

@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import os
 import logging
+
+logger = logging.getLogger(__name__)
 import base64
 import re
 from datetime import datetime, timezone, timedelta
@@ -175,6 +177,82 @@ async def agent_stream(request: Request, message: str, sessionId: str = "stream"
             yield {"event": "error", "data": json_mod.dumps({"error": str(e)[:200]})}
 
     return EventSourceResponse(event_generator())
+
+
+@router.post("/chat/followups")
+async def chat_followups(request: Request):
+    """Generate 3 short contextual follow-up chips after an assistant response.
+
+    Body: ``{ last_user_message, last_assistant_response, context_hub? }``
+
+    Output: ``{ chips: [str, str, str] }``. Silent fallback to static defaults
+    on any error — chips are a nice-to-have, never block the chat.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    user_msg = (body.get("last_user_message") or "").strip()[:800]
+    assistant = (body.get("last_assistant_response") or "").strip()[:1600]
+    context_hub = (body.get("context_hub") or "").strip()[:24]
+
+    fallback = {"chips": [
+        "Explain that further",
+        "Run a prediction on this",
+        "Save this thesis to my journal",
+    ]}
+    if not assistant or len(assistant) < 20:
+        return fallback
+
+    # Use the AI provider router to get short structured output.
+    import os
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        key = os.environ.get("EMERGENT_LLM_KEY") or os.environ.get("UNIVERSAL_LLM_KEY")
+        if not key:
+            return fallback
+        system = (
+            "You generate 3 short follow-up action chips for a trading-app chat UI. "
+            "Each chip must be <= 7 words, imperative voice (Start with a verb), unique, and DIRECTLY relevant to the assistant's last reply. "
+            "Return ONLY a JSON array of 3 strings. No prose, no markdown, no code fences. "
+            "Good examples: [\"Run hypothesis on NVDA\", \"Save to watchlist\", \"Set a price alert\"]."
+        )
+        prompt = (
+            f"Current hub: {context_hub or 'dashboard'}\n\n"
+            f"User asked:\n\"{user_msg}\"\n\n"
+            f"Assistant replied:\n\"\"\"\n{assistant[:1200]}\n\"\"\"\n\n"
+            "Respond with JSON array of 3 follow-up action chips:"
+        )
+        session_id = f"followups-{hash((user_msg, assistant)) & 0xffffffff}"
+        chat = LlmChat(api_key=key, session_id=session_id, system_message=system).with_model("openai", "gpt-4o-mini")
+        resp = await chat.send_message(UserMessage(text=prompt))
+
+        # Robust parse — find first [...] block
+        txt = str(resp).strip()
+        if txt.startswith("```"):
+            # strip code fence
+            txt = txt.split("```", 2)[1] if "```" in txt else txt
+            if txt.startswith("json"):
+                txt = txt[4:].strip()
+        start = txt.find("[")
+        end = txt.rfind("]")
+        if start < 0 or end <= start:
+            return fallback
+        import json as _json
+        arr = _json.loads(txt[start:end + 1])
+        chips = [str(x).strip() for x in arr if isinstance(x, (str, int, float)) and str(x).strip()]
+        chips = [c[:60] for c in chips][:3]
+        if len(chips) < 2:
+            return fallback
+        # pad to 3 if model gave 2
+        while len(chips) < 3:
+            chips.append(fallback["chips"][len(chips)])
+        return {"chips": chips}
+    except Exception as e:
+        logger.warning(f"Follow-ups generation failed: {e}")
+        return fallback
+
+
 
 
 @router.get("/chat/history/{session_id}")

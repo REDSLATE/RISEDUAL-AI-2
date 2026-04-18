@@ -102,6 +102,38 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     setInput('');
     setLoading(true);
 
+    // Helper: fetch 3 contextual follow-up chips after assistant replies.
+    // Non-blocking; failure is silent (chips are optional).
+    const fetchFollowups = (userMsgText, assistantText) => {
+      if (!assistantText || assistantText.length < 20) return;
+      fetch(`${API}/chat/followups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          last_user_message: userMsgText,
+          last_assistant_response: assistantText,
+          context_hub: typeof window !== 'undefined'
+            ? (window.__risedualActiveView || null)
+            : null,
+        }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data || !Array.isArray(data.chips) || !data.chips.length) return;
+          // Attach chips to the most recent assistant message.
+          setMessages(prev => {
+            const idx = [...prev].reverse().findIndex(m => m.role === 'assistant');
+            if (idx < 0) return prev;
+            const realIdx = prev.length - 1 - idx;
+            const copy = [...prev];
+            copy[realIdx] = { ...copy[realIdx], followups: data.chips };
+            return copy;
+          });
+        })
+        .catch(() => { /* silent */ });
+    };
+
     try {
       // Use streaming agent for calculation-heavy queries (no image)
       const useAgent = !selectedImage && TOOLS_PATTERN.test(text);
@@ -117,6 +149,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
               tools_used: result.tools_used,
             }]);
             if (voiceMode) playTTS(result.text);
+            fetchFollowups(text, result.text);
             return;
           }
         } catch (streamErr) {
@@ -151,6 +184,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
         tools_used: data.tools_used,
       }]);
       if (voiceMode) playTTS(aiText);
+      fetchFollowups(text, aiText);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}. Please try again.` }]);
     } finally {
@@ -251,6 +285,11 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             isPro={isPro}
             onPin={(content) => pinToMemory(content, setMessages)}
             onSuggestionClick={handleSuggestionClick}
+            onFollowupClick={(chip) => {
+              setInput(chip);
+              // Defer one tick so setInput lands before sendMessage reads it
+              setTimeout(() => sendMessage(), 0);
+            }}
           />
 
           <ChatInputArea

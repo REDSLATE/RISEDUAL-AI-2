@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { authFetch } from '../../contexts/AuthContext';
 import logger from '../../utils/logger';
 
-const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick }) => {
+const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick, onFollowupClick }) => {
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -48,9 +48,34 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
 
   return (
     <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2.5 scrollbar-thin scrollbar-thumb-slate-700" data-testid="chat-messages">
-      {messages.map((msg, idx) => (
-        <MessageBubble key={`msg-${idx}-${msg.role}`} msg={msg} idx={idx} copiedId={copiedId} onCopy={onCopy} isPro={isPro} onPin={onPin} />
-      ))}
+      {messages.map((msg, idx) => {
+        // Only show follow-up chips on the MOST RECENT assistant message
+        const isLastAssistant = msg.role === 'assistant'
+          && idx === messages.length - 1
+          && Array.isArray(msg.followups) && msg.followups.length > 0;
+        return (
+          <React.Fragment key={`msg-${idx}-${msg.role}`}>
+            <MessageBubble msg={msg} idx={idx} copiedId={copiedId} onCopy={onCopy} isPro={isPro} onPin={onPin} />
+            {isLastAssistant && onFollowupClick && (
+              <div className="flex items-start gap-2 px-2" data-testid={`followups-${idx}`}>
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider font-semibold pt-2 shrink-0">Next</span>
+                <div className="flex-1 flex flex-wrap gap-1.5">
+                  {msg.followups.map((chip, ci) => (
+                    <button
+                      key={ci}
+                      onClick={() => onFollowupClick(chip)}
+                      className="text-[11px] font-medium px-2.5 py-1.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60 hover:text-[#3DE8D9] hover:border-[#3DE8D9]/40 hover:bg-[#3DE8D9]/5 transition-colors"
+                      data-testid={`followup-chip-${idx}-${ci}`}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
       <div ref={endRef} />
     </div>
   );
