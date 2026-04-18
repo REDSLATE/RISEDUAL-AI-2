@@ -28,6 +28,7 @@ export default function useModals() {
   const [legalTab, setLegalTab] = useState('terms');
   const [resetToken, setResetToken] = useState(null);
 
+  // Runs once on mount to check URL params — deps intentionally empty
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get('payment_status');
@@ -43,7 +44,7 @@ export default function useModals() {
       setPaymentInfo({ status: 'cancelled', sessionId: null });
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openLogin = () => { setAuthTab('login'); setShowAuth(true); };
   const openRegister = () => { setAuthTab('register'); setShowAuth(true); };

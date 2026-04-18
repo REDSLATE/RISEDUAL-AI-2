@@ -39,7 +39,15 @@
 - 276,298 ML snapshots, 80 tickers, 15 years, 98.2% regime coverage, 57,854 patterns
 - FRED snapshots accumulating daily (first snapshot: Apr 16, 2026)
 
+## Code Quality Refactoring (COMPLETED Apr 18)
+- **AlpacaOAuthDemo.jsx** (830 lines) decomposed into `oauth-demo/` folder: `DemoShared.jsx`, `StepLanding.jsx`, `StepDashboard.jsx`, `StepBrokerConnect.jsx`, `StepDisclosure.jsx`, `StepAlpacaAuth.jsx`, `StepSuccessRevoke.jsx`
+- **SmartOrderPanel.jsx** (440 lines) decomposed into `smart-orders/SmartOrderList.jsx` and `smart-orders/SmartOrderPreview.jsx`
+- Fixed bug: previous session had created SmartOrderList/SmartOrderPreview files but didn't actually wire them into SmartOrderPanel (orders tab would have crashed due to missing Badge/ModeTag/StatusTag/Trash2 imports). Now properly integrated.
+- Verified: All 7 OAuth demo steps + Smart Orders Create/List/Preview views render with 0 JS errors.
+
 ## Backlog
+- P1: Decompose `RiseDualGPTChat.jsx` (370 lines)
+- P1: Improve Python backend type hint coverage (<50%)
 - P1: Connect Alpaca LIVE API keys via KeyVault (blocked on user account approval)
 - P2: StockFit plan upgrade for 13F holder tracking + insider transaction details
 - P2: Accumulate 30 live paper trading days for Tier 3 unlock

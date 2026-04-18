@@ -96,16 +96,15 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Module-level: API, authFetch, fetchWithRetry, log, formatDetail — all stable
   const clearLegacyTokens = useCallback(() => {
-    // One-time cleanup of any legacy localStorage tokens from pre-cookie migration
     try {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
     } catch {
-      // localStorage may be unavailable (private browsing) — safe to ignore
-      if (process.env.NODE_ENV === 'development') console.warn('localStorage unavailable');
+      if (process.env.NODE_ENV === 'development') console.warn('localStorage unavailable'); // eslint-disable-line no-console
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tryRefresh = useCallback(async () => {
     try {
@@ -123,7 +122,7 @@ export const AuthProvider = ({ children }) => {
       log.warn('Token refresh failed:', e.message);
     }
     return false;
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkAuth = useCallback(async () => {
     try {
@@ -161,7 +160,7 @@ export const AuthProvider = ({ children }) => {
     clearLegacyTokens();
     setUser(data);
     return data;
-  }, [clearLegacyTokens]);
+  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const register = useCallback(async (email, password, name, refCode) => {
     const body = { email, password, name };
@@ -180,7 +179,7 @@ export const AuthProvider = ({ children }) => {
     clearLegacyTokens();
     setUser(data);
     return data;
-  }, [clearLegacyTokens]);
+  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const logout = useCallback(async () => {
     try {
@@ -190,7 +189,7 @@ export const AuthProvider = ({ children }) => {
     }
     clearLegacyTokens();
     setUser(false);
-  }, [clearLegacyTokens]);
+  }, [clearLegacyTokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 

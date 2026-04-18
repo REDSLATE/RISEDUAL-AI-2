@@ -1,30 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, Layers, Shield, Target, TrendingUp, Zap, BarChart3, Play, Eye, Trash2, ChevronDown, ChevronUp, Plus, Minus } from 'lucide-react';
+import { X, Layers, Shield, Target, TrendingUp, BarChart3, Play, Eye, ChevronDown, ChevronUp, Plus, Minus } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Badge } from './ui/badge';
 import PanelShell from './PanelShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from './ui/sonner';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import SmartOrderPreview from './smart-orders/SmartOrderPreview';
+import SmartOrderList from './smart-orders/SmartOrderList';
 
 const API = `${getApiBase()}/api/smart-orders`;
-
-const ModeTag = ({ mode }) => {
-  const colors = { paper: 'bg-lime-500/15 text-lime-400', live: 'bg-red-500/15 text-red-400', simulate: 'bg-blue-500/15 text-blue-400' };
-  return <Badge className={`text-[9px] ${colors[mode] || 'bg-slate-700 text-slate-400'}`}>{mode.toUpperCase()}</Badge>;
-};
-
-const StatusTag = ({ status }) => {
-  const colors = {
-    pending: 'bg-amber-500/15 text-amber-400', filled: 'bg-lime-500/15 text-lime-400',
-    partially_filled: 'bg-blue-500/15 text-blue-400', stopped: 'bg-red-500/15 text-red-400',
-    cancelled: 'bg-slate-600 text-slate-400', completed: 'bg-[#3DE8D9]/15 text-[#3DE8D9]',
-  };
-  return <Badge className={`text-[9px] ${colors[status] || 'bg-slate-700 text-slate-400'}`}>{status?.replace('_', ' ').toUpperCase()}</Badge>;
-};
 
 const SmartOrderPanel = ({ onClose }) => {
   const { user, isPro } = useAuth();
@@ -342,45 +329,7 @@ const SmartOrderPanel = ({ onClose }) => {
             )}
 
             {/* Preview Box */}
-            {preview && (
-              <div className="bg-[#111C30] rounded-xl p-4 border border-[#3DE8D9]/30" data-testid="smart-order-preview">
-                <div className="flex items-center gap-2 mb-3">
-                  <Eye className="w-4 h-4 text-[#3DE8D9]" />
-                  <span className="text-white text-xs font-semibold">Order Preview</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div>
-                    <p className="text-slate-400 text-[9px]">Entry Price</p>
-                    <p className="text-white text-sm font-bold">${preview.avg_entry_price}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-[9px]">Projected Risk</p>
-                    <p className="text-red-400 text-sm font-bold">${preview.projected_risk}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-[9px]">Projected Reward</p>
-                    <p className="text-lime-400 text-sm font-bold">${preview.projected_reward}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-center mt-2">
-                  <span className="text-slate-400 text-[10px]">Risk:Reward</span>
-                  <span className={`ml-2 text-lg font-black ${preview.risk_reward_ratio >= 2 ? 'text-lime-400' : preview.risk_reward_ratio >= 1 ? 'text-amber-400' : 'text-red-400'}`}>
-                    {preview.risk_reward_ratio > 0 ? `1:${preview.risk_reward_ratio}` : 'N/A'}
-                  </span>
-                </div>
-                {preview.legs?.length > 1 && (
-                  <div className="mt-3 border-t border-slate-700 pt-2">
-                    <p className="text-slate-400 text-[9px] mb-1">Ladder Legs ({preview.leg_count})</p>
-                    {preview.legs.map((leg, i) => (
-                      <div key={`preview-leg-${i}`} className="flex justify-between text-[10px]">
-                        <span className="text-slate-300">${leg.price.toFixed(2)}</span>
-                        <span className="text-slate-400">{leg.qty.toFixed(2)} shares</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <SmartOrderPreview preview={preview} />
 
             {/* Action Buttons */}
             <div className="flex gap-2">
@@ -396,44 +345,7 @@ const SmartOrderPanel = ({ onClose }) => {
           </div>
         ) : (
           /* Orders List */
-          <div className="p-4 space-y-2" data-testid="smart-orders-list">
-            {orders.length === 0 ? (
-              <p className="text-slate-400 text-sm text-center py-8">No smart orders yet</p>
-            ) : (
-              orders.map((o, i) => (
-                <div key={o.order_id || `order-${i}`} className="bg-slate-800/40 rounded-xl p-3 border border-slate-600/20">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-bold text-sm">{o.symbol}</span>
-                      <Badge className={`text-[9px] ${o.side === 'buy' ? 'bg-lime-500/15 text-lime-400' : 'bg-red-500/15 text-red-400'}`}>{o.side?.toUpperCase()}</Badge>
-                      <ModeTag mode={o.mode} />
-                      <StatusTag status={o.status} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {o.realized_pnl !== 0 && (
-                        <span className={`text-xs font-bold ${o.realized_pnl > 0 ? 'text-lime-400' : 'text-red-400'}`}>
-                          {o.realized_pnl > 0 ? '+' : ''}${o.realized_pnl?.toFixed(2)}
-                        </span>
-                      )}
-                      {['pending', 'partially_filled', 'filled'].includes(o.status) && (
-                        <button onClick={() => cancelOrder(o.order_id)} className="text-slate-500 hover:text-red-400">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 mt-1.5 text-[10px] text-slate-400">
-                    <span>Qty: {o.total_qty}</span>
-                    {o.avg_fill_price && <span>Avg: ${o.avg_fill_price?.toFixed(2)}</span>}
-                    {o.current_price && <span>Now: ${o.current_price?.toFixed(2)}</span>}
-                    {o.stop_loss && <span className="text-red-400">SL: ${o.stop_loss.price?.toFixed(2)}{o.stop_loss.trailing ? ' (trail)' : ''}{o.stop_loss.moved_to_break_even ? ' [BE]' : ''}</span>}
-                    {o.take_profits?.length > 0 && <span className="text-lime-400">TPs: {o.take_profits.filter(tp => tp.triggered).length}/{o.take_profits.length}</span>}
-                    {o.legs?.length > 1 && <span className="text-violet-400">Ladder: {o.legs.filter(l => l.filled).length}/{o.legs.length}</span>}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <SmartOrderList orders={orders} cancelOrder={cancelOrder} />
         )}
       </div>
     </PanelShell>
