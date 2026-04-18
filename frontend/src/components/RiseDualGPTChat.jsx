@@ -247,7 +247,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-0 right-0 lg:bottom-4 lg:right-4 z-[60] w-full lg:w-[360px] lg:max-w-[calc(100vw-2rem)] h-[calc(100dvh-3.5rem)] lg:h-[480px] lg:max-h-[calc(100vh-6rem)] flex flex-col bg-[#060E1F] lg:rounded-2xl border-t lg:border border-slate-400/25 shadow-2xl shadow-black/40 overflow-hidden pb-safe" data-testid="risedual-gpt-chat">
+        <div className="fixed bottom-16 right-3 left-3 lg:left-auto lg:bottom-6 lg:right-6 z-[60] w-auto lg:w-[400px] lg:max-w-[calc(100vw-3rem)] h-[72dvh] max-h-[620px] lg:h-[560px] lg:max-h-[calc(100vh-7rem)] flex flex-col bg-[#060E1F]/95 backdrop-blur-md rounded-2xl border border-slate-400/30 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.75)] overflow-hidden" data-testid="risedual-gpt-chat">
           <ChatHeader
             isPro={isPro} memoryEnabled={memoryEnabled} selectedImage={selectedImage}
             voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} stopSpeaking={stopSpeaking}

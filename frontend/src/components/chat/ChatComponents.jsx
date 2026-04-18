@@ -348,7 +348,7 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
   }, []);
 
   return (
-    <div className="border-t border-slate-400/25 px-3 py-2 pb-10 lg:pb-2 flex-shrink-0" data-testid="chat-input-area">
+    <div className="border-t border-slate-400/25 px-3 py-2 flex-shrink-0" data-testid="chat-input-area">
       {imagePreview && (
         <div className="mb-2 flex items-center gap-2 bg-slate-700/60 rounded-lg p-1.5">
           <img src={imagePreview} alt="Preview" className="h-10 rounded border border-slate-600" />
