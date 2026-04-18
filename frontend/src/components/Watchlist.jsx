@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
+import { openWarRoomForTicker } from '../utils/deepLink';
 import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
 import SparkLine from './SparkLine';
@@ -317,26 +318,7 @@ const Watchlist = ({ onSubscribe }) => {
                       )}
                     </button>
                     <button
-                      onClick={() => {
-                        try {
-                          fetch(`${API}/analytics/chip-event`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify({
-                              action: 'action-clicked',
-                              chip_text: `Open ${shift.symbol} War Room (SM Shift Alert)`,
-                              context_hub: typeof window !== 'undefined'
-                                ? (window.__risedualActiveView || null)
-                                : null,
-                            }),
-                          }).catch(() => { /* silent */ });
-                        } catch { /* silent */ }
-                        window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
-                        setTimeout(() => {
-                          window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: shift.symbol }));
-                        }, 180);
-                      }}
+                      onClick={() => openWarRoomForTicker({ ticker: shift.symbol, source: 'SM Shift Alert' })}
                       className={`shrink-0 inline-flex items-center gap-1 px-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors hover:brightness-125 ${
                         up ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-red-500/15 border-red-500/40 text-red-300'
                       }`}
@@ -433,28 +415,7 @@ const Watchlist = ({ onSubscribe }) => {
                     </button>
                     {hasScore && (
                       <button
-                        onClick={() => {
-                          // Level-2 deep-link: SM Board row → War Room (pre-filled ticker).
-                          // Fire-and-forget telemetry so we can measure adoption alongside chat chips.
-                          try {
-                            fetch(`${API}/analytics/chip-event`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              credentials: 'include',
-                              body: JSON.stringify({
-                                action: 'action-clicked',
-                                chip_text: `Open ${item.symbol} War Room (SM Board)`,
-                                context_hub: typeof window !== 'undefined'
-                                  ? (window.__risedualActiveView || null)
-                                  : null,
-                              }),
-                            }).catch(() => { /* silent */ });
-                          } catch { /* silent */ }
-                          window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
-                          setTimeout(() => {
-                            window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: item.symbol }));
-                          }, 180);
-                        }}
+                        onClick={() => openWarRoomForTicker({ ticker: item.symbol, source: 'SM Board' })}
                         className="text-slate-400 hover:text-orange-400 transition-colors"
                         title={`Open ${item.symbol} in AI War Room`}
                         data-testid={`watchlist-warroom-${item.symbol}`}

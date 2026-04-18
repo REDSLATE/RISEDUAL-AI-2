@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import { openWarRoomForTicker } from '../utils/deepLink';
 
 const BACKEND_URL = getApiBase();
-const API = `${BACKEND_URL}/api`;
 
 const COIN_COLORS = {
   BT: '#F7931A', ET: '#627EEA', BN: '#F3BA2F', SO: '#9945FF', XR: '#23292F',
@@ -24,25 +24,6 @@ const getHeatColor = (pct) => {
   return 'bg-red-600 text-white';
 };
 
-const dispatchDeepLink = (symbol) => {
-  try {
-    fetch(`${API}/analytics/chip-event`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        action: 'action-clicked',
-        chip_text: `Open ${symbol} War Room (Crypto Heatmap)`,
-        context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
-      }),
-    }).catch(() => { /* silent */ });
-  } catch { /* silent */ }
-  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: symbol }));
-  }, 180);
-};
-
 const CryptoTile = ({ crypto }) => {
   const abbr = crypto.symbol.substring(0, 2);
   const coinBg = COIN_COLORS[abbr] || '#6366f1';
@@ -53,7 +34,7 @@ const CryptoTile = ({ crypto }) => {
   return (
     <button
       type="button"
-      onClick={() => dispatchDeepLink(crypto.symbol)}
+      onClick={() => openWarRoomForTicker({ ticker: crypto.symbol, source: 'Crypto Heatmap' })}
       className={`${heat} text-left w-full rounded-xl p-3 transition-all hover:scale-[1.02] hover:brightness-110 cursor-pointer relative overflow-hidden`}
       style={{ minHeight: '84px' }}
       data-testid={`crypto-tile-${crypto.symbol}`}

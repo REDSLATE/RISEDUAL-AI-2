@@ -3,6 +3,7 @@ import { Card } from './ui/card';
 import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import axios from 'axios';
 import { getApiBase } from '../utils/apiBase';
+import { openWarRoomForTicker } from '../utils/deepLink';
 import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
 
@@ -119,24 +120,11 @@ const FearGreedGauge = () => {
           ask "is the macro signal strong enough to act on?" */}
       <button
         type="button"
-        onClick={() => {
-          try {
-            fetch(`${API}/analytics/chip-event`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                action: 'action-clicked',
-                chip_text: `Open SPY War Room (Fear & Greed: ${band.label} ${Math.round(value)})`,
-                context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
-              }),
-            }).catch(() => { /* silent */ });
-          } catch { /* silent */ }
-          window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: 'SPY' }));
-          }, 180);
-        }}
+        onClick={() => openWarRoomForTicker({
+          ticker: 'SPY',
+          source: 'Fear & Greed',
+          suffix: `(${band.label} ${Math.round(value)})`,
+        })}
         className={`w-full text-left rounded-xl border ${band.ring} ${band.soft} px-4 py-3 transition-all hover:brightness-110 hover:scale-[1.01] cursor-pointer group`}
         title={`Market reads ${band.label} — click to open SPY in War Room`}
         data-testid="fear-greed-verdict"

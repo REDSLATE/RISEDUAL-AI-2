@@ -54,6 +54,28 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Component Sweep + Deep-Link Consolidation (COMPLETED Feb 19, 2026)
+- **Deleted orphans** (no consumers anywhere):
+  - `components/intelligence/ScoreView.jsx`
+  - `components/BotsDashboard.jsx`
+  - `components/CryptoSection.jsx` (already removed in previous commit)
+- **New shared util** `/app/frontend/src/utils/deepLink.js` exporting a single
+  `openWarRoomForTicker({ticker, source, subTab?, suffix?})` helper that:
+  1. Logs `action-clicked` telemetry to `/api/analytics/chip-event`
+  2. Dispatches `risedualai-navigate` to the right hub/subtab
+  3. Dispatches `risedualai-warroom` ticker broadcast
+- **Refactored 5 callers** to use the helper — previously each had a
+  hand-written ~18-line try/fetch/dispatch block:
+  - `components/heatmap/SectorTile.jsx` (2 call sites: AI view + price view)
+  - `components/CryptoTicker.jsx` (crypto tile)
+  - `components/FearGreedGauge.jsx` (verdict tab, with `suffix` carrying the
+    live regime)
+  - `components/Watchlist.jsx` (SM shift alert + per-row SM Board button)
+- **Net reduction**: ~90 lines of duplicated code deleted. Changing telemetry
+  shape or adding a step now means editing one file.
+- Lint clean. E2E verified on 3 independent surfaces (XLF sector, ETH crypto,
+  Fear & Greed) after the consolidation — zero runtime errors.
+
 ### Fear & Greed Verdict Tab Redesign + Clickable Deep-Link (COMPLETED Feb 19, 2026)
 - Replaced the semi-circular gauge arc with a **verdict-tab card** that mirrors
   the AI War Room PASS/VETO / BULLISH / BEARISH visual language.

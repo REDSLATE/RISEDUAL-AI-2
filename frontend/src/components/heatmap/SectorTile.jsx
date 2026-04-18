@@ -1,28 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Badge } from '../ui/badge';
-import { getApiBase } from '../../utils/apiBase';
-
-const API = `${getApiBase()}/api`;
-
-const dispatchDeepLink = (symbol, source) => {
-  try {
-    fetch(`${API}/analytics/chip-event`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        action: 'action-clicked',
-        chip_text: `Open ${symbol} War Room (${source})`,
-        context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
-      }),
-    }).catch(() => { /* silent */ });
-  } catch { /* silent */ }
-  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: symbol }));
-  }, 180);
-};
+import { openWarRoomForTicker } from '../../utils/deepLink';
 
 const getHeatColor = (val) => {
   if (val >= 3) return 'bg-green-500 text-white';
@@ -84,7 +63,7 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
     return (
       <button
         type="button"
-        onClick={() => dispatchDeepLink(sector.symbol, 'AI Sector Heatmap')}
+        onClick={() => openWarRoomForTicker({ ticker: sector.symbol, source: 'AI Sector Heatmap' })}
         className={`${getSentimentColor(heatVal)} text-left w-full rounded-xl p-4 transition-all hover:scale-[1.02] hover:brightness-110 cursor-pointer relative overflow-hidden`}
         style={{ minHeight: `${Math.max(80, sector.weight * 4)}px` }}
         data-testid={`sector-tile-${sector.symbol}`}
@@ -118,7 +97,7 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
   return (
     <button
       type="button"
-      onClick={() => dispatchDeepLink(sector.symbol, 'Sector Heatmap')}
+      onClick={() => openWarRoomForTicker({ ticker: sector.symbol, source: 'Sector Heatmap' })}
       className={`${getHeatColor(val)} text-left w-full rounded-xl p-4 transition-all hover:scale-[1.02] hover:brightness-110 cursor-pointer relative overflow-hidden`}
       style={{ minHeight: `${Math.max(80, sector.weight * 4)}px` }}
       data-testid={`sector-tile-${sector.symbol}`}
