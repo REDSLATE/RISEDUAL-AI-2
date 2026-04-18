@@ -8,6 +8,7 @@ import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
 import SparkLine from './SparkLine';
+import ShareSmartMoneyBoard from './ShareSmartMoneyBoard';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -239,16 +240,23 @@ const Watchlist = ({ onSubscribe }) => {
           {isExpanded ? 'Collapse' : 'Expand'}
         </Button>
         {isExpanded && watchlist.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fetchQuotes(watchlist.map(item => item.symbol))}
-            disabled={refreshing}
-            className="text-slate-400 hover:text-slate-50 ml-1"
-            data-testid="watchlist-refresh-btn"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          </Button>
+          <div className="flex items-center gap-1 ml-1">
+            <ShareSmartMoneyBoard
+              watchlist={watchlist}
+              smartScores={smartScores}
+              smsHistory={smsHistory}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fetchQuotes(watchlist.map(item => item.symbol))}
+              disabled={refreshing}
+              className="text-slate-400 hover:text-slate-50"
+              data-testid="watchlist-refresh-btn"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         )}
       </div>
 

@@ -48,6 +48,15 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
+## Share My Smart Money Board (COMPLETED Apr 18)
+- New `components/ShareSmartMoneyBoard.jsx` — captures a styled off-screen card (top 5 watchlist rows with SM score + sparkline + signal label + RiseDual branding + date + methodology footer) via **html2canvas** (added to package.json) and:
+  - Uses **Web Share API** when available (mobile, modern browsers) for native share sheet
+  - Falls back to **PNG download** on desktop / unsupported browsers
+  - Button dynamically labels itself "Share Board" or "Download Board"; shows "Rendering…" → "✓ Shared/Downloaded" states
+- Mounted in the Watchlist header (appears only when expanded + has scored rows)
+- Card design: 560px wide @ 2x retina, dark navy gradient, cyan RISEDUAL AI brand accent, rounded row cards, colored SM badges, inline sparklines, signal labels
+- **Verified**: 180KB PNG generated, visually inspected — polished header, all 5 sparklines render correct colors, branding + date + footer all clean. No rendering glitches.
+
 ## Smart Money Sparkline Trends (COMPLETED Apr 18)
 - New `components/SparkLine.jsx` (70 lines) — lightweight inline SVG sparkline with:
   - Auto-scaled viewport (min/max ±5pt padding)
