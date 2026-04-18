@@ -5,6 +5,7 @@ import MarketPrediction from '../MarketPrediction';
 import CompanyResearch from '../CompanyResearch';
 import MacroDashboard from '../MacroDashboard';
 import useV2Nav from '../../hooks/useV2Nav';
+import IconTabBar from './IconTabBar';
 
 const MarketSignals = React.lazy(() => import('../MarketSignals'));
 const StrategyBuilder = React.lazy(() => import('../StrategyBuilder'));
@@ -14,30 +15,32 @@ const StockFitFundamentals = React.lazy(() => import('../StockFitFundamentals'))
 const StockFit13F = React.lazy(() => import('../StockFit13F'));
 const StockDetailHub = React.lazy(() => import('./StockDetailHub'));
 
-const TABS = [
-  { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen, v2: false },
-  { key: 'prediction', label: 'Predictions', icon: TrendingUp, v2: false },
-  // v2: Company + StockFit + 13F collapse into one "Stock Detail" tab
-  { key: 'stock',      label: 'Stock Detail', icon: Building2, onlyV2: true },
-  { key: 'company', label: 'Company', icon: Building2, v2: false },
-  { key: 'stockfit', label: 'StockFit', icon: FileText, v2: false },
-  { key: '13f', label: '13F Holders', icon: Users, v2: false },
-  { key: 'macro', label: 'Macro', icon: Globe2 },
-  { key: 'signals', label: 'Signals', icon: Radio, v2: false },
-  { key: 'strategy', label: 'Strategy', icon: Wand2 },
-  { key: 'marketplace', label: 'Marketplace', icon: Store },
-  { key: 'memory', label: 'Memory', icon: Database },
+// v2 tab set — Hypothesis/Predictions/Signals moved to War Room, Company/StockFit/13F merged
+const V2_TABS = [
+  { key: 'stock',       label: 'Stock Detail', icon: Building2, desc: 'Per-ticker drill: overview, fundamentals, holders' },
+  { key: 'macro',       label: 'Macro',        icon: Globe2,    desc: 'Global macro dashboard — rates, FX, commodities' },
+  { key: 'strategy',    label: 'Strategy',     icon: Wand2,     desc: 'Build & backtest custom trading strategies' },
+  { key: 'marketplace', label: 'Marketplace',  icon: Store,     desc: 'Browse shared strategies from the community' },
+  { key: 'memory',      label: 'Memory',       icon: Database,  desc: 'AI prediction memory — episodic recall & lessons' },
+];
+
+const LEGACY_TABS = [
+  { key: 'hypothesis',  label: 'Hypothesis',  icon: BookOpen,   desc: 'AI investment hypothesis — thesis generator' },
+  { key: 'prediction',  label: 'Predictions', icon: TrendingUp, desc: 'Raw AI market predictions with confidence' },
+  { key: 'company',     label: 'Company',     icon: Building2,  desc: 'Perplexity-style AI company research' },
+  { key: 'stockfit',    label: 'StockFit',    icon: FileText,   desc: 'SEC EDGAR — Income, Balance Sheet, F-Score, Z-Score' },
+  { key: '13f',         label: '13F Holders', icon: Users,      desc: 'Institutional positions & quarterly changes' },
+  { key: 'macro',       label: 'Macro',       icon: Globe2,     desc: 'Global macro dashboard' },
+  { key: 'signals',     label: 'Signals',     icon: Radio,      desc: 'Live technical & flow signals' },
+  { key: 'strategy',    label: 'Strategy',    icon: Wand2,      desc: 'Strategy builder' },
+  { key: 'marketplace', label: 'Marketplace', icon: Store,      desc: 'Strategy marketplace' },
+  { key: 'memory',      label: 'Memory',      icon: Database,   desc: 'AI memory dashboard' },
 ];
 
 export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
   const { enabled: v2Nav } = useV2Nav();
-  // When v2 is on, Hypothesis/Predictions/Signals live in the War Room hub.
-  // Company/StockFit/13F collapse into a single "Stock Detail" tab.
-  const visibleTabs = v2Nav
-    ? TABS.filter(t => t.v2 !== false)
-    : TABS.filter(t => !t.onlyV2);
+  const tabs = v2Nav ? V2_TABS : LEGACY_TABS;
 
-  // Map legacy initialTab values to the v2-merged equivalents
   const mapInitialTab = (raw) => {
     if (!raw) return v2Nav ? 'stock' : 'hypothesis';
     if (v2Nav) {
@@ -51,32 +54,18 @@ export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
 
   return (
     <div data-testid="research-hub">
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 border-b border-slate-700/50 scrollbar-hide">
-        {visibleTabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
-                tab === t.key
-                  ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              data-testid={`research-tab-${t.key}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <IconTabBar
+        tabs={tabs} value={tab} onChange={setTab}
+        enabled={v2Nav}
+        testIdPrefix="research-tab"
+        legendTitle="Research Legend"
+      />
 
       <React.Suspense fallback={fallback}>
         <div className="animate-enter">
+          {tab === 'stock' && v2Nav && <StockDetailHub />}
           {tab === 'hypothesis' && !v2Nav && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
           {tab === 'prediction' && !v2Nav && <MarketPrediction />}
-          {tab === 'stock' && v2Nav && <StockDetailHub />}
           {tab === 'company' && !v2Nav && <CompanyResearch />}
           {tab === 'stockfit' && !v2Nav && <StockFitFundamentals />}
           {tab === '13f' && !v2Nav && <StockFit13F />}

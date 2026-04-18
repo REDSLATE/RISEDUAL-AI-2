@@ -3,38 +3,29 @@ import { Radar, Activity, EyeOff } from 'lucide-react';
 import OptionsRadar from '../OptionsRadar';
 import OptionsFlowScreener from '../OptionsFlowScreener';
 import DarkPoolData from '../DarkPoolData';
+import useV2Nav from '../../hooks/useV2Nav';
+import IconTabBar from './IconTabBar';
 
 const TABS = [
-  { key: 'radar', label: 'Options Radar', icon: Radar },
-  { key: 'flow', label: 'Options Flow', icon: Activity },
-  { key: 'darkpool', label: 'Dark Pool', icon: EyeOff },
+  { key: 'radar',    label: 'Options Radar', icon: Radar,    desc: 'Unusual options activity & AI-scored opportunities' },
+  { key: 'flow',     label: 'Options Flow',  icon: Activity, desc: 'Real-time options flow screener & premium tracker' },
+  { key: 'darkpool', label: 'Dark Pool',     icon: EyeOff,   desc: 'Institutional dark-pool prints & volume clusters' },
 ];
 
 export default function OptionsHub({ onSubscribe, initialTab }) {
+  const { enabled: v2Nav } = useV2Nav();
   const [tab, setTab] = useState(initialTab || 'radar');
 
   return (
     <div data-testid="options-hub">
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 border-b border-slate-700/50 scrollbar-hide">
-        {TABS.map(t => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
-                tab === t.key
-                  ? 'bg-slate-800 text-[#3DE8D9] border-b-2 border-[#3DE8D9]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              data-testid={`options-tab-${t.key}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <IconTabBar
+        tabs={TABS} value={tab} onChange={setTab}
+        enabled={v2Nav}
+        accent="text-violet-300"
+        accentHex="#c4b5fd"
+        testIdPrefix="options-tab"
+        legendTitle="Options Legend"
+      />
 
       <div className="animate-enter">
         {tab === 'radar' && <OptionsRadar />}
