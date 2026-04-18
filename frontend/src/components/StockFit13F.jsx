@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building2, TrendingUp, TrendingDown, Plus, Minus, Search, Loader2, ArrowUpRight, Users } from 'lucide-react';
+import { Building2, TrendingUp, TrendingDown, Plus, Minus, Search, Loader2, ArrowUpRight, Users, Sparkles } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -7,6 +7,31 @@ import { Input } from './ui/input';
 import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api/stockfit/13f`;
+
+const delegateToAI = (prompt) => {
+  window.dispatchEvent(new CustomEvent('risedualai-open-chat', {
+    detail: { prefill: prompt, autoSend: true },
+  }));
+};
+
+const AskAIButton = ({ symbol, context, className = '' }) => {
+  if (!symbol) return null;
+  const prompt = context === 'holdings'
+    ? `Walk me through ${symbol}: current price, recent performance, technical setup, and why major institutions hold it. Include any notable 13F moves this quarter.`
+    : context?.startsWith('change-')
+      ? `Why did ${context.split('|')[1]} ${context.split('|')[2]} their position in ${symbol} last quarter? Give me a concise take on the likely thesis and what it means for the stock.`
+      : `Quick take on ${symbol}: institutional sentiment, technicals, and any recent news worth flagging.`;
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); delegateToAI(prompt); }}
+      className={`inline-flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-[#3DE8D9] hover:bg-[#3DE8D9]/10 transition-colors ${className}`}
+      title={`Ask AI about ${symbol}`}
+      data-testid={`stockfit-13f-ask-ai-${symbol}`}
+    >
+      <Sparkles className="w-3 h-3" />
+    </button>
+  );
+};
 
 const fmtUSD = (v) => {
   if (v == null) return 'N/A';
@@ -63,7 +88,10 @@ const HoldingsTable = ({ holdings, showInstitution = false }) => (
             )}
             <td className="py-2 pr-3">
               {h.symbol ? (
-                <span className="text-[#3DE8D9] font-bold">{h.symbol}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[#3DE8D9] font-bold">{h.symbol}</span>
+                  <AskAIButton symbol={h.symbol} context="holdings" />
+                </span>
               ) : (
                 <span className="text-slate-500 text-[10px]">—</span>
               )}
@@ -84,7 +112,7 @@ const HoldingsTable = ({ holdings, showInstitution = false }) => (
   </div>
 );
 
-const ChangesTable = ({ changes }) => (
+const ChangesTable = ({ changes, institutionName = '' }) => (
   <div className="overflow-x-auto" data-testid="stockfit-13f-changes-table">
     <table className="w-full text-xs">
       <thead>
@@ -98,26 +126,34 @@ const ChangesTable = ({ changes }) => (
         </tr>
       </thead>
       <tbody>
-        {changes.map((c, i) => (
-          <tr key={`${c.cusip}-${c.type}-${i}`} className="border-b border-slate-800/40 hover:bg-slate-800/30">
-            <td className="py-2 pr-3"><TypeBadge type={c.type} /></td>
-            <td className="py-2 pr-3">
-              {c.symbol ? (
-                <span className="text-[#3DE8D9] font-bold">{c.symbol}</span>
-              ) : (
-                <span className="text-slate-500 text-[10px]">—</span>
-              )}
-            </td>
-            <td className="py-2 pr-3 text-slate-300">{c.issuer}</td>
-            <td className={`py-2 px-2 text-right tabular-nums ${c.delta_shares > 0 ? 'text-emerald-400' : c.delta_shares < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-              {c.delta_shares > 0 ? '+' : ''}{fmtShares(c.delta_shares)}
-            </td>
-            <td className={`py-2 px-2 text-right tabular-nums ${c.delta_pct > 0 ? 'text-emerald-400' : c.delta_pct < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-              {c.delta_pct == null ? '—' : `${c.delta_pct > 0 ? '+' : ''}${Number(c.delta_pct).toFixed(1)}%`}
-            </td>
-            <td className="py-2 pl-2 text-right text-white font-semibold tabular-nums">{fmtUSD(c.value_usd)}</td>
-          </tr>
-        ))}
+        {changes.map((c, i) => {
+          const verbMap = { new: 'open a new position in', exited: 'exit its position in', increased: 'increase its stake in', decreased: 'trim its position in' };
+          const verb = verbMap[c.type] || 'change its position in';
+          const ctx = c.symbol ? `change-${c.type}|${institutionName || 'this institution'}|${verb}` : undefined;
+          return (
+            <tr key={`${c.cusip}-${c.type}-${i}`} className="border-b border-slate-800/40 hover:bg-slate-800/30">
+              <td className="py-2 pr-3"><TypeBadge type={c.type} /></td>
+              <td className="py-2 pr-3">
+                {c.symbol ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="text-[#3DE8D9] font-bold">{c.symbol}</span>
+                    <AskAIButton symbol={c.symbol} context={ctx} />
+                  </span>
+                ) : (
+                  <span className="text-slate-500 text-[10px]">—</span>
+                )}
+              </td>
+              <td className="py-2 pr-3 text-slate-300">{c.issuer}</td>
+              <td className={`py-2 px-2 text-right tabular-nums ${c.delta_shares > 0 ? 'text-emerald-400' : c.delta_shares < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                {c.delta_shares > 0 ? '+' : ''}{fmtShares(c.delta_shares)}
+              </td>
+              <td className={`py-2 px-2 text-right tabular-nums ${c.delta_pct > 0 ? 'text-emerald-400' : c.delta_pct < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                {c.delta_pct == null ? '—' : `${c.delta_pct > 0 ? '+' : ''}${Number(c.delta_pct).toFixed(1)}%`}
+              </td>
+              <td className="py-2 pl-2 text-right text-white font-semibold tabular-nums">{fmtUSD(c.value_usd)}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
     {changes.length === 0 && (
@@ -299,7 +335,7 @@ export default function StockFit13F() {
                   ({changes.previous?.period_end} → {changes.latest?.period_end} · {changes.total_changes} total changes)
                 </span>
               </h3>
-              <ChangesTable changes={changes.changes} />
+              <ChangesTable changes={changes.changes} institutionName={data.institution_name} />
             </Card>
           )}
         </>

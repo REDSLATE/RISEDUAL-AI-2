@@ -39,12 +39,16 @@
 - 276,298 ML snapshots, 80 tickers, 15 years, 98.2% regime coverage, 57,854 patterns
 - FRED snapshots accumulating daily (first snapshot: Apr 16, 2026)
 
-## AI Agent Delegation from Watchlist (COMPLETED Apr 18)
+## AI Agent Delegation from Watchlist + 13F Tables (COMPLETED Apr 18)
 - Added sparkle ✨ button to each watchlist row (`watchlist-delegate-ai-{SYMBOL}` test ID)
+- **Extended to 13F tables**: sparkle ✨ button on every ticker cell in both Holdings table and QoQ Changes table of the 13F Research Hub tab
+- Context-aware prompts:
+  - Watchlist: _"Analyze {SYMBOL}: current price, technical levels, recent news, latest 13F moves"_
+  - 13F Holdings cell: _"Walk me through {SYMBOL}: current price, recent performance, technical setup, why major institutions hold it"_
+  - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter? Give me a concise take on the likely thesis"_
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload
-- Chat listens for the event, prefills the input, and fires a 2nd event `risedualai-autosend` after a 400ms settle delay so React state updates before the send.
-- Prompt template: `"Analyze {SYMBOL} for me: current price, technical levels (support/resistance, RSI, moving averages), recent news or catalysts, and the latest 13F institutional holder changes. Give me a concise take."`
-- Verified live: AAPL sparkle click → chat opens → message auto-sends → 0 JS errors. The chat is now a proactive co-pilot instead of a standalone widget.
+- Chat listens for the event, prefills the input, and fires a 2nd event `risedualai-autosend` after a 400ms settle delay
+- Verified live: 40 sparkle buttons rendered in Berkshire view; click → chat opens → message auto-sends → 0 JS errors.
 
 ## CUSIP→Ticker Mapping Upgrade (COMPLETED Apr 18)
 - **Integrated OpenFIGI API** (free, no key needed at 25 req/min; free key bumps to 250 req/6s — settable via `OPENFIGI_API_KEY` env var)
@@ -55,7 +59,9 @@
 - Wired new `/api/stockfit/13f/backfill-cusips?top_only=true` admin endpoint + `/coverage` stats endpoint
 - Rewrote `get_holders_of_symbol` to use CUSIP-based primary match (falls back to fuzzy name match only when no CUSIP coverage)
 - Fixed name-normalization bug: `" LIMITED"` and `" INCORPORATED"` were missing from suffix strip list; also reordered to longer-first to prevent `" INC"` swallowing `" INCORPORATED"` partially
-- **Result**: Berkshire Q4-2025 top 25 holdings → **24/25 tickers resolved** (96%). Pre-upgrade coverage was ~85% with many foreign CUSIPs (e.g. CHUBB LIMITED) failing. CHUBB → CB now resolves correctly.
+- **Result**: Berkshire Q4-2025 top 25 holdings → **25/25 tickers resolved (100%)**. BlackRock top 10 → 10/10. Full database coverage: **6944/7843 CUSIPs (88.5%)** — remaining 11.5% are genuinely unmappable (foreign warrants, bonds, delisted securities that never appear in UI top-holdings views).
+- Backfill runtime: ~2.5 min for full 7843 CUSIPs with key (vs. 30+ min anon).
+- Env var `OPENFIGI_API_KEY` added to `/app/backend/.env`.
 
 ## Code Quality Refactoring (COMPLETED Apr 18)
 - **AlpacaOAuthDemo.jsx** (830 lines) decomposed into `oauth-demo/` folder: `DemoShared.jsx`, `StepLanding.jsx`, `StepDashboard.jsx`, `StepBrokerConnect.jsx`, `StepDisclosure.jsx`, `StepAlpacaAuth.jsx`, `StepSuccessRevoke.jsx`
@@ -95,6 +101,5 @@
 
 ## Backlog
 - P1: Connect Alpaca LIVE API keys via KeyVault (blocked on user account approval)
-- P2: Obtain OpenFIGI API key (free at https://www.openfigi.com/api/documentation) to drop CUSIP backfill runtime from minutes → seconds and allow full 7843-CUSIP resolution instead of top-50-per-institution
 - P2: Accumulate 30 live paper trading days for Tier 3 unlock
 - P2: QuiverQuant endpoint monitoring (blocked on external provider)
