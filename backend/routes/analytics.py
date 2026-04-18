@@ -34,6 +34,16 @@ def set_db(database) -> None:
     db = database
 
 
+async def _get_current_user_optional(request: Request):
+    """Wrap get_current_user to return None instead of raising for anon users."""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
+
+
 class RefHit(BaseModel):
     ref: str
     path: Optional[str] = None
@@ -189,7 +199,7 @@ async def log_help_search(payload: HelpSearchEvent, request: Request) -> dict:
     if not q or len(q) < 2 or len(q) > 120:
         return {"ok": False, "reason": "skip"}
 
-    user = await get_current_user(request)
+    user = await _get_current_user_optional(request)
     doc = {
         "q": q,
         "results_count": max(0, int(payload.results_count or 0)),
@@ -269,6 +279,88 @@ async def trigger_help_search_digest(request: Request) -> dict:
     user = await get_current_user(request)
     if not user or user.get("role") not in ("admin", "owner"):
         raise HTTPException(status_code=403, detail="Admin access required")
+
+@router.get("/help-search/suggestions")
+async def help_search_suggestions(q: str, request: Request) -> dict:
+    """Given a user's query, return:
+
+    * ``similar_answered`` — top queries that match and have returned results
+      (these are known-answered paths the user can click).
+    * ``gap_signal`` — if this query (or very similar) has appeared 3+ times as a
+      zero-result search in the last 30 days, flag it as a documented gap so
+      the UI can show transparency ("others hit this wall too").
+
+    Public-readable — no user data leaked. Safe to call from authed or anon
+    chat/help surfaces.
+    """
+    query = (q or "").strip().lower()
+    if not query or len(query) < 2:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+    if db is None:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+
+    # Tokenise the query for loose matching.
+    tokens = [t for t in query.split() if len(t) >= 2][:6]
+    if not tokens:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+
+    # Find queries that share at least one token AND returned results.
+    answered_pipeline = [
+        {"$match": {
+            "ts": {"$gte": since},
+            "results_count": {"$gt": 0},
+            "$or": [{"q": {"$regex": t, "$options": "i"}} for t in tokens],
+        }},
+        {"$group": {
+            "_id": "$q",
+            "count": {"$sum": 1},
+            "avg_results": {"$avg": "$results_count"},
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 5},
+    ]
+    similar_answered = []
+    async for row in db.help_search_events.aggregate(answered_pipeline):
+        q_val = row["_id"]
+        if q_val == query:
+            continue
+        similar_answered.append({
+            "q": q_val,
+            "count": row["count"],
+            "avg_results": round(row.get("avg_results") or 0, 1),
+        })
+
+    # Check if this query is itself a documented gap (3+ zero-result hits).
+    gap_pipeline = [
+        {"$match": {
+            "ts": {"$gte": since},
+            "results_count": 0,
+            "$or": [{"q": query}] + [{"q": {"$regex": t, "$options": "i"}} for t in tokens],
+        }},
+        {"$group": {
+            "_id": None,
+            "count": {"$sum": 1},
+            "users": {"$addToSet": "$user_id"},
+            "queries": {"$addToSet": "$q"},
+        }},
+    ]
+    gap_signal = None
+    async for row in db.help_search_events.aggregate(gap_pipeline):
+        count = row.get("count") or 0
+        uu = len([u for u in (row.get("users") or []) if u])
+        if count >= 3:
+            sample = [qq for qq in (row.get("queries") or []) if qq != query][:3]
+            gap_signal = {
+                "count": count,
+                "unique_users": uu,
+                "sample_queries": sample,
+            }
+
+    return {"query": query, "similar_answered": similar_answered[:3], "gap_signal": gap_signal}
+
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
     from services.help_search_digest import send_help_search_digest

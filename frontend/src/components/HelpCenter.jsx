@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, HelpCircle, Sparkles, Swords, Search as SearchIcon, Briefcase, Keyboard,
-  BarChart3, Zap, Info, BookOpen, ArrowRight,
+  BarChart3, Zap, Info, BookOpen, ArrowRight, AlertCircle,
 } from 'lucide-react';
 import IconTabBar from './hubs/IconTabBar';
 import useV2Nav from '../hooks/useV2Nav';
@@ -203,9 +203,11 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
   const { enabled: v2Nav } = useV2Nav();
   const [tab, setTab] = useState(initialSection || 'start');
   const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState(null);
   const results = useMemo(() => searchAll(query), [query]);
   const section = SECTIONS.find(s => s.key === tab) || SECTIONS[0];
   const telemetryTimer = useRef(null);
+  const suggestTimer = useRef(null);
 
   // Esc to close
   useEffect(() => {
@@ -233,6 +235,25 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
     }, 700);
     return () => telemetryTimer.current && clearTimeout(telemetryTimer.current);
   }, [query, results.length, contextHub]);
+
+  // On zero-result, ask backend for suggestions (similar answered queries + gap signal)
+  useEffect(() => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    const q = query.trim();
+    if (q.length < 2 || results.length > 0) {
+      setSuggestions(null);
+      return;
+    }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/analytics/help-search/suggestions?q=${encodeURIComponent(q)}`, {
+          credentials: 'include',
+        });
+        if (r.ok) setSuggestions(await r.json());
+      } catch { /* silent */ }
+    }, 500);
+    return () => suggestTimer.current && clearTimeout(suggestTimer.current);
+  }, [query, results.length]);
 
   const go = (viewSubTab) => {
     if (!v2Nav || !onNavigate || !viewSubTab) return;
@@ -295,10 +316,50 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
             /* Search results list */
             <div className="space-y-2">
               {results.length === 0 && (
-                <div className="text-slate-400 text-sm py-10 text-center">
-                  <Zap className="w-5 h-5 mx-auto mb-2 text-slate-600" />
-                  <p>Nothing found for <span className="text-white">&ldquo;{query}&rdquo;</span>.</p>
-                  <p className="text-[11px] mt-1 text-slate-500">Your search was logged — the admin panel tracks gaps.</p>
+                <div className="py-4">
+                  <div className="text-center py-6">
+                    <Zap className="w-5 h-5 mx-auto mb-2 text-slate-600" />
+                    <p className="text-slate-400 text-sm">Nothing found for <span className="text-white">&ldquo;{query}&rdquo;</span>.</p>
+                    <p className="text-[11px] mt-1 text-slate-500">Your search was logged — the admin panel tracks gaps.</p>
+                  </div>
+
+                  {/* Did-you-mean: similar answered queries */}
+                  {suggestions?.similar_answered?.length > 0 && (
+                    <div className="rounded-xl border border-[#3DE8D9]/30 bg-[#3DE8D9]/5 p-3 mb-3">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Sparkles className="w-3.5 h-3.5 text-[#3DE8D9]" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#3DE8D9]">Did you mean?</span>
+                      </div>
+                      <div className="space-y-1">
+                        {suggestions.similar_answered.map((s, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setQuery(s.q)}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-900/50 border border-slate-700/40 text-left hover:border-[#3DE8D9]/40 hover:bg-slate-800/60 transition-colors group"
+                            data-testid={`help-suggest-${i}`}
+                          >
+                            <span className="text-white text-xs font-medium truncate group-hover:text-[#3DE8D9]">&ldquo;{s.q}&rdquo;</span>
+                            <span className="text-[10px] text-slate-500 shrink-0">{s.count} search{s.count === 1 ? '' : 'es'} · ~{s.avg_results} result{s.avg_results === 1 ? '' : 's'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transparency: documented gap signal */}
+                  {suggestions?.gap_signal && (
+                    <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-orange-400" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-300">Known Gap</span>
+                      </div>
+                      <p className="text-orange-100/90 text-xs leading-relaxed">
+                        {suggestions.gap_signal.unique_users} other user{suggestions.gap_signal.unique_users === 1 ? ' has' : 's have'} searched for this
+                        {' '}({suggestions.gap_signal.count} times in the last 30 days) with no match.
+                        Your search helps us prioritise — this is on our feature-gap radar.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               {results.map((r, i) => {

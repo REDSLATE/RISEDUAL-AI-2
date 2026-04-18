@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX, Pin } from 'lucide-react';
+import { User, Copy, Check, ImageIcon, Mic, MicOff, Volume2, VolumeX, Pin, AlertCircle, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { authFetch } from '../../contexts/AuthContext';
 import logger from '../../utils/logger';
@@ -163,8 +163,30 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
   const fileRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [precheck, setPrecheck] = useState(null);
+  const precheckTimer = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+
+  // Debounced precheck — when the user types a question the Help Center has
+  // marked as a known gap, surface a transparent hint above the input.
+  useEffect(() => {
+    if (precheckTimer.current) clearTimeout(precheckTimer.current);
+    const q = (input || '').trim();
+    if (q.length < 8) { setPrecheck(null); return; }
+    precheckTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`${apiBase}/analytics/help-search/suggestions?q=${encodeURIComponent(q)}`, {
+          credentials: 'include',
+        });
+        if (r.ok) {
+          const data = await r.json();
+          setPrecheck(data.gap_signal ? data : null);
+        }
+      } catch { /* silent */ }
+    }, 650);
+    return () => precheckTimer.current && clearTimeout(precheckTimer.current);
+  }, [input, apiBase]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -232,6 +254,27 @@ const ChatInputArea = ({ input, setInput, onSend, loading, imagePreview, onImage
           <img src={imagePreview} alt="Preview" className="h-10 rounded border border-slate-600" />
           <span className="text-slate-400 text-[11px]">Image attached</span>
           <button onClick={onClearImage} className="text-orange-400 text-[11px] hover:text-orange-300 ml-auto">Remove</button>
+        </div>
+      )}
+
+      {/* Known-gap transparency banner — only shown when the user's draft matches
+          a frequently-unanswered Help Center query. Non-blocking, dismissible. */}
+      {precheck?.gap_signal && (
+        <div className="mb-2 flex items-start gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-2.5 py-1.5" data-testid="chat-gap-hint">
+          <AlertCircle className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0 text-[11px] leading-relaxed">
+            <span className="text-orange-300 font-semibold">Heads up:</span>
+            <span className="text-orange-200/90 ml-1">
+              {precheck.gap_signal.unique_users} other user{precheck.gap_signal.unique_users === 1 ? ' has' : 's have'} asked about this recently — no Help docs yet. I&rsquo;ll do my best.
+            </span>
+          </div>
+          <button
+            onClick={() => setPrecheck(null)}
+            className="text-orange-400/70 hover:text-orange-300 p-0.5 shrink-0"
+            aria-label="Dismiss"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
       <div className="flex gap-1.5 items-end">
