@@ -122,7 +122,7 @@ const CryptoTicker = () => {
 
   return (
     <div className="bg-[#060E1F] border-b border-slate-400/30 px-3 sm:px-6 py-3" data-testid="crypto-heatmap">
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         {cryptos.slice(0, 8).map((c) => (
           <CryptoTile key={c.symbol} crypto={c} />
         ))}
