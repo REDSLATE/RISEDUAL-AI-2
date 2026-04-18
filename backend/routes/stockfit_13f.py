@@ -21,6 +21,7 @@ from services.sec_13f_service import (
     get_holders_of_symbol,
     get_quarterly_changes,
 )
+from services.cusip_mapper import backfill_from_holdings
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -154,3 +155,42 @@ async def trigger_refresh(body: RefreshRequest, request: Request) -> dict:
     # Full refresh — run inline; user is admin and expects the wait
     result = await refresh_all_institutions(db, max_filings=2)
     return {"ok": True, "summary": result}
+
+
+@router.post("/backfill-cusips")
+async def backfill_cusips(request: Request, limit: int = 5000, top_only: bool = False) -> dict:
+    """Admin-only: resolve CUSIP → ticker for CUSIPs stored in ``sec_13f_holdings``
+    using OpenFIGI. Persists mappings to ``cusip_ticker_map`` so lookups are instant.
+
+    Parameters:
+      - ``top_only=true`` — only resolve top 50 CUSIPs per institution (~600 CUSIPs, ~3 min anon)
+      - ``top_only=false`` (default) — resolve ALL distinct CUSIPs (~7800, ~30 min anon)
+
+    Set ``OPENFIGI_API_KEY`` env var to drop runtime from minutes to seconds
+    (free key at https://www.openfigi.com/api/documentation).
+    """
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    result = await backfill_from_holdings(db, limit=min(limit, 20000), top_only=top_only)
+    return {"ok": True, "summary": result}
+
+
+@router.get("/coverage")
+async def cusip_coverage() -> dict:
+    """Return CUSIP→ticker mapping coverage stats."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    distinct_cusips = await db.sec_13f_holdings.distinct("cusip")
+    distinct_cusips = [c for c in distinct_cusips if c]
+    mapped_count = await db.cusip_ticker_map.count_documents({
+        "cusip": {"$in": distinct_cusips}, "ticker": {"$ne": None},
+    })
+    total = len(distinct_cusips)
+    return {
+        "total_cusips_in_holdings": total,
+        "mapped_cusips": mapped_count,
+        "coverage_pct": round(mapped_count / total * 100, 2) if total else 0.0,
+    }

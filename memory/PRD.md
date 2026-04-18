@@ -39,6 +39,24 @@
 - 276,298 ML snapshots, 80 tickers, 15 years, 98.2% regime coverage, 57,854 patterns
 - FRED snapshots accumulating daily (first snapshot: Apr 16, 2026)
 
+## AI Agent Delegation from Watchlist (COMPLETED Apr 18)
+- Added sparkle ✨ button to each watchlist row (`watchlist-delegate-ai-{SYMBOL}` test ID)
+- Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload
+- Chat listens for the event, prefills the input, and fires a 2nd event `risedualai-autosend` after a 400ms settle delay so React state updates before the send.
+- Prompt template: `"Analyze {SYMBOL} for me: current price, technical levels (support/resistance, RSI, moving averages), recent news or catalysts, and the latest 13F institutional holder changes. Give me a concise take."`
+- Verified live: AAPL sparkle click → chat opens → message auto-sends → 0 JS errors. The chat is now a proactive co-pilot instead of a standalone widget.
+
+## CUSIP→Ticker Mapping Upgrade (COMPLETED Apr 18)
+- **Integrated OpenFIGI API** (free, no key needed at 25 req/min; free key bumps to 250 req/6s — settable via `OPENFIGI_API_KEY` env var)
+- Added `services/cusip_mapper.py` with:
+  - Persistent MongoDB caching (`cusip_ticker_map` collection — stores `{cusip, ticker, name, exchange, figi, security_type, resolved_at}`)
+  - Negative-caching for unresolvable CUSIPs so we don't retry
+  - Auto-detects API key to pick the right batch size (10 anon / 100 keyed) and rate
+- Wired new `/api/stockfit/13f/backfill-cusips?top_only=true` admin endpoint + `/coverage` stats endpoint
+- Rewrote `get_holders_of_symbol` to use CUSIP-based primary match (falls back to fuzzy name match only when no CUSIP coverage)
+- Fixed name-normalization bug: `" LIMITED"` and `" INCORPORATED"` were missing from suffix strip list; also reordered to longer-first to prevent `" INC"` swallowing `" INCORPORATED"` partially
+- **Result**: Berkshire Q4-2025 top 25 holdings → **24/25 tickers resolved** (96%). Pre-upgrade coverage was ~85% with many foreign CUSIPs (e.g. CHUBB LIMITED) failing. CHUBB → CB now resolves correctly.
+
 ## Code Quality Refactoring (COMPLETED Apr 18)
 - **AlpacaOAuthDemo.jsx** (830 lines) decomposed into `oauth-demo/` folder: `DemoShared.jsx`, `StepLanding.jsx`, `StepDashboard.jsx`, `StepBrokerConnect.jsx`, `StepDisclosure.jsx`, `StepAlpacaAuth.jsx`, `StepSuccessRevoke.jsx`
 - **SmartOrderPanel.jsx** (440 lines) decomposed into `smart-orders/SmartOrderList.jsx` and `smart-orders/SmartOrderPreview.jsx`
@@ -77,6 +95,6 @@
 
 ## Backlog
 - P1: Connect Alpaca LIVE API keys via KeyVault (blocked on user account approval)
-- P2: Improve CUSIP→ticker mapping (currently ~85% coverage; add SEC 13F Securities list for 100% coverage)
+- P2: Obtain OpenFIGI API key (free at https://www.openfigi.com/api/documentation) to drop CUSIP backfill runtime from minutes → seconds and allow full 7843-CUSIP resolution instead of top-50-per-institution
 - P2: Accumulate 30 live paper trading days for Tier 3 unlock
 - P2: QuiverQuant endpoint monitoring (blocked on external provider)

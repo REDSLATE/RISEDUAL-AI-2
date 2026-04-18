@@ -106,11 +106,11 @@ def _normalize(name: str) -> str:
         return ""
     n = name.upper()
     # Strip common corporate suffixes/punctuation
-    for suffix in [" INC", " INCORPORATED", " CORP", " CORPORATION", " CO", " COMPANY",
-                   " LLC", " LTD", " PLC", " SA", " NV", " AG", " HOLDINGS", " HOLDING",
-                   " GROUP", " LP", " L.P.", " N.V.", " S.A.", " NEW", " CLASS A",
-                   " CLASS B", " CL A", " CL B", " COM", " COMMON", " /DE/", " /MD/",
-                   " /NY/", " /DE", " TRUST"]:
+    for suffix in [" INCORPORATED", " INC", " CORPORATION", " CORP", " COMPANY", " CO",
+                   " LIMITED", " LTD", " LLC", " PLC", " SA", " NV", " AG",
+                   " HOLDINGS", " HOLDING", " GROUP", " LP", " L.P.", " N.V.", " S.A.",
+                   " NEW", " CLASS A", " CLASS B", " CL A", " CL B", " COM", " COMMON",
+                   " /DE/", " /MD/", " /NY/", " /DE", " TRUST"]:
         n = n.replace(suffix, "")
     # Common long-form abbreviations
     replacements = [
@@ -127,10 +127,29 @@ def _normalize(name: str) -> str:
     return n
 
 
-async def _issuer_to_ticker(issuer: str, cusip: str = "") -> str | None:
-    """Best-effort map an issuer name from a 13F filing to a ticker."""
+async def _issuer_to_ticker(issuer: str, cusip: str = "", db=None) -> str | None:
+    """Best-effort map an issuer name (or CUSIP via OpenFIGI cache) to a ticker.
+
+    Preference order:
+      1. Persistent ``cusip_ticker_map`` cache (populated via OpenFIGI)
+      2. In-memory name-based fuzzy match against SEC company_tickers.json
+    """
+    # 1) Exact CUSIP → ticker from persistent MongoDB cache (OpenFIGI-backed)
+    if cusip and db is not None:
+        try:
+            row = await db.cusip_ticker_map.find_one(
+                {"cusip": cusip.upper()}, {"_id": 0, "ticker": 1}
+            )
+            if row and row.get("ticker"):
+                _CUSIP_TICKER_CACHE[cusip] = row["ticker"]
+                return row["ticker"]
+        except Exception:
+            pass
+
     if cusip and cusip in _CUSIP_TICKER_CACHE:
         return _CUSIP_TICKER_CACHE[cusip]
+
+    # 2) Fall back to fuzzy name matching
     tickers = await _load_sec_tickers()
     if not tickers:
         return None
@@ -423,28 +442,28 @@ async def get_institution_holdings(db, cik: str, limit: int = 50) -> dict:
 
     # Attempt to enrich with ticker symbol
     for h in holdings:
-        sym = await _issuer_to_ticker(h.get("issuer", ""), h.get("cusip", ""))
+        sym = await _issuer_to_ticker(h.get("issuer", ""), h.get("cusip", ""), db=db)
         if sym:
             h["symbol"] = sym
     return {"cik": cik, "filing": meta, "holdings": holdings}
 
 
 async def get_holders_of_symbol(db, symbol: str, limit: int = 50) -> dict:
-    """Find all tracked institutions holding a given symbol (latest quarter)."""
+    """Find all tracked institutions holding a given symbol (latest quarter).
+
+    Strategy:
+      1. Find all CUSIPs associated with this ticker in ``cusip_ticker_map``
+         (populated via OpenFIGI). These are the *authoritative* matches.
+      2. Fall back to fuzzy issuer-name matching if no CUSIP map is available yet.
+    """
     symbol_u = symbol.upper()
-    # Resolve symbol → company title from SEC tickers
+    # Resolve symbol → company title from SEC tickers (for UI header + fallback)
     tickers = await _load_sec_tickers()
     company_title = None
     for t in tickers:
         if (t.get("ticker") or "").upper() == symbol_u:
             company_title = t.get("title")
             break
-    if not company_title:
-        return {"symbol": symbol_u, "holders": []}
-
-    norm_target = _normalize(company_title)
-    if not norm_target:
-        return {"symbol": symbol_u, "holders": []}
 
     # Find the most recent filing per institution
     pipeline = [
@@ -456,36 +475,48 @@ async def get_holders_of_symbol(db, symbol: str, limit: int = 50) -> dict:
         }},
     ]
     latest_filings = await db.sec_13f_filings.aggregate(pipeline).to_list(500)
-
     if not latest_filings:
         return {"symbol": symbol_u, "company": company_title, "holders": []}
-
-    # Query holdings matching company name (case-insensitive substring on normalized name)
     latest_accessions = [f["accession"] for f in latest_filings]
-    # Build candidate name variants (escape special regex chars)
-    first_two = " ".join(norm_target.split()[:2])
-    if len(first_two) < 3:
-        return {"symbol": symbol_u, "company": company_title, "holders": []}
-    pattern = re.escape(first_two)
 
-    cursor = db.sec_13f_holdings.find(
-        {
-            "accession": {"$in": latest_accessions},
-            "issuer": {"$regex": pattern, "$options": "i"},
-            # Exclude derivative positions (PUT/CALL) — caller wants common-stock ownership
-            "put_call": {"$in": ["", None]},
-        },
-        {"_id": 0},
+    # --- Primary path: resolve ticker → CUSIPs via OpenFIGI cache ---
+    cusips_cursor = db.cusip_ticker_map.find(
+        {"ticker": symbol_u}, {"_id": 0, "cusip": 1}
     )
-    matches = await cursor.to_list(2000)
+    matching_cusips = [d["cusip"] async for d in cusips_cursor if d.get("cusip")]
 
-    # Filter: normalized issuer must START with first_two. Aggregate by (cik, cusip)
-    # because the same institution may list the same position across subsidiary accounts.
-    from collections import defaultdict
+    matches: list[dict] = []
+    if matching_cusips:
+        cursor = db.sec_13f_holdings.find(
+            {
+                "accession": {"$in": latest_accessions},
+                "cusip": {"$in": matching_cusips},
+                "put_call": {"$in": ["", None]},
+            },
+            {"_id": 0},
+        )
+        matches = await cursor.to_list(5000)
+
+    # --- Fallback: fuzzy issuer-name match when CUSIP map has no coverage ---
+    if not matches and company_title:
+        norm_target = _normalize(company_title)
+        first_two = " ".join(norm_target.split()[:2])
+        if len(first_two) >= 3:
+            pattern = re.escape(first_two)
+            cursor = db.sec_13f_holdings.find(
+                {
+                    "accession": {"$in": latest_accessions},
+                    "issuer": {"$regex": pattern, "$options": "i"},
+                    "put_call": {"$in": ["", None]},
+                },
+                {"_id": 0},
+            )
+            raw = await cursor.to_list(2000)
+            matches = [m for m in raw if _normalize(m.get("issuer", "")).startswith(first_two)]
+
+    # Aggregate by (cik, cusip) — same institution may list the position across subsidiaries.
     agg: dict[tuple, dict] = {}
     for m in matches:
-        if not _normalize(m.get("issuer", "")).startswith(first_two):
-            continue
         key = (m.get("cik"), m.get("cusip") or m.get("issuer"))
         existing = agg.get(key)
         if existing is None:
@@ -575,7 +606,7 @@ async def get_quarterly_changes(db, cik: str, limit: int = 30) -> dict:
 
     # Enrich with ticker symbol where possible
     for c in changes:
-        sym = await _issuer_to_ticker(c.get("issuer", ""), c.get("cusip", ""))
+        sym = await _issuer_to_ticker(c.get("issuer", ""), c.get("cusip", ""), db=db)
         if sym:
             c["symbol"] = sym
 

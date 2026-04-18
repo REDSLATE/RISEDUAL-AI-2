@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Star, X, Plus, TrendingUp, TrendingDown, Lock, RefreshCw } from 'lucide-react';
+import { Star, X, Plus, TrendingUp, TrendingDown, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -264,8 +264,21 @@ const Watchlist = ({ onSubscribe }) => {
                       <span className="text-slate-300 text-sm">${item.price.toFixed(2)}</span>
                     )}
                     <button
+                      onClick={() => {
+                        const prompt = `Analyze ${item.symbol} for me: current price, technical levels (support/resistance, RSI, moving averages), recent news or catalysts, and the latest 13F institutional holder changes. Give me a concise take.`;
+                        window.dispatchEvent(new CustomEvent('risedualai-open-chat', { detail: { prefill: prompt, autoSend: true } }));
+                      }}
+                      className="text-slate-400 hover:text-[#3DE8D9] transition-colors"
+                      title={`Ask AI to analyze ${item.symbol}`}
+                      data-testid={`watchlist-delegate-ai-${item.symbol}`}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => removeSymbol(item.symbol)}
                       className="text-slate-400 hover:text-orange-400 transition-colors"
+                      title="Remove"
+                      data-testid={`watchlist-remove-${item.symbol}`}
                     >
                       <X className="w-4 h-4" />
                     </button>

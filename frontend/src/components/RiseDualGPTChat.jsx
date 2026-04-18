@@ -39,10 +39,33 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    const handler = () => setIsOpen(true);
+    const handler = (e) => {
+      setIsOpen(true);
+      const detail = e?.detail;
+      if (detail?.prefill) {
+        setInput(detail.prefill);
+        if (detail.autoSend) {
+          // Defer so the input state settles and the chat mounts before send
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('risedualai-autosend'));
+          }, 400);
+        }
+      }
+    };
     window.addEventListener('risedualai-open-chat', handler);
     return () => window.removeEventListener('risedualai-open-chat', handler);
   }, []);
+
+  // Autosend hook — fires `sendMessage` once input is set
+  useEffect(() => {
+    const handler = () => {
+      if (input.trim()) sendMessage();
+    };
+    window.addEventListener('risedualai-autosend', handler);
+    return () => window.removeEventListener('risedualai-autosend', handler);
+    // sendMessage dependency intentionally omitted — always uses latest via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
 
   const handleCopy = useCallback((idx, text) => {
     navigator.clipboard.writeText(text);
