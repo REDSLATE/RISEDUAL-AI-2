@@ -48,6 +48,16 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
+## Smart Money Sparkline Trends (COMPLETED Apr 18)
+- New `components/SparkLine.jsx` (70 lines) — lightweight inline SVG sparkline with:
+  - Auto-scaled viewport (min/max ±5pt padding)
+  - Filled area underlay + polyline + terminal dot
+  - Auto-color from 7-day slope: green (up), red (down), amber (flat)
+  - Accessible `aria-label` includes trend direction
+- New batch endpoint `GET /api/stockfit/13f/smart-money-history?symbols=AAPL,NVDA,...&days=30` — fetches up to 50 symbols in one request, avoiding N+1 calls
+- Integrated into Watchlist: 50×14 px sparkline renders beside each SM badge
+- **Visual verified**: 5 symbols (AAPL ↗ green, NVDA ↘ red, MSFT → green, TSLA ↗ green, META ↘ red) — each sparkline color-matches the actual 30-day trend. 0 JS errors.
+
 ## Smart Money Regime-Shift Alerts (COMPLETED Apr 18)
 - Added `services/sec_13f_service.snapshot_smart_money_scores()` — writes daily `{symbol, date, score, signal, counts}` rows to `smart_money_scores` (idempotent per UTC day).
 - Added `detect_smart_money_shifts(db, symbols, threshold=10)` — diffs new score vs. previous snapshot, creates `{type: 'smart_money_shift', prev_score, new_score, delta, signal_change, top_movers[]}` in `sec_13f_alerts`, broadcasts VAPID push notification titled _"AAPL Smart Money: 20 ↗ 44"_ with body _"+24 pts · now neutral · BlackRock increased"_.

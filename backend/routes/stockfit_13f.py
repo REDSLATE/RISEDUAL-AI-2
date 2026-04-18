@@ -238,6 +238,27 @@ async def smart_money_history(symbol: str, days: int = 30) -> dict:
     return {"symbol": symbol.upper(), "history": rows, "count": len(rows)}
 
 
+@router.get("/smart-money-history")
+async def smart_money_history_batch(symbols: str, days: int = 30) -> dict:
+    """Batch: {symbol: [...]} history for multiple symbols. Max 50 symbols."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:50]
+    if not syms:
+        raise HTTPException(status_code=400, detail="symbols query parameter is required (comma-separated)")
+    limit = min(days, 180)
+    histories: dict[str, list] = {}
+    for sym in syms:
+        cursor = db.smart_money_scores.find(
+            {"symbol": sym},
+            {"_id": 0, "date": 1, "score": 1, "signal": 1},
+        ).sort("date", -1).limit(limit)
+        rows = await cursor.to_list(limit)
+        rows.reverse()
+        histories[sym] = rows
+    return {"histories": histories, "count": len(histories)}
+
+
 @router.post("/smart-money-scan")
 async def smart_money_scan(request: Request, threshold: int = 10) -> dict:
     """Admin-only: snapshot Smart Money Scores for all watchlist symbols and

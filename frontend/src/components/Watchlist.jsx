@@ -7,6 +7,7 @@ import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 import InfoTooltip from './InfoTooltip';
+import SparkLine from './SparkLine';
 
 const API = `${getApiBase()}/api`;
 const FREE_WATCHLIST_LIMIT = 3;
@@ -34,6 +35,7 @@ const Watchlist = ({ onSubscribe }) => {
   }, []);
 
   const [smsShifts, setSmsShifts] = useState([]);
+  const [smsHistory, setSmsHistory] = useState({});
 
   // Fetch recent Smart Money Score shift alerts for this user's watchlist
   const fetchSmsShifts = useCallback(async () => {
@@ -45,6 +47,19 @@ const Watchlist = ({ onSubscribe }) => {
       setSmsShifts(shifts.slice(0, 3));
     } catch (e) {
       logger.debug('SMS shifts fetch failed:', e);
+    }
+  }, []);
+
+  // Batch fetch 30-day SMS history for all watchlist symbols (one request)
+  const fetchSmsHistory = useCallback(async (symbols) => {
+    if (!symbols.length) return;
+    try {
+      const res = await fetch(`${API}/stockfit/13f/smart-money-history?symbols=${symbols.join(',')}&days=30`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSmsHistory(data.histories || {});
+    } catch (e) {
+      logger.debug('SMS history fetch failed:', e);
     }
   }, []);
 
@@ -168,14 +183,15 @@ const Watchlist = ({ onSubscribe }) => {
   useEffect(() => {
     if (!isExpanded || !watchlist.length) return;
     const symbols = watchlist.map(item => item.symbol);
-    // Fetch smart scores + shift alerts once per expand
+    // Fetch smart scores + history + shift alerts once per expand
     fetchSmartScores(symbols);
+    fetchSmsHistory(symbols);
     fetchSmsShifts();
     const interval = setInterval(() => {
       fetchQuotes(symbols);
     }, 60000);
     return () => clearInterval(interval);
-  }, [isExpanded, watchlist, fetchQuotes, fetchSmartScores, fetchSmsShifts]);
+  }, [isExpanded, watchlist, fetchQuotes, fetchSmartScores, fetchSmsShifts, fetchSmsHistory]);
 
   const addSymbol = () => {
     if (!newSymbol.trim()) return;
@@ -336,6 +352,15 @@ const Watchlist = ({ onSubscribe }) => {
                     >
                       SM {hasScore ? sm.score : '—'}
                     </button>
+                    {smsHistory[item.symbol]?.length >= 2 && (
+                      <SparkLine
+                        points={smsHistory[item.symbol]}
+                        width={50}
+                        height={14}
+                        className="opacity-90 hover:opacity-100"
+                        data-testid={`watchlist-sparkline-${item.symbol}`}
+                      />
+                    )}
                     {item.changePercent !== 0 && (
                       <div className={`flex items-center gap-1 text-sm ${
                         item.changePercent >= 0 ? 'text-lime-400' : 'text-orange-400'
