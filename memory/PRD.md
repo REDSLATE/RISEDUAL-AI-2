@@ -48,7 +48,15 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
-### Smart Money Score (0–100) per symbol
+## Smart Money Regime-Shift Alerts (COMPLETED Apr 18)
+- Added `services/sec_13f_service.snapshot_smart_money_scores()` — writes daily `{symbol, date, score, signal, counts}` rows to `smart_money_scores` (idempotent per UTC day).
+- Added `detect_smart_money_shifts(db, symbols, threshold=10)` — diffs new score vs. previous snapshot, creates `{type: 'smart_money_shift', prev_score, new_score, delta, signal_change, top_movers[]}` in `sec_13f_alerts`, broadcasts VAPID push notification titled _"AAPL Smart Money: 20 ↗ 44"_ with body _"+24 pts · now neutral · BlackRock increased"_.
+- Integrated into existing `scan_and_alert` → runs automatically at **08:00 UTC daily** right after the 13F refresh job, scanning every symbol that appears in any user's watchlist.
+- New endpoints:
+  - `GET /api/stockfit/13f/smart-money-history/{symbol}?days=30` — chronological SMS timeline per symbol
+  - `POST /api/stockfit/13f/smart-money-scan?threshold=10` — admin-only manual trigger
+- **Frontend**: compact colored shift banners in the Watchlist panel above the ticker list (green for up-shifts, red for down-shifts). Each banner shows `SYMBOL Smart Money {prev} ↗/↘ {new} ({delta} pts) now {signal}`. **Click any banner** → delegates to AI with a regime-shift prompt that includes the top mover's institution and action.
+- Verified end-to-end: seeded fake Apr-17 baseline (AAPL=20, NVDA=80), ran scan → 2 alerts created (AAPL +24, NVDA -22), both banners rendered in UI, click → chat opened with contextual prompt auto-sent. 0 JS errors.
 - New `services/sec_13f_service.compute_smart_money_score(db, symbol)` — aggregates QoQ position changes across tracked institutions, weighted by `log10(AUM/$1B + 1)` so BlackRock/Vanguard don't dominate but still count more than smaller funds. Maps signed-weighted-sum to 0–100 where 50 = neutral, ≥60 = bullish institutional consensus, ≤40 = bearish.
 - Endpoints: `GET /api/stockfit/13f/smart-money-score/{symbol}`, `GET /api/stockfit/13f/smart-money-scores?symbols=AAPL,NVDA,...` (batch, 50 max)
 - Returns: `{score, signal, bullish_count, bearish_count, holder_count, net_flow_usd, total_value_usd, contributors[]}`

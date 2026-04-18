@@ -22,6 +22,8 @@ from services.sec_13f_service import (
     get_quarterly_changes,
     compute_smart_money_score,
     compute_smart_money_scores_batch,
+    snapshot_smart_money_scores,
+    detect_smart_money_shifts,
 )
 from services.cusip_mapper import backfill_from_holdings
 from services.auth_helpers import get_current_user
@@ -220,3 +222,40 @@ async def smart_money_scores_batch(symbols: str) -> dict:
         raise HTTPException(status_code=400, detail="symbols query parameter is required (comma-separated)")
     scores = await compute_smart_money_scores_batch(db, syms)
     return {"scores": scores, "count": len(scores)}
+
+
+@router.get("/smart-money-history/{symbol}")
+async def smart_money_history(symbol: str, days: int = 30) -> dict:
+    """Return daily Smart Money Score history (up to ``days`` days) for a symbol."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    cursor = db.smart_money_scores.find(
+        {"symbol": symbol.upper()},
+        {"_id": 0, "date": 1, "score": 1, "signal": 1, "bullish_count": 1, "bearish_count": 1},
+    ).sort("date", -1).limit(min(days, 180))
+    rows = await cursor.to_list(180)
+    rows.reverse()  # chronological asc
+    return {"symbol": symbol.upper(), "history": rows, "count": len(rows)}
+
+
+@router.post("/smart-money-scan")
+async def smart_money_scan(request: Request, threshold: int = 10) -> dict:
+    """Admin-only: snapshot Smart Money Scores for all watchlist symbols and
+    emit alerts + VAPID pushes on regime shifts (``|Δ| >= threshold``)."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    # Collect all watchlist symbols
+    symbols: set[str] = set()
+    async for wl in db.watchlists.find({}, {"_id": 0, "tickers": 1}):
+        for t in (wl.get("tickers") or []):
+            if isinstance(t, str):
+                symbols.add(t.upper())
+            elif isinstance(t, dict) and t.get("symbol"):
+                symbols.add(t["symbol"].upper())
+    if not symbols:
+        return {"ok": True, "alerts_created": 0, "symbols_scanned": 0}
+    alerts = await detect_smart_money_shifts(db, sorted(symbols), threshold=threshold)
+    return {"ok": True, "alerts_created": alerts, "symbols_scanned": len(symbols)}

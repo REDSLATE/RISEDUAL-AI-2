@@ -33,6 +33,21 @@ const Watchlist = ({ onSubscribe }) => {
     }
   }, []);
 
+  const [smsShifts, setSmsShifts] = useState([]);
+
+  // Fetch recent Smart Money Score shift alerts for this user's watchlist
+  const fetchSmsShifts = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API}/stockfit/13f/alerts?limit=20`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const shifts = (data.alerts || []).filter(a => a.type === 'smart_money_shift');
+      setSmsShifts(shifts.slice(0, 3));
+    } catch (e) {
+      logger.debug('SMS shifts fetch failed:', e);
+    }
+  }, []);
+
   // Fetch live quotes for all watchlist symbols
   const fetchQuotes = useCallback(async (symbols) => {
     if (!symbols.length) return;
@@ -153,13 +168,14 @@ const Watchlist = ({ onSubscribe }) => {
   useEffect(() => {
     if (!isExpanded || !watchlist.length) return;
     const symbols = watchlist.map(item => item.symbol);
-    // Fetch smart scores once per expand
+    // Fetch smart scores + shift alerts once per expand
     fetchSmartScores(symbols);
+    fetchSmsShifts();
     const interval = setInterval(() => {
       fetchQuotes(symbols);
     }, 60000);
     return () => clearInterval(interval);
-  }, [isExpanded, watchlist, fetchQuotes, fetchSmartScores]);
+  }, [isExpanded, watchlist, fetchQuotes, fetchSmartScores, fetchSmsShifts]);
 
   const addSymbol = () => {
     if (!newSymbol.trim()) return;
@@ -241,6 +257,41 @@ const Watchlist = ({ onSubscribe }) => {
               <Lock className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
               <p className="text-amber-300 text-xs flex-1">{capWarning}</p>
               {onSubscribe && <Button size="sm" className="bg-[#3DE8D9] text-white text-xs h-6 px-2 rounded-lg" onClick={onSubscribe}>Upgrade</Button>}
+            </div>
+          )}
+          {/* Smart Money Score Shift Alerts */}
+          {smsShifts.length > 0 && (
+            <div className="mb-3 space-y-1.5" data-testid="watchlist-sms-shifts">
+              {smsShifts.map((shift) => {
+                const up = shift.delta > 0;
+                const topMover = shift.top_movers?.[0];
+                return (
+                  <button
+                    key={`${shift.symbol}-${shift.date}`}
+                    onClick={() => {
+                      const prompt = `${shift.symbol} Smart Money Score shifted from ${shift.prev_score} to ${shift.new_score} (${shift.delta > 0 ? '+' : ''}${shift.delta} pts) — now ${shift.signal}. ${topMover ? `Notable move: ${topMover.institution} ${topMover.type} its position.` : ''} What's driving this regime change? Actionable take?`;
+                      window.dispatchEvent(new CustomEvent('risedualai-open-chat', { detail: { prefill: prompt, autoSend: true } }));
+                    }}
+                    className={`w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg border text-xs transition-colors hover:brightness-110 ${
+                      up ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'
+                    }`}
+                    data-testid={`watchlist-sms-shift-${shift.symbol}`}
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 ${up ? 'text-emerald-400' : 'text-red-400'}`} />
+                    <span className="text-white font-bold">{shift.symbol}</span>
+                    <span className="text-slate-300">Smart Money</span>
+                    <span className={`font-mono font-bold ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {shift.prev_score} {up ? '↗' : '↘'} {shift.new_score}
+                    </span>
+                    <span className={`text-[10px] ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({shift.delta > 0 ? '+' : ''}{shift.delta} pts)
+                    </span>
+                    {shift.signal_change && (
+                      <span className="text-slate-400 text-[10px] truncate">now {shift.signal}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 

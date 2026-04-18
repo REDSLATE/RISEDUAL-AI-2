@@ -788,6 +788,135 @@ async def compute_smart_money_scores_batch(db, symbols: list[str]) -> dict:
     return out
 
 
+async def snapshot_smart_money_scores(db, symbols: list[str]) -> list[dict]:
+    """Compute Smart Money Scores for ``symbols`` and persist one row per symbol
+    per UTC date in ``smart_money_scores`` (idempotent via upsert on {symbol, date}).
+
+    Returns the list of {symbol, score, signal, previous_score, previous_date}.
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    results: list[dict] = []
+    for s in symbols:
+        sym = s.upper()
+        try:
+            score_data = await compute_smart_money_score(db, sym)
+        except Exception as e:
+            logger.debug(f"SMS snapshot compute error {sym}: {e}")
+            continue
+        if score_data.get("score") is None:
+            continue
+
+        # Look up most recent snapshot (excluding today's in-progress row)
+        prev_doc = await db.smart_money_scores.find_one(
+            {"symbol": sym, "date": {"$ne": today}},
+            {"_id": 0, "score": 1, "signal": 1, "date": 1},
+            sort=[("date", -1)],
+        )
+        prev_score = prev_doc.get("score") if prev_doc else None
+        prev_signal = prev_doc.get("signal") if prev_doc else None
+        prev_date = prev_doc.get("date") if prev_doc else None
+
+        doc = {
+            "symbol": sym,
+            "date": today,
+            "score": score_data["score"],
+            "signal": score_data["signal"],
+            "bullish_count": score_data.get("bullish_count", 0),
+            "bearish_count": score_data.get("bearish_count", 0),
+            "holder_count": score_data.get("holder_count", 0),
+            "net_flow_usd": score_data.get("net_flow_usd", 0),
+            "snapshot_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.smart_money_scores.update_one(
+            {"symbol": sym, "date": today},
+            {"$set": doc}, upsert=True,
+        )
+        results.append({
+            **doc,
+            "previous_score": prev_score,
+            "previous_signal": prev_signal,
+            "previous_date": prev_date,
+            "contributors": score_data.get("contributors", []),
+        })
+    return results
+
+
+async def detect_smart_money_shifts(db, symbols: list[str], threshold: int = 10) -> int:
+    """Snapshot SMS for each symbol, diff against previous snapshot, and emit
+    alerts + VAPID pushes when ``|Δ| >= threshold``. Returns the number of
+    alerts created.
+    """
+    snapshots = await snapshot_smart_money_scores(db, symbols)
+    alerts_created = 0
+    for s in snapshots:
+        prev = s.get("previous_score")
+        if prev is None:
+            continue
+        delta = s["score"] - prev
+        if abs(delta) < threshold:
+            continue
+
+        signal_change = None
+        if s["signal"] != s.get("previous_signal"):
+            signal_change = f"{s.get('previous_signal')}→{s['signal']}"
+
+        # Idempotency: don't fire the same alert twice per day per symbol
+        existing = await db.sec_13f_alerts.find_one({
+            "type": "smart_money_shift",
+            "symbol": s["symbol"],
+            "date": s["date"],
+        })
+        if existing:
+            continue
+
+        # Build a compact top-movers list for alert payload
+        top_movers = []
+        for c in (s.get("contributors") or [])[:3]:
+            top_movers.append({
+                "institution": c.get("institution_name"),
+                "type": c.get("type"),
+                "delta_pct": c.get("delta_pct"),
+            })
+
+        alert_doc = {
+            "type": "smart_money_shift",
+            "symbol": s["symbol"],
+            "date": s["date"],
+            "prev_score": prev,
+            "new_score": s["score"],
+            "delta": delta,
+            "signal": s["signal"],
+            "signal_change": signal_change,
+            "bullish_count": s["bullish_count"],
+            "bearish_count": s["bearish_count"],
+            "top_movers": top_movers,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.sec_13f_alerts.insert_one(alert_doc)
+        alerts_created += 1
+
+        # Fan out push notification (best-effort)
+        try:
+            from services.push_service import broadcast_notification
+            arrow = "↗" if delta > 0 else "↘"
+            title = f"{s['symbol']} Smart Money: {prev} {arrow} {s['score']}"
+            body_parts = [f"{'+' if delta > 0 else ''}{delta} pts"]
+            if signal_change:
+                body_parts.append(f"now {s['signal']}")
+            if top_movers and top_movers[0].get("institution"):
+                body_parts.append(f"{top_movers[0]['institution']} {top_movers[0]['type']}")
+            body = " · ".join(body_parts)
+            await broadcast_notification(
+                db, title=title, body=body, url="/#research",
+                tag=f"sms-{s['symbol']}-{s['date']}",
+                notif_type="smart_money_shift",
+            )
+        except Exception as e:
+            logger.debug(f"SMS push notify error: {e}")
+
+    return alerts_created
+
+
 async def scan_and_alert(db) -> dict:
     """Daily scheduler job: refresh all tracked institutions and emit alerts for
     notable activity on symbols present in any user's watchlist.
@@ -886,6 +1015,15 @@ async def scan_and_alert(db) -> dict:
                     )
                 except Exception as e:
                     logger.debug(f"13F push notify error: {e}")
+
+        # 4) After processing position-level alerts, snapshot Smart Money Score
+        # regime shifts for every watchlist symbol and push alerts on Δ>=10.
+        try:
+            sms_alerts = await detect_smart_money_shifts(db, sorted(symbols), threshold=10)
+            summary["sms_alerts_created"] = sms_alerts
+        except Exception as e:
+            logger.warning(f"Smart Money shift detection error: {e}")
+            summary["sms_alerts_created"] = 0
     except Exception as e:
         logger.warning(f"13F scan_and_alert error: {e}")
         summary["errors"] += 1
