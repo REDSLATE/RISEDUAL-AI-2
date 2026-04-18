@@ -415,7 +415,27 @@ async def reset_password(req: ResetPasswordRequest):
         raise HTTPException(status_code=500, detail="Password reset failed")
 
 # --- Admin Seeding ---
-OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "managingdirector@redslateholdings.com")
+# Hard-deny list: emails that must NEVER be seeded as owner regardless of env.
+# The Red Slate Holdings account was the historical owner — user directive in
+# Feb 2026 permanently removed it. If a stale env var still points here,
+# override it.
+_BANNED_OWNER_EMAILS = {"managingdirector@redslateholdings.com"}
+_CANONICAL_OWNER_EMAIL = "admin@risedual.ai"
+
+
+def _resolve_owner_email() -> str:
+    """Return the owner email, forcing the canonical one if env is stale."""
+    env_val = os.environ.get("OWNER_EMAIL", _CANONICAL_OWNER_EMAIL).strip().lower()
+    if env_val in _BANNED_OWNER_EMAILS or not env_val:
+        logging.warning(
+            f"OWNER_EMAIL env var points at banned/empty value ({env_val!r}); "
+            f"overriding to canonical {_CANONICAL_OWNER_EMAIL}."
+        )
+        return _CANONICAL_OWNER_EMAIL
+    return env_val
+
+
+OWNER_EMAIL = _resolve_owner_email()
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD")
 
 async def seed_admin():
@@ -429,17 +449,16 @@ async def seed_admin():
     `role: owner` user was deactivated (blocking broker live trades) cannot
     recur.
     """
-    # One-shot cleanup: remove the historical Red Slate row if it still exists.
-    # Intentionally unconditional on role — this account must never exist going
-    # forward regardless of what role the old seed code may have assigned it.
-    # Safe on every startup: no-op once gone.
-    RED_SLATE_EMAIL = "managingdirector@redslateholdings.com"
-    try:
-        res = await db.users.delete_one({"email": RED_SLATE_EMAIL})
-        if res.deleted_count:
-            logging.info(f"Seed cleanup: removed deactivated {RED_SLATE_EMAIL} row.")
-    except Exception as e:
-        logging.warning(f"Seed cleanup for Red Slate row failed (non-critical): {e}")
+    # One-shot cleanup: remove every banned-owner row (e.g. Red Slate Holdings).
+    # Intentionally unconditional on role — these accounts must never exist
+    # going forward. Safe on every startup: no-op once gone.
+    for banned in _BANNED_OWNER_EMAILS:
+        try:
+            res = await db.users.delete_one({"email": banned})
+            if res.deleted_count:
+                logging.info(f"Seed cleanup: removed banned owner row {banned}.")
+        except Exception as e:
+            logging.warning(f"Seed cleanup for {banned} failed (non-critical): {e}")
 
     # Seed RISEDUAL owner
     if not OWNER_PASSWORD:
