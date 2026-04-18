@@ -108,8 +108,14 @@ async def lookup_batch(db, cusips: Iterable[str]) -> dict[str, dict]:
                 await asyncio.sleep(delay)
                 continue
             if resp.status_code == 429:
-                logger.warning("OpenFIGI rate-limited, backing off 30s")
-                await asyncio.sleep(30)
+                # Use OpenFIGI's ratelimit-reset header if provided (v3 docs)
+                try:
+                    reset_s = float(resp.headers.get("ratelimit-reset", "30"))
+                except (ValueError, TypeError):
+                    reset_s = 30.0
+                reset_s = min(max(reset_s, 1.0), 60.0)
+                logger.warning(f"OpenFIGI rate-limited, backing off {reset_s:.1f}s")
+                await asyncio.sleep(reset_s)
                 continue
             if resp.status_code != 200:
                 logger.warning(f"OpenFIGI returned {resp.status_code}: {resp.text[:120]}")
