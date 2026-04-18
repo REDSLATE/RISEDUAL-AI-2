@@ -54,6 +54,24 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Sector Heatmap Deep-Link + Recent Tickers Strip (COMPLETED Feb 19, 2026)
+- **Sector Heatmap tiles** (`SectorTile.jsx`) are now clickable `<button>`s.
+  One click on any sector ETF (XLK, XLF, XLV, etc.) — either the "AI sentiment"
+  view or the classic "% change" view — dispatches the standard deep-link
+  bundle: telemetry (`action-clicked`) → nav to War Room adversarial tab →
+  ticker broadcast. Source tag in chip_text: `"Open XLK War Room (Sector
+  Heatmap)"` / `"(AI Sector Heatmap)"` so the admin dashboard can split them.
+- **Recent Tickers strip** lives in the War Room hub header ("Recent: NVDA
+  TSLA AAPL"). Persisted in `localStorage` under `risedual:recent-tickers`
+  (max 3, deduped, most-recent first). All three War Room subtabs call
+  `addRecent(symbol)` on analyze success, so both manual searches and
+  deep-link arrivals populate it. Click a pill → re-dispatches
+  `risedualai-warroom` so the active subtab re-runs without any typing.
+- Utility: `/app/frontend/src/utils/recentTickers.js` — exports `addRecent`,
+  `getRecent`, `subscribeRecent` (pub/sub so the hub re-renders instantly).
+- **Verified E2E**: clicked XLK tile → War Room opened → XLK auto-analyzed
+  → Recent strip showed NVDA/TSLA/AAPL pills from localStorage in one render.
+
 ### CTR Breakdown By Hub + Full War Room Ticker Broadcast (COMPLETED Feb 19, 2026)
 - **Backend**: `GET /api/analytics/chip-events/stats` now also returns
   `by_hub[]` aggregated per `context_hub` with `shown`, `clicked`, `l1_ctr`,

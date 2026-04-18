@@ -14,6 +14,7 @@ import {
 import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
 import InfoTooltip from './InfoTooltip';
+import { addRecent } from '../utils/recentTickers';
 
 const API = `${getApiBase()}/api`;
 
@@ -65,6 +66,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
         throw new Error(detail || `Server error (${res.status}). Please try again.`);
       }
       setData(await res.json());
+      addRecent(symbol);
     } catch (err) {
       setError(err.message);
     } finally {

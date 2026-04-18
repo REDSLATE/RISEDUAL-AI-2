@@ -1,6 +1,28 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import { getApiBase } from '../../utils/apiBase';
+
+const API = `${getApiBase()}/api`;
+
+const dispatchDeepLink = (symbol, source) => {
+  try {
+    fetch(`${API}/analytics/chip-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        action: 'action-clicked',
+        chip_text: `Open ${symbol} War Room (${source})`,
+        context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
+      }),
+    }).catch(() => { /* silent */ });
+  } catch { /* silent */ }
+  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: symbol }));
+  }, 180);
+};
 
 const getHeatColor = (val) => {
   if (val >= 3) return 'bg-green-500 text-white';
@@ -60,11 +82,13 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
     const trends = sectorTrends[sector.symbol];
 
     return (
-      <div
-        className={`${getSentimentColor(heatVal)} rounded-xl p-4 transition-all hover:scale-[1.02] cursor-default relative overflow-hidden`}
+      <button
+        type="button"
+        onClick={() => dispatchDeepLink(sector.symbol, 'AI Sector Heatmap')}
+        className={`${getSentimentColor(heatVal)} text-left w-full rounded-xl p-4 transition-all hover:scale-[1.02] hover:brightness-110 cursor-pointer relative overflow-hidden`}
         style={{ minHeight: `${Math.max(80, sector.weight * 4)}px` }}
         data-testid={`sector-tile-${sector.symbol}`}
-        title={reasoning}
+        title={`${reasoning || label} — click to open ${sector.symbol} in War Room`}
       >
         <div className="absolute top-0 right-0 opacity-10 text-6xl font-black leading-none select-none pointer-events-none" style={{ marginTop: '-8px', marginRight: '-4px' }}>
           {sector.symbol}
@@ -84,7 +108,7 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
           </div>
           {reasoning && <p className="text-[10px] opacity-60 mt-1 line-clamp-2">{reasoning}</p>}
         </div>
-      </div>
+      </button>
     );
   }
 
@@ -92,10 +116,13 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
   const isUp = val >= 0;
 
   return (
-    <div
-      className={`${getHeatColor(val)} rounded-xl p-4 transition-all hover:scale-[1.02] cursor-default relative overflow-hidden`}
+    <button
+      type="button"
+      onClick={() => dispatchDeepLink(sector.symbol, 'Sector Heatmap')}
+      className={`${getHeatColor(val)} text-left w-full rounded-xl p-4 transition-all hover:scale-[1.02] hover:brightness-110 cursor-pointer relative overflow-hidden`}
       style={{ minHeight: `${Math.max(80, sector.weight * 4)}px` }}
       data-testid={`sector-tile-${sector.symbol}`}
+      title={`Click to open ${sector.symbol} in War Room`}
     >
       <div className="absolute top-0 right-0 opacity-10 text-6xl font-black leading-none select-none pointer-events-none" style={{ marginTop: '-8px', marginRight: '-4px' }}>
         {sector.symbol}
@@ -112,7 +139,7 @@ const SectorTile = ({ sector, isAI, period, sentimentData, sectorTrends }) => {
         </div>
         <p className="text-[10px] opacity-60 mt-1">${sector.price?.toFixed(2)}</p>
       </div>
-    </div>
+    </button>
   );
 };
 

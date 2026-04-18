@@ -10,6 +10,7 @@ import AdversarialHub from './AdversarialHub';
 import AccuracyBadge from './AccuracyBadge';
 import { getApiBase } from '../utils/apiBase';
 import InfoTooltip from './InfoTooltip';
+import { addRecent } from '../utils/recentTickers';
 
 const API = `${getApiBase()}/api`;
 
@@ -44,6 +45,7 @@ const MarketPrediction = ({ onSubscribe }) => {
       setPrediction(data);
       setLastUpdated(new Date());
       setActiveSymbol(symbol ? symbol.toUpperCase() : null);
+      if (symbol) addRecent(symbol);
       // Track background job if running
       if (data.jobRunning && data.jobId) {
         setJobId(data.jobId);

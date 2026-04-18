@@ -13,6 +13,7 @@ import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 import { exportHypothesisReport } from '../utils/exportHypothesis';
 import InfoTooltip from './InfoTooltip';
+import { addRecent } from '../utils/recentTickers';
 
 const API = `${getApiBase()}/api`;
 
@@ -77,6 +78,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
       }
       const data = await res.json();
       setHypothesis(data);
+      addRecent(symbol);
       if (data.is_pro && data.verdict) {
         authFetch(`${API}/workspace/history/save`, {
           method: 'POST',
