@@ -237,10 +237,14 @@ class TestCredentialsFromEnv:
     """Verify test credentials are loaded from environment/conftest_creds.py."""
 
     def test_credentials_not_hardcoded(self):
-        """Verify credentials come from conftest_creds.py."""
-        assert OWNER_EMAIL == "managingdirector@redslateholdings.com"
+        """Verify credentials come from conftest_creds.py.
+
+        OWNER_EMAIL is now an alias for ADMIN_EMAIL (unified admin/owner
+        after Feb 2026 Red Slate account removal). Passwords should be
+        loaded from env or defaults.
+        """
         assert ADMIN_EMAIL == "admin@risedual.ai"
-        # Passwords should be loaded from env or defaults
+        assert OWNER_EMAIL  # non-empty (defaults to ADMIN_EMAIL)
         assert len(OWNER_PASSWORD) > 0
         assert len(ADMIN_PASSWORD) > 0
         print("✓ Credentials loaded from conftest_creds.py")

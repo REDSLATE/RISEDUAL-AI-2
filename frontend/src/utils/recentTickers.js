@@ -20,9 +20,16 @@ const write = (arr) => {
   try {
     localStorage.setItem(KEY, JSON.stringify(arr));
     listeners.forEach((fn) => {
-      try { fn(arr); } catch { /* ignore */ }
+      try { fn(arr); } catch (e) {
+        // eslint-disable-next-line no-console
+        console.debug('recentTickers listener threw:', e);
+      }
     });
-  } catch { /* ignore */ }
+  } catch (e) {
+    // Likely quota / private-browsing — non-critical.
+    // eslint-disable-next-line no-console
+    console.debug('recentTickers write failed:', e);
+  }
 };
 
 export const getRecent = () => read();

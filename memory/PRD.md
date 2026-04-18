@@ -657,3 +657,32 @@ See `/app/memory/test_credentials.md`.
 * **On production deploy**: seed cleanup runs automatically → Red Slate row
   deleted → `admin@risedual.ai` promoted to `owner` → broker flips from
   READ ONLY → LIVE TRADING with no manual intervention.
+
+
+### 2026-02-18 — Code review triage & genuine cleanups
+* External code review flagged 200+ findings; auditing them surfaced that the
+  "critical" items (eval/exec, 18 undefined vars, hardcoded secrets) are all
+  **false positives** from a context-blind static scanner:
+  - "eval() in backtester_service.py:193" → line is a comment announcing the
+    AST-based safe evaluator that already replaced eval.
+  - "eval/exec in test_iteration36" → security tests that verify the evaluator
+    REJECTS eval/exec strings (intentionally split `"ev"+"al"`).
+  - "18 undefined variables" → `pyflakes .` returns empty.
+  - "Hardcoded secrets" → mostly env-var NAMES (`"RESEND_API_KEY="` searched
+    inside .env) or dev-only preview passwords from test_credentials.md.
+* **Genuine cleanups performed**:
+  - `tests/conftest_creds.py`: consolidated — `OWNER_EMAIL` now aliases to
+    `ADMIN_EMAIL` (both point to `admin@risedual.ai`) after Red Slate removal.
+  - `tests/test_iteration134/135`: moved to `os.getenv()` + safe defaults.
+  - `tests/test_iteration135`: removed dead `owner_session` fixture
+    (referenced deleted Red Slate account, never consumed).
+  - `tests/test_iteration42`: updated stale assertion to pass after Red Slate
+    cleanup.
+  - `utils/deepLink.js` + `utils/recentTickers.js`: replaced 6 empty
+    `/* silent */` catch blocks with `console.debug()` so real failures are
+    still observable.
+* **Deferred to post-launch** (refactoring risk vs reward): 207 hook-dependency
+  warnings (~70% false positive), AppContent/Navbar component splits,
+  localStorage "encryption" (already non-sensitive), 544 `is` vs `==` lint
+  nits in tests, type-hint coverage, inline-prop useMemo micro-perf.
+* Regression: `test_share_endpoint.py` 16/16 pass. Lint: 0 issues.

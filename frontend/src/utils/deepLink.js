@@ -38,8 +38,14 @@ const logChip = (label) => {
         chip_text: label,
         context_hub: getActiveHub(),
       }),
-    }).catch(() => { /* silent */ });
-  } catch { /* silent */ }
+    }).catch((e) => {
+      // eslint-disable-next-line no-console
+      console.debug('chip telemetry fetch failed:', e);
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.debug('logChip dispatch failed:', e);
+  }
 };
 
 /**
@@ -71,7 +77,10 @@ export const openWarRoomForTicker = ({ ticker, source, subTab = 'adversarial', s
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: t }));
     }, 180);
-  } catch { /* silent */ }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.debug('openWarRoomForTicker dispatch failed:', e);
+  }
 
   // Undo toast — non-intrusive, auto-dismisses in 5s, snapshots origin view.
   // Don't show the toast if the user was already on /warroom (no meaningful
@@ -89,10 +98,16 @@ export const openWarRoomForTicker = ({ ticker, source, subTab = 'adversarial', s
               // ticker run by re-navigating to the origin view).
               logChip(`Undo ${t} War Room (${source})`);
               window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: prevView } }));
-            } catch { /* silent */ }
+            } catch (e) {
+              // eslint-disable-next-line no-console
+              console.debug('Undo nav failed:', e);
+            }
           },
         },
       });
-    } catch { /* silent */ }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.debug('Undo toast failed:', e);
+    }
   }
 };

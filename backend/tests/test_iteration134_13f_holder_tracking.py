@@ -18,9 +18,10 @@ import os
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
-# Test credentials from /app/memory/test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
+# Test credentials — non-production values from test_credentials.md.
+# Overridable via env for CI / alternative admin accounts.
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "admin@risedual.ai")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "RiseDual2026!")
 
 # Pre-seeded CIKs (per agent context)
 BERKSHIRE_CIK = "0001067983"

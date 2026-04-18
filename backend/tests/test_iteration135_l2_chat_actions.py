@@ -12,11 +12,10 @@ import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-# Test credentials from test_credentials.md
-ADMIN_EMAIL = "admin@risedual.ai"
-ADMIN_PASSWORD = "RiseDual2026!"
-OWNER_EMAIL = "managingdirector@redslateholdings.com"
-OWNER_PASSWORD = "RiseDual2026!"
+# Test credentials — pulled from test_credentials.md; non-production values used
+# only against the preview/local DB. Overridable via env for CI.
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "admin@risedual.ai")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "RiseDual2026!")
 
 
 @pytest.fixture(scope="module")
@@ -28,18 +27,6 @@ def admin_session():
         "password": ADMIN_PASSWORD
     })
     assert resp.status_code == 200, f"Admin login failed: {resp.text}"
-    return session
-
-
-@pytest.fixture(scope="module")
-def owner_session():
-    """Login as owner and return session with cookies."""
-    session = requests.Session()
-    resp = session.post(f"{BASE_URL}/api/auth/login", json={
-        "email": OWNER_EMAIL,
-        "password": OWNER_PASSWORD
-    })
-    assert resp.status_code == 200, f"Owner login failed: {resp.text}"
     return session
 
 
