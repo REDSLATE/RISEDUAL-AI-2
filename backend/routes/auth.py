@@ -430,13 +430,12 @@ async def seed_admin():
     recur.
     """
     # One-shot cleanup: remove the historical Red Slate row if it still exists.
+    # Intentionally unconditional on role — this account must never exist going
+    # forward regardless of what role the old seed code may have assigned it.
     # Safe on every startup: no-op once gone.
     RED_SLATE_EMAIL = "managingdirector@redslateholdings.com"
     try:
-        res = await db.users.delete_one({
-            "email": RED_SLATE_EMAIL,
-            "role": {"$in": ["merged", "free"]},
-        })
+        res = await db.users.delete_one({"email": RED_SLATE_EMAIL})
         if res.deleted_count:
             logging.info(f"Seed cleanup: removed deactivated {RED_SLATE_EMAIL} row.")
     except Exception as e:
