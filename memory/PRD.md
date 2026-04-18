@@ -480,3 +480,20 @@ adversarial trading platform with:
 
 ## 7. Test Credentials
 See `/app/memory/test_credentials.md`.
+
+
+## 8. Changelog
+
+### 2026-02-18 — Watchlist.jsx refactor complete
+* `Watchlist.jsx` reduced from 447-line monolith to 58-line orchestrator.
+* Logic extracted to `/app/frontend/src/hooks/useWatchlistData.js` (all fetches,
+  localStorage persistence, backend sync, 60s quote refresh, SMS score/history,
+  external `risedualai-add-watchlist` event listener).
+* UI split across `/app/frontend/src/components/watchlist/`:
+  - `WatchlistToolbar.jsx` (header, expand/collapse, add input, cap warning, share/refresh)
+  - `SmartMoneyShiftAlerts.jsx` (score-shift alert rows w/ chat prefill + War Room deep-link)
+  - `WatchlistTable.jsx` (row rendering + sparkline + Smart Money pill + actions)
+* Lint: 0 issues. Smoke test: collapsed + expanded states render, 5 rows + 2 SMS
+  shift alerts visible for admin account.
+* `managingdirector@redslateholdings.com` marked DEACTIVATED in test_credentials.md
+  (do not re-enable).
