@@ -54,6 +54,27 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Smart Money Board → War Room Deep-Link (COMPLETED Feb 19, 2026)
+- Every Smart Money Shift Alert row in `Watchlist.jsx` now has a compact
+  "WAR ROOM →" button (and per-row `Swords` icon for SM-scored rows).
+- Click flow: (1) logs `action-clicked` telemetry with chip_text
+  `"Open {TICKER} War Room (SM Board|SM Shift Alert)"`, (2) dispatches
+  `risedualai-navigate` → War Room hub, (3) dispatches `risedualai-warroom`
+  with the ticker.
+- `AIWarRoom.jsx` listens to `risedualai-warroom`, populates the symbol input,
+  and auto-fires `analyze()` so the Strategist vs. Auditor run starts in one
+  click — zero keystrokes between "I see a Smart Money shift" and "I have AI
+  verdict."
+- Verified E2E: clicked NVDA shift alert → War Room hub rendered → NVDA input
+  auto-filled → "Deploying War Room for NVDA" analysis auto-started.
+
+### Floating Chat Window (COMPLETED Feb 19, 2026)
+- Un-pinned the chat from screen edges on both breakpoints.
+- Desktop (≥lg): 400×560 floating card, ~24px from bottom-right, backdrop-blur
+  + elevated shadow.
+- Mobile: ~12px side margins × 72dvh height above the bottom nav — no longer
+  a full-screen takeover; navbar/ticker remain visible.
+
 ### Level-2 AI Chat Actions — Inline Deep-Link Buttons (COMPLETED Feb 19, 2026)
 - **Backend**: `/api/chat/followups` now returns `{chips[], actions[]}`. The LLM
   picks 0–2 deep-link actions when the reply has clear routing intent (ticker

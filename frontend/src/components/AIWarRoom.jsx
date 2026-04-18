@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, Shield, Zap, Loader2, AlertCircle, Lock
 } from 'lucide-react';
@@ -31,6 +31,22 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const analyzeRef = useRef(null);
+
+  // Deep-link hook: other surfaces (e.g. Smart Money Board) dispatch
+  // `risedualai-warroom` with `detail: TICKER` to jump here AND run the
+  // analysis in one click.
+  useEffect(() => {
+    const handler = (e) => {
+      const t = (e?.detail || '').toString().trim().toUpperCase();
+      if (!t) return;
+      setSymbol(t);
+      // Defer so state settles before submit
+      setTimeout(() => analyzeRef.current?.(), 50);
+    };
+    window.addEventListener('risedualai-warroom', handler);
+    return () => window.removeEventListener('risedualai-warroom', handler);
+  }, []);
 
   const analyze = async (e) => {
     e?.preventDefault();
@@ -55,6 +71,7 @@ const AIWarRoom = ({ onSubscribe, onLogin }) => {
       setLoading(false);
     }
   };
+  analyzeRef.current = analyze;
 
   const v = data?.composite?.verdict || 'HOLD';
   const vc = VERDICT_COLORS[v] || VERDICT_COLORS['HOLD'];
