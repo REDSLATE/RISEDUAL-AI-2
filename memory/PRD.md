@@ -162,6 +162,13 @@
 - **Data verified**: Berkshire Q4 2025 AAPL=227.9M sh/$62.0B, AXP $56B, BAC $28B, KO $28B, CVX $20B. AAPL holders: Vanguard ($387B), BlackRock ($221B), Fidelity ($83B), Berkshire ($62B).
 - **21/21 backend tests passed** (iteration 134), 0 JS errors, 0 `_id` leaks in responses.
 
+## Email Deliverability Fix (COMPLETED Feb 18, 2026)
+- **Bug**: Resend emails arrived blank in recipients' inboxes (user report: "no information showing")
+- **Root cause**: Dark-theme templates (`background-color:#0F172A` body, light-gray text `#94A3B8`). Gmail/Outlook strip `<body>` styles and some container `style` attrs → light text rendered on default white background → invisible content.
+- **Fix** (`/app/backend/services/email_service.py`): rewrote `_base_html` + all 8 templates (reward earned, referral signup, welcome, password reset, toxic spikes, war room invite, referral success, tiered reward) as light-theme layouts using `bgcolor` HTML attribute + inline styles, dark text (`#0F172A`, `#475569`), preheader text for inbox previews, and safe fallback when user_name/email are None.
+- **New**: `send_tiered_reward_email` wired into `scan_hit_threshold_rewards` and `scan_monthly_leaderboard_rewards` so the tiered referral system (5-hit threshold, monthly top-5) now actually sends emails alongside push notifications.
+- Verified with live Resend delivery (`delivered@resend.dev`, HTTP 200) and render tests on all 11 template variants (>100 chars of visible text each).
+
 ## Backlog
 - P1: Connect Alpaca LIVE API keys via KeyVault (blocked on user account approval)
 - P2: Accumulate 30 live paper trading days for Tier 3 unlock

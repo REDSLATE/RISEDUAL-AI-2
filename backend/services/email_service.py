@@ -75,25 +75,39 @@ async def _routed_send(to: list, subject: str, html: str) -> bool:
         return False
 
 
-def _base_html(content: str) -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;padding:40px 20px;">
+def _base_html(content: str, preheader: str = "") -> str:
+    """Email-client safe template.
+
+    Uses light theme + bgcolor attributes for broad compatibility (Gmail, Outlook,
+    Apple Mail strip <body> CSS and many container styles; using bgcolor attrs
+    ensures content is visible regardless of client quirks).
+    """
+    pre = (preheader or "").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light only" />
+<meta name="supported-color-schemes" content="light only" />
+<title>{APP_NAME}</title>
+</head>
+<body bgcolor="#F1F5F9" style="margin:0;padding:0;background-color:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0F172A;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;font-size:1px;line-height:1px;">{pre}</div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F1F5F9" style="background-color:#F1F5F9;padding:32px 16px;">
 <tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background-color:#1E293B;border-radius:16px;border:1px solid #334155;overflow:hidden;">
+<table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:14px;border:1px solid #E2E8F0;max-width:600px;width:100%;">
 <!-- Header -->
-<tr><td style="background:linear-gradient(135deg,#0052FF,#6366F1);padding:28px 32px;text-align:center;">
-<h1 style="color:#ffffff;font-size:22px;margin:0;font-weight:700;letter-spacing:-0.5px;">{APP_NAME}</h1>
-<p style="color:rgba(255,255,255,0.7);font-size:12px;margin:6px 0 0;">AI-Powered Trading Platform</p>
+<tr><td bgcolor="#0F172A" align="center" style="background-color:#0F172A;padding:26px 32px;border-radius:14px 14px 0 0;">
+<h1 style="color:#FFFFFF;font-size:22px;margin:0;font-weight:700;letter-spacing:-0.3px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">{APP_NAME}</h1>
+<p style="color:#94A3B8;font-size:12px;margin:6px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">AI-Powered Trading Platform</p>
 </td></tr>
 <!-- Content -->
-<tr><td style="padding:32px;">{content}</td></tr>
+<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:32px;color:#0F172A;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:1.6;">{content}</td></tr>
 <!-- Footer -->
-<tr><td style="padding:20px 32px;border-top:1px solid #334155;text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0;">You're receiving this because you're a {APP_NAME} member.</p>
-<p style="color:#475569;font-size:11px;margin:8px 0 0;"><a href="{APP_URL}" style="color:#0052FF;text-decoration:none;">{APP_URL}</a></p>
+<tr><td bgcolor="#F8FAFC" style="background-color:#F8FAFC;padding:20px 32px;border-top:1px solid #E2E8F0;text-align:center;border-radius:0 0 14px 14px;">
+<p style="color:#64748B;font-size:11px;margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">You're receiving this because you're a {APP_NAME} member.</p>
+<p style="color:#94A3B8;font-size:11px;margin:8px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;"><a href="{APP_URL}" style="color:#0052FF;text-decoration:none;">{APP_URL}</a></p>
 </td></tr>
 </table>
 </td></tr>
@@ -103,83 +117,89 @@ def _base_html(content: str) -> str:
 
 
 def _referral_signup_html(referrer_name: str, referred_email: str) -> str:
+    name = (referrer_name or "there").strip() or "there"
+    email = (referred_email or "your friend").strip()
     content = f"""
-<h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;font-weight:600;">Your friend just signed up!</h2>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
-Hey {referrer_name}, great news &mdash; someone used your referral link to join {APP_NAME}!
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 8px;font-weight:700;">Your friend just signed up!</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+Hey {name}, great news &mdash; someone used your referral link to join {APP_NAME}.
 </p>
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
 <tr><td style="padding:16px 20px;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">New Referral</p>
-<p style="color:#ffffff;font-size:16px;margin:0;font-weight:600;">{referred_email}</p>
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">New Referral</p>
+<p style="color:#0F172A;font-size:16px;margin:0;font-weight:600;">{email}</p>
 </td></tr>
 </table>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
 When they subscribe to Pro, you'll earn <strong style="color:#0052FF;">1 free month</strong> of {APP_NAME} Pro. Keep sharing your link!
 </p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-<tr><td style="background-color:#0052FF;border-radius:10px;padding:12px 28px;">
-<a href="{APP_URL}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">View Your Referrals</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">View Your Referrals</a>
 </td></tr>
 </table>"""
-    return _base_html(content)
+    return _base_html(content, preheader=f"{email} just joined {APP_NAME} using your link.")
 
 
 def _reward_earned_html(referrer_name: str, referred_email: str) -> str:
+    name = (referrer_name or "there").strip() or "there"
+    email = (referred_email or "your referral").strip()
     content = f"""
-<h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;font-weight:600;">You earned a free month!</h2>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
-Congrats {referrer_name}! Your referral just subscribed to Pro, and you've earned <strong style="color:#10B981;">1 free month</strong> of {APP_NAME} Pro.
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 8px;font-weight:700;">You earned a free month!</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+Congrats {name}! Your referral just subscribed to Pro, and you've earned <strong style="color:#10B981;">1 free month</strong> of {APP_NAME} Pro.
 </p>
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
 <tr><td style="padding:16px 20px;">
-<table width="100%" cellpadding="0" cellspacing="0">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
-<td style="width:50%;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Referral</p>
-<p style="color:#ffffff;font-size:14px;margin:0;font-weight:500;">{referred_email}</p>
+<td width="50%" style="vertical-align:top;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Referral</p>
+<p style="color:#0F172A;font-size:14px;margin:0;font-weight:500;">{email}</p>
 </td>
-<td style="width:50%;text-align:right;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Reward</p>
+<td width="50%" style="text-align:right;vertical-align:top;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Reward</p>
 <p style="color:#10B981;font-size:18px;margin:0;font-weight:700;">+1 Month Free</p>
 </td>
 </tr>
 </table>
 </td></tr>
 </table>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
-Keep referring friends to earn more free months (up to 12 per year)!
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+Keep referring friends to earn more free months (up to 12 per year).
 </p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-<tr><td style="background-color:#0052FF;border-radius:10px;padding:12px 28px;">
-<a href="{APP_URL}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Share Your Link</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">Share Your Link</a>
 </td></tr>
 </table>"""
-    return _base_html(content)
+    return _base_html(content, preheader=f"You earned 1 free month of {APP_NAME} Pro thanks to {email}.")
 
 
 def _welcome_referral_html(user_name: str, referrer_name: str) -> str:
+    name = (user_name or "there").strip() or "there"
+    referrer = (referrer_name or "a friend").strip()
     content = f"""
-<h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;font-weight:600;">Welcome to {APP_NAME}!</h2>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
-Hey {user_name}, welcome aboard! You were referred by <strong style="color:#ffffff;">{referrer_name}</strong>, and we've activated a special gift for you.
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 8px;font-weight:700;">Welcome to {APP_NAME}!</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+Hey {name}, welcome aboard. You were referred by <strong style="color:#0F172A;">{referrer}</strong>, and we've activated a special gift for you.
 </p>
-<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0052FF20,#6366F120);border-radius:12px;border:1px solid #0052FF40;margin-bottom:20px;">
-<tr><td style="padding:20px;text-align:center;">
-<p style="color:#0052FF;font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Your Gift</p>
-<p style="color:#ffffff;font-size:24px;margin:0;font-weight:700;">7-Day Pro Trial</p>
-<p style="color:#94A3B8;font-size:13px;margin:8px 0 0;">Full access to AI predictions, dark pool data, market signals & more</p>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EFF6FF" style="background-color:#EFF6FF;border-radius:10px;border:1px solid #BFDBFE;margin-bottom:20px;">
+<tr><td align="center" style="padding:20px;">
+<p style="color:#0052FF;font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;">Your Gift</p>
+<p style="color:#0F172A;font-size:24px;margin:0;font-weight:800;">7-Day Pro Trial</p>
+<p style="color:#475569;font-size:13px;margin:8px 0 0;">Full access to AI predictions, dark pool data, market signals &amp; more.</p>
 </td></tr>
 </table>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
-Dive in and explore everything {APP_NAME} has to offer. Your Pro trial starts now!
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+Dive in and explore everything {APP_NAME} has to offer. Your Pro trial starts now.
 </p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-<tr><td style="background-color:#0052FF;border-radius:10px;padding:12px 28px;">
-<a href="{APP_URL}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Start Exploring</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">Start Exploring</a>
 </td></tr>
 </table>"""
-    return _base_html(content)
+    return _base_html(content, preheader=f"Your 7-day Pro trial is active, {name}. Let's get started.")
 
 
 async def send_referral_signup_email(referrer_email: str, referrer_name: str, referred_email: str):
@@ -202,13 +222,13 @@ async def send_reward_earned_email(referrer_email: str, referrer_name: str, refe
 
 def _password_reset_html(reset_url: str) -> str:
     content = f"""
-<h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;font-weight:600;">Reset Your Password</h2>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 8px;font-weight:700;">Reset Your Password</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
 We received a request to reset your {APP_NAME} password. Click the button below to choose a new one.
 </p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
-<tr><td style="background-color:#0052FF;border-radius:10px;padding:14px 32px;">
-<a href="{reset_url}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">Reset Password</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 20px;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{reset_url}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:14px 32px;">Reset Password</a>
 </td></tr>
 </table>
 <p style="color:#64748B;font-size:12px;line-height:1.6;margin:0 0 12px;">
@@ -217,13 +237,13 @@ If the button doesn't work, copy and paste this link into your browser:
 <p style="color:#0052FF;font-size:12px;word-break:break-all;margin:0 0 20px;">
 <a href="{reset_url}" style="color:#0052FF;text-decoration:underline;">{reset_url}</a>
 </p>
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FEF3C7" style="background-color:#FEF3C7;border-radius:10px;border:1px solid #FDE68A;margin-bottom:20px;">
 <tr><td style="padding:16px 20px;">
-<p style="color:#F59E0B;font-size:12px;margin:0 0 4px;font-weight:600;">This link expires in 1 hour</p>
-<p style="color:#64748B;font-size:12px;margin:0;">If you didn't request this, you can safely ignore this email.</p>
+<p style="color:#92400E;font-size:12px;margin:0 0 4px;font-weight:700;">This link expires in 1 hour</p>
+<p style="color:#78350F;font-size:12px;margin:0;">If you didn't request this, you can safely ignore this email.</p>
 </td></tr>
 </table>"""
-    return _base_html(content)
+    return _base_html(content, preheader=f"Reset your {APP_NAME} password. Link expires in 1 hour.")
 
 
 async def send_password_reset_email(user_email: str, reset_token: str, origin_url: str = None):
@@ -245,58 +265,58 @@ def _toxic_spikes_html(toxic_count: int, obsolete_count: int, total_before: int,
     detail_rows = ""
     for spike in spike_details[:10]:  # Cap at 10 examples
         detail_rows += f"""<tr>
-<td style="padding:8px 12px;color:#ffffff;font-size:13px;border-bottom:1px solid #334155;">{spike.get('symbol','?')}</td>
-<td style="padding:8px 12px;color:#F87171;font-size:13px;border-bottom:1px solid #334155;">{spike.get('confidence','?')}%</td>
-<td style="padding:8px 12px;color:#94A3B8;font-size:13px;border-bottom:1px solid #334155;">{spike.get('date','?')}</td>
+<td style="padding:8px 12px;color:#0F172A;font-size:13px;border-bottom:1px solid #E2E8F0;">{spike.get('symbol','?')}</td>
+<td style="padding:8px 12px;color:#DC2626;font-size:13px;border-bottom:1px solid #E2E8F0;font-weight:600;">{spike.get('confidence','?')}%</td>
+<td style="padding:8px 12px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;">{spike.get('date','?')}</td>
 </tr>"""
 
     details_table = ""
     if detail_rows:
         details_table = f"""
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;border-collapse:collapse;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;border-collapse:collapse;">
 <tr>
-<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Ticker</th>
-<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Confidence</th>
-<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #334155;">Date</th>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #E2E8F0;font-weight:700;">Ticker</th>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #E2E8F0;font-weight:700;">Confidence</th>
+<th style="padding:10px 12px;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left;border-bottom:1px solid #E2E8F0;font-weight:700;">Date</th>
 </tr>
 {detail_rows}
 </table>"""
 
     content = f"""
-<h2 style="color:#F87171;font-size:20px;margin:0 0 8px;font-weight:600;">Toxic Spikes Detected</h2>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 20px;">
-The nightly memory cleanup found <strong style="color:#F87171;">{toxic_count} high-confidence failures</strong> in the AI prediction engine. These have been re-tagged as negative lessons so the AI avoids repeating these mistakes.
+<h2 style="color:#DC2626;font-size:22px;margin:0 0 8px;font-weight:700;">Toxic Spikes Detected</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+The nightly memory cleanup found <strong style="color:#DC2626;">{toxic_count} high-confidence failures</strong> in the AI prediction engine. These have been re-tagged as negative lessons so the AI avoids repeating these mistakes.
 </p>
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
 <tr><td style="padding:16px 20px;">
-<table width="100%" cellpadding="0" cellspacing="0">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
-<td style="width:33%;text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Toxic Removed</p>
-<p style="color:#F87171;font-size:22px;margin:0;font-weight:700;">{toxic_count}</p>
+<td width="33%" style="text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Toxic Removed</p>
+<p style="color:#DC2626;font-size:22px;margin:0;font-weight:800;">{toxic_count}</p>
 </td>
-<td style="width:33%;text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Obsolete Pruned</p>
-<p style="color:#FBBF24;font-size:22px;margin:0;font-weight:700;">{obsolete_count}</p>
+<td width="33%" style="text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Obsolete Pruned</p>
+<p style="color:#D97706;font-size:22px;margin:0;font-weight:800;">{obsolete_count}</p>
 </td>
-<td style="width:33%;text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Episodes Now</p>
-<p style="color:#10B981;font-size:22px;margin:0;font-weight:700;">{total_after}</p>
+<td width="33%" style="text-align:center;">
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Episodes Now</p>
+<p style="color:#059669;font-size:22px;margin:0;font-weight:800;">{total_after}</p>
 </td>
 </tr>
 </table>
 </td></tr>
 </table>
 {details_table}
-<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 24px;">
-These toxic patterns are preserved in ChromaDB as <strong style="color:#FBBF24;">negative lessons</strong> &mdash; the AI will use them to avoid similar high-confidence errors in the future.
+<p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 24px;">
+These toxic patterns are preserved in ChromaDB as <strong style="color:#D97706;">negative lessons</strong> &mdash; the AI will use them to avoid similar high-confidence errors in the future.
 </p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-<tr><td style="background-color:#0052FF;border-radius:10px;padding:12px 28px;">
-<a href="{APP_URL}" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;">View Memory Dashboard</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">View Memory Dashboard</a>
 </td></tr>
 </table>"""
-    return _base_html(content)
+    return _base_html(content, preheader=f"{toxic_count} toxic predictions detected and re-tagged.")
 
 
 async def send_toxic_spikes_email(
@@ -337,98 +357,212 @@ async def send_welcome_referral_email(user_email: str, user_name: str, referrer_
     )
 
 
+# ── Tiered Referral Reward Emails (Smart Money Board) ──
+
+_REWARD_KIND_META = {
+    "trial_pro_max": {
+        "label": "Pro Max Trial",
+        "unit": "days",
+        "accent": "#7C3AED",
+        "emoji": "&#x1F451;",  # 👑
+    },
+    "trial_pro": {
+        "label": "Pro Trial",
+        "unit": "days",
+        "accent": "#0052FF",
+        "emoji": "&#x1F3C6;",  # 🏆
+    },
+    "credits": {
+        "label": "Credits",
+        "unit": "credits",
+        "accent": "#059669",
+        "emoji": "&#x1F3AF;",  # 🎯
+    },
+}
+
+
+def _tiered_reward_html(
+    user_name: str,
+    tier: str,
+    kind: str,
+    amount: int,
+    hits: int,
+    rank: int | None = None,
+    period: str | None = None,
+) -> str:
+    name = (user_name or "Trader").strip() or "Trader"
+    meta = _REWARD_KIND_META.get(kind, _REWARD_KIND_META["credits"])
+    accent = meta["accent"]
+    label = meta["label"]
+    unit = meta["unit"]
+    emoji = meta["emoji"]
+
+    if tier == "hits_threshold":
+        title = "You unlocked a 7-day Pro trial"
+        sub = f"Your Smart Money Board reached {hits} scans this month."
+        blurb = f"Enjoy full access to AI predictions, dark pool data, and all premium signals for {amount} days."
+    elif tier == "monthly_winner":
+        title = "You won the Smart Money Leaderboard"
+        sub = f"#1 for {period or 'last month'} with {hits} scans."
+        blurb = f"{amount} days of Pro Max on us &mdash; the highest tier unlocked."
+    elif tier == "monthly_runner_up":
+        title = "Runner-up on last month's leaderboard"
+        sub = f"Ranked #{rank} with {hits} scans."
+        blurb = f"{amount} days of Pro, on the house."
+    elif tier == "monthly_finalist":
+        title = "Top 5 on last month's leaderboard"
+        sub = f"Ranked #{rank} with {hits} scans."
+        blurb = f"{amount} RiseDual credits have been added to your wallet."
+    else:
+        title = "Referral reward unlocked"
+        sub = f"{hits} scans this month."
+        blurb = f"You earned {amount} {unit}."
+
+    content = f"""
+<p style="color:{accent};font-size:28px;margin:0 0 4px;line-height:1;">{emoji}</p>
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 8px;font-weight:800;">{title}</h2>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+Congrats {name} &mdash; {sub}
+</p>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
+<tr><td align="center" style="padding:20px;">
+<p style="color:#64748B;font-size:11px;margin:0 0 6px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;">Your Reward</p>
+<p style="color:{accent};font-size:30px;margin:0;font-weight:800;">{amount} {unit}</p>
+<p style="color:#475569;font-size:13px;margin:6px 0 0;">{label}</p>
+</td></tr>
+</table>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+{blurb}
+</p>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="{accent}" style="background-color:{accent};border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">Open {APP_NAME}</a>
+</td></tr>
+</table>
+<p style="color:#94A3B8;font-size:11px;margin:20px 0 0;text-align:center;">
+Keep sharing your Smart Money Board &mdash; monthly #1 wins Pro Max.
+</p>"""
+    return _base_html(content, preheader=f"You earned {amount} {unit} — {label}.")
+
+
+async def send_tiered_reward_email(
+    user_email: str,
+    user_name: str,
+    tier: str,
+    kind: str,
+    amount: int,
+    hits: int,
+    rank: int | None = None,
+    period: str | None = None,
+) -> bool:
+    """Email notification when a user earns a tiered referral reward
+    (5-hit threshold, monthly leaderboard top 5).
+    """
+    if not user_email:
+        return False
+
+    meta = _REWARD_KIND_META.get(kind, _REWARD_KIND_META["credits"])
+    subject_map = {
+        "hits_threshold": f"You unlocked {amount} days of {APP_NAME} Pro",
+        "monthly_winner": f"You won: {amount} days of {APP_NAME} Pro Max",
+        "monthly_runner_up": f"Runner-up: {amount} days of {APP_NAME} Pro",
+        "monthly_finalist": f"Top 5: {amount} {APP_NAME} credits",
+    }
+    subject = subject_map.get(tier, f"You earned {amount} {meta['unit']}")
+
+    return await _routed_send(
+        [user_email],
+        subject,
+        _tiered_reward_html(user_name, tier, kind, amount, hits, rank=rank, period=period),
+    )
+
+
 # ── Waitlist Emails ──
 
 def _war_room_invite_html(name: str, beta_key: str, rank: int, referral_count: int) -> str:
     """HTML email for War Room beta invite — the user has been bumped to the front."""
-    display_name = name or "Trader"
+    display_name = (name or "Trader").strip() or "Trader"
+    key_display = (beta_key or "").strip() or "—"
     referral_line = ""
-    if referral_count > 0:
+    if referral_count and referral_count > 0:
+        plural = "s" if referral_count != 1 else ""
         referral_line = f"""
-<tr><td style="padding:12px 16px;background-color:#1a1a3e;border-radius:8px;margin-bottom:16px;">
-<p style="color:#a78bfa;font-size:13px;margin:0;"><strong>{referral_count} referral{'s' if referral_count != 1 else ''}</strong> helped you skip the line</p>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF2FF" style="background-color:#EEF2FF;border-radius:10px;border:1px solid #C7D2FE;margin-bottom:16px;">
+<tr><td style="padding:12px 16px;">
+<p style="color:#4338CA;font-size:13px;margin:0;"><strong>{referral_count} referral{plural}</strong> helped you skip the line.</p>
 </td></tr>
-<tr><td style="height:12px;"></td></tr>"""
+</table>"""
 
     content = f"""
-<h2 style="color:#ffffff;font-size:22px;margin:0 0 4px;font-weight:700;">You've been bumped to the front.</h2>
-<p style="color:#3DE8D9;font-size:14px;margin:0 0 20px;font-weight:600;">Welcome to the War Room, {display_name}.</p>
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
-You were <strong style="color:#fff;">#{rank}</strong> in priority. Our adversarial AI system — where the 
-<span style="color:#3DE8D9;">Strategist</span> generates signals and the 
-<span style="color:#f97316;">Auditor</span> kills the bad ones — is now unlocked for you.
+<h2 style="color:#0F172A;font-size:24px;margin:0 0 4px;font-weight:800;">You've been bumped to the front.</h2>
+<p style="color:#0D9488;font-size:14px;margin:0 0 20px;font-weight:700;">Welcome to the War Room, {display_name}.</p>
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+You were <strong style="color:#0F172A;">#{rank}</strong> in priority. Our adversarial AI system &mdash; where the
+<span style="color:#0D9488;font-weight:600;">Strategist</span> generates signals and the
+<span style="color:#EA580C;font-weight:600;">Auditor</span> kills the bad ones &mdash; is now unlocked for you.
 </p>
-
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
 {referral_line}
-<tr><td style="padding:20px;background-color:#0f172a;border:1px solid #334155;border-radius:12px;text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;">Your Beta Access Key</p>
-<p style="color:#3DE8D9;font-size:28px;font-weight:800;margin:0;font-family:monospace;letter-spacing:3px;">{beta_key}</p>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0F172A" style="background-color:#0F172A;border-radius:12px;margin-bottom:24px;">
+<tr><td align="center" style="padding:24px 20px;">
+<p style="color:#94A3B8;font-size:11px;margin:0 0 10px;text-transform:uppercase;letter-spacing:2px;font-weight:600;">Your Beta Access Key</p>
+<p style="color:#3DE8D9;font-size:28px;font-weight:800;margin:0;font-family:'Courier New',monospace;letter-spacing:3px;">{key_display}</p>
 </td></tr>
 </table>
-
-<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 24px;">
-Use this key to activate your beta account. As an early tester, every trade, prediction, and signal you interact with 
-<strong style="color:#fff;">feeds our AI pipeline</strong> — making the system smarter for everyone.
+<p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 24px;">
+Use this key to activate your beta account. As an early tester, every trade, prediction, and signal you interact with
+<strong style="color:#0F172A;">feeds our AI pipeline</strong> &mdash; making the system smarter for everyone.
 </p>
-
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td align="center">
-<a href="{APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#06B6D4);color:#ffffff;font-size:14px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;">
-Enter the War Room &rarr;
-</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0D9488" style="background-color:#0D9488;border-radius:12px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;font-size:14px;font-weight:600;padding:14px 32px;text-decoration:none;">Enter the War Room &rarr;</a>
 </td></tr>
 </table>
-
-<p style="color:#475569;font-size:11px;margin:24px 0 0;text-align:center;">
+<p style="color:#94A3B8;font-size:11px;margin:24px 0 0;text-align:center;">
 This key is unique to you. Do not share it. It expires in 7 days.
 </p>
 """
-    return _base_html(content)
+    return _base_html(content, preheader=f"Your War Room beta access key: {key_display}")
 
 
 def _referral_success_html(name: str, new_rank: int, referral_count: int, spots_skipped: int) -> str:
     """HTML email when a referral successfully joins — the referrer skipped the line."""
-    display_name = name or "Trader"
+    display_name = (name or "Trader").strip() or "Trader"
     content = f"""
-<h2 style="color:#ffffff;font-size:20px;margin:0 0 4px;font-weight:700;">You just skipped the line.</h2>
-<p style="color:#a78bfa;font-size:14px;margin:0 0 20px;font-weight:600;">{display_name}, your referral landed.</p>
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 4px;font-weight:800;">You just skipped the line.</h2>
+<p style="color:#7C3AED;font-size:14px;margin:0 0 20px;font-weight:700;">{display_name}, your referral landed.</p>
 
-<p style="color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px;">
-Someone used your referral link and you just jumped <strong style="color:#3DE8D9;">20 spots</strong> closer to the front.
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+Someone used your referral link and you just jumped <strong style="color:#0D9488;">{spots_skipped} spots</strong> closer to the front.
 </p>
 
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
 <tr>
-<td width="33%" style="padding:12px;background-color:#0f172a;border:1px solid #334155;border-radius:12px 0 0 12px;text-align:center;">
-<p style="color:#3DE8D9;font-size:24px;font-weight:800;margin:0;">#{new_rank}</p>
-<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">New Rank</p>
+<td width="33%" bgcolor="#F8FAFC" align="center" style="background-color:#F8FAFC;padding:16px 8px;border:1px solid #E2E8F0;border-radius:10px 0 0 10px;">
+<p style="color:#0D9488;font-size:24px;font-weight:800;margin:0;">#{new_rank}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">New Rank</p>
 </td>
-<td width="33%" style="padding:12px;background-color:#0f172a;border-top:1px solid #334155;border-bottom:1px solid #334155;text-align:center;">
-<p style="color:#a78bfa;font-size:24px;font-weight:800;margin:0;">{referral_count}</p>
-<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">Referrals</p>
+<td width="33%" bgcolor="#F8FAFC" align="center" style="background-color:#F8FAFC;padding:16px 8px;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;">
+<p style="color:#7C3AED;font-size:24px;font-weight:800;margin:0;">{referral_count}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Referrals</p>
 </td>
-<td width="33%" style="padding:12px;background-color:#0f172a;border:1px solid #334155;border-radius:0 12px 12px 0;text-align:center;">
-<p style="color:#f97316;font-size:24px;font-weight:800;margin:0;">{spots_skipped}</p>
-<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;">Spots Skipped</p>
+<td width="33%" bgcolor="#F8FAFC" align="center" style="background-color:#F8FAFC;padding:16px 8px;border:1px solid #E2E8F0;border-radius:0 10px 10px 0;"><p style="color:#EA580C;font-size:24px;font-weight:800;margin:0;">{spots_skipped}</p>
+<p style="color:#64748B;font-size:10px;margin:4px 0 0;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Spots Skipped</p>
 </td>
 </tr>
 </table>
 
-<p style="color:#94A3B8;font-size:13px;line-height:1.6;margin:0 0 20px;">
-Keep sharing. The top 100 in the priority queue become <strong style="color:#fff;">Founding Members</strong> — 
+<p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 20px;">
+Keep sharing. The top 100 in the priority queue become <strong style="color:#0F172A;">Founding Members</strong> &mdash;
 lifetime perks, exclusive badge, and first access to every new feature.
 </p>
 
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td align="center">
-<a href="{APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#7C3AED,#6366F1);color:#ffffff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
-Share Again &rarr;
-</a>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#7C3AED" style="background-color:#7C3AED;border-radius:10px;">
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;font-size:14px;font-weight:600;padding:12px 28px;text-decoration:none;">Share Again &rarr;</a>
 </td></tr>
 </table>
 """
-    return _base_html(content)
+    return _base_html(content, preheader=f"You skipped {spots_skipped} spots — now #{new_rank} in line.")
 
 
 async def send_war_room_invite(email: str, name: str, beta_key: str, rank: int, referral_count: int) -> bool:

@@ -154,6 +154,40 @@ async def _fire_reward_notification(db, user: dict, title: str, body: str) -> No
         logger.debug(f"Reward notify error: {e}")
 
 
+async def _fire_reward_email(
+    user: dict,
+    tier: str,
+    kind: str,
+    amount: int,
+    hits: int,
+    rank: int | None = None,
+    period: str | None = None,
+) -> None:
+    """Send tiered reward email (non-blocking best-effort)."""
+    email = (user.get("email") or "").strip()
+    if not email:
+        return
+    try:
+        from services.email_service import send_tiered_reward_email
+        name = user.get("name") or email.split("@")[0]
+        sent = await send_tiered_reward_email(
+            user_email=email,
+            user_name=name,
+            tier=tier,
+            kind=kind,
+            amount=amount,
+            hits=hits,
+            rank=rank,
+            period=period,
+        )
+        if sent:
+            logger.info(f"Reward email sent: {email} tier={tier} kind={kind} amount={amount}")
+        else:
+            logger.info(f"Reward email not sent (no providers/skip): {email} tier={tier}")
+    except Exception as e:
+        logger.warning(f"Reward email error for {email}: {e}")
+
+
 async def scan_hit_threshold_rewards(db) -> dict:
     """Grant 7-day Pro to every user whose share-hit count crosses THRESHOLD_HITS
     this calendar month, at most once per user per month.
@@ -191,6 +225,10 @@ async def scan_hit_threshold_rewards(db) -> dict:
             db, user,
             title=f"🏆 You earned {THRESHOLD_5_HITS_DAYS} days of Pro",
             body=f"Your Smart Money Board reached {hits} scans this month. Keep sharing — monthly #1 wins Pro Max!",
+        )
+        await _fire_reward_email(
+            user, tier="hits_threshold", kind="trial_pro",
+            amount=THRESHOLD_5_HITS_DAYS, hits=hits, period=period,
         )
         granted += 1
         logger.info(f"Reward(hits): {user.get('email')} @ {hits} hits → 7d Pro")
@@ -260,6 +298,10 @@ async def scan_monthly_leaderboard_rewards(db) -> dict:
             continue
 
         await _fire_reward_notification(db, user, title=title, body=body)
+        await _fire_reward_email(
+            user, tier=tier_name, kind=kind, amount=amount, hits=hits,
+            rank=idx, period=period,
+        )
         granted_list.append({
             "rank": idx,
             "user": user.get("email"),
