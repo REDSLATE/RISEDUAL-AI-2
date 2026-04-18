@@ -596,3 +596,26 @@ See `/app/memory/test_credentials.md`.
   second with clean retry-after message.
 
 
+
+### 2026-02-18 — Admin Panel cleanup
+* `AdminPanel.jsx`: full refactor to eliminate duplicate/misleading controls
+  and improve scanability with 12 tabs.
+* **Context-aware header** — title shows `Admin · {TabLabel}` and subtitle
+  adapts per tab (`50 users total` on Users, `MongoDB cache tiers & TTLs` on
+  Cache, `Market-data + email failover health` on Providers, etc.). Was
+  always-stale `{users.length} users total`.
+* **Scoped Refresh button** — the header's RefreshCw only appears on the
+  Users tab, where it actually refreshes the user list. On Cache / KeyVault /
+  ChipAdoption / HelpSearch / etc., each tab already has its own context-
+  specific Refresh button, so the header one was a misleading no-op.
+* **Proper close button** — literal "x" character replaced with lucide `X`
+  icon in a rounded hover button. `data-testid="admin-close-btn"` for tests.
+* **Grouped tabs** — 12 tabs now organised under three subtle group labels
+  (PEOPLE · OPERATIONS · INSIGHTS) with thin dividers in the tab bar. No
+  behavioural change, just scanability.
+* **Replaced nested ternary** — 12-way `tab === 'x' ? <X/> : tab === 'y' ? …`
+  cascade replaced with `TAB_COMPONENTS` lookup object. ~40 lines shorter,
+  trivially extensible.
+* Lint: 0 issues. Live-verified with screenshots — tab switching updates
+  header title, subtitle, and refresh-button visibility correctly.
+
