@@ -20,7 +20,6 @@ import FearGreedGauge from './components/FearGreedGauge';
 import LiveInsightsFeed from './components/LiveInsightsFeed';
 import OrderFlowPanel from './components/OrderFlowPanel';
 import WhaleRadar from './components/WhaleRadar';
-import CryptoSection from './components/CryptoSection';
 import AdditionalSections from './components/AdditionalSections';
 import PromoBanner from './components/PromoBanner';
 import AuthModal from './components/AuthModal';
@@ -256,9 +255,6 @@ function AppContent() {
                 <AIIntelligence onSubscribe={sub} />
               </div>
             )}
-
-            {/* Crypto summary */}
-            <div id="crypto" className="mb-6 sm:mb-8 animate-enter"><CryptoSection /></div>
 
             {/* Explore other hubs */}
             <div className="rounded-2xl border border-slate-700/50 bg-slate-800/20 p-4 mb-6 animate-enter" data-testid="explore-hubs">
