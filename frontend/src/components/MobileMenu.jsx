@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Search, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database,
-  LineChart, Bot, TrendingUp, Globe, BarChart3, Swords, HelpCircle, Info,
+  LineChart, Bot, TrendingUp, Globe, BarChart3, Swords, HelpCircle, Info, Building2,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -81,13 +81,24 @@ const MobileMenu = ({
         {/* Utility row — tiny */}
         {user && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('risedualai-open-broker-connect'));
+                close();
+              }}
+              data-testid="mobile-broker-connect-btn"
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/30"
+            >
+              <Building2 className="w-3.5 h-3.5" /> Connect Broker
+            </button>
             {(user.role === 'owner' || user.role === 'admin') && (
               <button
                 onClick={() => act(onOpenAdmin)}
                 data-testid="mobile-admin-btn"
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-orange-500/10 text-orange-300 border border-orange-500/25"
+                className="flex items-center justify-center px-3 py-2 rounded-xl text-xs font-semibold bg-orange-500/10 text-orange-300 border border-orange-500/25"
+                aria-label="Admin"
               >
-                <Crown className="w-3.5 h-3.5" /> Admin
+                <Crown className="w-3.5 h-3.5" />
               </button>
             )}
             {onOpenHelp && (

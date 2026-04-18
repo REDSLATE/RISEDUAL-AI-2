@@ -673,6 +673,16 @@ const BrokerConnect = () => {
     }
   }, []);
 
+  // Mobile entry-point: the trigger Button lives inside the desktop-only
+  // nav block (hidden via CSS on <lg), but the component + its modal portal
+  // are still mounted on mobile. Listen for a window event so the mobile
+  // menu can open the modal without duplicating state.
+  useEffect(() => {
+    const open = () => setIsModalOpen(true);
+    window.addEventListener('risedualai-open-broker-connect', open);
+    return () => window.removeEventListener('risedualai-open-broker-connect', open);
+  }, []);
+
   const fetchConnections = useCallback(async () => {
     try {
       const res = await authFetch(`${API}/broker/connections`);

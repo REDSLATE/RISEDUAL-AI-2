@@ -619,3 +619,18 @@ See `/app/memory/test_credentials.md`.
 * Lint: 0 issues. Live-verified with screenshots — tab switching updates
   header title, subtitle, and refresh-button visibility correctly.
 
+### 2026-02-18 — Mobile: Connect Broker entry-point
+* **Bug**: `<BrokerConnect />` was rendered only inside the desktop-only
+  `<div className="hidden lg:flex">` block of Navbar, so the Connect Broker
+  button was completely absent on mobile — users couldn't wire Alpaca/Kraken
+  from their phones. Reported by user on deployed site where they needed to
+  re-paste Kraken keys from mobile.
+* **Fix**: added a window-event handshake — `BrokerConnect` listens for
+  `risedualai-open-broker-connect` and opens its own modal. Added a prominent
+  teal "Connect Broker" chip in the MobileMenu utility row (next to Admin + Help)
+  that dispatches the event. Clean, zero-duplication — BrokerConnect's own
+  state + portal modal handle the rest.
+* **Verified**: mobile viewport (414×896) → hamburger → Connect Broker chip →
+  Broker modal opens with all brokers listed. 0 lint issues.
+
+
