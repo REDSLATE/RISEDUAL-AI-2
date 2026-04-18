@@ -54,6 +54,23 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Undo Last Deep-Link Toast (COMPLETED Feb 19, 2026)
+- Every call to `openWarRoomForTicker` now shows a sonner toast bottom-right
+  ("Analyzing XLK · From Sector Heatmap · [Undo]") with a 5s duration and
+  an Undo button.
+- Undo dispatches `risedualai-navigate` back to the view the user was on
+  (snapshotted via `window.__risedualActiveView` before the nav), so any
+  misclick on a tile is reversible with one click.
+- Undo actions also log `action-clicked` telemetry with chip_text like
+  `"Undo XLK War Room (Sector Heatmap)"`, giving the admin Chip CTR
+  dashboard a proxy for misclick rate per source.
+- Toast suppressed when origin was already `warroom` (no meaningful back
+  state) to avoid a "noisy" experience once the user is inside the hub.
+- **App.js fix along the way**: `window.__risedualActiveView` is now
+  synced via `useEffect` on activeView changes (was only written during
+  `navigateTo`, so it was `undefined` on initial mount — which broke the
+  undo snapshot on the very first tile click).
+
 ### Component Sweep + Deep-Link Consolidation (COMPLETED Feb 19, 2026)
 - **Deleted orphans** (no consumers anywhere):
   - `components/intelligence/ScoreView.jsx`

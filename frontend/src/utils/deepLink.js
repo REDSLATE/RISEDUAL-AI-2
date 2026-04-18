@@ -9,9 +9,12 @@
 //   2. window CustomEvent "risedualai-navigate"  → App.js routes to the hub
 //   3. window CustomEvent "risedualai-warroom"  → AIWarRoom/Hypothesis/
 //      MarketPrediction listen and auto-run the analysis
+//   4. Toast notification with Undo button — snapshots the current view and
+//      lets the user pop back if they mis-clicked.
 //
 // Changing behaviour (e.g. adding a fifth step, new telemetry field) is now a
 // single-file edit.
+import { toast } from 'sonner';
 import { getApiBase } from './apiBase';
 
 const API = `${getApiBase()}/api`;
@@ -59,10 +62,37 @@ export const openWarRoomForTicker = ({ ticker, source, subTab = 'adversarial', s
   if (!t) return;
   const suffixStr = suffix ? ` ${suffix}` : '';
   logChip(`Open ${t} War Room (${source}${suffixStr})`);
+
+  // Snapshot the origin view BEFORE we nav so the Undo action can restore it.
+  const prevView = getActiveHub();
+
   try {
     window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab } }));
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: t }));
     }, 180);
   } catch { /* silent */ }
+
+  // Undo toast — non-intrusive, auto-dismisses in 5s, snapshots origin view.
+  // Don't show the toast if the user was already on /warroom (no meaningful
+  // "back" state).
+  if (prevView && prevView !== 'warroom') {
+    try {
+      toast(`Analyzing ${t}`, {
+        description: `From ${source}`,
+        duration: 5000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            try {
+              // Route back to where they were (and dismiss any in-flight
+              // ticker run by re-navigating to the origin view).
+              logChip(`Undo ${t} War Room (${source})`);
+              window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: prevView } }));
+            } catch { /* silent */ }
+          },
+        },
+      });
+    } catch { /* silent */ }
+  }
 };

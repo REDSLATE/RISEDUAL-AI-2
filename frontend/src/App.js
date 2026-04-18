@@ -106,6 +106,10 @@ function AppContent() {
   }, []);
 
   React.useEffect(() => {
+    if (typeof window !== 'undefined') window.__risedualActiveView = activeView;
+  }, [activeView]);
+
+  React.useEffect(() => {
     if (user && !localStorage.getItem(TOUR_KEY)) {
       const timer = setTimeout(() => setTourActive(true), 2000);
       return () => clearTimeout(timer);
