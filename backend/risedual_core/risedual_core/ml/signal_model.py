@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from datetime import datetime, timezone
 
@@ -45,6 +45,48 @@ if TYPE_CHECKING:
     import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+# ── Dependency guard ──────────────────────────────────────────────────────────
+
+
+def _require_ml_deps() -> tuple[Any, Any, Any]:
+    """Import and return (xgboost, CalibratedClassifierCV, numpy).
+
+    Raises a clear :exc:`ImportError` for each missing package so callers
+    receive an actionable message rather than a bare ``ModuleNotFoundError``.
+
+    Returns
+    -------
+    tuple
+        ``(xgb, CalibratedClassifierCV, np)`` — the three ML dependency
+        modules needed by :meth:`SignalModel.fit`.
+    """
+    try:
+        import xgboost as xgb  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "xgboost is required for SignalModel.fit. "
+            "Install it with: pip install xgboost"
+        ) from exc
+
+    try:
+        from sklearn.calibration import CalibratedClassifierCV  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "scikit-learn is required for SignalModel.fit. "
+            "Install it with: pip install scikit-learn"
+        ) from exc
+
+    try:
+        import numpy as np  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "numpy is required for SignalModel.fit. "
+            "Install it with: pip install numpy"
+        ) from exc
+
+    return xgb, CalibratedClassifierCV, np
 
 
 # ── Calibration stats ─────────────────────────────────────────────────────────
@@ -146,30 +188,7 @@ class SignalModel:
         ImportError
             If ``xgboost`` or ``scikit-learn`` are not installed.
         """
-        # requires: xgboost, scikit-learn
-        try:
-            import xgboost as xgb  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "xgboost is required for SignalModel.fit. "
-                "Install it with: pip install xgboost"
-            ) from exc
-
-        try:
-            from sklearn.calibration import CalibratedClassifierCV  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "scikit-learn is required for SignalModel.fit. "
-                "Install it with: pip install scikit-learn"
-            ) from exc
-
-        try:
-            import numpy as np  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError(
-                "numpy is required for SignalModel.fit. "
-                "Install it with: pip install numpy"
-            ) from exc
+        xgb, CalibratedClassifierCV, np = _require_ml_deps()
 
         logger.info(
             "Fitting SignalModel with %d samples, %d features.",
@@ -297,6 +316,7 @@ class SignalModel:
         RuntimeError
             If the model has not been trained yet.
         """
+        from datetime import datetime, timezone  # noqa: PLC0415
 
         # Step 1 – convert snapshot to flat feature dict
         vector = snapshot_to_vector(snapshot)

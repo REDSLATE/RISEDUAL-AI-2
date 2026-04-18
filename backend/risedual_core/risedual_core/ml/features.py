@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 # ── Column definitions ────────────────────────────────────────────────────────
 
 PATTERN_COLUMNS: list[str] = [
-    # "pattern_double_bottom",  # EXCLUDED: 42.2% WR, net PnL drag in backtest
+    "pattern_double_bottom",
     "pattern_bullish_engulfing",
     "pattern_bearish_engulfing",
     "pattern_bull_flag",

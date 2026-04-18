@@ -54,6 +54,43 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### risedual_core Refactor Overlay (COMPLETED Feb 19, 2026)
+- User uploaded a pre-tested refactored zip of `risedual_core`. I did NOT
+  apply blindly — verified:
+  - Current hypothesis_logger.py had a **silent bug**: importing
+    `risedual_core.ml.patterns` (doesn't exist locally), caught by a broad
+    `except` — so chart-pattern enrichment was silently failing in prod.
+    The upload ships `ml/patterns.py` (708 lines) and FIXES this.
+  - The upload supersedes my prior `_parse_response` extractions in
+    anthropic.py/openai.py with a cleaner module-level pure function
+    version. Both approaches achieve the same goal; the module-level one
+    is better (pure function, no self dependency).
+  - Added `_handle_retry` helper in `clients/base.py`.
+  - `pyproject.toml` adds optional `keyvault = ["cryptography>=42.0.0"]`
+    extras — non-breaking.
+  - Upload deletes `ml/calibration_gate.py`; preserved our existing compat
+    shim because `scripts/backtest.py` still imports from it.
+- **Safety process**: backup to `/tmp/risedual_core.backup.*`, overlay
+  files, clear `__pycache__`, restart backend.
+- **Verified post-overlay**:
+  - All 8 changed modules import cleanly.
+  - Backend restarts with no errors.
+  - `/api/crypto/prices`, `/api/fear-greed`, `/api/stocks/quote/AAPL` all 200.
+  - `detect_all_patterns()` returns 8 pattern classifications on a sample
+    5-row OHLCV (previously silently failed).
+  - 0 undefined names across `risedual_core/`, lint 100% clean.
+
+### Chat Component Split (COMPLETED Feb 19, 2026)
+- Split `chat/ChatComponents.jsx` (440L monolith) into three focused files
+  while preserving backward-compat imports via a 7-line shim:
+  - `chat/ChatMessages.jsx` (238L) — message list + bubble + chip/action
+    adoption telemetry.
+  - `chat/ChatInput.jsx` (188L) — input bar, voice recording, gap-hint
+    banner. Exports as both `ChatInput` and `ChatInputArea` (legacy alias).
+  - `chat/VoiceSelector.jsx` (30L) — voice toggle.
+  - `chat/ChatComponents.jsx` (7L) — thin re-export shim.
+- E2E verified: chat opens, messages list renders, input accepts "hello".
+
 ### LLM Provider chat() Refactor (COMPLETED Feb 19, 2026)
 - Pushed back on the original suggested `_handle_streaming` / `_handle_standard`
   split — there is no streaming code in either provider, so that pattern

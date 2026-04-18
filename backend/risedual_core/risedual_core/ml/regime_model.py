@@ -278,6 +278,7 @@ class RegimeModel:
                 "or switch to method='kmeans' to use scikit-learn instead."
             ) from exc
 
+        import numpy as np  # noqa: PLC0415
 
         hmm = GaussianHMM(
             n_components=self._config.n_regimes,

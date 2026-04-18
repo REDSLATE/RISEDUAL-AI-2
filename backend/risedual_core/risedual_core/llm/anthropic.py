@@ -97,6 +97,54 @@ def _extract_system_and_messages(
     return "\n\n".join(system_parts), other_messages
 
 
+def _parse_response_content(
+    response: Any,
+) -> tuple[str | None, list[ToolCall]]:
+    """Extract text content and tool calls from an Anthropic message response.
+
+    Iterates over ``response.content`` blocks and separates ``text`` blocks
+    from ``tool_use`` blocks.  Tool input is JSON-decoded when the API returns
+    it as a string rather than a pre-parsed dict.
+
+    Parameters
+    ----------
+    response:
+        A response object returned by
+        :meth:`anthropic.AsyncAnthropic.messages.create`.
+
+    Returns
+    -------
+    tuple[str | None, list[ToolCall]]
+        ``(text_content, tool_calls)`` where ``text_content`` is ``None``
+        when no text block is present.
+    """
+    text_content: str | None = None
+    tool_calls: list[ToolCall] = []
+
+    for block in response.content:
+        if block.type == "text":
+            text_content = (text_content or "") + block.text
+        elif block.type == "tool_use":
+            raw_input = block.input
+            if isinstance(raw_input, str):
+                try:
+                    parsed_input: dict[str, Any] = json.loads(raw_input)
+                except json.JSONDecodeError:
+                    parsed_input = {"raw": raw_input}
+            else:
+                parsed_input = raw_input or {}
+
+            tool_calls.append(
+                ToolCall(
+                    id=block.id,
+                    name=block.name,
+                    arguments=parsed_input,
+                )
+            )
+
+    return text_content, tool_calls
+
+
 # ── Provider class ────────────────────────────────────────────────────────────
 
 
@@ -186,38 +234,7 @@ class AnthropicLLM(LLMProvider):
         # Reset failure counter on success
         self._consecutive_failures = 0
 
-        return self._parse_response(response)
-
-    def _parse_response(self, response: Any) -> LLMResponse:
-        """Normalise an Anthropic ``Message`` object into an ``LLMResponse``.
-
-        Splits the raw content blocks into a single text string and a list of
-        ``ToolCall`` records.  Returns the generic response shape shared by
-        all provider adapters.
-        """
-        text_content: str | None = None
-        tool_calls: list[ToolCall] = []
-
-        for block in response.content:
-            if block.type == "text":
-                text_content = (text_content or "") + block.text
-            elif block.type == "tool_use":
-                raw_input = block.input
-                if isinstance(raw_input, str):
-                    try:
-                        parsed_input: dict[str, Any] = json.loads(raw_input)
-                    except json.JSONDecodeError:
-                        parsed_input = {"raw": raw_input}
-                else:
-                    parsed_input = raw_input or {}
-
-                tool_calls.append(
-                    ToolCall(
-                        id=block.id,
-                        name=block.name,
-                        arguments=parsed_input,
-                    )
-                )
+        text_content, tool_calls = _parse_response_content(response)
 
         raw_dict: dict[str, Any] = {
             "id": response.id,

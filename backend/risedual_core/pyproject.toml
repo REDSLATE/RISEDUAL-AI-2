@@ -17,6 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+keyvault = [
+    "cryptography>=42.0.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

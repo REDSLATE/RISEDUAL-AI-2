@@ -84,47 +84,115 @@ class FeaturesSnapshot(BaseModel):
     )
 
     # ── Phase 2 — pattern detection booleans ─────────────────────────────────
-    pattern_double_bottom: bool | None = Field(default=None)
-    pattern_bullish_engulfing: bool | None = Field(default=None)
-    pattern_bearish_engulfing: bool | None = Field(default=None)
-    pattern_bull_flag: bool | None = Field(default=None)
-    pattern_rsi_divergence: bool | None = Field(default=None)
-    pattern_macd_crossover: bool | None = Field(default=None)
-    pattern_volume_surge: bool | None = Field(default=None)
-    pattern_head_and_shoulders: bool | None = Field(default=None)
+    # All default to None so pre-Phase-2 snapshots remain valid for inference.
+    # The imputation layer (ml/features.py) fills None → False before XGBoost.
+    pattern_double_bottom: bool | None = Field(
+        default=None,
+        description="True if a double-bottom reversal pattern was detected.",
+    )
+    pattern_bullish_engulfing: bool | None = Field(
+        default=None,
+        description="True if a bullish engulfing candlestick pattern was detected.",
+    )
+    pattern_bearish_engulfing: bool | None = Field(
+        default=None,
+        description="True if a bearish engulfing candlestick pattern was detected.",
+    )
+    pattern_bull_flag: bool | None = Field(
+        default=None,
+        description="True if a bull flag continuation pattern was detected.",
+    )
+    pattern_rsi_divergence: bool | None = Field(
+        default=None,
+        description="True if bullish RSI divergence was detected (price lower-low, RSI higher-low).",
+    )
+    pattern_macd_crossover: bool | None = Field(
+        default=None,
+        description="True if a bullish MACD crossover (line crosses above signal) was detected.",
+    )
+    pattern_volume_surge: bool | None = Field(
+        default=None,
+        description="True if current volume exceeds 2x the 20-day average.",
+    )
+    pattern_head_and_shoulders: bool | None = Field(
+        default=None,
+        description="True if a head-and-shoulders (bearish reversal) pattern was detected.",
+    )
 
-    # ── Convenience aliases for v6 services ────────────────────────────────────
-    @property
-    def rsi(self) -> float | None:
-        return self.rsi_14
-
-    @property
-    def atr(self) -> float | None:
-        return None
-
-    @property
-    def close_price(self) -> float | None:
-        return self.price
+    # ── Outcome labels (backfill + live labeling) ─────────────────────────────
+    # Stored directly on the snapshot so training scripts can read a single
+    # collection without joining against a separate outcomes collection.
+    # None = not yet labeled (live snapshots) or not applicable.
+    outcome_1d: str | None = Field(
+        default=None,
+        description="Forward-1-day outcome: 'up', 'down', or 'flat' (±0.5% band).",
+    )
+    outcome_5d: str | None = Field(
+        default=None,
+        description="Forward-5-day outcome: 'up', 'down', or 'flat' (±1.0% band).",
+    )
+    return_1d: float | None = Field(
+        default=None,
+        description="Raw forward-1-day log return (e.g. 0.012 = +1.2%).",
+    )
+    return_5d: float | None = Field(
+        default=None,
+        description="Raw forward-5-day log return.",
+    )
+    # Backfill metadata
+    source: str | None = Field(
+        default=None,
+        description="Data source used: 'yfinance', 'finnhub', 'live', etc.",
+    )
+    schema_version: int = Field(
+        default=2,
+        description="Schema version. 1=Phase 1, 2=Phase 2+patterns, 3=backfill with outcomes.",
+    )
 
 
 # ── Pattern detection result ───────────────────────────────────────────────
 
 
 class PatternResult(BaseModel):
-    """Result of a single technical pattern detection pass."""
+    """Result of a single technical pattern detection pass.
 
-    name: str = Field(description="Snake-case pattern identifier.")
-    detected: bool = Field(description="True if the pattern was found.")
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    bar_index: int = Field(default=-1)
-    description: str = Field(default="")
+    Produced by each detector function in :mod:`risedual_core.ml.patterns`
+    and aggregated by :func:`~risedual_core.ml.patterns.detect_all_patterns`.
+    ``confidence`` is always populated (0.0 when ``detected=False``) so that
+    calling code never needs to guard against ``None``.
+    """
+
+    name: str = Field(
+        description="Snake-case pattern identifier, e.g. 'double_bottom'."
+    )
+    detected: bool = Field(
+        description="True if the pattern was found in the most recent bars."
+    )
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Strength of the pattern in [0.0, 1.0]; 0.0 when not detected.",
+    )
+    bar_index: int = Field(
+        default=-1,
+        description="Index of the bar where the pattern completed; -1 when not detected.",
+    )
+    description: str = Field(
+        default="",
+        description="Human-readable summary, e.g. 'Double bottom at $182.50, 4.2% separation'.",
+    )
 
 
 # ── Signal output ─────────────────────────────────────────────────────────────
 
 
 class SignalResult(BaseModel):
-    """Output from the signal model for a single ticker."""
+    """Output from the signal model for a single ticker.
+
+    ``confidence`` is always Platt-calibrated so it reflects a true
+    probability of correctness rather than a raw model score.
+    """
 
     ticker: str = Field(description="Ticker symbol.")
     direction: PredictionDirection = Field(description="Predicted price direction.")
@@ -153,54 +221,5 @@ class SignalResult(BaseModel):
     timestamp: datetime = Field(description="UTC datetime when the signal was generated.")
     explanation: str | None = Field(
         default=None,
-        description="LLM-generated natural-language explanation.",
+        description="LLM-generated natural-language explanation (filled by the agent layer).",
     )
-    prediction_id: str | None = Field(
-        default=None,
-        description="UUID for this prediction cycle.",
-    )
-    patterns_detected: list[str] = Field(
-        default_factory=list,
-        description="Names of patterns detected on this signal.",
-    )
-
-
-# ── Backward-compat: CalibrationStats (canonical version in signal_model.py) ─
-
-
-class CalibrationStats(BaseModel):
-    """Calibration metrics stored after SignalModel.fit()."""
-
-    accuracy: float = Field(ge=0.0, le=1.0)
-    brier_score: float = Field(ge=0.0, le=1.0)
-    ece: float = Field(ge=0.0, le=1.0)
-    n_predictions: int = Field(ge=0)
-    positive_rate: float = Field(default=0.0, ge=0.0, le=1.0)
-    mean_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    model_version: str = Field(default="0.1.0")
-    evaluated_at: datetime | None = Field(default=None)
-
-
-# ── Backward-compat: Backtest schemas ─────────────────────────────────────────
-
-
-class RegimeMetrics(BaseModel):
-    """Win rate breakdown for a single regime."""
-
-    regime: str
-    win_rate: float
-    n_trades: int
-
-
-class BacktestResult(BaseModel):
-    """Output of walk-forward backtest on labeled feature snapshots."""
-
-    sharpe_ratio: float
-    max_drawdown: float = Field(ge=0.0, le=1.0)
-    win_rate_overall: float = Field(ge=0.0, le=1.0)
-    win_rate_by_regime: list[RegimeMetrics] = Field(default_factory=list)
-    n_trades: int
-    train_size: int
-    test_size: int
-    model_version: str
-    computed_at: str

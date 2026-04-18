@@ -34,6 +34,42 @@ def _require_numpy() -> "type[np]":
         ) from exc
 
 
+# ── Private helpers ─────────────────────────────────────────────────────────
+
+
+def _bin_mask(
+    y_prob: "np.ndarray",
+    lo: float,
+    hi: float,
+    is_last_bin: bool,
+) -> "np.ndarray":
+    """Return a boolean mask selecting samples whose predicted probability
+    falls within ``[lo, hi)``, or ``[lo, hi]`` for the last bin.
+
+    The last bin includes its right edge to avoid dropping samples with
+    ``y_prob == 1.0``.
+
+    Parameters
+    ----------
+    y_prob:
+        1-D array of predicted probabilities.
+    lo:
+        Lower bin edge (inclusive).
+    hi:
+        Upper bin edge (exclusive, or inclusive when ``is_last_bin=True``).
+    is_last_bin:
+        If ``True`` the upper edge is included (closed interval on both sides).
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean mask of shape ``(n,)``.
+    """
+    if is_last_bin:
+        return (y_prob >= lo) & (y_prob <= hi)
+    return (y_prob >= lo) & (y_prob < hi)
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -93,12 +129,7 @@ def calibration_curve_data(
     for i in range(n_bins):
         lo = bin_edges[i]
         hi = bin_edges[i + 1]
-
-        # Include the right edge only in the last bin to avoid double-counting 1.0
-        if i < n_bins - 1:
-            mask = (y_prob >= lo) & (y_prob < hi)
-        else:
-            mask = (y_prob >= lo) & (y_prob <= hi)
+        mask = _bin_mask(y_prob, lo, hi, is_last_bin=(i == n_bins - 1))
 
         count = int(mask.sum())
         if count == 0:
@@ -185,11 +216,7 @@ def expected_calibration_error(
     for i in range(n_bins):
         lo = bin_edges[i]
         hi = bin_edges[i + 1]
-
-        if i < n_bins - 1:
-            mask = (y_prob >= lo) & (y_prob < hi)
-        else:
-            mask = (y_prob >= lo) & (y_prob <= hi)
+        mask = _bin_mask(y_prob, lo, hi, is_last_bin=(i == n_bins - 1))
 
         count = int(mask.sum())
         if count == 0:

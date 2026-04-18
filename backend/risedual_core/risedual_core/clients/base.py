@@ -87,6 +87,56 @@ def _extract_error_payload(data: Any, url: str) -> str | None:
     return None
 
 
+
+
+async def _handle_retry(
+    client: "BaseMarketClient",
+    url: str,
+    params: "dict | None",
+    timeout: float,
+    retry: int,
+    status_code: int,
+) -> "Any":
+    """Log a 429/503 warning, sleep with exponential back-off + jitter, then
+    retry the request via :meth:`BaseMarketClient._get`.
+
+    Called only when ``status_code`` is 429 or 503 and ``retry < 2``.
+
+    Parameters
+    ----------
+    client:
+        The :class:`BaseMarketClient` instance whose :meth:`_get` will be
+        called for the retry.
+    url:
+        Fully-qualified URL of the original request.
+    params:
+        Query parameters forwarded to the retry call.
+    timeout:
+        Request timeout in seconds forwarded to the retry call.
+    retry:
+        Current retry attempt count (0-based).  Incremented before the
+        recursive call.
+    status_code:
+        The HTTP status code that triggered the retry (429 or 503).
+
+    Returns
+    -------
+    Any
+        The JSON body from the successful retry, or ``None`` on exhaustion.
+    """
+    import random  # noqa: PLC0415
+
+    wait = (2 ** retry) + random.uniform(0.5, 1.5)
+    import sys  # noqa: PLC0415
+    print(
+        f"[WARNING] HTTP {status_code} from {url}. "
+        f"Retrying in {wait:.1f}s (attempt {retry + 1}/2).",
+        file=sys.stderr,
+    )
+    import asyncio  # noqa: PLC0415
+    await asyncio.sleep(wait)
+    return await client._get(url, params=params, timeout=timeout, _retry=retry + 1)
+
 # ---------------------------------------------------------------------------
 # BaseMarketClient
 # ---------------------------------------------------------------------------
@@ -178,15 +228,9 @@ class BaseMarketClient(ABC):
 
             # Step 3: handle retryable HTTP errors
             if response.status_code in (429, 503) and _retry < 2:
-                import random  # noqa: PLC0415
-                wait = (2 ** _retry) + random.uniform(0.5, 1.5)
-                print(
-                    f"[WARNING] HTTP {response.status_code} from {url}. "
-                    f"Retrying in {wait:.1f}s (attempt {_retry + 1}/2).",
-                    file=sys.stderr,
+                return await _handle_retry(
+                    self, url, params, timeout, _retry, response.status_code
                 )
-                await asyncio.sleep(wait)
-                return await self._get(url, params=params, timeout=timeout, _retry=_retry + 1)
 
             response.raise_for_status()
             data = response.json()

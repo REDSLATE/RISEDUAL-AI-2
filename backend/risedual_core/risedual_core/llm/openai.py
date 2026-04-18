@@ -67,6 +67,63 @@ def _convert_tools_to_openai(tools: list[dict]) -> list[dict[str, Any]]:
     return openai_tools
 
 
+
+def _parse_response(
+    response: Any,
+) -> tuple[str | None, list[ToolCall], dict[str, Any]]:
+    """Extract text content, tool calls, and a raw metadata dict from an OpenAI
+    chat completion response.
+
+    Parameters
+    ----------
+    response:
+        A response object returned by
+        :meth:`openai.AsyncOpenAI.chat.completions.create`.
+
+    Returns
+    -------
+    tuple[str | None, list[ToolCall], dict[str, Any]]
+        ``(text_content, tool_calls, raw_dict)`` ready for constructing an
+        :class:`~risedual_core.llm.base.LLMResponse`.
+    """
+    choice = response.choices[0]
+    message = choice.message
+
+    text_content: str | None = message.content
+
+    tool_calls: list[ToolCall] = []
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            raw_args = tc.function.arguments
+            try:
+                parsed_args: dict[str, Any] = json.loads(raw_args)
+            except (json.JSONDecodeError, TypeError):
+                parsed_args = {"raw": raw_args}
+
+            tool_calls.append(
+                ToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=parsed_args,
+                )
+            )
+
+    usage = response.usage
+    raw_dict: dict[str, Any] = {
+        "id": response.id,
+        "object": response.object,
+        "model": response.model,
+        "finish_reason": choice.finish_reason,
+        "usage": {
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None,
+            "total_tokens": usage.total_tokens if usage else None,
+        },
+    }
+
+    return text_content, tool_calls, raw_dict
+
+
 # ── Provider class ────────────────────────────────────────────────────────────
 
 
@@ -150,48 +207,7 @@ class OpenAILLM(LLMProvider):
         # Reset failure counter on success
         self._consecutive_failures = 0
 
-        return self._parse_response(response)
-
-    def _parse_response(self, response: Any) -> LLMResponse:
-        """Normalise an OpenAI ``ChatCompletion`` into an ``LLMResponse``.
-
-        Extracts the first-choice message content and tool calls, then builds
-        the generic response shape shared by all provider adapters.
-        """
-        choice = response.choices[0]
-        message = choice.message
-
-        text_content: str | None = message.content
-
-        tool_calls: list[ToolCall] = []
-        if message.tool_calls:
-            for tc in message.tool_calls:
-                raw_args = tc.function.arguments
-                try:
-                    parsed_args: dict[str, Any] = json.loads(raw_args)
-                except (json.JSONDecodeError, TypeError):
-                    parsed_args = {"raw": raw_args}
-
-                tool_calls.append(
-                    ToolCall(
-                        id=tc.id,
-                        name=tc.function.name,
-                        arguments=parsed_args,
-                    )
-                )
-
-        usage = response.usage
-        raw_dict: dict[str, Any] = {
-            "id": response.id,
-            "object": response.object,
-            "model": response.model,
-            "finish_reason": choice.finish_reason,
-            "usage": {
-                "prompt_tokens": usage.prompt_tokens if usage else None,
-                "completion_tokens": usage.completion_tokens if usage else None,
-                "total_tokens": usage.total_tokens if usage else None,
-            },
-        }
+        text_content, tool_calls, raw_dict = _parse_response(response)
 
         return LLMResponse(
             content=text_content,
