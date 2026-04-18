@@ -148,6 +148,16 @@ export default function StockFitFundamentals() {
     }
   }, [symbol]);
 
+  // Listen for shared ticker events from the Stock Detail hub.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const t = (e?.detail || '').toString().toUpperCase().trim();
+      if (t) search(t);
+    };
+    window.addEventListener('risedualai-research', handler);
+    return () => window.removeEventListener('risedualai-research', handler);
+  }, [search]);
+
   const quickTickers = ['AAPL', 'NVDA', 'MSFT', 'TSLA', 'GOOGL', 'AMZN', 'META'];
 
   const scores = data?.scores;

@@ -62,7 +62,7 @@ const Navbar = ({
     e.preventDefault();
     if (searchValue.trim()) {
       window.dispatchEvent(new CustomEvent('risedualai-research', { detail: searchValue.trim().toUpperCase() }));
-      onNavigate('research', 'company');
+      onNavigate('research', v2Nav ? 'stock' : 'company');
       setMobileMenuOpen(false);
     }
   };

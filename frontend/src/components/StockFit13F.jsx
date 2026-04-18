@@ -218,6 +218,30 @@ export default function StockFit13F() {
     }
   }, []);
 
+  // Listen for shared ticker events from the Stock Detail hub.
+  useEffect(() => {
+    const handler = (e) => {
+      const t = (e?.detail || '').toString().toUpperCase().trim();
+      if (!t) return;
+      setMode('symbol');
+      setSymbolInput(t);
+      // defer one tick so setSymbolInput lands before searchSymbol reads it
+      setTimeout(() => {
+        setLoading(true); setError(null); setData(null); setChanges(null);
+        fetch(`${API}/holders/${t}?limit=25`, { credentials: 'include' })
+          .then(r => r.json().then(d => ({ ok: r.ok, d })))
+          .then(({ ok, d }) => {
+            if (!ok) throw new Error(d.detail || 'Lookup failed');
+            setData(d);
+          })
+          .catch(err => setError(err.message))
+          .finally(() => setLoading(false));
+      }, 0);
+    };
+    window.addEventListener('risedualai-research', handler);
+    return () => window.removeEventListener('risedualai-research', handler);
+  }, []);
+
   return (
     <div className="space-y-5" data-testid="stockfit-13f">
       {/* Header */}

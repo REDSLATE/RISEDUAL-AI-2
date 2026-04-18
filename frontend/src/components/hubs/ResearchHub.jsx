@@ -12,13 +12,16 @@ const StrategyMarketplace = React.lazy(() => import('../StrategyMarketplace'));
 const MemoryDashboard = React.lazy(() => import('../MemoryDashboard'));
 const StockFitFundamentals = React.lazy(() => import('../StockFitFundamentals'));
 const StockFit13F = React.lazy(() => import('../StockFit13F'));
+const StockDetailHub = React.lazy(() => import('./StockDetailHub'));
 
 const TABS = [
   { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen, v2: false },
   { key: 'prediction', label: 'Predictions', icon: TrendingUp, v2: false },
-  { key: 'company', label: 'Company', icon: Building2 },
-  { key: 'stockfit', label: 'StockFit', icon: FileText },
-  { key: '13f', label: '13F Holders', icon: Users },
+  // v2: Company + StockFit + 13F collapse into one "Stock Detail" tab
+  { key: 'stock',      label: 'Stock Detail', icon: Building2, onlyV2: true },
+  { key: 'company', label: 'Company', icon: Building2, v2: false },
+  { key: 'stockfit', label: 'StockFit', icon: FileText, v2: false },
+  { key: '13f', label: '13F Holders', icon: Users, v2: false },
   { key: 'macro', label: 'Macro', icon: Globe2 },
   { key: 'signals', label: 'Signals', icon: Radio, v2: false },
   { key: 'strategy', label: 'Strategy', icon: Wand2 },
@@ -29,11 +32,21 @@ const TABS = [
 export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
   const { enabled: v2Nav } = useV2Nav();
   // When v2 is on, Hypothesis/Predictions/Signals live in the War Room hub.
-  const visibleTabs = v2Nav ? TABS.filter(t => t.v2 !== false) : TABS;
-  const defaultTab = (v2Nav && ['hypothesis', 'prediction', 'signals'].includes(initialTab))
-    ? 'company'
-    : (initialTab || (v2Nav ? 'company' : 'hypothesis'));
-  const [tab, setTab] = useState(defaultTab);
+  // Company/StockFit/13F collapse into a single "Stock Detail" tab.
+  const visibleTabs = v2Nav
+    ? TABS.filter(t => t.v2 !== false)
+    : TABS.filter(t => !t.onlyV2);
+
+  // Map legacy initialTab values to the v2-merged equivalents
+  const mapInitialTab = (raw) => {
+    if (!raw) return v2Nav ? 'stock' : 'hypothesis';
+    if (v2Nav) {
+      if (['hypothesis', 'prediction', 'signals'].includes(raw)) return 'stock';
+      if (['company', 'stockfit', '13f'].includes(raw)) return 'stock';
+    }
+    return raw;
+  };
+  const [tab, setTab] = useState(mapInitialTab(initialTab));
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   return (
@@ -63,9 +76,10 @@ export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
         <div className="animate-enter">
           {tab === 'hypothesis' && !v2Nav && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
           {tab === 'prediction' && !v2Nav && <MarketPrediction />}
-          {tab === 'company' && <CompanyResearch />}
-          {tab === 'stockfit' && <StockFitFundamentals />}
-          {tab === '13f' && <StockFit13F />}
+          {tab === 'stock' && v2Nav && <StockDetailHub />}
+          {tab === 'company' && !v2Nav && <CompanyResearch />}
+          {tab === 'stockfit' && !v2Nav && <StockFitFundamentals />}
+          {tab === '13f' && !v2Nav && <StockFit13F />}
           {tab === 'macro' && <MacroDashboard onSubscribe={onSubscribe} />}
           {tab === 'signals' && !v2Nav && <MarketSignals onSubscribe={onSubscribe} />}
           {tab === 'strategy' && <StrategyBuilder onSubscribe={onSubscribe} />}
