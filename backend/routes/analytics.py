@@ -167,3 +167,97 @@ async def trigger_monthly_scan(request: Request) -> dict:
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
     return {"ok": True, "summary": await scan_monthly_leaderboard_rewards(db)}
+
+
+# ── Help Center search telemetry ──
+class HelpSearchEvent(BaseModel):
+    q: str
+    results_count: int = 0
+    context_hub: Optional[str] = None
+
+
+@router.post("/help-search")
+async def log_help_search(payload: HelpSearchEvent, request: Request) -> dict:
+    """Fire-and-forget telemetry for Help Center searches.
+
+    Tracks every non-trivial query so the admin panel can surface zero-result
+    searches — the single best signal for feature gaps / doc gaps.
+    """
+    if db is None:
+        return {"ok": False, "reason": "db_not_ready"}
+    q = (payload.q or "").strip().lower()
+    if not q or len(q) < 2 or len(q) > 120:
+        return {"ok": False, "reason": "skip"}
+
+    user = await get_current_user(request)
+    doc = {
+        "q": q,
+        "results_count": max(0, int(payload.results_count or 0)),
+        "context_hub": (payload.context_hub or "").strip()[:24] or None,
+        "user_id": str(user["_id"]) if user else None,
+        "is_anon": user is None,
+        "ts": datetime.now(timezone.utc),
+    }
+    await db.help_search_events.insert_one(doc)
+    return {"ok": True}
+
+
+@router.get("/help-search/stats")
+async def help_search_stats(request: Request, days: int = 30, limit: int = 20) -> dict:
+    """Admin-only: top zero-result queries + overall volume for the last N days."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+
+    total = await db.help_search_events.count_documents({"ts": {"$gte": since}})
+    zero_total = await db.help_search_events.count_documents(
+        {"ts": {"$gte": since}, "results_count": 0}
+    )
+
+    # Top zero-result queries
+    zero_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "results_count": 0}},
+        {"$group": {"_id": "$q", "count": {"$sum": 1},
+                    "last_seen": {"$max": "$ts"},
+                    "hubs": {"$addToSet": "$context_hub"}}},
+        {"$sort": {"count": -1, "last_seen": -1}},
+        {"$limit": max(1, min(limit, 100))},
+    ]
+    zero_top = []
+    async for row in db.help_search_events.aggregate(zero_pipeline):
+        zero_top.append({
+            "q": row["_id"],
+            "count": row["count"],
+            "last_seen": row["last_seen"].isoformat() if row.get("last_seen") else None,
+            "hubs": [h for h in (row.get("hubs") or []) if h],
+        })
+
+    # Overall top queries (any result count) for context
+    top_pipeline = [
+        {"$match": {"ts": {"$gte": since}}},
+        {"$group": {"_id": "$q", "count": {"$sum": 1},
+                    "avg_results": {"$avg": "$results_count"}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 100))},
+    ]
+    top_queries = []
+    async for row in db.help_search_events.aggregate(top_pipeline):
+        top_queries.append({
+            "q": row["_id"],
+            "count": row["count"],
+            "avg_results": round(row.get("avg_results") or 0, 1),
+        })
+
+    return {
+        "window_days": days,
+        "total_events": total,
+        "zero_result_events": zero_total,
+        "zero_result_rate": round((zero_total / total) if total else 0, 3),
+        "zero_result_top": zero_top,
+        "top_queries": top_queries,
+    }

@@ -25,7 +25,7 @@ import AboutUs from './AboutUs';
 import LegalPages from './LegalPages';
 import ResetPasswordModal from './ResetPasswordModal';
 
-const ModalManager = ({ user, modals }) => {
+const ModalManager = ({ user, modals, onNavigate, activeView }) => {
   const {
     paymentInfo, setPaymentInfo,
     showAuth, setShowAuth, authTab, setAuthTab,
@@ -73,7 +73,7 @@ const ModalManager = ({ user, modals }) => {
         {showRiskCalc && user && <RiskCalculator onClose={() => setShowRiskCalc(false)} onApplyToSmartOrder={(data) => { setShowRiskCalc(false); setShowSmartOrders(true); }} />}
         {showScanner && user && <MarketScanner onClose={() => setShowScanner(false)} />}
         {showBots && user && <TradingBotPanel onClose={() => setShowBots(false)} />}
-        {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
+        {showHelp && <HelpCenter onClose={() => setShowHelp(false)} onNavigate={onNavigate} contextHub={activeView} />}
         {showDeveloper && user && <DeveloperPortal onClose={() => setShowDeveloper(false)} />}
         {showCredits && user && <CreditStore onClose={() => setShowCredits(false)} onSubscribe={() => { setShowCredits(false); modals.setShowSubscription(true); }} />}
         {showFailureLoop && user && <FailureLoopDashboard onClose={() => setShowFailureLoop(false)} />}

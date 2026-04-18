@@ -320,7 +320,7 @@ function AppContent() {
       <Toaster />
       <OnboardingTour active={tourActive} onComplete={() => setTourActive(false)} />
 
-      <ModalManager user={user} modals={{
+      <ModalManager user={user} onNavigate={navigateTo} activeView={activeView} modals={{
         paymentInfo, setPaymentInfo, showAuth, setShowAuth, authTab, setAuthTab,
         showSubscription, setShowSubscription, showAdmin, setShowAdmin,
         showWorkspace, setShowWorkspace, showPortfolio, setShowPortfolio,

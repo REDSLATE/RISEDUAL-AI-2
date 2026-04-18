@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, DollarSign, Activity } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, DollarSign, Activity, Search } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -13,6 +13,7 @@ import WaitlistAdmin from './admin/WaitlistAdmin';
 import UsersTab from './admin/UsersTab';
 import ProviderHealth from './admin/ProviderHealth';
 import KeyVault from './admin/KeyVault';
+import HelpSearchInsights from './admin/HelpSearchInsights';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -68,6 +69,7 @@ const AdminPanel = ({ onClose }) => {
     { id: 'media', label: 'Media', icon: Film },
     { id: 'security', label: 'Security', icon: ShieldCheck },
     { id: 'waitlist', label: 'Waitlist', icon: Users },
+    { id: 'help-search', label: 'Help Search', icon: Search },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -127,6 +129,8 @@ const AdminPanel = ({ onClose }) => {
           <SecurityAudit />
         ) : tab === 'waitlist' ? (
           <WaitlistAdmin />
+        ) : tab === 'help-search' ? (
+          <HelpSearchInsights />
         ) : (
           <AdminTools />
         )}
