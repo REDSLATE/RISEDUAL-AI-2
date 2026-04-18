@@ -54,6 +54,31 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Level-2 AI Chat Actions — Inline Deep-Link Buttons (COMPLETED Feb 19, 2026)
+- **Backend**: `/api/chat/followups` now returns `{chips[], actions[]}`. The LLM
+  picks 0–2 deep-link actions when the reply has clear routing intent (ticker
+  discussed → research/watchlist; predictions → warroom; options chains →
+  options; portfolio/P&L → workspace). Labels capped at 40 chars, tickers validated.
+- **Backend**: `/api/analytics/chip-event` now accepts `action-shown` /
+  `action-clicked` in addition to `shown` / `clicked`, so L2 adoption is tracked
+  independently from L1 chips.
+- **Backend**: `/api/analytics/chip-events/stats` now returns `action_shown`,
+  `action_clicked`, `action_ctr`, `top_actions[]` alongside the existing chip
+  stats.
+- **Frontend**: New event bus `risedualai-navigate` (listened in `App.js`) lets
+  any surface deep-link into a hub via `{view, subTab}` payload. The chat
+  uses it for L2 clicks.
+- **Frontend**: Chat UI renders a cyan "Go" row of action buttons (with `→`
+  suffix) ABOVE the gray "Next" row of L1 chips. Clicking an action:
+  1. Logs `action-clicked` telemetry.
+  2. Dispatches the correct nav event (`risedualai-navigate` for hubs;
+     `risedualai-research`/`risedualai-add-watchlist` for ticker-aware actions).
+  3. Closes the chat so the target hub becomes visible.
+- **Admin**: Chip CTR tab upgraded to a 5-KPI grid (Shown · Clicked · L1 CTR ·
+  L2 CTR amber · Signal) plus a second table for top-clicked deep-link actions.
+- **Verified**: 17/17 backend tests passed; E2E chat flow + admin panel verified
+  by the testing agent (iteration_135).
+
 ### Chip Adoption Admin Dashboard (COMPLETED Feb 19, 2026)
 - **New component** `/app/frontend/src/components/admin/ChipAdoptionInsights.jsx`
   mirrors the `HelpSearchInsights` pattern: 4 KPI cards (Shown · Clicked · CTR ·
