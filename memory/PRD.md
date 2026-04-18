@@ -54,7 +54,24 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
-### v2 UI Consolidation (Feb 2026) — NEW
+### Help Center v2 (COMPLETED Feb 18, 2026)
+- **Rewrote `/app/frontend/src/components/HelpCenter.jsx`** to match v2 aesthetic:
+  - Uses the same `IconTabBar` component as War Room / Research / Options / Workspace.
+  - 8 sections × ~45 tips, all content refreshed for v2 architecture (War Room hub, Stock Detail merge, Classic UI toggle, paper trading gates, referral rewards, live broker status).
+  - Global fuzzy search across all titles + content with score-ranked results.
+  - "Take me there →" deep-links that close the modal and navigate to the exact hub/sub-tab.
+  - Context-aware: receives `activeView` from App so search events are tagged with the hub the user was viewing.
+- **Search telemetry** — debounced (700ms) POST to `POST /api/analytics/help-search` on every non-trivial query; fire-and-forget.
+- **Admin panel "Help Search" tab** (`/app/frontend/src/components/admin/HelpSearchInsights.jsx`):
+  - 3 KPI cards: Total events, Zero-Result events, Gap Signal (Low/Medium/High based on zero-result rate).
+  - Top zero-result queries table: count, context hub, last-seen timestamp.
+  - Top queries overall with avg results per query.
+  - 7d / 30d / 90d window toggle.
+- **Backend endpoints** (`/app/backend/routes/analytics.py`):
+  - `POST /api/analytics/help-search` — logs `{q, results_count, context_hub, user_id, is_anon, ts}` to new `help_search_events` collection. Skips queries <2 or >120 chars.
+  - `GET /api/analytics/help-search/stats?days=N&limit=N` — admin-only; aggregates via $group pipeline; returns zero_result_top + top_queries + overall stats.
+
+## v2 UI Consolidation (COMPLETED Feb 18, 2026)
 1. **War Room hub** — 5th top-level nav between Dashboard and Research (orange accent).
    Merges Adversarial AI + Predictions + Hypothesis + Signals + Intelligence (5 → 1).
 2. **Stock Detail hub** — shared ticker input dispatches `risedualai-research` event.
