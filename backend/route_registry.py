@@ -60,6 +60,7 @@ from routes.analytics import router as analytics_router, set_db as set_analytics
 from routes.fred import router as fred_router, set_db as set_fred_db
 from routes.demo import router as demo_router, set_db as set_demo_db
 from routes.share import router as share_router
+from routes.share_image import router as share_image_router
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
@@ -94,6 +95,7 @@ ALL_ROUTERS = [
     fred_router,
     demo_router,
     share_router,
+    share_image_router,
 ]
 
 

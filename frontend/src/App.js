@@ -39,6 +39,7 @@ import ResearchHub from './components/hubs/ResearchHub';
 import OptionsHub from './components/hubs/OptionsHub';
 import WorkspaceHub from './components/hubs/WorkspaceHub';
 import WarRoomHub from './components/hubs/WarRoomHub';
+const TerminalModeHub = React.lazy(() => import('./components/hubs/TerminalModeHub'));
 import useV2Nav from './hooks/useV2Nav';
 
 if ('serviceWorker' in navigator) {
@@ -343,6 +344,13 @@ function AppContent() {
         {/* ═══ WORKSPACE ═══ */}
         {activeView === 'workspace' && (
           <WorkspaceHub onSubscribe={sub} initialTab={workspaceTab} />
+        )}
+
+        {/* ═══ TERMINAL MODE ═══ */}
+        {activeView === 'terminal' && (
+          <React.Suspense fallback={<div className="text-slate-400 text-sm py-8 text-center font-mono">Loading terminal…</div>}>
+            <TerminalModeHub onSubscribe={sub} />
+          </React.Suspense>
         )}
       </main>
 

@@ -550,3 +550,29 @@ See `/app/memory/test_credentials.md`.
   SPA redirect, input sanitisation (overlong + special chars), X-Forwarded-Host
   handling, cluster-internal host fallback, HEAD method support. **11/11 pass**.
 
+
+### 2026-02-18 — Terminal Mode, OG PNG generator, Share ROI badge
+* **Terminal Mode workspace** (`/app/frontend/src/components/hubs/TerminalModeHub.jsx`):
+  Thinkorswim-inspired 2×2 dockable grid (Watchlist / Market Signals / War Room
+  deep-link hints / Headlines stream). Drag splitters reapportion layout;
+  positions persist to localStorage. Monospace typography (JetBrains Mono),
+  tight density. Header includes live SPY/QQQ/IWM/VIX pulse + ET session clock.
+  Added to Tools menu (`nav-terminal-btn`) and reachable via
+  `navigateTo('terminal')` event. Lazy-loaded for fast initial paint.
+* **Dynamic OG PNG generator** (`/api/share/img/{ticker}.png`): 1200×630 PNG
+  composited server-side with Pillow — brand gradient background, huge
+  monospace ticker, live price, colored % change (lime up / orange down), teal
+  "Open War Room →" pill CTA. 60s in-memory cache keyed by ticker+price-bucket.
+  Share HTML now points `og:image` + `twitter:image` at this endpoint instead
+  of the static logo — every share on X/Slack/LinkedIn/WhatsApp/Discord now
+  renders a bespoke live-price card.
+* **Share button ROI badge** (`WarRoomHub.jsx`): Share button lazy-fetches
+  `/api/referral/info` and surfaces the authenticated user's `completed_referrals`
+  as a lime pill badge on the button (e.g. "Share AAPL · 3"). Tooltip reads
+  "3 signups via your links so far" — turning a one-off action into a habit
+  loop by giving the user continuous social-proof feedback on their shares.
+* **Regression check**: `test_share_endpoint.py` 16/16 pass. All key endpoints
+  (ready, quote, sectors, share HTML, share PNG, share with ref, referral
+  leaderboard) return 200 + correct payloads.
+* Lint: 0 issues across all new/modified files.
+

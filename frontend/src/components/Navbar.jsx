@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings, Swords } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings, Swords, Terminal } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -277,6 +277,9 @@ const Navbar = ({
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-violet-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenScanner} data-testid="nav-scanner-btn">
                   <Radar className="w-4 h-4 mr-2" /> Market Scanner
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate && onNavigate('terminal')} data-testid="nav-terminal-btn">
+                  <Terminal className="w-4 h-4 mr-2" /> Terminal Mode
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-amber-400 hover:bg-slate-700 cursor-pointer" onSelect={onOpenBots} data-testid="nav-bots-btn">
                   <Bot className="w-4 h-4 mr-2" /> Trading Bots

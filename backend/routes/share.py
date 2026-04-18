@@ -28,7 +28,6 @@ router = APIRouter(prefix="/api/share", tags=["share"])
 
 # Public site URL (logo, canonical, etc.). Keep in sync with frontend env.
 SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://risedual.ai")
-OG_IMAGE = f"{SITE_URL}/logo-512.png"
 BRAND = "RISEDUAL AI"
 TAGLINE = "Adversarial AI Trading Platform"
 
@@ -81,6 +80,8 @@ def _build_html(ticker: str, quote: dict | None, request: Request, ref: str | No
     # Absolute canonical URL for the share page (what crawlers will see).
     base = _public_base(request)
     canonical = f"{base}/api/share/{t}"
+    # Dynamic per-ticker OG card (1200×630) with live price + brand.
+    og_image = f"{base}/api/share/img/{t}.png"
     # Preserve a referral attribution code (`?ref=CODE`) through the SPA
     # redirect so `useReferralCapture` + AuthModal can read it at signup.
     ref_suffix = f"&ref={ref}" if ref else ""
@@ -122,10 +123,10 @@ def _build_html(ticker: str, quote: dict | None, request: Request, ref: str | No
 <meta property="og:site_name" content="{BRAND}"/>
 <meta property="og:title" content="{_escape(title)}"/>
 <meta property="og:description" content="{_escape(description)}"/>
-<meta property="og:image" content="{OG_IMAGE}"/>
+<meta property="og:image" content="{og_image}"/>
 <meta property="og:image:alt" content="{BRAND} — {t}"/>
-<meta property="og:image:width" content="512"/>
-<meta property="og:image:height" content="512"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
 <meta property="og:url" content="{_escape(canonical)}"/>
 <meta property="og:locale" content="en_US"/>
 
@@ -133,7 +134,7 @@ def _build_html(ticker: str, quote: dict | None, request: Request, ref: str | No
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="{_escape(title)}"/>
 <meta name="twitter:description" content="{_escape(description)}"/>
-<meta name="twitter:image" content="{OG_IMAGE}"/>
+<meta name="twitter:image" content="{og_image}"/>
 <meta name="twitter:image:alt" content="{BRAND} — {t}"/>
 
 <!-- Misc platform hints -->

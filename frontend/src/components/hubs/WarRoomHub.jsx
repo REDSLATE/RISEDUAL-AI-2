@@ -36,20 +36,27 @@ export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
   const [recent, setRecent] = useState(() => getRecent());
   const [copied, setCopied] = useState(false);
   const [refCode, setRefCode] = useState(null);
+  const [refStats, setRefStats] = useState({ completed: 0, rewards: 0 });
   // When a deep-link navigates into (or within) the War Room, sync the sub-tab.
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => subscribeRecent((arr) => setRecent(arr)), []);
 
-  // Lazily fetch the authenticated user's referral code the first time they
-  // open the War Room. Every copied share link then carries `?ref=CODE`, so
-  // signups from that click credit the user automatically.
+  // Lazily fetch the authenticated user's referral code + ROI stats the first
+  // time they open the War Room. Every copied share link carries `?ref=CODE`,
+  // and the Share button tooltip surfaces live signup counts — turning it
+  // from a one-off action into a habit loop.
   useEffect(() => {
     if (!user || refCode) return;
     let cancelled = false;
     authFetch(`${getApiBase()}/api/referral/info`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && d?.code) setRefCode(d.code);
+        if (cancelled || !d) return;
+        if (d.code) setRefCode(d.code);
+        setRefStats({
+          completed: d.completed_referrals || 0,
+          rewards: d.rewards_this_year || 0,
+        });
       })
       .catch(() => { /* silent — share still works without ref */ });
     return () => { cancelled = true; };
@@ -105,11 +112,23 @@ export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
           <button
             onClick={onShare}
             className="ml-1 inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/30 hover:bg-[#3DE8D9]/20 hover:text-[#7AEEE0] transition-colors"
-            title={`Share ${currentTicker} War Room — live preview on X, Slack, iMessage, LinkedIn, WhatsApp, Discord, Telegram…`}
+            title={
+              refStats.completed > 0
+                ? `Share ${currentTicker} War Room — ${refStats.completed} signup${refStats.completed === 1 ? '' : 's'} via your links so far. Previews on X, Slack, iMessage, LinkedIn, WhatsApp, Discord, Telegram…`
+                : `Share ${currentTicker} War Room — live preview on X, Slack, iMessage, LinkedIn, WhatsApp, Discord, Telegram…`
+            }
             data-testid="warroom-share-btn"
           >
             {copied ? <Check className="w-3 h-3" /> : <Share2 className="w-3 h-3" />}
             <span>{copied ? 'Copied' : `Share ${currentTicker}`}</span>
+            {refStats.completed > 0 && !copied && (
+              <span
+                className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-lime-400/20 text-lime-300 text-[9px] font-bold tabular-nums border border-lime-400/30"
+                data-testid="warroom-share-roi-badge"
+              >
+                {refStats.completed}
+              </span>
+            )}
           </button>
         )}
         {recent.length > 0 && (
