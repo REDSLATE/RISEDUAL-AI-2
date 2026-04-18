@@ -120,14 +120,21 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       })
         .then(r => r.ok ? r.json() : null)
         .then(data => {
-          if (!data || !Array.isArray(data.chips) || !data.chips.length) return;
-          // Attach chips to the most recent assistant message.
+          if (!data) return;
+          const chips = Array.isArray(data.chips) && data.chips.length ? data.chips : null;
+          const actions = Array.isArray(data.actions) ? data.actions.filter(a => a && a.label && a.kind) : [];
+          if (!chips && !actions.length) return;
+          // Attach chips + actions to the most recent assistant message.
           setMessages(prev => {
             const idx = [...prev].reverse().findIndex(m => m.role === 'assistant');
             if (idx < 0) return prev;
             const realIdx = prev.length - 1 - idx;
             const copy = [...prev];
-            copy[realIdx] = { ...copy[realIdx], followups: data.chips };
+            copy[realIdx] = {
+              ...copy[realIdx],
+              ...(chips ? { followups: chips } : {}),
+              ...(actions.length ? { actions } : {}),
+            };
             return copy;
           });
         })
@@ -285,6 +292,43 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             isPro={isPro}
             onPin={(content) => pinToMemory(content, setMessages)}
             onSuggestionClick={handleSuggestionClick}
+            onActionClick={(act, msgIdx) => {
+              // Level-2 deep-link action — route to the target hub + close the chat.
+              const ctx = typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null;
+              try {
+                fetch(`${API}/analytics/chip-event`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    action: 'action-clicked',
+                    chip_text: act.label,
+                    message_idx: typeof msgIdx === 'number' ? msgIdx : null,
+                    context_hub: ctx,
+                  }),
+                }).catch(() => { /* silent */ });
+              } catch { /* silent */ }
+
+              // Dispatch the right navigation + payload event.
+              try {
+                if (act.kind === 'research') {
+                  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'research' } }));
+                  if (act.ticker) {
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('risedualai-research', { detail: act.ticker }));
+                    }, 150);
+                  }
+                } else if (act.kind === 'watchlist' && act.ticker) {
+                  window.dispatchEvent(new CustomEvent('risedualai-add-watchlist', { detail: act.ticker }));
+                } else if (act.kind === 'warroom' || act.kind === 'options' || act.kind === 'workspace' || act.kind === 'dashboard') {
+                  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: act.kind } }));
+                }
+              } catch (err) {
+                logger.warn('Action dispatch failed:', err);
+              }
+              // Close chat so the target surface is visible
+              setIsOpen(false);
+            }}
             onFollowupClick={(chip, msgIdx) => {
               // Fire-and-forget adoption telemetry — non-blocking, silent on failure.
               try {

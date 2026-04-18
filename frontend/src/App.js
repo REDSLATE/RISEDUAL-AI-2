@@ -113,6 +113,19 @@ function AppContent() {
     }
   }, [user]);
 
+  // Global deep-link nav bus — lets surfaces like the AI Chat Level-2 action
+  // buttons route the user to a specific hub/subtab without prop-drilling.
+  // Payload: { view: 'research'|'warroom'|'options'|'workspace'|'dashboard', subTab?: string }
+  React.useEffect(() => {
+    const handler = (e) => {
+      const { view, subTab } = e?.detail || {};
+      if (!view) return;
+      navigateTo(view, subTab);
+    };
+    window.addEventListener('risedualai-navigate', handler);
+    return () => window.removeEventListener('risedualai-navigate', handler);
+  }, [navigateTo]);
+
   // OAuth Demo page — accessible without login at ?demo=oauth
   if (window.location.search.includes('demo=oauth')) {
     return (

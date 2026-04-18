@@ -373,17 +373,17 @@ class ChipEvent(BaseModel):
 
 @router.post("/chip-event")
 async def log_chip_event(payload: ChipEvent, request: Request) -> dict:
-    """Fire-and-forget telemetry for AI chat follow-up chips.
+    """Fire-and-forget telemetry for AI chat follow-up chips + deep-link actions.
 
-    Tracks both ``shown`` (chip rendered to the user) and ``clicked`` events so the
-    admin can compute Level-1 adoption: click-through-rate = clicked / shown.
-    A high CTR validates building Level-2 (deep-link action buttons); a low CTR
-    says skip straight to Level-3 or something different.
+    Accepted ``action`` values:
+    - ``shown`` / ``clicked`` — Level-1 follow-up chips.
+    - ``action-shown`` / ``action-clicked`` — Level-2 inline deep-link actions
+      (e.g. "Open AAPL Research"). Used to compute separate CTR for actions vs chips.
     """
     if db is None:
         return {"ok": False, "reason": "db_not_ready"}
     action = (payload.action or "").strip().lower()
-    if action not in ("shown", "clicked"):
+    if action not in ("shown", "clicked", "action-shown", "action-clicked"):
         return {"ok": False, "reason": "bad_action"}
     chip = (payload.chip_text or "").strip()
     if not chip or len(chip) > 120:
@@ -417,6 +417,11 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "clicked"})
     ctr = round(clicked / shown, 3) if shown else 0
 
+    # Level-2 deep-link actions — separate funnel
+    action_shown = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-shown"})
+    action_clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-clicked"})
+    action_ctr = round(action_clicked / action_shown, 3) if action_shown else 0
+
     # Top clicked chips
     clicked_pipeline = [
         {"$match": {"ts": {"$gte": since}, "action": "clicked"}},
@@ -428,12 +433,27 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     async for row in db.chip_events.aggregate(clicked_pipeline):
         top_clicked.append({"chip": row["_id"], "count": row["count"]})
 
+    # Top clicked actions (Level-2)
+    action_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "action": "action-clicked"}},
+        {"$group": {"_id": "$chip_text", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 50))},
+    ]
+    top_actions = []
+    async for row in db.chip_events.aggregate(action_pipeline):
+        top_actions.append({"chip": row["_id"], "count": row["count"]})
+
     return {
         "window_days": days,
         "shown": shown,
         "clicked": clicked,
         "ctr": ctr,
+        "action_shown": action_shown,
+        "action_clicked": action_clicked,
+        "action_ctr": action_ctr,
         "top_clicked": top_clicked,
+        "top_actions": top_actions,
     }
 
 

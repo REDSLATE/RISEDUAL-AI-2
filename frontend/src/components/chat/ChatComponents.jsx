@@ -7,9 +7,10 @@ import logger from '../../utils/logger';
 
 const CHIP_API = `${getApiBase()}/api/analytics/chip-event`;
 
-const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick, onFollowupClick }) => {
+const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, onSuggestionClick, onFollowupClick, onActionClick }) => {
   const endRef = useRef(null);
   const shownChipsRef = useRef(new Set());
+  const shownActionsRef = useRef(new Set());
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,25 +21,49 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
   useEffect(() => {
     const ctx = typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null;
     messages.forEach((msg, idx) => {
-      if (msg.role !== 'assistant' || !Array.isArray(msg.followups)) return;
-      msg.followups.forEach((chip) => {
-        const key = `${idx}::${chip}`;
-        if (shownChipsRef.current.has(key)) return;
-        shownChipsRef.current.add(key);
-        try {
-          fetch(CHIP_API, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              action: 'shown',
-              chip_text: chip,
-              message_idx: idx,
-              context_hub: ctx,
-            }),
-          }).catch(() => { /* silent */ });
-        } catch { /* silent */ }
-      });
+      if (msg.role !== 'assistant') return;
+      if (Array.isArray(msg.followups)) {
+        msg.followups.forEach((chip) => {
+          const key = `${idx}::${chip}`;
+          if (shownChipsRef.current.has(key)) return;
+          shownChipsRef.current.add(key);
+          try {
+            fetch(CHIP_API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                action: 'shown',
+                chip_text: chip,
+                message_idx: idx,
+                context_hub: ctx,
+              }),
+            }).catch(() => { /* silent */ });
+          } catch { /* silent */ }
+        });
+      }
+      if (Array.isArray(msg.actions)) {
+        msg.actions.forEach((act) => {
+          const label = act && act.label;
+          if (!label) return;
+          const key = `${idx}::action::${label}`;
+          if (shownActionsRef.current.has(key)) return;
+          shownActionsRef.current.add(key);
+          try {
+            fetch(CHIP_API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                action: 'action-shown',
+                chip_text: label,
+                message_idx: idx,
+                context_hub: ctx,
+              }),
+            }).catch(() => { /* silent */ });
+          } catch { /* silent */ }
+        });
+      }
     });
   }, [messages]);
 
@@ -80,14 +105,33 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
   return (
     <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2.5 scrollbar-thin scrollbar-thumb-slate-700" data-testid="chat-messages">
       {messages.map((msg, idx) => {
+        const isLast = msg.role === 'assistant' && idx === messages.length - 1;
         // Only show follow-up chips on the MOST RECENT assistant message
-        const isLastAssistant = msg.role === 'assistant'
-          && idx === messages.length - 1
-          && Array.isArray(msg.followups) && msg.followups.length > 0;
+        const showChips = isLast && Array.isArray(msg.followups) && msg.followups.length > 0;
+        const showActions = isLast && Array.isArray(msg.actions) && msg.actions.length > 0;
         return (
           <React.Fragment key={`msg-${idx}-${msg.role}`}>
             <MessageBubble msg={msg} idx={idx} copiedId={copiedId} onCopy={onCopy} isPro={isPro} onPin={onPin} />
-            {isLastAssistant && onFollowupClick && (
+            {showActions && onActionClick && (
+              <div className="flex items-start gap-2 px-2" data-testid={`actions-${idx}`}>
+                <span className="text-[9px] text-[#3DE8D9]/70 uppercase tracking-wider font-semibold pt-2 shrink-0">Go</span>
+                <div className="flex-1 flex flex-wrap gap-1.5">
+                  {msg.actions.map((act, ai) => (
+                    <button
+                      key={ai}
+                      onClick={() => onActionClick(act, idx)}
+                      className="group text-[11px] font-semibold px-3 py-1.5 rounded-full bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/40 hover:bg-[#3DE8D9]/20 hover:border-[#3DE8D9] transition-colors inline-flex items-center gap-1.5"
+                      data-testid={`action-btn-${idx}-${ai}`}
+                      title={act.kind === 'research' ? `Open ${act.ticker || ''} in Research` : `Open ${act.kind}`}
+                    >
+                      <span>{act.label}</span>
+                      <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">→</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showChips && onFollowupClick && (
               <div className="flex items-start gap-2 px-2" data-testid={`followups-${idx}`}>
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider font-semibold pt-2 shrink-0">Next</span>
                 <div className="flex-1 flex flex-wrap gap-1.5">

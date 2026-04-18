@@ -200,7 +200,7 @@ async def chat_followups(request: Request):
         "Explain that further",
         "Run a prediction on this",
         "Save this thesis to my journal",
-    ]}
+    ], "actions": []}
     if not assistant or len(assistant) < 20:
         return fallback
 
@@ -212,42 +212,69 @@ async def chat_followups(request: Request):
         if not key:
             return fallback
         system = (
-            "You generate 3 short follow-up action chips for a trading-app chat UI. "
-            "Each chip must be <= 7 words, imperative voice (Start with a verb), unique, and DIRECTLY relevant to the assistant's last reply. "
-            "Return ONLY a JSON array of 3 strings. No prose, no markdown, no code fences. "
-            "Good examples: [\"Run hypothesis on NVDA\", \"Save to watchlist\", \"Set a price alert\"]."
+            "You generate follow-ups for a trading-app chat UI. Respond with ONE JSON object, no prose, no markdown, no code fences, with keys:\n"
+            "  \"chips\": array of exactly 3 short imperative-voice follow-up prompts (<= 7 words each, start with a verb, unique).\n"
+            "  \"actions\": array of 0–2 deep-link actions. Use actions ONLY when the reply clearly points to one of these app surfaces:\n"
+            "    - {\"kind\":\"research\",\"ticker\":\"AAPL\",\"label\":\"Open AAPL in Research\"} — when a specific ticker is discussed.\n"
+            "    - {\"kind\":\"warroom\",\"label\":\"Open AI War Room\"} — when AI predictions, hypothesis loop, or adversarial signals are mentioned.\n"
+            "    - {\"kind\":\"options\",\"label\":\"Open Options Hub\"} — when options chains, strikes, Greeks, or expiries are mentioned.\n"
+            "    - {\"kind\":\"workspace\",\"label\":\"Open Workspace\"} — when paper trading, portfolio, P&L, or positions are mentioned.\n"
+            "    - {\"kind\":\"watchlist\",\"ticker\":\"AAPL\",\"label\":\"Add AAPL to Watchlist\"} — when the user might want to track a discussed ticker.\n"
+            "  If the reply is generic/informational and no deep-link fits, return \"actions\": [].\n"
+            "  Labels must be <= 32 chars. Tickers must be 1–5 uppercase letters."
         )
         prompt = (
             f"Current hub: {context_hub or 'dashboard'}\n\n"
             f"User asked:\n\"{user_msg}\"\n\n"
             f"Assistant replied:\n\"\"\"\n{assistant[:1200]}\n\"\"\"\n\n"
-            "Respond with JSON array of 3 follow-up action chips:"
+            "Respond with the JSON object now:"
         )
         session_id = f"followups-{hash((user_msg, assistant)) & 0xffffffff}"
         chat = LlmChat(api_key=key, session_id=session_id, system_message=system).with_model("openai", "gpt-4o-mini")
         resp = await chat.send_message(UserMessage(text=prompt))
 
-        # Robust parse — find first [...] block
+        # Robust parse — find first {...} block
         txt = str(resp).strip()
         if txt.startswith("```"):
-            # strip code fence
             txt = txt.split("```", 2)[1] if "```" in txt else txt
             if txt.startswith("json"):
                 txt = txt[4:].strip()
-        start = txt.find("[")
-        end = txt.rfind("]")
+        start = txt.find("{")
+        end = txt.rfind("}")
         if start < 0 or end <= start:
             return fallback
         import json as _json
-        arr = _json.loads(txt[start:end + 1])
+        obj = _json.loads(txt[start:end + 1])
+        arr = obj.get("chips") or []
+        raw_actions = obj.get("actions") or []
         chips = [str(x).strip() for x in arr if isinstance(x, (str, int, float)) and str(x).strip()]
         chips = [c[:60] for c in chips][:3]
         if len(chips) < 2:
             return fallback
-        # pad to 3 if model gave 2
         while len(chips) < 3:
             chips.append(fallback["chips"][len(chips)])
-        return {"chips": chips}
+
+        # Whitelist + sanitise actions
+        allowed_kinds = {"research", "warroom", "options", "workspace", "watchlist"}
+        import re as _re
+        actions = []
+        for a in raw_actions[:3]:
+            if not isinstance(a, dict):
+                continue
+            kind = str(a.get("kind") or "").strip().lower()
+            if kind not in allowed_kinds:
+                continue
+            label = str(a.get("label") or "").strip()[:40]
+            if not label:
+                continue
+            ticker = str(a.get("ticker") or "").strip().upper()
+            if ticker and not _re.match(r"^[A-Z]{1,5}$", ticker):
+                ticker = ""
+            # Research + watchlist require a ticker to be useful
+            if kind in ("research", "watchlist") and not ticker:
+                continue
+            actions.append({"kind": kind, "label": label, **({"ticker": ticker} if ticker else {})})
+        return {"chips": chips, "actions": actions[:2]}
     except Exception as e:
         logger.warning(f"Follow-ups generation failed: {e}")
         return fallback
