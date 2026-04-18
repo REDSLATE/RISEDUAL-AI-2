@@ -261,3 +261,15 @@ async def help_search_stats(request: Request, days: int = 30, limit: int = 20) -
         "zero_result_top": zero_top,
         "top_queries": top_queries,
     }
+
+
+@router.post("/help-search/send-digest")
+async def trigger_help_search_digest(request: Request) -> dict:
+    """Admin-only: manually trigger the weekly Help-Search digest email (on-demand)."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    from services.help_search_digest import send_help_search_digest
+    return await send_help_search_digest(db)

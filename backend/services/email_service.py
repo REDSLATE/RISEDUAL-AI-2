@@ -485,6 +485,125 @@ async def send_tiered_reward_email(
     )
 
 
+
+# ── Help Search Weekly Digest (Admin Feature-Gap Radar) ──
+
+def _help_search_digest_html(admin_name: str, data: dict) -> str:
+    """HTML for the weekly zero-result search digest sent to admins.
+
+    ``data`` shape: ``{total, zero_total, zero_rate, zero_top: [{q, count, unique_users, hubs}]}``.
+    """
+    name = (admin_name or "there").strip() or "there"
+    total = int(data.get("total") or 0)
+    zero_total = int(data.get("zero_total") or 0)
+    zero_rate_pct = f"{(data.get('zero_rate') or 0) * 100:.1f}%"
+
+    # Gap-signal badge color
+    rate = float(data.get("zero_rate") or 0)
+    if rate > 0.2:
+        gap_color, gap_bg, gap_label = "#DC2626", "#FEE2E2", "HIGH"
+    elif rate > 0.1:
+        gap_color, gap_bg, gap_label = "#D97706", "#FEF3C7", "MEDIUM"
+    else:
+        gap_color, gap_bg, gap_label = "#059669", "#D1FAE5", "LOW"
+
+    # Top zero-result table rows
+    rows_html = ""
+    for i, r in enumerate(data.get("zero_top") or []):
+        q_safe = (r.get("q") or "").replace("<", "&lt;").replace(">", "&gt;")
+        hubs = ", ".join(r.get("hubs") or []) or "—"
+        uu = int(r.get("unique_users") or 0)
+        rank_bg = "#F8FAFC" if i % 2 == 0 else "#FFFFFF"
+        rows_html += f"""<tr bgcolor="{rank_bg}" style="background-color:{rank_bg};">
+<td style="padding:10px 14px;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13px;font-weight:600;">{q_safe}</td>
+<td style="padding:10px 14px;border-bottom:1px solid #E2E8F0;color:#DC2626;font-size:14px;font-weight:800;text-align:right;">{r.get('count', 0)}</td>
+<td style="padding:10px 14px;border-bottom:1px solid #E2E8F0;color:#475569;font-size:12px;text-align:right;">{uu} user{'s' if uu != 1 else ''}</td>
+<td style="padding:10px 14px;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:11px;">{hubs}</td>
+</tr>"""
+
+    top_table = f"""
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;border-collapse:collapse;">
+<tr bgcolor="#0F172A" style="background-color:#0F172A;">
+<th align="left" style="padding:10px 14px;color:#94A3B8;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Query</th>
+<th align="right" style="padding:10px 14px;color:#94A3B8;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Count</th>
+<th align="right" style="padding:10px 14px;color:#94A3B8;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Users</th>
+<th align="left" style="padding:10px 14px;color:#94A3B8;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Context</th>
+</tr>
+{rows_html}
+</table>"""
+
+    # Headline insight — one punchy call-out for the top gap
+    top = (data.get("zero_top") or [{}])[0]
+    top_q = (top.get("q") or "").replace("<", "&lt;").replace(">", "&gt;")
+    top_count = int(top.get("count") or 0)
+    top_users = int(top.get("unique_users") or 0)
+    headline = ""
+    if top_q:
+        headline = f"""
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FEF3C7" style="background-color:#FEF3C7;border-radius:10px;border:1px solid #FDE68A;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<p style="color:#92400E;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;">Biggest Gap This Week</p>
+<p style="color:#0F172A;font-size:18px;margin:0 0 4px;font-weight:800;">&ldquo;{top_q}&rdquo;</p>
+<p style="color:#78350F;font-size:12px;margin:0;">{top_count} search{'es' if top_count != 1 else ''} · {top_users} unique user{'s' if top_users != 1 else ''} · 0 results returned.</p>
+</td></tr>
+</table>"""
+
+    content = f"""
+<h2 style="color:#0F172A;font-size:22px;margin:0 0 4px;font-weight:800;">Feature-Gap Radar</h2>
+<p style="color:#64748B;font-size:12px;margin:0 0 20px;font-weight:600;">7-day summary &mdash; what users searched for but couldn&rsquo;t find.</p>
+
+<p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
+Hey {name}, here&rsquo;s what {APP_NAME} users searched for in the Help Center this week.
+Zero-result queries are the fastest signal for your next feature or doc.
+</p>
+
+<!-- KPI row -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td width="33%" style="text-align:center;vertical-align:top;">
+<p style="color:#64748B;font-size:10px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Total</p>
+<p style="color:#0F172A;font-size:22px;margin:0;font-weight:800;">{total}</p>
+<p style="color:#94A3B8;font-size:10px;margin:2px 0 0;">searches</p>
+</td>
+<td width="34%" style="text-align:center;vertical-align:top;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;">
+<p style="color:#64748B;font-size:10px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Zero-Result</p>
+<p style="color:#DC2626;font-size:22px;margin:0;font-weight:800;">{zero_total}</p>
+<p style="color:#94A3B8;font-size:10px;margin:2px 0 0;">{zero_rate_pct} of total</p>
+</td>
+<td width="33%" style="text-align:center;vertical-align:top;">
+<p style="color:#64748B;font-size:10px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Gap Signal</p>
+<p style="margin:0;"><span style="display:inline-block;background-color:{gap_bg};color:{gap_color};font-size:12px;font-weight:800;padding:4px 10px;border-radius:6px;">{gap_label}</span></p>
+<p style="color:#94A3B8;font-size:10px;margin:4px 0 0;">&gt;20% = ship docs/features</p>
+</td>
+</tr>
+</table>
+</td></tr>
+</table>
+
+{headline}
+
+<p style="color:#64748B;font-size:11px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;">Top Zero-Result Queries</p>
+{top_table}
+
+<p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 24px;">
+Every item above is a user who hit the Help Center and walked away without an answer.
+Fix the doc, build the feature, or add the integration &mdash; fastest path to reducing friction.
+</p>
+
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+<tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:10px;">
+<a href="{APP_URL}/?v2=1" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">Open Admin Panel</a>
+</td></tr>
+</table>"""
+
+    preheader = (f"{zero_total} zero-result searches this week"
+                 + (f" · top: '{top_q}'" if top_q else ""))
+    return _base_html(content, preheader=preheader)
+
+
+# ── Waitlist Emails ──
 # ── Waitlist Emails ──
 
 def _war_room_invite_html(name: str, beta_key: str, rank: int, referral_count: int) -> str:

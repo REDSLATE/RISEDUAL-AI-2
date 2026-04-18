@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Search, TrendingUp, AlertCircle, Zap, RefreshCw } from 'lucide-react';
+import { Search, TrendingUp, AlertCircle, Zap, RefreshCw, Mail } from 'lucide-react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
+import { toast } from '../ui/sonner';
 
 const API = `${getApiBase()}/api`;
 
@@ -9,6 +10,7 @@ export default function HelpSearchInsights() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [sendingDigest, setSendingDigest] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -19,6 +21,24 @@ export default function HelpSearchInsights() {
       setLoading(false);
     }
   }, [days]);
+
+  const sendDigest = useCallback(async () => {
+    setSendingDigest(true);
+    try {
+      const r = await authFetch(`${API}/analytics/help-search/send-digest`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'Request failed');
+      if (data.skipped) {
+        toast.info(`Digest skipped: ${data.reason}${data.zero_events !== undefined ? ` (${data.zero_events} zero-result events)` : ''}`);
+      } else {
+        toast.success(`Digest sent to ${data.sent} admin${data.sent === 1 ? '' : 's'}${data.errors ? ` (${data.errors} errors)` : ''}`);
+      }
+    } catch (e) {
+      toast.error(`Send failed: ${e.message}`);
+    } finally {
+      setSendingDigest(false);
+    }
+  }, []);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
@@ -64,6 +84,16 @@ export default function HelpSearchInsights() {
             aria-label="Refresh"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={sendDigest}
+            disabled={sendingDigest}
+            className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#3DE8D9]/15 text-[#3DE8D9] border border-[#3DE8D9]/40 text-[11px] font-semibold hover:bg-[#3DE8D9]/25 transition-colors disabled:opacity-50"
+            data-testid="send-help-digest-btn"
+            title="Send the 7-day zero-result summary to all admin/owner emails right now"
+          >
+            <Mail className={`w-3.5 h-3.5 ${sendingDigest ? 'animate-pulse' : ''}`} />
+            {sendingDigest ? 'Sending…' : 'Email digest'}
           </button>
         </div>
       </div>

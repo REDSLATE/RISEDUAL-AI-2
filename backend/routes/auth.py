@@ -462,7 +462,20 @@ async def seed_admin():
             "created_at": datetime.now(timezone.utc),
         })
     else:
-        updates = {"role": "owner", "subscription_status": "pro", "name": "RISEDUAL", "is_active": True}
+        # Respect prior merges — if this account was merged into another,
+        # do NOT resurrect it to owner on every restart. Only keep the password
+        # in sync so the audit trail stays accessible if the superuser ever
+        # needs to inspect it.
+        was_merged = (existing_owner.get("role") == "merged"
+                      or existing_owner.get("merged_into_email"))
+        updates = {}
+        if not was_merged:
+            updates.update({
+                "role": "owner",
+                "subscription_status": "pro",
+                "name": "RISEDUAL",
+                "is_active": True,
+            })
         existing_hash = existing_owner.get("password_hash")
         needs_rehash = True
         if existing_hash:
@@ -472,7 +485,13 @@ async def seed_admin():
                 logging.warning(f"Owner password verify failed during seed: {e}")
         if needs_rehash:
             updates["password_hash"] = hash_password(OWNER_PASSWORD)
-        await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
+        if updates:
+            await db.users.update_one({"email": OWNER_EMAIL}, {"$set": updates})
+        if was_merged:
+            logging.info(
+                f"Owner seed: {OWNER_EMAIL} already merged into "
+                f"{existing_owner.get('merged_into_email')}, preserving merged state."
+            )
 
     # Ensure admin & owner have credit wallets (Pro Max allocation)
     for email in [admin_email, OWNER_EMAIL]:

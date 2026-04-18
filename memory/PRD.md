@@ -54,7 +54,21 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
-### Help Center v2 (COMPLETED Feb 18, 2026)
+### Help Search Weekly Digest — Proactive Admin Push (COMPLETED Feb 18, 2026)
+- **New service** `/app/backend/services/help_search_digest.py`:
+  - Aggregates last-7-days `help_search_events` via $group pipeline.
+  - Skip threshold: <3 zero-result events → no admin spam on quiet weeks.
+  - Only sends to active `admin`/`owner` roles with email (excludes merged/deactivated).
+- **New HTML template** `_help_search_digest_html` in `email_service.py`:
+  - KPI row (Total · Zero-Result · Gap Signal Low/Medium/High by rate).
+  - "Biggest Gap This Week" callout with top query + user count.
+  - Top-15 table: query, count, unique users, context hubs.
+  - Light-theme Gmail-safe layout consistent with digest emails.
+- **APScheduler job** registered in `server.py` — `cron` Mon 7:00 UTC, id=`help_search_weekly_digest`.
+- **Manual trigger** `POST /api/analytics/help-search/send-digest` (admin-only) + "Email digest" button in the admin panel Help Search tab.
+- **Bug fix**: `seed_admin()` in `routes/auth.py` now respects merged state. Previously every restart resurrected `managingdirector@redslateholdings.com` to `role=owner, is_active=True` — now checks for `role=='merged'` or `merged_into_email` first, only updates password hash for audit access.
+
+## Help Center v2 (COMPLETED Feb 18, 2026)
 - **Rewrote `/app/frontend/src/components/HelpCenter.jsx`** to match v2 aesthetic:
   - Uses the same `IconTabBar` component as War Room / Research / Options / Workspace.
   - 8 sections × ~45 tips, all content refreshed for v2 architecture (War Room hub, Stock Detail merge, Classic UI toggle, paper trading gates, referral rewards, live broker status).

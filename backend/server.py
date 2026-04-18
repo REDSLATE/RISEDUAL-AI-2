@@ -258,8 +258,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_13f_scan, 'cron', hour=8, minute=0, id='sec_13f_daily_scan')
         scheduler.add_job(_run_referral_hit_rewards, 'cron', hour=9, minute=0, id='referral_hit_rewards_daily')
         scheduler.add_job(_run_referral_monthly_rewards, 'cron', day=1, hour=9, minute=30, id='referral_monthly_rewards')
+        scheduler.add_job(_run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -426,6 +427,22 @@ async def _run_referral_monthly_rewards():
         logger.info(f"Referral monthly rewards: period={result.get('period')}, granted={result.get('count',0)}")
     except Exception as e:
         logger.warning(f"Referral monthly rewards error: {e}")
+
+
+async def _run_help_search_digest():
+    """Background: Mondays at 7:00 UTC — email admins a summary of the week's
+    top zero-result Help Center searches (Feature-Gap Radar)."""
+    try:
+        from services.help_search_digest import send_help_search_digest
+        result = await send_help_search_digest(db)
+        logger.info(
+            f"Help search digest: sent={result.get('sent', 0)}, "
+            f"skipped={result.get('skipped')}, zero_events={result.get('zero_events')}, "
+            f"top_gap={result.get('top_gap')}"
+        )
+    except Exception as e:
+        logger.warning(f"Help search digest error: {e}")
+
 
 
 def _start_cache_warmup():
