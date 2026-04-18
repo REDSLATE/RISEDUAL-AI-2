@@ -54,6 +54,17 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Chip Adoption Admin Dashboard (COMPLETED Feb 19, 2026)
+- **New component** `/app/frontend/src/components/admin/ChipAdoptionInsights.jsx`
+  mirrors the `HelpSearchInsights` pattern: 4 KPI cards (Shown · Clicked · CTR ·
+  Level-2 Signal), 7d/30d/90d window toggle, top-clicked chips table.
+- **Wired into AdminPanel** as a new tab `Chip CTR` (icon: MessageSquare) between
+  `Help Search` and `Tools`.
+- **Signal thresholds**: &ge;20% CTR = `High` (ship Level-2 deep-links),
+  10–19% = `Medium`, &lt;10% = `Low` (redesign before investing).
+- **E2E verified**: logged in as admin, opened panel, clicked `Chip CTR` tab,
+  confirmed all KPIs + top-clicked table populate from real Mongo events.
+
 ### Level-1 AI Chat Follow-up Chips + Adoption Telemetry (COMPLETED Feb 19, 2026)
 - **Backend** `POST /api/chat/followups` (Emergent LLM, `gpt-4o-mini`) generates 3
   contextual follow-up suggestions after every assistant reply.

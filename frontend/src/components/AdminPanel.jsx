@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, DollarSign, Activity, Search } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, DollarSign, Activity, Search, MessageSquare } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -14,6 +14,7 @@ import UsersTab from './admin/UsersTab';
 import ProviderHealth from './admin/ProviderHealth';
 import KeyVault from './admin/KeyVault';
 import HelpSearchInsights from './admin/HelpSearchInsights';
+import ChipAdoptionInsights from './admin/ChipAdoptionInsights';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -70,6 +71,7 @@ const AdminPanel = ({ onClose }) => {
     { id: 'security', label: 'Security', icon: ShieldCheck },
     { id: 'waitlist', label: 'Waitlist', icon: Users },
     { id: 'help-search', label: 'Help Search', icon: Search },
+    { id: 'chip-adoption', label: 'Chip CTR', icon: MessageSquare },
     { id: 'tools', label: 'Tools', icon: FileCode },
   ];
 
@@ -131,6 +133,8 @@ const AdminPanel = ({ onClose }) => {
           <WaitlistAdmin />
         ) : tab === 'help-search' ? (
           <HelpSearchInsights />
+        ) : tab === 'chip-adoption' ? (
+          <ChipAdoptionInsights />
         ) : (
           <AdminTools />
         )}
