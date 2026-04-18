@@ -129,6 +129,26 @@ function AppContent() {
     return () => window.removeEventListener('risedualai-navigate', handler);
   }, [navigateTo]);
 
+  // Social-share landing: `/?warroom=TICKER` → auto-open the AI War Room.
+  // Matches the pattern used by `/api/share/{ticker}` which redirects here.
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = (params.get('warroom') || '').toUpperCase().trim();
+      if (!t || !/^[A-Z0-9.]{1,8}$/.test(t)) return;
+      // Strip the param from the URL so a manual reload doesn't re-fire.
+      const clean = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', clean);
+      // Defer to next tick so downstream listeners are mounted.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'warroom', subTab: 'adversarial' } }));
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('risedualai-warroom', { detail: t }));
+        }, 200);
+      }, 50);
+    } catch { /* silent */ }
+  }, []);
+
   // OAuth Demo page — accessible without login at ?demo=oauth
   if (window.location.search.includes('demo=oauth')) {
     return (

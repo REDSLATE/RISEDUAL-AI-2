@@ -1,13 +1,17 @@
 # Test Credentials
 
-## Admin (primary owner)
-- Email: admin@risedual.ai
+## Owner (RISEDUAL)
+- Email: managingdirector@redslateholdings.com
 - Password: RiseDual2026!
 - Role: owner
 - Subscription: pro
+- Can activate/deactivate users and grant/revoke Pro
 
-## DEACTIVATED (do NOT re-enable)
-- managingdirector@redslateholdings.com — account is deactivated per user directive.
+## Admin
+- Email: admin@risedual.ai
+- Password: RiseDual2026!
+- Role: admin
+- Subscription: pro
 
 ## Auth Method
 - httpOnly secure cookies (primary)

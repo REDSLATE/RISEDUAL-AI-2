@@ -497,3 +497,27 @@ See `/app/memory/test_credentials.md`.
   shift alerts visible for admin account.
 * `managingdirector@redslateholdings.com` marked DEACTIVATED in test_credentials.md
   (do not re-enable).
+
+
+### 2026-02-18 — Social share / OG preview per ticker
+* **Backend**: `GET /api/share/{ticker}` returns a server-rendered HTML page
+  with full OpenGraph + Twitter Card + JSON-LD `FinancialProduct` metadata,
+  live quote-enriched title (`AAPL · RISEDUAL AI — AI War Room — $270.23 ▲2.59%`)
+  and description. Meta-refresh + JS redirect bounces real browsers to
+  `/?warroom=TICKER`. Honors `X-Forwarded-Proto`/`X-Forwarded-Host` so canonical
+  URL + SPA redirect use the public domain (not cluster-internal). HEAD supported
+  for preview crawlers that probe before GET.
+* **Frontend**: `App.js` intercepts `?warroom=TICKER` query param on load and
+  dispatches the same nav+warroom events `deepLink.js` uses — SPA auto-opens the
+  AI War Room with the ticker queued for analysis. URL is cleaned via
+  `history.replaceState` so manual reloads don't re-fire.
+* **Share button**: Added to `WarRoomHub.jsx` header (next to the v2 badge).
+  Label reflects current ticker ("Share AAPL"). Uses Web Share API on mobile
+  (native X / iMessage / WhatsApp / Mail / Slack / Signal sheet) and falls back
+  to clipboard + toast on desktop.
+* **Platform coverage** (via standard OG + Twitter tags):
+  X, Facebook, LinkedIn, WhatsApp, iMessage, Slack, Discord, Telegram, Reddit,
+  Bluesky, Pinterest, Signal, Teams — plus Google rich results via JSON-LD.
+* Smoke-tested with `facebookexternalhit`, `Twitterbot`, `LinkedInBot` User-Agents
+  — all receive correct meta tags. Live redirect test: share URL → SPA → War
+  Room opens with ticker auto-analyzed. 0 lint issues.
