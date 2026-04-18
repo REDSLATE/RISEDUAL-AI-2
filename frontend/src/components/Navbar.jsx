@@ -191,22 +191,28 @@ const Navbar = ({
             </div>
           )}
 
-          {/* Desktop v2 toggle pill — compact always-visible entry */}
+          {/* Desktop "Classic UI" toggle pill — compact always-visible entry.
+              v2 is the default; this button opens the legacy/historical design. */}
           <button
             onClick={() => {
-              if (v2Nav) localStorage.removeItem('risedualai_v2_nav');
-              else localStorage.setItem('risedualai_v2_nav', '1');
+              if (v2Nav) {
+                localStorage.setItem('risedualai_legacy_nav', '1');
+                localStorage.removeItem('risedualai_v2_nav');
+              } else {
+                localStorage.removeItem('risedualai_legacy_nav');
+                localStorage.removeItem('risedualai_v2_nav');
+              }
               window.location.reload();
             }}
             className={`hidden lg:inline-flex text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border transition-colors ${
               v2Nav
-                ? 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/30'
-                : 'bg-slate-800/60 text-slate-400 border-slate-600/40 hover:text-orange-300 hover:border-orange-500/30'
+                ? 'bg-slate-800/60 text-slate-400 border-slate-600/40 hover:text-orange-300 hover:border-orange-500/30'
+                : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-orange-500/30'
             }`}
             data-testid="desktop-v2-toggle"
-            title={v2Nav ? 'War Room v2 ON — click to disable' : 'Enable War Room v2 (beta)'}
+            title={v2Nav ? 'Switch to the classic UI (historical design)' : 'Return to the current UI'}
           >
-            {v2Nav ? 'v2 ON' : 'Try v2'}
+            {v2Nav ? 'Classic UI' : 'Return to v2'}
           </button>
 
           {!isPro && (
@@ -236,18 +242,20 @@ const Navbar = ({
                 </div>
                 {!isPro && <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
                 <DropdownMenuItem
-                  className={`${v2Nav ? 'text-orange-300' : 'text-slate-300'} hover:bg-slate-700 cursor-pointer`}
+                  className={`${v2Nav ? 'text-slate-300' : 'text-orange-300'} hover:bg-slate-700 cursor-pointer`}
                   onSelect={() => {
                     if (v2Nav) {
+                      localStorage.setItem('risedualai_legacy_nav', '1');
                       localStorage.removeItem('risedualai_v2_nav');
                     } else {
-                      localStorage.setItem('risedualai_v2_nav', '1');
+                      localStorage.removeItem('risedualai_legacy_nav');
+                      localStorage.removeItem('risedualai_v2_nav');
                     }
                     window.location.reload();
                   }}
                   data-testid="nav-v2-toggle"
                 >
-                  <Swords className="w-4 h-4 mr-2" /> {v2Nav ? 'Disable War Room v2' : 'Enable War Room v2 (beta)'}
+                  <Swords className="w-4 h-4 mr-2" /> {v2Nav ? 'View Classic UI (archive)' : 'Return to current UI'}
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate('workspace')} data-testid="nav-workspace-btn">
                   <Briefcase className="w-4 h-4 mr-2" /> My Workspace
@@ -299,22 +307,27 @@ const Navbar = ({
 
         {/* Mobile */}
         <div className="flex lg:hidden items-center gap-2">
-          {/* Mobile v2 toggle pill — always visible for quick access */}
+          {/* Mobile Classic UI toggle pill — v2 is default; this switches to legacy archive */}
           <button
             onClick={() => {
-              if (v2Nav) localStorage.removeItem('risedualai_v2_nav');
-              else localStorage.setItem('risedualai_v2_nav', '1');
+              if (v2Nav) {
+                localStorage.setItem('risedualai_legacy_nav', '1');
+                localStorage.removeItem('risedualai_v2_nav');
+              } else {
+                localStorage.removeItem('risedualai_legacy_nav');
+                localStorage.removeItem('risedualai_v2_nav');
+              }
               window.location.reload();
             }}
             className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border transition-colors ${
               v2Nav
-                ? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
-                : 'bg-slate-800/60 text-slate-400 border-slate-600/40'
+                ? 'bg-slate-800/60 text-slate-400 border-slate-600/40'
+                : 'bg-orange-500/20 text-orange-300 border-orange-500/40'
             }`}
             data-testid="mobile-v2-toggle"
-            title={v2Nav ? 'War Room v2 ON — tap to disable' : 'Enable War Room v2'}
+            title={v2Nav ? 'Switch to Classic UI (historical design)' : 'Return to current UI'}
           >
-            {v2Nav ? 'v2' : 'v1'}
+            {v2Nav ? 'Classic' : 'v2'}
           </button>
           {!isPro && (
             <Button variant="outline" size="sm" className="bg-[#3DE8D9] text-white hover:bg-[#7AEEE0] border-0 rounded-xl text-xs px-3"

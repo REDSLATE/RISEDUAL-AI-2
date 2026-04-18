@@ -1,32 +1,42 @@
 import { useEffect, useState } from 'react';
 
 /**
- * useV2Nav — feature flag for the consolidated navigation (Phase 1).
+ * useV2Nav — v2 is the DEFAULT experience (shipped Feb 18, 2026).
  *
- * Enabled when:
- *   - URL has `?v2=1` (highest priority; also persists)
- *   - `localStorage.risedualai_v2_nav` === '1'
+ * v1 (legacy) stays accessible as historical site data via:
+ *   - URL param ?v1=1 (persists)
+ *   - URL param ?v2=0 (legacy alias — also switches to v1)
+ *   - localStorage.risedualai_legacy_nav === '1'
  *
- * Disable with `?v2=0` (clears localStorage).
+ * Restore v2 with ?v1=0 or ?v2=1 (clears localStorage).
  */
-const STORAGE_KEY = 'risedualai_v2_nav';
+const LEGACY_KEY = 'risedualai_legacy_nav';
+const LEGACY_KEY_OLD = 'risedualai_v2_nav'; // old opt-in key — ignored going forward
 
 function readFlag() {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
     const url = new URL(window.location.href);
-    const p = url.searchParams.get('v2');
-    if (p === '1') {
-      localStorage.setItem(STORAGE_KEY, '1');
+    const v1 = url.searchParams.get('v1');
+    const v2 = url.searchParams.get('v2');
+
+    // Explicit opt-in to legacy
+    if (v1 === '1' || v2 === '0') {
+      localStorage.setItem(LEGACY_KEY, '1');
+      localStorage.removeItem(LEGACY_KEY_OLD);
+      return false; // v2 disabled → show legacy
+    }
+    // Explicit opt-out of legacy
+    if (v1 === '0' || v2 === '1') {
+      localStorage.removeItem(LEGACY_KEY);
+      localStorage.removeItem(LEGACY_KEY_OLD);
       return true;
     }
-    if (p === '0') {
-      localStorage.removeItem(STORAGE_KEY);
-      return false;
-    }
-    return localStorage.getItem(STORAGE_KEY) === '1';
+    // Persisted legacy preference
+    if (localStorage.getItem(LEGACY_KEY) === '1') return false;
+    return true;
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -41,8 +51,8 @@ export default function useV2Nav() {
 
   const toggle = (on) => {
     const next = on === undefined ? !enabled : !!on;
-    if (next) localStorage.setItem(STORAGE_KEY, '1');
-    else localStorage.removeItem(STORAGE_KEY);
+    if (next) localStorage.removeItem(LEGACY_KEY);
+    else localStorage.setItem(LEGACY_KEY, '1');
     setEnabled(next);
   };
 
