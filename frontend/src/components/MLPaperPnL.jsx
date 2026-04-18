@@ -4,6 +4,7 @@ import {
   ArrowUpRight, ArrowDownRight, Target, Crosshair
 } from 'lucide-react';
 import { Card } from './ui/card';
+import logger from '../utils/logger';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { authFetch } from '../contexts/AuthContext';
@@ -24,7 +25,7 @@ const MLPaperPnL = () => {
       const res = await authFetch(`${API}/ml/paper-trades?limit=100`);
       if (res.ok) setData(await res.json());
     } catch (e) {
-      console.warn('ML paper trades fetch failed:', e);
+      logger.warn('ML paper trades fetch failed:', e);
     } finally {
       setLoading(false);
     }

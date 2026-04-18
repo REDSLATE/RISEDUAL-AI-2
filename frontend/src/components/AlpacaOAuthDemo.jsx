@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Shield, CheckCircle, ExternalLink, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { getApiBase } from '../utils/apiBase';
 
 /**
  * AlpacaOAuthDemo — Simulates the Alpaca OAuth authorization flow

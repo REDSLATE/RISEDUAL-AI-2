@@ -63,7 +63,7 @@ const DemoChat = () => {
     <div className="bg-slate-800/70 border border-slate-700/40 rounded-xl overflow-hidden" data-testid="demo-chat">
       <div ref={scrollRef} className="h-64 overflow-y-auto p-4 space-y-3">
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={`msg-${m.role}-${i}-${m.content.slice(0,12)}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm ${
               m.role === 'user'
                 ? 'bg-[#3DE8D9]/20 text-[#3DE8D9]'

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Lock, Sparkles, Zap, Brain, Cpu, Network, BarChart3, Globe, Landmark } from 'lucide-react';
+import { Search, Sparkles, Brain, Cpu, Network, Globe } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';

@@ -23,7 +23,7 @@ const MobileBottomNav = ({ onOpenChat, activeView, onNavigate }) => {
                 if (item.action) {
                   item.action();
                 } else {
-                  console.log('[MobileNav] navigating to:', item.key);
+                  console.log('[MobileNav] navigating to:', item.key); // eslint-disable-line no-console
                   onNavigate(item.key);
                 }
               }}

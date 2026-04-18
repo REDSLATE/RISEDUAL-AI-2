@@ -3,6 +3,7 @@ import { Activity, RefreshCw, AlertCircle } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import logger from '../utils/logger';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import {
@@ -21,7 +22,7 @@ const CalibrationChart = () => {
       const res = await authFetch(`${API}/ml/calibration-curve`);
       if (res.ok) setData(await res.json());
     } catch (e) {
-      console.warn('Calibration curve fetch failed:', e);
+      logger.warn('Calibration curve fetch failed:', e);
     } finally {
       setLoading(false);
     }

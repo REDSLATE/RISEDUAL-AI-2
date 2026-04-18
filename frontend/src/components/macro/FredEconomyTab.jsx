@@ -4,6 +4,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { getApiBase } from '../../utils/apiBase';
+import logger from '../../utils/logger';
 
 const API = getApiBase();
 
@@ -94,7 +95,7 @@ const FredSeriesDetail = ({ seriesId, onClose }) => {
       try {
         const res = await fetch(`${API}/api/fred/series/${seriesId}?limit=120`);
         if (res.ok) setData(await res.json());
-      } catch (e) { /* ignore */ }
+      } catch (e) { logger.warn('FRED series detail fetch failed:', e); }
       setLoading(false);
     };
     load();
@@ -179,7 +180,7 @@ const VintageCompare = ({ seriesId, onClose }) => {
       try {
         const res = await fetch(`${API}/api/fred/vintage/${seriesId}?dates=${dates.join(',')}`);
         if (res.ok) setData(await res.json());
-      } catch (e) { /* ignore */ }
+      } catch (e) { logger.warn('FRED vintage fetch failed:', e); }
       setLoading(false);
     };
     load();
@@ -252,7 +253,7 @@ const RevisionAlerts = () => {
           const d = await res.json();
           setRevisions(d);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { logger.warn('FRED revisions fetch failed:', e); }
       setLoading(false);
     };
     load();
@@ -295,7 +296,7 @@ export default function FredEconomyTab({ loading: parentLoading }) {
     try {
       const res = await fetch(`${API}/api/fred/indicators`);
       if (res.ok) setData(await res.json());
-    } catch (e) { /* ignore */ }
+    } catch (e) { logger.warn('FRED indicators fetch failed:', e); }
     setLoading(false);
   }, []);
 
@@ -310,7 +311,7 @@ export default function FredEconomyTab({ loading: parentLoading }) {
         const d = await res.json();
         setSearchResults(d.results);
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { logger.warn('FRED search failed:', e); }
     setSearching(false);
   };
 
