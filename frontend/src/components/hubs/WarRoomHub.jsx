@@ -6,6 +6,8 @@ import MarketPrediction from '../MarketPrediction';
 import AIIntelligence from '../AIIntelligence';
 import IconTabBar from './IconTabBar';
 import { getRecent, subscribeRecent } from '../../utils/recentTickers';
+import { authFetch, useAuth } from '../../contexts/AuthContext';
+import { getApiBase } from '../../utils/apiBase';
 import { toast } from 'sonner';
 
 const MarketSignals = React.lazy(() => import('../MarketSignals'));
@@ -29,12 +31,30 @@ const TABS = [
  *   - Dashboard > AI Intelligence  → Intelligence
  */
 export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
+  const { user } = useAuth();
   const [tab, setTab] = useState(initialTab || 'adversarial');
   const [recent, setRecent] = useState(() => getRecent());
   const [copied, setCopied] = useState(false);
+  const [refCode, setRefCode] = useState(null);
   // When a deep-link navigates into (or within) the War Room, sync the sub-tab.
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => subscribeRecent((arr) => setRecent(arr)), []);
+
+  // Lazily fetch the authenticated user's referral code the first time they
+  // open the War Room. Every copied share link then carries `?ref=CODE`, so
+  // signups from that click credit the user automatically.
+  useEffect(() => {
+    if (!user || refCode) return;
+    let cancelled = false;
+    authFetch(`${getApiBase()}/api/referral/info`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.code) setRefCode(d.code);
+      })
+      .catch(() => { /* silent — share still works without ref */ });
+    return () => { cancelled = true; };
+  }, [user, refCode]);
+
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   const onRecentClick = (t) => {
@@ -43,7 +63,7 @@ export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
 
   const currentTicker = recent[0] || null;
   const shareUrl = currentTicker
-    ? `${window.location.origin}/api/share/${currentTicker}`
+    ? `${window.location.origin}/api/share/${currentTicker}${refCode ? `?ref=${refCode}` : ''}`
     : null;
 
   const onShare = async () => {

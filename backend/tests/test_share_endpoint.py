@@ -131,3 +131,39 @@ def test_share_supports_head(client: TestClient) -> None:
     """Some link-preview bots probe with HEAD before GET."""
     r = client.head("/api/share/AAPL")
     assert r.status_code == 200
+
+
+# ── Referral attribution passthrough ─────────────────────────────────────────
+
+def test_share_preserves_ref_in_spa_redirect(client: TestClient) -> None:
+    """A ticker share URL with `?ref=CODE` must preserve the code through to
+    the SPA redirect so AuthModal can credit the referrer at signup."""
+    body = client.get("/api/share/AAPL?ref=USER123").text
+    assert "?warroom=AAPL&ref=USER123" in body
+
+
+def test_share_without_ref_has_no_ref_in_redirect(client: TestClient) -> None:
+    body = client.get("/api/share/AAPL").text
+    # The redirect URL carries no ref param.
+    redirect_fragment = body.split("?warroom=AAPL", 1)[1].split('"', 1)[0]
+    assert "ref=" not in redirect_fragment
+
+
+def test_share_sanitises_ref_with_special_chars(client: TestClient) -> None:
+    """Refs with non-alphanumeric chars (except dash) are dropped — no XSS vector."""
+    body = client.get("/api/share/NVDA?ref=<script>").text
+    # Redirect must not carry the unsanitised payload.
+    assert "&ref=<" not in body
+    assert "&ref=%3C" not in body
+
+
+def test_share_accepts_dashed_ref_codes(client: TestClient) -> None:
+    """Existing `share-*` prefixed codes (from smart-money board) must pass."""
+    body = client.get("/api/share/TSLA?ref=share-abc123").text
+    assert "?warroom=TSLA&ref=share-abc123" in body
+
+
+def test_share_drops_overlong_ref(client: TestClient) -> None:
+    body = client.get(f"/api/share/SPY?ref={'A' * 64}").text
+    redirect_fragment = body.split("?warroom=SPY", 1)[1].split('"', 1)[0]
+    assert "ref=" not in redirect_fragment

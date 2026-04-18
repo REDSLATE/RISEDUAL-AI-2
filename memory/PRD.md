@@ -531,6 +531,22 @@ See `/app/memory/test_credentials.md`.
 * **Share endpoint tests**: `/app/backend/tests/test_share_endpoint.py` —
   11-test pytest suite covering: 200 HTML response, all required OG tags,
   Twitter Card tags, JSON-LD FinancialProduct, ticker case normalisation,
+
+### 2026-02-18 — Share link referral attribution
+* **Backend**: `/api/share/{ticker}` accepts optional `?ref=CODE` query param
+  (alphanumeric + dash, 1-32 chars, XSS-sanitised). Preserved through the SPA
+  redirect URL as `/?warroom=TICKER&ref=CODE`.
+* **Frontend App.js**: `?warroom=` handler now preserves the `?ref=` param
+  instead of stripping it, so `useReferralCapture` + AuthModal pick it up at
+  signup for credit attribution.
+* **Frontend WarRoomHub.jsx**: lazily fetches the authenticated user's
+  referral code via `/api/referral/info` and appends `?ref=CODE` to every
+  copied share URL. Every Pro user becomes a passive growth engine — click on
+  their shared analysis → visitor signs up → referrer credited automatically.
+* **Tests**: +5 new pytest cases in `test_share_endpoint.py` for ref
+  preservation, sanitisation, dash-prefixed codes, overlong rejection, and
+  default-no-ref behaviour. **16/16 pass.**
+
   SPA redirect, input sanitisation (overlong + special chars), X-Forwarded-Host
   handling, cluster-internal host fallback, HEAD method support. **11/11 pass**.
 

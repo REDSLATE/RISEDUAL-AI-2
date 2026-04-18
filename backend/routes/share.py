@@ -68,7 +68,7 @@ def _public_base(request: Request) -> str:
     return os.environ.get("PUBLIC_SITE_URL", SITE_URL).rstrip("/")
 
 
-def _build_html(ticker: str, quote: dict | None, request: Request) -> str:
+def _build_html(ticker: str, quote: dict | None, request: Request, ref: str | None = None) -> str:
     t = ticker.upper()
     price_title, price_desc = _fmt_price(quote)
     title = f"{t} · {BRAND} — AI War Room{price_title}"
@@ -81,7 +81,10 @@ def _build_html(ticker: str, quote: dict | None, request: Request) -> str:
     # Absolute canonical URL for the share page (what crawlers will see).
     base = _public_base(request)
     canonical = f"{base}/api/share/{t}"
-    spa_url = f"{base}/?warroom={t}"
+    # Preserve a referral attribution code (`?ref=CODE`) through the SPA
+    # redirect so `useReferralCapture` + AuthModal can read it at signup.
+    ref_suffix = f"&ref={ref}" if ref else ""
+    spa_url = f"{base}/?warroom={t}{ref_suffix}"
 
     # JSON-LD: FinancialProduct structured data (Google rich results).
     ld_json = {
@@ -177,12 +180,23 @@ def _build_html(ticker: str, quote: dict | None, request: Request) -> str:
 
 @router.head("/{ticker}")
 @router.get("/{ticker}", response_class=HTMLResponse)
-async def share_ticker(ticker: str, request: Request) -> HTMLResponse:
-    """Return a crawler-friendly HTML page for any ticker share link."""
+async def share_ticker(ticker: str, request: Request, ref: str | None = None) -> HTMLResponse:
+    """Return a crawler-friendly HTML page for any ticker share link.
+
+    Optional ``?ref=CODE`` query param is preserved through the SPA redirect
+    so referral attribution works end-to-end (share → click → signup).
+    """
     t = (ticker or "").strip().upper()
+    # Sanitise ref: alphanumeric + dashes, max 32 chars, lowercase-prefixed `share-*`
+    # codes or raw referral codes both accepted.
+    safe_ref: str | None = None
+    if ref:
+        r = ref.strip()
+        if 1 <= len(r) <= 32 and all(c.isalnum() or c == "-" for c in r):
+            safe_ref = r
     if not t or not t.isalnum() or len(t) > 8:
         # Minimal safe fallback — still valid OG for brand root.
-        return HTMLResponse(_build_html("RSDU", None, request), status_code=200)
+        return HTMLResponse(_build_html("RSDU", None, request, safe_ref), status_code=200)
     try:
         quote = await get_quote(t)
     except Exception as e:  # pragma: no cover — log & continue with no quote
@@ -193,4 +207,4 @@ async def share_ticker(ticker: str, request: Request) -> HTMLResponse:
         "X-Robots-Tag": "index, follow",
         "X-Share-Generated-At": datetime.now(timezone.utc).isoformat(),
     }
-    return HTMLResponse(_build_html(t, quote, request), status_code=200, headers=headers)
+    return HTMLResponse(_build_html(t, quote, request, safe_ref), status_code=200, headers=headers)

@@ -131,13 +131,17 @@ function AppContent() {
 
   // Social-share landing: `/?warroom=TICKER` → auto-open the AI War Room.
   // Matches the pattern used by `/api/share/{ticker}` which redirects here.
+  // Preserves any `?ref=…` attribution so `useReferralCapture` / AuthModal
+  // can still read it for signup crediting.
   React.useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const t = (params.get('warroom') || '').toUpperCase().trim();
       if (!t || !/^[A-Z0-9.]{1,8}$/.test(t)) return;
-      // Strip the param from the URL so a manual reload doesn't re-fire.
-      const clean = window.location.pathname + window.location.hash;
+      // Strip only the warroom param; keep everything else (notably `ref`).
+      params.delete('warroom');
+      const qs = params.toString();
+      const clean = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
       window.history.replaceState({}, '', clean);
       // Defer to next tick so downstream listeners are mounted.
       setTimeout(() => {
