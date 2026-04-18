@@ -1,43 +1,42 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
-import { useAuth, authFetch } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
 import ChatHeader from './chat/ChatHeader';
 import MemoryPanel from './chat/MemoryPanel';
 import ChatHistorySidebar from './chat/ChatHistorySidebar';
 import AgentTrace from './chat/AgentTrace';
 import ChartPatternLibrary from './ChartPatternLibrary';
-import useChatMemory from '../hooks/useChatMemory';
-import useTTS from '../hooks/useTTS';
-import useStreamingAgent from '../hooks/useStreamingAgent';
+import useChat from '../hooks/useChat';
 import logger from '../utils/logger';
-import { getApiBase } from '../utils/apiBase';
-
-const API = `${getApiBase()}/api`;
-
-// Pattern to detect messages that should use the streaming tools agent
-const TOOLS_PATTERN = /\b(compound|cagr|future value|growth rate|invest(ment|ing)?.*worth|calculate|projection|project(ed)?|annualized|what would.*be worth|how much.*in \d+ years|rate of return|roi\b|current (stock )?price.*then|find.*price.*calculate|look up.*price.*and|worth in \d+)/i;
 
 const RiseDualGPTChat = ({ onLimitReached }) => {
   const { isPro } = useAuth();
+  const chat = useChat({ isPro, onLimitReached });
+  const {
+    messages, setMessages,
+    input, setInput,
+    loading,
+    chatHistory,
+    selectedImage, imagePreview,
+    inputRef,
+    sendMessage,
+    loadHistory, loadSession, newChat,
+    handleImageSelect, clearImage, handleSuggestionClick,
+    tts: { voiceMode, setVoiceMode, isSpeaking, stopSpeaking },
+    memory: { memories, memoryEnabled, loadMemories, toggleMemory, deleteMemoryItem, clearAllMemories, pinToMemory },
+    agentTrace,
+    API,
+  } = chat;
+
+  // Pure view state — kept in the component.
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
-  const [chatHistory, setChatHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showPatterns, setShowPatterns] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [showMemory, setShowMemory] = useState(false);
 
-  const { voiceMode, setVoiceMode, isSpeaking, playTTS, stopSpeaking } = useTTS();
-  const { agentTrace, sendStreamingAgent } = useStreamingAgent(sessionId);
-  const { memories, memoryEnabled, loadMemories, toggleMemory, deleteMemoryItem, clearAllMemories, pinToMemory } = useChatMemory(isPro);
-  const inputRef = useRef(null);
-
+  // Listen for external "open chat" requests (from watchlist "Ask AI" etc).
   useEffect(() => {
     const handler = (e) => {
       setIsOpen(true);
@@ -45,7 +44,6 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       if (detail?.prefill) {
         setInput(detail.prefill);
         if (detail.autoSend) {
-          // Defer so the input state settles and the chat mounts before send
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('risedualai-autosend'));
           }, 400);
@@ -54,7 +52,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     };
     window.addEventListener('risedualai-open-chat', handler);
     return () => window.removeEventListener('risedualai-open-chat', handler);
-  }, []);
+  }, [setInput]);
 
   // Autosend hook — fires `sendMessage` once input is set
   useEffect(() => {
@@ -73,166 +71,75 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
     setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  const handleImageSelect = useCallback((e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedImage(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setImagePreview(ev.target.result);
-    reader.readAsDataURL(file);
-  }, []);
-
-  const clearImage = useCallback(() => {
-    setSelectedImage(null);
-    setImagePreview(null);
-  }, []);
-
   const handlePatternSelect = useCallback((pattern) => {
     setInput(`Analyze ${pattern.name} chart pattern: When does it typically form? What's the expected breakout direction and target? Current success rate?`);
     setShowPatterns(false);
     inputRef.current?.focus();
-  }, []);
+  }, [setInput, inputRef]);
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text && !selectedImage) return;
+  const handleLoadSession = useCallback(async (sid) => {
+    await loadSession(sid);
+    setShowHistory(false);
+  }, [loadSession]);
 
-    const userMessage = { role: 'user', content: text || 'Analyze this chart image', image: imagePreview };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
+  const handleNewChat = useCallback(() => {
+    newChat();
+    setShowHistory(false);
+  }, [newChat]);
 
-    // Helper: fetch 3 contextual follow-up chips after assistant replies.
-    // Non-blocking; failure is silent (chips are optional).
-    const fetchFollowups = (userMsgText, assistantText) => {
-      if (!assistantText || assistantText.length < 20) return;
-      fetch(`${API}/chat/followups`, {
+  const handleActionClick = useCallback((act, msgIdx) => {
+    // Level-2 deep-link action — route to the target hub + close the chat.
+    const ctx = typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null;
+    try {
+      fetch(`${API}/analytics/chip-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          last_user_message: userMsgText,
-          last_assistant_response: assistantText,
-          context_hub: typeof window !== 'undefined'
-            ? (window.__risedualActiveView || null)
-            : null,
+          action: 'action-clicked',
+          chip_text: act.label,
+          message_idx: typeof msgIdx === 'number' ? msgIdx : null,
+          context_hub: ctx,
         }),
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (!data) return;
-          const chips = Array.isArray(data.chips) && data.chips.length ? data.chips : null;
-          const actions = Array.isArray(data.actions) ? data.actions.filter(a => a && a.label && a.kind) : [];
-          if (!chips && !actions.length) return;
-          // Attach chips + actions to the most recent assistant message.
-          setMessages(prev => {
-            const idx = [...prev].reverse().findIndex(m => m.role === 'assistant');
-            if (idx < 0) return prev;
-            const realIdx = prev.length - 1 - idx;
-            const copy = [...prev];
-            copy[realIdx] = {
-              ...copy[realIdx],
-              ...(chips ? { followups: chips } : {}),
-              ...(actions.length ? { actions } : {}),
-            };
-            return copy;
-          });
-        })
-        .catch(() => { /* silent */ });
-    };
+      }).catch(() => { /* silent */ });
+    } catch { /* silent */ }
 
     try {
-      // Use streaming agent for calculation-heavy queries (no image)
-      const useAgent = !selectedImage && TOOLS_PATTERN.test(text);
-
-      if (useAgent) {
-        try {
-          const result = await sendStreamingAgent(text);
-          if (result.text) {
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: result.text,
-              provider: result.provider,
-              tools_used: result.tools_used,
-            }]);
-            if (voiceMode) playTTS(result.text);
-            fetchFollowups(text, result.text);
-            return;
-          }
-        } catch (streamErr) {
-          logger.warn('Streaming agent failed, falling back to standard chat:', streamErr);
-          // Fall through to standard chat
+      if (act.kind === 'research') {
+        window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'research' } }));
+        if (act.ticker) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('risedualai-research', { detail: act.ticker }));
+          }, 150);
         }
+      } else if (act.kind === 'watchlist' && act.ticker) {
+        window.dispatchEvent(new CustomEvent('risedualai-add-watchlist', { detail: act.ticker }));
+      } else if (act.kind === 'warroom' || act.kind === 'options' || act.kind === 'workspace' || act.kind === 'dashboard') {
+        window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: act.kind } }));
       }
-
-      // Standard chat path
-      const body = new FormData();
-      body.append('message', text || 'Analyze this chart image');
-      body.append('sessionId', sessionId);
-      if (selectedImage) body.append('image', selectedImage);
-
-      const res = await authFetch(`${API}/chat`, { method: 'POST', body });
-      clearImage();
-
-      if (res.status === 429) {
-        const errData = await res.json().catch(() => ({}));
-        setMessages(prev => [...prev, { role: 'assistant', content: errData.detail || 'Daily free limit reached. Upgrade to Pro for unlimited access.' }]);
-        if (onLimitReached) onLimitReached();
-        return;
-      }
-
-      if (!res.ok) throw new Error('Chat request failed');
-      const data = await res.json();
-      const aiText = data.response || data.message || 'No response generated.';
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: aiText,
-        provider: data.provider,
-        tools_used: data.tools_used,
-      }]);
-      if (voiceMode) playTTS(aiText);
-      fetchFollowups(text, aiText);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}. Please try again.` }]);
-    } finally {
-      setLoading(false);
-      clearImage();
+      logger.warn('Action dispatch failed:', err);
     }
-  }, [input, selectedImage, imagePreview, sessionId, clearImage, onLimitReached, voiceMode, playTTS, sendStreamingAgent]);
+    setIsOpen(false);
+  }, [API]);
 
-  const loadHistory = useCallback(async () => {
+  const handleFollowupClick = useCallback((chip, msgIdx) => {
     try {
-      const res = await authFetch(`${API}/chat/sessions`);
-      if (res.ok) setChatHistory(await res.json());
-    } catch (err) {
-      logger.error('Error loading chat history:', err);
-    }
-  }, []);
-
-  const loadSession = useCallback(async (sid) => {
-    try {
-      const res = await authFetch(`${API}/chat/history/${sid}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSessionId(sid);
-        setMessages(data.messages || []);
-        setShowHistory(false);
-      }
-    } catch (err) {
-      logger.error('Error loading session:', err);
-    }
-  }, []);
-
-  const newChat = useCallback(() => {
-    setSessionId(`s_${Date.now()}`);
-    setMessages([]);
-    setShowHistory(false);
-  }, []);
-
-  const handleSuggestionClick = useCallback((text) => {
-    setInput(text);
-    inputRef.current?.focus();
-  }, []);
+      fetch(`${API}/analytics/chip-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'clicked',
+          chip_text: chip,
+          message_idx: typeof msgIdx === 'number' ? msgIdx : null,
+          context_hub: typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null,
+        }),
+      }).catch(() => { /* silent */ });
+    } catch { /* silent */ }
+    setInput(chip);
+    setTimeout(() => sendMessage(), 0);
+  }, [API, setInput, sendMessage]);
 
   return (
     <>
@@ -254,13 +161,13 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             showMemory={showMemory} onToggleMemory={() => setShowMemory(!showMemory)} onLoadMemories={loadMemories}
             showPatterns={showPatterns} onTogglePatterns={() => setShowPatterns(!showPatterns)}
             showHistory={showHistory} onToggleHistory={() => setShowHistory(!showHistory)} onLoadHistory={loadHistory}
-            onNewChat={newChat} onClose={() => setIsOpen(false)}
+            onNewChat={handleNewChat} onClose={() => setIsOpen(false)}
           />
 
           {showHistory && (
             <ChatHistorySidebar
               history={chatHistory}
-              onSelect={loadSession}
+              onSelect={handleLoadSession}
               onClose={() => setShowHistory(false)}
             />
           )}
@@ -292,64 +199,8 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
             isPro={isPro}
             onPin={(content) => pinToMemory(content, setMessages)}
             onSuggestionClick={handleSuggestionClick}
-            onActionClick={(act, msgIdx) => {
-              // Level-2 deep-link action — route to the target hub + close the chat.
-              const ctx = typeof window !== 'undefined' ? (window.__risedualActiveView || null) : null;
-              try {
-                fetch(`${API}/analytics/chip-event`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({
-                    action: 'action-clicked',
-                    chip_text: act.label,
-                    message_idx: typeof msgIdx === 'number' ? msgIdx : null,
-                    context_hub: ctx,
-                  }),
-                }).catch(() => { /* silent */ });
-              } catch { /* silent */ }
-
-              // Dispatch the right navigation + payload event.
-              try {
-                if (act.kind === 'research') {
-                  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: 'research' } }));
-                  if (act.ticker) {
-                    setTimeout(() => {
-                      window.dispatchEvent(new CustomEvent('risedualai-research', { detail: act.ticker }));
-                    }, 150);
-                  }
-                } else if (act.kind === 'watchlist' && act.ticker) {
-                  window.dispatchEvent(new CustomEvent('risedualai-add-watchlist', { detail: act.ticker }));
-                } else if (act.kind === 'warroom' || act.kind === 'options' || act.kind === 'workspace' || act.kind === 'dashboard') {
-                  window.dispatchEvent(new CustomEvent('risedualai-navigate', { detail: { view: act.kind } }));
-                }
-              } catch (err) {
-                logger.warn('Action dispatch failed:', err);
-              }
-              // Close chat so the target surface is visible
-              setIsOpen(false);
-            }}
-            onFollowupClick={(chip, msgIdx) => {
-              // Fire-and-forget adoption telemetry — non-blocking, silent on failure.
-              try {
-                fetch(`${API}/analytics/chip-event`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({
-                    action: 'clicked',
-                    chip_text: chip,
-                    message_idx: typeof msgIdx === 'number' ? msgIdx : null,
-                    context_hub: typeof window !== 'undefined'
-                      ? (window.__risedualActiveView || null)
-                      : null,
-                  }),
-                }).catch(() => { /* silent */ });
-              } catch { /* silent */ }
-              setInput(chip);
-              // Defer one tick so setInput lands before sendMessage reads it
-              setTimeout(() => sendMessage(), 0);
-            }}
+            onActionClick={handleActionClick}
+            onFollowupClick={handleFollowupClick}
           />
 
           <ChatInputArea
