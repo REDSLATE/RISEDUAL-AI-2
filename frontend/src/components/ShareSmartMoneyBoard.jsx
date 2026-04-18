@@ -1,6 +1,7 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Share2, Download, Loader2, Check } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import QRCode from 'qrcode';
 import SparkLine from './SparkLine';
 import { Button } from './ui/button';
 
@@ -26,14 +27,38 @@ const signalColor = (score) => {
   return { fg: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' };
 };
 
-export default function ShareSmartMoneyBoard({ watchlist = [], smartScores = {}, smsHistory = {} }) {
+export default function ShareSmartMoneyBoard({ watchlist = [], smartScores = {}, smsHistory = {}, userId = null }) {
   const cardRef = useRef(null);
   const [state, setState] = useState('idle'); // idle | rendering | shared | error
+  const [qrDataUrl, setQrDataUrl] = useState('');
 
   // Top 5 rows with a resolved SM score
   const rows = watchlist
     .filter(item => smartScores[item.symbol]?.score != null)
     .slice(0, 5);
+
+  // Build a tracked referral URL — stable hash per user for share attribution.
+  // Sanitize to alphanumeric so the URL survives copy-paste cleanly.
+  const rawId = userId ? String(userId).replace(/[^a-zA-Z0-9]/g, '').slice(-8) : '';
+  const refId = rawId
+    ? `u${rawId}`
+    : `anon${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+  const shareUrl = `https://risedual.ai/?ref=share-${refId}`;
+
+  // Pre-render the QR code once rows/refId are known
+  useEffect(() => {
+    if (rows.length === 0) return;
+    let cancelled = false;
+    QRCode.toDataURL(shareUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 120,
+      color: { dark: '#050b1a', light: '#ffffff' },
+    }).then(url => {
+      if (!cancelled) setQrDataUrl(url);
+    }).catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [rows.length, shareUrl]);
 
   const handleShare = useCallback(async () => {
     if (!cardRef.current || rows.length === 0) return;
@@ -168,13 +193,27 @@ export default function ShareSmartMoneyBoard({ watchlist = [], smartScores = {},
           </div>
 
           {/* Footer */}
-          <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(71,85,105,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ color: '#64748b', fontSize: 10 }}>
-              SM Score = institutional conviction from 13F filings (0 = bearish, 100 = bullish)
+          <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(71,85,105,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: '#64748b', fontSize: 10, marginBottom: 4 }}>
+                SM Score = institutional conviction from 13F filings (0 = bearish, 100 = bullish)
+              </div>
+              <div style={{ color: '#3DE8D9', fontSize: 10, fontWeight: 600 }}>
+                risedual.ai
+              </div>
             </div>
-            <div style={{ color: '#3DE8D9', fontSize: 10, fontWeight: 600 }}>
-              risedual.ai
-            </div>
+            {qrDataUrl && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <img
+                  src={qrDataUrl}
+                  alt="Scan to try RiseDual AI"
+                  width={60}
+                  height={60}
+                  style={{ display: 'block', background: '#fff', padding: 2, borderRadius: 4 }}
+                />
+                <div style={{ color: '#94a3b8', fontSize: 8, letterSpacing: 0.5 }}>Scan to try →</div>
+              </div>
+            )}
           </div>
         </div>
       </div>

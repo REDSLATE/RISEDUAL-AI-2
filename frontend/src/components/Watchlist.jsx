@@ -245,6 +245,7 @@ const Watchlist = ({ onSubscribe }) => {
               watchlist={watchlist}
               smartScores={smartScores}
               smsHistory={smsHistory}
+              userId={user?.id || user?._id || user?.email}
             />
             <Button
               variant="ghost"

@@ -48,6 +48,14 @@
   - 13F Changes cell: _"Why did {INSTITUTION} {verb} its position in {SYMBOL} last quarter?"_ (verb = open/exit/increase/trim)
 - Click → dispatches `risedualai-open-chat` event with `{prefill, autoSend: true}` payload, chat fires `risedualai-autosend` after 400ms settle
 
+## Share Board QR Code + Referral Tracking (COMPLETED Apr 18)
+- Added `qrcode` npm package; rendered a 60×60 px QR code in the share card footer
+- QR encodes a **trackable referral URL**: `https://risedual.ai/?ref=share-u{sanitized-user-id}` (sanitized to alphanumeric, last 8 chars) — lets us attribute signups back to the exact user who shared
+- Anonymous users get a date-based fallback `?ref=share-anon{YYYYMMDD}`
+- "Scan to try →" copy under the QR code
+- Image-analyzer verified: QR code is sharp, well-contrasted on white plate, readable on mobile scanner; `Scan to try →` CTA is prominent
+- Final PNG: 200 KB, design still clean & balanced
+
 ## Share My Smart Money Board (COMPLETED Apr 18)
 - New `components/ShareSmartMoneyBoard.jsx` — captures a styled off-screen card (top 5 watchlist rows with SM score + sparkline + signal label + RiseDual branding + date + methodology footer) via **html2canvas** (added to package.json) and:
   - Uses **Web Share API** when available (mobile, modern browsers) for native share sheet
