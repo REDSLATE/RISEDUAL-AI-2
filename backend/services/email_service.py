@@ -14,12 +14,20 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 
 logger = logging.getLogger(__name__)
 
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 APP_NAME = "RISEDUAL AI"
 APP_URL = os.environ.get('FRONTEND_URL', 'https://risedual.ai')
 
 # Initialize the email provider router
 email_router = ProviderRouter("email", get_email_provider_pool())
+
+
+def _is_configured() -> bool:
+    """True when at least one email provider (Resend/SendGrid) has a valid API key."""
+    if email_router.providers:
+        return True
+    return bool(RESEND_API_KEY) and not RESEND_API_KEY.startswith("re_YOUR")
 
 
 async def _send_via_resend(api_key: str, to: list, subject: str, html: str) -> dict:

@@ -162,6 +162,20 @@
 - **Data verified**: Berkshire Q4 2025 AAPL=227.9M sh/$62.0B, AXP $56B, BAC $28B, KO $28B, CVX $20B. AAPL holders: Vanguard ($387B), BlackRock ($221B), Fidelity ($83B), Berkshire ($62B).
 - **21/21 backend tests passed** (iteration 134), 0 JS errors, 0 `_id` leaks in responses.
 
+## Daily Market Digest Content Fix (COMPLETED Feb 18, 2026)
+- **Bug**: Users complained digest emails had "no information showing." Root cause: `collect_digest_data` queried empty collections (`market_predictions`, `dark_pool_data`, `market_signals` — all zero rows). Users received a dark-theme email that said "No recent data available" in every section.
+- **Fix** (`/app/backend/services/digest_service.py` — full rewrite):
+  - **AI Market Overview** — pulls narrative from `prediction_cache` (scope=market_overview).
+  - **Top AI Predictions (48h)** — pulls from `predictions` collection, ranked by confidence, dedup by symbol.
+  - **Smart Money Flow (Institutional)** — pulls from `smart_money_scores`, aggregates latest per symbol, ranks by |score-50|; replaces the stale "Dark Pool" section.
+  - **Market Alerts (7d)** — pulls from `sec_13f_alerts`, ranked by abs(delta); regime shifts (bullish→bearish, etc).
+  - Reused `_base_html` light-theme template (Gmail/Outlook-safe) and new section helpers with proper color semantics.
+  - Added pacing (250ms between sends) to respect Resend's 5 req/sec rate limit.
+  - Filter out seeded test emails (`test.com`, `example.com`, `test_*@`, `emailtest*`, `emailfix*`) that were consuming quota.
+  - Skip entire digest send when no market content is available (avoid empty emails).
+- **Added**: `_is_configured()` + `RESEND_API_KEY` module-level export in `email_service.py` (callers like `waitlist_service`, `digest_service`, and the test suite depend on these).
+- **Verified live**: admin `POST /api/digest/trigger` → `{"sent":4,"errors":0,"content_summary":{"predictions":2,"smart_money":6,"alerts":2,"overview":true}}`. Total digest content went from ~280 chars ("no data") to ~1,260 chars of real market intel per email.
+
 ## Email Deliverability Fix (COMPLETED Feb 18, 2026)
 - **Bug**: Resend emails arrived blank in recipients' inboxes (user report: "no information showing")
 - **Root cause**: Dark-theme templates (`background-color:#0F172A` body, light-gray text `#94A3B8`). Gmail/Outlook strip `<body>` styles and some container `style` attrs → light text rendered on default white background → invisible content.

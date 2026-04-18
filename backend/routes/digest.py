@@ -68,8 +68,9 @@ async def preview_digest(request: Request):
     wl_intel = await get_user_watchlist_intel(db, user.get("_id"))
     html = build_digest_html(data, is_pro, name, watchlist_intel=wl_intel)
     return {"html": html, "data_summary": {
-        "predictions": len(data["predictions"]),
-        "dark_pool": len(data["dark_pool"]),
-        "signals": len(data["signals"]),
+        "predictions": len(data.get("predictions") or []),
+        "smart_money": len(data.get("smart_money") or []),
+        "alerts": len(data.get("alerts") or []),
+        "has_overview": bool(data.get("overview")),
         "has_watchlist_intel": wl_intel is not None,
     }}
