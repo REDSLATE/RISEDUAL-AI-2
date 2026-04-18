@@ -182,10 +182,13 @@ const OnboardingTour = ({ active, onComplete }) => {
 
   let tooltipStyle = {};
   if (isCentered) {
+    // Pin the card to the top-center of the viewport instead of blocking the
+    // middle of the screen, so the user can actually see what's being tour-ed.
+    // Slight top offset keeps it clear of the ticker marquee / nav bar.
     tooltipStyle = {
-      top: '50%',
+      top: '80px',
       left: '50%',
-      transform: 'translate(-50%, -50%)',
+      transform: 'translateX(-50%)',
       position: 'fixed',
     };
   } else if (currentStep.position === 'below') {
@@ -219,18 +222,22 @@ const OnboardingTour = ({ active, onComplete }) => {
         )}px`,
       };
     } else {
+      // Last resort: pin to the top-center (translucent, dashboard visible
+      // behind) rather than blocking the middle of the screen.
       tooltipStyle = {
-        top: '50%',
+        top: '80px',
         left: '50%',
-        transform: 'translate(-50%, -50%)',
+        transform: 'translateX(-50%)',
         position: 'fixed',
       };
     }
   }
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-[200]" data-testid="onboarding-tour">
-      <div className="fixed inset-0 bg-black/70 transition-opacity duration-300" onClick={skip} />
+    <div ref={overlayRef} className="fixed inset-0 z-[200] pointer-events-none" data-testid="onboarding-tour">
+      {/* Much lighter scrim — the point of the tour is to SHOW the app, not hide it.
+          Clicking the dimmed area still dismisses the tour. */}
+      <div className="fixed inset-0 bg-black/25 transition-opacity duration-300 pointer-events-auto" onClick={skip} />
 
       {highlight && !isCentered && (
         <div
@@ -240,13 +247,13 @@ const OnboardingTour = ({ active, onComplete }) => {
             left: `${highlight.left - 6}px`,
             width: `${highlight.width + 12}px`,
             height: `${highlight.height + 12}px`,
-            boxShadow: '0 0 0 9999px rgba(0,0,0,0.6), 0 0 20px rgba(61,232,217,0.3)',
+            boxShadow: '0 0 0 9999px rgba(0,0,0,0.35), 0 0 20px rgba(61,232,217,0.3)',
           }}
         />
       )}
 
       <div
-        className="z-[202] w-[350px] bg-[#0B1426] border border-[#3DE8D9]/40 rounded-2xl shadow-2xl shadow-[#3DE8D9]/10 overflow-hidden"
+        className="z-[202] w-[350px] bg-[#0B1426]/85 backdrop-blur-md border border-[#3DE8D9]/40 rounded-2xl shadow-2xl shadow-[#3DE8D9]/10 overflow-hidden pointer-events-auto"
         style={tooltipStyle}
         data-testid="tour-tooltip"
       >

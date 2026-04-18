@@ -521,3 +521,16 @@ See `/app/memory/test_credentials.md`.
 * Smoke-tested with `facebookexternalhit`, `Twitterbot`, `LinkedInBot` User-Agents
   — all receive correct meta tags. Live redirect test: share URL → SPA → War
   Room opens with ticker auto-analyzed. 0 lint issues.
+
+### 2026-02-18 — Onboarding tour positioning + share endpoint tests
+* **Tour polish**: `OnboardingTour.jsx` — centered steps now pin to the top of
+  the viewport (top: 80px, horizontally centered) instead of blocking the
+  middle of the screen. Card is translucent (`bg-[#0B1426]/85 backdrop-blur-md`),
+  scrim reduced from 70% → 25% black, so users can actually see what's being
+  tour-ed while the tooltip guides them.
+* **Share endpoint tests**: `/app/backend/tests/test_share_endpoint.py` —
+  11-test pytest suite covering: 200 HTML response, all required OG tags,
+  Twitter Card tags, JSON-LD FinancialProduct, ticker case normalisation,
+  SPA redirect, input sanitisation (overlong + special chars), X-Forwarded-Host
+  handling, cluster-internal host fallback, HEAD method support. **11/11 pass**.
+
