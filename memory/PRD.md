@@ -54,6 +54,23 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### LLM Provider chat() Refactor (COMPLETED Feb 19, 2026)
+- Pushed back on the original suggested `_handle_streaming` / `_handle_standard`
+  split — there is no streaming code in either provider, so that pattern
+  didn't apply. Took the safe extraction instead.
+- **Extracted** the response-parsing block in both
+  `risedual_core/risedual_core/llm/anthropic.py` and
+  `risedual_core/risedual_core/llm/openai.py` into a private
+  `_parse_response(response) -> LLMResponse` helper.
+- **Line counts**:
+  - `anthropic.chat()`: 105 → 62 lines. New `_parse_response()`: 51 lines.
+  - `openai.chat()`: 99 → 56 lines. New `_parse_response()`: 48 lines.
+- Both classes still import and expose the same public API. `chat()` is
+  now a clean linear flow: build kwargs → API call → `_parse_response`.
+- Verified: lint clean, imports work (`AnthropicLLM.chat` /
+  `AnthropicLLM._parse_response` both callable), backend restarted
+  healthy, `/api/crypto/prices` 200.
+
 ### React Hooks Exhaustive-Deps Sweep (COMPLETED Feb 19, 2026)
 - User asked to run `npx eslint src/hooks/ --rule '{"react-hooks/exhaustive-deps": "error"}'`.
 - **Result: 0 errors** across every custom hook flagged in the original

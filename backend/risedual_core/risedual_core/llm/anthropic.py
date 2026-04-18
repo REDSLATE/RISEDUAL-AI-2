@@ -186,7 +186,15 @@ class AnthropicLLM(LLMProvider):
         # Reset failure counter on success
         self._consecutive_failures = 0
 
-        # ── Parse response content ────────────────────────────────────────────
+        return self._parse_response(response)
+
+    def _parse_response(self, response: Any) -> LLMResponse:
+        """Normalise an Anthropic ``Message`` object into an ``LLMResponse``.
+
+        Splits the raw content blocks into a single text string and a list of
+        ``ToolCall`` records.  Returns the generic response shape shared by
+        all provider adapters.
+        """
         text_content: str | None = None
         tool_calls: list[ToolCall] = []
 

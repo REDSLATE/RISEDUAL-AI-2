@@ -150,13 +150,19 @@ class OpenAILLM(LLMProvider):
         # Reset failure counter on success
         self._consecutive_failures = 0
 
+        return self._parse_response(response)
+
+    def _parse_response(self, response: Any) -> LLMResponse:
+        """Normalise an OpenAI ``ChatCompletion`` into an ``LLMResponse``.
+
+        Extracts the first-choice message content and tool calls, then builds
+        the generic response shape shared by all provider adapters.
+        """
         choice = response.choices[0]
         message = choice.message
 
-        # ── Extract text content ──────────────────────────────────────────────
         text_content: str | None = message.content
 
-        # ── Extract tool calls ────────────────────────────────────────────────
         tool_calls: list[ToolCall] = []
         if message.tool_calls:
             for tc in message.tool_calls:
@@ -174,7 +180,6 @@ class OpenAILLM(LLMProvider):
                     )
                 )
 
-        # ── Build raw dict ────────────────────────────────────────────────────
         usage = response.usage
         raw_dict: dict[str, Any] = {
             "id": response.id,
