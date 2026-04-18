@@ -444,6 +444,43 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
     async for row in db.chip_events.aggregate(action_pipeline):
         top_actions.append({"chip": row["_id"], "count": row["count"]})
 
+    # Per-hub adoption breakdown — groups by context_hub then splits shown vs
+    # clicked for both L1 (chip) and L2 (action) events so the admin can see
+    # which surfaces drive the strongest deep-link adoption.
+    hub_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "context_hub": {"$ne": None}}},
+        {"$group": {
+            "_id": {"hub": "$context_hub", "action": "$action"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    hub_totals = {}
+    async for row in db.chip_events.aggregate(hub_pipeline):
+        hub = row["_id"].get("hub") or "unknown"
+        act = row["_id"].get("action") or ""
+        hub_totals.setdefault(hub, {
+            "shown": 0, "clicked": 0, "action_shown": 0, "action_clicked": 0,
+        })
+        if act in ("shown", "clicked", "action-shown", "action-clicked"):
+            key = act.replace("-", "_")
+            hub_totals[hub][key] = hub_totals[hub].get(key, 0) + row["count"]
+    by_hub = []
+    for hub, t in hub_totals.items():
+        l1_ctr = round((t["clicked"] / t["shown"]) if t["shown"] else 0, 3)
+        l2_ctr = round((t["action_clicked"] / t["action_shown"]) if t["action_shown"] else 0, 3)
+        total_events = sum(t.values())
+        by_hub.append({
+            "hub": hub,
+            "shown": t["shown"],
+            "clicked": t["clicked"],
+            "l1_ctr": l1_ctr,
+            "action_shown": t["action_shown"],
+            "action_clicked": t["action_clicked"],
+            "l2_ctr": l2_ctr,
+            "total_events": total_events,
+        })
+    by_hub.sort(key=lambda r: r["total_events"], reverse=True)
+
     return {
         "window_days": days,
         "shown": shown,
@@ -454,6 +491,7 @@ async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -
         "action_ctr": action_ctr,
         "top_clicked": top_clicked,
         "top_actions": top_actions,
+        "by_hub": by_hub,
     }
 
 

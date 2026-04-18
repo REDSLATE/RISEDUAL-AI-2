@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Sparkles, Brain, Cpu, Network, Globe } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
@@ -32,6 +32,20 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
   const [exporting, setExporting] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gpt-5.2');
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const searchRef = useRef(null);
+
+  // Deep-link hook: dispatch `risedualai-warroom` with `detail: TICKER` from
+  // anywhere in the app to jump here AND auto-run the hypothesis.
+  useEffect(() => {
+    const handler = (e) => {
+      const t = (e?.detail || '').toString().trim().toUpperCase();
+      if (!t) return;
+      setSymbol(t);
+      setTimeout(() => searchRef.current?.(), 50);
+    };
+    window.addEventListener('risedualai-warroom', handler);
+    return () => window.removeEventListener('risedualai-warroom', handler);
+  }, []);
 
   const currentModel = AI_MODELS.find(m => m.key === selectedModel) || AI_MODELS[0];
 
@@ -75,6 +89,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
       setLoading(false);
     }
   };
+  searchRef.current = search;
 
   return (
     <div className="space-y-6" data-testid="ai-hypothesis">

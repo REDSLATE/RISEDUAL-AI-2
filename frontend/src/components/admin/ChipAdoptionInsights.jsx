@@ -185,6 +185,57 @@ export default function ChipAdoptionInsights() {
           </div>
         )}
       </div>
+      {/* Per-hub adoption breakdown */}
+      <div>
+        <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5 text-[#3DE8D9]" /> Per-Hub Breakdown
+        </h4>
+        {(!stats.by_hub || stats.by_hub.length === 0) ? (
+          <div className="rounded-xl border border-slate-700/40 bg-slate-900/30 p-6 text-center">
+            <p className="text-slate-400 text-sm">No hub-tagged events yet.</p>
+            <p className="text-slate-500 text-[11px] mt-1">
+              Events are tagged with <code className="text-slate-400 text-[10px]">context_hub</code> when the user is on a specific hub (Dashboard, War Room, Research, Options, Workspace).
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-700/40 bg-slate-900/30 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-900/60">
+                <tr className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  <th className="text-left px-3 py-2 font-semibold">Hub</th>
+                  <th className="text-right px-3 py-2 font-semibold">L1 (chips)</th>
+                  <th className="text-right px-3 py-2 font-semibold">L1 CTR</th>
+                  <th className="text-right px-3 py-2 font-semibold hidden sm:table-cell">L2 (actions)</th>
+                  <th className="text-right px-3 py-2 font-semibold">L2 CTR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.by_hub.map((r, i) => {
+                  const l1Pct = (r.l1_ctr * 100).toFixed(0);
+                  const l2Pct = (r.l2_ctr * 100).toFixed(0);
+                  return (
+                    <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                      <td className="px-3 py-2 text-white text-sm font-medium capitalize">{r.hub}</td>
+                      <td className="px-3 py-2 text-right text-slate-300 text-xs tabular-nums">
+                        {r.clicked}/{r.shown}
+                      </td>
+                      <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${r.l1_ctr >= 0.20 ? 'text-[#3DE8D9]' : r.l1_ctr >= 0.10 ? 'text-amber-300' : 'text-slate-500'}`}>
+                        {r.shown > 0 ? `${l1Pct}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-300 text-xs tabular-nums hidden sm:table-cell">
+                        {r.action_clicked}/{r.action_shown}
+                      </td>
+                      <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${r.l2_ctr >= 0.20 ? 'text-amber-300' : r.l2_ctr >= 0.10 ? 'text-amber-400/70' : 'text-slate-500'}`}>
+                        {r.action_shown > 0 ? `${l2Pct}%` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

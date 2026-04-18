@@ -54,6 +54,26 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### CTR Breakdown By Hub + Full War Room Ticker Broadcast (COMPLETED Feb 19, 2026)
+- **Backend**: `GET /api/analytics/chip-events/stats` now also returns
+  `by_hub[]` aggregated per `context_hub` with `shown`, `clicked`, `l1_ctr`,
+  `action_shown`, `action_clicked`, `l2_ctr`, sorted by total event volume.
+- **Admin panel**: "Per-Hub Breakdown" table added under Chip CTR tab — shows
+  which app surfaces (Dashboard / Research / War Room / Options / Workspace)
+  drive the highest L1 (chat chip) and L2 (deep-link action) CTR. Green when
+  CTR ≥20%, amber 10–19%, slate <10%.
+- **Ticker-broadcast pattern extended**: `MarketPrediction` and
+  `AIHypothesis` now both listen to the `risedualai-warroom` event, mirroring
+  `AIWarRoom`. Any deep-link navigation with `{view:'warroom', subTab:'X'}`
+  + a ticker dispatch auto-fills the ticker and runs analysis on whichever
+  subtab is landed on.
+- **WarRoomHub reactive sync**: previously only read `initialTab` on mount —
+  now syncs via `useEffect`, so repeat-clicking different War Room deep-links
+  while already on the hub switches the sub-tab correctly.
+- **Verified E2E**: clicked SM Shift Alert → War Room Hypothesis subtab →
+  TSLA auto-filled → "GPT-5.2 is analyzing TSLA..." started. Per-Hub
+  Breakdown table shows live aggregated data across 3+ hubs.
+
 ### Smart Money Board → War Room Deep-Link (COMPLETED Feb 19, 2026)
 - Every Smart Money Shift Alert row in `Watchlist.jsx` now has a compact
   "WAR ROOM →" button (and per-row `Swords` icon for SM-scored rows).

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Swords, TrendingUp, BookOpen, Radio, Sparkles } from 'lucide-react';
 import AIWarRoom from '../AIWarRoom';
 import AIHypothesis from '../AIHypothesis';
@@ -28,6 +28,8 @@ const TABS = [
  */
 export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'adversarial');
+  // When a deep-link navigates into (or within) the War Room, sync the sub-tab.
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   return (

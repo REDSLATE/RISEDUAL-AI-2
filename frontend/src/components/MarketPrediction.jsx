@@ -59,6 +59,20 @@ const MarketPrediction = ({ onSubscribe }) => {
     }
   }, []);
 
+  // Deep-link hook: other surfaces (e.g. Smart Money Board) dispatch
+  // `risedualai-warroom` with `detail: TICKER` to jump here AND run the
+  // prediction.
+  useEffect(() => {
+    const handler = (e) => {
+      const t = (e?.detail || '').toString().trim().toUpperCase();
+      if (!t) return;
+      setSearchSymbol(t);
+      fetchPrediction(t);
+    };
+    window.addEventListener('risedualai-warroom', handler);
+    return () => window.removeEventListener('risedualai-warroom', handler);
+  }, [fetchPrediction]);
+
   const triggerRefresh = useCallback(async () => {
     try {
       setRefreshing(true);
