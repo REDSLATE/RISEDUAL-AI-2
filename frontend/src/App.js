@@ -39,6 +39,8 @@ const LiveDemoOverlay = React.lazy(() => import('./components/LiveDemoOverlay'))
 import ResearchHub from './components/hubs/ResearchHub';
 import OptionsHub from './components/hubs/OptionsHub';
 import WorkspaceHub from './components/hubs/WorkspaceHub';
+import WarRoomHub from './components/hubs/WarRoomHub';
+import useV2Nav from './hooks/useV2Nav';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -83,18 +85,21 @@ function AppContent() {
   const [showWaitlist, setShowWaitlist] = React.useState(false);
   const [tourActive, setTourActive] = React.useState(false);
 
-  // View state: 'dashboard' | 'research' | 'options' | 'workspace'
+  // View state: 'dashboard' | 'warroom' | 'research' | 'options' | 'workspace'
   const [activeView, setActiveView] = React.useState('dashboard');
   const [researchTab, setResearchTab] = React.useState(null);
   const [optionsTab, setOptionsTab] = React.useState(null);
   const [workspaceTab, setWorkspaceTab] = React.useState(null);
+  const [warRoomTab, setWarRoomTab] = React.useState(null);
   const [showDemo, setShowDemo] = React.useState(false);
+  const { enabled: v2Nav } = useV2Nav();
 
   const navigateTo = React.useCallback((view, subTab) => {
     setActiveView(view);
     if (view === 'research') setResearchTab(subTab || null);
     else if (view === 'options') setOptionsTab(subTab || null);
     else if (view === 'workspace') setWorkspaceTab(subTab || null);
+    else if (view === 'warroom') setWarRoomTab(subTab || null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -150,6 +155,7 @@ function AppContent() {
       <Navbar
         activeView={activeView}
         onNavigate={navigateTo}
+        v2Nav={v2Nav}
         onLogin={openLogin}
         onRegister={openRegister}
         onSubscribe={sub}
@@ -186,10 +192,35 @@ function AppContent() {
               <Watchlist onSubscribe={sub} />
             </div>
 
-            {/* AI War Room */}
-            <div id="ai-war-room" className="mb-6 sm:mb-8 animate-enter">
-              <AIWarRoom onSubscribe={sub} onLogin={openLogin} />
-            </div>
+            {/* AI War Room (classic inline block — hidden when v2 consolidated War Room is on) */}
+            {!v2Nav && (
+              <div id="ai-war-room" className="mb-6 sm:mb-8 animate-enter">
+                <AIWarRoom onSubscribe={sub} onLogin={openLogin} />
+              </div>
+            )}
+            {v2Nav && (
+              <div className="mb-6 sm:mb-8 animate-enter">
+                <button
+                  onClick={() => navigateTo('warroom')}
+                  className="w-full group rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-950/40 to-slate-900/40 p-4 sm:p-5 hover:border-orange-400/60 hover:from-orange-950/60 transition-all text-left"
+                  data-testid="dashboard-warroom-card"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shrink-0">
+                      <span className="text-orange-400 text-lg font-bold">⚔</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h3 className="text-white font-bold text-sm sm:text-base">AI War Room</h3>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300">Open</span>
+                      </div>
+                      <p className="text-slate-400 text-xs">Adversarial AI · Predictions · Hypothesis · Signals · Intelligence — all in one command center.</p>
+                    </div>
+                    <span className="text-orange-400 text-xl group-hover:translate-x-1 transition-transform">&rarr;</span>
+                  </div>
+                </button>
+              </div>
+            )}
 
             {/* Sector Heatmap + Fear/Greed */}
             <div id="sector-heatmap" className="mb-6 sm:mb-8 animate-enter">
@@ -204,10 +235,12 @@ function AppContent() {
             <div id="order-flow" className="mb-6 sm:mb-8 animate-enter"><OrderFlowPanel /></div>
             <div id="whale-radar" className="mb-6 sm:mb-8 animate-enter"><WhaleRadar /></div>
 
-            {/* AI Intelligence */}
-            <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter relative z-10">
-              <AIIntelligence onSubscribe={sub} />
-            </div>
+            {/* AI Intelligence — hidden when v2 (now lives inside War Room) */}
+            {!v2Nav && (
+              <div id="ai-intelligence" className="mb-6 sm:mb-8 animate-enter relative z-10">
+                <AIIntelligence onSubscribe={sub} />
+              </div>
+            )}
 
             {/* Crypto summary */}
             <div id="crypto" className="mb-6 sm:mb-8 animate-enter"><CryptoSection /></div>
@@ -253,6 +286,11 @@ function AppContent() {
           </>
         )}
 
+        {/* ═══ WAR ROOM (v2) ═══ */}
+        {activeView === 'warroom' && (
+          <WarRoomHub onSubscribe={sub} onLogin={openLogin} initialTab={warRoomTab} />
+        )}
+
         {/* ═══ RESEARCH ═══ */}
         {activeView === 'research' && (
           <ResearchHub onSubscribe={sub} onLogin={openLogin} initialTab={researchTab} />
@@ -276,6 +314,7 @@ function AppContent() {
         onOpenChat={openChat}
         activeView={activeView}
         onNavigate={navigateTo}
+        v2Nav={v2Nav}
       />
       <ScrollToTop />
       <Toaster />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings, Swords } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -24,8 +24,16 @@ const NAV_DESTINATIONS = [
   { key: 'workspace', label: 'Workspace' },
 ];
 
+const NAV_DESTINATIONS_V2 = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'warroom', label: 'War Room', accent: 'orange' },
+  { key: 'research', label: 'Research' },
+  { key: 'options', label: 'Options' },
+  { key: 'workspace', label: 'Workspace' },
+];
+
 const Navbar = ({
-  activeView, onNavigate,
+  activeView, onNavigate, v2Nav = false,
   onLogin, onRegister, onSubscribe,
   onOpenAdmin, onOpenSignals, onOpenStrategy, onOpenMarketplace, onOpenMemory,
   onOpenHelp, onOpenDeveloper, onOpenCredits, onOpenSearchWarRoom,
@@ -73,21 +81,34 @@ const Navbar = ({
 
           {/* Primary destinations */}
           <div className="hidden lg:flex items-center gap-1">
-            {NAV_DESTINATIONS.map(item => (
-              <button
-                key={item.key}
-                onClick={() => onNavigate(item.key)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeView === item.key
-                    ? 'bg-[#3DE8D9]/15 text-[#3DE8D9]'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
-                }`}
-                data-testid={`nav-${item.key}`}
-              >
-                {item.label}
-              </button>
-            ))}
+            {(v2Nav ? NAV_DESTINATIONS_V2 : NAV_DESTINATIONS).map(item => {
+              const isActive = activeView === item.key;
+              const accentCls = item.accent === 'orange'
+                ? (isActive ? 'bg-orange-500/15 text-orange-300' : 'text-orange-300/80 hover:text-orange-200 hover:bg-slate-800/50')
+                : (isActive ? 'bg-[#3DE8D9]/15 text-[#3DE8D9]' : 'text-slate-300 hover:text-white hover:bg-slate-800/50');
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => onNavigate(item.key)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${accentCls}`}
+                  data-testid={`nav-${item.key}`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
+
+          {/* War Room sub-nav (v2 only) */}
+          {v2Nav && activeView === 'warroom' && (
+            <div className="hidden lg:flex items-center gap-1 ml-2 pl-2 border-l border-slate-700/50">
+              <button onClick={() => onNavigate('warroom', 'adversarial')} className="text-[11px] text-slate-400 hover:text-orange-300 px-2 py-1 rounded transition-colors">Adversarial</button>
+              <button onClick={() => onNavigate('warroom', 'prediction')} className="text-[11px] text-slate-400 hover:text-orange-300 px-2 py-1 rounded transition-colors">Predictions</button>
+              <button onClick={() => onNavigate('warroom', 'hypothesis')} className="text-[11px] text-slate-400 hover:text-orange-300 px-2 py-1 rounded transition-colors">Hypothesis</button>
+              <button onClick={() => onNavigate('warroom', 'signals')} className="text-[11px] text-slate-400 hover:text-orange-300 px-2 py-1 rounded transition-colors">Signals</button>
+              <button onClick={() => onNavigate('warroom', 'intelligence')} className="text-[11px] text-slate-400 hover:text-orange-300 px-2 py-1 rounded transition-colors">Intelligence</button>
+            </div>
+          )}
 
           {/* Research sub-nav (visible when on Research view) */}
           {activeView === 'research' && (
@@ -127,7 +148,7 @@ const Navbar = ({
               Tools <ChevronDown className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="bg-[#060E1F] border-slate-600 z-[100] shadow-2xl shadow-black/60">
-              <DropdownMenuItem className="text-orange-400 hover:text-orange-300 hover:bg-slate-700 cursor-pointer font-medium" onSelect={() => onNavigate('dashboard')} data-testid="nav-warroom-btn">AI War Room</DropdownMenuItem>
+              <DropdownMenuItem className="text-orange-400 hover:text-orange-300 hover:bg-slate-700 cursor-pointer font-medium" onSelect={() => onNavigate(v2Nav ? 'warroom' : 'dashboard')} data-testid="nav-warroom-btn">AI War Room</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate('research', 'hypothesis')}>AI Hypothesis</DropdownMenuItem>
               <DropdownMenuItem className="text-violet-300 hover:text-violet-300 hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate('dashboard')} data-testid="nav-intelligence-btn">AI Intelligence Hub</DropdownMenuItem>
               <DropdownMenuItem className="text-slate-300 hover:text-slate-50 hover:bg-slate-700 cursor-pointer" onSelect={onOpenSignals} data-testid="nav-signals-btn">
@@ -196,6 +217,20 @@ const Navbar = ({
                   </div>
                 </div>
                 {!isPro && <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={onSubscribe}>Upgrade to Pro</DropdownMenuItem>}
+                <DropdownMenuItem
+                  className={`${v2Nav ? 'text-orange-300' : 'text-slate-300'} hover:bg-slate-700 cursor-pointer`}
+                  onSelect={() => {
+                    if (v2Nav) {
+                      localStorage.removeItem('risedualai_v2_nav');
+                    } else {
+                      localStorage.setItem('risedualai_v2_nav', '1');
+                    }
+                    window.location.reload();
+                  }}
+                  data-testid="nav-v2-toggle"
+                >
+                  <Swords className="w-4 h-4 mr-2" /> {v2Nav ? 'Disable War Room v2' : 'Enable War Room v2 (beta)'}
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate('workspace')} data-testid="nav-workspace-btn">
                   <Briefcase className="w-4 h-4 mr-2" /> My Workspace
                 </DropdownMenuItem>

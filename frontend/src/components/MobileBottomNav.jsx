@@ -1,14 +1,22 @@
 import React from 'react';
-import { BarChart3, Globe, TrendingUp, Search, Sparkles, Briefcase } from 'lucide-react';
+import { BarChart3, Globe, TrendingUp, Search, Sparkles, Briefcase, Swords } from 'lucide-react';
 
-const MobileBottomNav = ({ onOpenChat, activeView, onNavigate }) => {
-  const items = [
-    { icon: TrendingUp, label: 'Markets', key: 'dashboard' },
-    { icon: Search, label: 'Research', key: 'research' },
-    { icon: BarChart3, label: 'Options', key: 'options' },
-    { icon: Briefcase, label: 'Workspace', key: 'workspace' },
-    { icon: Sparkles, label: 'AI Chat', action: onOpenChat, accent: true },
-  ];
+const MobileBottomNav = ({ onOpenChat, activeView, onNavigate, v2Nav = false }) => {
+  const items = v2Nav
+    ? [
+        { icon: TrendingUp, label: 'Markets', key: 'dashboard' },
+        { icon: Swords, label: 'War Room', key: 'warroom' },
+        { icon: Search, label: 'Research', key: 'research' },
+        { icon: Briefcase, label: 'Workspace', key: 'workspace' },
+        { icon: Sparkles, label: 'AI Chat', action: onOpenChat, accent: true },
+      ]
+    : [
+        { icon: TrendingUp, label: 'Markets', key: 'dashboard' },
+        { icon: Search, label: 'Research', key: 'research' },
+        { icon: BarChart3, label: 'Options', key: 'options' },
+        { icon: Briefcase, label: 'Workspace', key: 'workspace' },
+        { icon: Sparkles, label: 'AI Chat', action: onOpenChat, accent: true },
+      ];
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-[99999] bg-[#060E1F] border-t border-slate-400/25" data-testid="mobile-bottom-nav">

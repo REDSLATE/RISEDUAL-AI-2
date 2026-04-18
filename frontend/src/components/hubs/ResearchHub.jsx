@@ -4,6 +4,7 @@ import AIHypothesis from '../AIHypothesis';
 import MarketPrediction from '../MarketPrediction';
 import CompanyResearch from '../CompanyResearch';
 import MacroDashboard from '../MacroDashboard';
+import useV2Nav from '../../hooks/useV2Nav';
 
 const MarketSignals = React.lazy(() => import('../MarketSignals'));
 const StrategyBuilder = React.lazy(() => import('../StrategyBuilder'));
@@ -13,26 +14,32 @@ const StockFitFundamentals = React.lazy(() => import('../StockFitFundamentals'))
 const StockFit13F = React.lazy(() => import('../StockFit13F'));
 
 const TABS = [
-  { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen },
-  { key: 'prediction', label: 'Predictions', icon: TrendingUp },
+  { key: 'hypothesis', label: 'Hypothesis', icon: BookOpen, v2: false },
+  { key: 'prediction', label: 'Predictions', icon: TrendingUp, v2: false },
   { key: 'company', label: 'Company', icon: Building2 },
   { key: 'stockfit', label: 'StockFit', icon: FileText },
   { key: '13f', label: '13F Holders', icon: Users },
   { key: 'macro', label: 'Macro', icon: Globe2 },
-  { key: 'signals', label: 'Signals', icon: Radio },
+  { key: 'signals', label: 'Signals', icon: Radio, v2: false },
   { key: 'strategy', label: 'Strategy', icon: Wand2 },
   { key: 'marketplace', label: 'Marketplace', icon: Store },
   { key: 'memory', label: 'Memory', icon: Database },
 ];
 
 export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
-  const [tab, setTab] = useState(initialTab || 'hypothesis');
+  const { enabled: v2Nav } = useV2Nav();
+  // When v2 is on, Hypothesis/Predictions/Signals live in the War Room hub.
+  const visibleTabs = v2Nav ? TABS.filter(t => t.v2 !== false) : TABS;
+  const defaultTab = (v2Nav && ['hypothesis', 'prediction', 'signals'].includes(initialTab))
+    ? 'company'
+    : (initialTab || (v2Nav ? 'company' : 'hypothesis'));
+  const [tab, setTab] = useState(defaultTab);
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   return (
     <div data-testid="research-hub">
       <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 border-b border-slate-700/50 scrollbar-hide">
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const Icon = t.icon;
           return (
             <button
@@ -54,13 +61,13 @@ export default function ResearchHub({ onSubscribe, onLogin, initialTab }) {
 
       <React.Suspense fallback={fallback}>
         <div className="animate-enter">
-          {tab === 'hypothesis' && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
-          {tab === 'prediction' && <MarketPrediction />}
+          {tab === 'hypothesis' && !v2Nav && <AIHypothesis onSubscribe={onSubscribe} onLogin={onLogin} />}
+          {tab === 'prediction' && !v2Nav && <MarketPrediction />}
           {tab === 'company' && <CompanyResearch />}
           {tab === 'stockfit' && <StockFitFundamentals />}
           {tab === '13f' && <StockFit13F />}
           {tab === 'macro' && <MacroDashboard onSubscribe={onSubscribe} />}
-          {tab === 'signals' && <MarketSignals onSubscribe={onSubscribe} />}
+          {tab === 'signals' && !v2Nav && <MarketSignals onSubscribe={onSubscribe} />}
           {tab === 'strategy' && <StrategyBuilder onSubscribe={onSubscribe} />}
           {tab === 'marketplace' && <StrategyMarketplace />}
           {tab === 'memory' && <MemoryDashboard onSubscribe={onSubscribe} />}
