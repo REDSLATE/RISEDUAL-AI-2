@@ -35,7 +35,10 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd  # noqa: F401  (only used in string-forward-ref type hints)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

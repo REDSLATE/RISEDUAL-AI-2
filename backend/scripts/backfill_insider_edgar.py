@@ -58,6 +58,7 @@ COLLECTION = "features_snapshots"
 USER_AGENT = "RISEDUAL risedual@risedual.ai"
 EFTS_BASE = "https://efts.sec.gov/LATEST/search-index"
 ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data"
+SEC_BASE = "https://data.sec.gov"
 
 CACHE_DIR: Path = Path.home() / ".risedual" / "edgar_cache"
 

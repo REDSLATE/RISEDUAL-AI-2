@@ -12,6 +12,7 @@ import pytest
 import requests
 import os
 import re
+import sys
 import time
 sys.path.insert(0, os.path.dirname(__file__))
 from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD

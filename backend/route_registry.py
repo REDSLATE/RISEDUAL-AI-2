@@ -4,13 +4,17 @@ This module is imported once by server.py to keep the main entry point clean.
 """
 import logging
 
+from typing import Any  # noqa: F401  (re-exported for type hints)
+
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
 # ── Route imports ──
-from routes.auth import auth_router, set_db as set_auth_db
+# Note: `seed_admin` and `create_indexes` are re-exported here and imported by
+# server.py — do NOT remove them, even if this file doesn't use them directly.
+from routes.auth import auth_router, set_db as set_auth_db, seed_admin, create_indexes  # noqa: F401
 from routes.market import router as market_router
 from routes.trading import router as trading_router
 from routes.ai import router as ai_router, set_db as set_ai_db

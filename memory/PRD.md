@@ -54,6 +54,24 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Pyflakes Deep Scan + Re-export Bug Fix (COMPLETED Feb 19, 2026)
+- User asked to run `pyflakes` across the whole backend. Found 12 actual
+  undefined names (all in non-runtime code):
+  - Fixed `scripts/backfill_insider_edgar.py`: missing `SEC_BASE` constant
+    added (`"https://data.sec.gov"`).
+  - Fixed `tests/test_iteration96_auto_invite.py`: missing `import sys`.
+  - Fixed `scripts/train_signal_model.py`: 10 `pd` forward-ref complaints
+    resolved by adding `TYPE_CHECKING` guarded `import pandas as pd`.
+- **CAUGHT + FIXED a real production bug** introduced earlier: the
+  `ruff --fix` pass had aggressively removed `seed_admin` and
+  `create_indexes` from `route_registry.py`'s `from routes.auth import …`
+  line, thinking they were unused locally. But server.py re-imports them
+  from `route_registry`. Backend was crashing on startup with
+  `ImportError: cannot import name 'seed_admin'`. Restored the re-exports
+  with `# noqa: F401` comment and a warning comment.
+- **Final status**: 0 undefined names across the whole backend. All
+  services healthy, all tested API endpoints responding 200.
+
 ### Code Review Pass (COMPLETED Feb 19, 2026)
 - **Fixed**: replaced array-index React `key`s with stable data-driven keys in
   the components I own — `ChipAdoptionInsights.jsx` (3 tables),
