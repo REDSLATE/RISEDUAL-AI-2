@@ -361,6 +361,88 @@ async def help_search_suggestions(q: str, request: Request) -> dict:
 
     return {"query": query, "similar_answered": similar_answered[:3], "gap_signal": gap_signal}
 
+
+# ── Chat Follow-up Chip Adoption Telemetry ──
+
+class ChipEvent(BaseModel):
+    action: str  # "shown" | "clicked"
+    chip_text: str
+    message_idx: Optional[int] = None
+    context_hub: Optional[str] = None
+
+
+@router.post("/chip-event")
+async def log_chip_event(payload: ChipEvent, request: Request) -> dict:
+    """Fire-and-forget telemetry for AI chat follow-up chips.
+
+    Tracks both ``shown`` (chip rendered to the user) and ``clicked`` events so the
+    admin can compute Level-1 adoption: click-through-rate = clicked / shown.
+    A high CTR validates building Level-2 (deep-link action buttons); a low CTR
+    says skip straight to Level-3 or something different.
+    """
+    if db is None:
+        return {"ok": False, "reason": "db_not_ready"}
+    action = (payload.action or "").strip().lower()
+    if action not in ("shown", "clicked"):
+        return {"ok": False, "reason": "bad_action"}
+    chip = (payload.chip_text or "").strip()
+    if not chip or len(chip) > 120:
+        return {"ok": False, "reason": "skip"}
+    user = await _get_current_user_optional(request)
+    await db.chip_events.insert_one({
+        "action": action,
+        "chip_text": chip,
+        "message_idx": payload.message_idx,
+        "context_hub": (payload.context_hub or "").strip()[:24] or None,
+        "user_id": str(user["_id"]) if user else None,
+        "is_anon": user is None,
+        "ts": datetime.now(timezone.utc),
+    })
+    return {"ok": True}
+
+
+@router.get("/chip-events/stats")
+async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -> dict:
+    """Admin-only. Returns chip impression/click counts, CTR, and top chips."""
+    user = await _get_current_user_optional(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+
+    shown = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "shown"})
+    clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "clicked"})
+    ctr = round(clicked / shown, 3) if shown else 0
+
+    # Top clicked chips
+    clicked_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "action": "clicked"}},
+        {"$group": {"_id": "$chip_text", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 50))},
+    ]
+    top_clicked = []
+    async for row in db.chip_events.aggregate(clicked_pipeline):
+        top_clicked.append({"chip": row["_id"], "count": row["count"]})
+
+    return {
+        "window_days": days,
+        "shown": shown,
+        "clicked": clicked,
+        "ctr": ctr,
+        "top_clicked": top_clicked,
+    }
+
+
+@router.post("/help-search/send-digest")
+async def trigger_help_search_digest(request: Request) -> dict:
+    """Admin-only: manually trigger the weekly Help-Search digest email."""
+    user = await _get_current_user_optional(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     if db is None:
         raise HTTPException(status_code=503, detail="Database not ready")
     from services.help_search_digest import send_help_search_digest
