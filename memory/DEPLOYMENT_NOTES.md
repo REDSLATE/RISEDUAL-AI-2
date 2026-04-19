@@ -24,6 +24,20 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+*Nothing queued. Agent will append here as changes land.*
+
+---
+
+## 🟢 Shipped to production
+
+> Blocks below were live at the time of the `mark-deployed` command. The
+> commit hash is the state that was deployed — use `git diff <hash> HEAD`
+> to see what's changed since.
+
+### 2026-04-19 16:43 UTC — Shipped as `feb19-pricing-ml-retrain-resilience` (`1f76967`)
+
+Commit: `1f769676be0e56b2dd6d12c037d9617a79269a42`
+
 ### 2026-02-19 — Dynamic NEUTRAL tolerance + live bot execution wiring
 *Session: post-handoff recovery session*
 
@@ -217,17 +231,3 @@ to confirm new email output carries `$55/mo`.
 **Known follow-ups (not blockers):**
 - Schwab endpoints will go live the moment `SCHWAB_OAUTH_CLIENT_ID` /
   `SCHWAB_OAUTH_CLIENT_SECRET` are added to `backend/.env`.
-
----
-
-## 🟢 Shipped to production
-
-> Blocks below were live at the time of the `mark-deployed` command. The
-> commit hash is the state that was deployed — use `git diff <hash> HEAD`
-> to see what's changed since.
-
-### ↓ No deploys recorded via this file yet ↓
-
-*(This file was created mid-project. Prior deploys exist but are not
-catalogued here. The first `mark-deployed` run will create the first
-"Shipped" block and bracket the un-deployed backlog cleanly.)*
