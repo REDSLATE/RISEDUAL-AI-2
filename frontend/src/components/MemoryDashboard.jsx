@@ -61,6 +61,15 @@ const OverviewTab = ({ stats, accuracy }) => {
         <StatCard icon={TrendingUp} label="Hit Rate" value={primary ? `${primary.val.toFixed(1)}%` : '—'} sub={hitSub} color="text-[#3DE8D9]" />
       </div>
 
+      {accuracy?.pricing_freshness?.disclaimer && (
+        <p
+          className="text-[10px] leading-relaxed text-slate-500 italic -mt-3"
+          data-testid="memory-pricing-freshness-disclaimer"
+        >
+          {accuracy.pricing_freshness.disclaimer}
+        </p>
+      )}
+
       <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-5">
         <h4 className="text-white text-sm font-semibold mb-3 flex items-center gap-2">
           <Shield className="w-4 h-4 text-[#3DE8D9]" /> Memory Health

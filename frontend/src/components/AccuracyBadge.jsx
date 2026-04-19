@@ -75,6 +75,7 @@ const AccuracyBadge = ({ feature, className = '' }) => {
     `${primary.val.toFixed(1)}% on ${primary.total} ${primary.tf === '1W·DIR' ? 'directional (BUY/SELL) ' : ''}predictions (${primary.tf.replace('·DIR','')})`,
     showSecondary ? `Incl. NEUTRAL/HOLD: ${accAll.toFixed(1)}% on ${stats.total_1w}` : null,
     stats.pending ? `${stats.pending} still pending verification` : null,
+    stats.pricing_freshness?.disclaimer || null,
   ].filter(Boolean).join(' · ');
 
   return (
