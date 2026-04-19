@@ -14,6 +14,8 @@ from typing import Optional
 import requests
 import yfinance as yf
 
+from services.sliding_cache import price_cache
+
 logger = logging.getLogger(__name__)
 
 AV_BASE = "https://www.alphavantage.co/query"
@@ -131,30 +133,41 @@ def _yf_quote(symbol: str) -> Optional[dict]:
 
 async def get_quote(symbol: str) -> Optional[dict]:
     """
-    Smart quote: Market Data Pool → AV → yfinance → cache.
-    Pool provides priority-based failover across AV, Finnhub, TwelveData.
+    Smart quote: sliding-TTL in-memory cache → Market Data Pool → AV → yfinance → Mongo cache.
+
+    Sliding-TTL cache (5 min): as long as anyone pulls the symbol at least
+    once every 5 minutes, we never re-hit upstream. First miss triggers a
+    fresh fetch and seeds the cache.
     """
+    cache_key = f"quote_{symbol.upper()}"
+
+    # ── Sliding-TTL hot path (shared with get_quote_sync) ──
+    hot = price_cache.get(cache_key)
+    if hot and hot.get("price", 0) > 0:
+        return {**hot, "source": hot.get("source", "cache") + ":hot"}
+
     # Try the provider pool first (it has its own caching)
     try:
         from services.market_data_pool import market_quote, market_pool
         if market_pool.available:
             pool_result = await market_quote(symbol)
             if pool_result:
+                price_cache.set(cache_key, pool_result)
                 return pool_result
     except Exception as e:
         logger.warning(f"Market data pool failed for {symbol}: {e}")
 
-    cache_key = f"quote_{symbol.upper()}"
-
-    # Check MongoDB cache
+    # MongoDB cross-restart cache (longer-lived persistence)
     if _db is not None:
         cached = await _db.price_cache.find_one(
             {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
             {"_id": 0}
         )
         if cached and cached.get("data", {}).get("price", 0) > 0:
-            cached["data"]["source"] = "cache"
-            return cached["data"]
+            data = cached["data"]
+            data["source"] = "cache"
+            price_cache.set(cache_key, data)
+            return data
 
     # Legacy fallback: AV → yfinance
     quote = await asyncio.to_thread(_av_quote, symbol)
@@ -162,27 +175,41 @@ async def get_quote(symbol: str) -> Optional[dict]:
         logger.info(f"AV failed for {symbol}, trying yfinance")
         quote = await asyncio.to_thread(_yf_quote, symbol)
 
-    if quote and _db is not None:
-        await _db.price_cache.update_one(
-            {"key": cache_key},
-            {"$set": {
-                "key": cache_key,
-                "data": quote,
-                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
+    if quote:
+        price_cache.set(cache_key, quote)
+        if _db is not None:
+            await _db.price_cache.update_one(
+                {"key": cache_key},
+                {"$set": {
+                    "key": cache_key,
+                    "data": quote,
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
 
     return quote
 
 
 def get_quote_sync(symbol: str) -> Optional[dict]:
-    """Synchronous version for use in sync contexts (data fetchers, etc.)."""
+    """Synchronous version for use in sync contexts (background verifiers, etc.).
+
+    Shares the in-memory sliding-TTL cache with `get_quote()` so rapid-fire
+    predictions on the same symbol reuse the async-fetched quote without
+    hammering upstream.
+    """
+    cache_key = f"quote_{symbol.upper()}"
+    hot = price_cache.get(cache_key)
+    if hot and hot.get("price", 0) > 0:
+        return {**hot, "source": hot.get("source", "cache") + ":hot"}
+
     quote = _av_quote(symbol)
     if not quote:
         logger.info(f"AV failed for {symbol}, trying yfinance (sync)")
         quote = _yf_quote(symbol)
+    if quote:
+        price_cache.set(cache_key, quote)
     return quote
 
 
@@ -244,19 +271,28 @@ def _yf_daily(symbol: str, period: str = "3mo") -> Optional[list[dict]]:
 
 async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """
-    Smart daily history: Market Data Pool → AV → yfinance → cache.
+    Smart daily history: sliding-TTL cache → Market Data Pool → AV → yfinance → Mongo cache.
+
+    Uses a 30-min sliding window (daily bars don't need 5-min freshness).
     """
+    cache_key = f"daily_{symbol.upper()}_{outputsize}"
+    DAILY_TTL = 1800.0  # 30 min sliding
+
+    # Sliding-TTL hot path
+    hot = price_cache.get(cache_key, ttl_seconds=DAILY_TTL)
+    if hot:
+        return hot
+
     # Try the provider pool first
     try:
         from services.market_data_pool import market_daily, market_pool
         if market_pool.available:
             pool_result = await market_daily(symbol, outputsize)
             if pool_result:
+                price_cache.set(cache_key, pool_result, ttl_seconds=DAILY_TTL)
                 return pool_result
     except Exception as e:
         logger.warning(f"Market data pool daily failed for {symbol}: {e}")
-
-    cache_key = f"daily_{symbol.upper()}_{outputsize}"
 
     if _db is not None:
         cached = await _db.price_cache.find_one(
@@ -264,6 +300,7 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
             {"_id": 0}
         )
         if cached and cached.get("data"):
+            price_cache.set(cache_key, cached["data"], ttl_seconds=DAILY_TTL)
             return cached["data"]
 
     history = await asyncio.to_thread(_av_daily, symbol, outputsize)
@@ -272,28 +309,38 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
         period = "full" if outputsize == "full" else "3mo"
         history = await asyncio.to_thread(_yf_daily, symbol, period)
 
-    if history and _db is not None:
-        await _db.price_cache.update_one(
-            {"key": cache_key},
-            {"$set": {
-                "key": cache_key,
-                "data": history,
-                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
+    if history:
+        price_cache.set(cache_key, history, ttl_seconds=DAILY_TTL)
+        if _db is not None:
+            await _db.price_cache.update_one(
+                {"key": cache_key},
+                {"$set": {
+                    "key": cache_key,
+                    "data": history,
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
 
     return history
 
 
 def get_daily_history_sync(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
-    """Synchronous version for sync contexts."""
+    """Synchronous version for sync contexts. Shares the sliding-TTL cache."""
+    cache_key = f"daily_{symbol.upper()}_{outputsize}"
+    DAILY_TTL = 1800.0
+    hot = price_cache.get(cache_key, ttl_seconds=DAILY_TTL)
+    if hot:
+        return hot
+
     history = _av_daily(symbol, outputsize)
     if not history:
         logger.info(f"AV daily failed for {symbol}, trying yfinance (sync)")
         period = "full" if outputsize == "full" else "3mo"
         history = _yf_daily(symbol, period)
+    if history:
+        price_cache.set(cache_key, history, ttl_seconds=DAILY_TTL)
     return history
 
 
@@ -412,18 +459,24 @@ def _yf_crypto(symbol: str) -> Optional[dict]:
 
 
 async def get_crypto_quote(symbol: str) -> Optional[dict]:
-    """Smart crypto quote: AV → yfinance → MongoDB cache."""
+    """Smart crypto quote: sliding-TTL cache → AV → yfinance → Mongo cache."""
     cache_key = f"crypto_{symbol.upper()}"
 
-    # Check MongoDB cache first
+    hot = price_cache.get(cache_key)
+    if hot and hot.get("price", 0) > 0:
+        return {**hot, "source": hot.get("source", "cache") + ":hot"}
+
+    # Check MongoDB cache (cross-restart persistence)
     if _db is not None:
         cached = await _db.price_cache.find_one(
             {"key": cache_key, "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}},
             {"_id": 0}
         )
         if cached and cached.get("data", {}).get("price", 0) > 0:
-            cached["data"]["source"] = "cache"
-            return cached["data"]
+            data = cached["data"]
+            data["source"] = "cache"
+            price_cache.set(cache_key, data)
+            return data
 
     # 1. Try Alpha Vantage
     quote = await asyncio.to_thread(_av_crypto, symbol)
@@ -433,26 +486,35 @@ async def get_crypto_quote(symbol: str) -> Optional[dict]:
         logger.info(f"AV crypto failed for {symbol}, trying yfinance")
         quote = await asyncio.to_thread(_yf_crypto, symbol)
 
-    # Cache successful result (5 min TTL)
-    if quote and _db is not None:
-        await _db.price_cache.update_one(
-            {"key": cache_key},
-            {"$set": {
-                "key": cache_key,
-                "data": quote,
-                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
+    # Cache successful result (5 min TTL, both hot + mongo)
+    if quote:
+        price_cache.set(cache_key, quote)
+        if _db is not None:
+            await _db.price_cache.update_one(
+                {"key": cache_key},
+                {"$set": {
+                    "key": cache_key,
+                    "data": quote,
+                    "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
 
     return quote
 
 
 def get_crypto_quote_sync(symbol: str) -> Optional[dict]:
-    """Synchronous crypto quote: AV → yfinance."""
+    """Synchronous crypto quote: sliding-TTL cache → AV → yfinance."""
+    cache_key = f"crypto_{symbol.upper()}"
+    hot = price_cache.get(cache_key)
+    if hot and hot.get("price", 0) > 0:
+        return {**hot, "source": hot.get("source", "cache") + ":hot"}
+
     quote = _av_crypto(symbol)
     if not quote:
         logger.info(f"AV crypto failed for {symbol}, trying yfinance (sync)")
         quote = _yf_crypto(symbol)
+    if quote:
+        price_cache.set(cache_key, quote)
     return quote

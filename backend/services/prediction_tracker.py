@@ -201,10 +201,63 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
     deployed ML artefact version (e.g. "signal_model.v0.1.0"). When a retrain
     regresses accuracy we can filter the post-mortem view to that version and
     quickly attribute failures. Optional until all callers are updated.
+
+    Sliding 15-minute dedup window: if a prediction for the same
+    (feature, symbol, direction, user_id) was logged or *last seen* within
+    the last 15 minutes at essentially the same price (<0.2% drift), the
+    existing prediction is reused — we return its prediction_id, bump
+    `last_seen_at` to now, and increment `dedup_count`. This "resets" the
+    window on every repeat hit, so as long as the same signal keeps firing
+    at least once every 15 min it stays as a single prediction record.
+
+    Important: the original `timestamp` and `price_at_prediction` are pinned
+    to the first firing — the verification scheduler (24h / 1w outcome
+    checks) runs against those anchors, not against the sliding last_seen.
+    That way we never accidentally delay verification of a long-running
+    signal just because it keeps repeating.
     """
     price = await asyncio.to_thread(_get_current_price, symbol)
-    prediction_id = str(uuid4())[:12]
+    price = price or 0.0
 
+    # ── Sliding 15-min dedup window ──
+    now = datetime.now(timezone.utc)
+    if price > 0:
+        cutoff = (now - timedelta(minutes=15)).isoformat()
+        existing = await db.predictions.find_one(
+            {
+                "feature": feature,
+                "symbol": symbol.upper(),
+                "direction": direction.upper(),
+                "user_id": user_id,
+                # Accept either fresh `timestamp` OR recently-refreshed
+                # `last_seen_at` — records created before this field existed
+                # will fall back to `timestamp`.
+                "$or": [
+                    {"last_seen_at": {"$gte": cutoff}},
+                    {"timestamp": {"$gte": cutoff}},
+                ],
+            },
+            {"_id": 0, "prediction_id": 1, "price_at_prediction": 1},
+            sort=[("timestamp", -1)],
+        )
+        if existing:
+            prev_price = existing.get("price_at_prediction", 0) or 0
+            if prev_price > 0 and abs(price - prev_price) / prev_price < 0.002:
+                # Refresh the sliding window on this record, don't insert new
+                await db.predictions.update_one(
+                    {"prediction_id": existing["prediction_id"]},
+                    {
+                        "$set": {"last_seen_at": now.isoformat()},
+                        "$inc": {"dedup_count": 1},
+                    },
+                )
+                logger.debug(
+                    f"Dedup sliding hit: reusing {existing['prediction_id']} for "
+                    f"{feature}/{symbol}/{direction} — window reset to +15m"
+                )
+                return existing["prediction_id"]
+
+    prediction_id = str(uuid4())[:12]
     doc = {
         "prediction_id": prediction_id,
         "feature": feature,
@@ -212,8 +265,10 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
         "direction": direction.upper(),
         "confidence": confidence,
         "score": score,
-        "price_at_prediction": price or 0.0,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "price_at_prediction": price,
+        "timestamp": now.isoformat(),
+        "last_seen_at": now.isoformat(),
+        "dedup_count": 0,
         "user_id": user_id,
         "model_version": model_version or _current_model_version(),
         "verified_24h": None,

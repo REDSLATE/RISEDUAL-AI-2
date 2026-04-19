@@ -483,23 +483,38 @@ See `/app/memory/test_credentials.md`.
 
 ## 8. Changelog
 
+### 2026-04-19 — Sliding-TTL price cache + prediction dedup
+* **New service `services/sliding_cache.py`.** Thread-safe, process-local,
+  O(1) get/set with sliding TTL — each access resets expiry. Shared across
+  sync + async price-provider entrypoints so rapid pulls on the same symbol
+  never double-fetch upstream.
+* **`price_provider` wired to sliding cache.** All five entrypoints use it:
+  `get_quote`, `get_quote_sync`, `get_crypto_quote`, `get_crypto_quote_sync`
+  (5 min TTL), and `get_daily_history` / `get_daily_history_sync` (30 min TTL).
+  First miss hits upstream (~250 ms); repeat hits return in ~0 ms with
+  `source="<provider>:hot"` suffix. MongoDB persistent cache retained for
+  cross-restart warm-up.
+* **`log_prediction` sliding 15-min dedup.** Repeated
+  `(feature, symbol, direction, user_id)` signals within 15 min (at the
+  same price ±0.2%) reuse the original `prediction_id` instead of creating
+  a new record. Each repeat bumps `last_seen_at` and `dedup_count` on the
+  existing row — the window resets on every hit, so a steadily-firing
+  signal stays as a single prediction indefinitely. The original
+  `timestamp` and `price_at_prediction` are pinned so the 24h/1w
+  verification scheduler still runs against the first firing's anchor.
+* **Data cleanup.** Dropped 49 duplicate SPY@$679.46 NEUTRAL predictions
+  left over from a previous session's runaway logger.
+
 ### 2026-04-19 — Dynamic NEUTRAL tolerance + Live bot execution wiring
 * **Dynamic per-symbol NEUTRAL tolerance.** Replaced flat 5% (1w) / 2% (24h) bands
   with ATR-based adaptive bands in `services/prediction_tracker.py`:
   `tolerance = 1.5 × 10-day-ATR%` (24h) or `3 × ATR%` (1w), clamped to [2%, 10%].
-  Cached 12h per symbol. Surfaces honest accuracy on volatile names (AAPL→7.32%,
-  NVDA-class), penalises "flat" calls on low-vol ETFs that moved 2σ+ (SPY→3.42%).
+  Cached 12h per symbol.
 * **Retro rescore endpoint.** `POST /api/accuracy/rescore-neutral?window={24h|1w|both}`
-  (owner-only) walks existing NEUTRAL predictions and rewrites their `correct` flag
-  under the new dynamic rule. Persists `neutral_tolerance_used` + `rescored_at` on
-  each touched record.
+  (owner-only). Persists `neutral_tolerance_used` + `rescored_at` on each touched record.
 * **Live bot execution.** `services/trading_bot_service._execute_bot_trade` now
-  routes `mode="live"` trades through `routes.broker._get_or_refresh_client` →
-  `client.place_order()`, mirroring `smart_order_service._execute_fill()`. Grid,
-  Signal, and Webhook bots can all execute live through the connected broker
-  (Alpaca equities, Kraken crypto). Grid bot now skips counting failed fills.
-* Kraken active on owner account, Alpaca paper active. Hardcoded
-  `RiseDual2026!` override resolved (user rotated prod password).
+  routes `mode="live"` through `routes.broker._get_or_refresh_client` →
+  `client.place_order()`. Grid, Signal, and Webhook bots all execute live.
 
 ### 2026-02-18 — Watchlist.jsx refactor complete
 * `Watchlist.jsx` reduced from 447-line monolith to 58-line orchestrator.
