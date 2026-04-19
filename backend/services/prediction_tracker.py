@@ -75,13 +75,21 @@ def _get_current_price(symbol: str) -> Optional[float]:
     return quote["price"] if quote else None
 
 
+# NEUTRAL tolerance bands per verification window. NEUTRAL/HOLD means
+# "no conviction either way" — the band has to be wide enough that normal
+# weekly market volatility (SPY ~3% weekly stdev) doesn't mark every such
+# call wrong. Scale roughly with sqrt(time).
+NEUTRAL_TOLERANCE_24H = 2.0
+NEUTRAL_TOLERANCE_1W = 5.0
+
+
 def _evaluate_prediction(direction: str, price_at_prediction: float,
-                         price_now: float) -> bool:
-    """
-    Determine if a prediction was correct.
+                         price_now: float, window: str = "24h") -> bool:
+    """Determine if a prediction was correct.
+
     BUY/BULLISH: price went up
     SELL/BEARISH: price went down
-    HOLD/NEUTRAL: price moved < 2%
+    HOLD/NEUTRAL: price moved within tolerance (2% for 24h, 5% for 1w)
     """
     if price_at_prediction <= 0 or price_now <= 0:
         return False
@@ -93,14 +101,22 @@ def _evaluate_prediction(direction: str, price_at_prediction: float,
     elif direction_upper in DIRECTION_BEARISH:
         return pct_change < 0
     elif direction_upper in DIRECTION_NEUTRAL:
-        return abs(pct_change) < 2.0
+        tolerance = NEUTRAL_TOLERANCE_1W if window == "1w" else NEUTRAL_TOLERANCE_24H
+        return abs(pct_change) < tolerance
     return False
 
 
 async def log_prediction(db, feature: str, symbol: str, direction: str,
                          confidence: float, score: float = None,
-                         user_id: str = None) -> str:
-    """Log a new prediction after AI analysis. Returns prediction_id."""
+                         user_id: str = None,
+                         model_version: str = None) -> str:
+    """Log a new prediction after AI analysis. Returns prediction_id.
+
+    `model_version` lets us correlate prediction quality with a specific
+    deployed ML artefact version (e.g. "signal_model.v0.1.0"). When a retrain
+    regresses accuracy we can filter the post-mortem view to that version and
+    quickly attribute failures. Optional until all callers are updated.
+    """
     price = await asyncio.to_thread(_get_current_price, symbol)
     prediction_id = str(uuid4())[:12]
 
@@ -114,12 +130,23 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
         "price_at_prediction": price or 0.0,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id,
+        "model_version": model_version or _current_model_version(),
         "verified_24h": None,
         "verified_1w": None,
     }
     await db.predictions.insert_one(doc)
     logger.info(f"Logged prediction: {feature}/{symbol} {direction} @ ${price}")
     return prediction_id
+
+
+def _current_model_version() -> str:
+    """Best-effort model version tag.
+
+    Reads from env var `SIGNAL_MODEL_VERSION` set at deploy time. Falls back to
+    `"unversioned"` so old data stays distinguishable from tracked data.
+    """
+    import os
+    return os.environ.get("SIGNAL_MODEL_VERSION", "unversioned")
 
 
 async def log_market_prediction(db, direction: str, confidence: float,
@@ -148,7 +175,7 @@ async def verify_pending_predictions(db):
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
             continue
-        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now)
+        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now, window="24h")
 
         # Classify failure mode if prediction was wrong
         failure_reason = "N/A"
@@ -228,7 +255,7 @@ async def verify_pending_predictions(db):
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
             continue
-        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now)
+        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now, window="1w")
 
         # Classify failure mode if prediction was wrong
         failure_reason = "N/A"
@@ -255,24 +282,70 @@ async def verify_pending_predictions(db):
         )
 
 
-async def get_accuracy_stats(db, feature: Optional[str] = None) -> dict:
-    """Calculate rolling accuracy stats. Optionally filter by feature."""
+async def get_accuracy_stats(db, feature: Optional[str] = None,
+                              window_days: int = 7) -> dict:
+    """Calculate rolling accuracy stats. Optionally filter by feature.
+
+    Args:
+        db: Motor MongoDB handle.
+        feature: Optional feature filter (war_room/hypothesis/market_prediction).
+        window_days: Rolling window for the "1w" stat in days. Defaults to 7.
+            Previously this function counted every verified_1w record ever made,
+            which silently turned "accuracy_1w" into "accuracy_all_time" once
+            the dataset grew past a week. Fixed 2026-02-18.
+
+    Returns dict with:
+        accuracy_24h, total_24h, correct_24h          — last 24h (no change)
+        accuracy_1w, total_1w, correct_1w             — last `window_days`
+        accuracy_1w_directional, total_1w_directional — excludes NEUTRAL/HOLD
+        pending                                       — still-unverified 24h
+    """
+    from datetime import timedelta
     match = {}
     if feature:
         match["feature"] = feature
 
-    # 24h accuracy
-    match_24h = {**match, "verified_24h": {"$ne": None}}
+    # 24h accuracy — rolling last 24h only, not all-time
+    cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    match_24h = {
+        **match,
+        "verified_24h": {"$ne": None},
+        "timestamp": {"$gte": cutoff_24h},
+    }
     total_24h = await db.predictions.count_documents(match_24h)
-    correct_24h = await db.predictions.count_documents({**match_24h, "verified_24h.correct": True})
+    correct_24h = await db.predictions.count_documents(
+        {**match_24h, "verified_24h.correct": True}
+    )
 
-    # 1w accuracy
-    match_1w = {**match, "verified_1w": {"$ne": None}}
+    # 1w accuracy — rolling last `window_days` days
+    cutoff_1w = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
+    match_1w = {
+        **match,
+        "verified_1w": {"$ne": None},
+        "timestamp": {"$gte": cutoff_1w},
+    }
     total_1w = await db.predictions.count_documents(match_1w)
-    correct_1w = await db.predictions.count_documents({**match_1w, "verified_1w.correct": True})
+    correct_1w = await db.predictions.count_documents(
+        {**match_1w, "verified_1w.correct": True}
+    )
 
-    # Pending
-    pending = await db.predictions.count_documents({**match, "verified_24h": None})
+    # Directional-only 1w accuracy — excludes NEUTRAL/HOLD calls so the headline
+    # isn't dragged down by the narrower-than-weekly-vol 2% neutral tolerance.
+    # Pass the user this alongside the all-inclusive number.
+    directional_filter = {
+        **match_1w,
+        "direction": {"$nin": list(DIRECTION_NEUTRAL)},
+    }
+    total_1w_dir = await db.predictions.count_documents(directional_filter)
+    correct_1w_dir = await db.predictions.count_documents(
+        {**directional_filter, "verified_1w.correct": True}
+    )
+
+    # Pending — any still-unverified 24h (no time filter; these accumulate
+    # fast enough that a window here would be misleading).
+    pending = await db.predictions.count_documents(
+        {**match, "verified_24h": None}
+    )
 
     return {
         "accuracy_24h": round((correct_24h / total_24h * 100), 1) if total_24h > 0 else None,
@@ -281,7 +354,11 @@ async def get_accuracy_stats(db, feature: Optional[str] = None) -> dict:
         "accuracy_1w": round((correct_1w / total_1w * 100), 1) if total_1w > 0 else None,
         "total_1w": total_1w,
         "correct_1w": correct_1w,
+        "accuracy_1w_directional": round((correct_1w_dir / total_1w_dir * 100), 1) if total_1w_dir > 0 else None,
+        "total_1w_directional": total_1w_dir,
+        "correct_1w_directional": correct_1w_dir,
         "pending": pending,
+        "window_days": window_days,
         "feature": feature or "all",
     }
 
