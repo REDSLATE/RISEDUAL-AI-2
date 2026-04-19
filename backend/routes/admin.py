@@ -21,6 +21,20 @@ async def _require_admin(request: Request):
     return user
 
 
+async def _require_owner(request: Request):
+    """Stricter gate than `_require_admin`: only the owner role passes.
+    Used for endpoints that expose upstream-provider load signals, which
+    are business-sensitive (reveals API budget pressure, traffic patterns,
+    which symbols are hottest) and shouldn't be visible to lower-tier
+    admins or any public caller.
+    """
+    from routes.auth import get_current_user
+    user = await get_current_user(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return user
+
+
 # ============================================================
 # CACHE MANAGEMENT
 # ============================================================
@@ -51,7 +65,7 @@ async def clear_all_cache(request: Request):
 @router.get("/price-cache-stats")
 async def get_price_cache_stats(request: Request):
     """Stats on the sliding-TTL price cache shared by all price_provider
-    entrypoints. Admin-only.
+    entrypoints. Owner-only — exposes upstream-provider load patterns.
 
     - `size` / `alive`: total entries tracked vs. currently valid
     - `at_reset_cap`: entries that have hit `max_resets` — they still
@@ -60,16 +74,16 @@ async def get_price_cache_stats(request: Request):
       by a wave of refresh fetches — good leading indicator.
     - `ttl_seconds`, `max_resets`: effective cache policy
     """
-    await _require_admin(request)
+    await _require_owner(request)
     from services.sliding_cache import price_cache
     return price_cache.stats()
 
 
 @router.post("/price-cache-invalidate/{symbol}")
 async def invalidate_price_cache(symbol: str, request: Request):
-    """Force a fresh upstream fetch on the next read of `symbol`. Admin-only.
+    """Force a fresh upstream fetch on the next read of `symbol`. Owner-only.
     Invalidates both quote and crypto keys since we don't know which applies."""
-    await _require_admin(request)
+    await _require_owner(request)
     from services.sliding_cache import price_cache
     upper = symbol.upper()
     for key in (f"quote_{upper}", f"crypto_{upper}"):
