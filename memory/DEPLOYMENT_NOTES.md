@@ -86,6 +86,29 @@
 
 **Files touched:** `backend/.env` only.
 
+### 2026-02-19 — OpenFIGI name→ticker fallback (USASpending long-tail coverage)
+*Session: continued*
+
+**Behavioural changes:**
+- USASpending now uses a **two-stage resolver**: hand-curated 50-ticker
+  map first (0ms, ~80% of the biggest awards), then OpenFIGI `/v3/search`
+  fallback for long-tail names (ABBV, TER, MMM, biotech, etc.). Results
+  cached in the existing `cusip_ticker_map` Mongo collection keyed by
+  `query`.
+- Shares the existing `OPENFIGI_API_KEY` — zero new env vars.
+- Only negative-caches **confirmed** "no match" responses. Transient
+  failures (429, 5xx, network) are not cached, so a temporary outage
+  doesn't poison the lookup table.
+- Ticker coverage for USASpending recipients effectively unlimited
+  (OpenFIGI indexes ~10 million tradable securities).
+
+**Files touched:**
+- `backend/services/cusip_mapper.py` — added `resolve_name_to_ticker()`
+- `backend/services/usaspending_service.py` — two-stage `_resolve_ticker()`
+- `backend/route_registry.py` — wire `set_usaspending_db`
+
+**Env vars:** unchanged (`OPENFIGI_API_KEY` reused).
+
 ### 2026-02-19 — USASpending.gov gov_contracts fallback
 *Session: continued*
 

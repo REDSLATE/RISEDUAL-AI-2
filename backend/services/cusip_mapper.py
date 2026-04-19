@@ -169,6 +169,97 @@ async def get_ticker(db, cusip: str) -> str | None:
     return entry["ticker"] if entry else None
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Company name → ticker resolver
+# ──────────────────────────────────────────────────────────────────────────
+# USASpending.gov and other free sources return recipient names as free-text
+# (e.g. "LOCKHEED MARTIN CORPORATION"). We need a ticker to link the data
+# into RISEDUAL's existing by-symbol pipelines. OpenFIGI's /v3/search endpoint
+# accepts a freeform company name and returns candidate securities — first
+# exact-name US-listed equity wins, same preference rules as CUSIP lookup.
+#
+# Cached in the same `cusip_ticker_map` collection under a different key
+# shape (`query` instead of `cusip`) so one collection covers both lookup
+# directions. Negative cache prevents re-hitting OpenFIGI every request
+# for a private-company recipient (university, research lab, non-public).
+
+OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
+
+
+async def resolve_name_to_ticker(db, name: str) -> str | None:
+    """Return the US ticker for a free-text company name, or None.
+
+    Uses OpenFIGI search with persistent caching. Safe for hot-path callers
+    — cache hits short-circuit before any network call.
+    """
+    if not name or len(name.strip()) < 3:
+        return None
+    query = name.strip().upper()[:200]  # OpenFIGI rejects overly-long queries
+
+    # 1. Cache hit (positive or negative)
+    cached = await db.cusip_ticker_map.find_one(
+        {"query": query}, {"_id": 0, "ticker": 1},
+    )
+    if cached is not None:
+        return cached.get("ticker")  # None if negative-cached
+
+    if not _api_key():
+        # Anonymous search is heavily rate-limited; skip to keep the hot
+        # path fast. Callers (USASpending) have their own hand-curated
+        # fallback map, so this degrades gracefully.
+        return None
+
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                OPENFIGI_SEARCH_URL,
+                json={"query": query, "exchCode": "US"},
+                headers=_headers(),
+            )
+    except Exception as e:
+        logger.warning(f"OpenFIGI search network error for '{query[:40]}': {e}")
+        return None
+
+    if resp.status_code == 429:
+        logger.warning("OpenFIGI search rate-limited, skipping this lookup")
+        # Do NOT negative-cache — rate limit is transient, retry next time.
+        return None
+    if resp.status_code != 200:
+        logger.warning(f"OpenFIGI search {resp.status_code} for '{query[:40]}'")
+        # Server errors are also transient, don't poison the cache.
+        return None
+
+    try:
+        rows = (resp.json() or {}).get("data") or []
+    except Exception:
+        return None
+
+    best = _pick_best_row(rows)
+    if best and best.get("ticker"):
+        doc = {
+            "query": query,
+            "ticker": best.get("ticker"),
+            "name": best.get("name"),
+            "exchange": best.get("exchCode"),
+            "figi": best.get("figi") or best.get("compositeFIGI"),
+            "resolved_at": now,
+        }
+        await db.cusip_ticker_map.update_one(
+            {"query": query}, {"$set": doc}, upsert=True,
+        )
+        return doc["ticker"]
+
+    # Negative cache — private company / lab / university
+    await db.cusip_ticker_map.update_one(
+        {"query": query},
+        {"$set": {"query": query, "ticker": None, "resolved_at": now,
+                  "error": "no_match"}},
+        upsert=True,
+    )
+    return None
+
+
 async def backfill_from_holdings(db, limit: int = 5000, top_only: bool = False) -> dict:
     """Bootstrap: resolve tickers for CUSIPs currently stored in ``sec_13f_holdings``.
 

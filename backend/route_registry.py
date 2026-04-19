@@ -64,6 +64,7 @@ from routes.share_image import router as share_image_router
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
+from services.usaspending_service import set_db as set_usaspending_db
 
 # Ordered list of all routers to register
 ALL_ROUTERS = [
@@ -130,6 +131,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_analytics_db,
         set_fred_db,
         set_demo_db,
+        set_usaspending_db,
     ]
     for setter in _setters:
         try:

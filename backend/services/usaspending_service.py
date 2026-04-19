@@ -28,6 +28,16 @@ from services.sliding_cache import SlidingCache
 
 logger = logging.getLogger(__name__)
 
+# Injected by route_registry on startup so we can share the app's Mongo
+# handle without re-importing the full motor stack here.
+_db = None
+
+
+def set_db(database) -> None:
+    """Injected during FastAPI startup for OpenFIGI name→ticker caching."""
+    global _db
+    _db = database
+
 _USASPENDING_BASE = "https://api.usaspending.gov/api/v2"
 _CACHE_TTL_SECONDS = 6 * 60 * 60
 
@@ -103,11 +113,9 @@ KNOWN_TICKERS: list[tuple[str, str]] = [
 
 
 def _name_to_ticker(recipient_name: str) -> Optional[str]:
-    """Fuzzy match a USASpending recipient name to a ticker.
-
-    Returns None if the recipient is a private company, university, or
-    research lab (which USASpending also lists). First-match-wins, so
-    KNOWN_TICKERS is ordered for correctness.
+    """Fuzzy match a USASpending recipient name to a ticker via hand-curated
+    map. Returns None if no match — caller should then try OpenFIGI search
+    (see `_resolve_ticker` below) before giving up.
     """
     if not recipient_name:
         return None
@@ -116,6 +124,31 @@ def _name_to_ticker(recipient_name: str) -> Optional[str]:
         if pattern in upper:
             return ticker
     return None
+
+
+async def _resolve_ticker(recipient_name: str) -> Optional[str]:
+    """Two-stage resolution: hand-curated map → OpenFIGI search fallback.
+
+    OpenFIGI covers thousands of issuers our hand map can't keep up with
+    (biotech, mid-cap defense suppliers, regional utilities). Results are
+    cached in `cusip_ticker_map` so each unique name hits OpenFIGI at most
+    once. If OpenFIGI is unavailable (no DB, no API key, rate-limited)
+    we fall back to the hand map only — no hard failure.
+    """
+    # Stage 1: fast in-memory map (~0ms)
+    ticker = _name_to_ticker(recipient_name)
+    if ticker:
+        return ticker
+
+    # Stage 2: OpenFIGI search (~cache hit = 0ms, cold = 100-300ms)
+    if _db is None:
+        return None
+    try:
+        from services.cusip_mapper import resolve_name_to_ticker
+        return await resolve_name_to_ticker(_db, recipient_name)
+    except Exception as e:
+        logger.debug(f"OpenFIGI resolution failed for '{recipient_name[:40]}': {e}")
+        return None
 
 
 async def get_gov_contracts(
@@ -187,7 +220,7 @@ async def get_gov_contracts(
     contracts: list[dict] = []
     for row in rows:
         recipient = str(row.get("Recipient Name", "") or "")
-        tkr = _name_to_ticker(recipient)
+        tkr = await _resolve_ticker(recipient)
         if not tkr:
             # Skip private-company / university / lab awards — users only
             # care about publicly-traded names they can trade on.
