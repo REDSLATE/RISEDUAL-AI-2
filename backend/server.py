@@ -259,8 +259,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_referral_hit_rewards, 'cron', hour=9, minute=0, id='referral_hit_rewards_daily')
         scheduler.add_job(_run_referral_monthly_rewards, 'cron', day=1, hour=9, minute=30, id='referral_monthly_rewards')
         scheduler.add_job(_run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
+        scheduler.add_job(_run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -442,6 +443,18 @@ async def _run_help_search_digest():
         )
     except Exception as e:
         logger.warning(f"Help search digest error: {e}")
+
+
+async def _run_usaspending_warmup():
+    """Background: 03:30 UTC — pre-resolve top federal recipients to tickers
+    so the first gov-contracts dashboard load of the day is instant. Also
+    catches new contractors as USASpending publishes them."""
+    try:
+        from services.usaspending_service import warmup_top_recipients
+        result = await warmup_top_recipients(limit=500)
+        logger.info(f"USASpending warmup: {result}")
+    except Exception as e:
+        logger.warning(f"USASpending warmup error: {e}")
 
 
 

@@ -104,6 +104,29 @@ async def quiver_status(request: Request):
     return get_endpoint_health()
 
 
+@router.post("/usaspending-warmup")
+async def usaspending_warmup(request: Request, limit: int = 500):
+    """Manually trigger the USASpending.gov recipient→ticker warm-up job.
+    Owner-only. Pre-resolves the top federal contractors so the first
+    gov-contracts dashboard load is instant.
+
+    Scheduled to run nightly at 03:30 UTC automatically — this endpoint
+    is for on-demand re-runs (e.g. after clearing the cache, after a
+    new contract cycle, or as a smoke test during ops review).
+    """
+    await _require_owner(request)
+    from services.usaspending_service import warmup_top_recipients
+    return await warmup_top_recipients(limit=min(max(limit, 10), 500))
+
+
+@router.get("/usaspending-health")
+async def usaspending_health(request: Request):
+    """Cache + config snapshot for USASpending service. Owner-only."""
+    await _require_owner(request)
+    from services.usaspending_service import get_health
+    return get_health()
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================

@@ -262,6 +262,86 @@ def is_configured() -> bool:
     return True
 
 
+async def warmup_top_recipients(limit: int = 500) -> dict:
+    """Pre-resolve the top-N federal recipients to tickers.
+
+    Runs nightly via APScheduler so the first user hitting the
+    gov-contracts dashboard the next morning gets instant data —
+    no cold OpenFIGI calls in the request path. Idempotent: already-cached
+    resolutions short-circuit; only *new* recipients touch OpenFIGI.
+
+    Also callable on-demand via the owner-only endpoint
+    `POST /api/admin/usaspending-warmup`.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    payload = {
+        "filters": {
+            "award_type_codes": ["A", "B", "C", "D"],
+            "time_period": [{
+                "start_date": (now - timedelta(days=365)).strftime("%Y-%m-%d"),
+                "end_date": now.strftime("%Y-%m-%d"),
+            }],
+        },
+        "fields": ["Recipient Name", "Award Amount"],
+        "page": 1,
+        "limit": min(max(limit, 10), 100),  # API per-page cap is 100
+        "sort": "Award Amount",
+        "order": "desc",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{_USASPENDING_BASE}/search/spending_by_award/",
+                json=payload,
+            )
+    except Exception as e:
+        logger.warning(f"Warmup network error: {e}")
+        return {"scanned": 0, "resolved": 0, "skipped": 0, "error": str(e)}
+
+    if resp.status_code != 200:
+        return {"scanned": 0, "resolved": 0, "skipped": 0,
+                "error": f"http_{resp.status_code}"}
+
+    rows = (resp.json() or {}).get("results", [])
+    resolved = 0
+    skipped = 0
+    hand_map_hits = 0
+    openfigi_hits = 0
+
+    for row in rows:
+        name = str(row.get("Recipient Name", "") or "")
+        if not name:
+            continue
+        # Fast path — if it's in the hand map we skip OpenFIGI entirely
+        if _name_to_ticker(name):
+            hand_map_hits += 1
+            continue
+        ticker = await _resolve_ticker(name)
+        if ticker:
+            resolved += 1
+            openfigi_hits += 1
+        else:
+            skipped += 1
+
+        # Soft rate-limiting between OpenFIGI calls. Cache hits are fast
+        # but fresh lookups can burn through the free-tier quota if we
+        # fire off 500 sequentially.
+        await asyncio.sleep(0.05)
+
+    result = {
+        "scanned": len(rows),
+        "hand_map_hits": hand_map_hits,
+        "openfigi_resolved": openfigi_hits,
+        "private_or_unresolvable": skipped,
+        "total_resolved": hand_map_hits + openfigi_hits,
+    }
+    logger.info(f"USASpending warmup: {result}")
+    return result
+
+
 def get_health() -> dict:
     """Owner-only status report."""
     return {

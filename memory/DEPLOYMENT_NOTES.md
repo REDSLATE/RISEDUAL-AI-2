@@ -86,7 +86,27 @@
 
 **Files touched:** `backend/.env` only.
 
-### 2026-02-19 — OpenFIGI name→ticker fallback (USASpending long-tail coverage)
+### 2026-02-19 — USASpending warm-up job + owner admin surfaces
+*Session: continued*
+
+**Behavioural changes:**
+- **Nightly warm-up at 03:30 UTC** pre-resolves the top-500 federal
+  recipients to tickers. Runs before the 06:00 daily digest so first
+  gov-contracts dashboard load each morning is instant.
+- **New owner-only endpoints:**
+  - `POST /api/admin/usaspending-warmup?limit=N` — trigger on demand
+  - `GET /api/admin/usaspending-health` — cache + config snapshot
+- Warm-up is idempotent (rerun safely; already-cached entries skip OpenFIGI).
+- **Telemetry insight:** top-100 federal recipients resolve 53/53
+  publicly-traded names via hand map alone. 0 OpenFIGI calls needed at
+  current scope. OpenFIGI stays as long-tail safety net.
+
+**Files touched:**
+- `backend/services/usaspending_service.py` — added `warmup_top_recipients()`
+- `backend/routes/admin.py` — two new endpoints
+- `backend/server.py` — added `usaspending_warmup` scheduled job
+
+
 *Session: continued*
 
 **Behavioural changes:**
