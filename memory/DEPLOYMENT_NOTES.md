@@ -86,6 +86,40 @@
 
 **Files touched:** `backend/.env` only.
 
+### 2026-02-19 — QuiverQuant resilience layer
+*Session: continued*
+
+**Behavioural changes:**
+- QuiverQuant's API has been returning 500s on 3 of 4 endpoints (lobbying,
+  insiders, gov contracts) for weeks; only `congresstrading` works.
+  Previously each request wasted a 30-second timeout — gov-filings page
+  load was ~90s when 3 Quiver endpoints failed serially.
+- New **per-endpoint circuit breaker**: 3 consecutive 5xx responses →
+  endpoint skipped for 15 min, returns `[]` in ~0ms. Existing fallback
+  chain (Finnhub → SEC scrapers in `gov_filings_service`) kicks in
+  immediately instead of after a timeout cascade.
+- New **6-hour sliding-TTL response cache**. Quiver "live" data updates
+  once per business day, so repeat polls share the same response.
+  `congresstrading` latency: 11s cold → 0ms hot.
+- **Fixed path typo:** `govcontracts` → `govcontractsall` (matches the
+  official `quiverquant` SDK). Our prior URL was 404ing before it even
+  hit the 500s.
+- **New owner-only endpoint** `GET /api/admin/quiver-status`: returns
+  per-endpoint circuit state (`healthy` / `warning` / `open`), consecutive
+  failure count, and cooldown seconds remaining. Cache stats included.
+
+**Files touched:**
+- `backend/services/quiver_service.py` — full rewrite with circuit +
+  cache + correct paths
+- `backend/routes/admin.py` — new `/quiver-status` endpoint
+
+**Env vars:** unchanged.
+
+**Known follow-ups:**
+- Pattern 1 QuantConnect bridge (from user's discussion) deferred —
+  user chose to fix the existing direct-API path first. If Quiver's
+  backend outage persists > 1 month, revisit.
+
 **DB changes:**
 - Dropped 49 duplicate predictions (SPY @ $679.46, NEUTRAL, from prior session's runaway logger)
 - Predictions now carry `last_seen_at`, `dedup_count`, and

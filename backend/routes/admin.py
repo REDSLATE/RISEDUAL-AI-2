@@ -91,6 +91,19 @@ async def invalidate_price_cache(symbol: str, request: Request):
     return {"ok": True, "invalidated": upper}
 
 
+@router.get("/quiver-status")
+async def quiver_status(request: Request):
+    """Per-endpoint health + circuit-breaker state for QuiverQuant. Owner-only.
+
+    Use this when gov filings / congress trading data looks thin — it tells
+    you whether we're looking at a Quiver outage (circuit open) or just a
+    quiet news day. Also shows cache pressure.
+    """
+    await _require_owner(request)
+    from services.quiver_service import get_endpoint_health
+    return get_endpoint_health()
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
