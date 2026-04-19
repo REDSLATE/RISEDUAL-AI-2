@@ -6,7 +6,7 @@ from services.auth_helpers import get_current_user, is_pro_user
 from services.prediction_tracker import (
     get_all_feature_stats, get_recent_predictions,
     verify_pending_predictions, get_accuracy_stats, FAILURE_MODES,
-    reevaluate_neutral_predictions,
+    reevaluate_neutral_predictions, PRICING_FRESHNESS,
 )
 import logging
 
@@ -49,7 +49,11 @@ async def prediction_history(request: Request, feature: str = None, limit: int =
     if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     predictions = await get_recent_predictions(db, feature, min(limit, 50))
-    return {"predictions": predictions, "count": len(predictions)}
+    return {
+        "predictions": predictions,
+        "count": len(predictions),
+        "pricing_freshness": PRICING_FRESHNESS,
+    }
 
 
 @router.post("/verify")

@@ -191,6 +191,25 @@ def _evaluate_prediction(direction: str, price_at_prediction: float,
     return False
 
 
+# Sliding cache / dedup windows make the prices embedded in predictions
+# potentially stale compared to the live tape. Surface this on every API
+# response that reports prediction-linked numbers so downstream UIs can
+# render an honest caveat instead of implying tick-by-tick freshness.
+PRICING_DISCLAIMER = (
+    "Prices shown are anchored to the sliding cache and prediction dedup "
+    "windows: quotes may be up to ~15 min stale, and predictions may be "
+    "anchored to a price up to ~30 min old. Use for trend/accuracy "
+    "evaluation, not for live execution pricing."
+)
+PRICING_FRESHNESS = {
+    "quote_cache_ttl_seconds": 300,
+    "quote_cache_max_lifetime_seconds": 900,    # 5 min × 3 touches
+    "prediction_dedup_ttl_seconds": 900,
+    "prediction_dedup_max_lifetime_seconds": 1800,  # 15 min × 2 touches
+    "disclaimer": PRICING_DISCLAIMER,
+}
+
+
 # Maximum number of sliding-window extensions a prediction can accumulate
 # before a repeat firing is treated as a new prediction instead of deduped
 # onto the existing record. 1 → initial creation + 1 extension = ~30 min
@@ -606,6 +625,7 @@ async def get_accuracy_stats(db, feature: Optional[str] = None,
         "pending": pending,
         "window_days": window_days,
         "feature": feature or "all",
+        "pricing_freshness": PRICING_FRESHNESS,
     }
 
 
@@ -616,12 +636,20 @@ async def get_all_feature_stats(db) -> dict:
     for f in features:
         stats[f] = await get_accuracy_stats(db, f)
     stats["overall"] = await get_accuracy_stats(db)
+    # Top-level disclaimer in addition to per-feature — clients that only
+    # read the envelope still get the caveat without digging into nesting.
+    stats["pricing_freshness"] = PRICING_FRESHNESS
     return stats
 
 
 async def get_recent_predictions(db, feature: Optional[str] = None,
                                   limit: int = 20) -> list[dict]:
-    """Get recent predictions with verification status."""
+    """Get recent predictions with verification status.
+
+    Note: caller should treat `price_at_prediction` as anchored to the
+    sliding prediction-dedup window (up to ~30 min old at emission time).
+    The route wrapper attaches `pricing_freshness` alongside this list.
+    """
     match = {}
     if feature:
         match["feature"] = feature
