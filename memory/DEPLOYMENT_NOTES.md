@@ -74,6 +74,18 @@
 
 **Env vars added/changed:** none.
 
+### 2026-02-19 — OpenAI direct API key rotation
+*Session: continued*
+
+**Env vars changed:**
+- `OPENAI_API_KEY` rotated in `backend/.env`. Backend restarted. No code changes —
+  existing OpenAI client code paths (still routed through Emergent LLM Key for
+  most flows) pick up the new key automatically where direct OpenAI is used.
+- Reminder: user should rotate this key at https://platform.openai.com/api-keys
+  before production since it was transmitted in a chat session.
+
+**Files touched:** `backend/.env` only.
+
 **DB changes:**
 - Dropped 49 duplicate predictions (SPY @ $679.46, NEUTRAL, from prior session's runaway logger)
 - Predictions now carry `last_seen_at`, `dedup_count`, and
