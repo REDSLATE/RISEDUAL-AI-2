@@ -48,6 +48,35 @@ async def clear_all_cache(request: Request):
     return {"ok": True, "message": "All cache cleared"}
 
 
+@router.get("/price-cache-stats")
+async def get_price_cache_stats(request: Request):
+    """Stats on the sliding-TTL price cache shared by all price_provider
+    entrypoints. Admin-only.
+
+    - `size` / `alive`: total entries tracked vs. currently valid
+    - `at_reset_cap`: entries that have hit `max_resets` — they still
+      serve reads but won't extend expiry any more. If this climbs
+      toward `alive` under load, upstream providers are about to be hit
+      by a wave of refresh fetches — good leading indicator.
+    - `ttl_seconds`, `max_resets`: effective cache policy
+    """
+    await _require_admin(request)
+    from services.sliding_cache import price_cache
+    return price_cache.stats()
+
+
+@router.post("/price-cache-invalidate/{symbol}")
+async def invalidate_price_cache(symbol: str, request: Request):
+    """Force a fresh upstream fetch on the next read of `symbol`. Admin-only.
+    Invalidates both quote and crypto keys since we don't know which applies."""
+    await _require_admin(request)
+    from services.sliding_cache import price_cache
+    upper = symbol.upper()
+    for key in (f"quote_{upper}", f"crypto_{upper}"):
+        price_cache.invalidate(key)
+    return {"ok": True, "invalidated": upper}
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
