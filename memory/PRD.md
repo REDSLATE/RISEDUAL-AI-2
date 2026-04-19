@@ -481,6 +481,15 @@ adversarial trading platform with:
 See `/app/memory/test_credentials.md`.
 
 
+## 7b. Deployment Journal
+
+Running log of what's shipped vs. queued lives in
+`/app/memory/DEPLOYMENT_NOTES.md`. Agents must append to the "Queued for
+next deploy" section at the end of every meaningful change. When the user
+deploys, they run `/app/scripts/mark-deployed.sh "label"` to snapshot the
+queue into a timestamped "Shipped" block.
+
+
 ## 8. Changelog
 
 ### 2026-04-19 — Sliding-TTL price cache + prediction dedup
