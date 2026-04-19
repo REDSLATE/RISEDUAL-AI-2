@@ -11,8 +11,8 @@ from emergentintegrations.payments.stripe.checkout import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-SUBSCRIPTION_PRICE_MONTHLY = 45.00  # $45/month
-SUBSCRIPTION_PRICE_ANNUAL = 486.00  # $40.50/month billed annually (10% off)
+SUBSCRIPTION_PRICE_MONTHLY = 55.00  # $55/month
+SUBSCRIPTION_PRICE_ANNUAL = 594.00  # $49.50/month billed annually (10% off)
 
 class StripePaymentService:
     def __init__(self):

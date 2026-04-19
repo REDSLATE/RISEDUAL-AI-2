@@ -86,8 +86,28 @@
 
 **Files touched:** `backend/.env` only.
 
-### 2026-02-19 — USASpending warm-up job + owner admin surfaces
+### 2026-02-19 — Subscription price sync ($45 → $55)
 *Session: continued*
+
+**Problem:** User flagged the daily digest email still offered the Pro
+plan at `$45/mo` while the frontend had been showing `$55/mo` for weeks.
+Stale price drift across touchpoints.
+
+**Files touched:**
+- `backend/services/digest_service.py` — CTA in upgrade block (line 432)
+- `backend/services/payment_service.py` — `SUBSCRIPTION_PRICE_MONTHLY`
+  and `SUBSCRIPTION_PRICE_ANNUAL` constants ($45→$55 / $486→$594)
+- `backend/tests/test_daily_digest.py` — assertion updated
+
+**Verified clean:** full grep sweep of `/app/backend` and `/app/frontend/src`
+returns no remaining `$45`/`45/mo`/`45.00 monthly` references. (The
+`$45` in `test_iteration121_credit_system.py` is the "Power" credit
+top-up SKU — legitimately different product, stays put.)
+
+**Manual verification:** sent a fresh digest via `POST /api/digest/send-now`
+to confirm new email output carries `$55/mo`.
+
+
 
 **Behavioural changes:**
 - **Nightly warm-up at 03:30 UTC** pre-resolves the top-500 federal

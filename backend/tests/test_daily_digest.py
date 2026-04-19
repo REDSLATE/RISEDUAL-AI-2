@@ -330,7 +330,7 @@ class TestDigestServiceModule:
         assert "AAPL" in html, "First item should be visible"
         assert "filter:blur(4px)" in html, "Should have blurred rows for free user"
         assert "Upgrade to Pro" in html, "Free user should see upgrade CTA"
-        assert "$45/mo" in html, "Should show pricing in CTA"
+        assert "$55/mo" in html, "Should show pricing in CTA"
         
         print("PASSED: build_digest_html generates blurred rows and upgrade CTA for free user")
     

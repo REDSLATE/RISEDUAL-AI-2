@@ -429,7 +429,7 @@ def _upgrade_cta() -> str:
 <p style="color:#475569;font-size:13px;margin:0 0 12px;">Pro reveals all predictions, smart money flows, and watchlist signals.</p>
 <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
 <tr><td bgcolor="#0052FF" style="background-color:#0052FF;border-radius:8px;">
-<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:600;padding:10px 24px;">Upgrade to Pro &mdash; $45/mo</a>
+<a href="{APP_URL}" style="display:inline-block;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:600;padding:10px 24px;">Upgrade to Pro &mdash; $55/mo</a>
 </td></tr>
 </table>
 </td></tr>
