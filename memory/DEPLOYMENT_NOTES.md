@@ -26,6 +26,23 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Pricing section optical centering (container width)
+*Session: continued*
+
+**Problem:** User reported pricing cards "off to the left, not centered on the
+page" even after per-card border sizing was equalised. Root cause: Pricing
+section container was `max-w-5xl` while the sibling Features / About Us
+sections were `max-w-6xl` — creating an optical illusion of leftward drift.
+
+**Fix:** `frontend/src/components/LandingPage.jsx`:
+- Pricing section wrapper bumped from `max-w-5xl` → `max-w-6xl` so it
+  matches adjacent sections.
+- Screenshot verified at 1920px: 4 cards sit with equal left/right gutters;
+  "Action pricing" and "Top-up pricing" tables below share the same width.
+
+**Behavioural impact:** Visual polish only. No logic, routing, or pricing
+data changed.
+
 ### 2026-02-19 — Landing-page pricing cards alignment fix
 *Session: continued*
 
