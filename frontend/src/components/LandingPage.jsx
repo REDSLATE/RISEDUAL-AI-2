@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Zap, Shield, BarChart3, Radio, Brain, LineChart,
   Check, X, ArrowRight, ChevronDown, Menu, X as XIcon,
-  TrendingUp, Clock, Users, Play, Building2
+  TrendingUp, Clock, Users, Play
 } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
@@ -515,18 +515,7 @@ const CTA = ({ onGetStarted }) => (
         <button onClick={onGetStarted} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="cta-final">
           Join the Waitlist <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
-        <button
-          onClick={onGetStarted}
-          className="group px-8 py-3.5 rounded-full bg-slate-900/60 border border-[#3DE8D9]/40 text-[#3DE8D9] font-semibold text-sm flex items-center gap-2 hover:bg-[#3DE8D9]/10 transition-all"
-          data-testid="cta-connect-brokerage"
-          title="Sign in first, then connect Alpaca or Kraken to trade live"
-        >
-          <Building2 className="w-4 h-4" /> Connect Brokerage
-        </button>
       </div>
-      <p className="text-[10px] text-slate-500 max-w-md mx-auto -mt-4 mb-6">
-        Alpaca (stocks/options) and Kraken (crypto) supported. Sign in or join the waitlist first — broker connection happens inside your dashboard.
-      </p>
       <div className="flex items-center justify-center gap-6 text-[10px] text-slate-400">
         <span>No credit card required</span>
         <span className="w-1 h-1 rounded-full bg-slate-700" />
