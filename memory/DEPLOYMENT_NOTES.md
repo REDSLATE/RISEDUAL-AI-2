@@ -26,6 +26,26 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Landing-page pricing cards alignment fix
+*Session: continued*
+
+**Problem:** User flagged Pro card sitting visibly lower than Free/Starter/Pro Max
+on the landing-page pricing grid (mobile + desktop). Root cause: Pro used
+`border-2` (2px) while siblings used `border` (1px). That 1px delta made the
+Pro card 2px taller + wider and pushed its content down relative to neighbors.
+
+**Fix:** `PlanCard` in `frontend/src/components/LandingPage.jsx`:
+- All cards now use `border-2` (equal 2px) with `border-transparent` + a
+  `ring-1` for non-highlighted cards — keeps the subtle outline without
+  the pixel shift.
+- Added `flex flex-col h-full` so every card stretches to the tallest
+  sibling (defensive — keeps rows aligned even if feature lists differ).
+- Feature list marked `flex-grow` so CTA buttons line up at the bottom.
+
+**Verified:** live preview screenshot (desktop + mobile) — all 4 cards
+now have identical top + bottom edges, CTAs flush on the bottom row.
+
+
 ---
 
 ## 🟢 Shipped to production

@@ -430,7 +430,12 @@ const Pricing = ({ onGetStarted }) => (
 );
 
 const PlanCard = ({ name, price, period, credits, creditsLabel, desc, badge, features, cta, ctaStyle, highlight, onCta, testId }) => (
-  <div className={`relative p-5 rounded-xl ${highlight ? 'border-2 border-teal-500/40 bg-slate-800/60' : 'border border-slate-700/40 bg-slate-800/30'}`}>
+  // Equal border width on all four tiers (2px on everyone — transparent for
+  // non-highlighted) prevents the 1px-vs-2px pixel shift that caused Pro to
+  // sit lower than its neighbors in a 4-col row. `flex flex-col` + `h-full`
+  // makes every card stretch to the tallest sibling so the CTA buttons line
+  // up at the bottom regardless of how many feature bullets each plan has.
+  <div className={`relative flex flex-col h-full p-5 rounded-xl border-2 ${highlight ? 'border-teal-500/40 bg-slate-800/60' : 'border-transparent bg-slate-800/30 ring-1 ring-slate-700/40'}`}>
     {badge && (
       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-[9px] text-white font-bold uppercase tracking-wider whitespace-nowrap">
         {badge}
@@ -443,7 +448,7 @@ const PlanCard = ({ name, price, period, credits, creditsLabel, desc, badge, fea
     </div>
     <p className="text-amber-400 text-[10px] font-semibold mb-2">{credits} {creditsLabel}</p>
     <p className="text-slate-400 text-[10px] mb-4 leading-relaxed">{desc}</p>
-    <ul className="space-y-1.5 mb-4">
+    <ul className="space-y-1.5 mb-4 flex-grow">
       {features.map(f => (
         <li key={f} className="flex items-start gap-1.5 text-[10px] text-slate-300">
           <Check className="w-3 h-3 text-teal-400 shrink-0 mt-0.5" />
