@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatMessages, ChatInputArea } from './chat/ChatComponents';
@@ -9,6 +9,21 @@ import AgentTrace from './chat/AgentTrace';
 import ChartPatternLibrary from './ChartPatternLibrary';
 import useChat from '../hooks/useChat';
 import logger from '../utils/logger';
+
+// LocalStorage key for the user-dragged chat-window position.
+const POS_KEY = 'risedual:chat-pos';
+
+/** Read a previously saved position (mobile and desktop each have their own). */
+function loadPos() {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return typeof p?.x === 'number' && typeof p?.y === 'number' ? p : null;
+  } catch {
+    return null;
+  }
+}
 
 const RiseDualGPTChat = ({ onLimitReached }) => {
   const { isPro } = useAuth();
@@ -35,6 +50,68 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
   const [showPatterns, setShowPatterns] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [showMemory, setShowMemory] = useState(false);
+
+  // Floating window drag state. `null` = use default docked position (bottom-right).
+  // Once dragged, we pin `position: fixed; top:y; left:x` and ignore the Tailwind
+  // bottom/right defaults so the user's last-dragged location sticks.
+  const [pos, setPos] = useState(() => loadPos());
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef({ dx: 0, dy: 0, w: 0, h: 0 });
+  const panelRef = useRef(null);
+
+  const onHeaderPointerDown = useCallback((e) => {
+    // Only drag from the header's non-button surface (buttons stopPropagation themselves).
+    if (e.target.closest('button')) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragRef.current = {
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    };
+    setDragging(true);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const { dx, dy, w, h } = dragRef.current;
+      // Clamp inside viewport with 4px padding so the window never gets lost.
+      const pad = 4;
+      const x = Math.max(pad, Math.min(window.innerWidth - w - pad, e.clientX - dx));
+      const y = Math.max(pad, Math.min(window.innerHeight - h - pad, e.clientY - dy));
+      setPos({ x, y });
+    };
+    const onUp = () => {
+      setDragging(false);
+      try {
+        const p = {
+          x: dragRef.current ? panelRef.current?.getBoundingClientRect().left : 0,
+          y: dragRef.current ? panelRef.current?.getBoundingClientRect().top : 0,
+        };
+        if (isFinite(p.x) && isFinite(p.y)) {
+          localStorage.setItem(POS_KEY, JSON.stringify(p));
+        }
+      } catch { /* quota/private mode — non-critical */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [dragging]);
+
+  // Reset button — lets the user "snap back" to default corner position.
+  const resetPosition = useCallback(() => {
+    setPos(null);
+    try { localStorage.removeItem(POS_KEY); } catch {}
+  }, []);
 
   // Listen for external "open chat" requests (from watchlist "Ask AI" etc).
   useEffect(() => {
@@ -154,15 +231,33 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-16 right-3 left-3 lg:left-auto lg:bottom-6 lg:right-6 z-[60] w-auto lg:w-[400px] lg:max-w-[calc(100vw-3rem)] h-[72dvh] max-h-[620px] lg:h-[560px] lg:max-h-[calc(100vh-7rem)] flex flex-col bg-[#060E1F]/95 backdrop-blur-md rounded-2xl border border-slate-400/30 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.75)] overflow-hidden" data-testid="risedual-gpt-chat">
-          <ChatHeader
-            isPro={isPro} memoryEnabled={memoryEnabled} selectedImage={selectedImage}
-            voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} stopSpeaking={stopSpeaking}
-            showMemory={showMemory} onToggleMemory={() => setShowMemory(!showMemory)} onLoadMemories={loadMemories}
-            showPatterns={showPatterns} onTogglePatterns={() => setShowPatterns(!showPatterns)}
-            showHistory={showHistory} onToggleHistory={() => setShowHistory(!showHistory)} onLoadHistory={loadHistory}
-            onNewChat={handleNewChat} onClose={() => setIsOpen(false)}
-          />
+        <div
+          ref={panelRef}
+          className={`fixed z-[60] w-[min(92vw,400px)] h-[72dvh] max-h-[620px] lg:h-[560px] lg:max-h-[calc(100vh-7rem)] flex flex-col bg-[#060E1F]/95 backdrop-blur-md rounded-2xl border border-slate-400/30 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.75)] overflow-hidden ${
+            dragging ? 'transition-none cursor-grabbing select-none' : 'transition-[top,left,bottom,right] duration-200'
+          }`}
+          style={pos
+            ? { top: `${pos.y}px`, left: `${pos.x}px`, right: 'auto', bottom: 'auto' }
+            : { bottom: '64px', right: '12px', left: 'auto', top: 'auto' }
+          }
+          data-testid="risedual-gpt-chat"
+        >
+          <div
+            onPointerDown={onHeaderPointerDown}
+            onDoubleClick={resetPosition}
+            className="touch-none cursor-grab active:cursor-grabbing"
+            title="Drag to move · double-tap to snap back"
+            data-testid="chat-drag-handle"
+          >
+            <ChatHeader
+              isPro={isPro} memoryEnabled={memoryEnabled} selectedImage={selectedImage}
+              voiceMode={voiceMode} setVoiceMode={setVoiceMode} isSpeaking={isSpeaking} stopSpeaking={stopSpeaking}
+              showMemory={showMemory} onToggleMemory={() => setShowMemory(!showMemory)} onLoadMemories={loadMemories}
+              showPatterns={showPatterns} onTogglePatterns={() => setShowPatterns(!showPatterns)}
+              showHistory={showHistory} onToggleHistory={() => setShowHistory(!showHistory)} onLoadHistory={loadHistory}
+              onNewChat={handleNewChat} onClose={() => setIsOpen(false)}
+            />
+          </div>
 
           {showHistory && (
             <ChatHistorySidebar
