@@ -86,7 +86,30 @@
 
 **Files touched:** `backend/.env` only.
 
-### 2026-02-19 — QuiverQuant resilience layer
+### 2026-02-19 — USASpending.gov gov_contracts fallback
+*Session: continued*
+
+**Behavioural changes:**
+- The only remaining gap after the Quiver resilience layer was
+  `gov_contracts` (Quiver's endpoint returns 500 consistently, and we
+  had no fallback). Added free public USASpending.gov as the fallback —
+  `gov_contracts_count` went from 0 → 15 real awards (e.g. Boeing $32B
+  DoD, Lockheed $30B DoD, Humana $51B DoD).
+- Free API, no auth, no rate-limit concerns at our traffic.
+- Hand-curated 50-ticker prime-contractor map (LMT, BA, NOC, RTX, etc.)
+  filters USASpending recipients to only publicly-tradable names.
+- 6-hour sliding cache matching the Quiver layer.
+- Source string now reads `quiverquant+finnhub+scraping+usaspending`
+  when all chains fire.
+
+**Files touched:**
+- `backend/services/usaspending_service.py` ★ NEW
+- `backend/services/gov_filings_service.py` — USASpending fallback wired
+  after Quiver returns empty
+
+**Env vars:** unchanged (public API).
+
+
 *Session: continued*
 
 **Behavioural changes:**

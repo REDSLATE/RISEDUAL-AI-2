@@ -249,7 +249,10 @@ class GovFilingsService:
             LobbyingService().get_top_spenders(10),
         )
 
-        # QuiverQuant extras (lobbying API + gov contracts) — as supplementary
+        # QuiverQuant extras (lobbying API + gov contracts) — as supplementary.
+        # Quiver's gov_contracts endpoint has been returning 500 for weeks;
+        # we fall through to USASpending.gov (free public API) when that
+        # happens so `gov_contracts` isn't permanently empty on the UI.
         quiver_lobbying = []
         gov_contracts = []
         if quiver_ok():
@@ -257,6 +260,9 @@ class GovFilingsService:
                 get_lobbying(limit=15),
                 get_gov_contracts(limit=15),
             )
+        if not gov_contracts:
+            from services.usaspending_service import get_gov_contracts as usaspending_contracts
+            gov_contracts = await usaspending_contracts(limit=15)
 
         upcoming_earnings = (
             finnhub_data.get("upcoming_earnings", [])
@@ -267,6 +273,8 @@ class GovFilingsService:
         source = self._determine_source(finnhub_data)
         if quiver_ok():
             source = "quiverquant+" + source if source else "quiverquant"
+        if gov_contracts and any(c.get("source") == "usaspending" for c in gov_contracts):
+            source = (source + "+usaspending") if source else "usaspending"
 
         return {
             'insider_trades': insider_trades,
