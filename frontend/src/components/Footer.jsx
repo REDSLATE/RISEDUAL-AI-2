@@ -66,6 +66,15 @@ const Footer = ({ onOpenLegal }) => {
               <li><button onClick={() => onOpenLegal?.('privacy')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-privacy-link">Privacy Policy</button></li>
               <li><button onClick={() => onOpenLegal?.('risk')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-risk-link">Risk Disclosure</button></li>
               <li><button onClick={() => onOpenLegal?.('disclaimer')} className="text-slate-400 hover:text-slate-300 text-xs transition-colors" data-testid="footer-disclaimer-link">Disclaimer</button></li>
+              <li>
+                <a
+                  href="/compliance/oauth"
+                  className="text-slate-400 hover:text-slate-300 text-xs transition-colors"
+                  data-testid="footer-compliance-link"
+                >
+                  Compliance &amp; Security
+                </a>
+              </li>
             </ul>
           </div>
         </div>
