@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings, Swords, Terminal } from 'lucide-react';
+import { Search, ChevronDown, Menu, X, User, LogOut, Briefcase, Crown, PieChart, Radio, BookOpen, Wand2, Store, Database, LineChart, Layers, Calculator, Radar, Bot, HelpCircle, Rocket, Code, AlertTriangle, Globe, CreditCard, Settings, Swords, Terminal, Building2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import BrokerConnect from './BrokerConnect';
@@ -259,6 +259,9 @@ const Navbar = ({
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={() => onNavigate('workspace')} data-testid="nav-workspace-btn">
                   <Briefcase className="w-4 h-4 mr-2" /> My Workspace
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-[#3DE8D9] hover:bg-slate-700 cursor-pointer" onSelect={() => window.dispatchEvent(new CustomEvent('risedualai-open-broker-connect'))} data-testid="nav-broker-connect-btn">
+                  <Building2 className="w-4 h-4 mr-2" /> Connect Brokerage
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-slate-300 hover:bg-slate-700 cursor-pointer" onSelect={onOpenPortfolio} data-testid="nav-portfolio-btn">
                   <PieChart className="w-4 h-4 mr-2" /> Portfolio Analyzer
