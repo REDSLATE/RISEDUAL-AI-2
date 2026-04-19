@@ -26,6 +26,22 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Features grid uniform 3×2 layout
+*Session: continued*
+
+**Problem:** User spotted the "Built for Precision" feature grid on the
+landing page looked misaligned — two cards (Nightly Dual-Signal Retraining
+and GPT-5.2 Post-Mortem) used `md:col-span-2`, creating an asymmetric
+"bento" layout (2+1 / 1+2 / 1+1) with an empty cell in the bottom-right row.
+
+**Fix:** `frontend/src/components/LandingPage.jsx` Features component:
+- Removed `span: 'md:col-span-2'` from cards 0 and 3.
+- Removed `${f.span || ''}` from the card className.
+- All 6 cards now render as a clean uniform 3-column grid × 2 rows; all
+  cards equal width/height with matching text-wrap.
+
+**Behavioural impact:** Visual polish only. No logic changed.
+
 ### 2026-02-19 — Pricing section optical centering (container width)
 *Session: continued*
 

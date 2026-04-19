@@ -266,10 +266,10 @@ const Comparison = () => {
 /* ─── Features ─── */
 const Features = () => {
   const features = [
-    { icon: <Clock className="w-5 h-5" />, title: 'Nightly Dual-Signal Retraining', desc: 'Both Strategist and Auditor retrain every night on classified post-mortem data. Toxic patterns get pruned.', span: 'md:col-span-2' },
+    { icon: <Clock className="w-5 h-5" />, title: 'Nightly Dual-Signal Retraining', desc: 'Both Strategist and Auditor retrain every night on classified post-mortem data. Toxic patterns get pruned.' },
     { icon: <Radio className="w-5 h-5" />, title: 'Triple SSE Streams', desc: 'Real-time market data from three independent sources. No delays, no Telegram bots.' },
     { icon: <Zap className="w-5 h-5" />, title: 'Whale Radar', desc: 'Track large wallet movements and institutional accumulation before they hit mainstream news.' },
-    { icon: <Brain className="w-5 h-5" />, title: 'GPT-5.2 Post-Mortem', desc: 'Every failed signal gets classified: TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP. Labels feed back into training.', span: 'md:col-span-2' },
+    { icon: <Brain className="w-5 h-5" />, title: 'GPT-5.2 Post-Mortem', desc: 'Every failed signal gets classified: TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP. Labels feed back into training.' },
     { icon: <BarChart3 className="w-5 h-5" />, title: 'Dynamic Risk Scoring', desc: 'Real-time risk score based on market volatility, Auditor confidence, and historical win rate.' },
     { icon: <LineChart className="w-5 h-5" />, title: 'War Room Dashboard', desc: 'Real-time dashboard showing active signals, Auditor vetos, performance metrics, and market sentiment.' },
   ];
@@ -280,7 +280,7 @@ const Features = () => {
         <p className="text-sm text-slate-400 text-center mb-14">Every feature is designed to give you an unfair advantage in volatile markets.</p>
         <div className="grid md:grid-cols-3 gap-4">
           {features.map(f => (
-            <div key={f.title} className={`p-6 rounded-xl border border-slate-800/50 bg-slate-800/55 hover:border-teal-500/20 transition-colors group ${f.span || ''}`}>
+            <div key={f.title} className="p-6 rounded-xl border border-slate-800/50 bg-slate-800/55 hover:border-teal-500/20 transition-colors group">
               <div className="text-teal-400 mb-3 group-hover:scale-110 transition-transform">{f.icon}</div>
               <h3 className="text-sm font-semibold text-white mb-2">{f.title}</h3>
               <p className="text-xs text-slate-400 leading-relaxed">{f.desc}</p>
