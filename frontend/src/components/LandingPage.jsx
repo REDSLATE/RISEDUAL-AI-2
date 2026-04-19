@@ -295,7 +295,10 @@ const Features = () => {
 /* ─── Pricing ─── */
 const Pricing = ({ onGetStarted }) => (
   <section id="pricing" className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-pricing">
-    <div className="max-w-5xl mx-auto px-4 sm:px-6">
+    {/* max-w-6xl matches the Features / Comparison sections above and below
+        so the pricing row doesn't visually "shrink" when scrolling past —
+        the content column edges line up with siblings. */}
+    <div className="max-w-6xl mx-auto px-4 sm:px-6">
       <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-2">Trade smarter with AI access built into every plan.</h2>
       <p className="text-xs text-slate-400 text-center mb-10 max-w-xl mx-auto">Every account includes AI access. Pro members get unlimited AI Chat and unlimited War Room, while advanced AI features use credits across all plans.</p>
 
