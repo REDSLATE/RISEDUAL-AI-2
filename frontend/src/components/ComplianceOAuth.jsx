@@ -1,18 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, CheckCircle2, Lock, RefreshCw, Key, FileCheck, ExternalLink } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
 /**
- * Public compliance page: /compliance/schwab-oauth
+ * Public OAuth compliance statement for broker review teams.
  *
- * Human-readable report of RISEDUAL AI's 3-legged OAuth 2.0 capabilities.
- * Rendered without authentication so third-party broker review teams
- * (Schwab, IBKR, etc.) can link-verify our claim on the record.
- * Fetches the live JSON from /api/broker/oauth/capabilities.
+ * Routes:
+ *   /compliance/schwab-oauth   → Schwab-focused panel
+ *   /compliance/ibkr-oauth     → IBKR-focused panel
+ *   /compliance/alpaca-oauth   → Alpaca-focused panel
+ *   /compliance/oauth          → Generic (first broker available)
+ *
+ * Accepts a `brokerId` prop. If omitted, derives it from the pathname.
+ * All copy references the target broker dynamically — no hard-coded names —
+ * so adding a new broker just needs a new OAUTH_CONFIGS entry on the
+ * backend. The page does not render any broker logos.
  */
-const ComplianceSchwabOAuth = () => {
+
+const BROKER_PRETTY = {
+  schwab: 'Charles Schwab',
+  ibkr: 'Interactive Brokers',
+  alpaca: 'Alpaca',
+};
+
+const prettyName = (id) => BROKER_PRETTY[id] || id.charAt(0).toUpperCase() + id.slice(1);
+
+const deriveBrokerIdFromPath = () => {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname;
+  // Match /compliance/{broker}-oauth (e.g. /compliance/schwab-oauth)
+  const m = path.match(/^\/compliance\/([a-z0-9-]+)-oauth\/?$/);
+  return m ? m[1] : null;
+};
+
+const ComplianceOAuth = ({ brokerId: brokerIdProp }) => {
   const [caps, setCaps] = useState(null);
   const [err, setErr] = useState(null);
+
+  const brokerId = useMemo(
+    () => brokerIdProp || deriveBrokerIdFromPath() || 'schwab',
+    [brokerIdProp]
+  );
 
   useEffect(() => {
     fetch(`${getApiBase()}/api/broker/oauth/capabilities`, { credentials: 'omit' })
@@ -21,7 +49,8 @@ const ComplianceSchwabOAuth = () => {
       .catch((e) => setErr(String(e)));
   }, []);
 
-  const schwab = caps?.supported_brokers?.find((b) => b.broker_id === 'schwab');
+  const broker = caps?.supported_brokers?.find((b) => b.broker_id === brokerId) || null;
+  const brokerName = prettyName(brokerId);
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const YesRow = ({ label, ok = true, testId }) => (
@@ -35,7 +64,7 @@ const ComplianceSchwabOAuth = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#060E1F] text-slate-200" data-testid="compliance-schwab-oauth-page">
+    <div className="min-h-screen bg-[#060E1F] text-slate-200" data-testid="compliance-oauth-page">
       {/* Header */}
       <header className="border-b border-slate-800 bg-[#0A1427]">
         <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
@@ -44,7 +73,7 @@ const ComplianceSchwabOAuth = () => {
               RISEDUAL AI
             </h1>
             <p className="text-slate-500 text-[11px] uppercase tracking-widest mt-0.5">
-              OAuth 2.0 Compliance Statement
+              OAuth 2.0 Compliance Statement — {brokerName}
             </p>
           </div>
           <a
@@ -65,7 +94,7 @@ const ComplianceSchwabOAuth = () => {
             Verified: 3-legged OAuth supported
           </div>
           <h2 className="text-white text-3xl font-bold leading-tight mb-3" data-testid="compliance-lead-heading">
-            RISEDUAL AI fully supports 3-legged OAuth 2.0 for broker integrations.
+            RISEDUAL AI fully supports 3-legged OAuth 2.0 for {brokerName} integration.
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed max-w-2xl">
             This page is a human-readable companion to our machine-verifiable
@@ -102,29 +131,31 @@ const ComplianceSchwabOAuth = () => {
           </div>
         </section>
 
-        {/* Schwab-specific */}
-        <section className="bg-[#0E1A33] border border-[#3DE8D9]/30 rounded-2xl p-6 mb-8" data-testid="compliance-schwab-panel">
+        {/* Broker-specific */}
+        <section className="bg-[#0E1A33] border border-[#3DE8D9]/30 rounded-2xl p-6 mb-8" data-testid={`compliance-${brokerId}-panel`}>
           <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
             <Key className="w-5 h-5 text-[#3DE8D9]" />
-            Schwab Endpoint Configuration
+            {brokerName} Endpoint Configuration
           </h3>
-          {schwab ? (
+          {broker ? (
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">Broker ID</dt>
-                <dd className="text-white font-mono mt-0.5">{schwab.broker_id}</dd>
+                <dd className="text-white font-mono mt-0.5">{broker.broker_id}</dd>
               </div>
               <div>
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">PKCE Enabled</dt>
-                <dd className="text-emerald-400 font-semibold mt-0.5">{schwab.supports_pkce ? 'Yes (S256)' : 'No'}</dd>
+                <dd className={`font-semibold mt-0.5 ${broker.supports_pkce ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {broker.supports_pkce ? 'Yes (S256)' : 'No'}
+                </dd>
               </div>
               <div className="sm:col-span-2">
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">Authorize URL</dt>
-                <dd className="text-[#3DE8D9] font-mono mt-0.5 text-xs break-all">{schwab.authorize_url}</dd>
+                <dd className="text-[#3DE8D9] font-mono mt-0.5 text-xs break-all">{broker.authorize_url}</dd>
               </div>
               <div>
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">Token Expiry Honored</dt>
-                <dd className="text-white mt-0.5">{schwab.token_expiry_seconds}s ({Math.round(schwab.token_expiry_seconds / 60)} min)</dd>
+                <dd className="text-white mt-0.5">{broker.token_expiry_seconds}s ({Math.round(broker.token_expiry_seconds / 60)} min)</dd>
               </div>
               <div>
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">Auto-Refresh</dt>
@@ -133,12 +164,24 @@ const ComplianceSchwabOAuth = () => {
               <div className="sm:col-span-2 pt-3 border-t border-slate-800">
                 <dt className="text-slate-500 text-xs uppercase tracking-wider">Callback / Redirect URI pattern</dt>
                 <dd className="text-[#3DE8D9] font-mono mt-0.5 text-xs break-all">
-                  https://&#123;production-domain&#125;/api/broker/oauth/schwab/callback
+                  https://&#123;production-domain&#125;/api/broker/oauth/{brokerId}/callback
                 </dd>
               </div>
             </dl>
+          ) : caps ? (
+            <p className="text-slate-400 text-sm">
+              <strong className="text-slate-200">{brokerName}</strong> is not currently listed in our supported OAuth brokers.
+              Supported brokers:{' '}
+              {caps.supported_brokers.map((b, i) => (
+                <span key={b.broker_id}>
+                  {i > 0 && ', '}
+                  <a href={`/compliance/${b.broker_id}-oauth`} className="text-[#3DE8D9] hover:underline">{prettyName(b.broker_id)}</a>
+                </span>
+              ))}
+              .
+            </p>
           ) : (
-            <p className="text-slate-500 text-sm">Loading Schwab configuration...</p>
+            <p className="text-slate-500 text-sm">Loading {brokerName} configuration...</p>
           )}
         </section>
 
@@ -167,23 +210,23 @@ const ComplianceSchwabOAuth = () => {
           <ol className="space-y-3 text-sm text-slate-300 list-decimal list-inside">
             <li>
               <strong className="text-white">User initiates connection.</strong>{' '}
-              Frontend calls <code className="text-[#3DE8D9] bg-slate-800/60 px-1 rounded text-xs">GET /api/broker/oauth/schwab/authorize</code>.
+              Frontend calls <code className="text-[#3DE8D9] bg-slate-800/60 px-1 rounded text-xs">GET /api/broker/oauth/{brokerId}/authorize</code>.
               Backend generates a CSRF <code className="text-xs">state</code>,
-              PKCE verifier+challenge, persists them server-side, and returns
-              the Schwab authorize URL.
+              PKCE verifier+challenge (when supported), persists them server-side,
+              and returns the {brokerName} authorize URL.
             </li>
             <li>
-              <strong className="text-white">User consents at Schwab.</strong>{' '}
-              Browser navigates to Schwab's authorize endpoint. User authenticates
-              and grants requested scopes.
+              <strong className="text-white">User consents at {brokerName}.</strong>{' '}
+              Browser navigates to the broker&apos;s authorize endpoint. User authenticates
+              and grants the requested scopes.
             </li>
             <li>
-              <strong className="text-white">Schwab redirects back.</strong>{' '}
-              Browser lands on <code className="text-[#3DE8D9] bg-slate-800/60 px-1 rounded text-xs">/api/broker/oauth/schwab/callback?code=…&amp;state=…</code>.
+              <strong className="text-white">{brokerName} redirects back.</strong>{' '}
+              Browser lands on <code className="text-[#3DE8D9] bg-slate-800/60 px-1 rounded text-xs">/api/broker/oauth/{brokerId}/callback?code=&hellip;&amp;state=&hellip;</code>.
               Backend validates <code className="text-xs">state</code>, exchanges
-              the code + PKCE verifier for access+refresh tokens, encrypts them
-              with AES-256 (Fernet) before storage, and redirects the user back
-              to the app with a success flag.
+              the code (plus PKCE verifier when applicable) for access+refresh
+              tokens, encrypts them with AES-256 (Fernet) before storage, and
+              redirects the user back to the app with a success flag.
             </li>
             <li>
               <strong className="text-white">Ongoing refresh.</strong>{' '}
@@ -208,11 +251,11 @@ const ComplianceSchwabOAuth = () => {
         </section>
 
         <footer className="text-slate-600 text-xs text-center pt-8 pb-12 border-t border-slate-800">
-          RISEDUAL AI · OAuth 2.0 Compliance Statement · Generated {today}
+          RISEDUAL AI · OAuth 2.0 Compliance Statement ({brokerName}) · Generated {today}
         </footer>
       </main>
     </div>
   );
 };
 
-export default ComplianceSchwabOAuth;
+export default ComplianceOAuth;

@@ -33,7 +33,7 @@ import useModals from './hooks/useModals';
 
 const AlpacaOAuthDemo = React.lazy(() => import('./components/AlpacaOAuthDemo'));
 const LiveDemoOverlay = React.lazy(() => import('./components/LiveDemoOverlay'));
-const ComplianceSchwabOAuth = React.lazy(() => import('./components/ComplianceSchwabOAuth'));
+const ComplianceOAuth = React.lazy(() => import('./components/ComplianceOAuth'));
 
 // Hub pages
 import ResearchHub from './components/hubs/ResearchHub';
@@ -164,13 +164,14 @@ function AppContent() {
     );
   }
 
-  // Public compliance statement — linkable by broker review teams
-  // (Schwab, IBKR, etc.) as proof of 3-legged OAuth support. No auth required.
-  if (window.location.pathname === '/compliance/schwab-oauth'
-      || window.location.pathname === '/compliance/oauth') {
+  // Public OAuth compliance statements — linkable by broker review teams
+  // (Schwab, IBKR, Alpaca, etc.) as proof of 3-legged OAuth support.
+  // Pattern: /compliance/{brokerId}-oauth OR /compliance/oauth (generic).
+  // No auth required, so reviewers can verify without an account.
+  if (/^\/compliance\/(?:[a-z0-9-]+-)?oauth\/?$/.test(window.location.pathname)) {
     return (
       <React.Suspense fallback={<div className="min-h-screen bg-[#060E1F] flex items-center justify-center text-slate-400">Loading...</div>}>
-        <ComplianceSchwabOAuth />
+        <ComplianceOAuth />
       </React.Suspense>
     );
   }
