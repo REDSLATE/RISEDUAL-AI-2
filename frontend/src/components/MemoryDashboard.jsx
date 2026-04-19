@@ -63,7 +63,7 @@ const OverviewTab = ({ stats, accuracy }) => {
 
       {accuracy?.pricing_freshness?.disclaimer && (
         <p
-          className="text-[10px] leading-relaxed text-slate-500 italic -mt-3"
+          className="text-[9px] leading-snug text-slate-600 italic -mt-3 max-w-3xl"
           data-testid="memory-pricing-freshness-disclaimer"
         >
           {accuracy.pricing_freshness.disclaimer}
