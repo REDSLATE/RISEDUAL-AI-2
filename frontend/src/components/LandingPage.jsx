@@ -225,8 +225,8 @@ const Comparison = () => {
           RISEDUAL AI vs <span className="line-through decoration-red-500 decoration-2 text-slate-400">TradeAlgoGPT</span>
         </h2>
         <p className="text-sm text-slate-400 text-center mb-12">Stop paying institutional prices for retail-grade signals.</p>
-        <div className="rounded-xl border border-slate-800/60 overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="rounded-xl border border-slate-800/60 overflow-hidden overflow-x-auto">
+          <table className="w-full text-xs min-w-[520px]">
             <thead>
               <tr className="border-b border-slate-600/30/60 bg-slate-800/50">
                 <th className="text-left text-slate-400 font-medium px-4 py-3">Intelligence Specs</th>
@@ -577,7 +577,7 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white" data-testid="landing-page">
+    <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden" data-testid="landing-page">
       <Header onGetStarted={onGetStarted} onLogin={onLogin} onTryDemo={onTryDemo} />
       <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} onTryDemo={onTryDemo} />
       <QuantLiteCallout />
