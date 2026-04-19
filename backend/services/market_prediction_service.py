@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 from datetime import datetime
@@ -36,12 +36,12 @@ class MarketPredictionService:
         from services.ai_guardrails import inject_guardrails
         self.system_message = inject_guardrails(self.system_message)
     
-    async def analyze_market(self, financial_news: List[Dict], crypto_data: List[Dict], 
-                            insider_trades: List[Dict], social_sentiment: List[Dict],
-                            real_estate_data: Optional[Dict] = None,
-                            world_events: Optional[Dict] = None,
-                            foreign_markets: Optional[Dict] = None,
-                            gov_filings: Optional[Dict] = None) -> Dict:
+    async def analyze_market(self, financial_news: list[dict], crypto_data: list[dict], 
+                            insider_trades: list[dict], social_sentiment: list[dict],
+                            real_estate_data: Optional[dict] = None,
+                            world_events: Optional[dict] = None,
+                            foreign_markets: Optional[dict] = None,
+                            gov_filings: Optional[dict] = None) -> dict:
         """Comprehensive market analysis using multi-agent crew + vector memory."""
         from services.crew_definitions import run_prediction_crew
 
@@ -108,7 +108,7 @@ class MarketPredictionService:
                 memory_context=memory_context,
             )
 
-    def _build_regime_snapshot(self, news, crypto, trades, social, world_events, foreign_markets) -> Dict:
+    def _build_regime_snapshot(self, news, crypto, trades, social, world_events, foreign_markets) -> dict:
         """Build a compact regime description from current market data for memory queries."""
         snapshot = {"metrics": {}, "sentiment": {}}
 
@@ -151,7 +151,7 @@ class MarketPredictionService:
                                         insider_trades, social_sentiment,
                                         real_estate_data=None, world_events=None,
                                         foreign_markets=None, gov_filings=None,
-                                        memory_context="") -> Dict:
+                                        memory_context="") -> dict:
         """Fallback single-agent prediction if crew fails."""
         try:
             # Prepare data summary for AI
@@ -230,9 +230,9 @@ Provide your analysis in JSON format with:
             logger.error(f"Market prediction error: {str(e)}")
             return self._fallback_prediction()
     
-    def _prepare_data_summary(self, news: List, crypto: List, trades: List, social: List,
-                              real_estate: Dict = None, world_events: Dict = None,
-                              foreign_markets: Dict = None, gov_filings: Dict = None) -> str:
+    def _prepare_data_summary(self, news: list, crypto: list, trades: list, social: list,
+                              real_estate: dict = None, world_events: dict = None,
+                              foreign_markets: dict = None, gov_filings: dict = None) -> str:
         """Prepare concise data summary for AI"""
         summary = "MARKET DATA SUMMARY\n\n"
         
@@ -349,7 +349,7 @@ Provide your analysis in JSON format with:
         
         return summary
     
-    def _simple_sentiment_analysis(self, news: List[Dict]) -> str:
+    def _simple_sentiment_analysis(self, news: list[dict]) -> str:
         """Simple sentiment fallback"""
         positive_words = ['surge', 'gain', 'rally', 'rise', 'bull', 'up', 'growth', 'profit']
         negative_words = ['fall', 'drop', 'crash', 'decline', 'bear', 'down', 'loss', 'recession']
@@ -368,7 +368,7 @@ Provide your analysis in JSON format with:
             return 'BEARISH'
         return 'NEUTRAL'
     
-    def _fallback_prediction(self) -> Dict:
+    def _fallback_prediction(self) -> dict:
         """Fallback prediction if AI fails"""
         return {
             'overall_direction': 'NEUTRAL',

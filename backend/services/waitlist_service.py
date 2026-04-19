@@ -8,7 +8,7 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, List
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def _calculate_priority_score(position: int, referral_count: int) -> float:
     return position - (referral_count * 20)
 
 
-async def join_waitlist(email: str, name: str = "", referred_by: str = "") -> Dict:
+async def join_waitlist(email: str, name: str = "", referred_by: str = "") -> dict:
     """Add a user to the waitlist. Returns their position and referral code."""
     email = email.strip().lower()
 
@@ -121,7 +121,7 @@ async def join_waitlist(email: str, name: str = "", referred_by: str = "") -> Di
     }
 
 
-async def get_waitlist_status(referral_code: str) -> Optional[Dict]:
+async def get_waitlist_status(referral_code: str) -> Optional[dict]:
     """Get a user's waitlist status by their referral code."""
     doc = await db.waitlist.find_one({"referral_code": referral_code.upper()}, {"_id": 0})
     if not doc:
@@ -149,7 +149,7 @@ async def get_waitlist_status(referral_code: str) -> Optional[Dict]:
     }
 
 
-async def get_waitlist_leaderboard(limit: int = 20) -> List[Dict]:
+async def get_waitlist_leaderboard(limit: int = 20) -> list[dict]:
     """Get the top referrers on the waitlist."""
     cursor = db.waitlist.find(
         {"referral_count": {"$gt": 0}},
@@ -159,7 +159,7 @@ async def get_waitlist_leaderboard(limit: int = 20) -> List[Dict]:
     return await cursor.to_list(length=limit)
 
 
-async def get_admin_waitlist(skip: int = 0, limit: int = 50, sort_by: str = "priority") -> Dict:
+async def get_admin_waitlist(skip: int = 0, limit: int = 50, sort_by: str = "priority") -> dict:
     """Admin view of the full waitlist with stats."""
     sort_field = "priority_score" if sort_by == "priority" else "position"
 
@@ -184,7 +184,7 @@ async def get_admin_waitlist(skip: int = 0, limit: int = 50, sort_by: str = "pri
     }
 
 
-async def invite_users(count: int = 10) -> List[Dict]:
+async def invite_users(count: int = 10) -> list[dict]:
     """Invite the top N users from the waitlist based on priority score."""
     cursor = db.waitlist.find(
         {"status": "waiting"},
@@ -215,7 +215,7 @@ async def invite_users(count: int = 10) -> List[Dict]:
     return invited
 
 
-async def select_founding_50() -> List[Dict]:
+async def select_founding_50() -> list[dict]:
     """Select the top 50 users as Founding Members based on priority score."""
     cursor = db.waitlist.find(
         {"status": {"$in": ["invited", "active"]}},
@@ -235,7 +235,7 @@ async def select_founding_50() -> List[Dict]:
     return founders
 
 
-async def get_waitlist_stats() -> Dict:
+async def get_waitlist_stats() -> dict:
     """Quick stats for the waitlist."""
     total = await db.waitlist.count_documents({})
     waiting = await db.waitlist.count_documents({"status": "waiting"})
@@ -256,7 +256,7 @@ async def get_waitlist_stats() -> Dict:
     }
 
 
-async def get_waitlist_analytics(days: int = 30) -> Dict:
+async def get_waitlist_analytics(days: int = 30) -> dict:
     """Comprehensive analytics for the waitlist admin dashboard."""
     from datetime import datetime, timezone, timedelta
 
@@ -373,7 +373,7 @@ def _generate_beta_key() -> str:
     return f"BETA-{seg()}-{seg()}-{seg()}"
 
 
-async def auto_invite_top_users(batch_size: int = 5) -> List[Dict]:
+async def auto_invite_top_users(batch_size: int = 5) -> list[dict]:
     """Scheduled task: Auto-invite the top users by priority score.
     
     Generates beta access keys, sends War Room invite emails, 

@@ -2,7 +2,7 @@ import logging
 import asyncio
 import requests
 import re
-from typing import Dict, List, Optional
+from typing import Optional
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
@@ -20,7 +20,7 @@ class GovFilingsService:
         kwargs.setdefault('timeout', 10)
         return await asyncio.to_thread(requests.get, url, **kwargs)
 
-    async def get_sec_filings(self, ticker: str = None) -> List[Dict]:
+    async def get_sec_filings(self, ticker: str = None) -> list[dict]:
         """Fetch recent SEC EDGAR filings via full-text search API"""
         filings = []
         try:
@@ -50,7 +50,7 @@ class GovFilingsService:
 
         return filings[:15]
 
-    async def _scrape_openinsider(self) -> List[Dict]:
+    async def _scrape_openinsider(self) -> list[dict]:
         """Scrape insider trading data from OpenInsider"""
         trades = []
         try:
@@ -80,7 +80,7 @@ class GovFilingsService:
             logger.error(f"Error scraping OpenInsider: {str(e)}")
         return trades
 
-    async def get_fed_announcements(self) -> List[Dict]:
+    async def get_fed_announcements(self) -> list[dict]:
         """Scrape Federal Reserve announcements from RSS"""
         announcements = []
         try:
@@ -105,12 +105,12 @@ class GovFilingsService:
             logger.error(f"Error fetching Fed announcements: {str(e)}")
         return announcements
 
-    async def get_congressional_trades(self) -> List[Dict]:
+    async def get_congressional_trades(self) -> list[dict]:
         """Scrape congressional stock trades from Capitol Trades (stock-only filter)"""
         trades = await self._scrape_capitol_trades()
         return trades[:20]
 
-    async def _scrape_capitol_trades(self) -> List[Dict]:
+    async def _scrape_capitol_trades(self) -> list[dict]:
         """Primary: scrape Capitol Trades for congressional stock trades."""
         trades = []
         try:
@@ -138,7 +138,7 @@ class GovFilingsService:
         return re.sub(r'(\d{4})$', r' \1', raw.strip()) if raw else ''
 
     @staticmethod
-    def _parse_capitol_row(row) -> Optional[Dict]:
+    def _parse_capitol_row(row) -> Optional[dict]:
         """Parse a single row from Capitol Trades table using CSS selectors."""
         cols = row.find_all('td')
         if len(cols) < 8:
@@ -180,7 +180,7 @@ class GovFilingsService:
             'description': f"{trade_type.upper()} by {name} ({party}-{chamber}) — {ticker or company} {size}",
         }
 
-    async def _fetch_finnhub_data(self) -> Dict:
+    async def _fetch_finnhub_data(self) -> dict:
         """Try Finnhub API first (reliable structured data)."""
         try:
             from services.finnhub_service import FinnhubService
@@ -191,7 +191,7 @@ class GovFilingsService:
             logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
         return {}
 
-    async def _resolve_insider_trades(self, finnhub_data: Dict) -> List[Dict]:
+    async def _resolve_insider_trades(self, finnhub_data: dict) -> list[dict]:
         """Get insider trades: QuiverQuant → Finnhub → SEC scraping."""
         # Try QuiverQuant first
         from services.quiver_service import get_insider_trades, is_configured
@@ -206,7 +206,7 @@ class GovFilingsService:
         # Fallback: SEC scraping
         return await self.get_sec_filings()
 
-    async def _resolve_congressional_trades(self, finnhub_data: Dict) -> List[Dict]:
+    async def _resolve_congressional_trades(self, finnhub_data: dict) -> list[dict]:
         """Get congressional trades: QuiverQuant → Finnhub → Capitol Trades scraping."""
         # Try QuiverQuant first
         from services.quiver_service import get_congressional_trades, is_configured
@@ -222,16 +222,16 @@ class GovFilingsService:
         return await self.get_congressional_trades()
 
     @staticmethod
-    def _determine_source(finnhub_data: Dict) -> str:
+    def _determine_source(finnhub_data: dict) -> str:
         """Determine which data sources contributed to the result."""
-        parts: List[str] = []
+        parts: list[str] = []
         if finnhub_data.get("insider_count", 0) > 0 or finnhub_data.get("earnings_count", 0) > 0:
             parts.append("finnhub")
         if finnhub_data.get("congressional_count", 0) == 0 or finnhub_data.get("insider_count", 0) == 0:
             parts.append("scraping")
         return '+'.join(parts) if parts else 'none'
 
-    async def get_all_gov_data(self) -> Dict:
+    async def get_all_gov_data(self) -> dict:
         """Aggregate government/institutional data from all available sources.
         
         Priority: QuiverQuant API → Finnhub → Web scrapers → MongoDB fallback.

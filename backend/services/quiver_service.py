@@ -7,7 +7,7 @@ scrapers as fallbacks.
 import os
 import logging
 import asyncio
-from typing import List, Dict, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def _init_client():
         return None
 
 
-async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> List[Dict]:
+async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Fetch recent congressional stock trades from QuiverQuant."""
     try:
         key = _get_key()
@@ -90,7 +90,7 @@ async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20
         return []
 
 
-async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> List[Dict]:
+async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Fetch recent insider trades (SEC Form 4) from QuiverQuant."""
     try:
         key = _get_key()
@@ -145,7 +145,7 @@ async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> L
         return []
 
 
-async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> List[Dict]:
+async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Fetch recent corporate lobbying data from QuiverQuant."""
     try:
         key = _get_key()
@@ -200,7 +200,7 @@ async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> List[Di
         return []
 
 
-async def get_gov_contracts(ticker: Optional[str] = None, limit: int = 20) -> List[Dict]:
+async def get_gov_contracts(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Fetch government contract data from QuiverQuant."""
     try:
         key = _get_key()

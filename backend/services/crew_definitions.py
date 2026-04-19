@@ -7,7 +7,7 @@ CrewEngine to run them sequentially or in parallel.
 
 import json
 import logging
-from typing import Dict
+
 from datetime import datetime, timezone
 
 from services.crew_engine import CrewEngine, AgentConfig
@@ -44,8 +44,8 @@ WAR_ROOM_SYNTHESIZER = AgentConfig(
 )
 
 
-async def run_war_room_crew(symbol: str, overview: Dict, earnings: Dict,
-                            insiders: Dict, api_key: str) -> Dict:
+async def run_war_room_crew(symbol: str, overview: dict, earnings: dict,
+                            insiders: dict, api_key: str) -> dict:
     """Run the War Room multi-agent crew for a stock symbol."""
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
@@ -175,7 +175,7 @@ HYPOTHESIS_SYNTHESIZER = AgentConfig(
 )
 
 
-async def run_hypothesis_crew(symbol: str, data: Dict, api_key: str) -> Dict:
+async def run_hypothesis_crew(symbol: str, data: dict, api_key: str) -> dict:
     """Run the Investment Hypothesis multi-agent crew."""
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
@@ -311,7 +311,7 @@ async def run_prediction_crew(
     gov_filings=None, api_key: str = "", memory_context: str = "",
     strategist_context: str = "", veto_context: str = "",
     order_flow_context: str = "", ticker_focus: str = None
-) -> Dict:
+) -> dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
@@ -419,7 +419,7 @@ Output ONLY valid JSON:
 #  HELPERS
 # ──────────────────────────────────────────────
 
-def _parse_json_output(text: str) -> Dict:
+def _parse_json_output(text: str) -> dict:
     """Extract JSON from LLM output, handling markdown fences."""
     clean = text.strip()
     if "```json" in clean:
@@ -486,7 +486,7 @@ def calculate_heatmap_sentiment(agent_results):
     return round(heatmap_value, 2)
 
 
-async def run_sector_sentiment_crew(sectors_data: list, api_key: str) -> Dict:
+async def run_sector_sentiment_crew(sectors_data: list, api_key: str) -> dict:
     """Run one multi-agent crew to score ALL sectors at once (4 LLM calls total)."""
     engine = CrewEngine(api_key)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")

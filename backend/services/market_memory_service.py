@@ -12,7 +12,7 @@ import logging
 import asyncio
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 
 import chromadb
 
@@ -40,7 +40,7 @@ def init_memory(mongo_db=None):
     logger.info(f"Market Memory initialized: {count} episodes stored in ChromaDB (all-MiniLM-L6-v2)")
 
 
-def _regime_to_text(regime: Dict) -> str:
+def _regime_to_text(regime: dict) -> str:
     """Convert a market regime dict into a natural-language description for embedding.
     
     Supports both flat keys and structured {metrics, sentiment} format.
@@ -120,7 +120,7 @@ def _regime_to_text(regime: Dict) -> str:
     return " | ".join(lines) if lines else json.dumps(regime)
 
 
-def _make_id(regime: Dict) -> str:
+def _make_id(regime: dict) -> str:
     """Generate a deterministic ID for a regime to avoid duplicates."""
     key_parts = [
         regime.get("symbol", ""),
@@ -131,7 +131,7 @@ def _make_id(regime: Dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def save_regime(regime: Dict) -> str:
+async def save_regime(regime: dict) -> str:
     """Store a market regime episode as a vector embedding.
 
     regime should contain:
@@ -185,8 +185,8 @@ async def save_regime(regime: Dict) -> str:
 
 
 async def query_similar_regimes(
-    current_state: Dict, n_results: int = 3, outcome_filter: Optional[str] = None
-) -> List[Dict]:
+    current_state: dict, n_results: int = 3, outcome_filter: Optional[str] = None
+) -> list[dict]:
     """Find the top N historical regimes most similar to the current market state."""
     if not _collection:
         logger.warning("Market Memory not initialized, returning empty")
@@ -233,7 +233,7 @@ async def query_similar_regimes(
     return similar
 
 
-async def get_prediction_context(symbol: str, current_data: Dict, n_results: int = 3) -> str:
+async def get_prediction_context(symbol: str, current_data: dict, n_results: int = 3) -> str:
     """Build a historical context string to inject into prediction prompts.
 
     This is the main integration point — call this before making a prediction.
@@ -382,7 +382,7 @@ async def get_strategist_veto_context(ticker: str, current_rsi: float = None, n_
     return f"{header}\n" + "\n".join(warnings) + f"\n{footer}"
 
 
-async def get_memory_stats() -> Dict:
+async def get_memory_stats() -> dict:
     """Return stats about the vector memory store."""
     count = await asyncio.to_thread(_collection.count) if _collection else 0
     mongo_count = 0
@@ -432,7 +432,7 @@ async def get_memory_stats() -> Dict:
 #  NIGHTLY CLEANUP — Prune toxic outliers & obsolete data
 # ──────────────────────────────────────────────
 
-async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: float = 80.0) -> Dict:
+async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: float = 80.0) -> dict:
     """Retrain memory by re-tagging bad patterns and pruning obsolete data.
 
     A. Re-tag Toxic Outliers: High-confidence (>80%) predictions that were WRONG.
@@ -567,7 +567,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
     return results
 
 
-async def _send_toxic_alerts(cleanup_results: Dict):
+async def _send_toxic_alerts(cleanup_results: dict):
     """Send email and in-app notifications when toxic spikes are detected."""
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])

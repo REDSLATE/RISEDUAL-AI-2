@@ -10,11 +10,11 @@ import logging
 import asyncio
 import random
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_cache: Dict[str, any] = {"data": None, "ts": None, "whale_alerts": []}
+_cache: dict[str, any] = {"data": None, "ts": None, "whale_alerts": []}
 CACHE_TTL = 300  # 5 minutes
 
 # Top dark pool tracked symbols
@@ -53,7 +53,7 @@ def _estimate_dark_pool_pct(ticker: str, total_volume: float) -> float:
     return round(rng.uniform(lo, hi), 4)
 
 
-def _detect_whale(ticker: str, volume: float, dp_volume: float, avg_trade_size: float) -> Optional[Dict]:
+def _detect_whale(ticker: str, volume: float, dp_volume: float, avg_trade_size: float) -> Optional[dict]:
     """Detect whale-level dark pool activity based on volume anomalies."""
     # A "whale print" is estimated when dp_volume exceeds a threshold
     # suggesting large institutional block trades
@@ -68,7 +68,7 @@ def _detect_whale(ticker: str, volume: float, dp_volume: float, avg_trade_size: 
     return None
 
 
-async def fetch_dark_pool_data() -> Dict:
+async def fetch_dark_pool_data() -> dict:
     """Fetch real market data from Polygon and compute dark pool estimates."""
     now = datetime.now(timezone.utc)
 

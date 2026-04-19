@@ -43,7 +43,8 @@ Typical usage::
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from risedual_core.adapters.cli import BaseMarketClient, build_llm_router
 

@@ -2,14 +2,14 @@
 import logging
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 from services.price_provider import get_quote, get_daily_history
 
 logger = logging.getLogger(__name__)
 
 
-async def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
+async def _fetch_daily(symbol: str, compact: bool = True) -> list[dict]:
     """Fetch daily prices via smart price provider (AV -> yfinance -> cache)."""
     outputsize = "compact" if compact else "full"
     history = await get_daily_history(symbol, outputsize)
@@ -19,7 +19,7 @@ async def _fetch_daily(symbol: str, compact: bool = True) -> List[Dict]:
     return list(reversed(history))
 
 
-async def _fetch_quote(symbol: str) -> Dict:
+async def _fetch_quote(symbol: str) -> dict:
     """Fetch real-time quote via smart price provider."""
     quote = await get_quote(symbol)
     if not quote:
@@ -84,7 +84,7 @@ def _yearly_range_pcts(closes: np.ndarray, current: float) -> tuple:
     return round(float(pct_high), 1), round(float(pct_low), 1)
 
 
-def _compute_technicals(prices: List[Dict]) -> Dict:
+def _compute_technicals(prices: list[dict]) -> dict:
     """Compute key technical indicators from price data."""
     if len(prices) < 20:
         return {}
@@ -119,7 +119,7 @@ def _compute_technicals(prices: List[Dict]) -> Dict:
 
 
 
-def _parse_llm_json(text: str) -> Dict:
+def _parse_llm_json(text: str) -> dict:
     """Extract and parse JSON from LLM response text."""
     import json
     text = str(text).strip()
@@ -130,7 +130,7 @@ def _parse_llm_json(text: str) -> Dict:
     return json.loads(text)
 
 
-async def _call_llm(api_key: str, prompt: str, session_prefix: str, symbol: str, system_msg: str) -> Dict:
+async def _call_llm(api_key: str, prompt: str, session_prefix: str, symbol: str, system_msg: str) -> dict:
     """Shared LLM call + JSON parse for all intelligence functions."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     session_id = f"{session_prefix}_{symbol}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
@@ -140,7 +140,7 @@ async def _call_llm(api_key: str, prompt: str, session_prefix: str, symbol: str,
     return _parse_llm_json(str(response))
 
 
-def _calc_performance(closes: list) -> Dict:
+def _calc_performance(closes: list) -> dict:
     """Calculate 1w/1m/3m performance from close prices."""
     perf_1w = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2) if len(closes) >= 6 else 0
     perf_1m = round((closes[-1] - closes[-22]) / closes[-22] * 100, 2) if len(closes) >= 22 else 0
@@ -162,7 +162,7 @@ async def _fetch_symbol_context(symbol: str, compact: bool = True) -> tuple:
 # 1. AI STOCK SCORING (Danelfin-style)
 # ═══════════════════════════════════════
 
-async def generate_ai_score(api_key: str, symbol: str) -> Dict:
+async def generate_ai_score(api_key: str, symbol: str) -> dict:
     """Generate a 1-10 AI score with technical, fundamental, and sentiment breakdown."""
     prices, technicals, quote = await _fetch_symbol_context(symbol, compact=False)
 
@@ -213,7 +213,7 @@ Scores 1-10 (1=strong sell, 5=hold, 10=strong buy). recommendation: buy/hold/sel
 # 2. PATTERN RECOGNITION (Tickeron-style)
 # ═══════════════════════════════════════
 
-async def detect_patterns(api_key: str, symbol: str) -> Dict:
+async def detect_patterns(api_key: str, symbol: str) -> dict:
     """Detect chart patterns using AI analysis of price data."""
     prices, technicals, _ = await _fetch_symbol_context(symbol, compact=True)
     if len(prices) < 30:
@@ -273,7 +273,7 @@ Pattern types: reversal, continuation, bilateral. Directions: bullish, bearish, 
 # 3. QUICK BRIEFS (Prospero-style)
 # ═══════════════════════════════════════
 
-async def generate_quick_brief(api_key: str, symbol: str) -> Dict:
+async def generate_quick_brief(api_key: str, symbol: str) -> dict:
     """Generate a 30-second stock brief with key metrics and verdict."""
     prices, technicals, quote = await _fetch_symbol_context(symbol, compact=True)
     closes = [p["close"] for p in prices]

@@ -3,14 +3,14 @@ import logging
 import asyncio
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 import ast
 
 logger = logging.getLogger(__name__)
 
 
-def _fetch_daily_prices(symbol: str, years: int = 3) -> List[Dict]:
+def _fetch_daily_prices(symbol: str, years: int = 3) -> list[dict]:
     """Fetch daily historical prices via smart price provider (AV -> yfinance)."""
     from services.price_provider import get_daily_history_sync
 
@@ -107,7 +107,7 @@ def _bollinger(closes: np.ndarray, period=20, std_dev=2.0):
     return upper, mid, lower
 
 
-def _compute_indicators(prices: List[Dict]) -> Dict[str, np.ndarray]:
+def _compute_indicators(prices: list[dict]) -> dict[str, np.ndarray]:
     """Compute all common indicators from price data."""
     closes = np.array([p["close"] for p in prices])
     highs = np.array([p["high"] for p in prices])
@@ -136,7 +136,7 @@ def _compute_indicators(prices: List[Dict]) -> Dict[str, np.ndarray]:
 
 # ── AI Rule Interpreter ──
 
-async def _interpret_rules(api_key: str, strategy: Dict) -> Dict:
+async def _interpret_rules(api_key: str, strategy: dict) -> dict:
     """Use AI to convert strategy rules into evaluable conditions."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -223,7 +223,7 @@ _BOOL_OPS = {
 }
 
 
-def _safe_eval_node(node, ctx: Dict):
+def _safe_eval_node(node, ctx: dict):
     """Recursively evaluate an AST node using only whitelisted operations."""
     _NODE_HANDLERS = {
         ast.Expression: lambda n, c: _safe_eval_node(n.body, c),
@@ -246,7 +246,7 @@ def _handle_constant(node):
     raise ValueError(f"Unsupported constant: {node.value!r}")
 
 
-def _handle_name(node, ctx: Dict):
+def _handle_name(node, ctx: dict):
     name = node.id
     if name not in _ALLOWED_INDICATORS:
         raise ValueError(f"Unknown indicator: {name}")
@@ -256,20 +256,20 @@ def _handle_name(node, ctx: Dict):
     return val
 
 
-def _handle_unary(node, ctx: Dict):
+def _handle_unary(node, ctx: dict):
     if isinstance(node.op, ast.USub):
         return -_safe_eval_node(node.operand, ctx)
     raise ValueError(f"Unsupported unary op: {type(node.op).__name__}")
 
 
-def _handle_binop(node, ctx: Dict):
+def _handle_binop(node, ctx: dict):
     op_func = _BIN_OPS.get(type(node.op))
     if not op_func:
         raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
     return op_func(_safe_eval_node(node.left, ctx), _safe_eval_node(node.right, ctx))
 
 
-def _handle_compare(node, ctx: Dict):
+def _handle_compare(node, ctx: dict):
     left = _safe_eval_node(node.left, ctx)
     for op_node, comparator in zip(node.ops, node.comparators):
         op_func = _CMP_OPS.get(type(op_node))
@@ -282,14 +282,14 @@ def _handle_compare(node, ctx: Dict):
     return True
 
 
-def _handle_boolop(node, ctx: Dict):
+def _handle_boolop(node, ctx: dict):
     func = _BOOL_OPS.get(type(node.op))
     if not func:
         raise ValueError(f"Unsupported bool op: {type(node.op).__name__}")
     return func(_safe_eval_node(v, ctx) for v in node.values)
 
 
-def _eval_condition(cond: str, ctx: Dict) -> bool:
+def _eval_condition(cond: str, ctx: dict) -> bool:
     """Safely evaluate a trading condition string using AST parsing.
 
     Only allows: numeric literals, whitelisted indicator names,
@@ -313,7 +313,7 @@ def _eval_condition(cond: str, ctx: Dict) -> bool:
 
 # ── Simulation Engine ──
 
-def _build_bar_context(indicators: Dict, i: int) -> Dict:
+def _build_bar_context(indicators: dict, i: int) -> dict:
     """Build the indicator context dict for bar index i."""
     return {
         "close": indicators["close"][i],
@@ -341,7 +341,7 @@ def _build_bar_context(indicators: Dict, i: int) -> Dict:
 
 
 def _check_exit(price: float, entry: float, sl_pct: float, tp_pct: float,
-                exit_conds: List[str], ctx: Dict) -> Optional[str]:
+                exit_conds: list[str], ctx: dict) -> Optional[str]:
     """Return exit reason string or None if position should stay open."""
     pnl_pct = (price - entry) / entry
     if pnl_pct <= -sl_pct:
@@ -353,8 +353,8 @@ def _check_exit(price: float, entry: float, sl_pct: float, tp_pct: float,
     return None
 
 
-def _record_trade(position: Dict, exit_price: float, exit_date: str,
-                  exit_idx: int, exit_reason: str) -> Dict:
+def _record_trade(position: dict, exit_price: float, exit_date: str,
+                  exit_idx: int, exit_reason: str) -> dict:
     """Create a trade record from a position and exit info."""
     entry = position["entry_price"]
     pnl_pct = (exit_price - entry) / entry
@@ -370,7 +370,7 @@ def _record_trade(position: Dict, exit_price: float, exit_date: str,
     }
 
 
-def _simulate(prices: List[Dict], indicators: Dict, rules: Dict) -> List[Dict]:
+def _simulate(prices: list[dict], indicators: dict, rules: dict) -> list[dict]:
     """Run the backtest simulation and return a trade log."""
     entry_conds = rules.get("entry_conditions", [])
     exit_conds = rules.get("exit_conditions", [])
@@ -405,7 +405,7 @@ def _simulate(prices: List[Dict], indicators: Dict, rules: Dict) -> List[Dict]:
 
 # ── Metrics Calculator ──
 
-def _calc_cumulative_pnl(trades: List[Dict]) -> List[Dict]:
+def _calc_cumulative_pnl(trades: list[dict]) -> list[dict]:
     """Calculate cumulative P&L series from trades."""
     cum_pnl = []
     running = 0.0
@@ -415,7 +415,7 @@ def _calc_cumulative_pnl(trades: List[Dict]) -> List[Dict]:
     return cum_pnl
 
 
-def _calc_max_drawdown(trades: List[Dict]) -> float:
+def _calc_max_drawdown(trades: list[dict]) -> float:
     """Calculate maximum drawdown from peak P&L."""
     peak = 0.0
     max_dd = 0.0
@@ -427,7 +427,7 @@ def _calc_max_drawdown(trades: List[Dict]) -> float:
     return max_dd
 
 
-def _calc_monthly_breakdown(trades: List[Dict]) -> List[Dict]:
+def _calc_monthly_breakdown(trades: list[dict]) -> list[dict]:
     """Aggregate trades into monthly buckets."""
     monthly = {}
     for t in trades:
@@ -441,7 +441,7 @@ def _calc_monthly_breakdown(trades: List[Dict]) -> List[Dict]:
     return sorted(monthly.values(), key=lambda x: x["month"])
 
 
-def _calc_buy_hold(prices: List[Dict]) -> tuple:
+def _calc_buy_hold(prices: list[dict]) -> tuple:
     """Calculate buy & hold return."""
     if not prices:
         return 0, 0
@@ -452,7 +452,7 @@ def _calc_buy_hold(prices: List[Dict]) -> tuple:
     return pnl, pct
 
 
-def _calc_metrics(trades: List[Dict], prices: List[Dict]) -> Dict:
+def _calc_metrics(trades: list[dict], prices: list[dict]) -> dict:
     """Calculate performance metrics from the trade log."""
     bh_pnl, bh_pct = _calc_buy_hold(prices)
 
@@ -501,7 +501,7 @@ def _calc_metrics(trades: List[Dict], prices: List[Dict]) -> Dict:
 
 # ── Main Entry Point ──
 
-async def run_backtest(api_key: str, strategy: Dict, symbol: str, years: int = 3) -> Dict:
+async def run_backtest(api_key: str, strategy: dict, symbol: str, years: int = 3) -> dict:
     """Run a full backtest: fetch data, compute indicators, interpret rules, simulate, return metrics."""
     logger.info(f"Starting backtest for {symbol} ({years}y) with strategy: {strategy.get('name', 'unnamed')}")
 

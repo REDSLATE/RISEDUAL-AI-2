@@ -14,7 +14,7 @@ import logging
 import asyncio
 import requests
 from datetime import datetime, timezone
-from typing import Dict
+
 from collections import defaultdict
 
 import yfinance as yf
@@ -58,7 +58,7 @@ def _yf_symbol(ticker: str) -> str:
 # BINANCE L2 ORDER BOOK (Crypto)
 # ─────────────────────────────────────────────────────────
 
-async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
+async def _fetch_binance_depth(ticker: str, limit: int = 500) -> dict:
     """Fetch Binance L2 order book and detect institutional walls from real bids/asks.
     Tries Binance US first, then Binance global as fallback."""
     symbol = _binance_symbol(ticker)
@@ -195,7 +195,7 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> Dict:
 # YFINANCE VOLUME PROFILE (Stocks)
 # ─────────────────────────────────────────────────────────
 
-async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m") -> Dict:
+async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m") -> dict:
     """Build volume-at-price profile from yfinance intraday data (stocks only)."""
     yf_sym = _yf_symbol(ticker)
 
@@ -305,7 +305,7 @@ async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m
 # PUBLIC API — Auto-routes to Binance (crypto) or yfinance (stocks)
 # ─────────────────────────────────────────────────────────
 
-async def get_volume_profile(ticker: str, **kwargs) -> Dict:
+async def get_volume_profile(ticker: str, **kwargs) -> dict:
     """Smart router: Binance L2 for crypto, yfinance for stocks."""
     if _is_crypto(ticker):
         result = await _fetch_binance_depth(ticker)

@@ -2,7 +2,8 @@
 import asyncio
 import time
 import logging
-from typing import Any, Callable, Dict
+from typing import Any
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +12,8 @@ class TTLCache:
     """Simple async-safe in-memory cache with per-key TTL and background refresh."""
 
     def __init__(self):
-        self._store: Dict[str, Dict] = {}
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._store: dict[str, dict] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self._hits: int = 0
         self._misses: int = 0
         self._started_at: float = time.monotonic()
@@ -88,7 +89,7 @@ class TTLCache:
         """Clear entire cache."""
         self._store.clear()
 
-    def stats(self) -> Dict:
+    def stats(self) -> dict:
         """Return cache statistics with hit/miss tracking."""
         now = time.monotonic()
         total = self._hits + self._misses

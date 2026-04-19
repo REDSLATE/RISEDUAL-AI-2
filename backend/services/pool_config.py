@@ -1,9 +1,9 @@
 import json
 import os
-from typing import List, Dict
 
 
-def _safe_json_list(raw: str) -> List[Dict]:
+
+def _safe_json_list(raw: str) -> list[dict]:
     if not raw:
         return []
     try:
@@ -13,7 +13,7 @@ def _safe_json_list(raw: str) -> List[Dict]:
         return []
 
 
-def get_ai_provider_pool() -> List[Dict]:
+def get_ai_provider_pool() -> list[dict]:
     pool = _safe_json_list(os.environ.get("AI_PROVIDER_POOL", ""))
     if pool:
         return pool
@@ -62,7 +62,7 @@ def get_ai_provider_pool() -> List[Dict]:
     return fallback
 
 
-def get_market_data_provider_pool() -> List[Dict]:
+def get_market_data_provider_pool() -> list[dict]:
     pool = _safe_json_list(os.environ.get("MARKET_DATA_PROVIDER_POOL", ""))
     if pool:
         return pool
@@ -98,7 +98,7 @@ def get_market_data_provider_pool() -> List[Dict]:
     return fallback
 
 
-def get_email_provider_pool() -> List[Dict]:
+def get_email_provider_pool() -> list[dict]:
     pool = _safe_json_list(os.environ.get("EMAIL_PROVIDER_POOL", ""))
     if pool:
         return pool

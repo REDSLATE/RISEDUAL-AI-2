@@ -4,7 +4,7 @@ import uuid
 import logging
 import requests
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     return resp.json()
 
 
-def get_object(path: str) -> Tuple[bytes, str]:
+def get_object(path: str) -> tuple[bytes, str]:
     """Download file from storage. Returns (content_bytes, content_type)."""
     key = init_storage()
     resp = requests.get(

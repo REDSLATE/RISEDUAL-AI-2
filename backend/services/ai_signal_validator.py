@@ -10,7 +10,7 @@ import logging
 import os
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def set_db(database):
     _db = database
 
 
-def _build_validation_prompt(matches: List[Dict], strategy_name: str) -> str:
+def _build_validation_prompt(matches: list[dict], strategy_name: str) -> str:
     """Build the AI prompt for signal validation."""
     symbols_data = []
     for m in matches:
@@ -50,7 +50,7 @@ Be CRITICAL. Many scanner signals are noise. Only rate >70 confidence if the set
 Respond with ONLY the JSON array, no other text."""
 
 
-def _parse_ai_response(response_text: str) -> List[Dict]:
+def _parse_ai_response(response_text: str) -> list[dict]:
     """Extract and parse JSON array from AI response."""
     text = str(response_text).strip()
     bracket_start = text.find("[")
@@ -60,7 +60,7 @@ def _parse_ai_response(response_text: str) -> List[Dict]:
     return json.loads(text)
 
 
-def _merge_ai_results(batch: List[Dict], ai_results: List[Dict]) -> None:
+def _merge_ai_results(batch: list[dict], ai_results: list[dict]) -> None:
     """Merge AI validation results back into the original match dicts."""
     ai_map = {r["symbol"]: r for r in ai_results if isinstance(r, dict) and "symbol" in r}
     for m in batch:
@@ -73,7 +73,7 @@ def _merge_ai_results(batch: List[Dict], ai_results: List[Dict]) -> None:
         m["ai_validated"] = True
 
 
-def _mark_unvalidated(matches: List[Dict], error_msg: Optional[str] = None) -> None:
+def _mark_unvalidated(matches: list[dict], error_msg: Optional[str] = None) -> None:
     """Mark matches as not validated (used on error or for overflow items)."""
     for m in matches:
         m["ai_confidence"] = None
@@ -82,7 +82,7 @@ def _mark_unvalidated(matches: List[Dict], error_msg: Optional[str] = None) -> N
             m["ai_reasoning"] = error_msg
 
 
-async def _log_validation(strategy_name: str, batch: List[Dict]) -> None:
+async def _log_validation(strategy_name: str, batch: list[dict]) -> None:
     """Log validation run to MongoDB for analytics."""
     if _db is None:
         return
@@ -94,7 +94,7 @@ async def _log_validation(strategy_name: str, batch: List[Dict]) -> None:
     })
 
 
-async def validate_signals(matches: List[Dict], strategy_name: str = "") -> List[Dict]:
+async def validate_signals(matches: list[dict], strategy_name: str = "") -> list[dict]:
     """Validate a batch of scanner matches using AI. Returns enriched matches with AI scores."""
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key or not matches:
@@ -124,7 +124,7 @@ async def validate_signals(matches: List[Dict], strategy_name: str = "") -> List
     return matches
 
 
-async def get_validation_stats() -> Dict:
+async def get_validation_stats() -> dict:
     """Get historical validation stats."""
     if _db is None:
         return {"total_validations": 0, "avg_confidence": 0}

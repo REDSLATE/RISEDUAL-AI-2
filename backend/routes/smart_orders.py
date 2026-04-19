@@ -2,7 +2,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class SmartOrderRequest(BaseModel):
     mode: str = "paper"  # paper, live, simulate
     entry_price: Optional[float] = None
     stop_loss: Optional[StopLossConfig] = None
-    take_profits: Optional[List[TakeProfitLevel]] = None
+    take_profits: Optional[list[TakeProfitLevel]] = None
     break_even: Optional[BreakEvenConfig] = None
     ladder: Optional[LadderConfig] = None
 

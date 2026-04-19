@@ -1,6 +1,6 @@
 import logging
 import requests
-from typing import Dict, List
+
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,7 @@ class CryptoScrapingService:
     def __init__(self):
         self.headers = {'User-Agent': 'Mozilla/5.0'}
     
-    async def get_exchange_data(self) -> List[Dict]:
+    async def get_exchange_data(self) -> list[dict]:
         """Get order book data from major exchanges"""
         data = []
         
@@ -23,7 +23,7 @@ class CryptoScrapingService:
         
         return data
     
-    async def _get_binance_orderbook(self) -> List[Dict]:
+    async def _get_binance_orderbook(self) -> list[dict]:
         """Get Binance order book depth"""
         try:
             symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT']
@@ -54,7 +54,7 @@ class CryptoScrapingService:
             logger.error(f"Binance orderbook error: {str(e)}")
             return []
     
-    async def _get_coinbase_data(self) -> List[Dict]:
+    async def _get_coinbase_data(self) -> list[dict]:
         """Get Coinbase market data"""
         try:
             url = 'https://api.coinbase.com/v2/exchange-rates?currency=USD'
@@ -78,7 +78,7 @@ class CryptoScrapingService:
             logger.error(f"Coinbase data error: {str(e)}")
             return []
     
-    async def get_whale_transactions(self) -> List[Dict]:
+    async def get_whale_transactions(self) -> list[dict]:
         """Get large crypto transactions (whale movements)"""
         try:
             # Using Whale Alert API (or similar service)
@@ -102,7 +102,7 @@ class CryptoScrapingService:
             logger.error(f"Whale tracking error: {str(e)}")
             return []
     
-    async def get_crypto_sentiment(self) -> Dict:
+    async def get_crypto_sentiment(self) -> dict:
         """Aggregate crypto market sentiment"""
         try:
             # Using CoinGecko or similar for sentiment

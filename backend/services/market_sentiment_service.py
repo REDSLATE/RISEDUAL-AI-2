@@ -7,7 +7,7 @@ import logging
 import asyncio
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import Dict
+
 
 import yfinance as yf
 
@@ -17,7 +17,7 @@ FNG_API = "https://api.alternative.me/fng/"
 _fng_cache = {"data": None, "expires": None}
 
 
-async def get_fear_greed_index() -> Dict:
+async def get_fear_greed_index() -> dict:
     """Get current Fear & Greed Index (cached 30 min)."""
     now = datetime.now(timezone.utc)
     if _fng_cache["data"] and _fng_cache["expires"] and _fng_cache["expires"] > now:
@@ -40,7 +40,7 @@ async def get_fear_greed_index() -> Dict:
         return {"value": 50, "classification": "Neutral", "timestamp": ""}
 
 
-def get_fear_greed_historical(days: int = 730) -> Dict[str, int]:
+def get_fear_greed_historical(days: int = 730) -> dict[str, int]:
     """Get historical Fear & Greed data as {date_str: value} dict.
     Used for training bootstrap to tag historical regimes with sentiment.
     """
@@ -61,7 +61,7 @@ def get_fear_greed_historical(days: int = 730) -> Dict[str, int]:
         return {}
 
 
-async def get_vix_level() -> Dict:
+async def get_vix_level() -> dict:
     """Get current VIX (volatility index) via yfinance."""
     try:
         ticker = yf.Ticker("^VIX")

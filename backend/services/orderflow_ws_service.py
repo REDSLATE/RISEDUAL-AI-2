@@ -12,7 +12,7 @@ import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Dict, Set
+
 
 import numpy as np
 import websockets
@@ -45,11 +45,11 @@ class OrderFlowStream:
     """Manages shared Binance WebSocket connections and dispatches to subscribers."""
 
     def __init__(self):
-        self._subscribers: Dict[str, Set[asyncio.Queue]] = defaultdict(set)
-        self._tasks: Dict[str, asyncio.Task] = {}
-        self._prev_snapshot: Dict[str, dict] = {}
-        self._history: Dict[str, list] = defaultdict(list)
-        self._whale_cooldowns: Dict[str, datetime] = {}  # "BTC:71800" -> last alert time
+        self._subscribers: dict[str, set[asyncio.Queue]] = defaultdict(set)
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._prev_snapshot: dict[str, dict] = {}
+        self._history: dict[str, list] = defaultdict(list)
+        self._whale_cooldowns: dict[str, datetime] = {}  # "BTC:71800" -> last alert time
         self._lock = asyncio.Lock()
         self._db = None  # Set by server.py for push notifications
 

@@ -9,7 +9,7 @@ Supports:
 import logging
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class AICacheService:
     def __init__(self, db):
         self.db = db
 
-    def build_key(self, namespace: str, params: Union[Dict, None] = None, **kwargs) -> str:
+    def build_key(self, namespace: str, params: Union[dict, None] = None, **kwargs) -> str:
         """Build a deterministic cache key from namespace + params."""
         merged = {**(params or {}), **kwargs}
         parts = [namespace]
@@ -30,7 +30,7 @@ class AICacheService:
         return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
     async def get(self, cache_key: str, ttl_seconds: int = 300,
-                  sliding: bool = False, max_age_seconds: int = 0) -> Optional[Dict[str, Any]]:
+                  sliding: bool = False, max_age_seconds: int = 0) -> Optional[dict[str, Any]]:
         """Retrieve a cached result. Supports sliding TTL and max age.
 
         Args:
@@ -67,7 +67,7 @@ class AICacheService:
             logger.warning(f"Cache get error: {e}")
             return None
 
-    async def get_stale(self, cache_key: str) -> Optional[Dict[str, Any]]:
+    async def get_stale(self, cache_key: str) -> Optional[dict[str, Any]]:
         """Retrieve a cached result even if expired (fallback on error)."""
         if self.db is None:
             return None
@@ -82,8 +82,8 @@ class AICacheService:
             logger.warning(f"Cache get_stale error: {e}")
             return None
 
-    async def set(self, cache_key: str, namespace: str, data: Dict[str, Any],
-                  ttl_seconds: int = 300, meta: Optional[Dict] = None):
+    async def set(self, cache_key: str, namespace: str, data: dict[str, Any],
+                  ttl_seconds: int = 300, meta: Optional[dict] = None):
         """Store a result in cache with TTL."""
         if self.db is None:
             return
@@ -127,7 +127,7 @@ class AICacheService:
             logger.warning(f"Cache cleanup error: {e}")
             return 0
 
-    async def stats(self) -> Dict[str, Any]:
+    async def stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         if self.db is None:
             return {"total": 0, "active": 0}

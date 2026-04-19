@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from cryptography.fernet import Fernet
 import base64
 import hashlib
@@ -768,7 +768,7 @@ async def cancel_order(broker_id: str, order_id: str, request: Request):
 # PORTFOLIO SYNC HELPERS
 # ============================================================
 
-async def _sync_watchlist(user_id: str, symbols: List[str]) -> None:
+async def _sync_watchlist(user_id: str, symbols: list[str]) -> None:
     """Sync position symbols into the user's watchlist."""
     if not symbols:
         return

@@ -11,7 +11,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 
 import requests
 import httpx
@@ -38,7 +38,7 @@ def set_db(database):
 AV_BASE = "https://www.alphavantage.co/query"
 
 
-def _av_quote_sync(api_key: str, symbol: str) -> Optional[Dict]:
+def _av_quote_sync(api_key: str, symbol: str) -> Optional[dict]:
     try:
         r = requests.get(AV_BASE, params={
             "function": "GLOBAL_QUOTE", "symbol": symbol.upper(), "apikey": api_key,
@@ -66,7 +66,7 @@ def _av_quote_sync(api_key: str, symbol: str) -> Optional[Dict]:
         raise RuntimeError(f"AV quote failed: {e}")
 
 
-def _av_daily_sync(api_key: str, symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
+def _av_daily_sync(api_key: str, symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     try:
         r = requests.get(AV_BASE, params={
             "function": "TIME_SERIES_DAILY", "symbol": symbol.upper(),
@@ -96,7 +96,7 @@ def _av_daily_sync(api_key: str, symbol: str, outputsize: str = "compact") -> Op
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 
-async def _finnhub_quote(api_key: str, symbol: str) -> Optional[Dict]:
+async def _finnhub_quote(api_key: str, symbol: str) -> Optional[dict]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -126,7 +126,7 @@ async def _finnhub_quote(api_key: str, symbol: str) -> Optional[Dict]:
         raise RuntimeError(f"Finnhub quote failed: {e}")
 
 
-async def _finnhub_daily(api_key: str, symbol: str, days: int = 90) -> Optional[List[Dict]]:
+async def _finnhub_daily(api_key: str, symbol: str, days: int = 90) -> Optional[list[dict]]:
     """Fetch daily candles from Finnhub."""
     try:
         now = int(datetime.now(timezone.utc).timestamp())
@@ -164,7 +164,7 @@ async def _finnhub_daily(api_key: str, symbol: str, days: int = 90) -> Optional[
 TD_BASE = "https://api.twelvedata.com"
 
 
-async def _twelvedata_quote(api_key: str, symbol: str) -> Optional[Dict]:
+async def _twelvedata_quote(api_key: str, symbol: str) -> Optional[dict]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -198,7 +198,7 @@ async def _twelvedata_quote(api_key: str, symbol: str) -> Optional[Dict]:
         raise RuntimeError(f"TwelveData quote failed: {e}")
 
 
-async def _twelvedata_daily(api_key: str, symbol: str, outputsize: int = 90) -> Optional[List[Dict]]:
+async def _twelvedata_daily(api_key: str, symbol: str, outputsize: int = 90) -> Optional[list[dict]]:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
@@ -237,7 +237,7 @@ async def _twelvedata_daily(api_key: str, symbol: str, outputsize: int = 90) -> 
 MS_BASE = "https://api.marketstack.com/v2"
 
 
-async def _marketstack_quote(api_key: str, symbol: str) -> Optional[Dict]:
+async def _marketstack_quote(api_key: str, symbol: str) -> Optional[dict]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -275,7 +275,7 @@ async def _marketstack_quote(api_key: str, symbol: str) -> Optional[Dict]:
         raise RuntimeError(f"Marketstack quote failed: {e}")
 
 
-async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Optional[List[Dict]]:
+async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Optional[list[dict]]:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
@@ -309,7 +309,7 @@ async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Opti
 #  PROVIDER DISPATCH
 # ─────────────────────────────────────────────
 
-async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> Dict:
+async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> dict:
     if provider.provider == "alphavantage":
         result = await asyncio.to_thread(_av_quote_sync, provider.api_key, symbol)
     elif provider.provider == "finnhub":
@@ -326,7 +326,7 @@ async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> Dict:
     return result
 
 
-async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str) -> List[Dict]:
+async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str) -> list[dict]:
     if provider.provider == "alphavantage":
         result = await asyncio.to_thread(_av_daily_sync, provider.api_key, symbol, outputsize)
     elif provider.provider == "finnhub":
@@ -349,7 +349,7 @@ async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str)
 #  PUBLIC API
 # ─────────────────────────────────────────────
 
-async def market_quote(symbol: str) -> Optional[Dict]:
+async def market_quote(symbol: str) -> Optional[dict]:
     """Get a stock quote with pool failover + MongoDB cache."""
     cache_key = f"pool_quote_{symbol.upper()}"
 
@@ -367,7 +367,7 @@ async def market_quote(symbol: str) -> Optional[Dict]:
         return None
 
     try:
-        async def _dispatch_quote_task(provider: ProviderEntry) -> Dict:
+        async def _dispatch_quote_task(provider: ProviderEntry) -> dict:
             return await _dispatch_quote(provider, symbol)
 
         result = await market_pool.execute(_dispatch_quote_task)
@@ -390,7 +390,7 @@ async def market_quote(symbol: str) -> Optional[Dict]:
         return None
 
 
-async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
+async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """Get daily OHLCV history with pool failover + MongoDB cache."""
     cache_key = f"pool_daily_{symbol.upper()}_{outputsize}"
 
@@ -406,7 +406,7 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[Lis
         return None
 
     try:
-        async def _dispatch_daily_task(provider: ProviderEntry) -> List[Dict]:
+        async def _dispatch_daily_task(provider: ProviderEntry) -> list[dict]:
             return await _dispatch_daily(provider, symbol, outputsize)
 
         result = await market_pool.execute(_dispatch_daily_task)

@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 
@@ -41,7 +41,7 @@ Output in JSON format:
   "summary": "One-line summary"
 }"""
 
-    async def generate_hypothesis(self, symbol: str, data: Dict) -> Dict:
+    async def generate_hypothesis(self, symbol: str, data: dict) -> dict:
         """Generate AI hypothesis using multi-agent crew."""
         from services.crew_definitions import run_hypothesis_crew
         try:
@@ -51,7 +51,7 @@ Output in JSON format:
             logger.error(f"Crew hypothesis failed for {symbol}, falling back to single-agent: {e}")
             return await self._single_agent_hypothesis(symbol, data)
 
-    async def _single_agent_hypothesis(self, symbol: str, data: Dict) -> Dict:
+    async def _single_agent_hypothesis(self, symbol: str, data: dict) -> dict:
         """Fallback single-agent hypothesis if crew fails."""
         try:
             chat = LlmChat(api_key=self.api_key, session_id=f"hypothesis_{symbol}", system_message=self.system_message).with_model("openai", "gpt-5.2")

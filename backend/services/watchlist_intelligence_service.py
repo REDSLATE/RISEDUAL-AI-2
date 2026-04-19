@@ -3,14 +3,14 @@ import logging
 import asyncio
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 from services.price_provider import get_quote_sync, get_daily_history_sync
 
 logger = logging.getLogger(__name__)
 
 
-def _fetch_quote(symbol: str) -> Dict:
+def _fetch_quote(symbol: str) -> dict:
     """Fetch real-time quote via smart price provider (AV -> yfinance)."""
     try:
         quote = get_quote_sync(symbol)
@@ -31,7 +31,7 @@ def _fetch_quote(symbol: str) -> Dict:
         return {"symbol": symbol.upper(), "price": 0, "change": 0, "change_pct": 0, "volume": 0, "error": True}
 
 
-def _fetch_daily_compact(symbol: str) -> List[Dict]:
+def _fetch_daily_compact(symbol: str) -> list[dict]:
     """Fetch compact daily prices via smart price provider (AV -> yfinance)."""
     try:
         history = get_daily_history_sync(symbol, "compact")
@@ -44,7 +44,7 @@ def _fetch_daily_compact(symbol: str) -> List[Dict]:
         return []
 
 
-def _quick_technicals(prices: List[Dict]) -> Dict:
+def _quick_technicals(prices: list[dict]) -> dict:
     """Compute quick technicals from price data."""
     if len(prices) < 15:
         return {}
@@ -85,7 +85,7 @@ def _quick_technicals(prices: List[Dict]) -> Dict:
 import time
 
 
-def _gather_ticker_data(tickers: List[str]) -> List[Dict]:
+def _gather_ticker_data(tickers: list[str]) -> list[dict]:
     """Gather quotes + technicals for each ticker. Premium plan: 150 req/min."""
     results = []
     for i, ticker in enumerate(tickers[:10]):  # Cap at 10 tickers
@@ -106,7 +106,7 @@ def _gather_ticker_data(tickers: List[str]) -> List[Dict]:
     return results
 
 
-async def generate_watchlist_summary(api_key: str, tickers: List[str], db=None, user_id=None) -> Dict:
+async def generate_watchlist_summary(api_key: str, tickers: list[str], db=None, user_id=None) -> dict:
     """Generate a batch AI intelligence summary for all watchlist tickers."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 

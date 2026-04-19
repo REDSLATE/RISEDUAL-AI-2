@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import secrets as _secrets
-from typing import Dict, List, Optional
+from typing import Optional
 from datetime import datetime
 
 import httpx
@@ -17,7 +17,7 @@ class MarketDataService:
         self.db = db
         self.router = ProviderRouter("market_data", get_market_data_provider_pool(), db=db)
     
-    async def get_quote(self, symbol: str) -> Optional[Dict]:
+    async def get_quote(self, symbol: str) -> Optional[dict]:
         """Get real-time quote via smart price provider (AV -> yfinance -> cache)."""
         try:
             quote = await pp_get_quote(symbol)
@@ -36,7 +36,7 @@ class MarketDataService:
             logger.error(f"Error fetching quote for {symbol}: {str(e)}")
             return None
     
-    async def get_ticker_data(self) -> List[Dict]:
+    async def get_ticker_data(self) -> list[dict]:
         """Get ticker data for top stocks (parallel fetch, 150 req/min plan)"""
         symbols = ['SPY', 'VOO', 'QQQ', 'IVV', 'VTI', 'VUG', 'VEA']
         tasks = [self.get_quote(symbol) for symbol in symbols]
@@ -52,7 +52,7 @@ class MarketDataService:
                 })
         return ticker_data
     
-    async def get_crypto_quote(self, symbol: str, market: str = 'USD') -> Optional[Dict]:
+    async def get_crypto_quote(self, symbol: str, market: str = 'USD') -> Optional[dict]:
         """Get crypto quote via smart price provider (AV -> yfinance -> cache)."""
         try:
             quote = await pp_get_crypto_quote(symbol)
@@ -63,7 +63,7 @@ class MarketDataService:
             logger.error(f"Error fetching crypto quote for {symbol}: {str(e)}")
             return None
     
-    async def get_crypto_data(self) -> List[Dict]:
+    async def get_crypto_data(self) -> list[dict]:
         """Get top 15 crypto currencies data (parallel fetch)"""
         cryptos = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE',
                     'AVAX', 'DOT', 'MATIC', 'LINK', 'SHIB', 'LTC', 'UNI', 'ATOM']
@@ -110,7 +110,7 @@ class MarketDataService:
             "provider": routed["provider"],
         }
 
-    def generate_dark_pool_data(self) -> List[Dict]:
+    def generate_dark_pool_data(self) -> list[dict]:
         """Generate dark pool trading data"""
         symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'SPY']
         dark_pool_data = []
@@ -129,7 +129,7 @@ class MarketDataService:
         
         return dark_pool_data
     
-    def _generate_contract(self) -> Dict:
+    def _generate_contract(self) -> dict:
         """Generate a single mock options contract."""
         symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'META', 'GOOGL', 'AMZN', 'PLTR', 'AMD', 'MRVL']
         return {
@@ -142,18 +142,18 @@ class MarketDataService:
             'aiScore': _rng.randint(30, 70),
         }
 
-    def _generate_contracts(self, count: int) -> List[Dict]:
+    def _generate_contracts(self, count: int) -> list[dict]:
         """Generate a list of mock options contracts."""
         return [self._generate_contract() for _ in range(count)]
 
-    def _generate_contracts_with_sentiment(self, count: int) -> List[Dict]:
+    def _generate_contracts_with_sentiment(self, count: int) -> list[dict]:
         """Generate contracts with sentiment annotation."""
         contracts = self._generate_contracts(count)
         for c in contracts:
             c['sentiment'] = _rng.choice(['Bearish', 'Bullish'])
         return contracts
 
-    def generate_mock_options_data(self, data_type: str) -> Dict:
+    def generate_mock_options_data(self, data_type: str) -> dict:
         """Generate realistic mock options data based on type."""
         generators = {
             'radar': lambda: {

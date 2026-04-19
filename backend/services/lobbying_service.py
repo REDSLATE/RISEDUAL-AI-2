@@ -1,7 +1,7 @@
 """Lobbying data service — queries imported lobbying disclosure data from MongoDB."""
 import os
 import logging
-from typing import Dict, List
+
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ class LobbyingService:
         self.db = self.client[os.environ.get("DB_NAME", "risedual_db")]
         self.col = self.db["lobbying_data"]
 
-    async def get_recent_lobbying(self, limit: int = 25) -> List[Dict]:
+    async def get_recent_lobbying(self, limit: int = 25) -> list[dict]:
         """Get most recent lobbying disclosures."""
         cursor = self.col.find(
             {"amount": {"$gt": 0}},
@@ -21,7 +21,7 @@ class LobbyingService:
         ).sort("date", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
-    async def get_lobbying_by_ticker(self, ticker: str, limit: int = 20) -> List[Dict]:
+    async def get_lobbying_by_ticker(self, ticker: str, limit: int = 20) -> list[dict]:
         """Get lobbying activity for a specific ticker."""
         cursor = self.col.find(
             {"ticker": ticker.upper(), "amount": {"$gt": 0}},
@@ -29,7 +29,7 @@ class LobbyingService:
         ).sort("date", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
-    async def get_top_spenders(self, limit: int = 15) -> List[Dict]:
+    async def get_top_spenders(self, limit: int = 15) -> list[dict]:
         """Get top lobbying spenders by total amount."""
         pipeline = [
             {"$match": {"amount": {"$gt": 0}}},
@@ -57,7 +57,7 @@ class LobbyingService:
             for r in results
         ]
 
-    async def get_lobbying_by_issue(self, keyword: str, limit: int = 20) -> List[Dict]:
+    async def get_lobbying_by_issue(self, keyword: str, limit: int = 20) -> list[dict]:
         """Search lobbying by issue keyword (e.g., 'tariff', 'healthcare')."""
         cursor = self.col.find(
             {"issue": {"$regex": keyword, "$options": "i"}, "amount": {"$gt": 0}},
@@ -65,7 +65,7 @@ class LobbyingService:
         ).sort("amount", -1).limit(limit)
         return await cursor.to_list(length=limit)
 
-    async def get_summary(self) -> Dict:
+    async def get_summary(self) -> dict:
         """Get aggregate lobbying summary for dashboard display."""
         total_docs = await self.col.count_documents({"amount": {"$gt": 0}})
         top = await self.get_top_spenders(10)

@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
-from typing import Optional, List
+from typing import Optional
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ async def list_strategies():
 
 
 @router.post("/scan")
-async def run_scan(request: Request, strategies: Optional[List[str]] = None, symbols: Optional[List[str]] = None):
+async def run_scan(request: Request, strategies: Optional[list[str]] = None, symbols: Optional[list[str]] = None):
     """Run scanner against selected strategies and symbols.
     
     Body (optional JSON):

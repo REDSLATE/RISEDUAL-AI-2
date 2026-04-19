@@ -2,7 +2,7 @@
 import json
 import asyncio
 import logging
-from typing import Dict, List
+
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -45,7 +45,7 @@ Output in JSON format:
 }"""
 
 
-def _build_prompt(symbol: str, data: Dict) -> str:
+def _build_prompt(symbol: str, data: dict) -> str:
     """Build the analysis prompt with all macro data."""
     sections = []
 
@@ -133,7 +133,7 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(raw)
 
 
-async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: str) -> Dict:
+async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: str) -> dict:
     """Run hypothesis generation on a single model."""
     cfg = MODELS[model_key]
     raw_text = ""
@@ -180,7 +180,7 @@ async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: s
         }
 
 
-def _weighted_consensus(results: List[Dict]) -> Dict:
+def _weighted_consensus(results: list[dict]) -> dict:
     """Compute weighted voting consensus from multiple model results."""
     valid = [r for r in results if r.get("verdict") not in ("ERROR", None)]
     if not valid:
@@ -258,7 +258,7 @@ def _weighted_consensus(results: List[Dict]) -> Dict:
     }
 
 
-async def generate_hypothesis(api_key: str, symbol: str, data: Dict, model: str = "gpt-5.2") -> Dict:
+async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str = "gpt-5.2") -> dict:
     """Generate hypothesis using multi-agent crew (single model) or consensus mode (multi-model)."""
     if model == "consensus":
         prompt = _build_prompt(symbol, data)

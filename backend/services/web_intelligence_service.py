@@ -7,7 +7,7 @@ Results are cached briefly to reduce rate limit pressure.
 import logging
 import asyncio
 import time
-from typing import List, Dict, Optional
+from typing import Optional
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -45,11 +45,11 @@ def _subprocess_ddg_news(query: str, max_results: int = 5, timelimit: str = "w")
 
 
 # Simple in-memory cache to avoid hammering DDG
-_cache: Dict[str, tuple] = {}
+_cache: dict[str, tuple] = {}
 _CACHE_TTL = 300  # 5 minutes
 
 
-def _get_cached(key: str) -> Optional[List[Dict]]:
+def _get_cached(key: str) -> Optional[list[dict]]:
     if key in _cache:
         ts, data = _cache[key]
         if time.time() - ts < _CACHE_TTL:
@@ -58,7 +58,7 @@ def _get_cached(key: str) -> Optional[List[Dict]]:
     return None
 
 
-def _set_cache(key: str, data: List[Dict]):
+def _set_cache(key: str, data: list[dict]):
     _cache[key] = (time.time(), data)
     # Evict old entries
     if len(_cache) > 200:
@@ -67,7 +67,7 @@ def _set_cache(key: str, data: List[Dict]):
 
 
 async def _search_ddg(query: str, max_results: int = 10,
-                      timelimit: Optional[str] = None) -> List[Dict]:
+                      timelimit: Optional[str] = None) -> list[dict]:
     """Search via DuckDuckGo with backend fallback and caching."""
     cache_key = f"text:{query}:{max_results}:{timelimit}"
     cached = _get_cached(cache_key)
@@ -112,7 +112,7 @@ async def _search_ddg(query: str, max_results: int = 10,
 
 
 async def _news_ddg(query: str, max_results: int = 10,
-                    timelimit: Optional[str] = "w") -> List[Dict]:
+                    timelimit: Optional[str] = "w") -> list[dict]:
     """Fetch news via DuckDuckGo news endpoint with caching."""
     cache_key = f"news:{query}:{max_results}:{timelimit}"
     cached = _get_cached(cache_key)
@@ -151,7 +151,7 @@ async def _news_ddg(query: str, max_results: int = 10,
         return []
 
 
-async def search(query: str, max_results: int = 10) -> Dict:
+async def search(query: str, max_results: int = 10) -> dict:
     """Web search — returns structured results."""
     results = await _search_ddg(query, max_results)
 
@@ -164,7 +164,7 @@ async def search(query: str, max_results: int = 10) -> Dict:
     }
 
 
-async def search_ticker_news(symbol: str, max_results: int = 10) -> Dict:
+async def search_ticker_news(symbol: str, max_results: int = 10) -> dict:
     """Search for recent news about a specific stock/crypto ticker."""
     query = f"{symbol} stock market news latest"
 
@@ -185,7 +185,7 @@ async def search_ticker_news(symbol: str, max_results: int = 10) -> Dict:
     }
 
 
-async def research_topic(topic: str, max_results: int = 8) -> Dict:
+async def research_topic(topic: str, max_results: int = 8) -> dict:
     """Deep research on a financial topic — returns AI-ready context."""
     results = await _search_ddg(topic, max_results)
 
@@ -206,7 +206,7 @@ async def research_topic(topic: str, max_results: int = 8) -> Dict:
     }
 
 
-def is_configured() -> Dict:
+def is_configured() -> dict:
     """Check which web search providers are available."""
     return {
         "duckduckgo": True,

@@ -6,7 +6,7 @@ Injects relevant memories into future chat prompts for continuity.
 import os
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ async def set_memory_enabled(user_id: str, enabled: bool):
     )
 
 
-async def get_memories(user_id: str, limit: int = 50) -> List[Dict]:
+async def get_memories(user_id: str, limit: int = 50) -> list[dict]:
     """Get all stored memories for a user."""
     cursor = db.chat_memories.find(
         {"user_id": user_id},
@@ -71,7 +71,7 @@ async def save_memory(user_id: str, content: str, category: str = "general", sou
     return memory_id
 
 
-async def extract_memories_from_conversation(user_id: str, messages: List[Dict], session_id: str):
+async def extract_memories_from_conversation(user_id: str, messages: list[dict], session_id: str):
     """Use AI to extract key facts/preferences from a conversation and store them.
     
     Called after each chat exchange to build persistent memory.

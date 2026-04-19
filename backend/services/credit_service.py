@@ -9,7 +9,7 @@ Uses frozen dataclasses for plan config and pure functions for credit logic.
 import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from typing import Dict, Set, Tuple
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +25,10 @@ class PlanRule:
     key: str
     monthly_credits: int
     topup_per_1000_usd: int
-    unlimited_features: Set[str] = field(default_factory=set)
+    unlimited_features: set[str] = field(default_factory=set)
 
 
-PLAN_RULES: Dict[str, PlanRule] = {
+PLAN_RULES: dict[str, PlanRule] = {
     "free": PlanRule(
         key="free",
         monthly_credits=50,
@@ -55,7 +55,7 @@ PLAN_RULES: Dict[str, PlanRule] = {
     ),
 }
 
-ACTION_COSTS: Dict[str, int] = {
+ACTION_COSTS: dict[str, int] = {
     "ai_chat": 1,
     "war_room": 5,
     "ai_hypothesis": 3,
@@ -119,7 +119,7 @@ def credits_required(plan_key: str, action_key: str) -> int:
     return get_action_cost(action_key)
 
 
-def can_run_action(plan_key: str, action_key: str, wallet_balance: int) -> Tuple[bool, int]:
+def can_run_action(plan_key: str, action_key: str, wallet_balance: int) -> tuple[bool, int]:
     cost = credits_required(plan_key, action_key)
     if cost == 0:
         return True, 0

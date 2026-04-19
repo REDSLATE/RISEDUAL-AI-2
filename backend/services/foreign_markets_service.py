@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import requests
-from typing import Dict
+
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ class ForeignMarketsService:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
-    def _scrape_yahoo_quote(self, symbol: str, name: str, region: str) -> Dict:
+    def _scrape_yahoo_quote(self, symbol: str, name: str, region: str) -> dict:
         try:
             url = f'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d'
             resp = requests.get(url, headers=self.headers, timeout=8)
@@ -42,7 +42,7 @@ class ForeignMarketsService:
                 'prev_close': 0, 'currency': 'N/A', 'market_state': 'ERROR',
             }
 
-    async def get_foreign_markets(self) -> Dict:
+    async def get_foreign_markets(self) -> dict:
         indices = [
             # Asia
             ('^N225', 'Nikkei 225', 'Asia'),

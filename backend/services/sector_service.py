@@ -2,7 +2,7 @@
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 from services.price_provider import get_quote, get_daily_history
 
@@ -23,7 +23,7 @@ SECTOR_ETFS = {
 }
 
 
-async def _fetch_etf_quote(symbol: str) -> Dict:
+async def _fetch_etf_quote(symbol: str) -> dict:
     """Fetch a single ETF quote using smart price provider."""
     quote = await get_quote(symbol)
     if quote:
@@ -39,7 +39,7 @@ async def _fetch_etf_quote(symbol: str) -> Dict:
     return {"price": 0, "change": 0, "change_pct": 0}
 
 
-async def _fetch_etf_daily(symbol: str) -> List[Dict]:
+async def _fetch_etf_daily(symbol: str) -> list[dict]:
     """Fetch daily time series using smart price provider."""
     history = await get_daily_history(symbol)
     if history:
@@ -47,7 +47,7 @@ async def _fetch_etf_daily(symbol: str) -> List[Dict]:
     return []
 
 
-def _calc_returns(prices: List[Dict]) -> Dict:
+def _calc_returns(prices: list[dict]) -> dict:
     """Calculate returns over various periods from daily price data."""
     if not prices:
         return {"1d": 0, "1w": 0, "1m": 0, "3m": 0, "ytd": 0}
@@ -75,7 +75,7 @@ def _calc_returns(prices: List[Dict]) -> Dict:
     return returns
 
 
-async def get_sector_heatmap() -> Dict:
+async def get_sector_heatmap() -> dict:
     """Build the full sector rotation heatmap data."""
     sectors = []
 

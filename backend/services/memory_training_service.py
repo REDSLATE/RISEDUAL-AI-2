@@ -11,7 +11,7 @@ import asyncio
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 from services.market_memory_service import save_regime, _collection, init_memory
 
@@ -116,7 +116,7 @@ def _classify_outcome(current_price: float, future_price: float) -> tuple:
         return "miss", f"fell {change_pct:+.1f}% (strong bearish)"
 
 
-def _process_symbol(symbol: str, sector: str, fg_history: Dict = None) -> List[Dict]:
+def _process_symbol(symbol: str, sector: str, fg_history: dict = None) -> list[dict]:
     """Process a single symbol: fetch 2yr data, compute technicals, build enriched regime snapshots."""
     try:
         ticker = yf.Ticker(symbol)
@@ -225,7 +225,7 @@ def _process_symbol(symbol: str, sector: str, fg_history: Dict = None) -> List[D
         return []
 
 
-async def run_memory_training(mongo_db=None, progress_callback=None) -> Dict:
+async def run_memory_training(mongo_db=None, progress_callback=None) -> dict:
     """Run the full memory training pipeline. Returns stats on completion.
 
     This is designed to run as a background task (takes 2-5 minutes).

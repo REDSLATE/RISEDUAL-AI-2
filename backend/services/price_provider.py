@@ -9,7 +9,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 
 import requests
 import yfinance as yf
@@ -62,7 +62,7 @@ def _rotate_av_key():
 #  QUOTE (current price, change, volume)
 # ──────────────────────────────────────────────
 
-def _av_quote(symbol: str) -> Optional[Dict]:
+def _av_quote(symbol: str) -> Optional[dict]:
     """Fetch quote from Alpha Vantage GLOBAL_QUOTE. Auto-rotates key on rate limit."""
     try:
         r = requests.get(AV_BASE, params={
@@ -101,7 +101,7 @@ def _av_quote(symbol: str) -> Optional[Dict]:
         return None
 
 
-def _yf_quote(symbol: str) -> Optional[Dict]:
+def _yf_quote(symbol: str) -> Optional[dict]:
     """Fetch quote from yfinance (free, no API key)."""
     try:
         ticker = yf.Ticker(symbol.upper())
@@ -129,7 +129,7 @@ def _yf_quote(symbol: str) -> Optional[Dict]:
         return None
 
 
-async def get_quote(symbol: str) -> Optional[Dict]:
+async def get_quote(symbol: str) -> Optional[dict]:
     """
     Smart quote: Market Data Pool → AV → yfinance → cache.
     Pool provides priority-based failover across AV, Finnhub, TwelveData.
@@ -177,7 +177,7 @@ async def get_quote(symbol: str) -> Optional[Dict]:
     return quote
 
 
-def get_quote_sync(symbol: str) -> Optional[Dict]:
+def get_quote_sync(symbol: str) -> Optional[dict]:
     """Synchronous version for use in sync contexts (data fetchers, etc.)."""
     quote = _av_quote(symbol)
     if not quote:
@@ -190,7 +190,7 @@ def get_quote_sync(symbol: str) -> Optional[Dict]:
 #  DAILY HISTORY (OHLCV time series)
 # ──────────────────────────────────────────────
 
-def _av_daily(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
+def _av_daily(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """Fetch daily OHLCV from Alpha Vantage."""
     try:
         r = requests.get(AV_BASE, params={
@@ -218,7 +218,7 @@ def _av_daily(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
         return None
 
 
-def _yf_daily(symbol: str, period: str = "3mo") -> Optional[List[Dict]]:
+def _yf_daily(symbol: str, period: str = "3mo") -> Optional[list[dict]]:
     """Fetch daily OHLCV from yfinance."""
     try:
         ticker = yf.Ticker(symbol.upper())
@@ -242,7 +242,7 @@ def _yf_daily(symbol: str, period: str = "3mo") -> Optional[List[Dict]]:
         return None
 
 
-async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
+async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """
     Smart daily history: Market Data Pool → AV → yfinance → cache.
     """
@@ -287,7 +287,7 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
     return history
 
 
-def get_daily_history_sync(symbol: str, outputsize: str = "compact") -> Optional[List[Dict]]:
+def get_daily_history_sync(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """Synchronous version for sync contexts."""
     history = _av_daily(symbol, outputsize)
     if not history:
@@ -301,7 +301,7 @@ def get_daily_history_sync(symbol: str, outputsize: str = "compact") -> Optional
 #  COMPANY OVERVIEW
 # ──────────────────────────────────────────────
 
-def _av_overview(symbol: str) -> Optional[Dict]:
+def _av_overview(symbol: str) -> Optional[dict]:
     """Fetch company overview from Alpha Vantage."""
     try:
         r = requests.get(AV_BASE, params={
@@ -316,7 +316,7 @@ def _av_overview(symbol: str) -> Optional[Dict]:
         return None
 
 
-def _yf_overview(symbol: str) -> Optional[Dict]:
+def _yf_overview(symbol: str) -> Optional[dict]:
     """Fetch company info from yfinance as fallback."""
     try:
         info = yf.Ticker(symbol.upper()).info
@@ -345,7 +345,7 @@ def _yf_overview(symbol: str) -> Optional[Dict]:
         return None
 
 
-def get_overview_sync(symbol: str) -> Optional[Dict]:
+def get_overview_sync(symbol: str) -> Optional[dict]:
     """Smart company overview: AV → yfinance."""
     data = _av_overview(symbol)
     if not data:
@@ -358,7 +358,7 @@ def get_overview_sync(symbol: str) -> Optional[Dict]:
 #  CRYPTO QUOTE (BTC, ETH, SOL, etc.)
 # ──────────────────────────────────────────────
 
-def _av_crypto(symbol: str, market: str = "USD") -> Optional[Dict]:
+def _av_crypto(symbol: str, market: str = "USD") -> Optional[dict]:
     """Fetch crypto exchange rate from Alpha Vantage."""
     try:
         r = requests.get(AV_BASE, params={
@@ -386,7 +386,7 @@ def _av_crypto(symbol: str, market: str = "USD") -> Optional[Dict]:
         return None
 
 
-def _yf_crypto(symbol: str) -> Optional[Dict]:
+def _yf_crypto(symbol: str) -> Optional[dict]:
     """Fetch crypto price from yfinance using {TICKER}-USD mapping."""
     try:
         yf_ticker = f"{symbol.upper()}-USD"
@@ -411,7 +411,7 @@ def _yf_crypto(symbol: str) -> Optional[Dict]:
         return None
 
 
-async def get_crypto_quote(symbol: str) -> Optional[Dict]:
+async def get_crypto_quote(symbol: str) -> Optional[dict]:
     """Smart crypto quote: AV → yfinance → MongoDB cache."""
     cache_key = f"crypto_{symbol.upper()}"
 
@@ -449,7 +449,7 @@ async def get_crypto_quote(symbol: str) -> Optional[Dict]:
     return quote
 
 
-def get_crypto_quote_sync(symbol: str) -> Optional[Dict]:
+def get_crypto_quote_sync(symbol: str) -> Optional[dict]:
     """Synchronous crypto quote: AV → yfinance."""
     quote = _av_crypto(symbol)
     if not quote:

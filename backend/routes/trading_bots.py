@@ -2,7 +2,7 @@
 import logging
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional
 from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class CreateBotRequest(BaseModel):
     type: str  # grid, signal, webhook
     name: str = ""
     mode: str = "paper"
-    config: Optional[Dict] = None
+    config: Optional[dict] = None
 
 
 class ToggleBotRequest(BaseModel):

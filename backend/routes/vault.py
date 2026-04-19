@@ -1,7 +1,7 @@
 """Key Vault admin routes — secure management of platform API keys."""
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
-from typing import List
+
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/api/vault")
@@ -21,7 +21,7 @@ class StoreKeyRequest(BaseModel):
 
 
 class BulkStoreRequest(BaseModel):
-    keys: List[StoreKeyRequest]
+    keys: list[StoreKeyRequest]
 
 
 class DeleteKeyRequest(BaseModel):

@@ -17,7 +17,7 @@ Thread Safety:
 import os
 import logging
 import asyncio
-from typing import Dict, List
+
 from dataclasses import dataclass
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -107,9 +107,9 @@ class CrewEngine:
             session_suffix=session_suffix,
         )
 
-    async def run_crew(self, agents: List[AgentConfig], tasks: List[str],
+    async def run_crew(self, agents: list[AgentConfig], tasks: list[str],
                        synthesizer: AgentConfig, synth_prompt: str,
-                       session_suffix: str = "") -> Dict:
+                       session_suffix: str = "") -> dict:
         """
         Run a sequential crew: each agent gets the accumulated context
         from all prior agents, then a synthesizer combines everything.
@@ -149,9 +149,9 @@ class CrewEngine:
             "synthesis_succeeded": synth_result.success,
         }
 
-    async def run_parallel_crew(self, agents: List[AgentConfig], tasks: List[str],
+    async def run_parallel_crew(self, agents: list[AgentConfig], tasks: list[str],
                                 synthesizer: AgentConfig, synth_prompt: str,
-                                session_suffix: str = "") -> Dict:
+                                session_suffix: str = "") -> dict:
         """
         Run agents in parallel using thread pool, then synthesize.
 

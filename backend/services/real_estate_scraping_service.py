@@ -2,7 +2,7 @@ import logging
 import asyncio
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, Optional
+from typing import Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class RealEstateScrapingService:
         kwargs.setdefault('timeout', 10)
         return await asyncio.to_thread(requests.get, url, **kwargs)
     
-    async def scrape_all_real_estate_data(self) -> Dict:
+    async def scrape_all_real_estate_data(self) -> dict:
         """Aggregate all real estate data"""
         return {
             'housing': await self.scrape_housing_market(),
@@ -30,7 +30,7 @@ class RealEstateScrapingService:
             'trends': await self.analyze_real_estate_trends()
         }
     
-    async def scrape_housing_market(self) -> Dict:
+    async def scrape_housing_market(self) -> dict:
         """Scrape housing market data from multiple sources"""
         housing_data = {
             'national_median': None,
@@ -61,7 +61,7 @@ class RealEstateScrapingService:
         
         return housing_data
     
-    async def _scrape_zillow(self) -> Optional[Dict]:
+    async def _scrape_zillow(self) -> Optional[dict]:
         """Scrape Zillow housing market data"""
         try:
             url = 'https://www.zillow.com/research/data/'
@@ -77,7 +77,7 @@ class RealEstateScrapingService:
             logger.error(f"Zillow scraping error: {str(e)}")
             return None
     
-    async def _scrape_redfin(self) -> Optional[Dict]:
+    async def _scrape_redfin(self) -> Optional[dict]:
         """Scrape Redfin market data"""
         try:
             url = 'https://www.redfin.com/news/data-center/'
@@ -92,7 +92,7 @@ class RealEstateScrapingService:
             logger.error(f"Redfin scraping error: {str(e)}")
             return None
     
-    async def _scrape_realtor(self) -> Optional[Dict]:
+    async def _scrape_realtor(self) -> Optional[dict]:
         """Scrape Realtor.com housing data"""
         try:
             url = 'https://www.realtor.com/research/data/'
@@ -107,7 +107,7 @@ class RealEstateScrapingService:
             logger.error(f"Realtor.com scraping error: {str(e)}")
             return None
     
-    async def scrape_commercial_real_estate(self) -> Dict:
+    async def scrape_commercial_real_estate(self) -> dict:
         """Scrape commercial real estate market data"""
         commercial_data = {
             'office': await self._scrape_office_market(),
@@ -118,7 +118,7 @@ class RealEstateScrapingService:
         
         return commercial_data
     
-    async def _scrape_office_market(self) -> Dict:
+    async def _scrape_office_market(self) -> dict:
         """Scrape office real estate market"""
         try:
             # CoStar and other commercial RE data
@@ -133,7 +133,7 @@ class RealEstateScrapingService:
             logger.error(f"Office market scraping error: {str(e)}")
             return {}
     
-    async def _scrape_retail_market(self) -> Dict:
+    async def _scrape_retail_market(self) -> dict:
         """Scrape retail real estate market"""
         try:
             return {
@@ -146,7 +146,7 @@ class RealEstateScrapingService:
             logger.error(f"Retail market scraping error: {str(e)}")
             return {}
     
-    async def _scrape_industrial_market(self) -> Dict:
+    async def _scrape_industrial_market(self) -> dict:
         """Scrape industrial/warehouse real estate"""
         try:
             return {
@@ -159,7 +159,7 @@ class RealEstateScrapingService:
             logger.error(f"Industrial market scraping error: {str(e)}")
             return {}
     
-    async def _scrape_multifamily_market(self) -> Dict:
+    async def _scrape_multifamily_market(self) -> dict:
         """Scrape multifamily/apartment market"""
         try:
             return {
@@ -172,7 +172,7 @@ class RealEstateScrapingService:
             logger.error(f"Multifamily market scraping error: {str(e)}")
             return {}
     
-    async def scrape_mortgage_rates(self) -> Dict:
+    async def scrape_mortgage_rates(self) -> dict:
         """Scrape current mortgage rates"""
         try:
             url = 'https://www.mortgagenewsdaily.com/mortgage-rates'
@@ -199,7 +199,7 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
     
-    async def scrape_reit_market(self) -> Dict:
+    async def scrape_reit_market(self) -> dict:
         """Scrape REIT (Real Estate Investment Trust) market data"""
         try:
             # Get REIT indices and performance
@@ -219,7 +219,7 @@ class RealEstateScrapingService:
             logger.error(f"REIT market scraping error: {str(e)}")
             return {}
     
-    async def analyze_real_estate_trends(self) -> Dict:
+    async def analyze_real_estate_trends(self) -> dict:
         """Analyze overall real estate trends and implications"""
         try:
             trends = {
@@ -240,7 +240,7 @@ class RealEstateScrapingService:
             logger.error(f"Trend analysis error: {str(e)}")
             return {}
     
-    def _aggregate_housing_metrics(self, housing_data: Dict) -> Dict:
+    def _aggregate_housing_metrics(self, housing_data: dict) -> dict:
         """Aggregate housing metrics from multiple sources"""
         try:
             sources = housing_data.get('sources', [])

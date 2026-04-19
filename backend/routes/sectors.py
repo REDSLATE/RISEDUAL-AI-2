@@ -1,7 +1,7 @@
 """Sector rotation heatmap route."""
 import os
 import logging
-from typing import Any, Dict
+from typing import Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 
@@ -15,7 +15,7 @@ def set_db(database):
 
 
 @router.get("/heatmap")
-async def get_sector_heatmap_endpoint(force: bool = Query(False)) -> Dict[str, Any]:
+async def get_sector_heatmap_endpoint(force: bool = Query(False)) -> dict[str, Any]:
     """Return sector rotation heatmap data with multi-period returns (cached 2 min).
     Pass ?force=true to bypass cache and fetch fresh data."""
     try:
@@ -31,7 +31,7 @@ async def get_sector_heatmap_endpoint(force: bool = Query(False)) -> Dict[str, A
 
 
 @router.get("/sentiment")
-async def get_sector_sentiment_endpoint(force: bool = Query(False)) -> Dict[str, Any]:
+async def get_sector_sentiment_endpoint(force: bool = Query(False)) -> dict[str, Any]:
     """AI-powered sector sentiment analysis using multi-agent crew.
     Cached 15 min. Pass ?force=true to regenerate."""
     try:
@@ -79,7 +79,7 @@ async def get_sector_sentiment_endpoint(force: bool = Query(False)) -> Dict[str,
 
 
 @router.get("/sentiment/history")
-async def get_sentiment_history(limit: int = Query(20, ge=1, le=100)) -> Dict[str, Any]:
+async def get_sentiment_history(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
     """Return historical sentiment snapshots for trend analysis."""
     if _db is None:
         raise HTTPException(status_code=500, detail="Database not available")

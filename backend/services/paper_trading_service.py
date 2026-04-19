@@ -1,7 +1,7 @@
 """Paper Trading Service — simulated portfolio with real market prices."""
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Optional
 from services.price_provider import get_quote, get_crypto_quote
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ async def _get_live_price(symbol: str) -> Optional[float]:
     return None
 
 
-async def get_or_create_portfolio(user_id: str) -> Dict:
+async def get_or_create_portfolio(user_id: str) -> dict:
     """Get existing portfolio or create a new one with starting cash."""
     doc = await _db.paper_portfolios.find_one({"user_id": user_id}, {"_id": 0})
     if doc:
@@ -47,7 +47,7 @@ async def get_or_create_portfolio(user_id: str) -> Dict:
     return {k: v for k, v in new_portfolio.items() if k != "_id"}
 
 
-async def get_portfolio_snapshot(user_id: str) -> Dict:
+async def get_portfolio_snapshot(user_id: str) -> dict:
     """Get portfolio with live market values and P&L."""
     portfolio = await get_or_create_portfolio(user_id)
     positions_enriched = []
@@ -99,7 +99,7 @@ async def get_portfolio_snapshot(user_id: str) -> Dict:
     }
 
 
-async def execute_trade(user_id: str, symbol: str, side: str, qty: float) -> Dict:
+async def execute_trade(user_id: str, symbol: str, side: str, qty: float) -> dict:
     """Execute a paper trade (BUY or SELL)."""
     symbol = symbol.upper()
     side = side.upper()
@@ -176,7 +176,7 @@ async def execute_trade(user_id: str, symbol: str, side: str, qty: float) -> Dic
     }
 
 
-async def get_trade_history(user_id: str, symbol: Optional[str] = None, limit: int = 50) -> List[Dict]:
+async def get_trade_history(user_id: str, symbol: Optional[str] = None, limit: int = 50) -> list[dict]:
     """Get trade history for a user."""
     query = {"user_id": user_id}
     if symbol:
@@ -185,7 +185,7 @@ async def get_trade_history(user_id: str, symbol: Optional[str] = None, limit: i
     return await cursor.to_list(length=limit)
 
 
-async def reset_portfolio(user_id: str) -> Dict:
+async def reset_portfolio(user_id: str) -> dict:
     """Reset portfolio to starting state."""
     now = datetime.now(timezone.utc).isoformat()
     await _db.paper_portfolios.update_one(
@@ -234,7 +234,7 @@ async def get_portfolio_context(user_id: str) -> str:
 async def place_paper_order_intent(
     user_id: str, symbol: str, side: str, qty: float,
     order_type: str = "MARKET", limit_price: float = None
-) -> Dict:
+) -> dict:
     """Create a pending order proposal. Does NOT execute — requires confirmation."""
     symbol = symbol.upper()
     side = side.upper()
@@ -290,7 +290,7 @@ async def place_paper_order_intent(
     }
 
 
-async def confirm_paper_order(user_id: str, proposal_id: str) -> Dict:
+async def confirm_paper_order(user_id: str, proposal_id: str) -> dict:
     """Confirm and execute a pending paper order proposal."""
     proposal = await _db.pending_orders.find_one(
         {"proposal_id": proposal_id, "user_id": user_id},
@@ -321,7 +321,7 @@ async def confirm_paper_order(user_id: str, proposal_id: str) -> Dict:
     }
 
 
-async def cancel_paper_order(user_id: str, proposal_id: str) -> Dict:
+async def cancel_paper_order(user_id: str, proposal_id: str) -> dict:
     """Cancel a pending paper order proposal."""
     result = await _db.pending_orders.update_one(
         {"proposal_id": proposal_id, "user_id": user_id, "status": "PENDING_CONFIRMATION"},
@@ -332,7 +332,7 @@ async def cancel_paper_order(user_id: str, proposal_id: str) -> Dict:
     return {"message": f"Proposal {proposal_id} cancelled.", "status": "CANCELLED"}
 
 
-async def get_pending_orders(user_id: str) -> List[Dict]:
+async def get_pending_orders(user_id: str) -> list[dict]:
     """Get all pending order proposals for a user."""
     cursor = _db.pending_orders.find(
         {"user_id": user_id, "status": "PENDING_CONFIRMATION"},

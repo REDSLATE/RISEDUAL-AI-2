@@ -13,7 +13,8 @@ Usage:
 """
 import json
 import logging
-from typing import AsyncGenerator, List, Optional
+from typing import Optional
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -33,10 +34,10 @@ class AgentState:
     __slots__ = ("messages", "steps", "tools_used", "trace", "provider_meta")
 
     def __init__(self):
-        self.messages: List[dict] = []
+        self.messages: list[dict] = []
         self.steps: int = 0
-        self.tools_used: List[str] = []
-        self.trace: List[dict] = []
+        self.tools_used: list[str] = []
+        self.trace: list[dict] = []
         self.provider_meta: Optional[dict] = None
 
 

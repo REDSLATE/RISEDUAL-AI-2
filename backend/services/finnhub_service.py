@@ -2,7 +2,7 @@
 import os
 import httpx
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class FinnhubService:
 
     # ── Congressional Trades ─────────────────────────────────────────────
 
-    async def get_congressional_trades(self, symbol: Optional[str] = None) -> List[Dict]:
+    async def get_congressional_trades(self, symbol: Optional[str] = None) -> list[dict]:
         """Fetch recent congressional stock trades from Finnhub.
         Note: This endpoint requires a premium Finnhub plan. Returns empty on 403."""
         params = {}
@@ -69,7 +69,7 @@ class FinnhubService:
 
     # ── Insider Transactions ─────────────────────────────────────────────
 
-    async def get_insider_transactions(self, symbol: str) -> List[Dict]:
+    async def get_insider_transactions(self, symbol: str) -> list[dict]:
         """Fetch insider transactions (SEC Form 4) for a given symbol."""
         data = await self._get("/stock/insider-transactions", {"symbol": symbol.upper()})
         txns = data.get("data", []) if isinstance(data, dict) else []
@@ -92,7 +92,7 @@ class FinnhubService:
 
     # ── Earnings Calendar ────────────────────────────────────────────────
 
-    async def get_earnings_calendar(self, days_ahead: int = 14) -> List[Dict]:
+    async def get_earnings_calendar(self, days_ahead: int = 14) -> list[dict]:
         """Fetch upcoming earnings announcements."""
         today = datetime.now().strftime("%Y-%m-%d")
         future = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
@@ -116,7 +116,7 @@ class FinnhubService:
 
     # ── Company News ─────────────────────────────────────────────────────
 
-    async def get_company_news(self, symbol: str) -> List[Dict]:
+    async def get_company_news(self, symbol: str) -> list[dict]:
         """Fetch recent news for a specific company."""
         today = datetime.now().strftime("%Y-%m-%d")
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -139,7 +139,7 @@ class FinnhubService:
 
     # ── Aggregate for Predictions ────────────────────────────────────────
 
-    async def get_all_data_for_predictions(self, symbol: Optional[str] = None) -> Dict:
+    async def get_all_data_for_predictions(self, symbol: Optional[str] = None) -> dict:
         """Fetch all Finnhub data sources in one call for the prediction engine."""
         congressional = await self.get_congressional_trades(symbol)
         earnings = await self.get_earnings_calendar()

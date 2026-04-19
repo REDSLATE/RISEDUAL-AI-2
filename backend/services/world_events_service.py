@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import requests
-from typing import List, Dict
+
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
@@ -40,7 +40,7 @@ class WorldEventsService:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
-    def _detect_sectors(self, text: str) -> List[Dict]:
+    def _detect_sectors(self, text: str) -> list[dict]:
         text_lower = text.lower()
         affected = []
         for sector, keywords in SECTOR_KEYWORDS.items():
@@ -55,7 +55,7 @@ class WorldEventsService:
                 })
         return sorted(affected, key=lambda x: x['impact_score'], reverse=True)
 
-    def _scrape_rss_sync(self, url: str, source_name: str) -> List[Dict]:
+    def _scrape_rss_sync(self, url: str, source_name: str) -> list[dict]:
         articles = []
         try:
             resp = requests.get(url, headers=self.headers, timeout=10)
@@ -84,7 +84,7 @@ class WorldEventsService:
             logger.error(f"Error scraping {source_name} RSS: {str(e)}")
         return articles
 
-    async def scrape_world_events(self) -> Dict:
+    async def scrape_world_events(self) -> dict:
         rss_sources = [
             ('https://feeds.reuters.com/reuters/worldNews', 'Reuters World'),
             ('https://feeds.reuters.com/reuters/businessNews', 'Reuters Business'),

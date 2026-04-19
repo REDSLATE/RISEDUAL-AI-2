@@ -15,7 +15,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -54,7 +54,7 @@ def _clean_text(raw: str) -> str:
     return text
 
 
-def _scrape_headlines(url: str, selector: str) -> List[str]:
+def _scrape_headlines(url: str, selector: str) -> list[str]:
     """Scrape headlines from a URL using a CSS selector."""
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
@@ -74,11 +74,11 @@ def _scrape_headlines(url: str, selector: str) -> List[str]:
 
 
 class HeadlinesPipeline:
-    def __init__(self, db, sources: Optional[List[tuple]] = None):
+    def __init__(self, db, sources: Optional[list[tuple]] = None):
         self.db = db
         self.sources = sources or DEFAULT_SOURCES
 
-    async def run_cycle(self) -> Dict:
+    async def run_cycle(self) -> dict:
         """Execute one full scrape → clean → store cycle across all sources."""
         if self.db is None:
             return {"error": "No database connection"}
@@ -137,7 +137,7 @@ class HeadlinesPipeline:
             "timestamp": now.isoformat(),
         }
 
-    async def get_recent(self, hours: int = 24, limit: int = 200, source: Optional[str] = None) -> List[Dict]:
+    async def get_recent(self, hours: int = 24, limit: int = 200, source: Optional[str] = None) -> list[dict]:
         """Fetch recent cleaned headlines from the store."""
         if self.db is None:
             return []
@@ -161,7 +161,7 @@ class HeadlinesPipeline:
             lines.append(f"[{h.get('source', '?')}] {h.get('clean_text', '')}")
         return "\n".join(lines)
 
-    async def stats(self) -> Dict:
+    async def stats(self) -> dict:
         """Get pipeline statistics."""
         if self.db is None:
             return {"total": 0, "sources": {}}

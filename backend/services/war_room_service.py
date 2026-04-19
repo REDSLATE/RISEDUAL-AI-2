@@ -4,7 +4,7 @@ import logging
 import asyncio
 import requests
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 from services.price_provider import get_overview_sync, get_quote_sync
 
@@ -19,7 +19,7 @@ def _fh_key():
     return os.environ.get("FINNHUB_API_KEY", "")
 
 
-def fetch_company_overview(symbol: str) -> Dict:
+def fetch_company_overview(symbol: str) -> dict:
     """Fetch company fundamentals via smart price provider (AV → yfinance)."""
     try:
         data = get_overview_sync(symbol)
@@ -72,7 +72,7 @@ def fetch_company_overview(symbol: str) -> Dict:
         return {}
 
 
-def fetch_earnings_surprises(symbol: str) -> List[Dict]:
+def fetch_earnings_surprises(symbol: str) -> list[dict]:
     """Fetch quarterly earnings history to detect surprise patterns."""
     try:
         r = requests.get("https://www.alphavantage.co/query", params={
@@ -114,7 +114,7 @@ def fetch_earnings_surprises(symbol: str) -> List[Dict]:
         return {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
 
 
-def fetch_insider_trades(symbol: str) -> Dict:
+def fetch_insider_trades(symbol: str) -> dict:
     """Fetch insider transactions from Finnhub."""
     try:
         r = requests.get("https://finnhub.io/api/v1/stock/insider-transactions", params={
@@ -160,7 +160,7 @@ def fetch_insider_trades(symbol: str) -> Dict:
         return {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
 
 
-async def generate_war_room(symbol: str, api_key: str) -> Dict:
+async def generate_war_room(symbol: str, api_key: str) -> dict:
     """Generate a complete War Room analysis using multi-agent AI crew."""
     from services.crew_definitions import run_war_room_crew
 

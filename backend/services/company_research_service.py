@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import json
-from typing import Dict, Optional
+from typing import Optional
 from services.market_data_service import MarketDataService
 from services.financial_scraping_service import FinancialScrapingService
 from services.ai_service import AIService
@@ -15,7 +15,7 @@ class CompanyResearchService:
         self.scraper = FinancialScrapingService()
         self.ai = AIService()
 
-    async def get_company_overview(self, symbol: str) -> Optional[Dict]:
+    async def get_company_overview(self, symbol: str) -> Optional[dict]:
         """Fetch company fundamentals via smart price provider (AV -> yfinance)."""
         try:
             data = await asyncio.to_thread(get_overview_sync, symbol)
@@ -54,7 +54,7 @@ class CompanyResearchService:
             logger.error(f"Error fetching company overview for {symbol}: {str(e)}")
             return None
 
-    async def research_company(self, symbol: str, session_id: str) -> Dict:
+    async def research_company(self, symbol: str, session_id: str) -> dict:
         """Full Perplexity-style company research with AI synthesis."""
         overview = await self.get_company_overview(symbol)
         quote = await self.market_data.get_quote(symbol)

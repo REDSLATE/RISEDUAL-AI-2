@@ -11,7 +11,7 @@ Flow:
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 from uuid import uuid4
 
 from services.price_provider import get_quote_sync
@@ -255,7 +255,7 @@ async def verify_pending_predictions(db):
         )
 
 
-async def get_accuracy_stats(db, feature: Optional[str] = None) -> Dict:
+async def get_accuracy_stats(db, feature: Optional[str] = None) -> dict:
     """Calculate rolling accuracy stats. Optionally filter by feature."""
     match = {}
     if feature:
@@ -286,7 +286,7 @@ async def get_accuracy_stats(db, feature: Optional[str] = None) -> Dict:
     }
 
 
-async def get_all_feature_stats(db) -> Dict:
+async def get_all_feature_stats(db) -> dict:
     """Get accuracy stats for all features + overall."""
     features = ["war_room", "hypothesis", "market_prediction"]
     stats = {}
@@ -297,7 +297,7 @@ async def get_all_feature_stats(db) -> Dict:
 
 
 async def get_recent_predictions(db, feature: Optional[str] = None,
-                                  limit: int = 20) -> List[Dict]:
+                                  limit: int = 20) -> list[dict]:
     """Get recent predictions with verification status."""
     match = {}
     if feature:

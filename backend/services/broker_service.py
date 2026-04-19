@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Optional, List, Dict
+from typing import Optional
 from dataclasses import dataclass
 import requests
 
@@ -36,7 +36,7 @@ class AlpacaTradingService:
                 "APCA-API-SECRET-KEY": api_secret,
             }
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/v2/account", headers=self.headers, timeout=10)
             r.raise_for_status()
@@ -45,7 +45,7 @@ class AlpacaTradingService:
             logger.error(f"Alpaca get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/v2/positions", headers=self.headers, timeout=10)
             r.raise_for_status()
@@ -56,12 +56,12 @@ class AlpacaTradingService:
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
                     time_in_force: str = "day", limit_price: Optional[float] = None,
-                    stop_price: Optional[float] = None) -> Optional[Dict]:
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         order = OrderParams(symbol=symbol, qty=qty, side=side, order_type=order_type,
                             time_in_force=time_in_force, limit_price=limit_price, stop_price=stop_price)
         return self._execute_order(order)
 
-    def _execute_order(self, o: OrderParams) -> Optional[Dict]:
+    def _execute_order(self, o: OrderParams) -> Optional[dict]:
         try:
             data = {
                 "symbol": o.symbol.upper(),
@@ -81,7 +81,7 @@ class AlpacaTradingService:
             logger.error(f"Alpaca place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/v2/orders", headers=self.headers,
                              params={"status": status, "limit": limit}, timeout=10)
@@ -100,7 +100,7 @@ class AlpacaTradingService:
             logger.error(f"Alpaca cancel_order error: {e}")
             return False
 
-    def get_order(self, order_id: str) -> Optional[Dict]:
+    def get_order(self, order_id: str) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/v2/orders/{order_id}", headers=self.headers, timeout=10)
             r.raise_for_status()
@@ -122,7 +122,7 @@ class SchwabTradingService:
             "Content-Type": "application/json",
         }
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/accounts", headers=self.headers, timeout=10)
             r.raise_for_status()
@@ -141,7 +141,7 @@ class SchwabTradingService:
             logger.error(f"Schwab get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/accounts?fields=positions", headers=self.headers, timeout=10)
             r.raise_for_status()
@@ -166,7 +166,7 @@ class SchwabTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             account = self.get_account()
             acc_num = account.get("account_number", "") if account else ""
@@ -191,7 +191,7 @@ class SchwabTradingService:
             logger.error(f"Schwab place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             account = self.get_account()
             acc_num = account.get("account_number", "") if account else ""
@@ -227,7 +227,7 @@ class IBKRTradingService:
         # IBKR Client Portal uses self-signed certs; load CA bundle if available
         self._verify = os.environ.get("IBKR_CA_BUNDLE", True)
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/portfolio/accounts",
                              headers=self.headers, verify=self._verify, timeout=10)
@@ -247,7 +247,7 @@ class IBKRTradingService:
             logger.error(f"IBKR get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/portfolio/{self.account_id}/positions/0",
                              headers=self.headers, verify=self._verify, timeout=10)
@@ -270,7 +270,7 @@ class IBKRTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             data = {
                 "orders": [{
@@ -293,7 +293,7 @@ class IBKRTradingService:
             logger.error(f"IBKR place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             r = requests.get(f"{self.gateway_url}/v1/api/iserver/account/orders",
                              headers=self.headers, verify=self._verify, timeout=10)
@@ -327,7 +327,7 @@ class MooMooTradingService:
             "Content-Type": "application/json",
         }
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/v1/account/list",
                              headers=self.headers, timeout=10)
@@ -348,7 +348,7 @@ class MooMooTradingService:
             logger.error(f"MooMoo get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/v1/account/{self.account_id}/positions",
                              headers=self.headers, timeout=10)
@@ -371,7 +371,7 @@ class MooMooTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             data = {
                 "accountId": self.account_id,
@@ -392,7 +392,7 @@ class MooMooTradingService:
             logger.error(f"MooMoo place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/v1/account/{self.account_id}/orders",
                              headers=self.headers, params={"limit": limit}, timeout=10)
@@ -446,7 +446,7 @@ class WebullTradingService:
             logger.error(f"Webull get_account_id error: {e}")
         return self._account_id or ""
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             acc_id = self._get_account_id()
             r = requests.get(f"{self.trade_url}/v5/home/{acc_id}",
@@ -465,7 +465,7 @@ class WebullTradingService:
             logger.error(f"Webull get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             acc_id = self._get_account_id()
             r = requests.get(f"{self.trade_url}/v5/home/{acc_id}",
@@ -489,7 +489,7 @@ class WebullTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             acc_id = self._get_account_id()
             data = {
@@ -512,7 +512,7 @@ class WebullTradingService:
             logger.error(f"Webull place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             acc_id = self._get_account_id()
             r = requests.get(f"{self.trade_url}/v2/option/list",
@@ -565,7 +565,7 @@ class RobinhoodTradingService:
             logger.error(f"Robinhood get_account_url error: {e}")
             return ""
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/accounts/",
                              headers=self.headers, timeout=10)
@@ -589,7 +589,7 @@ class RobinhoodTradingService:
             logger.error(f"Robinhood get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/positions/?nonzero=true",
                              headers=self.headers, timeout=10)
@@ -625,7 +625,7 @@ class RobinhoodTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             # Resolve instrument URL
             instr_r = requests.get(f"{self.base_url}/instruments/?symbol={symbol.upper()}",
@@ -659,7 +659,7 @@ class RobinhoodTradingService:
             logger.error(f"Robinhood place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/orders/",
                              headers=self.headers, params={"page_size": limit}, timeout=10)
@@ -692,7 +692,7 @@ class PublicTradingService:
             "Content-Type": "application/json",
         }
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             r = requests.get(f"{self.base_url}/trading/account",
                              headers=self.headers, timeout=10)
@@ -710,7 +710,7 @@ class PublicTradingService:
             logger.error(f"Public get_account error: {e}")
             return None
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/trading/account",
                              headers=self.headers, timeout=10)
@@ -733,7 +733,7 @@ class PublicTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             acc_id = self.account_id
             data = {
@@ -756,7 +756,7 @@ class PublicTradingService:
             logger.error(f"Public place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             r = requests.get(f"{self.base_url}/trading/account",
                              headers=self.headers, timeout=10)
@@ -785,7 +785,7 @@ class KrakenTradingService:
         self.api_secret = api_secret
         self.base_url = "https://api.kraken.com"
 
-    def _sign(self, url_path: str, data: Dict) -> Dict:
+    def _sign(self, url_path: str, data: dict) -> dict:
         import hashlib
         import hmac
         import base64
@@ -802,7 +802,7 @@ class KrakenTradingService:
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
-    def _private(self, endpoint: str, data: Optional[Dict] = None) -> Dict:
+    def _private(self, endpoint: str, data: Optional[dict] = None) -> dict:
         data = data or {}
         path = f"/0/private/{endpoint}"
         headers = self._sign(path, data)
@@ -813,7 +813,7 @@ class KrakenTradingService:
             logger.warning(f"Kraken API error on {endpoint}: {result['error']}")
         return result.get("result", {})
 
-    def get_account(self) -> Optional[Dict]:
+    def get_account(self) -> Optional[dict]:
         try:
             balance = self._private("Balance")
             trade_balance = self._private("TradeBalance")
@@ -834,7 +834,7 @@ class KrakenTradingService:
             logger.error(f"Kraken get_account error: {e}")
             return None
 
-    def get_balances(self) -> Dict:
+    def get_balances(self) -> dict:
         """Get all non-zero crypto balances."""
         try:
             balance = self._private("Balance")
@@ -843,7 +843,7 @@ class KrakenTradingService:
             logger.error(f"Kraken get_balances error: {e}")
             return {}
 
-    def get_trade_history(self, limit: int = 50) -> List[Dict]:
+    def get_trade_history(self, limit: int = 50) -> list[dict]:
         """Get recent closed trades."""
         try:
             result = self._private("TradesHistory")
@@ -864,7 +864,7 @@ class KrakenTradingService:
             logger.error(f"Kraken get_trade_history error: {e}")
             return []
 
-    def get_positions(self) -> List[Dict]:
+    def get_positions(self) -> list[dict]:
         try:
             result = self._private("OpenPositions")
             positions = []
@@ -885,7 +885,7 @@ class KrakenTradingService:
             return []
 
     def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[Dict]:
+                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
         try:
             data = {
                 "pair": symbol.upper(),
@@ -904,7 +904,7 @@ class KrakenTradingService:
             logger.error(f"Kraken place_order error: {e}")
             return None
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> List[Dict]:
+    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             result = self._private("OpenOrders")
             orders = []
@@ -1010,7 +1010,7 @@ class BrokerService:
     }
 
     @staticmethod
-    def get_broker_client(broker_id: str, credentials: Dict):
+    def get_broker_client(broker_id: str, credentials: dict):
         if broker_id == "alpaca":
             return AlpacaTradingService(
                 api_key=credentials.get("api_key", ""),

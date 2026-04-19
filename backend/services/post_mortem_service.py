@@ -14,7 +14,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict
+
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def _fetch_market_news() -> list:
         return []
 
 
-async def _llm_classify(prompt: str) -> Dict:
+async def _llm_classify(prompt: str) -> dict:
     """Send the post-mortem prompt to the LLM and parse the response."""
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     if not api_key:
@@ -121,10 +121,10 @@ async def _llm_classify(prompt: str) -> Dict:
 
 
 async def run_post_mortem(
-    prediction: Dict,
+    prediction: dict,
     price_now: float,
     heuristic_code: str = "UNKNOWN",
-) -> Dict:
+) -> dict:
     """Run an AI-powered post-mortem on a failed prediction.
 
     Args:
@@ -204,8 +204,8 @@ async def run_post_mortem(
 
 
 async def run_and_update_post_mortem(
-    db, prediction: Dict, price_now: float, heuristic_code: str = "UNKNOWN"
-) -> Dict:
+    db, prediction: dict, price_now: float, heuristic_code: str = "UNKNOWN"
+) -> dict:
     """Run AI post-mortem AND update MongoDB + ChromaDB with the result.
 
     This is the main entry point — call this from verify_pending_predictions().

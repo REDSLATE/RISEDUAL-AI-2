@@ -9,7 +9,7 @@ Smart orders are stored in MongoDB and monitored by a background price checker.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ SIDES = {"buy", "sell"}
 MODES = {"paper", "live", "simulate"}
 
 
-async def create_smart_order(user_id: str, order: Dict) -> Dict:
+async def create_smart_order(user_id: str, order: dict) -> dict:
     """Create a smart order with advanced features.
     
     Order fields:
@@ -165,7 +165,7 @@ async def create_smart_order(user_id: str, order: Dict) -> Dict:
 
 def _build_ladder_legs(side: str, total_qty: float, current_price: float,
                        range_low: float, range_high: float, levels: int,
-                       distribution: str = "equal") -> List[Dict]:
+                       distribution: str = "equal") -> list[dict]:
     """Build ladder entry legs spread across a price range."""
     levels = max(2, min(levels, 10))
     prices = []
@@ -200,7 +200,7 @@ def _build_ladder_legs(side: str, total_qty: float, current_price: float,
     return legs
 
 
-def _build_simulation_preview(symbol, side, qty, current_price, legs, tp_chain, stop_loss, break_even) -> Dict:
+def _build_simulation_preview(symbol, side, qty, current_price, legs, tp_chain, stop_loss, break_even) -> dict:
     """Preview a smart order without executing."""
     entry_cost = sum(leg["price"] * leg["qty"] for leg in legs)
     avg_entry = entry_cost / qty if qty > 0 else current_price
@@ -244,7 +244,7 @@ def _build_simulation_preview(symbol, side, qty, current_price, legs, tp_chain, 
     }
 
 
-async def _execute_fill(order_doc: Dict, price: float, qty: float, fill_type: str) -> Dict:
+async def _execute_fill(order_doc: dict, price: float, qty: float, fill_type: str) -> dict:
     """Execute a fill against paper trading or live broker."""
     mode = order_doc["mode"]
     user_id = order_doc["user_id"]
@@ -283,7 +283,7 @@ async def _execute_fill(order_doc: Dict, price: float, qty: float, fill_type: st
     return {"error": "Unknown mode"}
 
 
-async def get_smart_orders(user_id: str, status: Optional[str] = None, limit: int = 50) -> List[Dict]:
+async def get_smart_orders(user_id: str, status: Optional[str] = None, limit: int = 50) -> list[dict]:
     """Get smart orders for a user."""
     query = {"user_id": user_id}
     if status:
@@ -292,7 +292,7 @@ async def get_smart_orders(user_id: str, status: Optional[str] = None, limit: in
     return await cursor.to_list(length=limit)
 
 
-async def cancel_smart_order(user_id: str, order_id: str) -> Dict:
+async def cancel_smart_order(user_id: str, order_id: str) -> dict:
     """Cancel a pending/active smart order."""
     from bson import ObjectId
     result = await _db.smart_orders.update_one(

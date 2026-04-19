@@ -6,7 +6,7 @@ Reuses existing technical indicator functions from ai_intelligence_service.
 import logging
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 from services.ai_intelligence_service import (
     _fetch_daily, _compute_technicals, _calc_rsi, _calc_bollinger, _ema
@@ -122,7 +122,7 @@ def _calc_prev_macd(closes):
     return macd_line, signal
 
 
-def _check_strategy(strategy_id: str, closes: np.ndarray, volumes: np.ndarray, technicals: Dict) -> Optional[Dict]:
+def _check_strategy(strategy_id: str, closes: np.ndarray, volumes: np.ndarray, technicals: dict) -> Optional[dict]:
     """Check if a single strategy triggers for given price data. Returns match details or None."""
     current = float(closes[-1])
     rsi = technicals.get("rsi", 50)
@@ -198,7 +198,7 @@ def _check_strategy(strategy_id: str, closes: np.ndarray, volumes: np.ndarray, t
     return None
 
 
-async def scan_symbols(symbols: List[str], strategies: Optional[List[str]] = None) -> Dict:
+async def scan_symbols(symbols: list[str], strategies: Optional[list[str]] = None) -> dict:
     """Scan a list of symbols against selected strategies. Returns matches grouped by strategy."""
     active_strategies = strategies or list(STRATEGIES.keys())
     results = {sid: {"info": STRATEGIES[sid], "matches": []} for sid in active_strategies if sid in STRATEGIES}
@@ -248,7 +248,7 @@ async def scan_symbols(symbols: List[str], strategies: Optional[List[str]] = Non
     }
 
 
-async def get_user_scan_symbols(user_id: str) -> List[str]:
+async def get_user_scan_symbols(user_id: str) -> list[str]:
     """Get symbols to scan: user watchlist + popular tickers."""
     symbols = set(POPULAR_TICKERS)
     if _db is not None:
@@ -309,7 +309,7 @@ OPERATORS = {
 }
 
 
-def _compute_extended_indicators(prices: List[Dict]) -> Dict:
+def _compute_extended_indicators(prices: list[dict]) -> dict:
     """Compute all available indicators for the custom rule engine."""
     base = _compute_technicals(prices)
     if not base:
@@ -376,7 +376,7 @@ def _compute_extended_indicators(prices: List[Dict]) -> Dict:
     return indicators
 
 
-def _evaluate_condition(indicator_values: Dict, condition: Dict) -> bool:
+def _evaluate_condition(indicator_values: dict, condition: dict) -> bool:
     """Evaluate a single condition against indicator values."""
     ind_id = condition.get("indicator")
     op_id = condition.get("operator")
@@ -400,7 +400,7 @@ def _evaluate_condition(indicator_values: Dict, condition: Dict) -> bool:
         return False
 
 
-def _evaluate_rule_group(indicator_values: Dict, group: Dict) -> bool:
+def _evaluate_rule_group(indicator_values: dict, group: dict) -> bool:
     """Evaluate a group of conditions with AND/OR logic."""
     logic = group.get("logic", "AND").upper()
     conditions = group.get("conditions", [])
@@ -417,7 +417,7 @@ def _evaluate_rule_group(indicator_values: Dict, group: Dict) -> bool:
     return all(results) if logic == "AND" else any(results)
 
 
-async def evaluate_custom_rule(symbols: List[str], rule: Dict) -> Dict:
+async def evaluate_custom_rule(symbols: list[str], rule: dict) -> dict:
     """Evaluate a custom rule against a list of symbols."""
     matches = []
     scanned = 0
@@ -455,7 +455,7 @@ async def evaluate_custom_rule(symbols: List[str], rule: Dict) -> Dict:
     }
 
 
-def _extract_rule_indicators(rule: Dict) -> set:
+def _extract_rule_indicators(rule: dict) -> set:
     """Extract all indicator IDs referenced in a rule for the response."""
     ids = set()
     for cond in rule.get("conditions", []):
@@ -466,7 +466,7 @@ def _extract_rule_indicators(rule: Dict) -> set:
     return ids
 
 
-async def save_custom_rule(user_id: str, rule_data: Dict) -> Dict:
+async def save_custom_rule(user_id: str, rule_data: dict) -> dict:
     """Save a custom scanning rule for a user."""
     if _db is None:
         return {"error": "DB not available"}
@@ -486,7 +486,7 @@ async def save_custom_rule(user_id: str, rule_data: Dict) -> Dict:
     return doc
 
 
-async def get_user_rules(user_id: str) -> List[Dict]:
+async def get_user_rules(user_id: str) -> list[dict]:
     """Get all custom rules for a user."""
     if _db is None:
         return []
@@ -494,7 +494,7 @@ async def get_user_rules(user_id: str) -> List[Dict]:
     return await cursor.to_list(length=50)
 
 
-async def delete_custom_rule(user_id: str, rule_id: str) -> Dict:
+async def delete_custom_rule(user_id: str, rule_id: str) -> dict:
     """Delete a custom rule."""
     if _db is None:
         return {"error": "DB not available"}

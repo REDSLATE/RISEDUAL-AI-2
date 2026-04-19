@@ -1,5 +1,5 @@
 """Market data routes: scraping endpoints, macro data, predictions."""
-from typing import Any, Dict, List
+from typing import Any
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 import os
 import uuid
@@ -163,7 +163,7 @@ async def ensure_prediction_refresh():
 
 # --- World Events & Macro ---
 @router.get("/world-events")
-async def get_world_events() -> Dict[str, Any]:
+async def get_world_events() -> dict[str, Any]:
     try:
         from services.cache import cache
         from services.world_events_service import WorldEventsService
@@ -178,7 +178,7 @@ async def get_world_events() -> Dict[str, Any]:
 
 
 @router.get("/foreign-markets")
-async def get_foreign_markets() -> Dict[str, Any]:
+async def get_foreign_markets() -> dict[str, Any]:
     try:
         from services.cache import cache
         from services.foreign_markets_service import ForeignMarketsService
@@ -193,7 +193,7 @@ async def get_foreign_markets() -> Dict[str, Any]:
 
 
 @router.get("/gov-filings")
-async def get_gov_filings() -> Dict[str, Any]:
+async def get_gov_filings() -> dict[str, Any]:
     try:
         from services.cache import cache
         from services.gov_filings_service import GovFilingsService
@@ -211,7 +211,7 @@ async def get_gov_filings() -> Dict[str, Any]:
 
 # --- Lobbying Data ---
 @router.get("/lobbying")
-async def get_lobbying_summary() -> Dict[str, Any]:
+async def get_lobbying_summary() -> dict[str, Any]:
     """Get lobbying data summary with top spenders and recent filings."""
     try:
         from services.lobbying_service import LobbyingService
@@ -222,7 +222,7 @@ async def get_lobbying_summary() -> Dict[str, Any]:
 
 
 @router.get("/lobbying/ticker/{ticker}")
-async def get_lobbying_by_ticker(ticker: str) -> Dict[str, Any]:
+async def get_lobbying_by_ticker(ticker: str) -> dict[str, Any]:
     """Get lobbying activity for a specific stock ticker."""
     try:
         from services.lobbying_service import LobbyingService
@@ -234,7 +234,7 @@ async def get_lobbying_by_ticker(ticker: str) -> Dict[str, Any]:
 
 
 @router.get("/lobbying/top-spenders")
-async def get_top_lobby_spenders() -> Dict[str, Any]:
+async def get_top_lobby_spenders() -> dict[str, Any]:
     """Get top corporate lobbying spenders."""
     try:
         from services.lobbying_service import LobbyingService
@@ -247,7 +247,7 @@ async def get_top_lobby_spenders() -> Dict[str, Any]:
 
 # --- Fear & Greed Index ---
 @router.get("/fear-greed")
-async def get_fear_greed() -> Dict[str, Any]:
+async def get_fear_greed() -> dict[str, Any]:
     """Get current Fear & Greed index + historical data."""
     try:
         from services.fear_greed_service import FearGreedService
@@ -259,7 +259,7 @@ async def get_fear_greed() -> Dict[str, Any]:
 
 # --- Scraping Data Endpoints (News, Social, Insider) ---
 @router.get("/market/news")
-async def get_financial_news() -> List[Dict[str, Any]]:
+async def get_financial_news() -> list[dict[str, Any]]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -274,7 +274,7 @@ async def get_financial_news() -> List[Dict[str, Any]]:
 
 
 @router.get("/market/social-sentiment")
-async def get_social_sentiment() -> Dict[str, Any]:
+async def get_social_sentiment() -> dict[str, Any]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -289,7 +289,7 @@ async def get_social_sentiment() -> Dict[str, Any]:
 
 
 @router.get("/market/insider-trades")
-async def get_insider_trades() -> Dict[str, Any]:
+async def get_insider_trades() -> dict[str, Any]:
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
@@ -304,7 +304,7 @@ async def get_insider_trades() -> Dict[str, Any]:
 
 
 @router.get("/market/crypto-data")
-async def get_crypto_market_data() -> Dict[str, Any]:
+async def get_crypto_market_data() -> dict[str, Any]:
     try:
         from services.crypto_scraping_service import CryptoScrapingService
         scraper = CryptoScrapingService()
@@ -319,7 +319,7 @@ async def get_crypto_market_data() -> Dict[str, Any]:
 
 
 @router.get("/market/real-estate")
-async def get_real_estate_data() -> Dict[str, Any]:
+async def get_real_estate_data() -> dict[str, Any]:
     try:
         from services.real_estate_scraping_service import RealEstateScrapingService
         return await RealEstateScrapingService().scrape_all_real_estate_data()
@@ -333,7 +333,7 @@ PREDICTION_TTL_SECONDS = 300
 PREDICTION_MAX_AGE_SECONDS = 900
 
 @router.get("/market/prediction")
-async def get_market_prediction(request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def get_market_prediction(request: Request, background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Cache-first prediction: returns instantly, refreshes in background if stale."""
     from services.auth_helpers import get_optional_user, enforce_credits
 
@@ -471,7 +471,7 @@ TICKER_PREDICTION_TTL_SECONDS = 300
 TICKER_PREDICTION_MAX_AGE_SECONDS = 900
 
 @router.get("/market/prediction/{symbol}")
-async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]:
+async def get_ticker_prediction(symbol: str, request: Request) -> dict[str, Any]:
     """Generate an AI market prediction focused on a specific ticker/asset."""
     symbol = symbol.strip().upper()
     if not symbol or len(symbol) > 10:
@@ -563,7 +563,7 @@ async def get_ticker_prediction(symbol: str, request: Request) -> Dict[str, Any]
         raise HTTPException(status_code=500, detail=f"Error generating prediction for {symbol}")
 
 
-async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[str, Any]:
+async def _collect_all_scrape_data(include_real_estate: bool = False) -> dict[str, Any]:
     """Collect all scraped macro data from services."""
     from services.financial_scraping_service import FinancialScrapingService
     from services.crypto_scraping_service import CryptoScrapingService
@@ -609,7 +609,7 @@ async def _collect_all_scrape_data(include_real_estate: bool = False) -> Dict[st
     return result
 
 
-async def _run_prediction_model(data: Dict[str, Any]) -> Dict[str, Any]:
+async def _run_prediction_model(data: dict[str, Any]) -> dict[str, Any]:
     """Run the AI market prediction model on collected data."""
     from services.market_prediction_service import MarketPredictionService
     from services.provider_registry import get_ai_provider_pool
@@ -637,7 +637,7 @@ async def _run_prediction_model(data: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _enrich_prediction_metadata(prediction: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+def _enrich_prediction_metadata(prediction: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     """Add real estate and macro data summaries to prediction response."""
     re = data.get("real_estate", {})
     prediction['real_estate_summary'] = {

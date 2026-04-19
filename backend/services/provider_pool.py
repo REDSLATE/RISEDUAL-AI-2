@@ -5,7 +5,8 @@ from an env var. Tracks provider health and executes with automatic failover.
 """
 import time
 import logging
-from typing import Any, Callable, List, Dict
+from typing import Any
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -32,13 +33,13 @@ class ProviderEntry:
 class ProviderPool:
     """Generic priority-based provider pool with failover and health tracking."""
 
-    def __init__(self, entries: List[Dict], name: str = "pool", cooldown: int = COOLDOWN_SECONDS):
+    def __init__(self, entries: list[dict], name: str = "pool", cooldown: int = COOLDOWN_SECONDS):
         self.name = name
         self.cooldown = cooldown
         self.providers: list[ProviderEntry] = []
         self._load(entries)
 
-    def _load(self, entries: List[Dict]):
+    def _load(self, entries: list[dict]):
         for entry in sorted(entries, key=lambda e: e.get("priority", 99)):
             api_key = entry.get("api_key", "")
             if not api_key:

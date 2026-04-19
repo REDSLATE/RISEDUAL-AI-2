@@ -7,7 +7,7 @@ Webhook Bot receives external POST requests.
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Dict, List
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ BOT_TYPES = {"grid", "signal", "webhook"}
 
 # ── Bot CRUD ──
 
-async def create_bot(user_id: str, bot_data: Dict) -> Dict:
+async def create_bot(user_id: str, bot_data: dict) -> dict:
     """Create a new trading bot (defaults to OFF)."""
     bot_type = bot_data.get("type")
     if bot_type not in BOT_TYPES:
@@ -53,7 +53,7 @@ async def create_bot(user_id: str, bot_data: Dict) -> Dict:
     return doc
 
 
-def _build_config(bot_type: str, cfg: Dict) -> Dict:
+def _build_config(bot_type: str, cfg: dict) -> dict:
     """Build validated config per bot type."""
     if cfg is None:
         cfg = {}
@@ -89,7 +89,7 @@ def _build_config(bot_type: str, cfg: Dict) -> Dict:
     return {}
 
 
-async def toggle_bot(user_id: str, bot_id: str, enabled: bool) -> Dict:
+async def toggle_bot(user_id: str, bot_id: str, enabled: bool) -> dict:
     """Toggle bot on/off."""
     from bson import ObjectId
     result = await _db.trading_bots.update_one(
@@ -101,7 +101,7 @@ async def toggle_bot(user_id: str, bot_id: str, enabled: bool) -> Dict:
     return {"bot_id": bot_id, "enabled": enabled}
 
 
-async def update_bot_config(user_id: str, bot_id: str, config: Dict) -> Dict:
+async def update_bot_config(user_id: str, bot_id: str, config: dict) -> dict:
     """Update bot configuration."""
     from bson import ObjectId
     bot = await _db.trading_bots.find_one({"_id": ObjectId(bot_id), "user_id": user_id})
@@ -115,7 +115,7 @@ async def update_bot_config(user_id: str, bot_id: str, config: Dict) -> Dict:
     return {"bot_id": bot_id, "config": merged}
 
 
-async def delete_bot(user_id: str, bot_id: str) -> Dict:
+async def delete_bot(user_id: str, bot_id: str) -> dict:
     """Delete a bot."""
     from bson import ObjectId
     result = await _db.trading_bots.delete_one({"_id": ObjectId(bot_id), "user_id": user_id})
@@ -124,7 +124,7 @@ async def delete_bot(user_id: str, bot_id: str) -> Dict:
     return {"status": "deleted", "bot_id": bot_id}
 
 
-async def get_user_bots(user_id: str) -> List[Dict]:
+async def get_user_bots(user_id: str) -> list[dict]:
     """Get all bots for a user."""
     cursor = _db.trading_bots.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
     bots = await cursor.to_list(length=20)
@@ -229,7 +229,7 @@ async def run_grid_bots():
 
 # ── Signal Bot Engine ──
 
-async def process_signal_for_bots(user_id: str, signal: Dict) -> List[Dict]:
+async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
     """Process a scanner signal through all enabled signal bots for a user.
     Returns list of executed trades."""
     if _db is None:
@@ -310,7 +310,7 @@ async def process_signal_for_bots(user_id: str, signal: Dict) -> List[Dict]:
 
 # ── Webhook Bot Engine ──
 
-async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payload: Dict) -> Dict:
+async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payload: dict) -> dict:
     """Process an incoming TradingView webhook."""
     from bson import ObjectId
     bot = await _db.trading_bots.find_one({"_id": ObjectId(bot_id), "user_id": user_id, "type": "webhook"})
@@ -369,7 +369,7 @@ async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payloa
     return result
 
 
-async def _execute_bot_trade(bot: Dict, symbol: str, side: str, qty: float, price: float):
+async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, price: float):
     """Execute a trade for a bot (paper or live)."""
     mode = bot.get("mode", "paper")
     user_id = bot["user_id"]

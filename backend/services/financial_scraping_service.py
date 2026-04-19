@@ -2,7 +2,7 @@ import logging
 import asyncio
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, List
+
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class FinancialScrapingService:
         kwargs.setdefault('timeout', 10)
         return await asyncio.to_thread(requests.get, url, **kwargs)
     
-    async def scrape_financial_news(self) -> List[Dict]:
+    async def scrape_financial_news(self) -> list[dict]:
         """Scrape latest financial news from multiple sources"""
         news = []
         
@@ -36,7 +36,7 @@ class FinancialScrapingService:
         
         return news
     
-    async def _scrape_cnbc(self) -> List[Dict]:
+    async def _scrape_cnbc(self) -> list[dict]:
         """Scrape CNBC market news"""
         try:
             url = 'https://www.cnbc.com/markets/'
@@ -59,7 +59,7 @@ class FinancialScrapingService:
             logger.error(f"CNBC scraping error: {str(e)}")
             return []
     
-    async def _scrape_reuters(self) -> List[Dict]:
+    async def _scrape_reuters(self) -> list[dict]:
         """Scrape Reuters market news"""
         try:
             url = 'https://www.reuters.com/markets/'
@@ -80,7 +80,7 @@ class FinancialScrapingService:
             logger.error(f"Reuters scraping error: {str(e)}")
             return []
     
-    async def _scrape_marketwatch(self) -> List[Dict]:
+    async def _scrape_marketwatch(self) -> list[dict]:
         """Scrape MarketWatch headlines"""
         try:
             url = 'https://www.marketwatch.com/latest-news'
@@ -103,7 +103,7 @@ class FinancialScrapingService:
             logger.error(f"MarketWatch scraping error: {str(e)}")
             return []
     
-    async def _scrape_fox_business(self) -> List[Dict]:
+    async def _scrape_fox_business(self) -> list[dict]:
         """Scrape Fox Business news"""
         try:
             url = 'https://www.foxbusiness.com/markets'
@@ -126,7 +126,7 @@ class FinancialScrapingService:
             logger.error(f"Fox Business scraping error: {str(e)}")
             return []
     
-    async def _scrape_wsj(self) -> List[Dict]:
+    async def _scrape_wsj(self) -> list[dict]:
         """Scrape Wall Street Journal market news"""
         try:
             url = 'https://www.wsj.com/news/markets'
@@ -151,7 +151,7 @@ class FinancialScrapingService:
             logger.error(f"WSJ scraping error: {str(e)}")
             return []
     
-    async def _scrape_bloomberg(self) -> List[Dict]:
+    async def _scrape_bloomberg(self) -> list[dict]:
         """Scrape Bloomberg market news"""
         try:
             url = 'https://www.bloomberg.com/markets'
@@ -176,7 +176,7 @@ class FinancialScrapingService:
             logger.error(f"Bloomberg scraping error: {str(e)}")
             return []
     
-    async def _scrape_oan(self) -> List[Dict]:
+    async def _scrape_oan(self) -> list[dict]:
         """Scrape One America News (OAN) business news"""
         try:
             url = 'https://www.oann.com/category/business/'
@@ -199,7 +199,7 @@ class FinancialScrapingService:
             logger.error(f"OAN scraping error: {str(e)}")
             return []
     
-    async def _scrape_epoch_times(self) -> List[Dict]:
+    async def _scrape_epoch_times(self) -> list[dict]:
         """Scrape Epoch Times business news"""
         try:
             url = 'https://www.theepochtimes.com/business'
@@ -225,7 +225,7 @@ class FinancialScrapingService:
             return []
 
     
-    async def scrape_reddit_sentiment(self) -> List[Dict]:
+    async def scrape_reddit_sentiment(self) -> list[dict]:
         """Scrape Reddit WallStreetBets for sentiment"""
         try:
             # Using Reddit JSON API (no auth needed for public posts)
@@ -250,7 +250,7 @@ class FinancialScrapingService:
             logger.error(f"Reddit scraping error: {str(e)}")
             return []
     
-    async def scrape_insider_trades(self) -> List[Dict]:
+    async def scrape_insider_trades(self) -> list[dict]:
         """Scrape recent insider trading activity"""
         try:
             # Using OpenInsider.com

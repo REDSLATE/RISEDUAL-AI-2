@@ -20,20 +20,21 @@ Parallel orchestration:
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Optional
+from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
 # Class-level registry: lane → ProviderRouter instance
-_registry: Dict[str, "ProviderRouter"] = {}
+_registry: dict[str, "ProviderRouter"] = {}
 
 
 class ProviderRouter:
-    _state: Dict[str, Dict[str, dict]] = {}
-    _dynamic_configs: Dict[str, Dict[str, dict]] = {}  # lane → name → provider config
+    _state: dict[str, dict[str, dict]] = {}
+    _dynamic_configs: dict[str, dict[str, dict]] = {}  # lane → name → provider config
     _lock = asyncio.Lock()
 
-    def __init__(self, lane: str, providers: List[Dict], db=None):
+    def __init__(self, lane: str, providers: list[dict], db=None):
         self.lane = lane
         self.providers = sorted(providers, key=lambda x: x.get("priority", 999))
         self.db = db
@@ -56,7 +57,7 @@ class ProviderRouter:
     # ── Dynamic Registration ──
 
     @classmethod
-    def register(cls, lane: str, provider: Dict) -> Dict:
+    def register(cls, lane: str, provider: dict) -> dict:
         """Hot-register a new provider into a lane without restart."""
         name = provider.get("name")
         if not name or not provider.get("api_key"):
@@ -85,7 +86,7 @@ class ProviderRouter:
         return {"registered": True, "lane": lane, "name": name}
 
     @classmethod
-    def deregister(cls, lane: str, name: str) -> Dict:
+    def deregister(cls, lane: str, name: str) -> dict:
         """Remove a provider from a lane at runtime."""
         if lane in cls._state and name in cls._state[lane]:
             del cls._state[lane][name]
@@ -102,7 +103,7 @@ class ProviderRouter:
         return {"deregistered": True, "lane": lane, "name": name}
 
     @classmethod
-    def heartbeat(cls, lane: str, name: str, status: str = "ok", latency_ms: float = 0, error_rate: float = 0) -> Dict:
+    def heartbeat(cls, lane: str, name: str, status: str = "ok", latency_ms: float = 0, error_rate: float = 0) -> dict:
         """External health heartbeat — services self-report their status."""
         if lane not in cls._state or name not in cls._state[lane]:
             return {"accepted": False, "error": "provider not found"}
@@ -131,7 +132,7 @@ class ProviderRouter:
         return {"accepted": True, "lane": lane, "name": name, "status": status}
 
     @classmethod
-    def list_models(cls, lane: Optional[str] = None) -> List[Dict]:
+    def list_models(cls, lane: Optional[str] = None) -> list[dict]:
         """List all registered providers with health across all or one lane."""
         results = []
         target_lanes = {lane: cls._state.get(lane, {})} if lane else cls._state
@@ -199,7 +200,7 @@ class ProviderRouter:
     def _is_available(self, name: str) -> bool:
         return self._is_available_static(self.lane, name)
 
-    def _score_provider(self, provider: Dict) -> tuple:
+    def _score_provider(self, provider: dict) -> tuple:
         state = self._state[self.lane].get(provider["name"], {})
         available = self._is_available(provider["name"])
         return (
@@ -209,7 +210,7 @@ class ProviderRouter:
             provider.get("priority", 999),
         )
 
-    def get_ranked_providers(self) -> List[Dict]:
+    def get_ranked_providers(self) -> list[dict]:
         return sorted(self.providers, key=self._score_provider)
 
     async def _persist_health(self, provider_name: str):
@@ -255,7 +256,7 @@ class ProviderRouter:
                 state["disabled"] = True
         await self._persist_health(provider_name)
 
-    async def run(self, operation: Callable[[Dict], Awaitable[Any]]) -> Any:
+    async def run(self, operation: Callable[[dict], Awaitable[Any]]) -> Any:
         """Execute operation with sequential failover across ranked providers."""
         ranked = self.get_ranked_providers()
         last_exc: Optional[Exception] = None
@@ -288,8 +289,8 @@ class ProviderRouter:
 
     # ── Parallel orchestration with deadline ──
 
-    async def run_parallel(self, operation: Callable[[Dict], Awaitable[Any]],
-                           deadline_ms: int = 2000) -> List[Dict]:
+    async def run_parallel(self, operation: Callable[[dict], Awaitable[Any]],
+                           deadline_ms: int = 2000) -> list[dict]:
         """Call ALL available providers in parallel with a hard deadline.
         Returns a list of results — one per provider. Providers that miss the
         deadline are marked as 'timeout'. Failed providers are marked as 'error'.
@@ -298,7 +299,7 @@ class ProviderRouter:
         """
         results = []
 
-        async def _call_one(provider: Dict) -> Dict:
+        async def _call_one(provider: dict) -> dict:
             name = provider["name"]
             if not self._is_available(name):
                 return {"name": name, "status": "unavailable", "result": None, "latency_ms": 0}
@@ -341,7 +342,7 @@ class ProviderRouter:
         return result
 
     @classmethod
-    def _serialize_state(cls, lane_state: Dict) -> Dict:
+    def _serialize_state(cls, lane_state: dict) -> dict:
         serialized = {}
         for provider_name, state in lane_state.items():
             entry = {}

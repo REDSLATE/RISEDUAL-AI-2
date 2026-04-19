@@ -3,7 +3,7 @@ import os
 import logging
 import asyncio
 import requests
-from typing import Dict, List
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
 
@@ -31,7 +31,7 @@ class FearGreedService:
         self.db = self.client[os.environ.get("DB_NAME", "risedual_db")]
         self.col = self.db["fear_greed_index"]
 
-    async def get_current(self) -> Dict:
+    async def get_current(self) -> dict:
         """Get the most recent Fear & Greed reading (from DB or live scrape)."""
         live = await self._scrape_live()
         if live:
@@ -50,7 +50,7 @@ class FearGreedService:
             }
         return {"value": 50, "label": "Neutral", "date": "", "source": "default"}
 
-    async def _scrape_live(self) -> Dict | None:
+    async def _scrape_live(self) -> dict | None:
         """Scrape current Fear & Greed value from CNN."""
         try:
             url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
@@ -73,7 +73,7 @@ class FearGreedService:
             logger.debug(f"CNN Fear & Greed scrape failed (non-critical): {e}")
         return None
 
-    async def get_history(self, days: int = 90) -> List[Dict]:
+    async def get_history(self, days: int = 90) -> list[dict]:
         """Get historical Fear & Greed readings (latest N days)."""
         cursor = self.col.find(
             {}, {"_id": 0}
@@ -81,7 +81,7 @@ class FearGreedService:
         docs = await cursor.to_list(length=days)
         return list(reversed(docs))
 
-    async def get_full_summary(self) -> Dict:
+    async def get_full_summary(self) -> dict:
         """Get current + historical data for the dashboard widget."""
         current = await self.get_current()
         history = await self.get_history(90)
