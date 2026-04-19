@@ -630,7 +630,7 @@ async def main() -> None:
         tickers = [args.ticker.upper()]
     elif args.tickers_file:
         with open(args.tickers_file) as f:
-            tickers = [l.strip().upper() for l in f if l.strip()]
+            tickers = [line.strip().upper() for line in f if line.strip()]
     else:
         tickers = EQUITY_TICKERS
 

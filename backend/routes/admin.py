@@ -127,6 +127,48 @@ async def usaspending_health(request: Request):
     return get_health()
 
 
+@router.post("/retrain-now")
+async def retrain_now(request: Request, max_samples: int = 50000):
+    """Manually trigger a nightly ML retrain. Owner-only.
+
+    Use this after a big data ingestion, when rolling forward from a bad
+    model version, or simply to validate the pipeline end-to-end. Writes
+    a new versioned artefact like the scheduled run — does NOT overwrite
+    any prior model.
+    """
+    await _require_owner(request)
+    from services.ml_retrain_service import run_nightly_retrain
+    return await run_nightly_retrain(db, max_samples=max(200, min(max_samples, 200000)))
+
+
+@router.post("/label-now")
+async def label_now(request: Request):
+    """Force a labeler run. Owner-only. Normally hourly via APScheduler."""
+    await _require_owner(request)
+    from services.ml_retrain_service import run_backfill_labeling
+    return await run_backfill_labeling(db)
+
+
+@router.get("/ml-training-history")
+async def ml_training_history(request: Request, limit: int = 20):
+    """Recent ML retrain runs with sample counts, versions, and errors.
+    Owner-only. Pair with `GET /ml-latest-model` to see what's currently
+    deployed."""
+    await _require_owner(request)
+    from services.ml_retrain_service import get_training_history
+    runs = await get_training_history(db, limit=limit)
+    return {"runs": runs, "count": len(runs)}
+
+
+@router.get("/ml-latest-model")
+async def ml_latest_model(request: Request):
+    """Report the newest on-disk signal model artefact. Owner-only."""
+    await _require_owner(request)
+    from services.ml_retrain_service import get_latest_model_info
+    info = get_latest_model_info()
+    return info or {"version": None, "message": "No trained model artefacts on disk"}
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================

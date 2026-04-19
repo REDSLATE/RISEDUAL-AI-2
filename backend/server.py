@@ -216,7 +216,7 @@ async def startup_event():
     try:
         from services.key_vault import KeyVault
         vault = KeyVault(db)
-        loaded = await vault.load_into_env()
+        await vault.load_into_env()
     except Exception as e:
         logger.warning(f"Vault key loading failed (non-critical): {e}")
 
@@ -260,8 +260,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_referral_monthly_rewards, 'cron', day=1, hour=9, minute=30, id='referral_monthly_rewards')
         scheduler.add_job(_run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
         scheduler.add_job(_run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
+        scheduler.add_job(_run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -455,6 +456,21 @@ async def _run_usaspending_warmup():
         logger.info(f"USASpending warmup: {result}")
     except Exception as e:
         logger.warning(f"USASpending warmup error: {e}")
+
+
+async def _run_nightly_ml_retrain():
+    """Background: 02:30 UTC — retrain the signal model on freshly labeled
+    snapshots. Writes a new versioned artefact to /app/backend/models/ and
+    appends a row to ml_training_log. Safe to run multiple times per day."""
+    try:
+        from services.ml_retrain_service import run_nightly_retrain
+        result = await run_nightly_retrain(db)
+        logger.info(
+            f"Nightly ML retrain: status={result.get('status')} "
+            f"samples={result.get('samples')} version={result.get('model_version')}"
+        )
+    except Exception as e:
+        logger.warning(f"Nightly ML retrain error: {e}")
 
 
 

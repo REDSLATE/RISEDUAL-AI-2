@@ -344,9 +344,12 @@ def print_eval_report(
         print("  ✅  Tier 1 (alerts)       READY")
     else:
         reasons = []
-        if stats.accuracy < 0.55:        reasons.append(f"accuracy {stats.accuracy*100:.1f}% < 55%")
-        if stats.ece >= 0.15:            reasons.append(f"ECE {stats.ece:.4f} >= 0.15")
-        if stats.n_predictions < 100:    reasons.append(f"n={stats.n_predictions} < 100")
+        if stats.accuracy < 0.55:
+            reasons.append(f"accuracy {stats.accuracy*100:.1f}% < 55%")
+        if stats.ece >= 0.15:
+            reasons.append(f"ECE {stats.ece:.4f} >= 0.15")
+        if stats.n_predictions < 100:
+            reasons.append(f"n={stats.n_predictions} < 100")
         print(f"  ⏳  Tier 1 (alerts)       NOT YET — {'; '.join(reasons)}")
 
     t2_ok = stats.accuracy >= 0.60 and stats.n_predictions >= 500
@@ -354,8 +357,10 @@ def print_eval_report(
         print("  ✅  Tier 2 (paper trade)  accuracy/data gate passed — run backtest to confirm Sharpe/DD")
     else:
         reasons = []
-        if stats.accuracy < 0.60:        reasons.append(f"accuracy {stats.accuracy*100:.1f}% < 60%")
-        if stats.n_predictions < 500:    reasons.append(f"n={stats.n_predictions:,} < 500")
+        if stats.accuracy < 0.60:
+            reasons.append(f"accuracy {stats.accuracy*100:.1f}% < 60%")
+        if stats.n_predictions < 500:
+            reasons.append(f"n={stats.n_predictions:,} < 500")
         print(f"  ⏳  Tier 2 (paper trade)  NOT YET — {'; '.join(reasons)}")
 
     print("=" * 65)
