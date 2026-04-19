@@ -468,7 +468,6 @@ adversarial trading platform with:
 ## 6. Backlog / Roadmap
 ### P2 — Upcoming
 * Accumulate 30 live paper trading days to unlock ML Tier 3.
-* Kraken crypto broker regular-user flow (after Alpaca goes live).
 
 ### Nice-to-have
 * Thinkorswim-style "Terminal Mode" workspace route (dockable panels, ticker tape,
@@ -483,6 +482,24 @@ See `/app/memory/test_credentials.md`.
 
 
 ## 8. Changelog
+
+### 2026-04-19 — Dynamic NEUTRAL tolerance + Live bot execution wiring
+* **Dynamic per-symbol NEUTRAL tolerance.** Replaced flat 5% (1w) / 2% (24h) bands
+  with ATR-based adaptive bands in `services/prediction_tracker.py`:
+  `tolerance = 1.5 × 10-day-ATR%` (24h) or `3 × ATR%` (1w), clamped to [2%, 10%].
+  Cached 12h per symbol. Surfaces honest accuracy on volatile names (AAPL→7.32%,
+  NVDA-class), penalises "flat" calls on low-vol ETFs that moved 2σ+ (SPY→3.42%).
+* **Retro rescore endpoint.** `POST /api/accuracy/rescore-neutral?window={24h|1w|both}`
+  (owner-only) walks existing NEUTRAL predictions and rewrites their `correct` flag
+  under the new dynamic rule. Persists `neutral_tolerance_used` + `rescored_at` on
+  each touched record.
+* **Live bot execution.** `services/trading_bot_service._execute_bot_trade` now
+  routes `mode="live"` trades through `routes.broker._get_or_refresh_client` →
+  `client.place_order()`, mirroring `smart_order_service._execute_fill()`. Grid,
+  Signal, and Webhook bots can all execute live through the connected broker
+  (Alpaca equities, Kraken crypto). Grid bot now skips counting failed fills.
+* Kraken active on owner account, Alpaca paper active. Hardcoded
+  `RiseDual2026!` override resolved (user rotated prod password).
 
 ### 2026-02-18 — Watchlist.jsx refactor complete
 * `Watchlist.jsx` reduced from 447-line monolith to 58-line orchestrator.

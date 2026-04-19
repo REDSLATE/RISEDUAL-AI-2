@@ -196,15 +196,19 @@ async def run_grid_bots():
                 if order["filled"]:
                     continue
                 if order["side"] == "buy" and price <= order["grid_price"]:
-                    # Execute paper buy
-                    await _execute_bot_trade(bot, symbol, "buy", qty, order["grid_price"])
+                    result = await _execute_bot_trade(bot, symbol, "buy", qty, order["grid_price"])
+                    if result and result.get("error"):
+                        logger.warning(f"Grid bot {bot.get('name')} buy failed: {result['error']}")
+                        continue
                     order["filled"] = True
                     order["filled_at"] = now
                     order["side"] = "sell"  # Flip to sell at next grid above
                     trades_made += 1
                 elif order["side"] == "sell" and price >= order["grid_price"]:
-                    # Execute paper sell
-                    await _execute_bot_trade(bot, symbol, "sell", qty, order["grid_price"])
+                    result = await _execute_bot_trade(bot, symbol, "sell", qty, order["grid_price"])
+                    if result and result.get("error"):
+                        logger.warning(f"Grid bot {bot.get('name')} sell failed: {result['error']}")
+                        continue
                     order["filled"] = True
                     order["filled_at"] = now
                     order["side"] = "buy"  # Flip to buy at next grid below
@@ -370,11 +374,54 @@ async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payloa
 
 
 async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, price: float):
-    """Execute a trade for a bot (paper or live)."""
+    """Execute a trade for a bot.
+
+    - mode=paper: routes through paper_trading_service
+    - mode=live:  routes through the user's connected broker (Alpaca for
+                  equities, Kraken for crypto). Mirrors the live path used
+                  by smart_order_service._execute_fill() so behaviour stays
+                  consistent between grid/signal/webhook bots and Smart
+                  Orders. Returns the broker order id on success so the
+                  caller can reconcile fills.
+    """
     mode = bot.get("mode", "paper")
     user_id = bot["user_id"]
 
     if mode == "paper":
         from services.paper_trading_service import execute_trade
-        await execute_trade(user_id, symbol, side.upper(), qty)
-    # Live mode would go through broker — same as smart_order_service
+        return await execute_trade(user_id, symbol, side.upper(), qty)
+
+    if mode == "live":
+        try:
+            if _db is None:
+                logger.error("Live bot trade attempted with no DB handle")
+                return {"error": "DB unavailable"}
+            broker_conn = await _db.broker_connections.find_one(
+                {"user_id": user_id}, {"_id": 0, "broker_id": 1},
+            )
+            if not broker_conn:
+                return {"error": "No broker connected for live trading"}
+
+            from routes.broker import _get_or_refresh_client, _get_user_broker
+            import asyncio as _asyncio
+
+            conn = await _get_user_broker(user_id, broker_conn["broker_id"])
+            client = await _get_or_refresh_client(user_id, broker_conn["broker_id"], conn)
+            result = await _asyncio.to_thread(
+                client.place_order,
+                symbol=symbol, qty=qty, side=side.lower(),
+                order_type="market", time_in_force="day",
+            )
+            if not result:
+                return {"error": "Broker rejected order"}
+            logger.info(
+                f"Live bot trade filled: {bot.get('name')} {side} {qty} {symbol} "
+                f"(broker_order_id={result.get('id')})"
+            )
+            return {"status": "filled", "broker_order_id": result.get("id"),
+                    "symbol": symbol, "side": side, "qty": qty}
+        except Exception as e:
+            logger.error(f"Live bot trade failed ({bot.get('name')} {symbol}): {e}")
+            return {"error": f"Live execution failed: {e}"}
+
+    return {"error": f"Unknown bot mode: {mode}"}

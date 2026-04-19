@@ -6,6 +6,7 @@ from services.auth_helpers import get_current_user, is_pro_user
 from services.prediction_tracker import (
     get_all_feature_stats, get_recent_predictions,
     verify_pending_predictions, get_accuracy_stats, FAILURE_MODES,
+    reevaluate_neutral_predictions,
 )
 import logging
 
@@ -59,6 +60,23 @@ async def trigger_verification(request: Request):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     await verify_pending_predictions(db)
     return {"status": "verification_complete"}
+
+
+@router.post("/rescore-neutral")
+async def rescore_neutral(request: Request, window: str = "both"):
+    """Retroactively re-score already-verified NEUTRAL/HOLD predictions
+    under the current dynamic tolerance rule. Owner/admin only — this
+    rewrites historical `correct` flags.
+
+    Query: window=24h | 1w | both (default both)
+    """
+    user = await get_current_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin only")
+    if window not in ("24h", "1w", "both"):
+        raise HTTPException(status_code=400, detail="window must be 24h, 1w, or both")
+    result = await reevaluate_neutral_predictions(db, window=window)
+    return result
 
 
 @router.post("/post-mortem/{prediction_id}")

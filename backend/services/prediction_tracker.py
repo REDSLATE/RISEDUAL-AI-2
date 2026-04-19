@@ -75,21 +75,104 @@ def _get_current_price(symbol: str) -> Optional[float]:
     return quote["price"] if quote else None
 
 
-# NEUTRAL tolerance bands per verification window. NEUTRAL/HOLD means
-# "no conviction either way" — the band has to be wide enough that normal
-# weekly market volatility (SPY ~3% weekly stdev) doesn't mark every such
-# call wrong. Scale roughly with sqrt(time).
-NEUTRAL_TOLERANCE_24H = 2.0
-NEUTRAL_TOLERANCE_1W = 5.0
+# NEUTRAL tolerance fallbacks when we can't compute an ATR-based dynamic band
+# (e.g. provider outage, new IPO with no history). NEUTRAL/HOLD means "no
+# conviction either way" — the band has to be wide enough that normal
+# volatility doesn't mark every flat call wrong. Dynamic bands are preferred
+# and set per-symbol via _neutral_tolerance().
+NEUTRAL_TOLERANCE_24H_DEFAULT = 2.0
+NEUTRAL_TOLERANCE_1W_DEFAULT = 5.0
+NEUTRAL_TOLERANCE_FLOOR = 2.0   # can't be tighter than 2% even for ultra-stable names
+NEUTRAL_TOLERANCE_CEIL = 10.0   # can't exceed 10% even for meme stocks — that's a direction call
+
+# Process-level ATR cache: { (symbol, window) -> (tolerance_pct, expires_utc_iso) }
+# Cached for 12 hours. We recompute once the cache expires so the band adapts
+# to volatility regime shifts (e.g. earnings week) without hitting daily bars
+# on every verification.
+_atr_cache: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+def _compute_atr_pct(bars: list[dict], period: int = 10) -> Optional[float]:
+    """Return ATR as % of latest close. None if not enough data.
+
+    Standard Wilder ATR on daily bars. `bars` must be ordered newest-first
+    (matching `get_daily_history`).
+    """
+    if not bars or len(bars) < period + 1:
+        return None
+    try:
+        ordered = list(reversed(bars[: period + 1]))  # oldest-first
+        trs: list[float] = []
+        prev_close = ordered[0]["close"]
+        for b in ordered[1:]:
+            tr = max(
+                b["high"] - b["low"],
+                abs(b["high"] - prev_close),
+                abs(b["low"] - prev_close),
+            )
+            trs.append(tr)
+            prev_close = b["close"]
+        if not trs:
+            return None
+        atr = sum(trs) / len(trs)
+        latest_close = ordered[-1]["close"]
+        if latest_close <= 0:
+            return None
+        return (atr / latest_close) * 100.0
+    except Exception:
+        return None
+
+
+async def _neutral_tolerance(symbol: str, window: str = "24h") -> float:
+    """Dynamic NEUTRAL tolerance based on the symbol's realised volatility.
+
+    Rule: tolerance = 1.5 × 10-day ATR% for 24h calls, 3.0 × ATR% for 1w
+    calls (ATR is daily, so stretch it for weekly horizons). Clamped to
+    [NEUTRAL_TOLERANCE_FLOOR, NEUTRAL_TOLERANCE_CEIL]. Falls back to
+    static defaults on data failure.
+    """
+    from datetime import datetime, timezone, timedelta as _td
+    key = (symbol.upper(), window)
+    now_utc = datetime.now(timezone.utc)
+    cached = _atr_cache.get(key)
+    if cached:
+        tol, expires = cached
+        try:
+            if datetime.fromisoformat(expires) > now_utc:
+                return tol
+        except ValueError:
+            pass
+
+    fallback = NEUTRAL_TOLERANCE_1W_DEFAULT if window == "1w" else NEUTRAL_TOLERANCE_24H_DEFAULT
+
+    try:
+        from services.price_provider import get_daily_history
+        bars = await get_daily_history(symbol, outputsize="compact")
+    except Exception:
+        bars = None
+
+    atr_pct = _compute_atr_pct(bars) if bars else None
+    if atr_pct is None or atr_pct <= 0:
+        tolerance = fallback
+    else:
+        multiplier = 3.0 if window == "1w" else 1.5
+        tolerance = max(NEUTRAL_TOLERANCE_FLOOR, min(NEUTRAL_TOLERANCE_CEIL, atr_pct * multiplier))
+
+    _atr_cache[key] = (tolerance, (now_utc + _td(hours=12)).isoformat())
+    return tolerance
 
 
 def _evaluate_prediction(direction: str, price_at_prediction: float,
-                         price_now: float, window: str = "24h") -> bool:
+                         price_now: float, window: str = "24h",
+                         neutral_tolerance: Optional[float] = None) -> bool:
     """Determine if a prediction was correct.
 
     BUY/BULLISH: price went up
     SELL/BEARISH: price went down
-    HOLD/NEUTRAL: price moved within tolerance (2% for 24h, 5% for 1w)
+    HOLD/NEUTRAL: price moved within `neutral_tolerance` (or static default
+                  if none supplied — e.g. sync contexts). For production
+                  callers, pass a tolerance from `_neutral_tolerance()` so
+                  the band adapts per-symbol.
     """
     if price_at_prediction <= 0 or price_now <= 0:
         return False
@@ -101,8 +184,10 @@ def _evaluate_prediction(direction: str, price_at_prediction: float,
     elif direction_upper in DIRECTION_BEARISH:
         return pct_change < 0
     elif direction_upper in DIRECTION_NEUTRAL:
-        tolerance = NEUTRAL_TOLERANCE_1W if window == "1w" else NEUTRAL_TOLERANCE_24H
-        return abs(pct_change) < tolerance
+        if neutral_tolerance is None:
+            neutral_tolerance = (NEUTRAL_TOLERANCE_1W_DEFAULT
+                                 if window == "1w" else NEUTRAL_TOLERANCE_24H_DEFAULT)
+        return abs(pct_change) < neutral_tolerance
     return False
 
 
@@ -175,7 +260,11 @@ async def verify_pending_predictions(db):
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
             continue
-        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now, window="24h")
+        tolerance_24h = await _neutral_tolerance(pred["symbol"], window="24h")
+        correct = _evaluate_prediction(
+            pred["direction"], pred["price_at_prediction"], price_now,
+            window="24h", neutral_tolerance=tolerance_24h,
+        )
 
         # Classify failure mode if prediction was wrong
         failure_reason = "N/A"
@@ -194,6 +283,7 @@ async def verify_pending_predictions(db):
                 "verified_at": now.isoformat(),
                 "failure_code": failure_code,
                 "failure_reason": failure_reason,
+                "neutral_tolerance_used": round(tolerance_24h, 2),
             }}}
         )
         logger.info(
@@ -255,7 +345,11 @@ async def verify_pending_predictions(db):
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
             continue
-        correct = _evaluate_prediction(pred["direction"], pred["price_at_prediction"], price_now, window="1w")
+        tolerance_1w = await _neutral_tolerance(pred["symbol"], window="1w")
+        correct = _evaluate_prediction(
+            pred["direction"], pred["price_at_prediction"], price_now,
+            window="1w", neutral_tolerance=tolerance_1w,
+        )
 
         # Classify failure mode if prediction was wrong
         failure_reason = "N/A"
@@ -274,12 +368,90 @@ async def verify_pending_predictions(db):
                 "verified_at": now.isoformat(),
                 "failure_code": failure_code,
                 "failure_reason": failure_reason,
+                "neutral_tolerance_used": round(tolerance_1w, 2),
             }}}
         )
         logger.info(
             f"Verified 1w: {pred['symbol']} {pred['direction']} — "
             f"{'CORRECT' if correct else f'WRONG ({failure_code})'}"
         )
+
+
+async def reevaluate_neutral_predictions(db, window: str = "both") -> dict:
+    """Retroactively re-score NEUTRAL/HOLD predictions under the current
+    dynamic tolerance rule.
+
+    Why: Older records were scored at the moment of verification using
+    whatever static tolerance was in effect then (historically 2%). When we
+    move to a per-symbol dynamic band, the existing `correct` flag is stale.
+    This walks every stored NEUTRAL prediction and recomputes only the
+    neutral-band decision (directional calls are unaffected — their
+    correctness doesn't depend on tolerance).
+
+    window: "24h", "1w", or "both".
+    Returns dict of counts updated.
+    """
+    updated_24h = 0
+    updated_1w = 0
+    scanned = 0
+
+    if window in ("24h", "both"):
+        cursor = db.predictions.find({
+            "direction": {"$in": list(DIRECTION_NEUTRAL)},
+            "verified_24h": {"$ne": None},
+            "price_at_prediction": {"$gt": 0},
+        }, {"_id": 0})
+        async for pred in cursor:
+            scanned += 1
+            p0 = pred["price_at_prediction"]
+            p1 = (pred.get("verified_24h") or {}).get("price", 0)
+            if p0 <= 0 or p1 <= 0:
+                continue
+            tol = await _neutral_tolerance(pred["symbol"], window="24h")
+            new_correct = _evaluate_prediction(
+                pred["direction"], p0, p1, window="24h", neutral_tolerance=tol,
+            )
+            prev_correct = pred["verified_24h"].get("correct")
+            if new_correct != prev_correct:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {
+                        "verified_24h.correct": new_correct,
+                        "verified_24h.neutral_tolerance_used": round(tol, 2),
+                        "verified_24h.rescored_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+                updated_24h += 1
+
+    if window in ("1w", "both"):
+        cursor = db.predictions.find({
+            "direction": {"$in": list(DIRECTION_NEUTRAL)},
+            "verified_1w": {"$ne": None},
+            "price_at_prediction": {"$gt": 0},
+        }, {"_id": 0})
+        async for pred in cursor:
+            scanned += 1
+            p0 = pred["price_at_prediction"]
+            p1 = (pred.get("verified_1w") or {}).get("price", 0)
+            if p0 <= 0 or p1 <= 0:
+                continue
+            tol = await _neutral_tolerance(pred["symbol"], window="1w")
+            new_correct = _evaluate_prediction(
+                pred["direction"], p0, p1, window="1w", neutral_tolerance=tol,
+            )
+            prev_correct = pred["verified_1w"].get("correct")
+            if new_correct != prev_correct:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {
+                        "verified_1w.correct": new_correct,
+                        "verified_1w.neutral_tolerance_used": round(tol, 2),
+                        "verified_1w.rescored_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+                updated_1w += 1
+
+    return {"scanned": scanned, "updated_24h": updated_24h, "updated_1w": updated_1w}
 
 
 async def get_accuracy_stats(db, feature: Optional[str] = None,
