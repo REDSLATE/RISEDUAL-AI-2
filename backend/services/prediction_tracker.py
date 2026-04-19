@@ -191,6 +191,13 @@ def _evaluate_prediction(direction: str, price_at_prediction: float,
     return False
 
 
+# Maximum number of sliding-window extensions a prediction can accumulate
+# before a repeat firing is treated as a new prediction instead of deduped
+# onto the existing record. 1 → initial creation + 1 extension = ~30 min
+# max lifetime under continuous polling. See `log_prediction()`.
+MAX_DEDUP_HITS = 1
+
+
 async def log_prediction(db, feature: str, symbol: str, direction: str,
                          confidence: float, score: float = None,
                          user_id: str = None,
@@ -202,13 +209,20 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
     regresses accuracy we can filter the post-mortem view to that version and
     quickly attribute failures. Optional until all callers are updated.
 
-    Sliding 15-minute dedup window: if a prediction for the same
-    (feature, symbol, direction, user_id) was logged or *last seen* within
-    the last 15 minutes at essentially the same price (<0.2% drift), the
-    existing prediction is reused — we return its prediction_id, bump
-    `last_seen_at` to now, and increment `dedup_count`. This "resets" the
-    window on every repeat hit, so as long as the same signal keeps firing
-    at least once every 15 min it stays as a single prediction record.
+    Sliding 15-minute dedup window with a hard reset cap: if a prediction
+    for the same (feature, symbol, direction, user_id) was logged or *last
+    seen* within the last 15 minutes at essentially the same price (<0.2%
+    drift), the existing prediction is reused — we return its prediction_id,
+    bump `last_seen_at` to now, and increment `dedup_count`. The window
+    "resets" on every repeat hit, so while the same signal keeps firing at
+    least once every 15 min it stays as a single prediction record.
+
+    Cap: `dedup_count` is capped at `MAX_DEDUP_HITS` (1). That gives each
+    prediction a maximum effective lifetime of about 30 min (one initial
+    firing + one extension). Any subsequent identical firing after the cap
+    falls through and creates a fresh prediction record, which is then
+    verified against the *current* price — catching price drift that a
+    perpetually-sticky signal would otherwise hide.
 
     Important: the original `timestamp` and `price_at_prediction` are pinned
     to the first firing — the verification scheduler (24h / 1w outcome
@@ -219,7 +233,7 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
     price = await asyncio.to_thread(_get_current_price, symbol)
     price = price or 0.0
 
-    # ── Sliding 15-min dedup window ──
+    # ── Sliding 15-min dedup window (capped at MAX_DEDUP_HITS resets) ──
     now = datetime.now(timezone.utc)
     if price > 0:
         cutoff = (now - timedelta(minutes=15)).isoformat()
@@ -236,8 +250,13 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
                     {"last_seen_at": {"$gte": cutoff}},
                     {"timestamp": {"$gte": cutoff}},
                 ],
+                # Respect the reset cap — once a record has slid its window
+                # MAX_DEDUP_HITS times it's no longer a dedup target; the
+                # next identical firing creates a fresh prediction.
+                "dedup_count": {"$lt": MAX_DEDUP_HITS},
             },
-            {"_id": 0, "prediction_id": 1, "price_at_prediction": 1},
+            {"_id": 0, "prediction_id": 1, "price_at_prediction": 1,
+             "dedup_count": 1},
             sort=[("timestamp", -1)],
         )
         if existing:
@@ -252,8 +271,8 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
                     },
                 )
                 logger.debug(
-                    f"Dedup sliding hit: reusing {existing['prediction_id']} for "
-                    f"{feature}/{symbol}/{direction} — window reset to +15m"
+                    f"Dedup sliding hit: {existing['prediction_id']} "
+                    f"dedup_count {existing.get('dedup_count',0)+1}/{MAX_DEDUP_HITS}"
                 )
                 return existing["prediction_id"]
 

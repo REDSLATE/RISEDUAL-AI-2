@@ -494,14 +494,17 @@ See `/app/memory/test_credentials.md`.
   First miss hits upstream (~250 ms); repeat hits return in ~0 ms with
   `source="<provider>:hot"` suffix. MongoDB persistent cache retained for
   cross-restart warm-up.
-* **`log_prediction` sliding 15-min dedup.** Repeated
-  `(feature, symbol, direction, user_id)` signals within 15 min (at the
-  same price ±0.2%) reuse the original `prediction_id` instead of creating
-  a new record. Each repeat bumps `last_seen_at` and `dedup_count` on the
-  existing row — the window resets on every hit, so a steadily-firing
-  signal stays as a single prediction indefinitely. The original
-  `timestamp` and `price_at_prediction` are pinned so the 24h/1w
-  verification scheduler still runs against the first firing's anchor.
+* **Reset caps on both sliding mechanisms.**
+  - `SlidingCache` now supports `max_resets`; the shared `price_cache`
+    singleton is configured with `max_resets=2` (5 min TTL × 3 touches =
+    ~15 min max lifetime). Past the cap, reads still return the cached
+    value but stop extending — the entry ages out and forces a fresh
+    upstream fetch.
+  - `log_prediction` caps `dedup_count` at `MAX_DEDUP_HITS=1`
+    (15 min TTL × 2 touches = ~30 min max sliding lifetime). A third
+    identical firing after the cap creates a **new** prediction record
+    and verifies against the current price — catching drift that a
+    perpetually-sticky signal would otherwise hide.
 * **Data cleanup.** Dropped 49 duplicate SPY@$679.46 NEUTRAL predictions
   left over from a previous session's runaway logger.
 

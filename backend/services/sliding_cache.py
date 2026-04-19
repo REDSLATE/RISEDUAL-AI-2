@@ -27,33 +27,52 @@ from typing import Any, Optional
 
 
 class SlidingCache:
-    """Process-local sliding-TTL cache."""
+    """Process-local sliding-TTL cache with optional reset cap.
 
-    def __init__(self, default_ttl_seconds: float = 300.0, max_entries: int = 5000):
-        self._store: dict[str, tuple[Any, float]] = {}  # key -> (value, expires_at)
+    `max_resets=None` → unlimited extensions (pure sliding).
+    `max_resets=N`    → after N successful get()-induced expiry resets, the
+                        entry still serves reads but stops extending its
+                        expiry. It ages out at its current `expires_at`
+                        timestamp. This puts a soft ceiling on total
+                        lifetime: roughly `(max_resets + 1) * ttl`.
+
+    Why the cap: without it, a steadily-polled key lives forever and can
+    mask upstream price drift or a stale dataset. The cap guarantees every
+    entry eventually refreshes even under continuous load.
+    """
+
+    def __init__(self, default_ttl_seconds: float = 300.0,
+                 max_entries: int = 5000,
+                 max_resets: Optional[int] = None):
+        # key -> (value, expires_at_monotonic, reset_count)
+        self._store: dict[str, tuple[Any, float, int]] = {}
         self._lock = threading.Lock()
         self._default_ttl = default_ttl_seconds
         self._max = max_entries
+        self._max_resets = max_resets
 
     def get(self, key: str, ttl_seconds: Optional[float] = None) -> Optional[Any]:
-        """Return value and refresh expiry. None if absent/expired."""
+        """Return value. Refreshes expiry unless the reset cap has been hit."""
         ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
         now = time.monotonic()
         with self._lock:
             entry = self._store.get(key)
             if entry is None:
                 return None
-            value, expires_at = entry
+            value, expires_at, resets = entry
             if expires_at <= now:
-                # Expired — drop it and miss
                 self._store.pop(key, None)
                 return None
-            # Bump expiry (sliding TTL on access)
-            self._store[key] = (value, now + ttl)
+            if self._max_resets is not None and resets >= self._max_resets:
+                # Cap reached — serve the cached value but don't extend expiry.
+                # The entry will die at `expires_at`, forcing a fresh fetch.
+                return value
+            # Bump expiry (sliding TTL on access) + increment reset counter
+            self._store[key] = (value, now + ttl, resets + 1)
             return value
 
     def set(self, key: str, value: Any, ttl_seconds: Optional[float] = None) -> None:
-        """Store value with a fresh TTL window."""
+        """Store value with a fresh TTL window and reset counter of 0."""
         ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
         now = time.monotonic()
         with self._lock:
@@ -61,7 +80,7 @@ class SlidingCache:
                 # Simple eviction: drop the soonest-expiring entry
                 oldest_key = min(self._store.items(), key=lambda kv: kv[1][1])[0]
                 self._store.pop(oldest_key, None)
-            self._store[key] = (value, now + ttl)
+            self._store[key] = (value, now + ttl, 0)
 
     def invalidate(self, key: str) -> None:
         with self._lock:
@@ -74,9 +93,28 @@ class SlidingCache:
     def stats(self) -> dict:
         with self._lock:
             now = time.monotonic()
-            alive = sum(1 for _, exp in self._store.values() if exp > now)
-            return {"size": len(self._store), "alive": alive, "ttl_seconds": self._default_ttl}
+            alive = sum(1 for _, exp, _ in self._store.values() if exp > now)
+            at_cap = 0
+            if self._max_resets is not None:
+                at_cap = sum(
+                    1 for _, exp, rc in self._store.values()
+                    if exp > now and rc >= self._max_resets
+                )
+            return {
+                "size": len(self._store),
+                "alive": alive,
+                "at_reset_cap": at_cap,
+                "ttl_seconds": self._default_ttl,
+                "max_resets": self._max_resets,
+            }
 
 
-# Singleton for market data (5 min window, shared across all price_provider entrypoints).
-price_cache = SlidingCache(default_ttl_seconds=300.0, max_entries=5000)
+# Singleton for market data: 5 min sliding window, max 2 resets.
+# Total lifetime ≈ 3 × 5 = 15 min under continuous polling (one initial
+# fetch + 2 resets, then expires). Forces a refresh before stale prices
+# leak into decisions.
+price_cache = SlidingCache(
+    default_ttl_seconds=300.0,
+    max_entries=5000,
+    max_resets=2,
+)
