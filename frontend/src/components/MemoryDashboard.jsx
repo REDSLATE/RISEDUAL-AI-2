@@ -35,8 +35,22 @@ const formatDate = (d) => {
 
 const OverviewTab = ({ stats, accuracy }) => {
   if (!stats) return null;
-  const hitRate = accuracy?.overall?.accuracy_24h;
-  const pending = accuracy?.overall?.pending || 0;
+  // Prefer the 7-day directional rate (BUY/SELL only, most honest). Fall
+  // back to inclusive 7-day, then 24h, so admins always see the most
+  // actionable number available.
+  const overall = accuracy?.overall || {};
+  const hitRateDir = overall.accuracy_1w_directional;
+  const hitRateAll = overall.accuracy_1w;
+  const hitRate24 = overall.accuracy_24h;
+  const primary =
+    hitRateDir != null ? { val: hitRateDir, tag: '1W · dir', n: overall.total_1w_directional } :
+    hitRateAll != null ? { val: hitRateAll, tag: '1W',       n: overall.total_1w } :
+    hitRate24  != null ? { val: hitRate24,  tag: '24H',      n: overall.total_24h } :
+    null;
+  const pending = overall.pending || 0;
+  const hitSub = primary
+    ? `${primary.n} predictions · ${primary.tag}${hitRateAll != null && hitRateDir != null && Math.abs(hitRateAll - hitRateDir) > 0.5 ? ` · incl. NEUTRAL ${hitRateAll.toFixed(1)}%` : ''}`
+    : (pending > 0 ? `${pending} pending` : 'No verified yet');
 
   return (
     <div className="space-y-6" data-testid="memory-overview-tab">
@@ -44,7 +58,7 @@ const OverviewTab = ({ stats, accuracy }) => {
         <StatCard icon={Database} label="Total Episodes" value={stats.total_episodes?.toLocaleString()} sub={stats.embedding_model} color="text-white" />
         <StatCard icon={Zap} label="Active" value={stats.active_episodes?.toLocaleString()} sub="Usable patterns" color="text-lime-400" />
         <StatCard icon={AlertTriangle} label="Toxic Lessons" value={stats.toxic_lessons} sub="Negative examples" color="text-orange-400" />
-        <StatCard icon={TrendingUp} label="Hit Rate" value={hitRate != null ? `${hitRate.toFixed(1)}%` : '—'} sub={pending > 0 ? `${pending} pending` : 'No verified yet'} color="text-[#3DE8D9]" />
+        <StatCard icon={TrendingUp} label="Hit Rate" value={primary ? `${primary.val.toFixed(1)}%` : '—'} sub={hitSub} color="text-[#3DE8D9]" />
       </div>
 
       <div className="bg-[#111C30] border border-slate-600/30 rounded-xl p-5">
