@@ -26,6 +26,22 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Action pricing table column balance fix
+*Session: continued*
+
+**Problem:** User pointed out the Action pricing table's "Action" column
+hugged the left edge with plan columns (Free/Starter/Pro/Pro Max) crammed
+over on the right — caused by `w-full` table with auto-sized columns
+where the longest label ("Scanner + Validation") stretched the first col.
+
+**Fix:** `frontend/src/components/LandingPage.jsx` Action pricing block:
+- Wrapped table in `<div className="max-w-3xl mx-auto overflow-x-auto">`.
+- Added `<colgroup>` with explicit widths (Action 32%, each plan 17%).
+- Switched to `table-fixed` layout and added `break-words` on the Action
+  column so labels wrap cleanly inside their box.
+
+**Behavioural impact:** Visual polish only. No data changes.
+
 ### 2026-02-19 — Features grid uniform 3×2 layout
 *Session: continued*
 

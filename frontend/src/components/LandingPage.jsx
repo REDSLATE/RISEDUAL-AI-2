@@ -339,40 +339,49 @@ const Pricing = ({ onGetStarted }) => (
       </div>
 
       {/* Action Pricing Table */}
-      <div className="mt-10 mb-8 overflow-x-auto">
+      <div className="mt-10 mb-8">
         <h3 className="text-white text-xs font-bold mb-3 text-center">Action pricing</h3>
         <p className="text-slate-400 text-[10px] text-center mb-4 max-w-xl mx-auto">Chat and War Room are bundled into Pro and Pro Max because they are your most frequent workflows. Advanced AI actions stay credit-based on every plan.</p>
-        <table className="w-full text-[10px] border-collapse" data-testid="action-pricing-table">
-          <thead>
-            <tr className="text-slate-400 border-b border-slate-700/40">
-              <th className="text-left py-2 px-3">Action</th>
-              <th className="text-center py-2 px-3">Free</th>
-              <th className="text-center py-2 px-3">Starter</th>
-              <th className="text-center py-2 px-3">Pro</th>
-              <th className="text-center py-2 px-3">Pro Max</th>
-            </tr>
-          </thead>
-          <tbody className="text-slate-300">
-            {[
-              ['AI Chat', '1 credit', '1 credit', true, true],
-              ['War Room', '5 credits', '5 credits', true, true],
-              ['AI Hypothesis', '3 credits', '3 credits', '3 credits', '3 credits'],
-              ['Market Prediction', '3 credits', '3 credits', '3 credits', '3 credits'],
-              ['AI Intelligence', '2 credits', '2 credits', '2 credits', '2 credits'],
-              ['Scanner + Validation', '2 credits', '2 credits', '2 credits', '2 credits'],
-              ['API call', '1 credit', '1 credit', '1 credit', '1 credit'],
-            ].map(([action, ...vals]) => (
-              <tr key={action} className="border-b border-slate-800/40">
-                <td className="py-2 px-3 text-white font-medium">{action}</td>
-                {vals.map((v, i) => (
-                  <td key={`${action}-${i}`} className={`text-center py-2 px-3 ${v === true ? 'text-lime-400 font-bold' : ''}`}>
-                    {v === true ? 'Unlimited' : v}
-                  </td>
-                ))}
+        <div className="max-w-3xl mx-auto overflow-x-auto">
+          <table className="w-full text-[10px] border-collapse table-fixed" data-testid="action-pricing-table">
+            <colgroup>
+              <col style={{ width: '32%' }} />
+              <col style={{ width: '17%' }} />
+              <col style={{ width: '17%' }} />
+              <col style={{ width: '17%' }} />
+              <col style={{ width: '17%' }} />
+            </colgroup>
+            <thead>
+              <tr className="text-slate-400 border-b border-slate-700/40">
+                <th className="text-left py-2 px-3">Action</th>
+                <th className="text-center py-2 px-3">Free</th>
+                <th className="text-center py-2 px-3">Starter</th>
+                <th className="text-center py-2 px-3">Pro</th>
+                <th className="text-center py-2 px-3">Pro Max</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="text-slate-300">
+              {[
+                ['AI Chat', '1 credit', '1 credit', true, true],
+                ['War Room', '5 credits', '5 credits', true, true],
+                ['AI Hypothesis', '3 credits', '3 credits', '3 credits', '3 credits'],
+                ['Market Prediction', '3 credits', '3 credits', '3 credits', '3 credits'],
+                ['AI Intelligence', '2 credits', '2 credits', '2 credits', '2 credits'],
+                ['Scanner + Validation', '2 credits', '2 credits', '2 credits', '2 credits'],
+                ['API call', '1 credit', '1 credit', '1 credit', '1 credit'],
+              ].map(([action, ...vals]) => (
+                <tr key={action} className="border-b border-slate-800/40">
+                  <td className="py-2 px-3 text-white font-medium break-words">{action}</td>
+                  {vals.map((v, i) => (
+                    <td key={`${action}-${i}`} className={`text-center py-2 px-3 ${v === true ? 'text-lime-400 font-bold' : ''}`}>
+                      {v === true ? 'Unlimited' : v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Top-up Pricing Table */}
