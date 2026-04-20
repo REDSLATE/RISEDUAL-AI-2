@@ -33,10 +33,14 @@
 hugged the left edge with plan columns (Free/Starter/Pro/Pro Max) crammed
 over on the right — caused by `w-full` table with auto-sized columns
 where the longest label ("Scanner + Validation") stretched the first col.
+Second pass: initial `max-w-3xl` made the table narrower than the pricing
+cards above, so user reported it looked indented on desktop.
 
 **Fix:** `frontend/src/components/LandingPage.jsx` Action pricing block:
-- Wrapped table in `<div className="max-w-3xl mx-auto overflow-x-auto">`.
-- Added `<colgroup>` with explicit widths (Action 32%, each plan 17%).
+- Dropped the inner `max-w-3xl` wrapper so the table spans the full
+  `max-w-6xl` parent (matches the pricing cards grid).
+- Added `<colgroup>` with explicit widths (Action 24%, each plan 19%) so
+  plan columns sit directly under their matching card headers above.
 - Switched to `table-fixed` layout and added `break-words` on the Action
   column so labels wrap cleanly inside their box.
 

@@ -342,14 +342,14 @@ const Pricing = ({ onGetStarted }) => (
       <div className="mt-10 mb-8">
         <h3 className="text-white text-xs font-bold mb-3 text-center">Action pricing</h3>
         <p className="text-slate-400 text-[10px] text-center mb-4 max-w-xl mx-auto">Chat and War Room are bundled into Pro and Pro Max because they are your most frequent workflows. Advanced AI actions stay credit-based on every plan.</p>
-        <div className="max-w-3xl mx-auto overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="w-full text-[10px] border-collapse table-fixed" data-testid="action-pricing-table">
             <colgroup>
-              <col style={{ width: '32%' }} />
-              <col style={{ width: '17%' }} />
-              <col style={{ width: '17%' }} />
-              <col style={{ width: '17%' }} />
-              <col style={{ width: '17%' }} />
+              <col style={{ width: '24%' }} />
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '19%' }} />
             </colgroup>
             <thead>
               <tr className="text-slate-400 border-b border-slate-700/40">
