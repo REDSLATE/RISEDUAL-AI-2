@@ -44,7 +44,7 @@ export default function useStreamingAgent(sessionId) {
             finalText = data.text || '';
             providerInfo = data.provider || null;
           }
-        } catch { /* ignore malformed event */ }
+        } catch (err) { console.debug('[streaming-agent] skipped malformed step event', err?.message); }
       });
 
       es.addEventListener('tools', (e) => {
@@ -63,7 +63,7 @@ export default function useStreamingAgent(sessionId) {
               return updated;
             });
           }
-        } catch { /* ignore malformed event */ }
+        } catch (err) { console.debug('[streaming-agent] skipped malformed tools event', err?.message); }
       });
 
       es.addEventListener('end', (e) => {
@@ -71,7 +71,7 @@ export default function useStreamingAgent(sessionId) {
           const data = JSON.parse(e.data);
           providerInfo = data.provider || providerInfo;
           toolsUsed = data.tools_used || toolsUsed;
-        } catch { /* ignore malformed event */ }
+        } catch (err) { console.debug('[streaming-agent] skipped malformed end event', err?.message); }
         es.close();
         setAgentTrace(null);
         resolve({ text: finalText, provider: providerInfo, tools_used: [...new Set(toolsUsed)] });

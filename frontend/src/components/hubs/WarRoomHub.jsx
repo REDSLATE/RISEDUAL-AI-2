@@ -82,8 +82,9 @@ export default function WarRoomHub({ onSubscribe, onLogin, initialTab }) {
       try {
         await navigator.share({ title, url: shareUrl });
         return;
-      } catch {
+      } catch (err) {
         /* user-cancelled or unsupported → fall through to clipboard */
+        console.debug('[war-room] native share dismissed, falling back to clipboard', err?.message);
       }
     }
     try {

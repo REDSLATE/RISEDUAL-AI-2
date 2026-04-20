@@ -141,8 +141,8 @@ export default function ChipAdoptionInsights() {
                 </tr>
               </thead>
               <tbody>
-                {stats.top_clicked.map((r, i) => (
-                  <tr key={i} className="border-t border-slate-800/70 hover:bg-slate-800/30">
+                {stats.top_clicked.map((r) => (
+                  <tr key={r.chip} className="border-t border-slate-800/70 hover:bg-slate-800/30">
                     <td className="px-3 py-2 text-white text-sm font-medium">{r.chip}</td>
                     <td className="px-3 py-2 text-right text-[#3DE8D9] text-sm font-bold tabular-nums">{r.count}</td>
                   </tr>

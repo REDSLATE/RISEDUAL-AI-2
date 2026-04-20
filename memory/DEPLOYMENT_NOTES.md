@@ -26,6 +26,37 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Code-review follow-ups (two targeted fixes)
+*Session: continued*
+
+User ran automated code review; I audited findings and confirmed almost all
+"critical" items were false positives (see notes inline in the session):
+- `routes/auth.py:446` flagged as hardcoded secret — it's the documented
+  `_CANONICAL_OWNER_PASSWORD` override, explicitly preserved per user.
+- `backtester_service.py:193` flagged as `eval()` — it's a comment above
+  the AST-based safe evaluator. No `eval()` call exists.
+- `test_iteration36_code_quality.py:230/250` flagged — these tests verify
+  the safe evaluator REJECTS dangerous input; removing them would remove
+  security coverage.
+- Test-file "hardcoded secrets" were dummy test fixtures.
+- 212 React hook-dep warnings and localStorage findings are standard
+  patterns, not bugs.
+
+**Applied only the two legitimate low-risk items:**
+
+1. `frontend/src/components/admin/ChipAdoptionInsights.jsx:144`
+   - `key={i}` → `key={r.chip}` (matches the sibling Top Actions table
+     already using `r.chip`). No behavioural change; fixes reconciliation.
+
+2. Empty catch blocks now log at `console.debug` level (not `error` —
+   these are all expected-silent paths, but DevTools can see them):
+   - `hooks/useStreamingAgent.js` × 3 (SSE malformed-event parse)
+   - `components/hubs/WarRoomHub.jsx` × 1 (user-cancelled Web Share)
+   - `components/chat/ChatMessages.jsx` × 2 (fire-and-forget chip
+     telemetry pings)
+
+**Behavioural impact:** None. No API contracts, no UI, no auth changes.
+
 ### 2026-02-19 — Features grid uniform 3×2 layout
 *Session: continued*
 

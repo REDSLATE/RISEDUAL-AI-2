@@ -116,8 +116,8 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
                 message_idx: idx,
                 context_hub: ctx,
               }),
-            }).catch(() => { /* silent */ });
-          } catch { /* silent */ }
+            }).catch((err) => { console.debug('[chip-telemetry] shown ping failed', err?.message); });
+          } catch (err) { console.debug('[chip-telemetry] shown ping threw', err?.message); }
         });
       }
       if (Array.isArray(msg.actions)) {
@@ -138,8 +138,8 @@ const ChatMessages = ({ messages, showPatterns, copiedId, onCopy, isPro, onPin, 
                 message_idx: idx,
                 context_hub: ctx,
               }),
-            }).catch(() => { /* silent */ });
-          } catch { /* silent */ }
+            }).catch((err) => { console.debug('[chip-telemetry] action-shown ping failed', err?.message); });
+          } catch (err) { console.debug('[chip-telemetry] action-shown ping threw', err?.message); }
         });
       }
     });
