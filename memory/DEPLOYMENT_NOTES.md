@@ -26,6 +26,57 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Self-Test system (3-layer: scheduler + CLI + Admin UI)
+*Session: continued*
+
+**What:** Added a first-class self-test that catches the regression classes
+we've actually been hit by (tz-naive datetime compare, stale price
+literals, missing collections, scheduler job drop-off, env misconfig).
+
+**Components:**
+1. `backend/services/self_test_service.py` — pure check functions,
+   `run_self_test(db, scheduler)` returns a structured report.
+2. `backend/routes/self_test.py` — admin-only `GET|POST
+   /api/admin/self-test`.
+3. Wired through `route_registry.py` (router + `set_db` + `set_scheduler`).
+4. `server.py` `_run_self_test_monitor` cron (every 15m). Appends to
+   `/app/memory/HEALTH_LOG.md` only on state change (PASS↔FAIL) or the
+   hourly heartbeat to keep the log readable.
+5. `scripts/self-test.sh` — CLI pre-deploy check. Uses the canonical
+   owner creds by default, env-var overridable. Exit 0 on PASS, 1 on FAIL.
+6. `frontend/src/components/admin/SelfTestPanel.jsx` — "Run self-test"
+   button with per-check PASS/FAIL table. Mounted at the top of the
+   existing Admin → Developer Tools page.
+
+**Checks (6):**
+- db_ping — Mongo responds to `ping`
+- collections — 5 required collections present (oauth_token_audit treated
+  as lazy; not-yet-written is PASS with info note)
+- datetime_comparisons — reproduces the 2026-02-19 Security Audit crash
+  against up to 20 `login_attempts` rows to catch tz-naive leaks
+- env — MONGO_URL, DB_NAME, EMERGENT_LLM_KEY, STRIPE_SECRET_KEY present
+- pricing — scans digest_service + payment_service for `$X/month`
+  stale literals ($45/$29/$49/$25); skips lines starting with `#`
+- scheduler — 5 required cron jobs registered (digest, headlines,
+  prediction_prewarm, prediction_labeler, nightly_ml_retrain)
+
+**Verified:** `/app/scripts/self-test.sh` returns `6/6 passed` on the
+current preview env. Endpoint responds 200 under admin auth, 401 without.
+
+**Files touched:**
+- new: `backend/services/self_test_service.py`
+- new: `backend/routes/self_test.py`
+- new: `scripts/self-test.sh`
+- new: `frontend/src/components/admin/SelfTestPanel.jsx`
+- new: `memory/HEALTH_LOG.md`
+- edit: `backend/route_registry.py` (router + db wiring)
+- edit: `backend/server.py` (scheduler job + runner + scheduler ref wire)
+- edit: `frontend/src/components/admin/AdminTools.jsx` (mount panel)
+
+**Behavioural impact:** Pure additive. No existing routes, data, or UI
+changed. Cron job is no-op on PASS so zero extra Mongo/CPU on healthy
+systems.
+
 ### 2026-02-19 — Security Audit: datetime TypeError crash fix
 *Session: continued*
 

@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { authFetch } from '../../contexts/AuthContext';
 import logger from '../../utils/logger';
 import { getApiBase } from '../../utils/apiBase';
+import SelfTestPanel from './SelfTestPanel';
 
 const API = `${getApiBase()}/api`;
 
@@ -57,6 +58,8 @@ const AdminTools = () => {
   return (
     <div className="p-6 space-y-6" data-testid="admin-tools">
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
+
+      <SelfTestPanel />
 
       <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">

@@ -59,6 +59,7 @@ from routes.stockfit_13f import router as stockfit_13f_router, set_db as set_sto
 from routes.analytics import router as analytics_router, set_db as set_analytics_db
 from routes.fred import router as fred_router, set_db as set_fred_db
 from routes.demo import router as demo_router, set_db as set_demo_db
+from routes.self_test import router as self_test_router, set_db as set_self_test_db, set_scheduler as set_self_test_scheduler  # noqa: F401
 from routes.share import router as share_router
 from routes.share_image import router as share_image_router
 from services.price_provider import set_db as set_price_provider_db
@@ -95,6 +96,7 @@ ALL_ROUTERS = [
     analytics_router,
     fred_router,
     demo_router,
+    self_test_router,
     share_router,
     share_image_router,
 ]
@@ -131,6 +133,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_analytics_db,
         set_fred_db,
         set_demo_db,
+        set_self_test_db,
         set_usaspending_db,
     ]
     for setter in _setters:

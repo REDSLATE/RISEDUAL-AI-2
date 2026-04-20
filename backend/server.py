@@ -261,8 +261,16 @@ async def _start_schedulers():
         scheduler.add_job(_run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
         scheduler.add_job(_run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
         scheduler.add_job(_run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')
+        scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.start()
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30)")
+        # Expose the started scheduler to the self-test route so its
+        # /api/admin/self-test probe can check job registration health.
+        try:
+            from routes.self_test import set_scheduler as _set_self_test_scheduler
+            _set_self_test_scheduler(scheduler)
+        except Exception as e:
+            logger.warning(f"Self-test scheduler wire failed: {e}")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -471,6 +479,62 @@ async def _run_nightly_ml_retrain():
         )
     except Exception as e:
         logger.warning(f"Nightly ML retrain error: {e}")
+
+
+async def _run_self_test_monitor():
+    """Background: every 15 minutes — run the self-test battery and append
+    a one-liner to /app/memory/HEALTH_LOG.md, but only on state change or
+    once per hour heartbeat so the log stays readable."""
+    try:
+        import pathlib
+        from services.self_test_service import run_self_test
+
+        # Best-effort: the scheduler reference is wired into the route
+        # module; re-use it so job-registration check has something to see.
+        scheduler_ref = None
+        try:
+            from routes.self_test import _scheduler as scheduler_ref  # noqa: F401
+        except Exception:
+            scheduler_ref = None
+
+        report = await run_self_test(db, scheduler_ref)
+
+        log_path = pathlib.Path("/app/memory/HEALTH_LOG.md")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Find the previous overall status to decide if we need to log.
+        last_overall = "UNKNOWN"
+        if log_path.exists():
+            for line in reversed(log_path.read_text().splitlines()):
+                if "overall=" in line:
+                    last_overall = line.split("overall=")[1].split()[0]
+                    break
+
+        now = datetime.now(timezone.utc)
+        state_changed = report["overall"] != last_overall
+        heartbeat = now.minute < 15  # hourly at the top of the hour
+
+        if state_changed or heartbeat:
+            line = (
+                f"{report['timestamp']} "
+                f"overall={report['overall']} "
+                f"pass={report['passed']}/{report['total']} "
+                f"fail={report['failed']}"
+            )
+            if report["failed"] > 0:
+                fails = [c["name"] for c in report["checks"] if c["status"] == "FAIL"]
+                line += f" failures=[{', '.join(fails)}]"
+            if state_changed and last_overall != "UNKNOWN":
+                line += f"  # state {last_overall} → {report['overall']}"
+            with log_path.open("a") as f:
+                f.write(line + "\n")
+
+        if report["failed"] > 0:
+            logger.warning(
+                f"Self-test FAIL: {[c['name'] for c in report['checks'] if c['status']=='FAIL']}"
+            )
+    except Exception as e:
+        logger.warning(f"Self-test monitor error: {e}")
 
 
 
