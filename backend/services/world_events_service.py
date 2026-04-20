@@ -90,7 +90,7 @@ class WorldEventsService:
             ('https://feeds.reuters.com/reuters/businessNews', 'Reuters Business'),
             ('https://feeds.bbci.co.uk/news/world/rss.xml', 'BBC World'),
             ('https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NY Times World'),
-            ('https://feeds.a]pnews.com/apnews/topnews', 'AP News'),
+            ('https://feeds.apnews.com/apnews/topnews', 'AP News'),
             ('https://www.cnbc.com/id/100727362/device/rss/rss.html', 'CNBC World'),
         ]
 

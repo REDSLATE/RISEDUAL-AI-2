@@ -26,6 +26,20 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — AP News RSS URL typo fix
+*Session: continued*
+
+**Problem:** User noticed backend was logging `Error scraping AP News RSS:
+Failed to parse: https://feeds.a]pnews.com/apnews/topnews` — there's a
+stray `]` in the URL (`feeds.a]pnews.com`).
+
+**Fix:** `backend/services/world_events_service.py` line 93 — URL corrected
+to `https://feeds.apnews.com/apnews/topnews`.
+
+**Verified:** log now shows the scraper attempting `feeds.apnews.com`
+(fails in preview sandbox only because outbound DNS is restricted there —
+same issue blocks Reuters feeds in preview; production is unaffected).
+
 ### 2026-02-19 — Pro Max checkout + chat-history tz safety
 *Session: continued*
 
