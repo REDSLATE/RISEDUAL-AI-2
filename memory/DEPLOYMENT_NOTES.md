@@ -26,6 +26,32 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — requirements.txt deploy blockers fixed
+*Session: continued*
+
+User pasted the current `requirements.txt` pre-deploy and I caught three
+issues that would have blocked or regressed a fresh-container install:
+
+1. **`-e /tmp/risedual-v4/risedual_core` → `-e ./risedual_core`**
+   - `/tmp/` is ephemeral; path doesn't exist on a fresh container.
+   - Switched to the repo-relative vendored package at
+     `/app/backend/risedual_core/` (which already has a valid
+     `pyproject.toml` and was the real source of truth all along).
+2. **`instructor==1.15.1` — removed entirely**
+   - 1.15.1 requires `openai>=2.0,<3.0`, conflicting with our pinned
+     `openai==1.99.9`.
+   - Verified zero imports across all backend code and no transitive
+     package depends on it. Safe to drop.
+3. **`sse-starlette==3.3.4` → `sse-starlette==2.1.3`**
+   - 3.x requires `starlette>=0.49`; `fastapi==0.110.1` pins
+     `starlette<0.38`. Irreconcilable without upgrading fastapi.
+   - 2.1.3 has an unconstrained starlette dep and works with
+     starlette 0.37.x. SSE streaming endpoints (chat, orderflow,
+     whale radar, stream) all still functional.
+
+**Verified:** `pip install -r requirements.txt` succeeds, backend
+RUNNING, `sse_starlette` import OK, self-test 6/6 green.
+
 ### 2026-02-19 — AP News RSS URL typo fix
 *Session: continued*
 

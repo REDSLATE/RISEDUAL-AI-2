@@ -70,7 +70,9 @@ idna==3.11
 importlib_metadata==8.7.1
 importlib_resources==6.5.2
 iniconfig==2.3.0
-instructor==1.15.1
+# instructor removed 2026-04-20: not imported anywhere in the codebase and
+# its 1.15.1 pin requires openai>=2.0, which conflicts with our pinned
+# openai==1.99.9. No runtime dependency on it.
 isort==8.0.0
 Jinja2==3.1.6
 jiter==0.13.0
@@ -170,8 +172,10 @@ requests==2.32.5
 requests-oauthlib==2.0.0
 resend==2.27.0
 rich==14.3.3
-# Editable install with no version control (risedual-core==0.1.0)
--e /tmp/risedual-v4/risedual_core
+# Editable install pointing at the vendored risedual_core package inside
+# the repo (/app/backend/risedual_core). Using a repo-relative path so it
+# resolves identically in dev, preview, and production containers.
+-e ./risedual_core
 rpds-py==0.30.0
 rsa==4.9.1
 s3transfer==0.16.0
@@ -182,7 +186,10 @@ shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
 soupsieve==2.8.3
-sse-starlette==3.3.4
+# sse-starlette pinned to 2.1.3 (2026-04-20): newer versions (3.x) require
+# starlette>=0.49 which conflicts with fastapi 0.110.1's starlette<0.38 pin.
+# 2.1.3 has an unconstrained starlette dep and works fine with 0.37.x.
+sse-starlette==2.1.3
 sseclient-py==1.9.0
 starlette==0.37.2
 stripe==14.4.0
