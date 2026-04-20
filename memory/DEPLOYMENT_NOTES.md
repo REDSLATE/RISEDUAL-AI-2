@@ -26,26 +26,6 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
-### 2026-02-19 — Action pricing table column balance fix
-*Session: continued*
-
-**Problem:** User pointed out the Action pricing table's "Action" column
-hugged the left edge with plan columns (Free/Starter/Pro/Pro Max) crammed
-over on the right — caused by `w-full` table with auto-sized columns
-where the longest label ("Scanner + Validation") stretched the first col.
-Second pass: initial `max-w-3xl` made the table narrower than the pricing
-cards above, so user reported it looked indented on desktop.
-
-**Fix:** `frontend/src/components/LandingPage.jsx` Action pricing block:
-- Dropped the inner `max-w-3xl` wrapper so the table spans the full
-  `max-w-6xl` parent (matches the pricing cards grid).
-- Added `<colgroup>` with explicit widths (Action 24%, each plan 19%) so
-  plan columns sit directly under their matching card headers above.
-- Switched to `table-fixed` layout and added `break-words` on the Action
-  column so labels wrap cleanly inside their box.
-
-**Behavioural impact:** Visual polish only. No data changes.
-
 ### 2026-02-19 — Features grid uniform 3×2 layout
 *Session: continued*
 
@@ -62,22 +42,16 @@ and GPT-5.2 Post-Mortem) used `md:col-span-2`, creating an asymmetric
 
 **Behavioural impact:** Visual polish only. No logic changed.
 
-### 2026-02-19 — Pricing section optical centering (container width)
+### 2026-02-19 — Reverted (not shipping): Pricing/Action-table width tweaks
 *Session: continued*
 
-**Problem:** User reported pricing cards "off to the left, not centered on the
-page" even after per-card border sizing was equalised. Root cause: Pricing
-section container was `max-w-5xl` while the sibling Features / About Us
-sections were `max-w-6xl` — creating an optical illusion of leftward drift.
-
-**Fix:** `frontend/src/components/LandingPage.jsx`:
-- Pricing section wrapper bumped from `max-w-5xl` → `max-w-6xl` so it
-  matches adjacent sections.
-- Screenshot verified at 1920px: 4 cards sit with equal left/right gutters;
-  "Action pricing" and "Top-up pricing" tables below share the same width.
-
-**Behavioural impact:** Visual polish only. No logic, routing, or pricing
-data changed.
+After multiple iterations on the Pricing container width and the Action
+pricing table layout (card-grid refactor, colgroup widths, etc.), user
+requested the original state be restored. Reverted:
+- Pricing section wrapper: back to `max-w-5xl` (original).
+- Action pricing: back to the original `<table>` with 5 columns
+  (Action / Free / Starter / Pro / Pro Max) and natural sizing.
+- No net change on these two items for this session.
 
 ### 2026-02-19 — Landing-page pricing cards alignment fix
 *Session: continued*

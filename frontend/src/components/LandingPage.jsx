@@ -295,10 +295,7 @@ const Features = () => {
 /* ─── Pricing ─── */
 const Pricing = ({ onGetStarted }) => (
   <section id="pricing" className="py-20 sm:py-28 border-t border-white/5" data-testid="landing-pricing">
-    {/* max-w-6xl matches the Features / Comparison sections above and below
-        so the pricing row doesn't visually "shrink" when scrolling past —
-        the content column edges line up with siblings. */}
-    <div className="max-w-6xl mx-auto px-4 sm:px-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
       <h2 className="text-base sm:text-lg font-semibold text-white text-center mb-2">Trade smarter with AI access built into every plan.</h2>
       <p className="text-xs text-slate-400 text-center mb-10 max-w-xl mx-auto">Every account includes AI access. Pro members get unlimited AI Chat and unlimited War Room, while advanced AI features use credits across all plans.</p>
 
@@ -342,17 +339,17 @@ const Pricing = ({ onGetStarted }) => (
       <div className="mt-10 mb-8">
         <h3 className="text-white text-xs font-bold mb-3 text-center">Action pricing</h3>
         <p className="text-slate-400 text-[10px] text-center mb-4 max-w-xl mx-auto">Chat and War Room are bundled into Pro and Pro Max because they are your most frequent workflows. Advanced AI actions stay credit-based on every plan.</p>
-        <div className="overflow-x-auto">
+        <div className="max-w-3xl mx-auto rounded-xl border border-slate-700/60 bg-slate-800/30 overflow-hidden">
           <table className="w-full text-[10px] border-collapse table-fixed" data-testid="action-pricing-table">
             <colgroup>
-              <col style={{ width: '24%' }} />
-              <col style={{ width: '19%' }} />
-              <col style={{ width: '19%' }} />
-              <col style={{ width: '19%' }} />
-              <col style={{ width: '19%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
             </colgroup>
             <thead>
-              <tr className="text-slate-400 border-b border-slate-700/40">
+              <tr className="text-slate-400 border-b border-slate-700/60 bg-slate-800/50">
                 <th className="text-left py-2 px-3">Action</th>
                 <th className="text-center py-2 px-3">Free</th>
                 <th className="text-center py-2 px-3">Starter</th>
@@ -369,9 +366,9 @@ const Pricing = ({ onGetStarted }) => (
                 ['AI Intelligence', '2 credits', '2 credits', '2 credits', '2 credits'],
                 ['Scanner + Validation', '2 credits', '2 credits', '2 credits', '2 credits'],
                 ['API call', '1 credit', '1 credit', '1 credit', '1 credit'],
-              ].map(([action, ...vals]) => (
-                <tr key={action} className="border-b border-slate-800/40">
-                  <td className="py-2 px-3 text-white font-medium break-words">{action}</td>
+              ].map(([action, ...vals], rowIdx, arr) => (
+                <tr key={action} className={rowIdx < arr.length - 1 ? 'border-b border-slate-700/30' : ''}>
+                  <td className="py-2 px-3 text-white font-medium">{action}</td>
                   {vals.map((v, i) => (
                     <td key={`${action}-${i}`} className={`text-center py-2 px-3 ${v === true ? 'text-lime-400 font-bold' : ''}`}>
                       {v === true ? 'Unlimited' : v}
