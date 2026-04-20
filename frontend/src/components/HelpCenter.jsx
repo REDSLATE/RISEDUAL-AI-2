@@ -19,8 +19,6 @@ const SECTIONS = [
       { title: 'The 5 top-level hubs',
         content: 'Dashboard · War Room · Research · Options · Workspace. Each hub has its own icon tab strip. Click the ⓘ icon inside any hub to see what every icon does — no memorising required.',
         goto: ['dashboard'] },
-      { title: 'v2 UI vs Classic UI',
-        content: 'v2 is the current default. A "Classic UI" pill in the top-right flips you to the historical design if you prefer it. Everything is preserved — nothing deleted.' },
       { title: 'Paper vs Live trading',
         content: 'Every new account starts with $100K paper capital. Live (real-money) execution is gated behind 30 days of paper trading + Sharpe 1.2 + the ML Tier 3 calibration gate.',
         goto: ['workspace', 'paper'] },
@@ -144,8 +142,6 @@ const SECTIONS = [
     items: [
       { title: '⌘K / Ctrl+K — Global search',
         content: 'Focuses the symbol search from anywhere. Type a ticker, hit Enter, jumps to Stock Detail.' },
-      { title: '?v1=1 — Classic UI',
-        content: 'Append ?v1=1 to any URL to view the historical (pre-v2) design. Remove or use ?v1=0 to come back.' },
       { title: 'Esc — Close modals & legends',
         content: 'Esc closes the active modal, the icon legend popover, and this Help Center.' },
       { title: 'Chat prefill via event',
@@ -156,8 +152,6 @@ const SECTIONS = [
     key: 'faq', label: 'FAQ', icon: Info, accent: '#3DE8D9',
     desc: 'Common questions',
     items: [
-      { title: 'Why is the Classic UI pill in my header?',
-        content: 'It\'s a reversible switch. v2 is the current default; Classic lets you step back to the prior layout without losing any data. Both pull from the same APIs.' },
       { title: 'How do referral rewards work?',
         content: 'Share your Smart Money Board PNG — the QR encodes your ref code. 5 unique scans/month = +7 days Pro. Monthly leaderboard: #1 wins Pro Max for 30 days, #2 wins Pro for 30 days, #3–5 win 100 credits.' },
       { title: 'How do I connect a real broker?',
