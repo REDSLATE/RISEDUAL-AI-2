@@ -18,7 +18,8 @@ def set_db(database):
 
 class CheckoutRequest(BaseModel):
     origin_url: str
-    plan: str = "monthly"
+    plan: str = "monthly"         # legacy: "monthly" | "annual"
+    tier: str | None = None       # new: "pro" | "pro_max" (takes precedence when set)
 
 
 @router.get("/subscription/plans")
@@ -60,28 +61,37 @@ async def get_plans():
 @router.post("/subscription/create-checkout-session")
 async def create_checkout_session(request: CheckoutRequest, http_request: Request):
     try:
-        from services.payment_service import StripePaymentService
+        from services.payment_service import StripePaymentService, TIER_PRICE_MAP
         payment_service = StripePaymentService()
         host_url = str(http_request.base_url).rstrip('/')
         webhook_url = f"{host_url}/api/webhook/stripe"
 
+        # Resolve the tier (new flow) first; fall back to the legacy plan.
+        tier = request.tier if request.tier in TIER_PRICE_MAP else None
         plan = request.plan if request.plan in ("monthly", "annual") else "monthly"
-        amount = 594.00 if plan == "annual" else 55.00
 
-        metadata = {"plan": f"risedualai_pro_{plan}", "source": "web_checkout"}
+        if tier:
+            amount = TIER_PRICE_MAP[tier]
+            plan_label = f"risedualai_{tier}"
+        else:
+            amount = 594.00 if plan == "annual" else 55.00
+            plan_label = f"risedualai_pro_{plan}"
+
+        metadata = {"plan": plan_label, "source": "web_checkout"}
 
         session = await payment_service.create_checkout_session(
             origin_url=request.origin_url,
             webhook_url=webhook_url,
             metadata=metadata,
-            plan=plan
+            plan=plan,
+            tier=tier,
         )
 
         await db.payment_transactions.insert_one({
             "session_id": session.session_id,
             "amount": amount,
             "currency": "usd",
-            "plan": f"risedualai_pro_{plan}",
+            "plan": plan_label,
             "metadata": metadata,
             "payment_status": "initiated",
             "created_at": datetime.now(timezone.utc).isoformat()

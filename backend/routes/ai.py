@@ -288,11 +288,30 @@ async def get_chat_history(session_id: str, request: Request):
             return {"messages": []}
         messages = session.get("messages", [])
 
-        # Free users: only get messages from last 24 hours
+        # Free users: only get messages from last 24 hours.
+        # Robustly handle `timestamp` stored as either an ISO-8601 string
+        # (including the `Z` suffix) or a native `datetime` object so the
+        # filter can't raise a TypeError or silently let through a bad row.
         user = await get_optional_user(request)
         if user and not is_pro_user(user):
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-            messages = [m for m in messages if m.get("timestamp", "9999") >= cutoff]
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=24)
+            kept = []
+            for m in messages:
+                ts = m.get("timestamp")
+                if isinstance(ts, datetime):
+                    ts_dt = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+                elif isinstance(ts, str):
+                    try:
+                        ts_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if ts_dt.tzinfo is None:
+                        ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+                else:
+                    continue
+                if ts_dt >= cutoff_dt:
+                    kept.append(m)
+            messages = kept
 
         return {"messages": messages, "history_limited": bool(user) and not is_pro_user(user)}
     except Exception as e:

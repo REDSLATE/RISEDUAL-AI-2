@@ -26,6 +26,46 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Pro Max checkout + chat-history tz safety
+*Session: continued*
+
+Extracted two genuinely useful ideas from a pair of malformed user-supplied
+patches (neither applied — both had duplicate git-diff headers; ignored).
+
+**A. Pro Max ($99/mo) checkout path** — missing feature. The landing page
+advertises Pro Max but the backend could only check out "Pro" before.
+- `backend/services/payment_service.py` — added `TIER_PRICE_MAP =
+  {"pro": 55.00, "pro_max": 99.00}` alongside the existing monthly/annual
+  constants. `create_checkout_session()` gained an optional `tier`
+  argument that wins when supplied; legacy `plan` stays as fallback.
+- `backend/routes/subscription.py` — `CheckoutRequest` gained
+  `tier: str | None`. Endpoint resolves `tier` first, falls back to
+  legacy `plan`. Stores accurate amount + plan label in
+  `payment_transactions`.
+- Verified end-to-end via curl: `tier=pro_max` → $99 stored;
+  legacy `plan=monthly` → $55 stored. Self-test 6/6 green.
+
+**B. Chat-history timestamp safety** — same class of bug as the Security
+Audit crash fixed this morning.
+- `backend/routes/ai.py` `get_chat_history()` replaced the string-based
+  timestamp comparison (`m.get("timestamp", "9999") >= cutoff`) with a
+  typed filter that handles both `datetime` (naive + aware) and ISO-8601
+  strings (including the `Z` suffix). Rows with unparseable timestamps
+  are dropped rather than crash.
+
+**Ignored from the user's patches:**
+- Stale Pro monthly $45 → $55 change (already done earlier this session).
+- Annual pricing regression ($40.50/mo → matches old PDF copy) — would
+  have removed the 10%-off annual; kept current $49.50/mo.
+- `scan_for_signals` mock-generator removal — hunks were truncated and
+  the mock data is still used by paper/demo flows.
+- Unknown edits to auth.py, server.py, digest_service.py, push_service.py,
+  world_events_service.py, models/chat.py — hunks empty/unverifiable;
+  `auth.py` in particular is explicitly off-limits per user.
+
+**Behavioural impact:** Additive. Backwards-compatible. Pro Max is now
+purchasable; chat history is crash-safe across stored-timestamp formats.
+
 ### 2026-02-19 — Domain fix: risedual.com → risedual.ai (Stripe/PayPal docs + tests)
 *Session: continued*
 
