@@ -26,6 +26,26 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Security Audit: datetime TypeError crash fix
+*Session: continued*
+
+**Problem:** `/api/admin/security/failed-logins` was crashing with
+`TypeError: can't compare offset-naive and offset-aware datetimes` at
+`routes/security_audit.py:90`. MongoDB returns naive `datetime` objects
+but the comparison variable `now = datetime.now(timezone.utc)` is
+timezone-aware, so `locked_until > now` raises whenever a lockout row
+exists.
+
+**Fix:** `backend/routes/security_audit.py` `failed_logins()`:
+- Normalize naive `locked_until` values from Mongo to UTC-aware via
+  `locked_until.replace(tzinfo=timezone.utc)` before the comparison.
+- Guard `is_locked` with `isinstance(locked_until, datetime)` so
+  non-datetime / None values can't raise either.
+- Verified endpoint now returns 401 (auth required) rather than 500.
+
+**Behavioural impact:** No more crash for admins loading the Security
+Audit dashboard when any account is locked out.
+
 ### 2026-02-19 — Code-review follow-ups (two targeted fixes)
 *Session: continued*
 

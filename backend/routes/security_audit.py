@@ -87,7 +87,11 @@ async def failed_logins(request: Request, limit: int = 50):
     now = datetime.now(timezone.utc)
     async for doc in cursor:
         locked_until = doc.get("locked_until")
-        is_locked = locked_until and locked_until > now
+        # MongoDB returns naive datetimes — normalize to UTC-aware so we can
+        # compare against `now` (which is tz-aware) without TypeError.
+        if isinstance(locked_until, datetime) and locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        is_locked = bool(locked_until) and isinstance(locked_until, datetime) and locked_until > now
         attempts.append({
             "identifier": doc.get("identifier", "unknown"),
             "attempts": doc.get("attempts", 0),
