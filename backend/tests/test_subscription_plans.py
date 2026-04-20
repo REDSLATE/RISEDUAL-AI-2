@@ -15,7 +15,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session with plan=monthly returns 200"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com", "plan": "monthly"},
+            json={"origin_url": "https://risedual.ai", "plan": "monthly"},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -25,7 +25,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session with plan=monthly returns valid Stripe URL"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com", "plan": "monthly"},
+            json={"origin_url": "https://risedual.ai", "plan": "monthly"},
             headers={"Content-Type": "application/json"}
         )
         data = response.json()
@@ -39,7 +39,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session with plan=annual returns 200"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com", "plan": "annual"},
+            json={"origin_url": "https://risedual.ai", "plan": "annual"},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -49,7 +49,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session with plan=annual returns valid Stripe URL"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com", "plan": "annual"},
+            json={"origin_url": "https://risedual.ai", "plan": "annual"},
             headers={"Content-Type": "application/json"}
         )
         data = response.json()
@@ -63,7 +63,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session without plan defaults to monthly"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com"},
+            json={"origin_url": "https://risedual.ai"},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -75,7 +75,7 @@ class TestSubscriptionCheckout:
         """POST /api/subscription/create-checkout-session with invalid plan defaults to monthly"""
         response = requests.post(
             f"{BASE_URL}/api/subscription/create-checkout-session",
-            json={"origin_url": "https://risedual.com", "plan": "invalid_plan"},
+            json={"origin_url": "https://risedual.ai", "plan": "invalid_plan"},
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"

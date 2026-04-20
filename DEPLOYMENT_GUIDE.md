@@ -1,4 +1,4 @@
-# RISEDUALAI Deployment Guide for www.risedual.com
+# RISEDUALAI Deployment Guide for www.risedual.ai
 
 ## ✅ Pre-Deployment Checklist Complete
 - [x] All deployment blockers fixed
@@ -49,11 +49,11 @@ PAYPAL_CLIENT_SECRET=your_actual_secret
 PAYPAL_MODE=live
 PAYPAL_PLAN_ID=P-your_actual_plan_id
 
-# URLs are already set for www.risedual.com
-STRIPE_SUCCESS_URL=https://www.risedual.com/subscription/success
-STRIPE_CANCEL_URL=https://www.risedual.com/subscription/cancel
-PAYPAL_RETURN_URL=https://www.risedual.com/subscription/success
-PAYPAL_CANCEL_URL=https://www.risedual.com/subscription/cancel
+# URLs are already set for www.risedual.ai
+STRIPE_SUCCESS_URL=https://www.risedual.ai/subscription/success
+STRIPE_CANCEL_URL=https://www.risedual.ai/subscription/cancel
+PAYPAL_RETURN_URL=https://www.risedual.ai/subscription/success
+PAYPAL_CANCEL_URL=https://www.risedual.ai/subscription/cancel
 ```
 
 ### Step 3: Deploy on Emergent
@@ -68,17 +68,17 @@ PAYPAL_CANCEL_URL=https://www.risedual.com/subscription/cancel
    - Verify all features work
    - Test payment flows (use Stripe/PayPal test mode first)
 
-### Step 4: Connect Custom Domain (www.risedual.com)
+### Step 4: Connect Custom Domain (www.risedual.ai)
 
 #### **In Emergent:**
 1. Go to your app settings
 2. Find "Custom Domain" section
-3. Enter: www.risedual.com
+3. Enter: www.risedual.ai
 4. Emergent will provide DNS records
 
 #### **In GoDaddy:**
 1. Log into your GoDaddy account
-2. Go to: My Products → Domains → risedual.com → DNS
+2. Go to: My Products → Domains → risedual.ai → DNS
 3. **IMPORTANT:** Delete all existing A records
 4. Add the DNS records provided by Emergent:
    - Usually CNAME record pointing to Emergent
@@ -88,12 +88,12 @@ PAYPAL_CANCEL_URL=https://www.risedual.com/subscription/cancel
 #### **Wait for Propagation:**
 - DNS changes take 5-15 minutes (usually)
 - Can take up to 24 hours maximum
-- Check status: https://www.whatsmydns.net/#A/www.risedual.com
+- Check status: https://www.whatsmydns.net/#A/www.risedual.ai
 
 ### Step 5: Verify Everything Works
 
 Once DNS propagates, test:
-- ✅ Visit https://www.risedual.com
+- ✅ Visit https://www.risedual.ai
 - ✅ SSL certificate is active (🔒 padlock in browser)
 - ✅ All pages load correctly
 - ✅ Real-time data displays

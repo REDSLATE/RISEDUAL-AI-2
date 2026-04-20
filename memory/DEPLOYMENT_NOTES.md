@@ -26,6 +26,27 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Domain fix: risedual.com → risedual.ai (Stripe/PayPal docs + tests)
+*Session: continued*
+
+**Problem:** User spotted stale `risedual.com` references around Stripe and
+PayPal redirect URLs. The live payment service builds `success_url` /
+`cancel_url` from the request `origin_url` (no hardcoded domain), but the
+deployment guide and subscription test fixtures still referenced the old
+`.com` domain.
+
+**Fix:**
+- `DEPLOYMENT_GUIDE.md` — 9 replacements (`STRIPE_SUCCESS_URL`,
+  `STRIPE_CANCEL_URL`, `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL`, custom-
+  domain setup steps, DNS propagation-check URLs).
+- `backend/tests/test_subscription_plans.py` — 6 replacements in test
+  fixtures that POST `origin_url: "https://risedual.com"` to Stripe.
+
+**Verified:** `grep -r risedual\.com /app` now returns zero results.
+
+**Behavioural impact:** None at runtime — live redirect URLs have always
+been built from the browser's origin. Docs + tests now match production.
+
 ### 2026-02-19 — Self-Test system (3-layer: scheduler + CLI + Admin UI)
 *Session: continued*
 
