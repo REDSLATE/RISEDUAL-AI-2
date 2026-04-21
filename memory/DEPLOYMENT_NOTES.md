@@ -26,6 +26,50 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Recent-loss bridge + Auditor Feedback Loop
+*Session: continued*
+
+Closed the last two architectural gaps identified in the memo review.
+
+**Part 1 — Recent-loss bridge (`routes/risk_calculator.py`)**
+- `_compute_risk_context` now counts closed `paper_trades` from the last
+  24h with `realized_pnl < 0` and adds them to the `losing_streak` tally.
+- Bridges the ~24-hour labeler lag where a trade has closed red but
+  `predictions.verified_24h` hasn't caught up yet.
+- Sum is capped at `STREAK_LOOKBACK` (10) so a single bad day can't
+  multiply the factor.
+- New `recent_losses_24h` field exposed in the risk context for
+  transparency.
+
+**Part 2 — Auditor Feedback Loop (`services/rejection_log.py` + orchestrator hook)**
+- New `compute_rejection_bias(days, min_samples, min_rate)`: aggregates
+  rejections over the last N days per `(asset, direction)` and computes
+  rejection rate = rejections/attempts. Flags pairs where rate ≥ 70% AND
+  attempts ≥ 10 (configurable). Returns dominant source + reason.
+- New `get_flagged_pairs()` helper returns the set of flagged
+  `(asset, direction)` tuples with a 15-minute in-process cache so the
+  orchestrator hook stays O(1).
+- New admin endpoint `GET /api/admin/rejections/bias` with tunable
+  `days/min_samples/min_rate` query params.
+- New orchestrator hook (`ml_orchestrator.run_post_signal_pipeline`) as
+  **step 0**, before model + gate checks: if the current
+  `(ticker, direction)` is flagged, early-exit with a structured
+  `orchestrator_bias_feedback` rejection logged. Completes the loop —
+  past rejections influence future decisions.
+- New rejection source `orchestrator_bias_feedback` added to the
+  whitelist in `rejection_log.SOURCES`.
+
+**Verified:**
+- `/api/admin/rejections/bias?days=7&min_samples=10` → 200 with expected
+  shape (`{window_days, min_samples, min_rate, count, flagged[]}`).
+- `_compute_risk_context` return now includes `recent_losses_24h` field.
+- Self-test 6/6 green, backend running, no regressions.
+
+**Why the flagged list is empty today:** only 2 seeded rejections in
+the DB. The loop will light up within a week of real traffic when
+rejection rates per `(asset, direction)` cross the 70%/10-sample
+thresholds. Thresholds tunable per-request via the endpoint.
+
 ### 2026-02-19 — Three risk-system gaps closed (retrainer hook + UI banners + bot gating)
 *Session: continued*
 

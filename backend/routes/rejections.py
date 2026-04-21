@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from services.rejection_log import (
     SOURCES,
+    compute_rejection_bias,
     recent_rejections,
     rejection_stats,
 )
@@ -55,3 +56,31 @@ async def rejections_stats(
     """Aggregate rejection counts by source for the past N hours."""
     await _require_admin(request)
     return await rejection_stats(hours=hours)
+
+
+@router.get("/rejections/bias")
+async def rejection_bias(
+    request: Request,
+    days: int = Query(default=7, ge=1, le=60),
+    min_samples: int = Query(default=10, ge=1, le=1000),
+    min_rate: float = Query(default=0.70, ge=0.1, le=1.0),
+):
+    """Feedback loop view — which (asset, direction) pairs should the
+    orchestrator suppress based on recent rejection history?
+
+    Example: if we've attempted 30 TSLA SHORT signals in the last 7 days
+    and the Auditor/Gate/Guards rejected 24 of them (80%), TSLA SHORT
+    shows up here with the dominant reason, and the orchestrator will
+    auto-veto new TSLA SHORT signals until behaviour changes.
+    """
+    await _require_admin(request)
+    flagged = await compute_rejection_bias(
+        days=days, min_samples=min_samples, min_rate=min_rate,
+    )
+    return {
+        "window_days": days,
+        "min_samples": min_samples,
+        "min_rate": min_rate,
+        "count": len(flagged),
+        "flagged": flagged,
+    }

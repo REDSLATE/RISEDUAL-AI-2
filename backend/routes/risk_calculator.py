@@ -116,6 +116,7 @@ async def _compute_risk_context(user_id: str, account_value: float) -> dict:
     """
     ctx = {
         "losing_streak": 0,
+        "recent_losses_24h": 0,
         "current_drawdown": 0.0,
         "peak_equity": account_value,
         "risk_reduced": False,
@@ -142,6 +143,28 @@ async def _compute_risk_context(user_id: str, account_value: float) -> dict:
         ctx["losing_streak"] = streak
     except Exception as e:
         logger.warning(f"[risk-ctx] streak lookup failed for {user_id}: {e}")
+
+    # ── Recent losses bridge — labeler runs hourly and sets verified_24h
+    # on a 24-hour delay, so there's a window where genuinely losing
+    # paper trades from the past 24h aren't yet reflected in the streak
+    # above. Count closed paper trades with realized PnL < 0 in the
+    # last 24h to bridge that lag. Added to `losing_streak` (capped at
+    # STREAK_LOOKBACK so a bad day can't produce a factor-of-five jump).
+    try:
+        from datetime import timedelta
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        # `paper_trades` is append-only; closed trades record the realized
+        # P&L in `realized_pnl` (negative = loss). Sells that close a long
+        # position are the definitive loss events.
+        recent_losses = await _db.paper_trades.count_documents({
+            "user_id": user_id,
+            "executed_at": {"$gte": since.isoformat()},
+            "realized_pnl": {"$lt": 0},
+        })
+        ctx["recent_losses_24h"] = recent_losses
+        ctx["losing_streak"] = min(ctx["losing_streak"] + recent_losses, STREAK_LOOKBACK)
+    except Exception as e:
+        logger.warning(f"[risk-ctx] recent-loss bridge failed for {user_id}: {e}")
 
     # ── Drawdown — update peak_equity then compute drop ──
     try:

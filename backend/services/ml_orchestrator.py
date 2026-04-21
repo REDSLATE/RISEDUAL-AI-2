@@ -139,6 +139,36 @@ async def run_post_signal_pipeline(
         prediction_id=signal.prediction_id or "",
     )
 
+    # ── 0. Feedback-loop veto (bias suppression) ────────────────────────────
+    # If the last week's rejection history strongly flags this
+    # (asset, direction) combo, skip the full pipeline. This is the
+    # "learn from what we rejected" loop — faster than waiting for the
+    # nightly retrain to absorb the pattern. Cached for 15 minutes so
+    # per-signal cost is O(1).
+    try:
+        from services.rejection_log import get_flagged_pairs, log_rejected
+        flagged = await get_flagged_pairs()
+        _dir = getattr(signal.direction, "value", str(signal.direction))
+        if (ticker.upper(), _dir) in flagged:
+            log.info(
+                "[orchestrator] Bias feedback veto — %s %s suppressed "
+                "(recent rejection pattern).",
+                ticker, _dir,
+            )
+            result.errors.append("bias_feedback_veto")
+            try:
+                await log_rejected(
+                    asset=ticker, direction=_dir,
+                    reason="bias_feedback_veto — high recent rejection rate",
+                    source="orchestrator_bias_feedback",
+                    meta={"prediction_id": signal.prediction_id or "", "regime": regime},
+                )
+            except Exception:
+                pass
+            return result
+    except Exception as e:
+        log.debug(f"[orchestrator] bias-feedback check skipped: {e}")
+
     # ── 1. Load model + CalibrationStats ────────────────────────────────────
     model = _load_model_if_stale()
     if model is None:

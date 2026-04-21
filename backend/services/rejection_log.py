@@ -34,6 +34,7 @@ SOURCES = frozenset({
     "orchestrator_no_model",
     "orchestrator_no_calibration",
     "orchestrator_tier_locked",
+    "orchestrator_bias_feedback",
     "ai_signal_validator",
     "risk_guards_veto",
     "risk_circuit_breaker",
@@ -153,3 +154,122 @@ async def rejection_stats(hours: int = 24) -> dict:
     except Exception as e:
         logger.warning(f"[rejection_log] stats() failed: {e}")
         return {"total": 0, "by_source": {}, "window_hours": hours, "error": str(e)}
+
+
+# ─── Feedback Loop ──────────────────────────────────────────────────────────
+# Default thresholds for "suppress this (asset, direction) for a bit" logic:
+# an (asset, direction) pair that's been rejected at least N times AND for
+# at least FRACTION% of its recent signals is flagged. These defaults are
+# deliberately conservative — the nightly ML retrain is the place we change
+# the MODEL; this layer is the faster feedback loop that suppresses known
+# bad patterns between retrains.
+BIAS_MIN_SAMPLES = 10
+BIAS_MIN_REJECTION_RATE = 0.70       # 70% rejection rate = suppress
+BIAS_WINDOW_DAYS = 7
+
+
+async def compute_rejection_bias(
+    days: int = BIAS_WINDOW_DAYS,
+    min_samples: int = BIAS_MIN_SAMPLES,
+    min_rate: float = BIAS_MIN_REJECTION_RATE,
+) -> list[dict]:
+    """Return (asset, direction) pairs the pipeline has consistently rejected.
+
+    Logic (in Mongo-aggregation terms):
+      1. Count rejections per (asset, direction) in the last `days` days.
+      2. Count total predictions per (asset, direction) over the same
+         window (the denominator — how many times did we consider the
+         setup at all).
+      3. Flag pairs where rejections/total >= `min_rate` and total >=
+         `min_samples`.
+
+    Output rows look like::
+
+        {"asset": "TSLA", "direction": "up",
+         "rejections": 24, "attempts": 30, "rate": 0.80,
+         "top_source": "ai_signal_validator",
+         "top_reason": "ai_verdict=hold (conf=42)"}
+    """
+    if _db is None:
+        return []
+    try:
+        from datetime import timedelta
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since_iso = since.isoformat()
+
+        # ── Rejections by (asset, direction) with dominant source/reason ──
+        rej_pipeline = [
+            {"$match": {"logged_at": {"$gte": since}, "asset": {"$ne": ""}}},
+            {"$group": {
+                "_id": {"asset": "$asset", "direction": "$direction"},
+                "rejections": {"$sum": 1},
+                "sources": {"$push": "$source"},
+                "reasons": {"$push": "$reason"},
+            }},
+        ]
+        rej_rows = {}
+        async for row in _db.rejected_signals.aggregate(rej_pipeline):
+            k = (row["_id"]["asset"], row["_id"]["direction"])
+            srcs = row["sources"]
+            top_src = max(set(srcs), key=srcs.count) if srcs else None
+            rsns = row["reasons"]
+            top_reason = max(set(rsns), key=rsns.count) if rsns else None
+            rej_rows[k] = {
+                "rejections": row["rejections"],
+                "top_source": top_src,
+                "top_reason": (top_reason or "")[:120],
+            }
+
+        # ── Total attempts per (asset, direction) — predictions table ──
+        att_pipeline = [
+            {"$match": {"created_at": {"$gte": since_iso}}},
+            {"$group": {
+                "_id": {"asset": "$ticker", "direction": "$direction"},
+                "attempts": {"$sum": 1},
+            }},
+        ]
+        flagged = []
+        async for row in _db.predictions.aggregate(att_pipeline):
+            asset = (row["_id"].get("asset") or "").upper()
+            direction = row["_id"].get("direction")
+            attempts = row["attempts"]
+            rej = rej_rows.get((asset, direction))
+            if not rej or attempts < min_samples:
+                continue
+            rate = rej["rejections"] / attempts
+            if rate >= min_rate:
+                flagged.append({
+                    "asset": asset,
+                    "direction": direction,
+                    "rejections": rej["rejections"],
+                    "attempts": attempts,
+                    "rate": round(rate, 3),
+                    "top_source": rej["top_source"],
+                    "top_reason": rej["top_reason"],
+                })
+
+        flagged.sort(key=lambda r: (-r["rate"], -r["attempts"]))
+        return flagged
+    except Exception as e:
+        logger.warning(f"[rejection_log] compute_rejection_bias failed: {e}")
+        return []
+
+
+# Tiny LRU-ish cache so the orchestrator hook doesn't re-aggregate on
+# every signal. Recomputed every 15 minutes which is more than fast
+# enough for a "trend" signal like this.
+_bias_cache: dict = {"snapshot_at": None, "flagged": set()}
+_BIAS_CACHE_TTL_SECONDS = 15 * 60
+
+
+async def get_flagged_pairs() -> set:
+    """Fast-path set of `(asset, direction)` tuples the orchestrator can use
+    for O(1) suppression checks. Cached for 15 minutes."""
+    now = datetime.now(timezone.utc)
+    snap = _bias_cache.get("snapshot_at")
+    if snap and (now - snap).total_seconds() < _BIAS_CACHE_TTL_SECONDS:
+        return _bias_cache["flagged"]
+    flagged = await compute_rejection_bias()
+    _bias_cache["flagged"] = {(r["asset"], r["direction"]) for r in flagged}
+    _bias_cache["snapshot_at"] = now
+    return _bias_cache["flagged"]
