@@ -24,6 +24,53 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Dispatcher dedup + prediction logging + BTC grid rebase
+*Session: continued*
+
+**What shipped (all user-approved, ready to deploy):**
+
+*1. Signal-dispatcher dedup (Issue #1a):*
+- Inside `run_signal_bot_dispatcher()`, raw scanner matches are now
+  collected into a list, then collapsed to ONE signal per symbol by
+  picking the highest-strength match (ties broken deterministically
+  by `strategy_id`). This kills the "BUY+SELL on the same price in
+  the same minute" thrash that was burning daily-cap slots without
+  generating real PnL signal.
+- Verified live on next pass: 8 raw matches → 5 deduped signals,
+  **3 suppressed**. Return dict now exposes `signals` + `suppressed`
+  counts for scheduler log/ops visibility.
+
+*2. Predictions logged per dispatched signal (Issue #2a):*
+- Each deduped signal is persisted as a `predictions` row via
+  `log_prediction(db, "signal_dispatcher", symbol, verdict, confidence,
+  user_id=None)`. Auto-conviction tagging (shipped this session) attaches
+  the composite score, so the admin Conviction panel's `by_conviction`
+  buckets will finally populate from automated fleet activity — not
+  just user-driven War Room calls.
+- Sample row on first pass: AAPL SELL, confidence=0.28, conviction
+  score=0.212, tier=weak. 5 predictions written on the test pass.
+- `user_id=None` distinguishes dispatcher rows from per-user rows; the
+  calibration endpoint aggregates globally so this doesn't affect
+  bucketing. For trailing-win-rate inside conviction compute, the
+  null user_id falls back to neutral 0.5 (intentional).
+
+*3. BTC grid rebased to live price:*
+- Previous range $68k-$72k was ~$4k below live Bitcoin ($75.9k), so
+  the grid was initialised as 5 pending buys waiting for an
+  unlikely -10% drop. New range $70k-$82k (5 levels, qty 0.005 BTC/level)
+  straddles live price — the grid will actually fill on normal
+  intraday volatility. Max notional ~$1900 exposure.
+
+**Final fleet state (ready for deploy):**
+- 10 bots total · 8 enabled
+- 5 signal bots (SPY/QQQ/AAPL/MSFT/NVDA, daily cap=5 each)
+- 3 grid bots (BTC $70-82k, ETH $2080-2550, SOL $75-100)
+- 2 OFF defaults (TV Webhook, generic AI Signal Bot)
+
+**Files changed:**
+- `backend/services/trading_bot_service.py` — dedup + prediction log
+  inside `run_signal_bot_dispatcher()`
+
 ### 2026-02-20 — Crypto grid bots + Conviction drift email alerts
 *Session: continued*
 

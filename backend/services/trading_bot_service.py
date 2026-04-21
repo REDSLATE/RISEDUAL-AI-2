@@ -401,10 +401,16 @@ async def run_signal_bot_dispatcher():
     strategies = sorted(union_strategies) if union_strategies else None
     scan = await scan_symbols(sorted(union_symbols), strategies=strategies)
 
-    # Map strength → verdict using each strategy's inherent bias.
-    # Neutral strategies (squeeze, volume spike) are skipped — the
-    # signal bot can't pick a side from a "something's coming" cue.
-    dispatched = 0
+    # ── Collect, then dedupe by symbol ──────────────────────────────────
+    # The scanner can legitimately return both a bullish and a bearish
+    # match for the same ticker in a single pass (e.g. near_52w_high
+    # + rsi_overbought). Without dedup, a bot with `side=both` would
+    # receive a BUY and a SELL on the same price, same minute — net
+    # PnL zero but burns a daily-cap slot and creates misleading
+    # trade-count numbers. We collapse to the highest-strength signal
+    # per symbol BEFORE fan-out. Ties are broken deterministically by
+    # strategy id so replays give the same winner.
+    raw_signals: list[dict] = []
     for sid, block in (scan.get("strategies") or {}).items():
         meta = STRATEGIES.get(sid) or {}
         bias = meta.get("signal", "neutral")
@@ -418,35 +424,92 @@ async def run_signal_bot_dispatcher():
                 verdict = "strong_buy" if strength >= 80 else "buy"
             else:
                 verdict = "strong_sell" if strength >= 80 else "sell"
-            signal = {
-                "ai_confidence": strength,  # 0-100 to match bot cfg gate
+            raw_signals.append({
+                "ai_confidence": strength,
                 "ai_verdict": verdict,
                 "strategy_id": sid,
                 "symbol": m.get("symbol", "").upper(),
                 "price": m.get("price") or 0,
                 "source": "signal_bot_dispatcher",
                 "detail": m.get("detail", ""),
-            }
-            # Fan out to every user who has a bot — filters inside
-            # `process_signal_for_bots` dedupe via per-bot whitelists.
-            for uid in bots_by_user:
-                try:
-                    results = await process_signal_for_bots(uid, signal)
-                    dispatched += len(results or [])
-                except Exception as e:
-                    logger.warning(
-                        f"[signal-dispatcher] fan-out failed for user {uid} "
-                        f"on {signal['symbol']}/{sid}: {e}"
-                    )
+            })
+
+    # Keep highest-strength per symbol. Secondary sort by strategy_id
+    # gives stable tie-breaking across replays.
+    best_by_symbol: dict[str, dict] = {}
+    for s in raw_signals:
+        sym = s["symbol"]
+        prev = best_by_symbol.get(sym)
+        if (
+            prev is None
+            or s["ai_confidence"] > prev["ai_confidence"]
+            or (
+                s["ai_confidence"] == prev["ai_confidence"]
+                and s["strategy_id"] < prev["strategy_id"]
+            )
+        ):
+            best_by_symbol[sym] = s
+    signals = list(best_by_symbol.values())
+    suppressed = len(raw_signals) - len(signals)
+
+    # ── Log each deduped signal as a prediction ─────────────────────────
+    # Decouples "what the scanner thinks" (persisted for calibration)
+    # from "what the bot executed" (persisted in paper_trades). Every
+    # prediction auto-gets the composite conviction score via
+    # `log_prediction`, so the admin Conviction panel starts reflecting
+    # automated fleet activity — not just user-driven War Room calls.
+    # We use `user_id=None` so these rows are attributable to the
+    # dispatcher itself, distinct from per-user War Room/Hypothesis
+    # predictions. Conviction's calibration input falls back to 0.5
+    # neutral (no user trailing win-rate to look up), which is correct.
+    from services.prediction_tracker import log_prediction as _log_pred
+    predictions_logged = 0
+    for s in signals:
+        try:
+            await _log_pred(
+                _db,
+                "signal_dispatcher",
+                s["symbol"],
+                s["ai_verdict"],
+                # Normalise 0-100 strength to 0-1 confidence for the
+                # prediction schema (matches the hypothesis/war_room
+                # convention — they pass 0-1 floats).
+                float(s["ai_confidence"]) / 100.0,
+                user_id=None,
+            )
+            predictions_logged += 1
+        except Exception as e:
+            logger.warning(
+                f"[signal-dispatcher] prediction log failed for "
+                f"{s['symbol']}/{s['strategy_id']}: {e}"
+            )
+
+    # ── Fan deduped signals out to every matching user's bots ──────────
+    dispatched = 0
+    for signal in signals:
+        for uid in bots_by_user:
+            try:
+                results = await process_signal_for_bots(uid, signal)
+                dispatched += len(results or [])
+            except Exception as e:
+                logger.warning(
+                    f"[signal-dispatcher] fan-out failed for user {uid} "
+                    f"on {signal['symbol']}/{signal['strategy_id']}: {e}"
+                )
 
     logger.info(
         f"[signal-dispatcher] scanned {len(union_symbols)} symbols, "
+        f"{len(signals)} deduped signals (suppressed {suppressed} conflicting), "
+        f"{predictions_logged} predictions logged, "
         f"fanned to {len(bots_by_user)} users, {dispatched} trades executed"
     )
     return {
         "symbols_scanned": len(union_symbols),
         "strategies_checked": len((scan.get("strategies") or {})),
         "users": len(bots_by_user),
+        "signals": len(signals),
+        "suppressed": suppressed,
+        "predictions_logged": predictions_logged,
         "dispatched": dispatched,
         "ran_at": datetime.now(timezone.utc).isoformat(),
     }
