@@ -1,0 +1,194 @@
+"""Conviction scoring service — extracted from routes/risk_calculator.py so
+every prediction-generation path (AI hypothesis, War Room, intelligence hub,
+scanner, …) can tag rows with the same composite score the risk layer
+uses for sizing. That way the Conviction Calibration admin panel becomes
+a live closed-loop dashboard instead of a purely manual integration.
+
+Design rules:
+  * The score is `[0.0, 1.0]`. It MODULATES an already-approved risk
+    budget (strong=100%, moderate=50%, weak=0%) — never bypasses a gate.
+  * Every input is optional: missing `confidence` → neutral 0.5, missing
+    calibration data → neutral 0.5, missing regime/streak → 0 (no credit
+    and no penalty). This lets prediction-logging call-sites tag rows
+    without needing full risk-manager context.
+  * Weights are hand-tuned starting values. They're persisted on every
+    prediction alongside the score, so once we have enough closed-trade
+    outcomes a logistic regression can replace them without schema churn.
+  * Fail-safe: any DB failure during computation degrades to a neutral
+    score rather than crashing the caller. This is called from the hot
+    prediction-logging path — it MUST NOT raise.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+# Hand-tuned starting weights — every positive term must sum to 1.0 so a
+# perfect-signal, perfectly-calibrated, regime-aligned prediction lands at
+# exactly 1.0 before penalties. Penalties are additive and only subtract
+# when tripped. Keep the sum-to-1 invariant when tuning.
+CONVICTION_WEIGHTS = {
+    "signal_confidence": 0.40,
+    "calibration":       0.20,
+    "regime_match":      0.15,
+    "rejection_bias":    0.20,  # penalty
+    "loss_streak":       0.15,  # penalty
+}
+
+# Tiers must be sorted high-to-low so the first match in _tier_from_score wins.
+CONVICTION_TIERS = [
+    (0.60, "strong",   1.00),
+    (0.40, "moderate", 0.50),
+    (0.00, "weak",     0.00),
+]
+
+
+def _tier_from_score(score: float) -> tuple[str, float]:
+    for threshold, label, mult in CONVICTION_TIERS:
+        if score >= threshold:
+            return label, mult
+    return "weak", 0.0
+
+
+async def _calibration_win_rate(db, user_id: Optional[str], lookback_days: int = 30) -> float:
+    """Trailing `lookback_days` win rate from verified predictions.
+
+    Returns 0.5 (neutral) when we don't have enough data. We require at
+    least 10 verified predictions before using the empirical rate — below
+    that the noise swamps the signal and we'd be whiplashing sizing on
+    every lucky/unlucky streak.
+    """
+    if db is None or not user_id:
+        return 0.5
+    try:
+        since = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        cursor = db.predictions.find(
+            {
+                "user_id": user_id,
+                "verified_24h.correct": {"$exists": True},
+                "timestamp": {"$gte": since.isoformat()},
+            },
+            {"_id": 0, "verified_24h.correct": 1},
+        ).limit(500)
+        correct, total = 0, 0
+        async for row in cursor:
+            total += 1
+            if (row.get("verified_24h") or {}).get("correct"):
+                correct += 1
+        if total < 10:
+            return 0.5
+        return correct / total
+    except Exception as e:
+        logger.warning(f"[conviction] calibration lookup failed: {e}")
+        return 0.5
+
+
+async def _is_flagged(db, asset: str, direction: str) -> bool:
+    """Returns True if the (asset, direction) pair is currently on the
+    rejection-bias blacklist. Any DB error degrades to False (no penalty)
+    — better to under-penalise than to crash the prediction logger.
+    """
+    if db is None or not asset or not direction:
+        return False
+    try:
+        from services.rejection_log import get_flagged_pairs
+        flagged = await get_flagged_pairs()
+        return (asset.upper(), direction.upper()) in flagged
+    except Exception as e:
+        logger.warning(f"[conviction] bias lookup failed: {e}")
+        return False
+
+
+async def compute_conviction(
+    db,
+    *,
+    user_id: Optional[str],
+    asset: Optional[str],
+    direction: Optional[str],
+    confidence: Optional[float],
+    regime_match: Optional[bool] = None,
+    risk_ctx: Optional[dict] = None,
+) -> dict:
+    """Compute the composite conviction score + tier + size multiplier.
+
+    Returns a dict with the final score, tier label, size multiplier, the
+    active weights, and a per-component breakdown for UI/debug transparency.
+    Safe to call from any async context — fails gracefully to a neutral
+    score when DB lookups error out. Never raises.
+    """
+    try:
+        w = CONVICTION_WEIGHTS
+        components: dict[str, float] = {}
+
+        # 1. Signal confidence — normalise both 0-1 floats and 0-100 percentages.
+        if confidence is None:
+            conf = 0.5
+        else:
+            c = float(confidence)
+            conf = max(0.0, min(1.0, c / 100.0 if c > 1.0 else c))
+        components["signal_confidence"] = round(conf * w["signal_confidence"], 4)
+
+        # 2. Calibration (trailing win rate).
+        calibration = await _calibration_win_rate(db, user_id)
+        components["calibration"] = round(calibration * w["calibration"], 4)
+
+        # 3. Regime match — positive only when explicit True. Unknown or
+        #    mismatch contributes 0 (no credit, no penalty).
+        components["regime_match"] = round(
+            w["regime_match"] if regime_match is True else 0.0, 4
+        )
+
+        # 4. Rejection-bias penalty.
+        penalty_bias = 0.0
+        if direction and asset:
+            if await _is_flagged(db, asset, direction):
+                penalty_bias = w["rejection_bias"]
+        components["rejection_bias_penalty"] = round(-penalty_bias, 4)
+
+        # 5. Loss-streak penalty (mirrors the risk-calc circuit-breaker
+        #    threshold). When called from prediction-logging there's no
+        #    `risk_ctx`, so this contributes 0.
+        penalty_streak = 0.0
+        if (risk_ctx or {}).get("losing_streak", 0) >= 4:
+            penalty_streak = w["loss_streak"]
+        components["loss_streak_penalty"] = round(-penalty_streak, 4)
+
+        score = (
+            components["signal_confidence"]
+            + components["calibration"]
+            + components["regime_match"]
+            + components["rejection_bias_penalty"]
+            + components["loss_streak_penalty"]
+        )
+        score = max(0.0, min(1.0, score))
+        tier_label, size_mult = _tier_from_score(score)
+
+        return {
+            "score": round(score, 3),
+            "tier": tier_label,
+            "size_multiplier": size_mult,
+            "weights": dict(w),
+            "breakdown": components,
+            "inputs": {
+                "confidence": conf,
+                "calibration": round(calibration, 4),
+                "regime_match": regime_match,
+                "losing_streak": (risk_ctx or {}).get("losing_streak", 0),
+            },
+        }
+    except Exception as e:
+        # Belt-and-braces — we promised never to raise. Return a neutral
+        # record so upstream callers can still persist a row.
+        logger.warning(f"[conviction] compute failed, returning neutral: {e}")
+        return {
+            "score": 0.5,
+            "tier": "moderate",
+            "size_multiplier": 0.5,
+            "weights": dict(CONVICTION_WEIGHTS),
+            "breakdown": {"error": str(e)},
+            "inputs": {},
+        }

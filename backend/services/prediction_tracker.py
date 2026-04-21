@@ -313,10 +313,26 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
         "verified_24h": None,
         "verified_1w": None,
     }
-    # Only persist the conviction block when it's provided. Keeping the field
-    # absent (rather than null) lets the calibration endpoint distinguish
-    # "legacy rows with no conviction data" from "conviction computed and
-    # explicitly neutral" — matters for bucket hygiene once we backfill.
+    # Auto-compute conviction if the caller didn't supply one. Every
+    # prediction carries a score that the Conviction Calibration admin
+    # panel can bucket — without requiring every call site to construct
+    # the dict manually. The service fails safe (never raises) so a
+    # computation error here can't block the insert.
+    if conviction is None:
+        try:
+            from services.conviction_service import compute_conviction
+            conviction = await compute_conviction(
+                db,
+                user_id=user_id,
+                asset=symbol,
+                direction=direction,
+                confidence=confidence,
+                regime_match=None,  # not available at prediction-log time
+                risk_ctx=None,      # no risk-manager context here
+            )
+        except Exception as e:
+            logger.warning(f"[prediction] conviction auto-compute failed: {e}")
+            conviction = None
     if conviction is not None:
         doc["conviction"] = conviction
     await db.predictions.insert_one(doc)

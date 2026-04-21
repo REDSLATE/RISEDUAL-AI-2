@@ -24,6 +24,47 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Auto-conviction tagging in `log_prediction()`
+*Session: continued*
+
+**What shipped:**
+- New module `backend/services/conviction_service.py` — hosts
+  `CONVICTION_WEIGHTS`, `CONVICTION_TIERS`, and the public async
+  `compute_conviction(db, *, user_id, asset, direction, confidence,
+  regime_match=None, risk_ctx=None)`. Contract: NEVER raises; returns a
+  neutral record on failure so hot paths (prediction logging) stay up.
+- `routes/risk_calculator.py` now delegates to the service. Public
+  response shape is unchanged; weights/tiers are re-exported for any
+  external consumer still importing them from the route module.
+- `services/prediction_tracker.py::log_prediction()` auto-computes and
+  attaches `conviction` to the prediction doc when the caller didn't
+  supply one. Means `routes/ai.py` (hypothesis), `routes/intelligence.py`
+  (war_room), and every future caller start tagging rows with zero code
+  changes at the call site.
+- Fail-safe wrapper around the compute call — an exception here can't
+  block the prediction insert, it just omits the field.
+
+**Verified live:**
+- Direct `log_prediction` smoke test → row has full `conviction` block
+  (score=0.411, tier=moderate, breakdown with all 5 components + inputs).
+- Calibration endpoint counts 1/191 predictions with conviction, 0
+  verified — as expected. 24h labeler run will start populating the
+  `by_conviction` bucket on the admin panel.
+- Lint clean (`conviction_service.py`, `risk_calculator.py`,
+  `prediction_tracker.py`).
+
+**Closes the loop from three sessions ago:**
+1. Session 1: Built conviction scoring + risk modulation.
+2. Session 2: Built calibration admin endpoint + UI.
+3. **Session 3 (this one)**: Wired the tagging so the admin panel stops
+   being empty and the endpoint's monotonicity health check actually
+   gates sizing decisions we can verify.
+
+**Files:**
+- `backend/services/conviction_service.py` — new
+- `backend/routes/risk_calculator.py` — delegates + re-exports
+- `backend/services/prediction_tracker.py` — auto-tag in log_prediction
+
 ### 2026-02-20 — Signal-Bot Dispatcher scheduler (wiring the gap)
 *Session: continued*
 

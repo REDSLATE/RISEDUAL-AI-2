@@ -32,28 +32,11 @@ DEFAULT_MIN_RR = 1.5              # recommended floor when `min_rr` omitted
 EXPLORATION_RATE = 0.10           # 10% of opt-in calls bypass the veto
 
 # ─── Conviction score weights ────────────────────────────────────────────────
-# Hand-tuned starting weights for the composite "conviction" score — a
-# 0.0-1.0 number that blends every available signal into one number the UI
-# + sizer can read. The score ONLY modulates sizing within the already-
-# approved risk budget; it never overrides a hard gate (R:R floor, circuit
-# breaker, calibration lock). Over time these weights should be replaced
-# by logistic regression over closed-trade outcomes — until then they're a
-# transparent starting point so we're never asked "what's the magic number?"
-CONVICTION_WEIGHTS = {
-    "signal_confidence": 0.40,    # the model's own probability
-    "calibration":       0.20,    # trailing 30-day win rate (ground truth)
-    "regime_match":      0.15,    # does the signal agree with HMM/trend?
-    "rejection_bias":    0.20,    # penalty — (asset, dir) is currently flagged
-    "loss_streak":       0.15,    # penalty — user in a rough patch
-}
-# Conviction → size-multiplier mapping. High conviction gets full risk
-# budget, medium gets half, low gets nothing (inside the already-approved
-# envelope — this is *modulation*, not *bypass*).
-CONVICTION_TIERS = [
-    (0.60, "strong",   1.00),
-    (0.40, "moderate", 0.50),
-    (0.00, "weak",     0.00),
-]
+# Weights + tiers live in `services.conviction_service` so prediction-
+# logging, the risk calculator, and any future caller all share one
+# source of truth. Re-exported here for backwards compatibility with
+# any external tooling that still imports them from this module.
+from services.conviction_service import CONVICTION_WEIGHTS, CONVICTION_TIERS  # noqa: E402,F401
 
 
 @dataclass
@@ -325,110 +308,24 @@ async def _compute_conviction(
     regime_match: Optional[bool],
     risk_ctx: dict,
 ) -> dict:
-    """Compute a composite conviction score in [0.0, 1.0].
+    """Thin wrapper around `services.conviction_service.compute_conviction`.
 
-    This is layered ON TOP of the hard gates — every request that
-    reaches this function has already survived the R:R veto and the
-    circuit-breaker sizing. Conviction *modulates* the approved budget
-    (strong=100%, moderate=50%, weak=0%) but never overrides a gate.
-
-    Every component degrades gracefully when its input is missing:
-      * no `confidence` supplied → defaults to neutral 0.5
-      * no trailing win-rate data → defaults to 0.5
-      * no regime hint → skipped (0 contribution, not penalty)
-      * bias/streak penalties are additive — only subtract when tripped
-
-    Returns a dict with the final score, tier label, size multiplier,
-    and a breakdown for UI/debug transparency.
+    The scorer used to live inline here; it was extracted so prediction
+    logging (and any future non-risk-calc caller) can tag rows with the
+    same composite score without a circular route→route import. Behaviour
+    is identical — risk-calc responses still include the same score,
+    tier, size_multiplier, weights, breakdown, and inputs.
     """
-    w = CONVICTION_WEIGHTS
-    components: dict[str, float] = {}
-
-    # 1. Signal confidence (positive contribution) ─────────────────────
-    conf = 0.5 if confidence is None else max(0.0, min(1.0, float(confidence)))
-    components["signal_confidence"] = round(conf * w["signal_confidence"], 4)
-
-    # 2. Calibration — user's verified 30-day win rate ─────────────────
-    calibration = 0.5
-    if _db is not None:
-        try:
-            from datetime import timedelta
-            since = datetime.now(timezone.utc) - timedelta(days=30)
-            cursor = _db.predictions.find(
-                {
-                    "user_id": user_id,
-                    "verified_24h.correct": {"$exists": True},
-                    "created_at": {"$gte": since.isoformat()},
-                },
-                {"_id": 0, "verified_24h.correct": 1},
-            ).limit(500)
-            correct, total = 0, 0
-            async for row in cursor:
-                total += 1
-                if (row.get("verified_24h") or {}).get("correct"):
-                    correct += 1
-            if total >= 10:
-                calibration = correct / total
-        except Exception as e:
-            logger.warning(f"[conviction] calibration lookup failed: {e}")
-    components["calibration"] = round(calibration * w["calibration"], 4)
-
-    # 3. Regime match (positive when explicit True) ────────────────────
-    if regime_match is True:
-        components["regime_match"] = round(w["regime_match"], 4)
-    elif regime_match is False:
-        components["regime_match"] = 0.0  # known mismatch → no credit
-    else:
-        components["regime_match"] = 0.0  # unknown → neutral
-
-    # 4. Rejection-bias penalty ─────────────────────────────────────────
-    penalty_bias = 0.0
-    if _db is not None and direction:
-        try:
-            from services.rejection_log import get_flagged_pairs
-            flagged = await get_flagged_pairs()
-            if (asset.upper(), direction) in flagged:
-                penalty_bias = w["rejection_bias"]
-        except Exception as e:
-            logger.warning(f"[conviction] bias lookup failed: {e}")
-    components["rejection_bias_penalty"] = round(-penalty_bias, 4)
-
-    # 5. Loss-streak penalty (mirrors circuit-breaker threshold) ───────
-    penalty_streak = 0.0
-    if (risk_ctx or {}).get("losing_streak", 0) >= 4:
-        penalty_streak = w["loss_streak"]
-    components["loss_streak_penalty"] = round(-penalty_streak, 4)
-
-    # ── Final score ─────────────────────────────────────────────────────
-    score = (
-        components["signal_confidence"]
-        + components["calibration"]
-        + components["regime_match"]
-        + components["rejection_bias_penalty"]
-        + components["loss_streak_penalty"]
+    from services.conviction_service import compute_conviction
+    return await compute_conviction(
+        _db,
+        user_id=user_id,
+        asset=asset,
+        direction=direction,
+        confidence=confidence,
+        regime_match=regime_match,
+        risk_ctx=risk_ctx,
     )
-    score = max(0.0, min(1.0, score))
-
-    # Tier lookup
-    tier_label, size_mult = "weak", 0.0
-    for threshold, label, mult in CONVICTION_TIERS:
-        if score >= threshold:
-            tier_label, size_mult = label, mult
-            break
-
-    return {
-        "score": round(score, 3),
-        "tier": tier_label,
-        "size_multiplier": size_mult,
-        "weights": w,
-        "breakdown": components,
-        "inputs": {
-            "confidence": conf,
-            "calibration": round(calibration, 4),
-            "regime_match": regime_match,
-            "losing_streak": (risk_ctx or {}).get("losing_streak", 0),
-        },
-    }
 
 
 async def _get_current_price(symbol: str) -> Optional[float]:
