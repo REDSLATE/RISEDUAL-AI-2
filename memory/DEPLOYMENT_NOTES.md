@@ -24,6 +24,39 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Conviction calibration 4-week trend sparklines
+*Session: continued*
+
+**What shipped:**
+- `GET /api/admin/conviction/calibration` now also returns a `trend`
+  block covering the last 4 weeks: `bounds` (per-week ISO ranges) and
+  a pivoted `{bucket_label: [wr_wk0, wr_wk1, wr_wk2, wr_wk3]}` series
+  for both `by_conviction` and `by_confidence`. Weeks with no data
+  emit `null` so the sparkline renders as a gap, not as zero (which
+  would be indistinguishable from a 0% win-rate week — catastrophic
+  for the drift-detection signal we're trying to surface).
+- Endpoint fetches across `min(days, 28)` regardless of user-selected
+  window so the sparkline always has a consistent 4-week x-axis while
+  the headline buckets still respect the window toggle.
+- `ConvictionCalibration.jsx` adds an inline SVG `Sparkline` component
+  per bucket row — 64×20px, tier-coloured stroke, trailing dot on the
+  most recent week, dashed 50% reference line. Only renders when the
+  bucket has at least one non-null weekly point, so empty-state cards
+  stay compact.
+- Dev `data-testid`s added: `conviction-trend-{label}` per row.
+
+**Live check at ship time:**
+- Confidence/Medium bucket shows `[null, null, 0.2258, 0.9167]` — a
+  dramatic two-week recovery that the at-a-glance aggregate (52.7%
+  over 30d) completely hides. Exactly the regime-drift visibility the
+  sparkline was meant to provide.
+- Low bucket: all-null series → sparkline correctly hidden.
+- Lint clean, zero new dependencies (pure SVG).
+
+**Files:**
+- `backend/routes/admin.py` — trend computation + response key
+- `frontend/src/components/admin/ConvictionCalibration.jsx` — Sparkline
+
 ### 2026-02-20 — Auto-conviction tagging in `log_prediction()`
 *Session: continued*
 

@@ -201,27 +201,39 @@ async def conviction_calibration(request: Request, days: int = 30):
     Moderate → Strong. If Moderate wins more than Strong, the hand-tuned
     CONVICTION_WEIGHTS in risk_calculator.py are miscalibrated — we
     should retrain them against actual outcomes.
+
+    Also returns a 4-week trend series (oldest→newest) per bucket so the
+    admin UI can sparkline-check for regime drift BEFORE the window-wide
+    monotonicity badge flips.
     """
     await _require_owner(request)
     from datetime import timedelta
     days = max(1, min(int(days), 365))
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+    # Trend always covers the last 4 ISO-style weeks regardless of
+    # `days` — this gives the sparkline a consistent x-axis while the
+    # headline buckets respect the user-selected window.
+    trend_weeks = 4
+    trend_since = now - timedelta(days=trend_weeks * 7)
+    fetch_since = min(since, trend_since)
 
     cursor = db.predictions.find(
         {
             "verified_24h.correct": {"$exists": True},
-            "timestamp": {"$gte": since.isoformat()},
+            "timestamp": {"$gte": fetch_since.isoformat()},
         },
         {
             "_id": 0,
             "conviction": 1,
             "confidence": 1,
             "verified_24h.correct": 1,
+            "timestamp": 1,
         },
-    ).limit(5000)
+    ).limit(10000)
 
-    # Initialise empty buckets so the UI always renders a consistent shape.
     def _empty(buckets):
+        # Include the raw cutoffs during aggregation; stripped in _finalise.
         return [
             {**b, "total": 0, "correct": 0, "win_rate": None}
             for b in buckets
@@ -229,39 +241,84 @@ async def conviction_calibration(request: Request, days: int = 30):
 
     by_conviction = _empty(CONVICTION_BUCKETS)
     by_confidence = _empty(CONFIDENCE_BUCKETS)
+    # Week 0 = oldest, week 3 = newest. Pre-seed so the sparkline always
+    # has 4 points even when a week has zero data (we emit None, UI skips).
+    weekly_conviction = [_empty(CONVICTION_BUCKETS) for _ in range(trend_weeks)]
+    weekly_confidence = [_empty(CONFIDENCE_BUCKETS) for _ in range(trend_weeks)]
     total_verified = 0
     total_with_conviction = 0
 
+    def _bucket_for(value, buckets):
+        for b in buckets:
+            if b["min"] <= value < b["max"]:
+                return b
+        return None
+
+    def _week_index(ts_str: str):
+        """Map an ISO timestamp → 0..3 week bucket, or None if out of range.
+
+        Uses a naive `fromisoformat` + UTC-aware fallback. Older Python
+        versions (pre-3.11) can't parse the trailing 'Z'; we strip it
+        defensively so the endpoint stays portable.
+        """
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+        delta_days = (now - ts).days
+        if delta_days < 0 or delta_days >= trend_weeks * 7:
+            return None
+        # weeks ago: 0..trend_weeks-1 (0=this week). Flip so newest = last.
+        weeks_ago = delta_days // 7
+        return (trend_weeks - 1) - weeks_ago
+
     async for row in cursor:
-        total_verified += 1
+        ts = row.get("timestamp", "")
         correct = bool((row.get("verified_24h") or {}).get("correct"))
+        in_window = ts >= since.isoformat()
+        wk = _week_index(ts)
+
+        if in_window:
+            total_verified += 1
 
         conv = (row.get("conviction") or {}).get("score")
         if isinstance(conv, (int, float)):
-            total_with_conviction += 1
-            for b in by_conviction:
-                if b["min"] <= conv < b["max"]:
+            if in_window:
+                total_with_conviction += 1
+                b = _bucket_for(conv, by_conviction)
+                if b is not None:
                     b["total"] += 1
                     if correct:
                         b["correct"] += 1
-                    break
+            if wk is not None:
+                b = _bucket_for(conv, weekly_conviction[wk])
+                if b is not None:
+                    b["total"] += 1
+                    if correct:
+                        b["correct"] += 1
 
         conf = row.get("confidence")
         if isinstance(conf, (int, float)):
-            # Normalise both 0-1 floats and 0-100 percentages to [0,1].
             conf_norm = conf / 100.0 if conf > 1.0 else conf
-            for b in by_confidence:
-                if b["min"] <= conf_norm < b["max"]:
+            if in_window:
+                b = _bucket_for(conf_norm, by_confidence)
+                if b is not None:
                     b["total"] += 1
                     if correct:
                         b["correct"] += 1
-                    break
+            if wk is not None:
+                b = _bucket_for(conf_norm, weekly_confidence[wk])
+                if b is not None:
+                    b["total"] += 1
+                    if correct:
+                        b["correct"] += 1
 
     def _finalise(buckets):
         out = []
         for b in buckets:
             win_rate = round(b["correct"] / b["total"], 4) if b["total"] else None
-            # Drop the raw cutoffs from the response — UI only needs the label.
             out.append({
                 "label": b["label"],
                 "tier": b.get("tier"),
@@ -272,14 +329,39 @@ async def conviction_calibration(request: Request, days: int = 30):
             })
         return out
 
+    def _trend_series(weekly_buckets):
+        """Pivot [week][bucket] → {bucket_label: [wr_week0, …, wr_week3]}.
+
+        Returns None entries when a week had no data for that bucket so
+        the UI can render gaps instead of misleading zero-points.
+        """
+        if not weekly_buckets:
+            return {}
+        labels = [b["label"] for b in weekly_buckets[0]]
+        series = {lbl: [] for lbl in labels}
+        for week in weekly_buckets:
+            for b in week:
+                wr = round(b["correct"] / b["total"], 4) if b["total"] else None
+                series[b["label"]].append(wr)
+        return series
+
+    def _week_bounds():
+        """Return the [start_iso, end_iso] pair for each of the 4 weeks."""
+        out = []
+        for i in range(trend_weeks):
+            weeks_ago = (trend_weeks - 1) - i
+            end = now - timedelta(days=weeks_ago * 7)
+            start = end - timedelta(days=7)
+            out.append([start.isoformat(), end.isoformat()])
+        return out
+
     by_conv_out = _finalise(by_conviction)
     by_conf_out = _finalise(by_confidence)
 
-    # Monotonic-health check: win-rate should weakly increase across buckets.
     def _is_monotonic(buckets):
         rates = [b["win_rate"] for b in buckets if b["win_rate"] is not None]
         if len(rates) < 2:
-            return None  # not enough data to judge
+            return None
         return all(rates[i] <= rates[i + 1] + 1e-9 for i in range(len(rates) - 1))
 
     return {
@@ -291,6 +373,12 @@ async def conviction_calibration(request: Request, days: int = 30):
         "monotonic": {
             "conviction": _is_monotonic(by_conv_out),
             "confidence": _is_monotonic(by_conf_out),
+        },
+        "trend": {
+            "weeks": trend_weeks,
+            "bounds": _week_bounds(),
+            "by_conviction": _trend_series(weekly_conviction),
+            "by_confidence": _trend_series(weekly_confidence),
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
