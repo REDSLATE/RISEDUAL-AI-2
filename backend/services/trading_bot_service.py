@@ -373,6 +373,66 @@ async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payloa
     return result
 
 
+async def _apply_bot_risk_guards(bot: dict, user_id: str, qty: float) -> tuple[float, dict]:
+    """Pre-flight risk check for bot-initiated trades.
+
+    Mirrors the circuit breaker the `/api/risk-calc` endpoint already
+    returns to the UI so human-initiated trades and bot-initiated trades
+    obey the same auto-de-risk rules. If the user's recent prediction
+    outcomes indicate a losing streak >= 3 or drawdown >= 10%, bot
+    position size is halved before hitting the broker.
+
+    Returns `(adjusted_qty, context_dict)`. Never raises — on any lookup
+    error we fall through to the original qty so the bot keeps trading
+    (fail-open is the correct default: we never want a bot frozen by a
+    Mongo hiccup, only by a real losing streak).
+    """
+    ctx = {"risk_reduced": False, "original_qty": qty, "adjusted_qty": qty, "reason": None}
+    if _db is None:
+        return qty, ctx
+    try:
+        from routes.risk_calculator import _compute_risk_context, _get_account_value
+
+        account_value = await _get_account_value(user_id)
+        risk_ctx = await _compute_risk_context(user_id, account_value)
+
+        if risk_ctx.get("risk_reduced"):
+            new_qty = max(1.0, round(qty * risk_ctx.get("reduction_factor", 0.5), 4))
+            ctx.update({
+                "risk_reduced": True,
+                "adjusted_qty": new_qty,
+                "reason": risk_ctx.get("reason"),
+                "losing_streak": risk_ctx.get("losing_streak"),
+                "current_drawdown": risk_ctx.get("current_drawdown"),
+            })
+            logger.warning(
+                f"[bot-guard] {bot.get('name')} qty {qty} → {new_qty} "
+                f"(reason: {risk_ctx.get('reason')})"
+            )
+            # Record the de-risk for audit (not a veto — just a reduction).
+            try:
+                from services.rejection_log import log_rejected
+                await log_rejected(
+                    asset=(bot.get("symbol") or "").upper(),
+                    direction=None,
+                    reason=f"bot qty reduced {qty} → {new_qty}: {risk_ctx.get('reason')}",
+                    source="risk_circuit_breaker",
+                    meta={
+                        "bot_name": bot.get("name"),
+                        "bot_type": bot.get("type"),
+                        "mode": bot.get("mode"),
+                        "reduction_factor": risk_ctx.get("reduction_factor"),
+                    },
+                    user_id=user_id,
+                )
+            except Exception:
+                pass
+            return new_qty, ctx
+    except Exception as e:
+        logger.warning(f"[bot-guard] check failed (failing-open): {e}")
+    return qty, ctx
+
+
 async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, price: float):
     """Execute a trade for a bot.
 
@@ -383,9 +443,16 @@ async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, pric
                   consistent between grid/signal/webhook bots and Smart
                   Orders. Returns the broker order id on success so the
                   caller can reconcile fills.
+
+    Pre-flight: runs the same circuit-breaker the UI risk-calc respects.
+    When streak/drawdown thresholds are tripped the bot's qty is halved
+    (never skipped entirely — grid/DCA strategies need continuity).
     """
     mode = bot.get("mode", "paper")
     user_id = bot["user_id"]
+
+    # Circuit-breaker pre-flight — fails open on any DB/lookup error.
+    qty, guard_ctx = await _apply_bot_risk_guards(bot, user_id, qty)
 
     if mode == "paper":
         from services.paper_trading_service import execute_trade

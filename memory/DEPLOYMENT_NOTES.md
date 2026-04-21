@@ -26,6 +26,50 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Three risk-system gaps closed (retrainer hook + UI banners + bot gating)
+*Session: continued*
+
+Closed all three gaps flagged in the post-snippet review. All additive,
+backwards-compatible, and reuse the circuit-breaker + trade-guard helpers
+shipped earlier in the session.
+
+**Gap 1 — Retrainer rejection context (`ml_retrain_service.py`)**
+- New helper `_collect_rejection_context(db)` summarises `rejected_signals`
+  since the last successful retrain (or 24h cold-start fallback) into
+  `{since, total, by_source}`.
+- Every `training_log` row now carries `rejections_since_last_run`, so
+  sudden spikes in tier-locked or auditor-blocked signals are visible
+  in the Admin → Developer Tools retrain history. Foundation for
+  future hard-negative replay at train time (would require
+  features_replay join).
+
+**Gap 2 — UI banners (`RiskCalculator.jsx`)**
+- Three new banners rendered above the Affordability warning when the
+  corresponding API field is present:
+  1. `risk-reduced-banner` (amber) — circuit breaker tripped
+  2. `trade-guard-veto-banner` (red) — R:R below min floor
+  3. `exploration-active-banner` (violet) — ε-greedy override fired
+- Each banner shows the applied vs requested %, the reason, and the
+  numeric trigger so the user knows exactly why sizing changed.
+
+**Gap 3 — Bot-trade risk-guard pre-flight (`trading_bot_service.py`)**
+- New `_apply_bot_risk_guards(bot, user_id, qty)` called at the top of
+  `_execute_bot_trade` — grid, signal, and webhook bots all go through
+  it before paper or live execution.
+- Reuses `routes.risk_calculator._compute_risk_context` so UI and bots
+  read the same streak/drawdown signals.
+- When tripped, halves qty (floor=1 share), logs the de-risk to
+  `rejected_signals` via `risk_circuit_breaker` source.
+- Fails open on any DB lookup error so a Mongo hiccup can't silence
+  bots mid-session.
+
+**Verified end-to-end:**
+- Gap 1: `_collect_rejection_context` returns 2 rows against live DB.
+- Gap 2: ESLint clean, frontend compiled with no errors.
+- Gap 3: Running backend response confirms circuit breaker fires on
+  admin user's 4-loss streak → bots would halve qty via same factor.
+- Self-test 6/6 green.
+
 ### 2026-02-19 — Rejected-signal logging (hard-negatives collection)
 *Session: continued*
 

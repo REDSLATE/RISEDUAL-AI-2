@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -99,6 +99,49 @@ async def _load_training_dataframe(
     return X, y, len(rows)
 
 
+async def _collect_rejection_context(db: AsyncIOMotorDatabase) -> dict:
+    """Summarise rejections since the most recent successful retrain.
+
+    The retrainer doesn't join rejections into its training set yet (we'd
+    need a feature-snapshot replay at the time of rejection for that), but
+    surfacing the counts in every training-log row gives immediate
+    visibility into *what the pipeline filtered out* between runs. A
+    spike in `orchestrator_tier_locked` or `ai_signal_validator`
+    rejections is usually the first sign the gate or the Auditor needs
+    tuning. Later we can add a `features_replay` join to use these as
+    hard-negatives at train time.
+    """
+    try:
+        # Anchor window to the last successful retrain; fall back to 24h
+        # for a cold-start deployment where the log is empty.
+        last = await db[TRAINING_LOG_COLLECTION].find_one(
+            {"status": "success"}, sort=[("finished_at", -1)]
+        )
+        since_iso = (last or {}).get("finished_at")
+        if since_iso:
+            since = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+        else:
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        pipeline = [
+            {"$match": {"logged_at": {"$gte": since}}},
+            {"$group": {"_id": "$source", "n": {"$sum": 1}}},
+        ]
+        by_source: dict[str, int] = {}
+        total = 0
+        async for row in db.rejected_signals.aggregate(pipeline):
+            by_source[row["_id"]] = row["n"]
+            total += row["n"]
+        return {
+            "since": since.isoformat(),
+            "total": total,
+            "by_source": by_source,
+        }
+    except Exception as e:
+        logger.warning(f"[ml_retrain] rejection-context pull failed: {e}")
+        return {"total": 0, "by_source": {}, "error": str(e)[:200]}
+
+
 async def run_nightly_retrain(
     db: AsyncIOMotorDatabase,
     max_samples: int = MAX_SAMPLES,
@@ -120,6 +163,7 @@ async def run_nightly_retrain(
 
         X, y, n = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n
+        log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
 
         if n < MIN_SAMPLES_FOR_TRAINING:
             log_row.update({

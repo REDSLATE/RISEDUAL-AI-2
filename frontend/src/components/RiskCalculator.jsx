@@ -229,6 +229,61 @@ const RiskCalculator = ({ onClose, onApplyToSmartOrder }) => {
                 </div>
               </div>
 
+              {/* Risk Circuit-Breaker Banner — fires when losing streak or
+                  drawdown tripped the auto de-risk in the backend. */}
+              {result.risk_adjustment?.risk_reduced && (
+                <div
+                  className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-2 flex items-start gap-2"
+                  data-testid="risk-reduced-banner"
+                >
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-amber-300 text-[11px] font-semibold">
+                      Risk auto-reduced · {result.risk_adjustment.applied_risk_pct}% applied ({result.risk_adjustment.requested_risk_pct}% requested)
+                    </div>
+                    <div className="text-amber-200/70 text-[10px] mt-0.5">
+                      {result.risk_adjustment.reason}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Trade-Guard Veto Banner — advisory R:R floor failure. */}
+              {result.trade_guards?.veto && (
+                <div
+                  className="bg-red-500/10 border border-red-500/40 rounded-lg p-2 flex items-start gap-2"
+                  data-testid="trade-guard-veto-banner"
+                >
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-red-300 text-[11px] font-semibold">
+                      Trade blocked by R:R guard (min {result.trade_guards.min_rr})
+                    </div>
+                    <div className="text-red-200/70 text-[10px] mt-0.5">
+                      {result.trade_guards.veto_reason}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Exploration-active pill — shows when ε-greedy overrode veto. */}
+              {result.trade_guards?.exploration_active && (
+                <div
+                  className="bg-violet-500/10 border border-violet-500/40 rounded-lg p-2 flex items-start gap-2"
+                  data-testid="exploration-active-banner"
+                >
+                  <Target className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-violet-300 text-[11px] font-semibold">
+                      ε-greedy exploration sample · veto overridden
+                    </div>
+                    <div className="text-violet-200/70 text-[10px] mt-0.5">
+                      {result.trade_guards.exploration_reason}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Affordability Warning */}
               {!result.can_afford && (
                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 flex items-center gap-2">
