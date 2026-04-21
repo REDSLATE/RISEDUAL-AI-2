@@ -220,7 +220,8 @@ MAX_DEDUP_HITS = 1
 async def log_prediction(db, feature: str, symbol: str, direction: str,
                          confidence: float, score: float = None,
                          user_id: str = None,
-                         model_version: str = None) -> str:
+                         model_version: str = None,
+                         conviction: Optional[dict] = None) -> str:
     """Log a new prediction after AI analysis. Returns prediction_id.
 
     `model_version` lets us correlate prediction quality with a specific
@@ -312,6 +313,12 @@ async def log_prediction(db, feature: str, symbol: str, direction: str,
         "verified_24h": None,
         "verified_1w": None,
     }
+    # Only persist the conviction block when it's provided. Keeping the field
+    # absent (rather than null) lets the calibration endpoint distinguish
+    # "legacy rows with no conviction data" from "conviction computed and
+    # explicitly neutral" — matters for bucket hygiene once we backfill.
+    if conviction is not None:
+        doc["conviction"] = conviction
     await db.predictions.insert_one(doc)
     logger.info(f"Logged prediction: {feature}/{symbol} {direction} @ ${price}")
     return prediction_id

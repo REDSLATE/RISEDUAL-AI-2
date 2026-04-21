@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, X } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -15,6 +15,7 @@ import ProviderHealth from './admin/ProviderHealth';
 import KeyVault from './admin/KeyVault';
 import HelpSearchInsights from './admin/HelpSearchInsights';
 import ChipAdoptionInsights from './admin/ChipAdoptionInsights';
+import ConvictionCalibration from './admin/ConvictionCalibration';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -48,6 +49,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'help-search',   label: 'Help Search', icon: Search },
       { id: 'chip-adoption', label: 'Chip CTR',    icon: MessageSquare },
+      { id: 'conviction',    label: 'Conviction',  icon: TrendingUp },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
   },
@@ -73,6 +75,7 @@ const TAB_SUBTITLES = {
   promos:         () => 'Coupons & credit grants',
   'help-search':  () => 'Unanswered help-search queries',
   'chip-adoption':() => 'L1/L2 chat-chip click-through rates',
+  conviction:     () => 'ML calibration · win-rate by conviction score',
   tools:          () => 'Codebase export & utilities',
 };
 
@@ -89,6 +92,7 @@ const TAB_COMPONENTS = {
   waitlist:       () => <WaitlistAdmin />,
   'help-search':  () => <HelpSearchInsights />,
   'chip-adoption':() => <ChipAdoptionInsights />,
+  conviction:     () => <ConvictionCalibration />,
   tools:          () => <AdminTools />,
 };
 

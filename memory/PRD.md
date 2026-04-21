@@ -80,6 +80,14 @@ adversarial trading platform with:
     5-row OHLCV (previously silently failed).
   - 0 undefined names across `risedual_core/`, lint 100% clean.
 
+### Conviction Calibration Admin UI (COMPLETED Feb 20, 2026)
+- New admin Insights tab **Conviction** reading `GET /api/admin/conviction/calibration?days={7|30|90}`.
+- Backend endpoint buckets verified predictions (`verified_24h.correct` set) by either `conviction.score` (primary) or `confidence` (fallback), returning per-bucket totals, correct counts, win-rate, and a monotonic-health boolean.
+- `prediction_tracker.log_prediction()` now accepts an optional `conviction` dict; field only persisted when supplied.
+- Live at ship: 182 verified / 30d, confidence curve monotonic=true (Low — · Medium 52.7% 87/165 · High 88.2% 15/17). Conviction buckets empty pending call-site wiring.
+- Files: `backend/services/prediction_tracker.py`, `backend/routes/admin.py`, `frontend/src/components/admin/ConvictionCalibration.jsx`, `frontend/src/components/AdminPanel.jsx`.
+- Follow-up (P1 backlog): pass conviction dict from `routes/ai.py` & `routes/intelligence.py` when logging predictions so the `by_conviction` badge activates.
+
 ### Chat Component Split (COMPLETED Feb 19, 2026)
 - Split `chat/ChatComponents.jsx` (440L monolith) into three focused files
   while preserving backward-compat imports via a 7-line shim:

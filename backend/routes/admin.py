@@ -170,6 +170,133 @@ async def ml_latest_model(request: Request):
 
 
 # ============================================================
+# CONVICTION CALIBRATION
+# ============================================================
+
+# Buckets mirror the tiers produced by `_compute_conviction()` in
+# risk_calculator.py — boundaries chosen so "Strong" reliably trips the
+# full-size multiplier and "Weak" reliably trips the 0x veto path.
+CONVICTION_BUCKETS = [
+    {"label": "Weak",     "min": 0.0, "max": 0.35, "tier": "weak"},
+    {"label": "Moderate", "min": 0.35, "max": 0.65, "tier": "moderate"},
+    {"label": "Strong",   "min": 0.65, "max": 1.01, "tier": "strong"},
+]
+
+# Fallback buckets for legacy predictions (no conviction attached). We bucket
+# by raw `confidence` at the same cutoffs so the admin can still see a
+# calibration curve while we accumulate conviction-tagged data.
+CONFIDENCE_BUCKETS = [
+    {"label": "Low",    "min": 0.0, "max": 0.35},
+    {"label": "Medium", "min": 0.35, "max": 0.65},
+    {"label": "High",   "min": 0.65, "max": 1.01},
+]
+
+
+@router.get("/conviction/calibration")
+async def conviction_calibration(request: Request, days: int = 30):
+    """Win-rate bucketed by Conviction score (and, as fallback, by raw
+    confidence for legacy rows without conviction). Owner-only.
+
+    A healthy model has monotonically rising win-rate across Weak →
+    Moderate → Strong. If Moderate wins more than Strong, the hand-tuned
+    CONVICTION_WEIGHTS in risk_calculator.py are miscalibrated — we
+    should retrain them against actual outcomes.
+    """
+    await _require_owner(request)
+    from datetime import timedelta
+    days = max(1, min(int(days), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    cursor = db.predictions.find(
+        {
+            "verified_24h.correct": {"$exists": True},
+            "timestamp": {"$gte": since.isoformat()},
+        },
+        {
+            "_id": 0,
+            "conviction": 1,
+            "confidence": 1,
+            "verified_24h.correct": 1,
+        },
+    ).limit(5000)
+
+    # Initialise empty buckets so the UI always renders a consistent shape.
+    def _empty(buckets):
+        return [
+            {**b, "total": 0, "correct": 0, "win_rate": None}
+            for b in buckets
+        ]
+
+    by_conviction = _empty(CONVICTION_BUCKETS)
+    by_confidence = _empty(CONFIDENCE_BUCKETS)
+    total_verified = 0
+    total_with_conviction = 0
+
+    async for row in cursor:
+        total_verified += 1
+        correct = bool((row.get("verified_24h") or {}).get("correct"))
+
+        conv = (row.get("conviction") or {}).get("score")
+        if isinstance(conv, (int, float)):
+            total_with_conviction += 1
+            for b in by_conviction:
+                if b["min"] <= conv < b["max"]:
+                    b["total"] += 1
+                    if correct:
+                        b["correct"] += 1
+                    break
+
+        conf = row.get("confidence")
+        if isinstance(conf, (int, float)):
+            # Normalise both 0-1 floats and 0-100 percentages to [0,1].
+            conf_norm = conf / 100.0 if conf > 1.0 else conf
+            for b in by_confidence:
+                if b["min"] <= conf_norm < b["max"]:
+                    b["total"] += 1
+                    if correct:
+                        b["correct"] += 1
+                    break
+
+    def _finalise(buckets):
+        out = []
+        for b in buckets:
+            win_rate = round(b["correct"] / b["total"], 4) if b["total"] else None
+            # Drop the raw cutoffs from the response — UI only needs the label.
+            out.append({
+                "label": b["label"],
+                "tier": b.get("tier"),
+                "total": b["total"],
+                "correct": b["correct"],
+                "win_rate": win_rate,
+                "range": [b["min"], b["max"]],
+            })
+        return out
+
+    by_conv_out = _finalise(by_conviction)
+    by_conf_out = _finalise(by_confidence)
+
+    # Monotonic-health check: win-rate should weakly increase across buckets.
+    def _is_monotonic(buckets):
+        rates = [b["win_rate"] for b in buckets if b["win_rate"] is not None]
+        if len(rates) < 2:
+            return None  # not enough data to judge
+        return all(rates[i] <= rates[i + 1] + 1e-9 for i in range(len(rates) - 1))
+
+    return {
+        "window_days": days,
+        "total_verified": total_verified,
+        "total_with_conviction": total_with_conviction,
+        "by_conviction": by_conv_out,
+        "by_confidence": by_conf_out,
+        "monotonic": {
+            "conviction": _is_monotonic(by_conv_out),
+            "confidence": _is_monotonic(by_conf_out),
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
 

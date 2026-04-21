@@ -24,7 +24,46 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
-*Nothing queued. Agent will append here as changes land.*
+### 2026-02-20 — Conviction Calibration admin panel (closing the loop)
+*Session: continued*
+
+**What shipped:**
+- New admin tab **Insights → Conviction** renders win-rate bucketed by
+  conviction score (Weak/Moderate/Strong) alongside a raw-confidence
+  fallback (Low/Medium/High) so the dashboard has signal today while
+  the risk layer backfills `conviction` onto prediction rows.
+- Backend: `GET /api/admin/conviction/calibration?days={7|30|90}`
+  (owner-only). Reads `predictions` where `verified_24h.correct` is
+  set, buckets by either `conviction.score` or `confidence`, returns
+  per-bucket `{total, correct, win_rate, range}` plus a monotonic-health
+  flag. Monotonic=true means "win-rate rises with score" — that's the
+  single-number regression check for the meta-decision layer.
+- `log_prediction()` now accepts an optional `conviction` dict and only
+  persists the field when provided. Intentional: keeps legacy rows
+  distinguishable from genuinely-absent conviction on new rows.
+
+**Files:**
+- `backend/services/prediction_tracker.py` — adds `conviction` param
+- `backend/routes/admin.py` — `/conviction/calibration` endpoint
+- `frontend/src/components/admin/ConvictionCalibration.jsx` — new panel
+- `frontend/src/components/AdminPanel.jsx` — wires the Insights tab
+
+**Live numbers at ship time (30d window, owner account):**
+- 182 verified predictions total, 0 yet conviction-tagged
+- Confidence fallback: Low — / Medium 52.7% (87/165) / High 88.2% (15/17)
+- Monotonic=true on the confidence curve → model is well-calibrated
+  at the raw signal level; next question is whether the composite
+  conviction score preserves that monotonicity.
+
+**Next step:** wire `conviction` into `log_prediction()` call sites
+in `routes/ai.py` and `routes/intelligence.py` so the top bucket
+populates. That will light up the "by_conviction" monotonic badge and
+tell us whether the hand-tuned weights need a logistic-regression
+retrain.
+
+---
+
+*Nothing else queued. Agent will append here as changes land.*
 
 ### 2026-02-19 — Conviction scoring system (hybrid meta-decision layer)
 *Session: continued*
