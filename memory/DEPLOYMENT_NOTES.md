@@ -24,6 +24,33 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Tier 3 Accumulator paper-bot fleet seeded
+*Session: continued*
+
+**What shipped:**
+- 5 signal bots deployed on the owner account (paper mode), each locked
+  to a single ticker so we get clean per-symbol ML telemetry instead of
+  the "all symbols" firehose the legacy `AI Signal Bot` drew from:
+  - SPY · QQQ · AAPL · MSFT · NVDA
+- Per-bot config: `min_confidence=70`, `side=both`, `qty=1`,
+  `use_smart_order=true`, `auto_sl_pct=3`, `auto_tp_pct=6`. Max notional
+  exposure across the fleet stays low (1 share × 5 bots ≈ $1.5–2k at
+  current quotes) while still generating daily trade events for the
+  `AI_PREDICTION_WINS.md` accumulator.
+- All 5 enabled via `PATCH /api/bots/{id}/toggle`. Bot IDs persisted in
+  Mongo; reconcilable via `GET /api/bots`.
+
+**Why:** satisfies the P1 "accumulate 30 live paper trading days to
+unlock ML Tier 3" item. Bots execute on validated AI signals through
+`process_signal_for_bots()`, routing through `paper_trading_service` —
+same path as the existing BTC Grid bot that's been running clean.
+
+**Clean-up completed this session (confirmed by owner):**
+- ✅ Alpaca cover orders filled; all orphaned bots deactivated, all
+  rogue positions closed. Previous P1 blocker retired.
+- ✅ Hardcoded owner-password override concern: owner confirms handled;
+  no longer on the refactor backlog.
+
 ### 2026-02-20 — Conviction Calibration admin panel (closing the loop)
 *Session: continued*
 
