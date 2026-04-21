@@ -533,3 +533,32 @@ async def download_codebase_txt(request: Request):
         media_type="text/plain",
         headers={"Content-Disposition": "attachment; filename=RISEDUAL_AI_Codebase.txt"},
     )
+
+
+
+# ============================================================
+# LEARNING ENGINE
+# ============================================================
+
+@router.get("/learning-engine/summary")
+async def learning_engine_summary(request: Request):
+    """Fleet-wide trade outcome roll-up: wins / losses / pending / win-rate
+    / expectancy_r. Owner-only. Reads the canonical ai_core counters."""
+    await _require_owner(request)
+    from ai_core import LearningEngine
+    return await LearningEngine(db).get_summary()
+
+
+@router.get("/learning-engine/trades")
+async def learning_engine_trades(
+    request: Request, limit: int = 50, status: str = None,
+):
+    """Recent trade records from the ai_core learning_engine_trades
+    collection. `status` filter accepts win|loss|pending. Owner-only."""
+    await _require_owner(request)
+    from ai_core import LearningEngine
+    limit = max(1, min(int(limit), 500))
+    return {
+        "count": 0 if status else None,
+        "items": await LearningEngine(db).recent_trades(limit=limit, status=status),
+    }

@@ -24,6 +24,78 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — ai_core/ full migration (simulator + execution + LE + pipeline)
+*Session: continued*
+
+Full adoption of the user-supplied closed-loop architecture, adapted
+for our async Mongo-backed production context. Canonical source of
+truth for every learning/outcome signal going forward.
+
+**New package `backend/ai_core/`:**
+- `models.py` — `Signal`, `Trade`, `TradeResult`, `ExecutionResult`
+  dataclasses with `from_dict` boundary constructors so our existing
+  dict-based callers convert cleanly without schema churn.
+- `simulator.py` — deterministic TP/SL path evaluator. Exposes both
+  `get_trade_result_from_df` (pandas-compatible, matches the
+  user-supplied spec verbatim) and `get_trade_result_from_bars`
+  (list[dict] — zero-pandas-cost callers). SL checked before TP each
+  bar (pessimistic bias — safer for training). Third-label pending
+  state (`win=None`) when future bars are insufficient.
+- `execution.py` — `ExecutionClient(mode="paper"|"live")` with uniform
+  `ExecutionResult(trade_id, filled_price, size, status, reason)`.
+  Paper routes to `paper_trading_service.execute_trade` (SL/TP
+  pass-through). Live routes to the existing broker client plumbing
+  (`routes.broker._get_or_refresh_client`). No duplicate HTTP code.
+- `learning_engine.py` — `LearningEngine(db)` with Mongo-backed
+  counters (not in-memory: we're a long-lived FastAPI process, not a
+  notebook). Collections: `learning_engine_trades` (per-trade audit)
+  and `learning_engine_stats` (single global roll-up doc). Exposes
+  `log_trade(trade, result, signal=None)`, `get_summary()`,
+  `recent_trades(limit, status)`. Summary returns wins/losses/
+  pending/total_resolved/win_rate/expectancy_r/pnl_sum.
+- `pipeline.py` — `run_full_pipeline_live(signal, size, user_id, db,
+  mode, conviction_data)` and `run_full_pipeline_backtest(signal,
+  size, bars, start_index, lookahead)`. Live path always logs pending
+  (labeler resolves later). Backtest returns resolved immediately.
+
+**Integration seams (no regression risk to working flows):**
+- `trading_bot_service::process_signal_for_bots` — after the
+  `trade_filled` gate, logs the pending trade (with SL/TP/strategy_id)
+  to `LearningEngine`. Best-effort — exceptions here never block the
+  trade.
+- `prediction_tracker::verify_pending_predictions` — on every 24h
+  verification, looks up the oldest matching pending LE trade for
+  `(asset, direction, user_id)`, computes real r_multiple from stored
+  SL, and transitions it `pending → win/loss` with atomic Mongo $inc
+  counter updates.
+- New admin endpoints:
+  - `GET /api/admin/learning-engine/summary`
+  - `GET /api/admin/learning-engine/trades?limit=50&status=win|loss|pending`
+
+**Verified end-to-end:**
+- Simulator: all 5 paths (TP hit LONG, TP hit SHORT, SL hit, pending/
+  no-future-bars, timeout) return correct outcomes and r_multiples.
+- LearningEngine round-trip: logs 1 win + 1 loss + 1 pending → summary
+  correctly reports wins=1, losses=1, pending=1, total_resolved=2,
+  win_rate=0.5, expectancy_r=0.0.
+- Signal-bot integration: live MSFT buy signal → paper trade filled
+  → LE record persisted with SL=407.4 TP=445.2 strategy_id="manual_test"
+  user_id=owner. Pending count incremented.
+- Lint clean across all ai_core/ modules + 2 integration files.
+
+**Files added:**
+- `backend/ai_core/__init__.py`
+- `backend/ai_core/models.py`
+- `backend/ai_core/simulator.py`
+- `backend/ai_core/execution.py`
+- `backend/ai_core/learning_engine.py`
+- `backend/ai_core/pipeline.py`
+
+**Files changed:**
+- `backend/services/trading_bot_service.py` — LE hook after fill-gate
+- `backend/services/prediction_tracker.py` — resolve-pending on verify
+- `backend/routes/admin.py` — 2 new LE endpoints
+
 ### 2026-02-20 — Learning-loop integrity patches (per user arch review)
 *Session: continued*
 

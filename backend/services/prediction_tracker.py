@@ -422,6 +422,64 @@ async def verify_pending_predictions(db):
         except Exception:
             pass
 
+        # Resolve the pending LearningEngine record for this trade so
+        # the fleet-wide stats tick over from `pending` → `win`/`loss`.
+        # We match on `(asset, direction, user_id, status=pending)` and
+        # mark the most recent open trade resolved. Missing match is
+        # a silent no-op (prediction from a non-trade source is fine).
+        try:
+            from ai_core.learning_engine import _TRADES as _LE_TRADES, _STATS as _LE_STATS, _STATS_DOC_ID as _LE_DOC
+            direction = (pred.get("direction") or "").upper()
+            ai_dir = "LONG" if direction in ("BUY", "LONG", "BULLISH") else "SHORT"
+            pnl = (price_now - pred["price_at_prediction"]) if ai_dir == "LONG" else (pred["price_at_prediction"] - price_now)
+            # r_multiple: when we know a stop_loss was attached to the
+            # trade record (ai_core stamps it on log_trade). Fall back
+            # to a percentage-based denominator so analytics still work.
+            pending = await db[_LE_TRADES].find_one(
+                {"asset": pred["symbol"], "direction": ai_dir,
+                 "user_id": pred.get("user_id"), "status": "pending"},
+                sort=[("logged_at", 1)],  # oldest pending first — FIFO resolution
+            )
+            if pending is not None:
+                entry = float(pending.get("entry") or pred["price_at_prediction"])
+                # Denominator: prefer the stored stop_loss if present.
+                risk = 0.0
+                sl_stored = pending.get("stop_loss")
+                if sl_stored:
+                    risk = abs(entry - float(sl_stored))
+                if risk <= 0:
+                    # No SL on record — synthesise a 2% risk floor so
+                    # r_multiple stays a usable magnitude rather than
+                    # exploding on near-zero denominators.
+                    risk = max(entry * 0.02, 0.01)
+                r_mult = round(pnl / risk, 3)
+                status_new = "win" if correct else "loss"
+                await db[_LE_TRADES].update_one(
+                    {"_id": pending["_id"]},
+                    {"$set": {
+                        "status": status_new,
+                        "win": bool(correct),
+                        "exit_price": round(price_now, 4),
+                        "pnl": round(pnl, 4),
+                        "r_multiple": r_mult,
+                        "resolved_at": now.isoformat(),
+                    }},
+                )
+                # Roll-up counters: decrement pending, increment resolved.
+                await db[_LE_STATS].update_one(
+                    {"_id": _LE_DOC},
+                    {"$inc": {
+                        "counts.pending": -1,
+                        f"counts.{status_new}": 1,
+                        "counts.total_resolved": 1,
+                        "running.r_multiple_sum": r_mult,
+                        "running.pnl_sum": round(pnl, 4),
+                    }, "$set": {"last_update": now.isoformat()}},
+                    upsert=True,
+                )
+        except Exception as e:
+            logger.warning(f"[learning-engine] resolve failed for {pred['symbol']}: {e}")
+
         # Auto-save verified prediction to vector memory
         try:
             from services.market_memory_service import save_regime, _collection

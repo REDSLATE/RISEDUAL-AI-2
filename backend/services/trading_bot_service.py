@@ -368,6 +368,36 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
             )
             continue
 
+        # Log the pending trade to the canonical ai_core LearningEngine
+        # so the fleet-wide win/loss/expectancy roll-up stays in sync.
+        # The outcome stays `pending` until prediction_labeler verifies
+        # it on the delayed cron — this is the whole point of the
+        # three-label system: no false losses for unresolved trades.
+        try:
+            from ai_core import LearningEngine, Signal as _Sig, Trade as _Tr
+            from ai_core.models import TradeResult as _TR
+            filled_price = float((trade_result or {}).get("price") or price or 0)
+            ai_sig = _Sig.from_dict({
+                "symbol": symbol,
+                "direction": "LONG" if side == "buy" else "SHORT",
+                "entry": filled_price,
+                "stop_loss": sl_price or filled_price,
+                "take_profit": tp_price or filled_price,
+                "confidence": signal.get("ai_confidence", 0),
+                "strategy_id": signal.get("strategy_id"),
+            })
+            ai_trade = _Tr.from_signal(ai_sig, size=qty, user_id=user_id)
+            await LearningEngine(_db).log_trade(
+                ai_trade,
+                _TR(pnl=0.0, exit_price=filled_price,
+                    win=None, status="pending", r_multiple=0.0),
+                signal=ai_sig,
+            )
+        except Exception as e:
+            # LearningEngine is a best-effort sink; never block trade
+            # execution on its availability.
+            logger.warning(f"[signal-bot] learning-engine log failed: {e}")
+
         # Update stats + daily cap counters. We persist cap state on the
         # config (not stats) so it survives `update_bot_config` merges
         # and is visible in the admin bot list without an extra field.
