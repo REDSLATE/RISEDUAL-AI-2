@@ -1,6 +1,7 @@
 """Risk/Reward Calculator Routes — Position sizing, R:R analysis, Kelly criterion."""
 import logging
 import math
+import random
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
@@ -20,6 +21,15 @@ LOSING_STREAK_THRESHOLD = 3       # consecutive wrong verified predictions
 DRAWDOWN_THRESHOLD = 0.10         # 10% down from peak equity
 RISK_REDUCTION_FACTOR = 0.5       # halve risk_pct when either threshold hit
 STREAK_LOOKBACK = 10              # only scan the last N verified predictions
+
+# ─── Trade guards ────────────────────────────────────────────────────────────
+# Hard R:R floor keeps an obvious footgun (1:1 setups, worse) out of sizing
+# unless the user explicitly asks for it. Exploration is an optional
+# epsilon-greedy knob for paper-mode users who want to intentionally sample
+# "outlier" trades the rules would normally veto — useful for ML training
+# data diversity, never for live money.
+DEFAULT_MIN_RR = 1.5              # recommended floor when `min_rr` omitted
+EXPLORATION_RATE = 0.10           # 10% of opt-in calls bypass the veto
 
 
 @dataclass
@@ -51,6 +61,10 @@ class RiskCalcRequest(BaseModel):
     # Optional: for Kelly criterion
     win_rate: Optional[float] = None  # 0-100
     avg_win_loss_ratio: Optional[float] = None
+    # Optional trade guards
+    min_rr: Optional[float] = None        # hard R:R floor (default = DEFAULT_MIN_RR when omitted)
+    explore: bool = False                  # opt-in ε-greedy exploration for paper-mode users
+    mode: str = "paper"                    # "paper" or "live" — exploration is paper-only
 
 
 class MultiTpCalcRequest(BaseModel):
@@ -63,6 +77,9 @@ class MultiTpCalcRequest(BaseModel):
     sizing_method: str = "risk_pct"
     risk_pct: float = Field(default=2.0, ge=0.1, le=50)
     fixed_dollar_risk: Optional[float] = None
+    min_rr: Optional[float] = None
+    explore: bool = False
+    mode: str = "paper"
 
 
 async def _get_account_value(user_id: str) -> float:
@@ -158,6 +175,95 @@ async def _compute_risk_context(user_id: str, account_value: float) -> dict:
     return ctx
 
 
+async def _evaluate_trade_guards(
+    *,
+    user_id: str,
+    symbol: str,
+    rr_ratio: float,
+    min_rr: Optional[float],
+    explore_requested: bool,
+    mode: str,
+    risk_ctx: dict,
+) -> dict:
+    """Evaluate the hard R:R veto and guarded ε-greedy exploration.
+
+    Returns a dict that gets embedded in the API response so the caller
+    (UI or bot) can honour or log the advisory decision.
+
+    Rules:
+      * veto fires when rr_ratio < effective_min_rr (defaults to
+        `DEFAULT_MIN_RR`). Vetos are advisory — we don't 400 the request;
+        the caller decides whether to block execution.
+      * exploration fires only when ALL of: `explore_requested=True`,
+        `mode == "paper"`, and the circuit breaker is NOT active. A live
+        dice-roll that bypasses veto is never what you want.
+      * exploration can only OVERRIDE a veto (the whole point is sampling
+        trades the rules would normally reject). It cannot re-veto a good
+        trade.
+      * every exploration decision is persisted to `risk_exploration_log`
+        with a trace id so performance can be analysed later
+        ('how did my exploration trades do vs normal ones?').
+    """
+    effective_min_rr = DEFAULT_MIN_RR if min_rr is None else min_rr
+
+    veto = False
+    veto_reason: Optional[str] = None
+    if rr_ratio < effective_min_rr:
+        veto = True
+        veto_reason = f"R:R {rr_ratio:.2f} below min {effective_min_rr:.2f}"
+
+    exploration_active = False
+    exploration_reason: Optional[str] = None
+    exploration_blocked_reason: Optional[str] = None
+
+    if explore_requested:
+        if mode != "paper":
+            exploration_blocked_reason = "exploration only allowed in paper mode"
+        elif risk_ctx.get("risk_reduced"):
+            exploration_blocked_reason = (
+                "circuit breaker active — exploration paused"
+            )
+        elif veto and random.random() < EXPLORATION_RATE:
+            exploration_active = True
+            exploration_reason = (
+                f"ε-greedy sample ({int(EXPLORATION_RATE * 100)}% rate) — veto overridden"
+            )
+            veto = False  # the whole point of exploration
+
+    # Persist the decision (best-effort — never break the response on log fail)
+    if _db is not None and (veto or exploration_active or exploration_blocked_reason):
+        try:
+            await _db.risk_exploration_log.insert_one({
+                "user_id": user_id,
+                "symbol": symbol,
+                "rr_ratio": rr_ratio,
+                "min_rr": effective_min_rr,
+                "mode": mode,
+                "veto": veto,
+                "veto_reason": veto_reason,
+                "explore_requested": explore_requested,
+                "exploration_active": exploration_active,
+                "exploration_reason": exploration_reason,
+                "exploration_blocked_reason": exploration_blocked_reason,
+                "risk_reduced_active": bool(risk_ctx.get("risk_reduced")),
+                "logged_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"[risk-guards] log write failed: {e}")
+
+    return {
+        "min_rr": effective_min_rr,
+        "rr_ratio": rr_ratio,
+        "veto": veto,
+        "veto_reason": veto_reason,
+        "exploration_requested": explore_requested,
+        "exploration_active": exploration_active,
+        "exploration_reason": exploration_reason,
+        "exploration_blocked_reason": exploration_blocked_reason,
+        "mode": mode,
+    }
+
+
 async def _get_current_price(symbol: str) -> Optional[float]:
     """Get current market price."""
     from services.price_provider import get_quote, get_crypto_quote
@@ -238,6 +344,15 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
     rr_ratio = round(reward_per_share / risk_per_share, 2) if risk_per_share > 0 else 0
     account_value = await _get_account_value(user_id)
     risk_ctx = await _compute_risk_context(user_id, account_value)
+    guards = await _evaluate_trade_guards(
+        user_id=user_id,
+        symbol=symbol,
+        rr_ratio=rr_ratio,
+        min_rr=calc.min_rr,
+        explore_requested=calc.explore,
+        mode=calc.mode,
+        risk_ctx=risk_ctx,
+    )
 
     # Apply circuit-breaker reduction before the sizing calc so every
     # downstream number (position size, dollar risk, max loss) reflects
@@ -284,6 +399,7 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
             "current_drawdown_pct": round(risk_ctx["current_drawdown"] * 100, 2),
             "peak_equity": risk_ctx["peak_equity"],
         },
+        "trade_guards": guards,
     }
 
 
@@ -323,6 +439,16 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
 
     rr_ratio = round(total_weighted_reward / max_loss, 2) if max_loss > 0 else 0
 
+    guards = await _evaluate_trade_guards(
+        user_id=user_id,
+        symbol=symbol,
+        rr_ratio=rr_ratio,
+        min_rr=calc.min_rr,
+        explore_requested=calc.explore,
+        mode=calc.mode,
+        risk_ctx=risk_ctx,
+    )
+
     return {
         "symbol": symbol,
         "side": side,
@@ -347,4 +473,5 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
             "current_drawdown_pct": round(risk_ctx["current_drawdown"] * 100, 2),
             "peak_equity": risk_ctx["peak_equity"],
         },
+        "trade_guards": guards,
     }

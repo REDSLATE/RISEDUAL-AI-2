@@ -26,6 +26,45 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Trade guards: R:R floor + guarded ε-greedy exploration
+*Session: continued*
+
+Follow-up to the circuit-breaker work above. The user dropped a minimal
+`Auditor` snippet (`min_rr=1.5`, `exploration_rate=0.1`) — same "adopt
+the idea, not the class" treatment as the RiskManager snippet.
+
+**What landed:**
+- `routes/risk_calculator.py` got a new helper
+  `_evaluate_trade_guards(...)` and a new `trade_guards` response block
+  on both `/calculate` and `/multi-tp`.
+- `RiskCalcRequest` and `MultiTpCalcRequest` gained three optional
+  fields: `min_rr: Optional[float]`, `explore: bool = False`,
+  `mode: str = "paper"`.
+- New constants at top of file: `DEFAULT_MIN_RR = 1.5`,
+  `EXPLORATION_RATE = 0.10`.
+
+**Rules:**
+- Hard R:R floor — if `rr_ratio < effective_min_rr` (user-supplied or
+  `DEFAULT_MIN_RR`), response sets `veto: true` with a reason. **Veto is
+  advisory** — the endpoint still returns a fully-sized trade so the
+  caller (UI or bot) decides whether to honour.
+- ε-greedy exploration — fires only when ALL of: `explore=True`,
+  `mode="paper"`, circuit breaker inactive, and `random.random() <
+  EXPLORATION_RATE`. Can only OVERRIDE a veto (the whole point of
+  sampling "trades the rules would normally reject"), never re-veto a
+  good trade.
+- Every guard decision persisted to new `risk_exploration_log`
+  collection for later performance analysis.
+
+**Verified end-to-end via 5 curl scenarios:**
+1. Good R:R → no veto  ✅
+2. Bad R:R → veto  ✅
+3. Bad R:R + `explore=true` + `mode=live` → exploration blocked  ✅
+4. Custom `min_rr=3.0` on a 2.5-R:R trade → veto  ✅
+5. Exploration during active circuit breaker (streak=4) → blocked  ✅
+
+Self-test 6/6 green, no regressions.
+
 ### 2026-02-19 — Risk circuit-breaker (streak + drawdown auto-de-risk)
 *Session: continued*
 
