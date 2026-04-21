@@ -31,6 +31,30 @@ STREAK_LOOKBACK = 10              # only scan the last N verified predictions
 DEFAULT_MIN_RR = 1.5              # recommended floor when `min_rr` omitted
 EXPLORATION_RATE = 0.10           # 10% of opt-in calls bypass the veto
 
+# ─── Conviction score weights ────────────────────────────────────────────────
+# Hand-tuned starting weights for the composite "conviction" score — a
+# 0.0-1.0 number that blends every available signal into one number the UI
+# + sizer can read. The score ONLY modulates sizing within the already-
+# approved risk budget; it never overrides a hard gate (R:R floor, circuit
+# breaker, calibration lock). Over time these weights should be replaced
+# by logistic regression over closed-trade outcomes — until then they're a
+# transparent starting point so we're never asked "what's the magic number?"
+CONVICTION_WEIGHTS = {
+    "signal_confidence": 0.40,    # the model's own probability
+    "calibration":       0.20,    # trailing 30-day win rate (ground truth)
+    "regime_match":      0.15,    # does the signal agree with HMM/trend?
+    "rejection_bias":    0.20,    # penalty — (asset, dir) is currently flagged
+    "loss_streak":       0.15,    # penalty — user in a rough patch
+}
+# Conviction → size-multiplier mapping. High conviction gets full risk
+# budget, medium gets half, low gets nothing (inside the already-approved
+# envelope — this is *modulation*, not *bypass*).
+CONVICTION_TIERS = [
+    (0.60, "strong",   1.00),
+    (0.40, "moderate", 0.50),
+    (0.00, "weak",     0.00),
+]
+
 
 @dataclass
 class SizingConfig:
@@ -65,6 +89,9 @@ class RiskCalcRequest(BaseModel):
     min_rr: Optional[float] = None        # hard R:R floor (default = DEFAULT_MIN_RR when omitted)
     explore: bool = False                  # opt-in ε-greedy exploration for paper-mode users
     mode: str = "paper"                    # "paper" or "live" — exploration is paper-only
+    # Optional conviction inputs (all degrade gracefully when absent)
+    confidence: Optional[float] = None    # 0.0-1.0 from the signal model
+    regime_match: Optional[bool] = None   # True if signal direction agrees with HMM regime
 
 
 class MultiTpCalcRequest(BaseModel):
@@ -80,6 +107,8 @@ class MultiTpCalcRequest(BaseModel):
     min_rr: Optional[float] = None
     explore: bool = False
     mode: str = "paper"
+    confidence: Optional[float] = None
+    regime_match: Optional[bool] = None
 
 
 async def _get_account_value(user_id: str) -> float:
@@ -287,6 +316,121 @@ async def _evaluate_trade_guards(
     }
 
 
+async def _compute_conviction(
+    *,
+    user_id: str,
+    asset: str,
+    direction: Optional[str],
+    confidence: Optional[float],
+    regime_match: Optional[bool],
+    risk_ctx: dict,
+) -> dict:
+    """Compute a composite conviction score in [0.0, 1.0].
+
+    This is layered ON TOP of the hard gates — every request that
+    reaches this function has already survived the R:R veto and the
+    circuit-breaker sizing. Conviction *modulates* the approved budget
+    (strong=100%, moderate=50%, weak=0%) but never overrides a gate.
+
+    Every component degrades gracefully when its input is missing:
+      * no `confidence` supplied → defaults to neutral 0.5
+      * no trailing win-rate data → defaults to 0.5
+      * no regime hint → skipped (0 contribution, not penalty)
+      * bias/streak penalties are additive — only subtract when tripped
+
+    Returns a dict with the final score, tier label, size multiplier,
+    and a breakdown for UI/debug transparency.
+    """
+    w = CONVICTION_WEIGHTS
+    components: dict[str, float] = {}
+
+    # 1. Signal confidence (positive contribution) ─────────────────────
+    conf = 0.5 if confidence is None else max(0.0, min(1.0, float(confidence)))
+    components["signal_confidence"] = round(conf * w["signal_confidence"], 4)
+
+    # 2. Calibration — user's verified 30-day win rate ─────────────────
+    calibration = 0.5
+    if _db is not None:
+        try:
+            from datetime import timedelta
+            since = datetime.now(timezone.utc) - timedelta(days=30)
+            cursor = _db.predictions.find(
+                {
+                    "user_id": user_id,
+                    "verified_24h.correct": {"$exists": True},
+                    "created_at": {"$gte": since.isoformat()},
+                },
+                {"_id": 0, "verified_24h.correct": 1},
+            ).limit(500)
+            correct, total = 0, 0
+            async for row in cursor:
+                total += 1
+                if (row.get("verified_24h") or {}).get("correct"):
+                    correct += 1
+            if total >= 10:
+                calibration = correct / total
+        except Exception as e:
+            logger.warning(f"[conviction] calibration lookup failed: {e}")
+    components["calibration"] = round(calibration * w["calibration"], 4)
+
+    # 3. Regime match (positive when explicit True) ────────────────────
+    if regime_match is True:
+        components["regime_match"] = round(w["regime_match"], 4)
+    elif regime_match is False:
+        components["regime_match"] = 0.0  # known mismatch → no credit
+    else:
+        components["regime_match"] = 0.0  # unknown → neutral
+
+    # 4. Rejection-bias penalty ─────────────────────────────────────────
+    penalty_bias = 0.0
+    if _db is not None and direction:
+        try:
+            from services.rejection_log import get_flagged_pairs
+            flagged = await get_flagged_pairs()
+            if (asset.upper(), direction) in flagged:
+                penalty_bias = w["rejection_bias"]
+        except Exception as e:
+            logger.warning(f"[conviction] bias lookup failed: {e}")
+    components["rejection_bias_penalty"] = round(-penalty_bias, 4)
+
+    # 5. Loss-streak penalty (mirrors circuit-breaker threshold) ───────
+    penalty_streak = 0.0
+    if (risk_ctx or {}).get("losing_streak", 0) >= 4:
+        penalty_streak = w["loss_streak"]
+    components["loss_streak_penalty"] = round(-penalty_streak, 4)
+
+    # ── Final score ─────────────────────────────────────────────────────
+    score = (
+        components["signal_confidence"]
+        + components["calibration"]
+        + components["regime_match"]
+        + components["rejection_bias_penalty"]
+        + components["loss_streak_penalty"]
+    )
+    score = max(0.0, min(1.0, score))
+
+    # Tier lookup
+    tier_label, size_mult = "weak", 0.0
+    for threshold, label, mult in CONVICTION_TIERS:
+        if score >= threshold:
+            tier_label, size_mult = label, mult
+            break
+
+    return {
+        "score": round(score, 3),
+        "tier": tier_label,
+        "size_multiplier": size_mult,
+        "weights": w,
+        "breakdown": components,
+        "inputs": {
+            "confidence": conf,
+            "calibration": round(calibration, 4),
+            "regime_match": regime_match,
+            "losing_streak": (risk_ctx or {}).get("losing_streak", 0),
+        },
+    }
+
+
 async def _get_current_price(symbol: str) -> Optional[float]:
     """Get current market price."""
     from services.price_provider import get_quote, get_crypto_quote
@@ -390,6 +534,21 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
                      avg_wl_ratio=calc.avg_win_loss_ratio, rr_ratio=rr_ratio),
     )
 
+    # Conviction modulates sizing INSIDE the already-approved risk budget —
+    # never outside it. Strong = 100%, moderate = 50%, weak = 0%. Hard
+    # gates above stay authoritative (R:R veto, circuit breaker).
+    conviction = await _compute_conviction(
+        user_id=user_id,
+        asset=symbol,
+        direction=("up" if side == "buy" else "down"),
+        confidence=calc.confidence,
+        regime_match=calc.regime_match,
+        risk_ctx=risk_ctx,
+    )
+    pre_conviction_size = position_size
+    position_size = round(position_size * conviction["size_multiplier"], 4)
+    dollar_risk = round(dollar_risk * conviction["size_multiplier"], 2)
+
     total_cost = round(entry * position_size, 2)
     max_loss = round(risk_per_share * position_size, 2)
     max_profit = round(reward_per_share * position_size, 2)
@@ -423,6 +582,7 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
             "peak_equity": risk_ctx["peak_equity"],
         },
         "trade_guards": guards,
+        "conviction": {**conviction, "pre_conviction_size": pre_conviction_size},
     }
 
 
@@ -472,6 +632,23 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
         risk_ctx=risk_ctx,
     )
 
+    # Apply conviction to the multi-TP sizing.
+    conviction = await _compute_conviction(
+        user_id=user_id,
+        asset=symbol,
+        direction=("up" if side == "buy" else "down"),
+        confidence=calc.confidence,
+        regime_match=calc.regime_match,
+        risk_ctx=risk_ctx,
+    )
+    pre_conviction_size = position_size
+    position_size = round(position_size * conviction["size_multiplier"], 4)
+    total_cost = round(entry * position_size, 2)
+    max_loss = round(risk_per_share * position_size, 2)
+    tp_details, total_weighted_reward = _compute_tp_details(
+        calc.take_profit_prices, calc.take_profit_pcts, position_size, entry, side,
+    )
+
     return {
         "symbol": symbol,
         "side": side,
@@ -497,4 +674,5 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
             "peak_equity": risk_ctx["peak_equity"],
         },
         "trade_guards": guards,
+        "conviction": {**conviction, "pre_conviction_size": pre_conviction_size},
     }

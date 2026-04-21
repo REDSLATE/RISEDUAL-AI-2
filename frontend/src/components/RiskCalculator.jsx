@@ -284,6 +284,48 @@ const RiskCalculator = ({ onClose, onApplyToSmartOrder }) => {
                 </div>
               )}
 
+              {/* Conviction badge — reflects the composite 0-1 score the
+                  backend computed across signal conf · calibration · regime
+                  · bias · streak. Position size was already modulated by
+                  this tier (strong=100%, moderate=50%, weak=0% — inside
+                  the approved risk budget). */}
+              {result.conviction && (
+                <div
+                  className={`rounded-lg border p-2 flex items-start gap-2 ${
+                    result.conviction.tier === 'strong'
+                      ? 'bg-emerald-500/10 border-emerald-500/40'
+                      : result.conviction.tier === 'moderate'
+                      ? 'bg-sky-500/10 border-sky-500/40'
+                      : 'bg-slate-500/10 border-slate-500/40'
+                  }`}
+                  data-testid="conviction-badge"
+                >
+                  <Activity className={`w-4 h-4 shrink-0 mt-0.5 ${
+                    result.conviction.tier === 'strong' ? 'text-emerald-400'
+                    : result.conviction.tier === 'moderate' ? 'text-sky-400'
+                    : 'text-slate-400'
+                  }`} />
+                  <div className="flex-1">
+                    <div className={`text-[11px] font-semibold ${
+                      result.conviction.tier === 'strong' ? 'text-emerald-300'
+                      : result.conviction.tier === 'moderate' ? 'text-sky-300'
+                      : 'text-slate-300'
+                    }`}>
+                      Conviction · {result.conviction.tier.toUpperCase()} ({result.conviction.score.toFixed(2)}) · sizing ×{result.conviction.size_multiplier.toFixed(2)}
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${
+                      result.conviction.tier === 'strong' ? 'text-emerald-200/70'
+                      : result.conviction.tier === 'moderate' ? 'text-sky-200/70'
+                      : 'text-slate-300/70'
+                    }`}>
+                      confidence {Math.round((result.conviction.inputs.confidence || 0) * 100)}%
+                      · calibration {Math.round((result.conviction.inputs.calibration || 0) * 100)}%
+                      {result.conviction.inputs.losing_streak >= 4 && ` · streak-penalty active`}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Affordability Warning */}
               {!result.can_afford && (
                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 flex items-center gap-2">

@@ -26,6 +26,52 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Conviction scoring system (hybrid meta-decision layer)
+*Session: continued*
+
+**Concept:** Composite 0-1 score that blends every available signal
+(model confidence, recent calibration, regime match, rejection bias,
+losing-streak state) into a single number. Modulates position size
+INSIDE the already-approved risk budget — never overrides hard gates.
+Replaces the "all-or-nothing" sizing of the old pipeline with a
+three-tier nuance (strong/moderate/weak) so the system can say
+"I'm uncertain, take half size" or "I'm in a rough patch, skip it"
+instead of always executing the full budget.
+
+**Weights (hand-tuned to start, replaceable by logistic regression over
+closed-trade outcomes once we have enough data):**
+- signal_confidence 0.40 (positive)
+- calibration       0.20 (positive — trailing 30-day win rate)
+- regime_match      0.15 (positive when explicit True)
+- rejection_bias    0.20 (penalty — (asset, dir) flagged)
+- loss_streak       0.15 (penalty — user in rough patch)
+
+**Tiers → size multiplier:** `>=0.60 strong=1.0` · `>=0.40 moderate=0.5`
+· `else weak=0.0`.
+
+**Files touched:**
+- `routes/risk_calculator.py` — new `_compute_conviction()`, new request
+  fields `confidence` + `regime_match` (both optional, degrade
+  gracefully), new `conviction` block on `/calculate` and `/multi-tp`
+  responses. Position size now goes through
+  `position_size = pre_conviction × size_multiplier` which keeps the
+  hard gates authoritative while modulating within them.
+- `frontend/src/components/RiskCalculator.jsx` — new conviction badge
+  (emerald strong / sky moderate / slate weak) with the score, size
+  multiplier, and contributing inputs.
+
+**Verified end-to-end via 3 curl scenarios:**
+1. No inputs + streak=4 → score 0.15 (weak) → size 0  ✅
+2. conf=0.9 + regime=True + streak=4 → score 0.46 (moderate) → 50% size  ✅
+3. conf=0.3 + regime=False + streak=4 → score 0.07 (weak) → size 0  ✅
+
+Self-test 6/6 green. No regressions.
+
+**What this completes:** The "real AI system making decisions on information
+it has" picture. Every arrow in the decision loop now contributes to a
+single explainable conviction number, which you can see in the UI badge
+and break down component-by-component.
+
 ### 2026-02-19 — Recent-loss bridge + Auditor Feedback Loop
 *Session: continued*
 
