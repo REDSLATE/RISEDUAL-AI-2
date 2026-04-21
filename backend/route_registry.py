@@ -60,6 +60,7 @@ from routes.analytics import router as analytics_router, set_db as set_analytics
 from routes.fred import router as fred_router, set_db as set_fred_db
 from routes.demo import router as demo_router, set_db as set_demo_db
 from routes.self_test import router as self_test_router, set_db as set_self_test_db, set_scheduler as set_self_test_scheduler  # noqa: F401
+from routes.rejections import router as rejections_router
 from routes.share import router as share_router
 from routes.share_image import router as share_image_router
 from services.price_provider import set_db as set_price_provider_db
@@ -97,6 +98,7 @@ ALL_ROUTERS = [
     fred_router,
     demo_router,
     self_test_router,
+    rejections_router,
     share_router,
     share_image_router,
 ]
@@ -166,6 +168,21 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         init_memory(db)
     except Exception as e:
         logger.warning(f"Market Memory init failed: {e}")
+
+    # Wire rejection-log service (captures hard-negative training data).
+    # Indexes are set up asynchronously at first use to avoid blocking
+    # startup on Mongo; log_rejected() is a no-op until set_db runs.
+    try:
+        from services.rejection_log import set_db as set_rejection_db, ensure_indexes as _rejection_indexes
+        import asyncio as _asyncio
+        set_rejection_db(db)
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_rejection_indexes())
+        except RuntimeError:
+            pass  # no running loop during sync init — indexes get created on first write anyway
+    except Exception as e:
+        logger.warning(f"Rejection log DB wire failed: {e}")
 
     # Initialize Object Storage
     try:

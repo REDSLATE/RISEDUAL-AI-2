@@ -147,6 +147,17 @@ async def run_post_signal_pipeline(
             ticker,
         )
         result.errors.append("no_trained_model")
+        try:
+            from services.rejection_log import log_rejected
+            await log_rejected(
+                asset=ticker,
+                direction=getattr(signal.direction, "value", str(signal.direction)),
+                reason="no_trained_model",
+                source="orchestrator_no_model",
+                meta={"prediction_id": signal.prediction_id or "", "regime": regime},
+            )
+        except Exception:
+            pass
         return result
 
     stats = model.calibration_stats
@@ -156,6 +167,17 @@ async def run_post_signal_pipeline(
             ticker,
         )
         result.errors.append("no_calibration_stats")
+        try:
+            from services.rejection_log import log_rejected
+            await log_rejected(
+                asset=ticker,
+                direction=getattr(signal.direction, "value", str(signal.direction)),
+                reason="no_calibration_stats",
+                source="orchestrator_no_calibration",
+                meta={"prediction_id": signal.prediction_id or "", "regime": regime},
+            )
+        except Exception:
+            pass
         return result
 
     # ── 2. Gate check ────────────────────────────────────────────────────────
@@ -208,6 +230,23 @@ async def run_post_signal_pipeline(
             stats.n_predictions,
             stats.ece,
         )
+        try:
+            from services.rejection_log import log_rejected
+            await log_rejected(
+                asset=ticker,
+                direction=getattr(signal.direction, "value", str(signal.direction)),
+                reason=f"all_tiers_locked (acc={stats.accuracy:.3f} n={stats.n_predictions} ece={stats.ece:.3f})",
+                source="orchestrator_tier_locked",
+                meta={
+                    "prediction_id": signal.prediction_id or "",
+                    "regime": regime,
+                    "accuracy": round(stats.accuracy, 4),
+                    "n_predictions": stats.n_predictions,
+                    "ece": round(stats.ece, 4),
+                },
+            )
+        except Exception:
+            pass
         return result
 
     # ── 3. Shared HTTP client ────────────────────────────────────────────────

@@ -61,7 +61,14 @@ def _parse_ai_response(response_text: str) -> list[dict]:
 
 
 def _merge_ai_results(batch: list[dict], ai_results: list[dict]) -> None:
-    """Merge AI validation results back into the original match dicts."""
+    """Merge AI validation results back into the original match dicts.
+
+    Also fires off a best-effort rejection log for any symbol the auditor
+    decided to hold or reject — captured as hard negatives for retraining.
+    """
+    from services.rejection_log import log_rejected as _log_rejected  # lazy
+    import asyncio as _asyncio
+
     ai_map = {r["symbol"]: r for r in ai_results if isinstance(r, dict) and "symbol" in r}
     for m in batch:
         ai = ai_map.get(m["symbol"], {})
@@ -71,6 +78,27 @@ def _merge_ai_results(batch: list[dict], ai_results: list[dict]) -> None:
         m["ai_reasoning"] = ai.get("reasoning", "")
         m["ai_action"] = ai.get("recommended_action", "")
         m["ai_validated"] = True
+
+        # Log rejections (verdict != "buy") so retraining can see what the
+        # Auditor overruled and the eventual outcome becomes a training
+        # signal. Fire-and-forget — must never break the merge path.
+        verdict = str(m.get("ai_verdict") or "").lower()
+        if verdict and verdict != "buy":
+            try:
+                _asyncio.create_task(_log_rejected(
+                    asset=m.get("symbol", ""),
+                    direction=None,
+                    reason=f"ai_verdict={verdict} (conf={m.get('ai_confidence')})",
+                    source="ai_signal_validator",
+                    meta={
+                        "verdict": verdict,
+                        "risk_level": m.get("ai_risk"),
+                        "ai_confidence": m.get("ai_confidence"),
+                        "reasoning": (m.get("ai_reasoning") or "")[:500],
+                    },
+                ))
+            except Exception:
+                pass
 
 
 def _mark_unvalidated(matches: list[dict], error_msg: Optional[str] = None) -> None:

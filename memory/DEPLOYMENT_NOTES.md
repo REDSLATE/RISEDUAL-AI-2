@@ -26,6 +26,54 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Rejected-signal logging (hard-negatives collection)
+*Session: continued*
+
+User dropped two `log_rejected` snippets describing a learning-engine that
+captures every signal the pipeline drops. Real gap: the existing codebase
+silently rejects signals at 4+ places with only `log.info/debug` entries —
+no structured record, nothing retrainable, no admin visibility.
+
+**What landed (all additive — zero trading-logic changes):**
+
+1. `backend/services/rejection_log.py` — new service with
+   `log_rejected(asset, direction, reason, source, meta, user_id)`.
+   Persists to `rejected_signals` Mongo collection with a 90-day TTL
+   index so the collection stays lean on its own. `recent_rejections()`
+   + `rejection_stats()` helpers for queries. Every call is
+   fire-and-forget — logging failures never break the trading pipeline.
+
+2. Wired into 4 rejection sites:
+   - `ml_orchestrator.py` — 3 gate bail-outs (no_model, no_calibration,
+     all_tiers_locked) each with structured `meta` incl. prediction_id,
+     regime, calibration stats.
+   - `ai_signal_validator.py` — every auditor verdict != "buy" is now
+     captured with the LLM reasoning (truncated to 500 chars), risk
+     level, and confidence. Async `create_task` so the merge path stays
+     synchronous.
+
+3. `backend/routes/rejections.py` — two admin-only endpoints:
+   - `GET /api/admin/rejections` (filters: source, asset, limit up to 500)
+   - `GET /api/admin/rejections/stats?hours=N` (aggregate by source)
+   Wired through `route_registry.py`; DB injected in `wire_db()`.
+
+**Indexes (idempotent):**
+- `logged_at` TTL (90 days)
+- `(source, logged_at desc)`
+- `(asset, logged_at desc)`
+
+**Verified end-to-end:**
+- Seeded 2 rejections via direct service call → persisted OK
+- `GET /api/admin/rejections?limit=5` → returned both, newest first
+- `GET /api/admin/rejections/stats?hours=24` → `{total:2, by_source:{...}}`
+- Unauthenticated call → 401 as expected
+- Self-test 6/6 green, no regressions
+
+**Consumer hook for later:** `ml_retrain_service` can now consume the
+`rejected_signals` collection as hard-negative training data (tasks that
+the system filtered out, which becomes a labeled dataset once their
+outcomes get verified).
+
 ### 2026-02-19 — Trade guards: R:R floor + guarded ε-greedy exploration
 *Session: continued*
 
