@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, AlertTriangle, TrendingDown, TrendingUp, Clock, Tag, ChevronRight, Plus, Check, BarChart3 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -49,11 +49,20 @@ const FailureLoopDashboard = ({ onClose }) => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const totalIdeas = ideas.length;
-  const wins = ideas.filter(i => i.status === 'win').length;
-  const losses = ideas.filter(i => i.status === 'loss').length;
-  const openIdeas = ideas.filter(i => i.status === 'open').length;
+  // Derived counts — memoized so a keystroke in a modal doesn't re-traverse
+  // the ideas array four times per render.
+  const stats = useMemo(() => ({
+    total: ideas.length,
+    wins: ideas.filter(i => i.status === 'win').length,
+    losses: ideas.filter(i => i.status === 'loss').length,
+    open: ideas.filter(i => i.status === 'open').length,
+    openList: ideas.filter(i => i.status === 'open').slice(0, 5),
+  }), [ideas]);
   const topTag = patterns[0]?.tag || '--';
+  const totalIdeas = stats.total;
+  const wins = stats.wins;
+  const losses = stats.losses;
+  const openIdeas = stats.open;
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4" data-testid="failure-loop-dashboard">
@@ -106,7 +115,7 @@ const FailureLoopDashboard = ({ onClose }) => {
           {loading ? (
             <div className="space-y-3">{[1,2,3].map(i => <div key={`sk-${i}`} className="h-14 bg-slate-800/50 rounded-xl animate-pulse" />)}</div>
           ) : tab === 'overview' ? (
-            <OverviewTab patterns={patterns} warnings={warnings} openIdeas={openIdeas} ideas={ideas} onReview={setReviewTarget} />
+            <OverviewTab patterns={patterns} warnings={warnings} openIdeas={openIdeas} openList={stats.openList} onReview={setReviewTarget} />
           ) : tab === 'ideas' ? (
             <IdeasTab ideas={ideas} onReview={setReviewTarget} />
           ) : tab === 'patterns' ? (
@@ -130,7 +139,7 @@ const StatCard = ({ label, value, color, small }) => (
   </div>
 );
 
-const OverviewTab = ({ patterns, warnings, openIdeas, ideas, onReview }) => (
+const OverviewTab = ({ patterns, warnings, openIdeas, openList, onReview }) => (
   <div className="grid lg:grid-cols-2 gap-4">
     {/* Warnings */}
     <div>
@@ -177,7 +186,7 @@ const OverviewTab = ({ patterns, warnings, openIdeas, ideas, onReview }) => (
       <div className="lg:col-span-2">
         <h3 className="text-white text-xs font-semibold mb-3">Open Ideas — Awaiting Review ({openIdeas})</h3>
         <div className="space-y-2">
-          {ideas.filter(i => i.status === 'open').slice(0, 5).map(idea => (
+          {openList.map(idea => (
             <IdeaRow key={idea.idea_id} idea={idea} onReview={onReview} />
           ))}
         </div>

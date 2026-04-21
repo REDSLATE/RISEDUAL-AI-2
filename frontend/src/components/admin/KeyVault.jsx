@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Key, Plus, Trash2, RefreshCw, Eye, EyeOff, Shield, Lock, AlertTriangle, Check } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -142,6 +142,15 @@ const KeyVault = () => {
     return common?.helpUrl || null;
   };
 
+  // Memoized derived state. MUST sit above any early return to comply
+  // with the Rules of Hooks (hooks must run in the same order on every
+  // render path).
+  const storedNames = useMemo(() => new Set(keys.map(k => k.name)), [keys]);
+  const missingKeys = useMemo(
+    () => COMMON_KEYS.filter(k => !storedNames.has(k.name)),
+    [storedNames]
+  );
+
   if (loading && keys.length === 0) {
     return (
       <div className="p-6 text-center text-slate-400">
@@ -150,9 +159,6 @@ const KeyVault = () => {
       </div>
     );
   }
-
-  const storedNames = new Set(keys.map(k => k.name));
-  const missingKeys = COMMON_KEYS.filter(k => !storedNames.has(k.name));
 
   return (
     <div data-testid="key-vault-tab" className="p-4 sm:p-6 space-y-5">

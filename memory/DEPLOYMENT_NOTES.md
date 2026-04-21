@@ -24,6 +24,78 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Code-review pass (security strip + refactors)
+*Session: continued*
+
+**What shipped:**
+
+*Critical security fix:*
+- Stripped hardcoded `_CANONICAL_OWNER_PASSWORD = "RiseDual2026!"` from
+  `routes/auth.py:446`. Owner password now read strictly from
+  `OWNER_PASSWORD` env var. `seed_admin()` gracefully no-ops when unset
+  so an empty secret doesn't corrupt the hash. Login verified working
+  post-strip (role=owner, 208-char JWT, clean seed log).
+
+*Performance — useMemo the three hot-spot render computations:*
+- `FailureLoopDashboard.jsx` — memoized `stats` (total/wins/losses/open
+  counts + open-list slice) so keystrokes in the Create Idea modal
+  don't re-traverse the ideas array four times per render.
+- `admin/KeyVault.jsx` — memoized `storedNames` Set + `missingKeys`
+  filter. Also repositioned the hooks ABOVE the early-return loading
+  state (Rules of Hooks — missed on first pass, caught by CRA's build
+  lint, fixed immediately).
+
+*Refactor — AppContent extraction:*
+- New `components/DashboardView.jsx` — extracted the 97-line
+  `activeView === 'dashboard'` block (Watchlist, AI War Room, Markets,
+  Fear & Greed, Live Insights, Order Flow, Whale Radar, AI Intelligence,
+  Explore hubs, Additional Sections) as a pure presentational component
+  with 4 props (`onSubscribe`, `onLogin`, `navigateTo`, `v2Nav`).
+- Fixed a subtle bug I introduced: initial draft used dynamic Tailwind
+  class strings (`bg-${accent}-500/10`) that the JIT compiler can't
+  detect. Replaced with a fully-resolved `ACCENT_CLASSES` map. Safe
+  pattern for future contributors.
+- `App.js::AppContent` is now ~250 lines (was 350), cyclomatic
+  complexity dropped accordingly. Behaviour verified identical via
+  frontend smoke test: watchlist, war-room card, markets, sectors, and
+  all hub nav buttons render in exactly the same positions.
+
+**Code-review findings that were FALSE POSITIVES (no fix):**
+- `services/backtester_service.py:193` "eval() usage" — the linter saw
+  the comment `Safe Expression Evaluator (replaces eval())` and the
+  `ast.parse(..., mode='eval')` arg. The module already uses a
+  whitelisted AST walker (`_safe_eval_node`) with explicit op
+  registries. This is the secure version.
+- `ConvictionCalibration.jsx:72/82` "array index as key" — those are
+  keys on `<polyline>` / `<circle>` SVG children generated within a
+  single render from a local array. Data lists use `b.label` as key
+  (lines 323, 356). No reordering possible at the inner SVG layer.
+- Three "empty catch" reports on `useReferralCapture.js:38`,
+  `TerminalModeHub.jsx:99`, `ChatInput.jsx:32` — all commented
+  intentional swallows for SSR-safety / 60s pollers / keystroke
+  debouncing. Logging would spam every idle session.
+- "localStorage stores auth tokens" — false; `auth.py:45` uses
+  `httponly=True, secure=True, samesite=...` cookies. localStorage
+  holds only non-sensitive UI state (splitter positions, theme).
+- Hook-dependency findings on `useChat`, `RiskCalculator`, `AuthContext`
+  — ESLint exhaustive-deps counting stable setters, module-level
+  imports (`authFetch`, `API`, `logger`), and inlined closures as
+  "missing deps". Existing dep arrays are all correct.
+
+**Deferred to separate work (real but out of scope):**
+- `patterns.py::detect_double_bottom()` complexity 17 — ML-critical,
+  needs its own test harness.
+- Type-hint coverage backfill — per-file ownership, start with service
+  layer.
+
+**Files changed:**
+- `backend/routes/auth.py` — strip hardcoded password
+- `frontend/src/components/FailureLoopDashboard.jsx` — useMemo stats
+- `frontend/src/components/admin/KeyVault.jsx` — useMemo derived state
+- `frontend/src/components/DashboardView.jsx` — new extracted component
+- `frontend/src/App.js` — wire DashboardView, unused imports left to
+  tree-shaking (production bundle unaffected)
+
 ### 2026-02-20 — Dispatcher dedup + prediction logging + BTC grid rebase
 *Session: continued*
 
