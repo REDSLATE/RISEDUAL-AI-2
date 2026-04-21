@@ -263,6 +263,7 @@ async def _start_schedulers():
         scheduler.add_job(_run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
         scheduler.add_job(_run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
+        scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -271,7 +272,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -307,6 +308,21 @@ async def _run_signal_bot_dispatcher():
             )
     except Exception as e:
         logger.debug(f"Signal dispatcher error: {e}")
+
+
+async def _run_conviction_drift_check():
+    """Background: Daily week-over-week win-rate drop detector for
+    conviction buckets. Emails the owner when a bucket drops ≥20pp."""
+    try:
+        from services.conviction_drift_alerts import run_conviction_drift_check
+        result = await run_conviction_drift_check(db)
+        if result and result.get("sent"):
+            logger.info(
+                f"Conviction drift: {result.get('fresh', 0)} new alert(s) "
+                f"sent to {result.get('owner')}"
+            )
+    except Exception as e:
+        logger.debug(f"Conviction drift check error: {e}")
 
 
 async def _run_headlines_pipeline():

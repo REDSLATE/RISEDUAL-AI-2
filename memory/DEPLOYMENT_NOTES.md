@@ -24,6 +24,57 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Crypto grid bots + Conviction drift email alerts
+*Session: continued*
+
+**What shipped:**
+
+*Two new crypto grid bots seeded on the owner account (paper mode):*
+- **Tier3 Crypto · ETH Grid** — range $2,080-$2,550, 5 levels, qty 0.05 per level
+- **Tier3 Crypto · SOL Grid** — range $75-$100, 5 levels, qty 1 per level
+
+Used the grid-bot pattern deliberately instead of signal bots — the
+signal scanner's `_fetch_daily` resolves "BTC" to an equity ticker
+(~$33) rather than crypto Bitcoin (~$75k). Grid bots bypass the scanner
+entirely and route through `paper_trading_service::_get_live_price`
+which IS crypto-aware (fan-out to `get_crypto_quote` for CRYPTO_TICKERS).
+Until scanner gets crypto symbol awareness, grid is the safe path.
+
+**Bot fleet now at 10 total / 8 enabled:**
+- 5 signal bots (SPY/QQQ/AAPL/MSFT/NVDA) — dispatched every 5min
+- 3 grid bots (BTC/ETH/SOL) — checked every 30s
+- 2 OFF defaults (TV Webhook, generic AI Signal Bot)
+
+---
+
+*Conviction drift email alerts:*
+- New service `backend/services/conviction_drift_alerts.py` —
+  `run_conviction_drift_check(db)`. Daily cron at 08:00 UTC. Computes
+  the 4-week-trend snapshot (same shape as the admin endpoint), walks
+  each bucket pair (wk-1 vs wk) for both `by_conviction` and
+  `by_confidence`, and fires an email when:
+    * drop ≥ 20 percentage points wk-over-wk, AND
+    * both compared weeks have ≥ 5 predictions (noise guard), AND
+    * bucket wasn't already alerted within 24h (dedup in Mongo).
+- Alert email is Gmail/Outlook-safe HTML via the existing `_routed_send`
+  (Resend primary + SendGrid failover). Body includes a per-bucket
+  table: series, bucket, prev→curr rate, Δ pp, sample sizes. Subject:
+  `[RISEDUAL] Conviction drift alert — N bucket(s)`.
+- Dedup state persisted in new collection `conviction_drift_alerts`
+  (cooldown=24h per bucket unless drop deepens).
+- Wrapper `_run_conviction_drift_check` in `server.py` scheduler
+  (APScheduler cron, 08:00 UTC). Log line confirmed.
+
+**Verified (ad-hoc run):** `checked=True, drops=0` — no alerts fired.
+Expected: confidence curve's biggest wk-over-wk change is -17pp (High
+bucket 92.3% → 75.0%), below the 20pp threshold. Conviction buckets
+have 0 tagged rows yet — first real alert opportunity lands once the
+24h labeler verifies ~20 new tagged predictions.
+
+**Files:**
+- `backend/services/conviction_drift_alerts.py` — new service
+- `backend/server.py` — scheduler wire + wrapper
+
 ### 2026-02-20 — Conviction calibration 4-week trend sparklines
 *Session: continued*
 
