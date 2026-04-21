@@ -304,25 +304,69 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         # Execute via Smart Order or direct paper trade
         now = datetime.now(timezone.utc).isoformat()
         qty = cfg.get("qty", 1)
+        price = signal.get("price", 0)
+
+        # Derive SL/TP from bot config so BOTH the smart-order and
+        # direct-paper paths stamp them on the trade. Needed for
+        # r_multiple on the eventual SELL. Previously only the
+        # smart-order path used auto_sl_pct/auto_tp_pct — the direct
+        # path dropped them, which blinded the learning loop to risk.
+        sl_pct = cfg.get("auto_sl_pct", 3) / 100
+        tp_pct = cfg.get("auto_tp_pct", 6) / 100
+        if price > 0:
+            sl_price = (
+                round(price * (1 - sl_pct), 4) if side == "buy"
+                else round(price * (1 + sl_pct), 4)
+            )
+            tp_price = (
+                round(price * (1 + tp_pct), 4) if side == "buy"
+                else round(price * (1 - tp_pct), 4)
+            )
+        else:
+            sl_price = None
+            tp_price = None
+
+        trade_filled = False
+        trade_result: dict | None = None
 
         if cfg.get("use_smart_order"):
             from services.smart_order_service import create_smart_order
-            price = signal.get("price", 0)
-            sl_pct = cfg.get("auto_sl_pct", 3) / 100
-            tp_pct = cfg.get("auto_tp_pct", 6) / 100
-            sl_price = round(price * (1 - sl_pct), 4) if side == "buy" else round(price * (1 + sl_pct), 4)
-            tp_price = round(price * (1 + tp_pct), 4) if side == "buy" else round(price * (1 - tp_pct), 4)
-
             order_result = await create_smart_order(user_id, {
                 "symbol": symbol, "side": side, "qty": qty,
                 "mode": bot.get("mode", "paper"), "order_type": "market",
                 "stop_loss": {"price": sl_price, "trailing": True, "trailing_pct": cfg.get("auto_sl_pct", 3)},
                 "take_profits": [{"price": tp_price, "pct_of_qty": 100}],
             })
+            # Smart order create returns a complex shape; treat the
+            # presence of an order id (or lack of an `error` key) as
+            # acceptance. Fills are reconciled by the smart-order
+            # monitor job, not here.
+            trade_filled = bool(order_result) and not order_result.get("error")
+            trade_result = order_result
             results.append({"bot": bot.get("name"), "symbol": symbol, "side": side, "result": "smart_order", "order": order_result})
         else:
-            await _execute_bot_trade(bot, symbol, side, qty, signal.get("price", 0))
-            results.append({"bot": bot.get("name"), "symbol": symbol, "side": side, "result": "paper_trade"})
+            trade_result = await _execute_bot_trade(
+                bot, symbol, side, qty, price,
+                stop_loss=sl_price, take_profit=tp_price,
+            )
+            trade_filled = bool(trade_result) and trade_result.get("status") == "filled"
+            results.append({
+                "bot": bot.get("name"), "symbol": symbol, "side": side,
+                "result": "paper_trade", "status": (trade_result or {}).get("status"),
+                "r_multiple": (trade_result or {}).get("r_multiple"),
+            })
+
+        # Gate stats + cap counter on an actual FILL. Rejections (no
+        # position to sell, insufficient cash, broker reject) must not
+        # burn a daily-cap slot or falsely bump the trade counter —
+        # that was the "silent data poison" concern: unfilled attempts
+        # shouldn't train the learning loop either.
+        if not trade_filled:
+            logger.info(
+                f"[signal-bot] {bot.get('name')} {symbol} {side} NOT filled "
+                f"({(trade_result or {}).get('error') or 'unknown'}) — no stats update"
+            )
+            continue
 
         # Update stats + daily cap counters. We persist cap state on the
         # config (not stats) so it survives `update_bot_config` merges
@@ -636,7 +680,15 @@ async def _apply_bot_risk_guards(bot: dict, user_id: str, qty: float) -> tuple[f
     return qty, ctx
 
 
-async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, price: float):
+async def _execute_bot_trade(
+    bot: dict,
+    symbol: str,
+    side: str,
+    qty: float,
+    price: float,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+):
     """Execute a trade for a bot.
 
     - mode=paper: routes through paper_trading_service
@@ -650,6 +702,12 @@ async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, pric
     Pre-flight: runs the same circuit-breaker the UI risk-calc respects.
     When streak/drawdown thresholds are tripped the bot's qty is halved
     (never skipped entirely — grid/DCA strategies need continuity).
+
+    `stop_loss` / `take_profit` flow through to paper_trading_service so
+    the trade record can compute `r_multiple` on the eventual SELL.
+    They are NOT forwarded to the live broker here because the broker
+    SL/TP goes through bracket orders (smart_order_service._execute_fill),
+    not the raw market-order path that the `mode=live` branch uses.
     """
     mode = bot.get("mode", "paper")
     user_id = bot["user_id"]
@@ -659,7 +717,10 @@ async def _execute_bot_trade(bot: dict, symbol: str, side: str, qty: float, pric
 
     if mode == "paper":
         from services.paper_trading_service import execute_trade
-        return await execute_trade(user_id, symbol, side.upper(), qty)
+        return await execute_trade(
+            user_id, symbol, side.upper(), qty,
+            stop_loss=stop_loss, take_profit=take_profit,
+        )
 
     if mode == "live":
         try:

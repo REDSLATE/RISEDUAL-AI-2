@@ -24,6 +24,66 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Learning-loop integrity patches (per user arch review)
+*Session: continued*
+
+Three structural upgrades to prevent silent data poisoning as we cross
+from "smart prototype" into real trading infrastructure:
+
+**1. `prediction_labeler.py` — three-label system (no more false losses):**
+- When the price provider transiently fails, the snapshot no longer
+  gets stamped with `outcome: "error"` (which made the cursor skip it
+  forever and could be miscounted downstream). Instead we write
+  `outcome: None, retry_status: "pending", last_retry_at: now` so the
+  next cron picks it up. Training/calibration queries filter on
+  `verified_24h.correct` existence (already correct), so these are
+  naturally excluded — but the new `pending` state makes stuck
+  snapshots observable via `{retry_status: "pending"}` queries.
+
+**2. `paper_trading_service.execute_trade()` — explicit status + r_multiple:**
+- Every return path now carries `status: "filled" | "rejected"`. Old
+  callers checking `"error" in result` still work because rejection
+  rows carry both keys (backwards-compatible migration).
+- New optional kwargs: `stop_loss`, `take_profit`. On BUY we stamp SL
+  onto the position; averaging-up uses "first write wins unless
+  overridden" (matches how traders think about SL).
+- On SELL we compute `r_multiple = (exit - entry_avg) / abs(entry_avg - SL)`
+  using the stored SL, and persist `{entry_price, stop_loss, take_profit,
+  risk_per_share, r_multiple}` on the trade record. Unlocks
+  expectancy curves / position-sizing optimisation later with zero
+  schema churn.
+- Verified live: BUY NVDA @$202.06 with SL=$195 → `risk_per_share:
+  7.06`; subsequent SELL → `r_multiple: 1.292` (math checks out
+  against merged avg cost). IBM SELL with no position →
+  `{status: "rejected", error: "No position in IBM to sell"}`.
+
+**3. `trading_bot_service._execute_bot_trade` + dispatcher — fill-gate:**
+- Both smart-order AND direct-paper paths in `process_signal_for_bots`
+  now compute SL/TP from `auto_sl_pct` / `auto_tp_pct` (previously only
+  smart-order used them — the direct path dropped them, blinding the
+  learning loop to risk).
+- Bot stats + daily-cap counter only increment when the trade actually
+  fills (`status == "filled"`). Rejections (no position to sell,
+  insufficient cash, broker reject) no longer burn a cap slot or
+  falsely bump `trades_today`. This was the "silent data poison"
+  concern: unfilled attempts training as if they were real trades.
+- Results dicts surface `{status, r_multiple}` per-trade for
+  downstream observability.
+
+**What we did NOT build (deferred, but captured):**
+- Full `ExecutionClient` abstraction — unnecessary since Alpaca is
+  already wired through the existing `broker` route + `smart_order`
+  live branch. Revisit if/when we add a second live broker.
+- `simulator.py` with explicit `start_index + 1` lookahead — doesn't
+  apply; our labeler uses delayed real-world price fetching, not
+  in-memory future slicing. The backtester iterates bar-by-bar
+  correctly (no hidden lookahead).
+
+**Files changed:**
+- `backend/services/prediction_labeler.py` — pending retry state
+- `backend/services/paper_trading_service.py` — status + SL/TP + r_multiple
+- `backend/services/trading_bot_service.py` — SL/TP propagation + fill-gate
+
 ### 2026-02-20 — Code-review pass (security strip + refactors)
 *Session: continued*
 

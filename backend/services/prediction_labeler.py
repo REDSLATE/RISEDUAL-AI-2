@@ -38,11 +38,26 @@ async def label_pending_snapshots(db: AsyncIOMotorDatabase) -> None:
         try:
             current_price = await _fetch_current_price(ticker, db)
         except Exception:
-            logger.exception("prediction_labeler: price fetch failed for ticker=%s", ticker)
+            # "pending" (not "error"): price provider is transient, we want
+            # the NEXT cron to retry instead of silently locking in a
+            # label of "error". The labeler's cursor filters on
+            # `outcome: None`, so leaving the field untouched would
+            # re-queue these too — but an explicit `pending` field makes
+            # the state observable in queries ("how many are stuck?") and
+            # lets training pipelines filter cleanly.
+            logger.warning(
+                "prediction_labeler: price fetch failed for ticker=%s — "
+                "leaving outcome None for retry next cron",
+                ticker,
+            )
             error_count += 1
             await db[_COLLECTION].update_one(
                 {"_id": snapshot_id},
-                {"$set": {"outcome": "error", "labeled_at": datetime.now(timezone.utc)}},
+                {"$set": {
+                    "outcome": None,
+                    "retry_status": "pending",
+                    "last_retry_at": datetime.now(timezone.utc),
+                }},
             )
             continue
 
