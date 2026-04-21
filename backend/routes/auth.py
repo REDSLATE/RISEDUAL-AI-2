@@ -436,15 +436,15 @@ def _resolve_owner_email() -> str:
 
 
 OWNER_EMAIL = _resolve_owner_email()
-# Owner password: force the canonical value regardless of env.
-# Reasoning: Emergent deployment secrets are "write once and persist" — if an
-# earlier OWNER_PASSWORD secret was set to a different value, stale env will
-# rehash the owner account to an unknown password, locking the user out.
-# Pinning the canonical value in code guarantees the owner can always log in
-# with the documented credentials. The user can rotate via
-# Settings → Change Password after signing in.
-_CANONICAL_OWNER_PASSWORD = "RiseDual2026!"
-OWNER_PASSWORD = _CANONICAL_OWNER_PASSWORD
+# Owner password: read strictly from the OWNER_PASSWORD environment
+# variable (set in `/app/backend/.env` or the Emergent secrets panel).
+# Historical context: there used to be a hardcoded `_CANONICAL_OWNER_PASSWORD`
+# here as a lockout-prevention measure during the Red Slate Holdings
+# migration. The owner confirmed (Feb 2026) that the password is now
+# rotated via UI + env, so the hardcoded fallback has been removed per
+# security review. `seed_admin()` still gracefully no-ops when the env
+# var is unset so an empty secret doesn't rewrite the hash.
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 
 async def seed_admin():
     """Seed the single RISEDUAL owner account.
