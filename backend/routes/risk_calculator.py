@@ -1,6 +1,7 @@
 """Risk/Reward Calculator Routes — Position sizing, R:R analysis, Kelly criterion."""
 import logging
 import math
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
@@ -9,6 +10,16 @@ from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/risk-calc", tags=["risk-calculator"])
+
+
+# ─── Circuit-breaker thresholds ──────────────────────────────────────────────
+# When a user's recent trade history looks rough, we auto-halve the requested
+# risk per trade. These thresholds are deliberately simple and conservative;
+# tune by watching the `risk_adjustment.reason` field in the response.
+LOSING_STREAK_THRESHOLD = 3       # consecutive wrong verified predictions
+DRAWDOWN_THRESHOLD = 0.10         # 10% down from peak equity
+RISK_REDUCTION_FACTOR = 0.5       # halve risk_pct when either threshold hit
+STREAK_LOOKBACK = 10              # only scan the last N verified predictions
 
 
 @dataclass
@@ -65,6 +76,86 @@ async def _get_account_value(user_id: str) -> float:
     # Add position values at cost basis
     positions_value = sum(p.get("qty", 0) * p.get("avg_cost", 0) for p in doc.get("positions", []))
     return cash + positions_value
+
+
+async def _compute_risk_context(user_id: str, account_value: float) -> dict:
+    """Derive a circuit-breaker view of the user's current risk posture.
+
+    Returns a dict with::
+
+        {
+          "losing_streak": int,        # most-recent consecutive wrong calls
+          "current_drawdown": float,   # fraction drop from peak_equity (0.0 - 1.0)
+          "peak_equity": float,
+          "risk_reduced": bool,        # True if either threshold tripped
+          "reduction_factor": float,   # multiplier applied to risk_pct (1.0 = no cut)
+          "reason": str | None,        # human-readable explanation
+        }
+
+    Streak is read from `predictions.verified_24h.correct` — the same field
+    the nightly labeler updates. Drawdown is computed against a running
+    `peak_equity` value that we upsert on this very call, so no separate
+    scheduled job is needed to keep it fresh.
+    """
+    ctx = {
+        "losing_streak": 0,
+        "current_drawdown": 0.0,
+        "peak_equity": account_value,
+        "risk_reduced": False,
+        "reduction_factor": 1.0,
+        "reason": None,
+    }
+
+    if _db is None:
+        return ctx
+
+    # ── Losing streak — walk backwards through verified predictions ──
+    try:
+        cursor = _db.predictions.find(
+            {"user_id": user_id, "verified_24h.correct": {"$exists": True}},
+            {"_id": 0, "verified_24h.correct": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(STREAK_LOOKBACK)
+        streak = 0
+        async for row in cursor:
+            correct = (row.get("verified_24h") or {}).get("correct")
+            if correct is False:
+                streak += 1
+            else:
+                break
+        ctx["losing_streak"] = streak
+    except Exception as e:
+        logger.warning(f"[risk-ctx] streak lookup failed for {user_id}: {e}")
+
+    # ── Drawdown — update peak_equity then compute drop ──
+    try:
+        doc = await _db.paper_portfolios.find_one(
+            {"user_id": user_id}, {"_id": 0, "peak_equity": 1}
+        ) or {}
+        peak = max(float(doc.get("peak_equity") or 0.0), account_value)
+        if peak != doc.get("peak_equity"):
+            # Upsert the new peak so we don't recompute forever
+            await _db.paper_portfolios.update_one(
+                {"user_id": user_id},
+                {"$set": {"peak_equity": peak, "peak_equity_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+        ctx["peak_equity"] = round(peak, 2)
+        ctx["current_drawdown"] = round((peak - account_value) / peak, 4) if peak > 0 else 0.0
+    except Exception as e:
+        logger.warning(f"[risk-ctx] drawdown lookup failed for {user_id}: {e}")
+
+    # ── Apply circuit-breaker rules ──
+    reasons = []
+    if ctx["losing_streak"] >= LOSING_STREAK_THRESHOLD:
+        reasons.append(f"losing streak: {ctx['losing_streak']} in a row")
+    if ctx["current_drawdown"] >= DRAWDOWN_THRESHOLD:
+        reasons.append(f"drawdown {ctx['current_drawdown']*100:.1f}% from peak")
+    if reasons:
+        ctx["risk_reduced"] = True
+        ctx["reduction_factor"] = RISK_REDUCTION_FACTOR
+        ctx["reason"] = "; ".join(reasons)
+
+    return ctx
 
 
 async def _get_current_price(symbol: str) -> Optional[float]:
@@ -146,10 +237,17 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
 
     rr_ratio = round(reward_per_share / risk_per_share, 2) if risk_per_share > 0 else 0
     account_value = await _get_account_value(user_id)
+    risk_ctx = await _compute_risk_context(user_id, account_value)
+
+    # Apply circuit-breaker reduction before the sizing calc so every
+    # downstream number (position size, dollar risk, max loss) reflects
+    # the de-risked amount. Only touches `risk_pct` method — Kelly and
+    # fixed-dollar paths stay deterministic per user request.
+    effective_risk_pct = calc.risk_pct * risk_ctx["reduction_factor"]
 
     position_size, dollar_risk = _calculate_position_size(
         account_value, risk_per_share,
-        SizingConfig(method=calc.sizing_method, risk_pct=calc.risk_pct,
+        SizingConfig(method=calc.sizing_method, risk_pct=effective_risk_pct,
                      fixed_dollar_risk=calc.fixed_dollar_risk, win_rate=calc.win_rate,
                      avg_wl_ratio=calc.avg_win_loss_ratio, rr_ratio=rr_ratio),
     )
@@ -176,6 +274,16 @@ async def calculate_risk(request: Request, calc: RiskCalcRequest):
         "account_value": round(account_value, 2),
         "sizing_method": calc.sizing_method,
         "can_afford": total_cost <= account_value,
+        "risk_adjustment": {
+            "risk_reduced": risk_ctx["risk_reduced"],
+            "reduction_factor": risk_ctx["reduction_factor"],
+            "requested_risk_pct": calc.risk_pct,
+            "applied_risk_pct": round(effective_risk_pct, 3),
+            "reason": risk_ctx["reason"],
+            "losing_streak": risk_ctx["losing_streak"],
+            "current_drawdown_pct": round(risk_ctx["current_drawdown"] * 100, 2),
+            "peak_equity": risk_ctx["peak_equity"],
+        },
     }
 
 
@@ -198,9 +306,12 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
         raise HTTPException(status_code=400, detail="Invalid SL placement")
 
     account_value = await _get_account_value(user_id)
+    risk_ctx = await _compute_risk_context(user_id, account_value)
+    effective_risk_pct = calc.risk_pct * risk_ctx["reduction_factor"]
+
     position_size, _ = _calculate_position_size(
         account_value, risk_per_share,
-        SizingConfig(method=calc.sizing_method, risk_pct=calc.risk_pct,
+        SizingConfig(method=calc.sizing_method, risk_pct=effective_risk_pct,
                      fixed_dollar_risk=calc.fixed_dollar_risk),
     )
     total_cost = round(entry * position_size, 2)
@@ -226,4 +337,14 @@ async def calculate_multi_tp(request: Request, calc: MultiTpCalcRequest):
         "account_value": round(account_value, 2),
         "risk_pct_of_account": round((max_loss / account_value) * 100, 2) if account_value > 0 else 0,
         "can_afford": total_cost <= account_value,
+        "risk_adjustment": {
+            "risk_reduced": risk_ctx["risk_reduced"],
+            "reduction_factor": risk_ctx["reduction_factor"],
+            "requested_risk_pct": calc.risk_pct,
+            "applied_risk_pct": round(effective_risk_pct, 3),
+            "reason": risk_ctx["reason"],
+            "losing_streak": risk_ctx["losing_streak"],
+            "current_drawdown_pct": round(risk_ctx["current_drawdown"] * 100, 2),
+            "peak_equity": risk_ctx["peak_equity"],
+        },
     }

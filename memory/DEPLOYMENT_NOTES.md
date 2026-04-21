@@ -26,6 +26,44 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-02-19 — Risk circuit-breaker (streak + drawdown auto-de-risk)
+*Session: continued*
+
+Filled a real gap the user spotted: the existing `/api/risk-calc` was
+math-only — it would happily size you up even during a nasty losing
+streak. Added a behavioural safety layer that auto-halves the requested
+`risk_pct` when either trigger fires.
+
+**Trigger rules (configurable constants at top of `routes/risk_calculator.py`):**
+- `LOSING_STREAK_THRESHOLD = 3` — 3+ consecutive wrong verified predictions
+- `DRAWDOWN_THRESHOLD = 0.10` — 10%+ down from peak equity
+- `RISK_REDUCTION_FACTOR = 0.5` — halve risk_pct when either trips
+- `STREAK_LOOKBACK = 10` — only scan last N verified predictions
+
+**Implementation:**
+- New async helper `_compute_risk_context(user_id, account_value)` reads
+  `predictions.verified_24h.correct` for the streak count and manages a
+  running `paper_portfolios.peak_equity` field for drawdown (upserted on
+  every call, so no separate scheduler job needed).
+- Both `/calculate` and `/multi-tp` endpoints now apply the reduction
+  factor to `risk_pct` before sizing, and return a new `risk_adjustment`
+  block so the UI can surface the reason:
+  ```json
+  { "risk_reduced": true, "reduction_factor": 0.5,
+    "requested_risk_pct": 2.0, "applied_risk_pct": 1.0,
+    "reason": "losing streak: 4 in a row",
+    "losing_streak": 4, "current_drawdown_pct": 0.0,
+    "peak_equity": 100108.16 }
+  ```
+- `fixed_dollar` + Kelly sizing methods deliberately bypass the factor
+  (they're explicit-intent, not percent-based) but still expose the
+  context in the response for UI transparency.
+
+**Verified:** Live API call against admin account returned
+`risk_reduced: true · reason: "losing streak: 4 in a row"` — circuit
+breaker actually triggered on real prediction history, not a mock.
+Self-test 6/6 green.
+
 ### 2026-02-19 — requirements.txt deploy blockers fixed
 *Session: continued*
 
