@@ -24,6 +24,49 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Signal-Bot Dispatcher scheduler (wiring the gap)
+*Session: continued*
+
+**What shipped:**
+- New `run_signal_bot_dispatcher()` in `services/trading_bot_service.py`:
+  aggregates the union of enabled signal-bot symbol/strategy whitelists,
+  runs ONE consolidated `scan_symbols()` pass, maps each strategy's
+  inherent `signal` bias → verdict (`bullish>=80` → `strong_buy`, etc.),
+  and fans the results to every matching user via `process_signal_for_bots`.
+- Wired to APScheduler in `server.py` as `signal_bot_dispatcher`
+  (interval=5m, same pattern as `grid_bot_monitor`). Log line confirmed.
+- Added per-bot daily-trade cap safety: new config fields
+  `max_trades_per_day` (default 5), `trades_today`, `last_trade_date`.
+  Counter resets at UTC day rollover. Enforced INSIDE
+  `process_signal_for_bots` so a single dispatcher pass cannot burst
+  past the cap.
+- Backfilled all 5 Tier3 Accumulator bots with `max_trades_per_day=5`.
+
+**First live run (manual trigger):**
+- 5 symbols scanned, 10 strategies checked, 1 user targeted, 6 signal
+  dispatches → **4 paper trades filled** (SPY 1 BUY, QQQ 1 BUY,
+  NVDA 1 BUY + 1 SELL — opposing-bias strategies legitimately both hit
+  on NVDA).
+- `paper_portfolios` and `paper_trades` collections updated; smart
+  orders show `mode=paper, status=filled`.
+
+**Why this matters:**
+- Closes the wiring gap between scanner output and signal bots — without
+  this, the 5 Tier3 bots were dormant. Now the Tier 3 paper-days
+  accumulator gets real data every 5 minutes during market hours.
+- Same verified predictions that feed `AI_PREDICTION_WINS.md` will also
+  start populating the Conviction calibration admin panel once the
+  risk-layer conviction stamping lands (see P1 next step).
+
+**Files:**
+- `backend/services/trading_bot_service.py` — dispatcher fn + daily cap
+- `backend/server.py` — scheduler wire + `_run_signal_bot_dispatcher` wrapper
+
+**Next step:** wire `conviction` dict from the prediction-generation
+call sites (`routes/ai.py`, `routes/intelligence.py`) into
+`log_prediction()` so the `by_conviction` bucket on the admin panel
+lights up alongside the now-active paper-trade flow.
+
 ### 2026-02-20 — Tier 3 Accumulator paper-bot fleet seeded
 *Session: continued*
 

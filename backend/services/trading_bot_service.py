@@ -76,6 +76,13 @@ def _build_config(bot_type: str, cfg: dict) -> dict:
             "use_smart_order": bool(cfg.get("use_smart_order", True)),
             "auto_sl_pct": float(cfg.get("auto_sl_pct", 3)),
             "auto_tp_pct": float(cfg.get("auto_tp_pct", 6)),
+            # Safety cap: caps number of trades a bot can fire per UTC day.
+            # Prevents a runaway scanner from spamming the paper book when
+            # conditions line up on many scan passes in a row. 0 disables
+            # the cap. See run_signal_bot_dispatcher() for enforcement.
+            "max_trades_per_day": int(cfg.get("max_trades_per_day", 5)),
+            "trades_today": int(cfg.get("trades_today", 0)),
+            "last_trade_date": cfg.get("last_trade_date"),
         }
     elif bot_type == "webhook":
         return {
@@ -276,6 +283,24 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         if side_filter != "both" and side != side_filter:
             continue
 
+        # Per-bot daily-trade cap — zeros (or missing cap) short-circuit
+        # the check entirely. The cap resets at UTC day rollover by
+        # comparing `last_trade_date` to today's date string. We check
+        # before execution so a busy scanner pass can't burst past the
+        # cap on a single sweep.
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        last_trade_date = cfg.get("last_trade_date")
+        trades_today = int(cfg.get("trades_today", 0))
+        if last_trade_date != today_str:
+            trades_today = 0  # new UTC day — reset counter before check
+        max_per_day = int(cfg.get("max_trades_per_day", 0) or 0)
+        if max_per_day > 0 and trades_today >= max_per_day:
+            logger.info(
+                f"[signal-bot] {bot.get('name')} skipped {symbol} — "
+                f"daily cap reached ({trades_today}/{max_per_day})"
+            )
+            continue
+
         # Execute via Smart Order or direct paper trade
         now = datetime.now(timezone.utc).isoformat()
         qty = cfg.get("qty", 1)
@@ -299,17 +324,132 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
             await _execute_bot_trade(bot, symbol, side, qty, signal.get("price", 0))
             results.append({"bot": bot.get("name"), "symbol": symbol, "side": side, "result": "paper_trade"})
 
-        # Update stats
+        # Update stats + daily cap counters. We persist cap state on the
+        # config (not stats) so it survives `update_bot_config` merges
+        # and is visible in the admin bot list without an extra field.
         stats = bot.get("stats", {})
         stats["signals_received"] = stats.get("signals_received", 0) + 1
         stats["signals_executed"] = stats.get("signals_executed", 0) + 1
         stats["trades"] = stats.get("trades", 0) + 1
+
+        new_cfg = {**cfg,
+                   "trades_today": trades_today + 1,
+                   "last_trade_date": today_str}
         await _db.trading_bots.update_one(
             {"_id": bot["_id"]},
-            {"$set": {"stats": stats, "last_run": now, "updated_at": now}}
+            {"$set": {"stats": stats, "config": new_cfg,
+                      "last_run": now, "updated_at": now}}
         )
 
     return results
+
+
+async def run_signal_bot_dispatcher():
+    """Fan scanner output into all enabled signal bots. Scheduled job.
+
+    Runs every ~5 min via APScheduler. Aggregates the distinct symbol +
+    strategy whitelist across every enabled signal bot in the system,
+    runs one consolidated `scan_symbols()` pass (so we don't pay the
+    technicals cost per-user), then for each strategy match builds a
+    normalised signal dict and hands it to `process_signal_for_bots`
+    for every user who has a matching bot.
+
+    Design notes:
+      * We scan ONCE for the union of symbols, even if multiple users
+        watch the same name. Per-bot filters inside
+        `process_signal_for_bots` already handle the fan-out.
+      * Strategies with `signal="neutral"` (bollinger_squeeze,
+        volume_spike) are skipped — no verdict to act on.
+      * `strength` (0-100) is mapped into `ai_confidence`. Strength ≥80
+        upgrades the verdict to strong_buy / strong_sell so the bot's
+        side filter sees the magnitude.
+      * Dispatcher is idempotent per-bot via the daily cap — a signal
+        that matches the same bot twice in one dispatch pass still
+        respects `max_trades_per_day`.
+    """
+    if _db is None:
+        logger.warning("[signal-dispatcher] DB handle missing, skipping run")
+        return {"skipped": True, "reason": "no_db"}
+
+    # Collect every enabled signal bot's symbol + strategy whitelists,
+    # grouped by user so we can fan the signals back out correctly.
+    cursor = _db.trading_bots.find(
+        {"type": "signal", "enabled": True},
+        {"_id": 0, "user_id": 1, "config": 1, "name": 1},
+    )
+    bots_by_user: dict[str, list[dict]] = {}
+    union_symbols: set[str] = set()
+    union_strategies: set[str] = set()
+    async for b in cursor:
+        uid = b.get("user_id")
+        if not uid:
+            continue
+        bots_by_user.setdefault(uid, []).append(b)
+        cfg = b.get("config") or {}
+        for s in cfg.get("symbols") or []:
+            if s:
+                union_symbols.add(s.upper())
+        for sid in cfg.get("strategies") or []:
+            if sid:
+                union_strategies.add(sid)
+
+    if not union_symbols:
+        logger.debug("[signal-dispatcher] no enabled signal bots with symbols, skipping")
+        return {"dispatched": 0, "reason": "no_symbols"}
+
+    from services.scanner_service import scan_symbols, STRATEGIES
+    strategies = sorted(union_strategies) if union_strategies else None
+    scan = await scan_symbols(sorted(union_symbols), strategies=strategies)
+
+    # Map strength → verdict using each strategy's inherent bias.
+    # Neutral strategies (squeeze, volume spike) are skipped — the
+    # signal bot can't pick a side from a "something's coming" cue.
+    dispatched = 0
+    for sid, block in (scan.get("strategies") or {}).items():
+        meta = STRATEGIES.get(sid) or {}
+        bias = meta.get("signal", "neutral")
+        if bias == "neutral":
+            continue
+        for m in block.get("matches") or []:
+            strength = float(m.get("strength") or 0)
+            if strength <= 0:
+                continue
+            if bias == "bullish":
+                verdict = "strong_buy" if strength >= 80 else "buy"
+            else:
+                verdict = "strong_sell" if strength >= 80 else "sell"
+            signal = {
+                "ai_confidence": strength,  # 0-100 to match bot cfg gate
+                "ai_verdict": verdict,
+                "strategy_id": sid,
+                "symbol": m.get("symbol", "").upper(),
+                "price": m.get("price") or 0,
+                "source": "signal_bot_dispatcher",
+                "detail": m.get("detail", ""),
+            }
+            # Fan out to every user who has a bot — filters inside
+            # `process_signal_for_bots` dedupe via per-bot whitelists.
+            for uid in bots_by_user:
+                try:
+                    results = await process_signal_for_bots(uid, signal)
+                    dispatched += len(results or [])
+                except Exception as e:
+                    logger.warning(
+                        f"[signal-dispatcher] fan-out failed for user {uid} "
+                        f"on {signal['symbol']}/{sid}: {e}"
+                    )
+
+    logger.info(
+        f"[signal-dispatcher] scanned {len(union_symbols)} symbols, "
+        f"fanned to {len(bots_by_user)} users, {dispatched} trades executed"
+    )
+    return {
+        "symbols_scanned": len(union_symbols),
+        "strategies_checked": len((scan.get("strategies") or {})),
+        "users": len(bots_by_user),
+        "dispatched": dispatched,
+        "ran_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 # ── Webhook Bot Engine ──

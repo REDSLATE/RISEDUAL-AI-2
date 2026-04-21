@@ -251,6 +251,7 @@ async def _start_schedulers():
         scheduler.add_job(_run_waitlist_auto_invite, 'cron', hour=9, minute=0, id='waitlist_auto_invite')
         scheduler.add_job(_check_smart_orders, 'interval', seconds=30, id='smart_order_monitor')
         scheduler.add_job(_run_grid_bots, 'interval', seconds=30, id='grid_bot_monitor')
+        scheduler.add_job(_run_signal_bot_dispatcher, 'interval', minutes=5, id='signal_bot_dispatcher')
         scheduler.add_job(_run_headlines_pipeline, 'interval', minutes=15, id='headlines_pipeline')
         scheduler.add_job(_run_prediction_prewarm, 'interval', minutes=10, id='prediction_prewarm')
         scheduler.add_job(_run_prediction_labeler, 'interval', hours=1, id='prediction_labeler')
@@ -270,7 +271,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -291,6 +292,21 @@ async def _run_grid_bots():
         await run_grid_bots()
     except Exception as e:
         logger.debug(f"Grid bot error: {e}")
+
+
+async def _run_signal_bot_dispatcher():
+    """Background: Fan scanner results into all enabled signal bots."""
+    try:
+        from services.trading_bot_service import run_signal_bot_dispatcher
+        result = await run_signal_bot_dispatcher()
+        if result and result.get("dispatched"):
+            logger.info(
+                f"Signal-bot dispatcher: {result['dispatched']} trades "
+                f"across {result.get('users', 0)} users, "
+                f"{result.get('symbols_scanned', 0)} symbols scanned"
+            )
+    except Exception as e:
+        logger.debug(f"Signal dispatcher error: {e}")
 
 
 async def _run_headlines_pipeline():
