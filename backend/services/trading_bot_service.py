@@ -39,12 +39,65 @@ _MIN_SCALED_QTY: float = 0.01
 # sending more than $2000 of notional at a single bot.
 MAX_POSITION_USD: float = 2000.0
 
+# Portfolio-level risk caps. These gate the USD-notional
+# `execute_signal` path — a single bot can fire up to MAX_POSITION_USD
+# per trade, but across all open positions the combined notional is
+# capped at MAX_PORTFOLIO_EXPOSURE and the count at
+# MAX_CONCURRENT_TRADES. When either limit is hit we refuse NEW
+# trades; existing positions are untouched.
+MAX_PORTFOLIO_EXPOSURE: float = 3000.0
+MAX_CONCURRENT_TRADES: int = 5
+
+
+def get_total_exposure(open_positions: list[dict]) -> float:
+    """Sum USD-notional size across a list of open positions.
+
+    Accepts any iterable of dicts with a `size_usd` key. Missing or
+    non-numeric values count as 0 — never raises.
+    """
+    total = 0.0
+    for p in open_positions or []:
+        try:
+            total += float(p.get("size_usd", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(total, 2)
+
+
+def get_open_trade_count(open_positions: list[dict]) -> int:
+    """Number of open positions — used for the concurrency cap."""
+    return len(open_positions or [])
+
+
+def apply_portfolio_constraints(
+    new_trade_size: float, open_positions: list[dict]
+) -> float:
+    """Shrink the proposed trade size to fit remaining portfolio
+    headroom, or zero it when either cap is saturated.
+
+    Rules (evaluated in order):
+      1. If `open_trade_count >= MAX_CONCURRENT_TRADES` → return 0.
+      2. `remaining = MAX_PORTFOLIO_EXPOSURE - total_exposure`. If
+         `remaining <= 0` → return 0.
+      3. Otherwise return `min(new_trade_size, remaining)`.
+
+    Zero is the signal to callers to skip the trade with a
+    `"portfolio limits reached"` reason.
+    """
+    if get_open_trade_count(open_positions) >= MAX_CONCURRENT_TRADES:
+        return 0.0
+    remaining = MAX_PORTFOLIO_EXPOSURE - get_total_exposure(open_positions)
+    if remaining <= 0:
+        return 0.0
+    return round(min(float(new_trade_size), remaining), 2)
+
 
 async def execute_signal(
     signal: dict,
     market_data: dict,
     tier3_readiness: dict,
     config: Any,
+    open_positions: list[dict] | None = None,
 ) -> dict:
     """USD-notional execution path for signal bots.
 
@@ -52,6 +105,12 @@ async def execute_signal(
     already think in dollars (`config.trade_size`) rather than
     shares (`config.qty`). The two paths are compatible — pick one
     per bot, don't mix.
+
+    When `open_positions` is supplied, portfolio-level caps
+    (:data:`MAX_PORTFOLIO_EXPOSURE`, :data:`MAX_CONCURRENT_TRADES`)
+    are enforced in step 3. Pass `None` or `[]` to skip the
+    portfolio check — useful for unit tests and backtests where the
+    portfolio is tracked elsewhere.
 
     Flow:
       1. Read `base_size` (USD) from config. Accepts either a dict
@@ -61,15 +120,19 @@ async def execute_signal(
          (readiness × confidence). Short-circuits to
          ``{"skipped": True}`` when the signal fails the confidence
          gate or the risk filters reduce size to zero.
-      3. Hard-cap the notional at :data:`MAX_POSITION_USD`.
-      4. Convert USD → share count via `signal.entry` or
+      3. **Portfolio constraints** — `apply_portfolio_constraints`
+         shrinks the trade to fit remaining headroom (or zeroes it
+         when the concurrency/exposure caps are saturated). Only
+         runs when `open_positions` is provided.
+      4. Hard-cap the notional at :data:`MAX_POSITION_USD`.
+      5. Convert USD → share count via `signal.entry` or
          `market_data.price`. Abort on missing/zero price.
-      5. Route the order through the existing `_execute_bot_trade`
+      6. Route the order through the existing `_execute_bot_trade`
          helper so paper/live mode, broker selection, and circuit-
          breaker logic stay DRY.
-      6. Emit a structured log line with before/after sizing for
+      7. Emit a structured log line with before/after sizing for
          observability.
-      7. Return an enriched dict with `order`, `size_usd`, `qty`,
+      8. Return an enriched dict with `order`, `size_usd`, `qty`,
          `confidence`, and `readiness_score` for the caller.
 
     Never raises on execution errors — the broker branch of
@@ -90,9 +153,15 @@ async def execute_signal(
         prediction=signal,
     )
 
-    # ── 3. Low-confidence / risk-filter skip ──
+    # ── 3a. Low-confidence / risk-filter skip ──
     if adjusted_size <= 0:
         return {"skipped": True, "reason": "low confidence / risk filter"}
+
+    # ── 3b. Portfolio-level constraints (opt-in via open_positions) ──
+    if open_positions is not None:
+        adjusted_size = apply_portfolio_constraints(adjusted_size, open_positions)
+        if adjusted_size <= 0:
+            return {"skipped": True, "reason": "portfolio limits reached"}
 
     # ── 4. Hard cap ──
     adjusted_size = min(adjusted_size, MAX_POSITION_USD)
@@ -108,9 +177,6 @@ async def execute_signal(
     # ── 6. Route the order through the existing executor ──
     symbol = signal["symbol"]
     side = "buy" if str(signal.get("direction", "LONG")).upper() == "LONG" else "sell"
-    # Synthesise a thin bot record so `_execute_bot_trade` can drive
-    # paper/live mode, circuit-breaker pre-flight, and reconciliation.
-    # If the caller passed a real bot dict on `config._bot`, prefer it.
     synthetic_bot = _bot_from_config(config, symbol)
     order = await _execute_bot_trade(
         synthetic_bot,
@@ -125,11 +191,12 @@ async def execute_signal(
     # ── 7. Log before/after for observability ──
     logger.info(
         "[signal-bot/usd] %s %s: base=$%s adjusted=$%s qty=%s "
-        "conf=%s readiness=%s",
+        "conf=%s readiness=%s open_positions=%s",
         side.upper(), symbol,
         round(base_size, 2), round(adjusted_size, 2), qty,
         signal.get("confidence"),
         tier3_readiness.get("confidence_score"),
+        get_open_trade_count(open_positions) if open_positions is not None else None,
     )
 
     # ── 8. Enriched result ──

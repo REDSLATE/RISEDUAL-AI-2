@@ -45,6 +45,18 @@ async def run(query: str, symbol: str = None) -> EngineResult:
                     "resultType": "articles",
                     "articlesCount": 8,
                     "articlesSortBy": "date",
+                    # Opt-in metadata fields (off by default). These
+                    # unlock the richer payload the NewsAPI team
+                    # flagged in their onboarding email. Enables
+                    # article thumbnails, topic concepts, category
+                    # tags, and source ranking/logo — all used by
+                    # the War Room UI for richer cards.
+                    # Docs: https://www.newsapi.ai/documentation
+                    "includeArticleImage": "true",
+                    "includeArticleConcepts": "true",
+                    "includeArticleCategories": "true",
+                    "includeSourceRanking": "true",
+                    "includeSourceImage": "true",
                     "apiKey": key,
                 },
             )
@@ -60,12 +72,34 @@ async def run(query: str, symbol: str = None) -> EngineResult:
 
         items = []
         for a in articles:
+            source = a.get("source") or {}
+            # Top-3 concepts are what the UI renders as chips. Keep
+            # the raw score so downstream ranking (e.g. entity
+            # heatmap) doesn't have to re-derive it.
+            concepts = [
+                {
+                    "label": c.get("label", {}).get("eng") or c.get("uri", ""),
+                    "type": c.get("type"),
+                    "score": c.get("score"),
+                }
+                for c in (a.get("concepts") or [])[:3]
+            ]
+            categories = [
+                (c.get("label") or c.get("uri"))
+                for c in (a.get("categories") or [])[:2]
+                if (c.get("label") or c.get("uri"))
+            ]
             items.append({
                 "title": a.get("title", ""),
                 "url": a.get("url", ""),
                 "snippet": a.get("body", "")[:300],
-                "source": a.get("source", {}).get("title", ""),
+                "image": a.get("image"),
+                "source": source.get("title", ""),
+                "source_image": (source.get("image") or {}).get("url") if isinstance(source.get("image"), dict) else source.get("image"),
+                "source_ranking": (source.get("ranking") or {}).get("alexaGlobalRank"),
                 "published_at": a.get("dateTime", ""),
+                "concepts": concepts,
+                "categories": categories,
             })
 
         headline = f"NewsAPI: {len(items)} articles"
