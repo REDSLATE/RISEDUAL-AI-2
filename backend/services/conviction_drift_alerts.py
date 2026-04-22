@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ ALERT_COOLDOWN_HOURS = 24         # per-bucket dedup window
 _ALERT_COLLECTION = "conviction_drift_alerts"
 
 
-async def _build_calibration_snapshot(db) -> Optional[dict]:
+async def _build_calibration_snapshot(db: Any) -> Optional[dict]:
     """Reuse the admin endpoint's logic to produce the current trend.
 
     We call the route handler directly rather than HTTP-self-calling so
@@ -71,19 +71,19 @@ async def _build_calibration_snapshot(db) -> Optional[dict]:
         },
     ).limit(10000)
 
-    def _empty(buckets):
+    def _empty(buckets: list[dict]) -> list[dict]:
         return [{**b, "total": 0, "correct": 0} for b in buckets]
 
     weekly_conviction = [_empty(CONVICTION_BUCKETS) for _ in range(trend_weeks)]
     weekly_confidence = [_empty(CONFIDENCE_BUCKETS) for _ in range(trend_weeks)]
 
-    def _bucket_for(value, buckets):
+    def _bucket_for(value: float, buckets: list[dict]) -> Optional[dict]:
         for b in buckets:
             if b["min"] <= value < b["max"]:
                 return b
         return None
 
-    def _week_index(ts_str: str):
+    def _week_index(ts_str: str) -> Optional[int]:
         try:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             if ts.tzinfo is None:
@@ -117,7 +117,7 @@ async def _build_calibration_snapshot(db) -> Optional[dict]:
                 if correct:
                     b["correct"] += 1
 
-    def _trend_series(weekly):
+    def _trend_series(weekly: list[list[dict]]) -> dict[str, list[dict]]:
         if not weekly:
             return {}
         out = {}
@@ -137,7 +137,7 @@ async def _build_calibration_snapshot(db) -> Optional[dict]:
     }
 
 
-async def _already_alerted(db, series_name: str, bucket_label: str) -> bool:
+async def _already_alerted(db: Any, series_name: str, bucket_label: str) -> bool:
     """True if we've already emailed about this bucket within the cooldown."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ALERT_COOLDOWN_HOURS)
     doc = await db[_ALERT_COLLECTION].find_one(
@@ -151,7 +151,7 @@ async def _already_alerted(db, series_name: str, bucket_label: str) -> bool:
     return doc is not None
 
 
-async def _record_alert(db, series_name: str, bucket_label: str, details: dict):
+async def _record_alert(db: Any, series_name: str, bucket_label: str, details: dict) -> None:
     await db[_ALERT_COLLECTION].insert_one({
         "series": series_name,
         "bucket": bucket_label,
@@ -230,7 +230,7 @@ shift (market behaves differently than training) or weight drift
 </p>"""
 
 
-async def run_conviction_drift_check(db) -> dict:
+async def run_conviction_drift_check(db: Any) -> dict:
     """Scheduled entry point. Idempotent — safe to call ad-hoc or on cron.
 
     Returns a summary dict for logging/ops visibility. Never raises —

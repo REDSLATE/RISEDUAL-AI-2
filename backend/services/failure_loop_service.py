@@ -26,7 +26,7 @@ REASON_TAGS = [
 ]
 
 
-def set_db(database):
+def set_db(database: object) -> None:
     global db
     db = database
 

@@ -11,7 +11,7 @@ Flow:
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from services.price_provider import get_quote_sync
@@ -330,10 +330,10 @@ PRICING_FRESHNESS = {
 MAX_DEDUP_HITS = 1
 
 
-async def log_prediction(db, feature: str, symbol: str, direction: str,
-                         confidence: float, score: float = None,
-                         user_id: str = None,
-                         model_version: str = None,
+async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
+                         confidence: float, score: Optional[float] = None,
+                         user_id: Optional[str] = None,
+                         model_version: Optional[str] = None,
                          conviction: Optional[dict] = None) -> str:
     """Log a new prediction after AI analysis. Returns prediction_id.
 
@@ -463,8 +463,8 @@ def _current_model_version() -> str:
     return os.environ.get("SIGNAL_MODEL_VERSION", "unversioned")
 
 
-async def log_market_prediction(db, direction: str, confidence: float,
-                                user_id: str = None, symbol: str = None) -> str:
+async def log_market_prediction(db: Any, direction: str, confidence: float,
+                                user_id: Optional[str] = None, symbol: Optional[str] = None) -> str:
     """Log a market-wide prediction (defaults to SPY as proxy, or specific ticker)."""
     target_symbol = symbol or "SPY"
     return await log_prediction(
@@ -472,7 +472,7 @@ async def log_market_prediction(db, direction: str, confidence: float,
     )
 
 
-async def verify_pending_predictions(db):
+async def verify_pending_predictions(db: Any) -> None:
     """Check and verify predictions that have passed 24h or 1 week. Run as background task."""
     now = datetime.now(timezone.utc)
     cutoff_24h = (now - timedelta(hours=24)).isoformat()
@@ -692,7 +692,7 @@ async def verify_pending_predictions(db):
         )
 
 
-async def reevaluate_neutral_predictions(db, window: str = "both") -> dict:
+async def reevaluate_neutral_predictions(db: Any, window: str = "both") -> dict:
     """Retroactively re-score NEUTRAL/HOLD predictions under the current
     dynamic tolerance rule.
 
@@ -769,7 +769,7 @@ async def reevaluate_neutral_predictions(db, window: str = "both") -> dict:
     return {"scanned": scanned, "updated_24h": updated_24h, "updated_1w": updated_1w}
 
 
-async def get_accuracy_stats(db, feature: Optional[str] = None,
+async def get_accuracy_stats(db: Any, feature: Optional[str] = None,
                               window_days: int = 7) -> dict:
     """Calculate rolling accuracy stats. Optionally filter by feature.
 
@@ -851,7 +851,7 @@ async def get_accuracy_stats(db, feature: Optional[str] = None,
     }
 
 
-async def get_all_feature_stats(db) -> dict:
+async def get_all_feature_stats(db: Any) -> dict:
     """Get accuracy stats for all features + overall."""
     features = ["war_room", "hypothesis", "market_prediction"]
     stats = {}
@@ -864,7 +864,7 @@ async def get_all_feature_stats(db) -> dict:
     return stats
 
 
-async def get_recent_predictions(db, feature: Optional[str] = None,
+async def get_recent_predictions(db: Any, feature: Optional[str] = None,
                                   limit: int = 20) -> list[dict]:
     """Get recent predictions with verification status.
 

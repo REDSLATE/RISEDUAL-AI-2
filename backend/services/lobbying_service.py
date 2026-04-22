@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class LobbyingService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = AsyncIOMotorClient(os.environ["MONGO_URL"])
         self.db = self.client[os.environ.get("DB_NAME", "risedual_db")]
         self.col = self.db["lobbying_data"]

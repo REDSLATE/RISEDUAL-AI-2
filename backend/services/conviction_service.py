@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def score_prediction_outcome(grade: str, confidence: float) -> float:
 
 
 async def _calibration_expectancy(
-    db, user_id: Optional[str], lookback_days: int = 30
+    db: Any, user_id: Optional[str], lookback_days: int = 30
 ) -> float:
     """Trailing expectancy score normalised to [0, 1] for the conviction
     calibration component.
@@ -160,14 +160,14 @@ async def _calibration_expectancy(
         return 0.5
 
 
-async def _calibration_win_rate(db, user_id: Optional[str], lookback_days: int = 30) -> float:
+async def _calibration_win_rate(db: Any, user_id: Optional[str], lookback_days: int = 30) -> float:
     """Thin backwards-compat wrapper. Delegates to the new
     grade-aware expectancy scorer. Kept under the old name so any
     direct imports from tests/scripts don't break."""
     return await _calibration_expectancy(db, user_id, lookback_days)
 
 
-async def _is_flagged(db, asset: str, direction: str) -> bool:
+async def _is_flagged(db: Any, asset: str, direction: str) -> bool:
     """Returns True if the (asset, direction) pair is currently on the
     rejection-bias blacklist. Any DB error degrades to False (no penalty)
     — better to under-penalise than to crash the prediction logger.
@@ -184,7 +184,7 @@ async def _is_flagged(db, asset: str, direction: str) -> bool:
 
 
 async def compute_conviction(
-    db,
+    db: Any,
     *,
     user_id: Optional[str],
     asset: Optional[str],

@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def date_bucket_today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-async def already_alerted(db, alert_id: str) -> bool:
+async def already_alerted(db: Any, alert_id: str) -> bool:
     """True if this exact alert_id fired within the suppress window."""
     if db is None:
         return False
@@ -70,7 +71,7 @@ async def already_alerted(db, alert_id: str) -> bool:
 
 
 async def persistence_run_count(
-    db, alert_type: str, tickers: list[str]
+    db: Any, alert_type: str, tickers: list[str]
 ) -> int:
     """How many days in a row we've fired an alert of `type` for
     `tickers` within the persistence window. Returns 0 for a fresh
@@ -121,7 +122,7 @@ async def persistence_run_count(
 
 
 async def record_alert(
-    db,
+    db: Any,
     alert_id: str,
     alert_type: str,
     tickers: list[str],
@@ -148,7 +149,7 @@ async def record_alert(
 
 
 async def should_send_alert(
-    db,
+    db: Any,
     alert_type: str,
     tickers: list[str],
     date_bucket: str | None = None,
@@ -182,7 +183,7 @@ async def should_send_alert(
     }
 
 
-async def ensure_indexes(db) -> None:
+async def ensure_indexes(db: Any) -> None:
     """Idempotent index setup. Call once at startup.
 
     TTL index auto-purges rows after the persistence window so the

@@ -44,7 +44,7 @@ def _binance_symbol(ticker: str) -> str:
 class OrderFlowStream:
     """Manages shared Binance WebSocket connections and dispatches to subscribers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._subscribers: dict[str, set[asyncio.Queue]] = defaultdict(set)
         self._tasks: dict[str, asyncio.Task] = {}
         self._prev_snapshot: dict[str, dict] = {}

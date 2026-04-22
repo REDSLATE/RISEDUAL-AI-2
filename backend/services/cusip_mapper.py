@@ -16,6 +16,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from collections.abc import Iterable
+from typing import Any
 
 import httpx
 
@@ -59,7 +60,7 @@ def _pick_best_row(data: list[dict]) -> dict | None:
     return data[0]
 
 
-async def lookup_batch(db, cusips: Iterable[str]) -> dict[str, dict]:
+async def lookup_batch(db: Any, cusips: Iterable[str]) -> dict[str, dict]:
     """Return a map of {cusip: {ticker, name, exchange, figi}} for each input CUSIP.
 
     Cached results come from the ``cusip_ticker_map`` MongoDB collection. Missing
@@ -162,7 +163,7 @@ async def lookup_batch(db, cusips: Iterable[str]) -> dict[str, dict]:
     return out
 
 
-async def get_ticker(db, cusip: str) -> str | None:
+async def get_ticker(db: Any, cusip: str) -> str | None:
     """Resolve a single CUSIP to its primary US ticker."""
     mapping = await lookup_batch(db, [cusip])
     entry = mapping.get(cusip.upper())
@@ -186,7 +187,7 @@ async def get_ticker(db, cusip: str) -> str | None:
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
 
 
-async def resolve_name_to_ticker(db, name: str) -> str | None:
+async def resolve_name_to_ticker(db: Any, name: str) -> str | None:
     """Return the US ticker for a free-text company name, or None.
 
     Uses OpenFIGI search with persistent caching. Safe for hot-path callers
@@ -260,7 +261,7 @@ async def resolve_name_to_ticker(db, name: str) -> str | None:
     return None
 
 
-async def backfill_from_holdings(db, limit: int = 5000, top_only: bool = False) -> dict:
+async def backfill_from_holdings(db: Any, limit: int = 5000, top_only: bool = False) -> dict:
     """Bootstrap: resolve tickers for CUSIPs currently stored in ``sec_13f_holdings``.
 
     When ``top_only=True``, only resolves the top 50 CUSIPs per institution by

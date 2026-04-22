@@ -33,7 +33,7 @@ class AgentState:
     """Mimics LangGraph's TypedDict state with message accumulation."""
     __slots__ = ("messages", "steps", "tools_used", "trace", "provider_meta")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.messages: list[dict] = []
         self.steps: int = 0
         self.tools_used: list[str] = []

@@ -11,7 +11,7 @@ STARTING_CASH = 100_000.0
 CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "SHIB", "LINK"}
 
 
-def set_db(database):
+def set_db(database: object) -> None:
     global _db
     _db = database
 

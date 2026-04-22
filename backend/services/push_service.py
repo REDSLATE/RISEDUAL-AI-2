@@ -1,8 +1,12 @@
 """Push notification service using Web Push (VAPID)."""
+from __future__ import annotations
+
 import os
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any, Optional
+
 from pywebpush import webpush, WebPushException
 
 logger = logging.getLogger(__name__)
@@ -20,11 +24,11 @@ NOTIF_WATCHLIST_ALERT = "watchlist_alert"
 NOTIF_MARKET_SIGNAL = "market_signal"
 
 
-def _is_configured():
+def _is_configured() -> bool:
     return bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY)
 
 
-async def send_push(subscription_info: dict, title: str, body: str, url: str = "/", tag: str = "risedual", db=None, user_id: str = None, is_pro: bool = True) -> bool:
+async def send_push(subscription_info: dict, title: str, body: str, url: str = "/", tag: str = "risedual", db: Any = None, user_id: Optional[str] = None, is_pro: bool = True) -> bool:
     """Send a push notification to a single subscription."""
     if not _is_configured():
         logger.info(f"Push skipped (no VAPID keys): {title}")
@@ -81,7 +85,7 @@ async def send_push(subscription_info: dict, title: str, body: str, url: str = "
         return False
 
 
-async def broadcast_notification(db, title: str, body: str, url: str = "/", tag: str = "risedual", notif_type: str = "general"):
+async def broadcast_notification(db: Any, title: str, body: str, url: str = "/", tag: str = "risedual", notif_type: str = "general") -> dict:
     """Send push notification to all subscribed users."""
     if not _is_configured():
         logger.info(f"Push broadcast skipped (no VAPID keys): {title}")
@@ -115,7 +119,7 @@ async def broadcast_notification(db, title: str, body: str, url: str = "/", tag:
     return {"sent": sent, "errors": errors, "skipped": False}
 
 
-async def notify_prediction_flip(db, ticker: str, old_verdict: str, new_verdict: str, confidence: int):
+async def notify_prediction_flip(db: Any, ticker: str, old_verdict: str, new_verdict: str, confidence: int) -> None:
     """Trigger push for AI prediction verdict change."""
     emoji = "📈" if "BULL" in new_verdict.upper() else "📉" if "BEAR" in new_verdict.upper() else "➡️"
     await broadcast_notification(
@@ -128,7 +132,7 @@ async def notify_prediction_flip(db, ticker: str, old_verdict: str, new_verdict:
     )
 
 
-async def notify_dark_pool_spike(db, ticker: str, volume: str, sentiment: str):
+async def notify_dark_pool_spike(db: Any, ticker: str, volume: str, sentiment: str) -> None:
     """Trigger push for dark pool volume spike."""
     await broadcast_notification(
         db,
@@ -140,7 +144,7 @@ async def notify_dark_pool_spike(db, ticker: str, volume: str, sentiment: str):
     )
 
 
-async def notify_watchlist_alert(db, user_id: str, ticker: str, change_pct: float, price: float):
+async def notify_watchlist_alert(db: Any, user_id: str, ticker: str, change_pct: float, price: float) -> None:
     """Trigger push for watchlist price movement >5%."""
     direction = "up" if change_pct > 0 else "down"
     sub = await db.push_subscriptions.find_one({"user_id": user_id})
@@ -158,7 +162,7 @@ async def notify_watchlist_alert(db, user_id: str, ticker: str, change_pct: floa
     )
 
 
-async def notify_market_signal(db, signal_type: str, ticker: str, strength: str):
+async def notify_market_signal(db: Any, signal_type: str, ticker: str, strength: str) -> None:
     """Trigger push for new market signal."""
     await broadcast_notification(
         db,
@@ -173,7 +177,7 @@ async def notify_market_signal(db, signal_type: str, ticker: str, strength: str)
 NOTIF_WHALE_WALL = "whale_wall"
 
 
-async def notify_whale_wall(db, ticker: str, side: str, price: float, intensity: int):
+async def notify_whale_wall(db: Any, ticker: str, side: str, price: float, intensity: int) -> None:
     """Trigger push for institutional whale wall detection (intensity >= 85)."""
     label = "Support" if "BID" in side.upper() else "Resistance"
     emoji = "\u26a0\ufe0f"
@@ -187,7 +191,7 @@ async def notify_whale_wall(db, ticker: str, side: str, price: float, intensity:
     )
 
 
-async def notify_trade_execution(db, user_id: str, symbol: str, side: str, qty: float, order_id: str, broker_id: str, status: str):
+async def notify_trade_execution(db: Any, user_id: str, symbol: str, side: str, qty: float, order_id: str, broker_id: str, status: str) -> None:
     """Push + in-app notification when a live trade is executed by the owner."""
     side_label = "BUY" if side.lower() == "buy" else "SELL"
     title = f"Trade Executed: {side_label} {qty} {symbol}"

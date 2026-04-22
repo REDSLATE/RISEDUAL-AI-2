@@ -10,7 +10,7 @@ from services.price_provider import get_overview_sync
 logger = logging.getLogger(__name__)
 
 class CompanyResearchService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.market_data = MarketDataService()
         self.scraper = FinancialScrapingService()
         self.ai = AIService()

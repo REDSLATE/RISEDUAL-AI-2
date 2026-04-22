@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def _ref_for_user(user: dict) -> str | None:
     return f"share-u{raw_id}" if raw_id else None
 
 
-async def _find_user_by_ref(db, ref: str) -> dict | None:
+async def _find_user_by_ref(db: Any, ref: str) -> dict | None:
     """Given a ``share-u{suffix}`` code, find the matching user."""
     m = re.match(r"^share-u([a-zA-Z0-9]+)$", ref or "")
     if not m:
@@ -58,7 +59,7 @@ async def _find_user_by_ref(db, ref: str) -> dict | None:
     return None
 
 
-async def _grant_trial(db, user: dict, days: int, plan: str, reason: str) -> dict:
+async def _grant_trial(db: Any, user: dict, days: int, plan: str, reason: str) -> dict:
     """Grant or extend a Pro/Pro Max trial. Skips users on a paid plan at or
     above the offered plan tier.
     """
@@ -93,7 +94,7 @@ async def _grant_trial(db, user: dict, days: int, plan: str, reason: str) -> dic
     return {"granted": True, "new_expires_at": new_expires.isoformat(), "reason": reason, "plan": plan}
 
 
-async def _grant_credits(db, user: dict, amount: int, reason: str) -> dict:
+async def _grant_credits(db: Any, user: dict, amount: int, reason: str) -> dict:
     """Credit the user's wallet. No subscription change."""
     now = datetime.now(timezone.utc)
     await db.user_credits.update_one(
@@ -124,14 +125,14 @@ async def _grant_credits(db, user: dict, amount: int, reason: str) -> dict:
     return {"granted": True, "credits": amount, "reason": reason}
 
 
-async def _already_rewarded(db, user_id, tier: str, period: str) -> bool:
+async def _already_rewarded(db: Any, user_id: Any, tier: str, period: str) -> bool:
     existing = await db.referral_rewards.find_one({
         "user_id": user_id, "tier": tier, "period": period,
     })
     return existing is not None
 
 
-async def _record_reward(db, user: dict, tier: str, period: str, kind: str, amount: int, detail: dict) -> None:
+async def _record_reward(db: Any, user: dict, tier: str, period: str, kind: str, amount: int, detail: dict) -> None:
     now = datetime.now(timezone.utc)
     doc = {
         "user_id": user["_id"],
@@ -146,7 +147,7 @@ async def _record_reward(db, user: dict, tier: str, period: str, kind: str, amou
     await db.referral_rewards.insert_one(doc)
 
 
-async def _fire_reward_notification(db, user: dict, title: str, body: str) -> None:
+async def _fire_reward_notification(db: Any, user: dict, title: str, body: str) -> None:
     try:
         from services.push_service import send_to_user
         await send_to_user(db, user_id=str(user["_id"]), title=title, body=body, url="/#dashboard")
@@ -188,7 +189,7 @@ async def _fire_reward_email(
         logger.warning(f"Reward email error for {email}: {e}")
 
 
-async def scan_hit_threshold_rewards(db) -> dict:
+async def scan_hit_threshold_rewards(db: Any) -> dict:
     """Grant 7-day Pro to every user whose share-hit count crosses THRESHOLD_HITS
     this calendar month, at most once per user per month.
     """
@@ -235,7 +236,7 @@ async def scan_hit_threshold_rewards(db) -> dict:
     return {"tier": "hits_threshold", "eligible": len(results), "granted": granted, "skipped": skipped}
 
 
-async def scan_monthly_leaderboard_rewards(db) -> dict:
+async def scan_monthly_leaderboard_rewards(db: Any) -> dict:
     """Run on the 1st of each month for the prior month. Ranks top 5 refs and
     grants rank-specific rewards (Pro Max for #1, Pro for #2-3, 100 credits for #4-5).
     """

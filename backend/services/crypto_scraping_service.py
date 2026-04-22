@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class CryptoScrapingService:
     """Scrape crypto data from exchanges and blockchain"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.headers = {'User-Agent': 'Mozilla/5.0'}
     
     async def get_exchange_data(self) -> list[dict]:

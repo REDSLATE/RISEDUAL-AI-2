@@ -1,7 +1,10 @@
 """AI Strategy Builder Service — generates structured trading strategies from natural language."""
+from __future__ import annotations
+
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ async def generate_strategy(api_key: str, description: str, model: str = "gpt-5.
         raise
 
 
-async def get_code_quality_score(db) -> dict:
+async def get_code_quality_score(db: Any) -> dict:
     """Calculate a code quality score for the admin panel."""
     import glob
 

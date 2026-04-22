@@ -24,7 +24,7 @@ TIER_PRICE_MAP = {
 
 
 class StripePaymentService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.environ.get('STRIPE_API_KEY')
         self.price_id = os.environ.get('STRIPE_PRICE_ID')
 

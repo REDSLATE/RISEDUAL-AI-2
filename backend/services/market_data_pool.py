@@ -27,7 +27,7 @@ market_pool = ProviderPool(get_market_data_provider_pool(), name="MARKET_DATA_PR
 _db = None
 
 
-def set_db(database):
+def set_db(database: object) -> None:
     global _db
     _db = database
 

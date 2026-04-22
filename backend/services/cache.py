@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class TTLCache:
     """Simple async-safe in-memory cache with per-key TTL and background refresh."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._store: dict[str, dict] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._hits: int = 0

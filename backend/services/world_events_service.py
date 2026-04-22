@@ -35,7 +35,7 @@ SECTOR_TICKERS = {
 
 
 class WorldEventsService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }

@@ -24,6 +24,77 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Tier 3 readiness daily digest (owner-facing)
+*Session: continued*
+
+Turns the 30-day unlock gate into a visible daily streak. Emails the
+owner every morning at 08:15 UTC with the current readiness score,
+delta vs the last snapshot, and the top blockers inlined with their
+current numbers (`live days 8/30, trades 88/100`).
+
+**What shipped:**
+- `services/tier3_readiness_digest.py` —
+  * `run_tier3_readiness_digest(db)` — scheduler entry point; never
+    raises, returns a summary dict for ops log.
+  * Idempotent per UTC day via upsert to new collection
+    `tier3_readiness_history` (also feeds delta arithmetic).
+  * Subject formatter handles unlocked / up-delta / down-delta /
+    flat / no-prior cases. Uses ▲ ▼ symbols for instant visual
+    scan without opening the email.
+  * Body: one-line headline, per-blocker chips (numbers inlined for
+    the three sample-size reasons), full 7-stat breakdown table.
+- `server.py` — new scheduler job at 08:15 UTC (after conviction
+  drift at 08:00). Logged in the startup banner.
+
+**Verified:**
+- 18 unit tests in `tests/test_tier3_readiness_digest.py` — subject
+  formatting across all 5 delta states, body rendering (unlocked
+  badge / sample-size enrichment / no-prior vs has-prior), idempotent
+  upsert, prior-snapshot lookup returns yesterday, empty history
+  handled. All green.
+- Live dry-run: `Run 1 → sent=True, score=81.33, blockers=3`;
+  `Run 2 → sent=False, reason=already_sent_today`. History row
+  persisted to Mongo.
+
+**Files changed:**
+- `backend/services/tier3_readiness_digest.py` (new)
+- `backend/tests/test_tier3_readiness_digest.py` (new)
+- `backend/server.py` — new scheduler entry
+
+### 2026-02-20 — Python type-hint push (services/ 72% → 80.6%)
+*Session: continued*
+
+Hit the P3 "type-hint coverage" goal from the backlog. `services/`
+annotation rate: **613/846 → 682/846 = 80.6% (+8.6 pp)**.
+
+**Files annotated:**
+- `conviction_service.py` — all four async helpers (`db: Any`)
+- `conviction_drift_alerts.py` — 8 missing signatures filled
+- `alert_dedup.py` — 5 missing (module-wide)
+- `prediction_tracker.py` — 7 hot functions (log_prediction,
+  log_market_prediction, verify_pending_predictions,
+  reevaluate_neutral_predictions, get_accuracy_stats,
+  get_all_feature_stats, get_recent_predictions)
+- `push_service.py` — all 9 notify_* helpers + send_push/broadcast
+- `referral_rewards.py` — all 8 missing (trial/credit/record paths)
+- `help_search_digest.py` — both public entry points
+- `cusip_mapper.py` — 4 public functions
+- `strategy_service.py` — 1 missing
+- `ai_signal_validator.py`, `credit_service.py`,
+  `failure_loop_service.py`, `market_data_pool.py`,
+  `paper_trading_service.py`, `price_provider.py` — `set_db()`
+- 15 files — added `-> None` on bare `def __init__(self):`
+
+**Verified:**
+- `ruff` clean across `services/`.
+- Backend restarts clean (356 routes registered — up 2 from last
+  deploy: `/tier3-readiness` + `/conviction/reliability`).
+- Full conviction / tier-3 / digest / reliability test suite:
+  **95/95 green**.
+
+**Files changed:** 22 service modules touched.
+
+
 ### 2026-02-20 — Tier 3 composite unlock gate (6 checks + readiness score)
 *Session: continued*
 

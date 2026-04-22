@@ -74,7 +74,7 @@ MAX_SIZE = 100 * 1024 * 1024  # 100MB
 
 
 class MediaService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = AsyncIOMotorClient(os.environ["MONGO_URL"])
         self.db = self.client[os.environ.get("DB_NAME", "risedual_db")]
         self.col = self.db["media_files"]

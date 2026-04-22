@@ -162,7 +162,7 @@ def topup_price(plan_key: str, credits: int) -> float:
 #  DB-DEPENDENT FUNCTIONS
 # ══════════════════════════════════════════════════
 
-def set_db(database):
+def set_db(database: object) -> None:
     global db
     db = database
 

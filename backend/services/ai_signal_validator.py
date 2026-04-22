@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 _db = None
 
 
-def set_db(database):
+def set_db(database: object) -> None:
     global _db
     _db = database
 

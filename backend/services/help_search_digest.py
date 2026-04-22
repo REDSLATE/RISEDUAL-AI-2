@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from services.email_service import (
     _is_configured,
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 _MIN_ZERO_EVENTS = 3
 
 
-async def _collect(db) -> dict:
+async def _collect(db: Any) -> dict:
     """Aggregate the last 7 days of help_search_events."""
     since = datetime.now(timezone.utc) - timedelta(days=7)
     total = await db.help_search_events.count_documents({"ts": {"$gte": since}})
@@ -61,7 +62,7 @@ async def _collect(db) -> dict:
     }
 
 
-async def send_help_search_digest(db) -> dict:
+async def send_help_search_digest(db: Any) -> dict:
     """Render and email the weekly digest to all admins/owners."""
     if not _is_configured():
         return {"sent": 0, "skipped": True, "reason": "no_email_provider"}

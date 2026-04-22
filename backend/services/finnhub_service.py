@@ -11,7 +11,7 @@ FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 
 class FinnhubService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.api_key = os.environ.get("FINNHUB_API_KEY", "")
         self.headers = {"X-Finnhub-Token": self.api_key}
 
