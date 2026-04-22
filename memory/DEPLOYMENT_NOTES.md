@@ -24,6 +24,69 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — ML Tier 3 progress + conviction clamp canary
+*Session: continued*
+
+Real "continue accumulating paper-trading days" plumbing + the clamp
+canary we proposed alongside the boundary patch. The 30-day gate was
+previously fed by `RISEDUAL_LIVE_DAYS` (manually-maintained env var
+that silently drifted). Now the orchestrator reads the real count
+from the `paper_trades` collection.
+
+**What shipped (backend):**
+- `services/paper_trading_progress.py` — `compute_live_days()`,
+  `resolve_live_days()` (env override wins), `tier3_progress()`
+  snapshot. Counts distinct UTC dates with ≥1 ML-orchestrator auto-
+  trade (BSON-date `opened_at`). Manual-UI rows with `timestamp`
+  ISO strings are deliberately excluded — gate measures ML pipeline
+  activity, not human clicks.
+- `services/conviction_clamp_canary.py` — counts prediction outcomes
+  that land on the ±2.5 `score_prediction_outcome` boundary in the
+  last 30 days. Expected count = 0 today (natural range is ±2.0).
+  Any non-zero count = weight-table drift canary.
+- `services/ml_orchestrator.py` — replaces `os.getenv(_LIVE_DAYS_KEY)`
+  with `resolve_live_days(db)` for the real gate check.
+- `routes/ml_orchestrator.py` — same swap for `/api/ml/gate-status`
+  so the dashboard shows the truthful count.
+- `routes/admin.py` — new endpoints:
+  * `GET /api/admin/tier3-progress`
+  * `GET /api/admin/conviction/clamp-canary?days=30`
+
+**What shipped (frontend):**
+- `components/admin/MLHealthStrip.jsx` — two compact cards:
+  Tier 3 progress bar + clamp canary status. Mounted at the top
+  of the existing Conviction admin tab.
+- `components/admin/ConvictionCalibration.jsx` — embeds the strip.
+
+**Verified:**
+- New regression suite `backend/tests/test_tier3_and_clamp_canary.py`
+  — 13 tests covering distinct-day counting, null/bad-date
+  filtering, fail-closed behaviour, env-override precedence,
+  runaway-weight canary tripping, and healthy-state zero. All green.
+- Live endpoint smoke test (owner creds):
+  * `/api/admin/tier3-progress` → `{days: 1, target: 30, unlocked: false, total_trades: 82}`
+  * `/api/admin/conviction/clamp-canary` → `{total_graded: 182, clamp_total: 0, status: "ok"}`
+- Backend restart clean (354 routes). Lint clean.
+
+**Data-hygiene note for follow-up:** 77 of the 82 existing
+`paper_trades` rows are from the manual-UI writer and lack the
+BSON-date `opened_at` field. They use ISO-string `timestamp`
+instead. If we ever want to count user-driven paper trading too,
+we'd need to either backfill `opened_at` or broaden the aggregator
+(but do NOT broaden without also updating the Tier 3 gate
+semantics — the current count = "ML-orchestrator days" is correct).
+
+**Files changed:**
+- `backend/services/paper_trading_progress.py` (new)
+- `backend/services/conviction_clamp_canary.py` (new)
+- `backend/services/ml_orchestrator.py` — live-days via DB
+- `backend/routes/admin.py` — 2 new admin endpoints
+- `backend/routes/ml_orchestrator.py` — gate-status uses DB count
+- `backend/tests/test_tier3_and_clamp_canary.py` (new)
+- `frontend/src/components/admin/MLHealthStrip.jsx` (new)
+- `frontend/src/components/admin/ConvictionCalibration.jsx` — embed strip
+
+
 ### 2026-02-20 — Conviction score boundary clamp (soft caps)
 *Session: continued*
 

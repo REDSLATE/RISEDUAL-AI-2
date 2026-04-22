@@ -211,7 +211,17 @@ async def run_post_signal_pipeline(
         return result
 
     # ── 2. Gate check ────────────────────────────────────────────────────────
-    live_days = int(os.getenv(_LIVE_DAYS_KEY, "0"))
+    # Live-day count is the gate that unlocks Tier 3. We prefer the
+    # DB-derived count (distinct UTC dates with ≥1 `paper_trades`
+    # row) because it stays honest automatically as bots execute.
+    # `RISEDUAL_LIVE_DAYS` env var still wins when set — preserves
+    # the prior manual-override behaviour for tests/backfills.
+    try:
+        from services.paper_trading_progress import resolve_live_days
+        live_days = await resolve_live_days(db)
+    except Exception as exc:
+        log.debug("[orchestrator] live-day resolve fell back to env: %s", exc)
+        live_days = int(os.getenv(_LIVE_DAYS_KEY, "0"))
     user_opted_in: bool = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
     meta: dict[str, Any] = getattr(model, "_metadata", {}) or {}

@@ -385,6 +385,31 @@ async def conviction_calibration(request: Request, days: int = 30):
 
 
 # ============================================================
+# ML TIER 3 PROGRESS + CONVICTION CLAMP CANARY (Admin)
+# ============================================================
+
+@router.get("/tier3-progress")
+async def ml_tier3_progress(request: Request):
+    """Progress toward the 30-day paper-trading gate that unlocks
+    Tier 3 (live execution). Derived from `paper_trades.opened_at`
+    so the count stays honest without manually editing env vars."""
+    await _require_admin(request)
+    from services.paper_trading_progress import tier3_progress
+    return await tier3_progress(db)
+
+
+@router.get("/conviction/clamp-canary")
+async def conviction_clamp_canary(request: Request, days: int = 30):
+    """Count prediction outcomes that hit the `score_prediction_outcome`
+    boundary (±MIN_REWARD / MAX_PENALTY). Zero is the healthy state
+    today; any non-zero count means `GRADE_WEIGHTS` drifted past the
+    clamp or a confidence-scale bug is pushing scores beyond bounds."""
+    await _require_admin(request)
+    from services.conviction_clamp_canary import conviction_clamp_counter
+    return await conviction_clamp_counter(db, days=days)
+
+
+# ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
 

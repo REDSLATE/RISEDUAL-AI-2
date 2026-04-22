@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
+import MLHealthStrip from './MLHealthStrip';
 
 const API = `${getApiBase()}/api`;
 
@@ -210,6 +211,11 @@ const ConvictionCalibration = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-5" data-testid="conviction-calibration-panel">
+      {/* ML health strip — Tier 3 progress + clamp canary. Sits above
+          the calibration buckets so admins see signal integrity at a
+          glance before drilling into the per-bucket sparklines. */}
+      <MLHealthStrip />
+
       {/* Header + window selector */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

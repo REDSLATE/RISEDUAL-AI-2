@@ -144,7 +144,14 @@ async def get_gate_status() -> dict[str, Any]:
     accuracy = stats.accuracy if stats else 0.0
     n_predictions = stats.n_predictions if stats else 0
     ece = stats.ece if stats else 1.0
-    live_days = int(os.getenv("RISEDUAL_LIVE_DAYS", "0"))
+    # Prefer the DB-derived paper-trading day count (distinct UTC
+    # dates with ≥1 `paper_trades` row). Falls back to the env var
+    # when the service or DB is unavailable.
+    try:
+        from services.paper_trading_progress import resolve_live_days
+        live_days = await resolve_live_days(db)
+    except Exception:
+        live_days = int(os.getenv("RISEDUAL_LIVE_DAYS", "0"))
     user_opted_in = os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
     meta: dict[str, Any] = getattr(model, "_metadata", {}) or {} if model else {}
