@@ -209,6 +209,26 @@ def compute_weighted_learning_update(
     stats aggregation where confidence has already been factored
     in upstream. Callers that want confidence baked in should
     multiply at the call site.
+
+    Canonical call site:
+
+        from ai_core.learning_upgrade import compute_weighted_learning_update
+
+        learning_signal = compute_weighted_learning_update(
+            grade=grade,
+            trade_regime=trade_regime,
+            current_regime=current_regime,
+        )
+
+    Behavior summary (pinned by tests):
+      * same-regime STRONG_MISS → -2.0
+      * cross-regime STRONG_MISS → -1.0
+      * None on either regime side → treat as match (full weight)
+      * unknown grade → 0.0 (never raises)
+
+    The sign propagates naturally: a cross-regime WEAK_HIT returns
+    `+1.0 × 0.5 = +0.5`, which is LESS positive than a matched-regime
+    WEAK_HIT (+1.0). Aggregation code can sum these directly.
     """
     return score_prediction_outcome(grade) * compute_regime_weight(
         trade_regime, current_regime,

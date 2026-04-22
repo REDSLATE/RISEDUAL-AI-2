@@ -189,6 +189,45 @@ def test_build_regime_key_format():
 
 # ── Combined learning update ───────────────────────────────────────
 
+def test_weighted_learning_update_kwargs_call_site():
+    """Pin the exact call-site pattern from the upgrade spec:
+
+        learning_signal = compute_weighted_learning_update(
+            grade=grade,
+            trade_regime=trade_regime,
+            current_regime=current_regime,
+        )
+
+    If any future refactor renames these kwargs, this test surfaces
+    it immediately. All three kwargs must accept `Optional[str]` on
+    the regime side and fall back to full weight on None.
+    """
+    # Happy path: STRONG_MISS same regime → -2.0.
+    signal = compute_weighted_learning_update(
+        grade="STRONG_MISS",
+        trade_regime="bull",
+        current_regime="bull",
+    )
+    assert signal == -2.0
+
+    # Cross-regime halves the penalty.
+    cross = compute_weighted_learning_update(
+        grade="STRONG_MISS",
+        trade_regime="bull",
+        current_regime="bear",
+    )
+    assert cross == -1.0
+
+    # None on trade_regime → full weight (no silent halving on
+    # warm-start rows).
+    warmstart = compute_weighted_learning_update(
+        grade="STRONG_HIT",
+        trade_regime=None,
+        current_regime="bull",
+    )
+    assert warmstart == 2.0
+
+
 def test_combined_update_severity_times_regime():
     """STRONG_MISS in matching regime → full -2.0.
     STRONG_MISS in mismatched regime → -1.0 (halved)."""
