@@ -24,6 +24,52 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — `/api/admin/gather-error-rate` observability tile
+*Session: continued*
+
+Surfaces a one-glance "which upstream provider is flaking" view over
+any window up to 7 days. Aggregates every structured `log_error`
+event by its `context` tag (which every `unwrap_gather_result`
+caller now sets: `market_data.ticker`, `market_data.crypto`,
+`war_room`, `fred_fetch`, `crew_engine`, etc.).
+
+**New files:**
+- `backend/services/error_metrics.py` — thread-safe bounded deque
+  (`MAX_EVENTS=10_000`, ~1 MB cap). `record_error()` for writes,
+  `snapshot_since(cutoff)` for windowed reads. In-process on purpose
+  — restarts clear the buffer; this is an operational tile, not an
+  audit log.
+- `backend/tests/test_error_metrics.py` — 5 tests, all green.
+  Verifies: ERROR-only capture (WARNING / INFO skipped), hook
+  failure never breaks logging, cutoff filter semantics, bound
+  invariant.
+
+**Modified:**
+- `backend/services/structured_log.py` — `_emit()` now calls
+  `error_metrics.record_error()` on ERROR-level events, wrapped in a
+  defensive `try/except: pass` so metric bugs can never silence a
+  real log line.
+- `backend/routes/admin.py` — new `GET /api/admin/gather-error-rate`
+  endpoint. Query params: `hours` (1–168, default 24),
+  `context_prefix` (optional). Returns
+  `{window_hours, total_errors, distinct_contexts, by_context: [{context, count, top_types: [{type, count}×3], last_seen}, …]}`
+  sorted by count desc. Admin-gated via `_require_admin`.
+
+**Behavioural delta:**
+- Every `log_error` call site in the codebase now contributes to a
+  live rolling counter, queryable without log aggregator access. Zero
+  overhead on the hot path (O(1) append under a short-lived lock).
+- `CancelledError` is NOT counted (it's silent by design in
+  `unwrap_gather_result`).
+
+**Gate status:**
+- `typecheck.sh`: 69 errors (unchanged baseline).
+- Full test suite of new observability code: 5/5 green. Combined
+  with the gather-guard suite: 25/25 green.
+- Live smoke: `GET /api/admin/gather-error-rate?hours=24` returns
+  `{total_errors: 0, by_context: []}` on a clean restart, as
+  expected.
+
 ### 2026-02-20 — `market_data_service.py` migrated to `unwrap_gather_result` (final gather site)
 *Session: continued*
 

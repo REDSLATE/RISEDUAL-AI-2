@@ -40,6 +40,24 @@ def _emit(logger: logging.Logger, level: int, payload: dict[str, Any]) -> None:
     # so namespace the payload under a single dict key.
     logger.log(level, msg, extra={"structured": payload})
 
+    # Feed ERROR-level events into the rolling in-process counter so
+    # `/api/admin/gather-error-rate` can aggregate flakiness by context.
+    # Cheap (O(1) lock + append) and deliberately out-of-band from the
+    # logger pipeline — metrics must never crash logging.
+    if level >= logging.ERROR:
+        try:
+            from services.error_metrics import record_error
+            record_error(
+                context=str(payload.get("context", "")),
+                err_type=str(payload.get("type", "")),
+                note=str(payload.get("note", "")),
+                **{k: v for k, v in payload.items()
+                   if k not in ("context", "type", "note", "error")},
+            )
+        except Exception:
+            # Never let metric recording break log emission.
+            pass
+
 
 def log_warning(logger: logging.Logger, payload: dict[str, Any]) -> None:
     """Structured WARNING — see module docstring."""

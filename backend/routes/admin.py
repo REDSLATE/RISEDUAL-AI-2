@@ -593,6 +593,92 @@ async def allocation_preview(request: Request, total_capital: float = 10000.0):
     }
 
 
+@router.get("/gather-error-rate")
+async def gather_error_rate(
+    request: Request,
+    hours: int = 24,
+    context_prefix: str | None = None,
+):
+    """Aggregate recent structured `log_error` events by `context` tag.
+
+    Every `services.structured_log.log_error` call (which includes every
+    failure unwrapped by `unwrap_gather_result`) is pushed into an
+    in-process rolling buffer — see `services.error_metrics`. This
+    endpoint slices that buffer by window + optional prefix and groups
+    the result so operators can see "which provider is flaking over
+    the last N hours" at a glance.
+
+    Query params:
+      * `hours` — look-back window (default 24, cap 168).
+      * `context_prefix` — optional. Restrict to contexts starting with
+        this string (e.g. `market_data` covers both ticker + crypto;
+        `war_room` scopes to the War Room fetch fan-out).
+
+    Response shape:
+      * `by_context` — ordered list of `{context, count, top_types, last_seen}`,
+        sorted by count desc.
+      * `total_errors` — sum across all contexts in the window.
+      * `window_hours` — echoed back so the UI can label the tile.
+
+    In-memory by design: restarts clear the buffer. That matches the
+    tile's purpose (live operational view), not an audit log.
+    """
+    await _require_admin(request)
+
+    if hours <= 0 or hours > 168:
+        raise HTTPException(
+            status_code=400,
+            detail="hours must be between 1 and 168 (7 days)",
+        )
+
+    from services.error_metrics import snapshot_since
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    events = snapshot_since(cutoff)
+
+    if context_prefix:
+        events = [e for e in events if e["context"].startswith(context_prefix)]
+
+    # Group by context; track total count, top 3 exception types seen,
+    # and most-recent timestamp. Two passes is fine — bounded buffer.
+    from collections import Counter
+    grouped: dict[str, dict] = {}
+    for e in events:
+        ctx = e["context"] or "(none)"
+        slot = grouped.setdefault(ctx, {
+            "context": ctx,
+            "count": 0,
+            "type_counter": Counter(),
+            "last_seen": e["ts"],
+        })
+        slot["count"] += 1
+        slot["type_counter"][e["type"] or "(none)"] += 1
+        if e["ts"] > slot["last_seen"]:
+            slot["last_seen"] = e["ts"]
+
+    by_context = []
+    for slot in grouped.values():
+        by_context.append({
+            "context": slot["context"],
+            "count": slot["count"],
+            "top_types": [
+                {"type": t, "count": n}
+                for t, n in slot["type_counter"].most_common(3)
+            ],
+            "last_seen": slot["last_seen"].isoformat(),
+        })
+    by_context.sort(key=lambda r: r["count"], reverse=True)
+
+    return {
+        "window_hours": hours,
+        "context_prefix": context_prefix,
+        "total_errors": len(events),
+        "distinct_contexts": len(by_context),
+        "by_context": by_context,
+    }
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================

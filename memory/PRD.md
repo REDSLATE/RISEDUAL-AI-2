@@ -661,6 +661,20 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — `/api/admin/gather-error-rate` observability tile
+* **New rolling-counter module** `services/error_metrics.py` — thread-
+  safe bounded deque (MAX_EVENTS=10k, ~1 MB cap). Every `log_error`
+  call now pushes a `{ts, context, type, note, extra}` record.
+  In-process by design; no Mongo writes on the hot path.
+* **New endpoint** `GET /api/admin/gather-error-rate?hours=24&context_prefix=...`
+  groups events by `context`, returning total count, top 3 exception
+  types, and most-recent timestamp per group. Answers "which
+  provider is flaking right now" without needing log-aggregator
+  access.
+* **Safety:** the metric hook is wrapped in `try/except: pass` — a
+  buffer failure can never block log emission. ERROR-only capture;
+  WARNING / INFO are not counted.
+
 ### 2026-02-20 — `market_data_service` migrated to `unwrap_gather_result`
 * **Completes the `asyncio.gather` guard migration started in the prior
   session.** Both `get_ticker_data()` and `get_crypto_data()` now use
