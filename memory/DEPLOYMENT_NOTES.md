@@ -24,6 +24,45 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — `market_data_service.py` migrated to `unwrap_gather_result` (final gather site)
+*Session: continued*
+
+Completes the `asyncio.gather` unwrap migration started last session.
+`market_data_service.py` was the last service file iterating over raw
+`gather(return_exceptions=True)` results with an `isinstance(x, dict)`
+check — a pattern that silently dropped `CancelledError` *and*
+`RuntimeError` with no observability. Both `get_ticker_data()` and
+`get_crypto_data()` now call `unwrap_gather_result` from
+`services.structured_log`, matching the war_room / fred / crew_engine
+shape exactly.
+
+**Behavioural delta:**
+- `CancelledError` during shutdown is still silently dropped (same as
+  before, but now explicit).
+- `RuntimeError` / `ConnectionError` / etc. now emit a single structured
+  `log_error` line per failed symbol with context tags
+  `market_data.ticker` or `market_data.crypto` + the offending
+  `symbol`. Previously these were discarded without a log line.
+
+**Files touched:**
+- `backend/services/market_data_service.py` — 2 gather sites migrated,
+  explicit `list[dict]` annotations added to satisfy the mypy gate.
+- `backend/tests/test_market_data_gather_guard.py` — *new*. Pins the
+  three-tier guard (CancelledError silent / Exception logged / None
+  dropped / valid dict kept) for both ticker and crypto paths. 2 tests,
+  both passing.
+
+**Gate status:**
+- `typecheck.sh`: 69 errors (unchanged baseline).
+- `test_market_data_gather_guard.py` + `test_structured_log.py` +
+  `test_fred_baseexception_guard.py`: 20/20 passing.
+
+This closes the P0 refactor task. There are no remaining
+`gather(return_exceptions=True)` loops in `services/` that use the
+old `isinstance(x, Exception)` pattern.
+
+---
+
 ### 2026-02-20 — Structured-log migration (156 sites) + 2 more CancelledError crash paths fixed
 *Session: continued*
 

@@ -8,6 +8,7 @@ import httpx
 from services.price_provider import get_quote as pp_get_quote, get_crypto_quote as pp_get_crypto_quote
 from services.providerrouter import ProviderRouter
 from services.provider_registry import get_market_data_provider_pool
+from services.structured_log import unwrap_gather_result
 
 logger = logging.getLogger(__name__)
 _rng = _secrets.SystemRandom()
@@ -40,10 +41,18 @@ class MarketDataService:
         """Get ticker data for top stocks (parallel fetch, 150 req/min plan)"""
         symbols = ['SPY', 'VOO', 'QQQ', 'IVV', 'VTI', 'VUG', 'VEA']
         tasks = [self.get_quote(symbol) for symbol in symbols]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        ticker_data = []
-        for quote in results:
-            if isinstance(quote, dict) and quote:
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        ticker_data: list[dict] = []
+        for symbol, raw in zip(symbols, raw_results):
+            # Canonical `asyncio.gather` unwrap — silent on
+            # CancelledError, structured log_error on other
+            # BaseExceptions, None-safe fallback to skip.
+            quote = unwrap_gather_result(
+                raw, None,
+                logger, "market_data.ticker", "quote fetch failed",
+                symbol=symbol,
+            )
+            if quote:
                 ticker_data.append({
                     'symbol': quote['symbol'],
                     'price': quote['price'],
@@ -68,10 +77,17 @@ class MarketDataService:
         cryptos = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE',
                     'AVAX', 'DOT', 'MATIC', 'LINK', 'SHIB', 'LTC', 'UNI', 'ATOM']
         tasks = [self.get_crypto_quote(crypto) for crypto in cryptos]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        crypto_data = []
-        for quote in results:
-            if isinstance(quote, dict) and quote:
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        crypto_data: list[dict] = []
+        for symbol, raw in zip(cryptos, raw_results):
+            # Canonical `asyncio.gather` unwrap — see
+            # `services.structured_log.unwrap_gather_result`.
+            quote = unwrap_gather_result(
+                raw, None,
+                logger, "market_data.crypto", "crypto quote fetch failed",
+                symbol=symbol,
+            )
+            if quote:
                 crypto_data.append(quote)
         return crypto_data
 

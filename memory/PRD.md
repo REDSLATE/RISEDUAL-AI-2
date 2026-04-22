@@ -661,6 +661,19 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — `market_data_service` migrated to `unwrap_gather_result`
+* **Completes the `asyncio.gather` guard migration started in the prior
+  session.** Both `get_ticker_data()` and `get_crypto_data()` now use
+  `unwrap_gather_result` from `services.structured_log`, matching the
+  war_room / fred / crew_engine pattern. `CancelledError` stays silent,
+  `Exception`s now emit a structured `log_error` line (previously
+  discarded); ticker path tagged `context=market_data.ticker`, crypto
+  tagged `context=market_data.crypto`.
+* **New test** `tests/test_market_data_gather_guard.py` (2 tests, both
+  passing) pins the three-tier guard for both paths.
+* **mypy gate** holds steady at baseline 69 errors (explicit
+  `list[dict]` annotations added for `ticker_data` / `crypto_data`).
+
 ### 2026-04-19 — Sliding-TTL price cache + prediction dedup
 * **New service `services/sliding_cache.py`.** Thread-safe, process-local,
   O(1) get/set with sliding TTL — each access resets expiry. Shared across
