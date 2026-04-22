@@ -54,6 +54,18 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### P1 RESOLVED: Alpaca Cover-Order Verification (Feb 20, 2026)
+- Verified live against the paper account: **0 open shorts**,
+  **0 open positions**, **0 orphaned pending orders**, equity
+  $102,027.38 (net positive). Covers appear to have filled cleanly
+  at market open.
+- Built `GET /api/admin/alpaca-health` — reusable admin endpoint
+  that reports account/position/order state + a boolean verdict
+  (`covers_clean`, `no_orphan_orders`, `trading_enabled`) so any
+  future cover workflow can be re-verified with one click.
+- 7 auth-matrix + shape-invariant tests; the live broker path is
+  smoke-tested per session (documented in DEPLOYMENT_NOTES.md).
+
 ### mypy Baseline 136 → 98 (COMPLETED Feb 20, 2026)
 - Reduced the mypy baseline by 28% (38 errors) via three safe
   sweeps: `types-requests` stubs install, 16 var-annotated fixes,

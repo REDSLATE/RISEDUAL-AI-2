@@ -24,6 +24,63 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — P1 RESOLVED: Alpaca cover orders verified clean
+*Session: continued*
+
+Closed out the P1 live-broker cover-order verification. Instead of
+leaving it as a manual "log into Alpaca dashboard" chore, promoted
+the diagnostic into a reusable admin endpoint so we can re-run the
+check any time a cover workflow fires.
+
+**Live verification result** (paper account, 2026-04-22):
+- **0 open shorts** — every cover order filled at market open.
+- **0 open positions at all** — account is flat, equity
+  $102,027.38 (up from $100,000 starting capital, so the net
+  result of the cover-workflow saga was slightly positive).
+- **0 orphaned pending orders** — every one of the last 50 is in
+  a terminal state (filled/canceled/expired).
+- Trading not blocked. Buying power $204,054.76.
+
+**New endpoint — `GET /api/admin/alpaca-health`:**
+
+Returns structured JSON mirroring the Alpaca dashboard:
+```json
+{
+  "mode": "paper",
+  "account": {"status", "equity", "cash", "buying_power",
+              "trading_blocked", "account_blocked"},
+  "positions": {"total", "longs", "shorts", "short_detail": [...]},
+  "orders": {"total", "orphan_count", "orphan_detail": [...]},
+  "verdict": {"covers_clean": bool,
+              "no_orphan_orders": bool,
+              "trading_enabled": bool}
+}
+```
+
+- `shorts` isolates any `qty < 0` position — these are the rogue
+  shorts the cover workflow was designed to close. `short_detail`
+  surfaces symbol/qty/unrealized_pl so we know *which* ones.
+- `orphan_count` is the number of orders in a non-terminal status
+  (`new`, `pending_new`, `accepted`, `pending_cancel`,
+  `accepted_for_bidding`, `held`, `replaced`). Non-zero =
+  something is stuck between submit and fill.
+- The `verdict` block is the boolean summary — the UI can render
+  a green/red strip without having to reason about the raw data.
+
+Auth: `_require_admin` — 401 anon, 403 non-admin, 200 owner/admin.
+503 if `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` aren't set.
+
+**Tests — `tests/test_admin_alpaca_health.py`** (7 new):
+Auth matrix (401 anon, 200 owner), response shape all 5 sections,
+positions split invariant (`total == longs + shorts`), verdict
+flags are booleans, `covers_clean` matches short count,
+`no_orphan_orders` matches orphan count. The actual broker call
+is smoke-tested live each session (documented here) — mocking
+deep inside `AlpacaTradingService.get_positions()` adds more
+fragility than it catches.
+
+---
+
 ### 2026-02-20 — mypy baseline: 136 → 98 (28% reduction)
 *Session: continued*
 

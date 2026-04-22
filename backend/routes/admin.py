@@ -437,6 +437,91 @@ async def tier3_readiness(request: Request, days: int = 30):
 # CAPITAL ALLOCATION PREVIEW (fleet-wide)
 # ============================================================
 
+@router.get("/alpaca-health")
+async def alpaca_health(request: Request):
+    """Live diagnostic against the Alpaca account behind `ALPACA_API_KEY`.
+
+    Returns:
+      * account: status, equity, cash, trading_blocked
+      * positions: split into longs/shorts + full detail (any short
+        is surfaced explicitly — these are the "rogue shorts" the
+        cover-order workflow was designed to close)
+      * orders: last 50, sliced by terminal vs non-terminal state
+        (pending/new/accepted/etc are flagged as "orphans")
+      * verdict: high-level boolean summary (`covers_clean`,
+        `no_orphan_orders`) so the UI can render a green/red strip.
+
+    This is the programmatic equivalent of logging into the Alpaca
+    dashboard — use it after cover-order workflows to confirm no
+    shorts survived and no orders are stuck in a non-terminal state.
+    """
+    await _require_admin(request)
+
+    import os
+    from services.broker_service import AlpacaTradingService
+
+    api_key = os.environ.get("ALPACA_API_KEY")
+    api_secret = os.environ.get("ALPACA_SECRET_KEY")
+    base_url = os.environ.get("ALPACA_BASE_URL", "")
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=503, detail="Alpaca credentials not configured")
+
+    paper = "paper" in base_url.lower()
+    svc = AlpacaTradingService(api_key=api_key, api_secret=api_secret, paper=paper)
+
+    account = svc.get_account() or {}
+    positions = svc.get_positions() or []
+    orders = svc.get_orders(status="all", limit=50) or []
+
+    longs = [p for p in positions if float(p.get("qty", 0)) > 0]
+    shorts = [p for p in positions if float(p.get("qty", 0)) < 0]
+
+    # Non-terminal statuses that indicate an orphaned order.
+    NON_TERMINAL = {"new", "pending_new", "accepted", "pending_cancel",
+                    "accepted_for_bidding", "held", "replaced"}
+    orphans = [o for o in orders if o.get("status") in NON_TERMINAL]
+
+    return {
+        "mode": "paper" if paper else "live",
+        "account": {
+            "status": account.get("status"),
+            "equity": account.get("equity"),
+            "cash": account.get("cash"),
+            "buying_power": account.get("buying_power"),
+            "trading_blocked": account.get("trading_blocked"),
+            "account_blocked": account.get("account_blocked"),
+        },
+        "positions": {
+            "total": len(positions),
+            "longs": len(longs),
+            "shorts": len(shorts),
+            "short_detail": [
+                {"symbol": p.get("symbol"), "qty": p.get("qty"),
+                 "unrealized_pl": p.get("unrealized_pl"),
+                 "market_value": p.get("market_value")}
+                for p in shorts
+            ],
+        },
+        "orders": {
+            "total": len(orders),
+            "orphan_count": len(orphans),
+            "orphan_detail": [
+                {"symbol": o.get("symbol"), "side": o.get("side"),
+                 "qty": o.get("qty"), "filled_qty": o.get("filled_qty"),
+                 "status": o.get("status"),
+                 "submitted_at": o.get("submitted_at")}
+                for o in orphans
+            ],
+        },
+        "verdict": {
+            "covers_clean": len(shorts) == 0,
+            "no_orphan_orders": len(orphans) == 0,
+            "trading_enabled": not (account.get("trading_blocked")
+                                    or account.get("account_blocked")),
+        },
+    }
+
+
 @router.get("/allocation-preview")
 async def allocation_preview(request: Request, total_capital: float = 10000.0):
     """Preview how a given USD pool would be split across the enabled
