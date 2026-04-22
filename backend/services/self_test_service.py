@@ -21,6 +21,7 @@ import logging
 import os
 import pathlib
 from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ def _warn(name: str, error: str) -> dict:
     return {"name": name, "status": "WARN", "error": error}
 
 
-async def _check_db_ping(db) -> dict:
+async def _check_db_ping(db: Any) -> dict:
     if db is None:
         return _fail("db_ping", "db reference is None")
     try:
@@ -91,7 +92,7 @@ async def _check_db_ping(db) -> dict:
         return _fail("db_ping", str(e))
 
 
-async def _check_collections(db) -> dict:
+async def _check_collections(db: Any) -> dict:
     if db is None:
         return _fail("collections", "db reference is None")
     try:
@@ -108,7 +109,7 @@ async def _check_collections(db) -> dict:
         return _fail("collections", str(e))
 
 
-async def _check_datetime_comparisons(db) -> dict:
+async def _check_datetime_comparisons(db: Any) -> dict:
     """Reproduce the 2026-02-19 Security Audit crash in-process.
 
     Iterates up to 20 rows of `login_attempts` and runs the exact
@@ -167,7 +168,7 @@ def _check_pricing_consistency() -> dict:
     return _pass("pricing", "digest_service + payment_service on $55 Pro")
 
 
-def _check_scheduler(scheduler) -> dict:
+def _check_scheduler(scheduler: Any) -> dict:
     if scheduler is None:
         return _warn("scheduler", "scheduler reference not wired")
     try:
@@ -180,7 +181,7 @@ def _check_scheduler(scheduler) -> dict:
         return _fail("scheduler", str(e))
 
 
-async def run_self_test(db, scheduler=None) -> dict:
+async def run_self_test(db: Any, scheduler: Any = None) -> dict:
     """Run every registered check and return a structured report."""
     checks: list[dict] = [
         await _check_db_ping(db),

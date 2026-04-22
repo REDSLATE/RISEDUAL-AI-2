@@ -4,15 +4,20 @@ Uses Stripe Checkout Sessions for subscriptions and top-ups.
 Webhooks grant credits and update subscription status.
 All state persisted to MongoDB (not in-memory).
 """
+from __future__ import annotations
+
 import os
 import logging
+from typing import Any, Optional
+
 import stripe
+from bson import ObjectId
 from datetime import datetime, timezone
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "") or os.environ.get("STRIPE_API_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -34,12 +39,12 @@ MONTHLY_CREDITS = {"free": 50, "starter": 3000, "pro": 15000, "pro_max": 50000}
 TOPUP_CREDITS = {"topup_1000": 1000, "topup_2000": 2000, "topup_5000": 5000, "topup_10000": 10000}
 
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global db
     db = database
 
 
-def _init_stripe():
+def _init_stripe() -> None:
     if STRIPE_SECRET_KEY:
         stripe.api_key = STRIPE_SECRET_KEY
 
@@ -198,7 +203,7 @@ async def process_webhook(payload: bytes, signature: str) -> dict:
     return {"ok": True, "event_id": event.id, "type": etype}
 
 
-async def _handle_checkout_completed(obj: dict):
+async def _handle_checkout_completed(obj: dict) -> None:
     user_id = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
     meta = obj.get("metadata") or {}
     kind = meta.get("kind")
@@ -218,7 +223,7 @@ async def _handle_checkout_completed(obj: dict):
             await _activate_subscription(user_id, plan, obj.get("subscription"))
 
 
-async def _handle_invoice_paid(obj: dict):
+async def _handle_invoice_paid(obj: dict) -> None:
     customer_id = obj.get("customer")
     lines = obj.get("lines", {}).get("data", [])
     plan = None
@@ -238,7 +243,7 @@ async def _handle_invoice_paid(obj: dict):
             logger.info(f"Stripe invoice.paid: {plan} credits for {user_id}")
 
 
-async def _handle_subscription_update(obj: dict):
+async def _handle_subscription_update(obj: dict) -> None:
     customer_id = obj.get("customer")
     items = (obj.get("items") or {}).get("data") or [{}]
     price_id = (items[0].get("price") or {}).get("id") if items else None
@@ -250,7 +255,7 @@ async def _handle_subscription_update(obj: dict):
             await _set_user_plan(user_id, plan, obj.get("status", "active"), obj.get("id"))
 
 
-async def _handle_subscription_deleted(obj: dict):
+async def _handle_subscription_deleted(obj: dict) -> None:
     customer_id = obj.get("customer")
     if customer_id:
         user_id = await _find_user_by_customer(customer_id)
@@ -258,7 +263,7 @@ async def _handle_subscription_deleted(obj: dict):
             await _set_user_plan(user_id, "free", "canceled", obj.get("id"))
 
 
-async def _handle_payment_failed(obj: dict):
+async def _handle_payment_failed(obj: dict) -> None:
     customer_id = obj.get("customer")
     if customer_id:
         user_id = await _find_user_by_customer(customer_id)
@@ -269,14 +274,14 @@ async def _handle_payment_failed(obj: dict):
             )
 
 
-async def _activate_subscription(user_id: str, plan: str, stripe_sub_id: str = None):
+async def _activate_subscription(user_id: str, plan: str, stripe_sub_id: Optional[str] = None) -> None:
     """Activate a subscription: update user plan + grant monthly credits."""
     await _set_user_plan(user_id, plan, "active", stripe_sub_id)
     from services.credit_service import grant_plan_credits
     await grant_plan_credits(user_id, plan)
 
 
-async def _set_user_plan(user_id: str, plan: str, status: str, stripe_sub_id: str = None):
+async def _set_user_plan(user_id: str, plan: str, status: str, stripe_sub_id: Optional[str] = None) -> None:
     """Update user's subscription status in MongoDB."""
     if db is None:
         return
@@ -301,8 +306,7 @@ async def _find_user_by_customer(stripe_customer_id: str) -> str:
     return doc["user_id"] if doc else None
 
 
-def _to_oid(user_id: str):
-    from bson import ObjectId
+def _to_oid(user_id: str) -> ObjectId | str:
     try:
         return ObjectId(user_id)
     except Exception:

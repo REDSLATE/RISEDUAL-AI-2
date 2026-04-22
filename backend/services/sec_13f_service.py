@@ -20,6 +20,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 
@@ -126,7 +127,7 @@ def _normalize(name: str) -> str:
     return n
 
 
-async def _issuer_to_ticker(issuer: str, cusip: str = "", db=None) -> str | None:
+async def _issuer_to_ticker(issuer: str, cusip: str = "", db: Any = None) -> str | None:
     """Best-effort map an issuer name (or CUSIP via OpenFIGI cache) to a ticker.
 
     Preference order:
@@ -320,7 +321,7 @@ def _normalize_values(holdings: list[dict]) -> list[dict]:
     return holdings
 
 
-async def refresh_institution(db, cik: str, institution_name: str, max_filings: int = 2) -> dict:
+async def refresh_institution(db: Any, cik: str, institution_name: str, max_filings: int = 2) -> dict:
     """Refresh latest N 13F filings for an institution into MongoDB.
 
     Returns a dict summarizing filings processed.
@@ -389,7 +390,7 @@ async def refresh_institution(db, cik: str, institution_name: str, max_filings: 
     return result
 
 
-async def refresh_all_institutions(db, max_filings: int = 2) -> dict:
+async def refresh_all_institutions(db: Any, max_filings: int = 2) -> dict:
     """Refresh all tracked institutions. Returns a summary."""
     summary = {"total": len(TOP_INSTITUTIONS), "success": 0, "errors": 0, "institutions": []}
     for name, cik in TOP_INSTITUTIONS.items():
@@ -406,7 +407,7 @@ async def refresh_all_institutions(db, max_filings: int = 2) -> dict:
     return summary
 
 
-async def get_institution_holdings(db, cik: str, limit: int = 50) -> dict:
+async def get_institution_holdings(db: Any, cik: str, limit: int = 50) -> dict:
     """Get an institution's latest-quarter holdings, aggregated by CUSIP, sorted by value desc."""
     meta = await db.sec_13f_filings.find_one(
         {"cik": cik}, sort=[("period_end", -1)],
@@ -447,7 +448,7 @@ async def get_institution_holdings(db, cik: str, limit: int = 50) -> dict:
     return {"cik": cik, "filing": meta, "holdings": holdings}
 
 
-async def get_holders_of_symbol(db, symbol: str, limit: int = 50) -> dict:
+async def get_holders_of_symbol(db: Any, symbol: str, limit: int = 50) -> dict:
     """Find all tracked institutions holding a given symbol (latest quarter).
 
     Strategy:
@@ -534,7 +535,7 @@ async def get_holders_of_symbol(db, symbol: str, limit: int = 50) -> dict:
     }
 
 
-async def get_quarterly_changes(db, cik: str, limit: int = 30) -> dict:
+async def get_quarterly_changes(db: Any, cik: str, limit: int = 30) -> dict:
     """Compute QoQ changes for an institution: new / exited / increased / decreased positions."""
     filings = await db.sec_13f_filings.find(
         {"cik": cik}, {"_id": 0}, sort=[("period_end", -1)]
@@ -620,7 +621,7 @@ async def get_quarterly_changes(db, cik: str, limit: int = 30) -> dict:
     }
 
 
-async def compute_smart_money_score(db, symbol: str) -> dict:
+async def compute_smart_money_score(db: Any, symbol: str) -> dict:
     """Smart Money Score (0-100) for a symbol, based on QoQ institutional flow.
 
     Algorithm:
@@ -775,7 +776,7 @@ async def compute_smart_money_score(db, symbol: str) -> dict:
     }
 
 
-async def compute_smart_money_scores_batch(db, symbols: list[str]) -> dict:
+async def compute_smart_money_scores_batch(db: Any, symbols: list[str]) -> dict:
     """Batch version — returns {symbol: score_dict}."""
     out: dict[str, dict] = {}
     for s in symbols[:50]:
@@ -787,7 +788,7 @@ async def compute_smart_money_scores_batch(db, symbols: list[str]) -> dict:
     return out
 
 
-async def snapshot_smart_money_scores(db, symbols: list[str]) -> list[dict]:
+async def snapshot_smart_money_scores(db: Any, symbols: list[str]) -> list[dict]:
     """Compute Smart Money Scores for ``symbols`` and persist one row per symbol
     per UTC date in ``smart_money_scores`` (idempotent via upsert on {symbol, date}).
 
@@ -840,7 +841,7 @@ async def snapshot_smart_money_scores(db, symbols: list[str]) -> list[dict]:
     return results
 
 
-async def detect_smart_money_shifts(db, symbols: list[str], threshold: int = 10) -> int:
+async def detect_smart_money_shifts(db: Any, symbols: list[str], threshold: int = 10) -> int:
     """Snapshot SMS for each symbol, diff against previous snapshot, and emit
     alerts + VAPID pushes when ``|Δ| >= threshold``. Returns the number of
     alerts created.
@@ -916,7 +917,7 @@ async def detect_smart_money_shifts(db, symbols: list[str], threshold: int = 10)
     return alerts_created
 
 
-async def scan_and_alert(db) -> dict:
+async def scan_and_alert(db: Any) -> dict:
     """Daily scheduler job: refresh all tracked institutions and emit alerts for
     notable activity on symbols present in any user's watchlist.
 

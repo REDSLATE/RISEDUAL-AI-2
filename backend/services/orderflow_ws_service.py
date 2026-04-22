@@ -12,6 +12,7 @@ import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any
 
 
 import numpy as np
@@ -53,11 +54,11 @@ class OrderFlowStream:
         self._lock = asyncio.Lock()
         self._db = None  # Set by server.py for push notifications
 
-    def set_db(self, db):
+    def set_db(self, db: Any) -> None:
         """Attach MongoDB reference for push notifications."""
         self._db = db
 
-    async def subscribe(self, symbol: str, queue: asyncio.Queue):
+    async def subscribe(self, symbol: str, queue: asyncio.Queue) -> None:
         """Add a subscriber queue for a symbol. Starts Binance stream if first."""
         key = symbol.upper()
         async with self._lock:
@@ -66,7 +67,7 @@ class OrderFlowStream:
                 self._tasks[key] = asyncio.create_task(self._run_stream(key))
                 logger.info(f"Started Binance WS stream for {key}")
 
-    async def unsubscribe(self, symbol: str, queue: asyncio.Queue):
+    async def unsubscribe(self, symbol: str, queue: asyncio.Queue) -> None:
         """Remove subscriber. Stops Binance stream if last subscriber leaves."""
         key = symbol.upper()
         async with self._lock:
@@ -83,7 +84,7 @@ class OrderFlowStream:
         """Return cached snapshot history for initial load."""
         return list(self._history.get(symbol.upper(), []))
 
-    async def _run_stream(self, symbol: str):
+    async def _run_stream(self, symbol: str) -> None:
         """Connect to Binance depth stream with auto-reconnect."""
         binance_sym = _binance_symbol(symbol)
         stream_url = f"{BINANCE_WS_BASE}/{binance_sym}@depth20@1000ms"
@@ -246,7 +247,7 @@ class OrderFlowStream:
 
         return events
 
-    async def _trigger_whale_alerts(self, symbol: str, whale_walls: list):
+    async def _trigger_whale_alerts(self, symbol: str, whale_walls: list) -> None:
         """Send push notifications for whale walls (intensity >= 85), with cooldown."""
         if self._db is None:
             return
@@ -270,14 +271,14 @@ class OrderFlowStream:
             except Exception as e:
                 logger.warning(f"Whale alert failed: {e}")
 
-    def _cache_snapshot(self, symbol: str, snapshot: dict):
+    def _cache_snapshot(self, symbol: str, snapshot: dict) -> None:
         """Store in rolling history buffer."""
         history = self._history[symbol]
         history.append(snapshot)
         if len(history) > MAX_HISTORY:
             self._history[symbol] = history[-MAX_HISTORY:]
 
-    async def _broadcast(self, symbol: str, snapshot: dict):
+    async def _broadcast(self, symbol: str, snapshot: dict) -> None:
         """Send snapshot to all subscribers for this symbol."""
         msg = json.dumps(snapshot)
         dead_queues = []

@@ -62,7 +62,7 @@ async def _routed_send(to: list, subject: str, html: str) -> bool:
         logger.info(f"Email skipped (no providers configured): {subject} to {to}")
         return False
 
-    async def _dispatch(provider: dict):
+    async def _dispatch(provider: dict) -> dict:
         p = provider.get("provider")
         key = provider.get("api_key")
         if p == "resend":
@@ -210,7 +210,7 @@ Dive in and explore everything {APP_NAME} has to offer. Your Pro trial starts no
     return _base_html(content, preheader=f"Your 7-day Pro trial is active, {name}. Let's get started.")
 
 
-async def send_referral_signup_email(referrer_email: str, referrer_name: str, referred_email: str):
+async def send_referral_signup_email(referrer_email: str, referrer_name: str, referred_email: str) -> bool:
     """Notify referrer when someone signs up via their link."""
     return await _routed_send(
         [referrer_email],
@@ -219,7 +219,7 @@ async def send_referral_signup_email(referrer_email: str, referrer_name: str, re
     )
 
 
-async def send_reward_earned_email(referrer_email: str, referrer_name: str, referred_email: str):
+async def send_reward_earned_email(referrer_email: str, referrer_name: str, referred_email: str) -> bool:
     """Notify referrer when they earn a free month."""
     return await _routed_send(
         [referrer_email],
@@ -254,7 +254,7 @@ If the button doesn't work, copy and paste this link into your browser:
     return _base_html(content, preheader=f"Reset your {APP_NAME} password. Link expires in 1 hour.")
 
 
-async def send_password_reset_email(user_email: str, reset_token: str, origin_url: str = None):
+async def send_password_reset_email(user_email: str, reset_token: str, origin_url: str | None = None) -> bool:
     """Send a password reset email with a secure link."""
     base_url = origin_url or os.environ.get('FRONTEND_URL', APP_URL)
     reset_url = f"{base_url}?reset_token={reset_token}"
@@ -333,9 +333,9 @@ async def send_toxic_spikes_email(
     obsolete_count: int,
     total_before: int,
     total_after: int,
-    spike_details: list = None,
+    spike_details: list | None = None,
     persistence_tag: str = "",
-):
+) -> bool:
     """Send toxic spikes alert email after nightly cleanup detects bad
     predictions. `persistence_tag` is appended to the subject when the
     same alert has been recurring on consecutive days (e.g. " —
@@ -361,7 +361,7 @@ async def send_toxic_spikes_email(
         return False
 
 
-async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str):
+async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str) -> bool:
     """Send welcome email to newly referred user."""
     return await _routed_send(
         [user_email],

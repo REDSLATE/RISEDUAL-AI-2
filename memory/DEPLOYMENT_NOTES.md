@@ -24,6 +24,49 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Type-hint push round 3 (services/ 83.8% → 88.4%)
+*Session: continued*
+
+Hit the 5 worst-offender files identified by the coverage sweep:
+
+**Files annotated (100% each now):**
+- `sec_13f_service.py` — 11 missing (`_issuer_to_ticker`,
+  `refresh_institution`, `refresh_all_institutions`,
+  `get_institution_holdings`, `get_holders_of_symbol`,
+  `get_quarterly_changes`, `compute_smart_money_score`,
+  `compute_smart_money_scores_batch`, `snapshot_smart_money_scores`,
+  `detect_smart_money_shifts`, `scan_and_alert`).
+- `stripe_billing_service.py` — 10 missing (module-level `db: Any`,
+  `set_db`, `_init_stripe`, all 5 `_handle_*` webhook handlers,
+  `_activate_subscription`, `_set_user_plan`, `_to_oid`). Added
+  `from __future__ import annotations` + hoisted `ObjectId` import
+  to module level.
+- `orderflow_ws_service.py` — 7 missing (`set_db`, `subscribe`,
+  `unsubscribe`, `_run_stream`, `_trigger_whale_alerts`,
+  `_cache_snapshot`, `_broadcast`).
+- `email_service.py` — 6 missing (`_dispatch`,
+  `send_referral_signup_email`, `send_reward_earned_email`,
+  `send_password_reset_email`, `send_toxic_spikes_email`,
+  `send_welcome_referral_email`). Normalised `list = None` /
+  `str = None` to `list | None = None` / `str | None = None`
+  while I was there.
+- `self_test_service.py` — 5 missing (`_check_db_ping`,
+  `_check_collections`, `_check_datetime_comparisons`,
+  `_check_scheduler`, `run_self_test`).
+
+**Verified:**
+- Ruff clean across `services/`.
+- Backend restart clean (all 356 routes still register; no import
+  errors from the typing hoists).
+- Full 7-suite regression: 116/116 green.
+
+**Coverage trajectory this session:**
+- Handoff baseline: 72%
+- After round 1 (22 modules): 80.6%
+- After round 2 (`backtester_service` + `broker_service`): 83.8%
+- **After round 3 (this commit, 5 files): 88.4%** (+16 pp total).
+
+
 ### 2026-02-20 — Polygon.io adapter prototype (rate-limit relief Phase 1)
 *Session: continued*
 
