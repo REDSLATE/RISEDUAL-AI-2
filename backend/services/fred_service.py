@@ -97,7 +97,12 @@ async def get_macro_indicators() -> dict:
     categories: dict[str, Any] = {}
 
     for spec, result in zip(MACRO_SERIES, results):
-        if isinstance(result, Exception) or result is None:
+        # `asyncio.gather(return_exceptions=True)` can surface `BaseException`
+        # subclasses (e.g. `SystemExit`, `KeyboardInterrupt`) not just
+        # `Exception`. Using the narrower `Exception` was a real bug —
+        # those would slip through and crash at `result.get(...)`. Rare
+        # but it *was* reachable under container SIGTERM during startup.
+        if isinstance(result, BaseException) or result is None:
             continue
 
         obs = result.get("observations", [])
@@ -378,7 +383,10 @@ async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> di
     # Build vintage maps
     vintage_results = []
     for vdate, vdata in zip(vintage_dates, vintages):
-        if isinstance(vdata, Exception) or vdata is None:
+        # See note in `get_macro_indicators` — `Exception` doesn't narrow
+        # `BaseException`, so `SystemExit`/`KeyboardInterrupt` from a
+        # `gather(return_exceptions=True)` would crash at `vdata.get(...)`.
+        if isinstance(vdata, BaseException) or vdata is None:
             vintage_results.append({"date": vdate, "observations": [], "revisions": []})
             continue
 

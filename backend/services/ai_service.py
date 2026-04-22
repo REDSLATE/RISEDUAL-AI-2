@@ -111,7 +111,14 @@ class AIService:
                 system=system,
                 messages=[{"role": "user", "content": messages_content}],
             )
-            return "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+            # Anthropic returns a union of 12 content-block types
+            # (TextBlock, ThinkingBlock, ToolUseBlock, ...). Narrow via
+            # isinstance so mypy sees that only TextBlock has `.text`.
+            # Runtime-equivalent to the old
+            # `getattr(block, "type", None) == "text"` filter.
+            from anthropic.types import TextBlock
+            return "".join(block.text for block in resp.content
+                           if isinstance(block, TextBlock))
 
         if p == "openrouter":
             import httpx

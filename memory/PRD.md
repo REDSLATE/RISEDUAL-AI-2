@@ -54,6 +54,23 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### [union-attr] Crash-Path Sweep (COMPLETED Feb 20, 2026)
+- Audited and fixed all 13 mypy `[union-attr]` errors. **Found one
+  real reachable runtime bug**: FRED service's
+  `asyncio.gather(return_exceptions=True)` result-handling used
+  `isinstance(result, Exception)` as the skip-guard, but
+  `asyncio.CancelledError` is a `BaseException` subclass (not
+  `Exception`) since Python 3.8. Cancelled tasks slipped past the
+  guard and crashed at `result.get("observations", [])` with
+  `AttributeError`. Widened to `BaseException`.
+- 2 defensive hardening fixes: BeautifulSoup `href` attribute
+  isinstance guards (scraping resilience), Anthropic content-block
+  `isinstance(TextBlock)` narrowing (annotation clarity).
+- 3 regression tests (`tests/test_fred_baseexception_guard.py`)
+  reproduce the `CancelledError` crash and verify the fix. Confirmed
+  to FAIL on the old code before the widening.
+- mypy baseline 98 → **85** (`[union-attr]` category: 13 → 0).
+
 ### P1 RESOLVED: Alpaca Cover-Order Verification (Feb 20, 2026)
 - Verified live against the paper account: **0 open shorts**,
   **0 open positions**, **0 orphaned pending orders**, equity

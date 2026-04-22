@@ -139,6 +139,13 @@ class FinancialScrapingService:
                 link = article.find('a')
                 if link:
                     href = link.get('href', '')
+                    # BeautifulSoup can return a list for multi-value
+                    # attributes (e.g. `class`). `href` is single-valued in
+                    # HTML, but scraping is fragile — skip malformed links
+                    # defensively so a one-off markup change from WSJ can't
+                    # crash the whole news pipeline with `AttributeError`.
+                    if not isinstance(href, str):
+                        continue
                     full_url = href if href.startswith('http') else 'https://www.wsj.com' + href
                     articles.append({
                         'source': 'Wall Street Journal',
@@ -164,6 +171,9 @@ class FinancialScrapingService:
                 headline = article.find('a')
                 if headline:
                     href = headline.get('href', '')
+                    # See `_scrape_wsj` — defensive isinstance guard.
+                    if not isinstance(href, str):
+                        continue
                     full_url = href if href.startswith('http') else 'https://www.bloomberg.com' + href
                     articles.append({
                         'source': 'Bloomberg',
@@ -212,6 +222,9 @@ class FinancialScrapingService:
                 link = article.find('a')
                 if link:
                     href = link.get('href', '')
+                    # See `_scrape_wsj` — defensive isinstance guard.
+                    if not isinstance(href, str):
+                        continue
                     full_url = href if href.startswith('http') else 'https://www.theepochtimes.com' + href
                     articles.append({
                         'source': 'Epoch Times',

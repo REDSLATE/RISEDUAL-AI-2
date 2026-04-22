@@ -24,6 +24,77 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — [union-attr] sweep: 13 potential crash paths closed
+*Session: continued*
+
+Full audit and fix pass of every `[union-attr]` error in the mypy
+baseline. Treated as a bug hunt (crash-path discovery), not cleanup.
+**Found one real, reachable bug** in the middle of the sweep.
+
+**7 unique call sites, 3 distinct problems:**
+
+**1. `ai_service.py:114` — Anthropic content-block union (1 site, 12 errors)**
+Old: filter via `getattr(block, "type", None) == "text"` + `.text`.
+Logically correct — only `TextBlock` has `type == "text"` — but
+mypy can't see that, so all 12 union members flagged.
+Fix: `isinstance(block, TextBlock)` narrowing (imported from
+`anthropic.types`). Runtime-equivalent to the old guard.
+Not a bug — annotation clarity only.
+
+**2. `financial_scraping_service.py:142, 167, 215` — BeautifulSoup attribute
+type**
+Old: `href = link.get('href', '')` then `href.startswith('http')`.
+BeautifulSoup's `.get()` returns `str | list | None` depending on
+the tag attribute type. `href` is single-valued in HTML so the
+crash can't fire *today*, but scraping is fragile: one upstream
+markup change + mypy's warning would become a real production
+`AttributeError`.
+Fix: defensive `if not isinstance(href, str): continue` — drops
+malformed links instead of crashing the whole pipeline.
+Not a *current* bug, but closed a latent reliability gap.
+
+**3. 🐛 REAL BUG — `fred_service.py:103, 386, 405` — BaseException narrowing**
+Old: `if isinstance(result, Exception) or result is None: continue`
+after `asyncio.gather(..., return_exceptions=True)`.
+
+The bug: `asyncio.CancelledError` has been a **`BaseException`
+subclass since Python 3.8**, not `Exception`. With
+`return_exceptions=True`, `CancelledError` instances *do* land in
+the result list (unlike `SystemExit`/`KeyboardInterrupt` which
+propagate out). The old `isinstance(..., Exception)` guard did not
+narrow them — they slipped past and crashed at
+`result.get("observations", [])` with:
+
+    AttributeError: 'CancelledError' object has no attribute 'get'
+
+Reachable any time a concurrent FRED fetch task is cancelled
+mid-flight — FastAPI request shutdown, a manual `Task.cancel()`, or
+ASGI timeout.
+
+Fix: widen the guard to `isinstance(..., BaseException)`. One-word
+change; two instances (main indicator loop + vintage-revision
+loop).
+
+**Regression test — `tests/test_fred_baseexception_guard.py`** (3 tests):
+- `test_get_macro_indicators_survives_cancelled_error_in_gather_result`
+   — injects a real `asyncio.CancelledError` into a patched
+   `asyncio.gather` and asserts the endpoint returns a clean
+   `{indicators: []}` instead of crashing. **Confirmed** to reproduce
+   the original `AttributeError` when the fix is temporarily
+   reverted.
+- Sanity: `test_..._still_handles_plain_exception` (regular
+  `ValueError` still skipped) + `test_..._skips_none_results`
+  (`None` in results still handled).
+
+**mypy baseline:** 98 → **85** (13 `[union-attr]` errors resolved,
+all gone; not just silenced — each was investigated and the root
+cause addressed).
+
+**Regression:** 270/270 tests passing across the trading-engine,
+admin, FRED, allocator, and portfolio test surfaces. Ruff clean.
+
+---
+
 ### 2026-02-20 — P1 RESOLVED: Alpaca cover orders verified clean
 *Session: continued*
 
