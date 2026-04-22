@@ -75,24 +75,47 @@ Fix: widen the guard to `isinstance(..., BaseException)`. One-word
 change; two instances (main indicator loop + vintage-revision
 loop).
 
-**Refinement — three-tier guard with observability:**
+**Refinement — three-tier guard with structured observability:**
 Naïve `BaseException` widening swallows everything, including real
 errors that ops would want to see. Final shape:
 ```python
 if isinstance(result, asyncio.CancelledError):
-    continue                          # silent — shutdown noise
+    continue                                          # silent — shutdown noise
 if isinstance(result, BaseException):
-    logger.warning("[fred] ... %r", spec, result)  # logged — real error
+    log_warning(logger, {                             # structured — real error
+        "error": str(result),
+        "type": type(result).__name__,
+        "context": "fred_fetch",
+        "spec_id": spec.get("id"),
+    })
     continue
 if result is None:
-    continue                          # silent — empty fetch
+    continue                                          # silent — empty fetch
 # result narrows to dict here; .get() is safe
 ```
-`CancelledError` stays silent (expected during FastAPI shutdown,
-logging would spam). Everything else gets a warning with the
-series-id context — so drift-detection and log aggregators can
-tell when an upstream series starts failing. The `None` branch is
-preserved for empty-response short-circuit.
+
+**New shared helper — `services/structured_log.py`:**
+Thin wrappers around stdlib `logging` (`log_warning`, `log_error`,
+`log_info`) that accept a dict payload and emit it twice:
+
+1. **Human-readable one-liner** (for `tail -f` workflows):
+   `context=fred_fetch type=ConnectionError error=connection refused spec_id=CPIAUCSL`
+   Stable field order (`context`, `type`, `error` first), newlines
+   in string values stripped so grep-based log parsing doesn't
+   break on multi-line exceptions.
+
+2. **Structured `extra.structured` dict** (for log aggregators —
+   Datadog, CloudWatch, Elastic). Namespaced under a single key to
+   avoid colliding with stdlib reserved `LogRecord` names like
+   `message`/`levelname`.
+
+**Tests:** 8 new in `tests/test_structured_log.py` covering level
+routing (`WARNING`/`ERROR`/`INFO`), key ordering, newline
+stripping, empty-payload safety, and the `extra.structured`
+attachment contract. Extended FRED regression test asserts the
+full structured payload (`context="fred_fetch"`, `type="ValueError"`,
+`error="upstream 503"`, `spec_id=CPIAUCSL`) lands on the LogRecord
+for aggregator queries.
 
 **Regression test — `tests/test_fred_baseexception_guard.py`** (3 tests):
 - `test_get_macro_indicators_survives_cancelled_error_in_gather_result`

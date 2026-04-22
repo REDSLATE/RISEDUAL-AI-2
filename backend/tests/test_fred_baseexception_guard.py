@@ -88,7 +88,9 @@ async def test_get_macro_indicators_survives_cancelled_error_in_gather_result(
 async def test_get_macro_indicators_logs_plain_exception(monkeypatch, caplog):
     """Sanity: plain `Exception` instances must still be skipped AND
     logged so operators can see real upstream failures. The three-tier
-    guard's second branch."""
+    guard's second branch. Verifies the structured payload — context,
+    type, error, and spec_id all land on the LogRecord so log
+    aggregators can index and query them."""
     import logging as _logging
     caplog.set_level(_logging.WARNING, logger="services.fred_service")
     monkeypatch.setenv("FRED_API_KEY", "test-key")
@@ -116,7 +118,16 @@ async def test_get_macro_indicators_logs_plain_exception(monkeypatch, caplog):
         f"Expected 1 warning for ValueError, got {len(fred_warnings)}: "
         f"{[r.getMessage() for r in fred_warnings]}"
     )
+    # Message is human-readable for log tailing.
     assert "upstream 503" in fred_warnings[0].getMessage()
+    # Structured payload is attached for log-aggregator queries.
+    record = fred_warnings[0]
+    assert hasattr(record, "structured"), "structured payload missing"
+    s = record.structured
+    assert s["context"] == "fred_fetch"
+    assert s["type"] == "ValueError"
+    assert s["error"] == "upstream 503"
+    assert s["spec_id"] == fred_service.MACRO_SERIES[0]["id"]
 
 
 @pytest.mark.asyncio

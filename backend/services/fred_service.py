@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 import httpx
 
+from services.structured_log import log_warning
+
 logger = logging.getLogger(__name__)
 
 BASE = "https://api.stlouisfed.org/fred"
@@ -108,10 +110,12 @@ async def get_macro_indicators() -> dict:
         if isinstance(result, asyncio.CancelledError):
             continue
         if isinstance(result, BaseException):
-            logger.warning(
-                "[fred] macro fetch failed for %s: %r",
-                spec.get("id"), result,
-            )
+            log_warning(logger, {
+                "error": str(result),
+                "type": type(result).__name__,
+                "context": "fred_fetch",
+                "spec_id": spec.get("id"),
+            })
             continue
         if result is None:
             continue
@@ -401,9 +405,12 @@ async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> di
             vintage_results.append({"date": vdate, "observations": [], "revisions": []})
             continue
         if isinstance(vdata, BaseException):
-            logger.warning(
-                "[fred] vintage fetch failed for %s: %r", vdate, vdata,
-            )
+            log_warning(logger, {
+                "error": str(vdata),
+                "type": type(vdata).__name__,
+                "context": "fred_vintage_fetch",
+                "vintage_date": vdate,
+            })
             vintage_results.append({"date": vdate, "observations": [], "revisions": []})
             continue
         if vdata is None:
