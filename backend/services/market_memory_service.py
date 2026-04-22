@@ -12,9 +12,10 @@ import logging
 import asyncio
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import chromadb
+from chromadb.types import Where, UpdateMetadata
 
 from services.structured_log import log_error, log_warning
 
@@ -223,11 +224,15 @@ async def query_similar_regimes(
 
     actual_n = min(n_results, count)
 
+    # ChromaDB's Where TypedDict is tighter than our runtime-valid
+    # filter ({"outcome": str} or {"outcome": {"$ne": str}}). Cast
+    # instead of a silent `# type: ignore` so mypy still catches
+    # drift if we ever construct a filter with a wrong operator key.
     results = await asyncio.to_thread(
         _collection.query,
         query_texts=[text],
         n_results=actual_n,
-        where=where_filter,  # type: ignore[arg-type]
+        where=cast(Where, where_filter) if where_filter else None,
         include=["documents", "metadatas", "distances"],
     )
 
@@ -303,7 +308,7 @@ async def get_strategist_context(ticker: str, current_rsi: float = None, n_resul
             _collection.query,
             query_texts=[query_text],
             n_results=actual_n,
-            where=where_filter,  # type: ignore[arg-type]
+            where=cast(Where, where_filter),
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
@@ -487,9 +492,9 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
 
     # ── A. Re-tag Toxic Outliers as "toxic_lesson" ──
     try:
-        # Cast avoids a ChromaDB Where-literal strictness: our $and
-        # filter is runtime-valid but mypy can't reason about nested
-        # $gt dict items against the tight Where union.
+        # Cast preserves structural validation — if a future edit
+        # uses an operator outside ChromaDB's `$and`/`$gt`/`$ne`/...
+        # literal set, mypy still rejects it at the cast site.
         toxic_where: dict[str, Any] = {
             "$and": [
                 {"outcome": "miss"},
@@ -498,7 +503,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         }
         toxic = await asyncio.to_thread(
             _collection.get,
-            where=toxic_where,  # type: ignore[arg-type]
+            where=cast(Where, toxic_where),
             include=["metadatas"],
         )
         toxic_ids = toxic.get("ids", [])
@@ -516,10 +521,12 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
                     "failure_code": meta.get("failure_code", "UNKNOWN"),
                 })
 
-            # Re-tag as toxic_lesson instead of deleting. `.copy()`
-            # is runtime-safe on ChromaDB metadata dicts; the stubs
-            # type the return as Mapping (no .copy) so we cast.
-            updated_metas = []
+            # Re-tag as toxic_lesson instead of deleting. `dict()`
+            # mirrors runtime `.copy()`; ChromaDB's metadata stub
+            # types the source as Mapping. Cast the outgoing list
+            # so mypy checks each dict is an UpdateMetadata-shaped
+            # payload.
+            updated_metas: list[dict[str, Any]] = []
             for i, tid in enumerate(toxic_ids):
                 meta = dict(toxic_metas[i]) if i < len(toxic_metas) else {}
                 meta["outcome"] = "toxic_lesson"
@@ -528,7 +535,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
             await asyncio.to_thread(
                 _collection.update,
                 ids=toxic_ids,
-                metadatas=updated_metas,  # type: ignore[arg-type]
+                metadatas=cast(list[UpdateMetadata], updated_metas),
             )
             results["toxic_removed"] = len(toxic_ids)
             logger.info(f"Cleanup: Re-tagged {len(toxic_ids)} toxic high-confidence failures as 'toxic_lesson'")

@@ -13,9 +13,10 @@ import os
 import json
 import logging
 import asyncio
-from typing import Any
+from typing import Any, cast
 from datetime import datetime, timezone
 
+from chromadb.types import UpdateMetadata
 
 from services.structured_log import log_error, log_warning
 
@@ -263,10 +264,15 @@ async def run_and_update_post_mortem(
             if existing and existing.get("ids"):
                 # ChromaDB stubs type metadatas entries as Mapping
                 # (no .copy); runtime returns plain dicts. dict()
-                # cast is the safe mirror of `.copy()`.
-                meta = dict(existing["metadatas"][0])
+                # mirrors runtime `.copy()`, and cast() preserves
+                # mypy's structural check against UpdateMetadata.
+                meta: dict[str, Any] = dict(existing["metadatas"][0])
                 meta["failure_code"] = code
-                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])  # type: ignore[arg-type]
+                await asyncio.to_thread(
+                    _collection.update,
+                    ids=[doc_id],
+                    metadatas=cast(list[UpdateMetadata], [meta]),
+                )
     except Exception as e:
         log_warning(logger, {
             "error": str(e),

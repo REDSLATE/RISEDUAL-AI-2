@@ -2,8 +2,9 @@
 import os
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 import resend
+from resend import Emails as _ResendEmails  # for SendParams TypedDict
 import httpx
 from dotenv import load_dotenv
 from pathlib import Path
@@ -36,11 +37,14 @@ def _is_configured() -> bool:
 async def _send_via_resend(api_key: str, to: list, subject: str, html: str) -> dict:
     """Send email through Resend API."""
     resend.api_key = api_key
-    # Resend SDK typed SendParams is a TypedDict with required
-    # literal keys ("from"/"to"/"subject"/"html"). Our plain dict is
-    # structurally identical but mypy can't convert without a cast.
+    # Resend's SendParams is a TypedDict with literal keys
+    # ("from"/"to"/"subject"/"html"). Our plain dict is structurally
+    # identical; cast() preserves mypy's key-shape check without the
+    # silent drop that `# type: ignore` causes.
     params: dict[str, Any] = {"from": SENDER_EMAIL, "to": to, "subject": subject, "html": html}
-    result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
+    result = await asyncio.to_thread(
+        resend.Emails.send, cast(_ResendEmails.SendParams, params),
+    )
     return dict(result) if result else {}
 
 
@@ -366,7 +370,9 @@ async def send_toxic_spikes_email(
                 toxic_count, obsolete_count, total_before, total_after, spike_details or []
             ),
         }
-        result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
+        result = await asyncio.to_thread(
+            resend.Emails.send, cast(_ResendEmails.SendParams, params),
+        )
         logger.info(f"Toxic spikes alert email sent to {recipient_email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -737,7 +743,9 @@ async def send_referral_success(email: str, name: str, new_rank: int, referral_c
             "subject": f"You just skipped 20 spots — now #{new_rank} in line",
             "html": _referral_success_html(name, new_rank, referral_count, spots_skipped),
         }
-        result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
+        result = await asyncio.to_thread(
+            resend.Emails.send, cast(_ResendEmails.SendParams, params),
+        )
         logger.info(f"Referral success email sent to {email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:
