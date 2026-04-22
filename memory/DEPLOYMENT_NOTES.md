@@ -24,6 +24,102 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Adaptive sizing wired into signal-bot dispatcher
+*Session: continued*
+
+Readiness now actually moves money. The signal-bot trade path
+(`services/trading_bot_service.process_signal_for_bots`) pulls the
+Tier 3 snapshot once per signal, computes a combined
+`readiness_mult × confidence_mult` scalar, and scales the configured
+`qty` by it. Below the `MIN_CONFIDENCE_TO_TRADE=55` gate the trade
+is **skipped entirely** — not shrunk to a tiny meaningless size.
+
+**What shipped:**
+- `services/trading_bot_service.py`:
+  * New env flag `RISEDUAL_ADAPTIVE_SIZING=1` (defaults OFF so the
+    rollout is a one-line env change, not a code change).
+  * Fetch the Tier 3 snapshot once at the top of
+    `process_signal_for_bots` (not per-bot — same for all user bots).
+  * Readiness failure path is fail-closed to the legacy qty so a
+    Mongo blip doesn't kill bot execution.
+  * Sub-55-confidence signals skipped before the executor.
+  * `sizing_meta` stamped on each result: `original_qty`,
+    `scaled_qty`, `readiness_mult`, `confidence_mult`, `final_mult`.
+
+**Preview-DB live values (readiness 81.33, high_conf throttle firing):**
+- `conf=92 → final_mult=0.798` → `qty=10 → 7.98`
+- `conf=100 → final_mult=0.918` → `qty=10 → 9.18`
+- `conf=52 → SKIPPED` (below gate)
+
+**Verified:**
+- 5 new tests in `tests/test_trading_bot_adaptive_sizing.py`:
+  * Flag OFF → legacy qty path unchanged (backward compat).
+  * Flag ON + low conf → trade skipped.
+  * Flag ON + throttled readiness → qty scaled down, `sizing_meta`
+    stamped.
+  * Flag ON + perfect readiness → qty scaled UP to 1.5x.
+  * Flag ON + Mongo failure → falls back to configured qty.
+- Full 9-suite regression: **152/152 green**.
+
+**Files changed:**
+- `backend/services/trading_bot_service.py` — snapshot fetch,
+  sizing wiring, `sizing_meta` on both execution paths.
+- `backend/tests/test_trading_bot_adaptive_sizing.py` (new)
+
+### 2026-02-20 — Polygon.io live stress test (free-tier fallback discovered)
+*Session: continued*
+
+Shipped a read-only stress-test harness against the production
+Polygon API using the `POLYGON_API_KEY` in `.env`. Discovered and
+fixed a real issue: **`/v2/last/trade` is a paid-tier endpoint** —
+free keys get a blanket 403.
+
+**What shipped:**
+- `scripts/polygon_stress_test.py` — 4-category harness:
+  * Connectivity probe per endpoint
+  * Field-map shape check (`_has_expected_shape`)
+  * Rate-limit behaviour (proves our token bucket + 429 retry work)
+  * Divergence spot-check vs Finnhub for liquid tickers (warn if
+    > 0.5% price difference mid-session)
+- `--rate-override` CLI flag for paid keys (defaults to free-tier
+  5/min).
+- `PolygonClient.get_quote()` updated: tries `/v2/last/trade` first,
+  falls back to `/v2/aggs/.../prev` close on 403/None. Stamps a
+  `source` field (`last_trade` vs `prev_close_fallback`) so admin
+  UIs know which tier produced the price.
+
+**Live run results (free key):**
+- Single-ticker: **ok=4 warn=0 fail=0**.
+- Full --full --rate-override 5: **ok=12 warn=3 fail=0**.
+  * AAPL market cap: $3.91T (realistic)
+  * 44 recent news articles, 21 daily bars
+  * 403s on `/v2/last/trade` cleanly fell back
+  * 429s from aggressive rate-limit retried with backoff (our
+    reliability stack works)
+
+**Findings surfaced:**
+- Free tier is inadequate for real-time trading (must upgrade
+  before flipping the provider switch) — but the adapter itself is
+  sound and the fallback keeps provider-shadow mode usable on dev
+  keys.
+- Rate ceiling on free tier is stricter than documented 5/min:
+  sustained 5/s triggers 429s even with burst capacity. Paid-tier
+  unlimited is the only safe production posture.
+
+**Verified:**
+- New test `test_get_quote_falls_back_to_prev_close_on_free_tier`
+  in `tests/test_polygon_client.py` pins the 403→fallback
+  behaviour. Mock transport extended to simulate 403 responses.
+- 11/11 polygon client tests green (up from 10 last session).
+- Ruff clean.
+
+**Files changed:**
+- `backend/risedual_core/risedual_core/clients/polygon.py` — 403
+  fallback + `source` stamp.
+- `backend/scripts/polygon_stress_test.py` (new)
+- `backend/tests/test_polygon_client.py` — updated mock + new test
+
+
 ### 2026-02-20 — Tier 3 adaptive sizing engine (`ai_core/sizing.py`)
 *Session: continued*
 

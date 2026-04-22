@@ -5,17 +5,32 @@ Grid Bot runs on the APScheduler interval. Signal Bot triggers from scanner resu
 Webhook Bot receives external POST requests.
 """
 import logging
+import os
 import secrets
 from datetime import datetime, timezone
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 
-def set_db(database):
+
+def set_db(database: Any) -> None:
     global _db
     _db = database
+
+
+# Adaptive-sizing feature flag. Signal-bot qty gets scaled by the
+# Tier 3 readiness snapshot (readiness multiplier × confidence
+# multiplier) when enabled. Defaults OFF so rollout is a one-line
+# env change; bots run at their configured `qty` otherwise.
+ADAPTIVE_SIZING_ENABLED: bool = (
+    os.getenv("RISEDUAL_ADAPTIVE_SIZING", "0") == "1"
+)
+# Hard floor on the scaled qty so a 0.05× multiplier on a `qty=1`
+# config doesn't round down to zero (which silently blocks trades).
+_MIN_SCALED_QTY: float = 0.01
 
 
 BOT_TYPES = {"grid", "signal", "webhook"}
@@ -250,6 +265,28 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         "user_id": user_id, "type": "signal", "enabled": True,
     }).to_list(length=10)
 
+    # Fetch the Tier 3 readiness snapshot ONCE per signal (not per
+    # bot) — it's a single 30-day aggregation and the result is
+    # identical for every bot this user owns. Falls back to None on
+    # any error so the sizing short-circuits to the legacy path.
+    readiness_snap = None
+    if ADAPTIVE_SIZING_ENABLED:
+        try:
+            from services.tier3_readiness import tier3_readiness_snapshot
+            readiness = await tier3_readiness_snapshot(_db, days=30)
+            # `tier3_readiness_snapshot` returns {stats, unlock, ...}.
+            # Flatten so `compute_position_multiplier` sees the
+            # `confidence_score` + `stats` shape it expects.
+            readiness_snap = {
+                "confidence_score": (readiness.get("unlock") or {}).get(
+                    "confidence_score", 0.0
+                ),
+                "stats": readiness.get("stats") or {},
+            }
+        except Exception as exc:
+            logger.warning("[signal-bot] adaptive sizing disabled this run: %s", exc)
+            readiness_snap = None
+
     results = []
     for bot in bots:
         cfg = bot.get("config", {})
@@ -306,6 +343,54 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         qty = cfg.get("qty", 1)
         price = signal.get("price", 0)
 
+        # Adaptive sizing: shrink the configured qty when Tier 3
+        # readiness is below 100/100 or the signal confidence is
+        # below the trade gate. When the feature flag is off, this
+        # whole block is a no-op. When on, a `sizing_meta` field is
+        # stamped onto the result so admin UIs can show "fired at
+        # 0.8x of config" without re-fetching the readiness snapshot.
+        sizing_meta: dict | None = None
+        if readiness_snap is not None:
+            try:
+                from ai_core.sizing import (
+                    MIN_CONFIDENCE_TO_TRADE,
+                    compute_confidence_multiplier,
+                    compute_position_multiplier,
+                )
+                r_mult = compute_position_multiplier(readiness_snap)
+                c_mult = compute_confidence_multiplier(confidence)
+                # Below the hard trade-gate → skip the trade entirely.
+                if confidence < MIN_CONFIDENCE_TO_TRADE:
+                    logger.info(
+                        "[signal-bot] %s skipped %s — conf %s below trade gate %s",
+                        bot.get("name"), symbol, confidence, MIN_CONFIDENCE_TO_TRADE,
+                    )
+                    continue
+                final_mult = max(min(r_mult * c_mult, 2.0), 0.1)
+                original_qty = qty
+                scaled_qty = max(
+                    _MIN_SCALED_QTY,
+                    round(float(original_qty) * final_mult, 4),
+                )
+                qty = scaled_qty
+                sizing_meta = {
+                    "original_qty": original_qty,
+                    "scaled_qty": scaled_qty,
+                    "readiness_mult": r_mult,
+                    "confidence_mult": c_mult,
+                    "final_mult": round(final_mult, 3),
+                }
+                logger.info(
+                    "[signal-bot] %s adaptive-sized %s %s: %s → %s "
+                    "(r=%s × c=%s = %s)",
+                    bot.get("name"), side, symbol,
+                    original_qty, scaled_qty, r_mult, c_mult, round(final_mult, 3),
+                )
+            except Exception as exc:
+                # Any failure in the sizing path must NOT block a trade —
+                # fall back to the configured qty.
+                logger.warning("[signal-bot] adaptive sizing fallback: %s", exc)
+
         # Derive SL/TP from bot config so BOTH the smart-order and
         # direct-paper paths stamp them on the trade. Needed for
         # r_multiple on the eventual SELL. Previously only the
@@ -343,18 +428,24 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
             # monitor job, not here.
             trade_filled = bool(order_result) and not order_result.get("error")
             trade_result = order_result
-            results.append({"bot": bot.get("name"), "symbol": symbol, "side": side, "result": "smart_order", "order": order_result})
+            res_payload = {"bot": bot.get("name"), "symbol": symbol, "side": side, "result": "smart_order", "order": order_result}
+            if sizing_meta:
+                res_payload["sizing"] = sizing_meta
+            results.append(res_payload)
         else:
             trade_result = await _execute_bot_trade(
                 bot, symbol, side, qty, price,
                 stop_loss=sl_price, take_profit=tp_price,
             )
             trade_filled = bool(trade_result) and trade_result.get("status") == "filled"
-            results.append({
+            res_payload = {
                 "bot": bot.get("name"), "symbol": symbol, "side": side,
                 "result": "paper_trade", "status": (trade_result or {}).get("status"),
                 "r_multiple": (trade_result or {}).get("r_multiple"),
-            })
+            }
+            if sizing_meta:
+                res_payload["sizing"] = sizing_meta
+            results.append(res_payload)
 
         # Gate stats + cap counter on an actual FILL. Rejections (no
         # position to sell, insufficient cash, broker reject) must not

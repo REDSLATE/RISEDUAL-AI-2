@@ -18,13 +18,18 @@ from risedual_core.clients.polygon import PolygonClient
 # Mock httpx transport helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
-def _mock_transport(responses: dict[str, dict | list]) -> httpx.AsyncClient:
+def _mock_transport(responses: dict[str, dict | list | None]) -> httpx.AsyncClient:
     """Return an AsyncClient whose every GET returns the payload
     matched against the request *path*. First path-substring match wins.
+
+    A payload of `None` simulates a 403 (paid-tier endpoint), which
+    `BaseMarketClient._get` converts to a `None` return.
     """
     async def handler(request: httpx.Request) -> httpx.Response:
         for path_substring, payload in responses.items():
             if path_substring in str(request.url):
+                if payload is None:
+                    return httpx.Response(403, json={"error": "paid tier only"})
                 return httpx.Response(200, json=payload)
         return httpx.Response(404, json={"error": "no mock"})
 
@@ -71,6 +76,31 @@ async def test_get_quote_normalises_last_trade_plus_prev_bar():
     assert q["low"] == 177.50
     assert q["open"] == 178.00
     assert q["timestamp"] == 1739815200000
+    assert q["source"] == "last_trade"
+
+
+@pytest.mark.asyncio
+async def test_get_quote_falls_back_to_prev_close_on_free_tier():
+    """Free tier blocks /v2/last/trade with 403 → our client should
+    gracefully degrade to the previous day's close instead of
+    returning an empty dict."""
+    responses = {
+        # _get() converts 4xx to None — simulate that directly.
+        "/v2/last/trade/AAPL": None,
+        "/v2/aggs/ticker/AAPL/prev": {
+            "results": [
+                {"o": 178.00, "h": 181.00, "l": 177.50, "c": 179.00, "v": 50000000, "t": 1739815200000}
+            ],
+        },
+    }
+    pc = _fast_client(responses)
+    q = await pc.get_quote("AAPL")
+    assert q["current_price"] == 179.00
+    assert q["source"] == "prev_close_fallback"
+    # With no real-time reference, change + percent_change stay None
+    # so downstream stale-data detection stays accurate.
+    assert q["change"] is None
+    assert q["percent_change"] is None
 
 
 @pytest.mark.asyncio

@@ -82,10 +82,17 @@ class PolygonClient(BaseMarketClient):
         """Real-time last-trade quote for *symbol*, normalised to the
         same shape as :meth:`FinnhubClient.get_quote`.
 
-        Polygon's `/v2/last/trade` only gives last price + size + time,
-        so we enrich from the previous day's OHLC (`/v2/aggs/.../prev`)
-        in a second call for `high`, `low`, `open`, `previous_close`.
-        Returns empty dict on any failure.
+        Polygon's `/v2/last/trade` endpoint is **paid-tier only**
+        (free tier returns 403). We try it first, and on 403 fall
+        back to the previous day's close from `/v2/aggs/.../prev`
+        which is accessible on all tiers. The fallback loses the
+        real-time tick but gives callers SOMETHING rather than an
+        empty dict — critical for the provider-shadow mode that
+        runs on free keys in dev.
+
+        Always enriches with the previous-day bar for
+        `high`/`low`/`open`/`previous_close`. Returns empty dict
+        on total failure.
         """
         last_trade = await self._get(
             f"{self.base_url}/v2/last/trade/{symbol}",
@@ -96,21 +103,37 @@ class PolygonClient(BaseMarketClient):
             params=self._params({"adjusted": "true"}),
         )
 
-        if not isinstance(last_trade, dict):
-            return {}
-        results = last_trade.get("results") or {}
-        current = results.get("p")
-        if current is None:
-            return {}
-
         prev_bars = (
             prev.get("results") if isinstance(prev, dict) and prev else None
         )
         prev_bar = prev_bars[0] if prev_bars else {}
         prev_close = prev_bar.get("c")
+
+        # Preferred: real-time last trade (paid tier).
+        current: float | None = None
+        ts: int | None = None
+        if isinstance(last_trade, dict):
+            results = last_trade.get("results") or {}
+            current = results.get("p")
+            ts = results.get("t")
+
+        # Fallback: previous-day close (free tier). Marks the tier
+        # via an explicit `source` field so admin UIs can surface it.
+        source = "last_trade"
+        if current is None and prev_close is not None:
+            current = prev_close
+            ts = prev_bar.get("t")
+            source = "prev_close_fallback"
+
+        if current is None:
+            return {}
+
         change = None
         percent_change = None
-        if prev_close:
+        if prev_close and source == "last_trade":
+            # Only compute change when we actually have a real-time
+            # reference — prev_close vs prev_close is always 0 and
+            # would mask stale-data problems.
             change = current - prev_close
             percent_change = (change / prev_close) * 100 if prev_close else None
 
@@ -122,7 +145,8 @@ class PolygonClient(BaseMarketClient):
             "low": prev_bar.get("l"),
             "open": prev_bar.get("o"),
             "previous_close": prev_close,
-            "timestamp": results.get("t"),
+            "timestamp": ts,
+            "source": source,
         }
 
     async def get_company_profile(self, symbol: str) -> dict[str, Any]:
