@@ -75,6 +75,25 @@ Fix: widen the guard to `isinstance(..., BaseException)`. One-word
 change; two instances (main indicator loop + vintage-revision
 loop).
 
+**Refinement — three-tier guard with observability:**
+Naïve `BaseException` widening swallows everything, including real
+errors that ops would want to see. Final shape:
+```python
+if isinstance(result, asyncio.CancelledError):
+    continue                          # silent — shutdown noise
+if isinstance(result, BaseException):
+    logger.warning("[fred] ... %r", spec, result)  # logged — real error
+    continue
+if result is None:
+    continue                          # silent — empty fetch
+# result narrows to dict here; .get() is safe
+```
+`CancelledError` stays silent (expected during FastAPI shutdown,
+logging would spam). Everything else gets a warning with the
+series-id context — so drift-detection and log aggregators can
+tell when an upstream series starts failing. The `None` branch is
+preserved for empty-response short-circuit.
+
 **Regression test — `tests/test_fred_baseexception_guard.py`** (3 tests):
 - `test_get_macro_indicators_survives_cancelled_error_in_gather_result`
    — injects a real `asyncio.CancelledError` into a patched

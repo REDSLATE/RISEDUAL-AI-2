@@ -46,10 +46,14 @@ def _clear_cache() -> None:
 
 @pytest.mark.asyncio
 async def test_get_macro_indicators_survives_cancelled_error_in_gather_result(
-    monkeypatch,
+    monkeypatch, caplog,
 ):
     """Regression: CancelledError (BaseException, not Exception) used to
-    slip past the guard and crash. Now skipped cleanly."""
+    slip past the guard and crash. Now skipped cleanly — and *silently*
+    (no log line), because cancellation is expected during shutdown and
+    logging would spam operator consoles."""
+    import logging as _logging
+    caplog.set_level(_logging.WARNING, logger="services.fred_service")
     monkeypatch.setenv("FRED_API_KEY", "test-key")
     _clear_cache()
 
@@ -73,12 +77,20 @@ async def test_get_macro_indicators_survives_cancelled_error_in_gather_result(
     assert "indicators" in result
     # Both series drop out cleanly — one was cancelled, the other was empty.
     assert result["indicators"] == []
+    # CancelledError must NOT log — cancellation is expected.
+    fred_logs = [r for r in caplog.records if r.name == "services.fred_service"]
+    assert not fred_logs, (
+        f"CancelledError should skip silently, but got logs: {fred_logs}"
+    )
 
 
 @pytest.mark.asyncio
-async def test_get_macro_indicators_still_handles_plain_exception(monkeypatch):
-    """Sanity: widening the guard to BaseException must still skip plain
-    `Exception` instances (httpx errors, ValueError, etc)."""
+async def test_get_macro_indicators_logs_plain_exception(monkeypatch, caplog):
+    """Sanity: plain `Exception` instances must still be skipped AND
+    logged so operators can see real upstream failures. The three-tier
+    guard's second branch."""
+    import logging as _logging
+    caplog.set_level(_logging.WARNING, logger="services.fred_service")
     monkeypatch.setenv("FRED_API_KEY", "test-key")
     _clear_cache()
 
@@ -96,6 +108,15 @@ async def test_get_macro_indicators_still_handles_plain_exception(monkeypatch):
         result = await fred_service.get_macro_indicators()
 
     assert result["indicators"] == []
+    # Real errors DO log — this is the observability part of the fix.
+    fred_warnings = [r for r in caplog.records
+                     if r.name == "services.fred_service"
+                     and r.levelname == "WARNING"]
+    assert len(fred_warnings) == 1, (
+        f"Expected 1 warning for ValueError, got {len(fred_warnings)}: "
+        f"{[r.getMessage() for r in fred_warnings]}"
+    )
+    assert "upstream 503" in fred_warnings[0].getMessage()
 
 
 @pytest.mark.asyncio

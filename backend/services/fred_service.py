@@ -97,12 +97,23 @@ async def get_macro_indicators() -> dict:
     categories: dict[str, Any] = {}
 
     for spec, result in zip(MACRO_SERIES, results):
-        # `asyncio.gather(return_exceptions=True)` can surface `BaseException`
-        # subclasses (e.g. `SystemExit`, `KeyboardInterrupt`) not just
-        # `Exception`. Using the narrower `Exception` was a real bug —
-        # those would slip through and crash at `result.get(...)`. Rare
-        # but it *was* reachable under container SIGTERM during startup.
-        if isinstance(result, BaseException) or result is None:
+        # Three-tier guard for `asyncio.gather(return_exceptions=True)`:
+        #   1. CancelledError — expected during FastAPI shutdown /
+        #      ASGI timeout. Skip silently; logging would spam.
+        #   2. Any other BaseException — real failure worth surfacing
+        #      (the upstream fetcher already logs its own context, but
+        #      we log the spec id so drift detection picks it up).
+        #   3. None — fetcher returned empty. Skip silently.
+        # Only then does `result` narrow to a dict and `.get()` is safe.
+        if isinstance(result, asyncio.CancelledError):
+            continue
+        if isinstance(result, BaseException):
+            logger.warning(
+                "[fred] macro fetch failed for %s: %r",
+                spec.get("id"), result,
+            )
+            continue
+        if result is None:
             continue
 
         obs = result.get("observations", [])
@@ -383,10 +394,19 @@ async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> di
     # Build vintage maps
     vintage_results = []
     for vdate, vdata in zip(vintage_dates, vintages):
-        # See note in `get_macro_indicators` — `Exception` doesn't narrow
-        # `BaseException`, so `SystemExit`/`KeyboardInterrupt` from a
-        # `gather(return_exceptions=True)` would crash at `vdata.get(...)`.
-        if isinstance(vdata, BaseException) or vdata is None:
+        # Three-tier guard — see `get_macro_indicators` for the full
+        # rationale. Cancelled = silent skip, other BaseException =
+        # logged so drift-detection doesn't silently lose a vintage.
+        if isinstance(vdata, asyncio.CancelledError):
+            vintage_results.append({"date": vdate, "observations": [], "revisions": []})
+            continue
+        if isinstance(vdata, BaseException):
+            logger.warning(
+                "[fred] vintage fetch failed for %s: %r", vdate, vdata,
+            )
+            vintage_results.append({"date": vdate, "observations": [], "revisions": []})
+            continue
+        if vdata is None:
             vintage_results.append({"date": vdate, "observations": [], "revisions": []})
             continue
 
