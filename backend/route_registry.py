@@ -63,6 +63,7 @@ from routes.self_test import router as self_test_router, set_db as set_self_test
 from routes.rejections import router as rejections_router
 from routes.share import router as share_router
 from routes.share_image import router as share_image_router
+from routes.options_trading import router as options_trading_router, set_db as set_options_trading_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
@@ -101,6 +102,7 @@ ALL_ROUTERS = [
     rejections_router,
     share_router,
     share_image_router,
+    options_trading_router,
 ]
 
 
@@ -121,6 +123,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_push_db, set_journal_db, set_strategy_db, set_intelligence_db,
         set_broker_db, set_market_data_db, set_admin_db, set_accuracy_db,
         set_stream_db, set_price_provider_db, set_market_data_pool_db, set_paper_trading_db,
+        set_options_trading_db,
         set_sectors_db, set_security_audit_db, set_smart_orders_db,
         set_risk_calc_db, set_scanner_db, set_trading_bots_db,
         set_success_fee_db, set_public_api_db, set_credits_db,

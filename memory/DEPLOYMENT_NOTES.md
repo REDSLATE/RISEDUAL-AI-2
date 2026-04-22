@@ -26,6 +26,69 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — Multi-broker live options trading (Phase 1: Alpaca)
+*Session: continued*
+
+Shipped the foundation for live options trading. Phase 1 = Alpaca
+fully wired; Tradier / TastyTrade / IBKR are stub adapters that
+return clean `501 Not Implemented` so the UI can list them as
+"coming soon" without breaking.
+
+**New backend package `services/brokers/`:**
+- `options_adapter.py` — `BrokerOptionsAdapter` ABC with 5 methods
+  (`is_options_enabled`, `get_options_buying_power`,
+  `get_option_positions`, `place_option_order`, `cancel_option_order`).
+  Typed dataclasses for every return. `OrderSide` enum covers all
+  four OCC sides so future short-legs don't reshape the interface.
+- `occ_symbol.py` — 21-char OCC builder + parser. Round-trip
+  verified against AAPL, SPY, GOOGL, fractional strikes.
+- `alpaca_options.py` — concrete adapter using existing
+  `ALPACA_API_KEY`/`SECRET`/`BASE_URL` env vars. Raw httpx
+  (matches codebase pattern). Maps Alpaca status strings onto
+  our canonical `OrderStatus` enum. 403 → `PermissionError` for
+  clean route-level forwarding.
+- `registry.py` — `get_options_adapter(provider)` factory. Fresh
+  instance per call.
+
+**New routes `/api/options/*`:**
+- `GET /providers`, `GET /status`, `GET /buying-power`,
+  `GET /positions`, `POST /order`, `DELETE /order/{id}`
+- ODD: `GET /odd/status`, `POST /odd/accept`. Every order route
+  403s unless ODD accepted. Flag stored on
+  `user.compliance.odd_accepted_at`.
+
+**Frontend `OptionsLiveTrade.jsx`:**
+- Red **LIVE** badge (mirrors the amber PAPER badge pattern).
+- Opens modal → probes ODD + broker status → shows inline ODD
+  accept flow if needed → renders order form only when both ODD
+  accepted + broker reports `enabled=true`.
+- Market + Limit order types. Surfaces broker errors verbatim.
+- Links to the OCC disclosure document at theocc.com.
+- `DataTable` options variant now renders paper AND live buttons
+  side-by-side (column header: "TRADE · PAPER / LIVE").
+
+**Live verification on preview:**
+- `/api/options/providers` → all 4 listed, alpaca default.
+- `/api/options/status` → admin's Alpaca paper account reports
+  `{enabled: true, level: 3, details: "options trading active"}`.
+- `/api/options/buying-power` → $102,027.38 confirmed against
+  paper account.
+- ODD flow: pre-accept → 403; accept → UTC-stamped in Mongo;
+  post-accept → orders allowed.
+- Stub adapters (tradier/tastytrade/ibkr) return
+  `enabled=false, "coming soon"` without raising.
+
+**Tests:** 26 new (19 OCC + 7 registry). Full suite 152/152.
+**Gate:** typecheck baseline 69. Lint clean on all 6 new files.
+
+**Explicitly deferred to Phase 2+:**
+- Multi-leg spreads (interface supports; adapter raises).
+- Short option legs (sell_to_open / buy_to_close).
+- Live streaming order-status (polling only for now).
+- Concrete Tradier / TastyTrade / IBKR adapters.
+- Greeks on order modal.
+- User settings UI for broker selection (defaults to Alpaca).
+
 ### 2026-04-22 — Options paper-trading plumbing (fixes broken scanner Buy/Sell)
 *Session: continued*
 
