@@ -126,6 +126,12 @@ class BrokerOptionsAdapter(ABC):
     """
     provider: str                           # "alpaca", "tradier", …
 
+    # Capability flags. Adapters override to declare what the broker
+    # actually supports. Default `False` is the safe posture — a new
+    # adapter class that forgets to flip the flag fails closed, not
+    # open, which matches the rest of the trading-safety posture.
+    supports_multileg: bool = False
+
     @abstractmethod
     async def is_options_enabled(self) -> OptionsEnabledStatus:
         """Pre-flight check. MUST be called before the UI shows a

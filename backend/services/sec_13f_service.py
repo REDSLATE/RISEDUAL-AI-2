@@ -339,7 +339,7 @@ async def refresh_institution(db: Any, cik: str, institution_name: str, max_fili
 
     Returns a dict summarizing filings processed.
     """
-    result = {"cik": cik, "name": institution_name, "filings_new": 0, "filings_skipped": 0, "errors": 0}
+    result: dict[str, Any] = {"cik": cik, "name": institution_name, "filings_new": 0, "filings_skipped": 0, "errors": 0}
     try:
         filings = await fetch_institution_filings(cik, max_filings=max_filings)
     except Exception as e:
@@ -417,7 +417,7 @@ async def refresh_institution(db: Any, cik: str, institution_name: str, max_fili
 
 async def refresh_all_institutions(db: Any, max_filings: int = 2) -> dict:
     """Refresh all tracked institutions. Returns a summary."""
-    summary = {"total": len(TOP_INSTITUTIONS), "success": 0, "errors": 0, "institutions": []}
+    summary: dict[str, Any] = {"total": len(TOP_INSTITUTIONS), "success": 0, "errors": 0, "institutions": []}
     for name, cik in TOP_INSTITUTIONS.items():
         try:
             r = await refresh_institution(db, cik, name, max_filings=max_filings)

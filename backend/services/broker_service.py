@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Optional
+from typing import Optional, Any
 from dataclasses import dataclass
 import requests
 
@@ -100,8 +100,9 @@ class AlpacaTradingService:
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
+            params: dict[str, Any] = {"status": status, "limit": limit}
             r = requests.get(f"{self.base_url}/v2/orders", headers=self.headers,
-                             params={"status": status, "limit": limit}, timeout=10)
+                             params=params, timeout=10)
             r.raise_for_status()
             return r.json()
         except Exception as e:
@@ -536,7 +537,7 @@ class WebullTradingService:
             "did": self.device_id,
             "Content-Type": "application/json",
         }
-        self._account_id = None
+        self._account_id: str | None = None
 
     def _get_account_id(self) -> str:
         if self._account_id:
@@ -618,7 +619,7 @@ class WebullTradingService:
                     stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             acc_id = self._get_account_id()
-            data = {
+            data: dict[str, Any] = {
                 "action": side.upper(),
                 "orderType": "MKT" if order_type == "market" else "LMT",
                 "quantity": int(qty),
@@ -646,8 +647,9 @@ class WebullTradingService:
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
             acc_id = self._get_account_id()
+            params: dict[str, Any] = {"secAccountId": acc_id, "count": limit}
             r = requests.get(f"{self.trade_url}/v2/option/list",
-                             headers=self.headers, params={"secAccountId": acc_id, "count": limit}, timeout=10)
+                             headers=self.headers, params=params, timeout=10)
             r.raise_for_status()
             return r.json() if isinstance(r.json(), list) else r.json().get("data", [])
         except Exception as e:
@@ -687,7 +689,7 @@ class RobinhoodTradingService:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
-        self._account_id = None
+        self._account_id: str | None = None
         self._account_url = self.account_url or None
 
     def _get_account_url(self) -> str:

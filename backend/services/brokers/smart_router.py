@@ -55,6 +55,18 @@ class RoutingDecision:
     all_candidates: list[tuple[str, float]]  # (provider, spread) rank-desc
 
 
+@dataclass
+class SpreadRoutingDecision:
+    """Separate type so route-layer consumers can destructure spread
+    decisions without branching on an optional 'spread_per_leg' field.
+    """
+    provider: str
+    adapter: BrokerOptionsAdapter
+    estimated_spread: float             # aggregate across legs
+    spread_per_leg: list[float]
+    all_candidates: list[tuple[str, float]]
+
+
 async def _estimate_spread(
     adapter: BrokerOptionsAdapter,
     occ_symbol: str,
@@ -182,6 +194,108 @@ class SmartOrderRouter:
                 "type": type(exc).__name__,
                 "error": str(exc),
                 "note": f"{decision.provider} order placement failed",
+            })
+            raise
+        return order, decision
+
+    # ── Spread routing ───────────────────────────────────────────
+
+    async def pick_for_spread(
+        self, occ_symbols: list[str],
+    ) -> SpreadRoutingDecision:
+        """Pick the best broker for a multi-leg spread.
+
+        Eligibility narrowing:
+          1. Broker must be enabled (`is_options_enabled=True`).
+          2. Broker's adapter must declare `supports_multileg=True`.
+             Quote-only adapters like Tradier are filtered out here —
+             the smart router will never pick a broker that can't
+             actually submit the order.
+
+        Scoring: sum of per-leg estimated spreads. Aggregated spread
+        is the right proxy for slippage on a multi-leg order since
+        the legs fill together, not independently.
+
+        Raises `RuntimeError` when zero multileg-capable brokers are
+        enabled — route-layer maps to 503. This is DIFFERENT from
+        `pick()`'s raise: "no broker" vs "no broker that can do
+        spreads", so the 503 message carries the distinction.
+        """
+        all_enabled = await get_enabled_adapters()
+        mleg = {
+            name: adapter for name, adapter in all_enabled.items()
+            if getattr(adapter, "supports_multileg", False)
+        }
+        if not mleg:
+            total = len(all_enabled)
+            raise RuntimeError(
+                "Smart spread routing failed: "
+                + (
+                    f"{total} broker(s) enabled but none support multi-leg orders."
+                    if total else
+                    "no broker currently reports options enabled."
+                )
+            )
+
+        async def _score(name: str, adapter: BrokerOptionsAdapter):
+            per_leg = await asyncio.gather(*[
+                _estimate_spread(adapter, sym) for sym in occ_symbols
+            ])
+            per_leg = [float(s) for s in per_leg]
+            # If ANY leg hits the sentinel, the aggregate should also
+            # feel sentinel-grade so this broker ranks last — summing
+            # N sentinels would mask partial probe failures.
+            if any(s >= _SPREAD_PROBE_FAIL for s in per_leg):
+                return name, adapter, _SPREAD_PROBE_FAIL, per_leg
+            return name, adapter, sum(per_leg), per_leg
+
+        results = await asyncio.gather(*[
+            _score(name, adapter) for name, adapter in mleg.items()
+        ])
+        results.sort(key=lambda r: (r[2], r[0]))
+        best_name, best_adapter, best_agg, best_per_leg = results[0]
+
+        return SpreadRoutingDecision(
+            provider=best_name,
+            adapter=best_adapter,
+            estimated_spread=best_agg,
+            spread_per_leg=best_per_leg,
+            all_candidates=[(name, agg) for name, _, agg, _ in results],
+        )
+
+    async def route_spread(
+        self,
+        occ_symbols: list[str],
+        legs: list[OptionLeg],
+        *,
+        order_type: str = "market",
+        time_in_force: str = "day",
+        limit_price: Optional[float] = None,
+    ) -> tuple[OptionOrder, SpreadRoutingDecision]:
+        """End-to-end: pick multileg-capable broker + submit spread.
+
+        Caller passes the per-leg OCC symbols alongside the OptionLeg
+        list so the router can estimate spreads without rebuilding
+        the symbols. They should match index-for-index with `legs`.
+        """
+        if len(occ_symbols) != len(legs):
+            raise ValueError(
+                f"occ_symbols ({len(occ_symbols)}) must match legs ({len(legs)})"
+            )
+        decision = await self.pick_for_spread(occ_symbols)
+        try:
+            order = await decision.adapter.place_option_order(
+                legs,
+                order_type=order_type,
+                time_in_force=time_in_force,
+                limit_price=limit_price,
+            )
+        except Exception as exc:
+            log_error(logger, {
+                "context": "smart_router_submit",
+                "type": type(exc).__name__,
+                "error": str(exc),
+                "note": f"{decision.provider} spread placement failed",
             })
             raise
         return order, decision

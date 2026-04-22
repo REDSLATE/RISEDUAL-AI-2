@@ -55,7 +55,7 @@ CONTRACT_MULTIPLIER = 100
 _db: Any = None
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

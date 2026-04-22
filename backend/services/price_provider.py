@@ -9,7 +9,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Any
 
 import requests
 import yfinance as yf
@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 AV_BASE = "https://www.alphavantage.co/query"
 
 # Module-level db reference (set via set_db)
-_db = None
+_db: Any = None
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

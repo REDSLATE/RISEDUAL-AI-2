@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 market_pool = ProviderPool(get_market_data_provider_pool(), name="MARKET_DATA_PROVIDER_POOL")
 
 # Module-level db reference
-_db = None
+_db: Any = None
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

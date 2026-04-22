@@ -1,17 +1,17 @@
 """Paper Trading Service — simulated portfolio with real market prices."""
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 from services.price_provider import get_quote, get_crypto_quote
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 STARTING_CASH = 100_000.0
 CRYPTO_TICKERS = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "SHIB", "LINK"}
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

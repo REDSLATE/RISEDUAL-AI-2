@@ -76,10 +76,13 @@ class FinancialScrapingService:
             
             articles = []
             for article in soup.find_all('a', {'data-testid': 'Heading'})[:10]:
+                href = article.get('href', '')
+                if not isinstance(href, str):
+                    continue
                 articles.append({
                     'source': 'Reuters',
                     'title': article.get_text(strip=True),
-                    'url': 'https://www.reuters.com' + article.get('href', ''),
+                    'url': 'https://www.reuters.com' + href,
                     'timestamp': datetime.now(timezone.utc).isoformat(),
                     'sentiment': None
                 })
@@ -132,10 +135,13 @@ class FinancialScrapingService:
             for article in soup.find_all('h2', class_='title')[:10]:
                 link = article.find('a')
                 if link:
+                    href = link.get('href', '')
+                    if not isinstance(href, str):
+                        continue
                     articles.append({
                         'source': 'Fox Business',
                         'title': link.get_text(strip=True),
-                        'url': 'https://www.foxbusiness.com' + link.get('href', ''),
+                        'url': 'https://www.foxbusiness.com' + href,
                         'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })

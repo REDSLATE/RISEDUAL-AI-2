@@ -180,6 +180,15 @@ class SpreadOrderRequest(BaseModel):
             "for market orders."
         ),
     )
+    best_execution: bool = Field(
+        default=False,
+        description=(
+            "When true, route the spread to the multileg-capable "
+            "broker with the lowest aggregate estimated spread. "
+            "Filters out brokers whose adapter declares "
+            "supports_multileg=False (e.g. Tradier quote-only)."
+        ),
+    )
 
 
 class ODDAcceptRequest(BaseModel):
@@ -595,29 +604,64 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         )
 
     adapter = get_options_adapter(provider)
-    try:
-        order = await adapter.place_option_order(
-            [leg for _, leg in occ_legs],
-            order_type=body.order_type,
-            time_in_force=body.time_in_force,
-            limit_price=body.limit_price,
-        )
-    except BrokerNotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
-    except (ValueError, NotImplementedError) as exc:
-        # Adapter-level validation (leg count, ratio mismatch) or
-        # broker doesn't support multi-leg yet.
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        log_error(logger, {
-            "context": "options_routes",
-            "type": type(exc).__name__,
-            "error": str(exc),
-            "note": f"spread order failed for user={user['_id']} provider={provider}",
-        })
-        raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+    # ── Smart-routed path ──
+    # When `best_execution=True`, the router picks the lowest-
+    # aggregate-spread multileg-capable broker. Quote-only adapters
+    # (Tradier today) are filtered out in `pick_for_spread` — they
+    # can estimate spreads but can't submit the order, so they must
+    # never win the contest.
+    smart_decision = None
+    if body.best_execution:
+        from services.brokers.smart_router import SmartOrderRouter
+        occ_list = [occ for occ, _ in occ_legs]
+        leg_list = [leg for _, leg in occ_legs]
+        try:
+            order, smart_decision = await SmartOrderRouter().route_spread(
+                occ_list, leg_list,
+                order_type=body.order_type,
+                time_in_force=body.time_in_force,
+                limit_price=body.limit_price,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except BrokerNotImplementedError as exc:
+            raise HTTPException(status_code=501, detail=str(exc))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except (ValueError, NotImplementedError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            log_error(logger, {
+                "context": "options_routes",
+                "type": type(exc).__name__,
+                "error": str(exc),
+                "note": f"smart-routed spread failed for user={user['_id']}",
+            })
+            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+    else:
+        try:
+            order = await adapter.place_option_order(
+                [leg for _, leg in occ_legs],
+                order_type=body.order_type,
+                time_in_force=body.time_in_force,
+                limit_price=body.limit_price,
+            )
+        except BrokerNotImplementedError as exc:
+            raise HTTPException(status_code=501, detail=str(exc))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except (ValueError, NotImplementedError) as exc:
+            # Adapter-level validation (leg count, ratio mismatch) or
+            # broker doesn't support multi-leg yet.
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            log_error(logger, {
+                "context": "options_routes",
+                "type": type(exc).__name__,
+                "error": str(exc),
+                "note": f"spread order failed for user={user['_id']} provider={provider}",
+            })
+            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
 
     legs_response = [
         {
@@ -631,9 +675,12 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         for i, (occ, leg) in enumerate(occ_legs)
     ]
 
+    winning_provider = smart_decision.provider if smart_decision else provider
+    routing_mode = "smart" if smart_decision else "direct"
+
     await _log_order_audit(
         user=user,
-        provider=provider,
+        provider=winning_provider,
         occ_symbol=None,  # spreads have no single OCC
         legs=legs_response,
         order_type=body.order_type,
@@ -641,11 +688,11 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         limit_price=body.limit_price,
         order_id=order.order_id,
         status=order.status.value,
-        routing_mode="direct",
+        routing_mode=routing_mode,
         is_spread=True,
     )
 
-    return {
+    response = {
         "order_id": order.order_id,
         "status": order.status.value,
         "qty": order.qty,
@@ -653,11 +700,24 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         "limit_price": order.limit_price,
         "time_in_force": order.time_in_force,
         "created_at": order.created_at.isoformat(),
-        "provider": provider,
+        "provider": winning_provider,
         "legs": legs_response,
         "underlying": body.underlying.upper(),
         "is_spread": True,
     }
+    if smart_decision:
+        response["routing"] = {
+            "mode": "smart",
+            "estimated_spread": smart_decision.estimated_spread,
+            "spread_per_leg": smart_decision.spread_per_leg,
+            "candidates": [
+                {"provider": p, "estimated_spread": s}
+                for p, s in smart_decision.all_candidates
+            ],
+        }
+    else:
+        response["routing"] = {"mode": "direct"}
+    return response
 
 
 @router.delete("/order/{order_id}")

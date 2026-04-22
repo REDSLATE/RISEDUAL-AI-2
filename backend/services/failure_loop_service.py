@@ -1,3 +1,4 @@
+from typing import Any
 """Failure Loop Service — trade idea memory and review layer.
 
 Stores AI/user trade ideas, post-trade reviews with outcome tagging,
@@ -13,9 +14,9 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 
-REASON_TAGS = [
+REASON_TAGS: list[str] = [
     "late_entry",
     "weak_confirmation",
     "overconfidence",
@@ -26,7 +27,7 @@ REASON_TAGS = [
 ]
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global db
     db = database
 

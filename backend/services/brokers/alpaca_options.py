@@ -105,6 +105,7 @@ def _to_alpaca_symbol(occ_symbol: str) -> str:
 
 class AlpacaOptionsAdapter(BrokerOptionsAdapter):
     provider = "alpaca"
+    supports_multileg = True  # /v2/orders with order_class=mleg
 
     def __init__(
         self,

@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   Gauge,
   Rocket,
@@ -228,19 +229,79 @@ const ReliabilityCard = ({ data }) => {
   );
 };
 
+const PaperDaysProgressCard = ({ data }) => {
+  if (!data) {
+    return (
+      <Card icon={CalendarClock} title="Paper days → Tier 3" testId="ml-health-paper-days">
+        <div className="text-xs text-slate-400">Loading…</div>
+      </Card>
+    );
+  }
+  const days = data.days ?? 0;
+  const target = data.target_days ?? 30;
+  const remaining = data.remaining_days ?? Math.max(target - days, 0);
+  const pct = Math.max(0, Math.min(100, data.progress_pct ?? Math.round((days / target) * 100)));
+  const unlocked = data.unlocked === true;
+  const total = data.total_trades ?? 0;
+  const override = data.override_env;
+
+  return (
+    <Card
+      icon={CalendarClock}
+      title="Paper days → Tier 3"
+      testId="ml-health-paper-days"
+      tone={unlocked ? 'ok' : 'default'}
+    >
+      <div className="flex items-baseline justify-between">
+        <div className="text-xl font-bold text-white tabular-nums">
+          {days}
+          <span className="text-sm text-slate-400 font-normal"> / {target} days</span>
+        </div>
+        <span className="text-[10px] text-slate-400 tabular-nums">
+          {total} trades
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-900/60 rounded-full overflow-hidden mt-2">
+        <div
+          className={`h-full ${unlocked ? 'bg-emerald-400' : 'bg-[#3DE8D9]'} transition-all`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="mt-2 text-[10px]">
+        {unlocked ? (
+          <span className="text-emerald-300">30-day floor cleared — Tier 3 gate open.</span>
+        ) : (
+          <span className="text-slate-400">
+            {remaining} day{remaining === 1 ? '' : 's'} remaining before the ML pipeline can enter Tier 3.
+          </span>
+        )}
+        {override && (
+          <span className="ml-1 text-amber-300">
+            · override: RISEDUAL_LIVE_DAYS={override}
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+
 const MLHealthStrip = () => {
   const [tier3, setTier3] = useState(null);
+  const [progress, setProgress] = useState(null);
   const [canary, setCanary] = useState(null);
   const [reliability, setReliability] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [t3, c, r] = await Promise.all([
+      const [t3, pr, c, r] = await Promise.all([
         authFetch(`${API}/admin/tier3-readiness?days=30`),
+        authFetch(`${API}/admin/tier3-progress`),
         authFetch(`${API}/admin/conviction/clamp-canary?days=30`),
         authFetch(`${API}/admin/conviction/reliability?days=30`),
       ]);
       if (t3.ok) setTier3(await t3.json());
+      if (pr.ok) setProgress(await pr.json());
       if (c.ok) setCanary(await c.json());
       if (r.ok) setReliability(await r.json());
     } catch (e) {
@@ -254,10 +315,11 @@ const MLHealthStrip = () => {
 
   return (
     <div
-      className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
       data-testid="ml-health-strip"
     >
       <Tier3ReadinessCard data={tier3} />
+      <PaperDaysProgressCard data={progress} />
       <ClampCanaryCard data={canary} />
       <ReliabilityCard data={reliability} />
     </div>

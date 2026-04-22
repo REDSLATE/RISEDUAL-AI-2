@@ -10,14 +10,14 @@ import logging
 import os
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

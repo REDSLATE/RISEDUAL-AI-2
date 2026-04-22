@@ -14,7 +14,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 
 
 # ══════════════════════════════════════════════════
@@ -77,7 +77,7 @@ _ACTION_ALIAS = {
     "scanner_validate": "scanner_validation",
 }
 
-TOPUP_TIERS = [
+TOPUP_TIERS: list[dict[str, Any]] = [
     {"id": "topup_1000", "credits": 1000, "label": "1,000 Credits"},
     {"id": "topup_2000", "credits": 2000, "label": "2,000 Credits"},
     {"id": "topup_5000", "credits": 5000, "label": "5,000 Credits"},
@@ -163,7 +163,7 @@ def topup_price(plan_key: str, credits: int) -> float:
 #  DB-DEPENDENT FUNCTIONS
 # ══════════════════════════════════════════════════
 
-def set_db(database: object) -> None:
+def set_db(database: Any) -> None:
     global db
     db = database
 

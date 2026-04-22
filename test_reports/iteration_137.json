@@ -1,0 +1,74 @@
+{
+  "summary": "Iteration 137: Tested P2 Smart-routed SPREAD orders, P1 Tier 3 paper-days progress endpoint, and regression tests. All 14 backend tests passed. Smart-routed spreads working correctly with routing.mode=smart, estimated_spread, spread_per_leg array. Direct-route mode also working with routing.mode=direct. Tier3-progress endpoint returns all expected fields (days, target_days, remaining_days, progress_pct, unlocked, first_trade_at, last_trade_at, total_trades). Frontend UI testing had difficulty navigating to Admin Panel modal due to complex UI interactions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Admin Panel access",
+        "issue": "Difficulty navigating to Admin Panel modal via Playwright - avatar dropdown not opening consistently. Manual testing recommended for Conviction tab UI verification.",
+        "affected_selectors": ["[data-testid='nav-admin-btn']", "button.rounded-full"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Dashboard",
+        "issues": ["React key warnings in console: 'Encountered two children with the same key' for bid/ask values - minor but should be fixed"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration137_spread_routing_tier3.py",
+    "/app/test_reports/pytest/iteration137_spread_routing_tier3_results.xml"
+  ],
+  "action_items": [
+    "Manually verify Admin Panel → Conviction tab → Paper Days card renders correctly with 4-column grid",
+    "Fix React key warnings for bid/ask values in dashboard components"
+  ],
+  "critical_code_review_comments": [
+    "MLHealthStrip.jsx correctly implements 4-card grid with lg:grid-cols-4",
+    "PaperDaysProgressCard has correct data-testid='ml-health-paper-days'",
+    "Smart router spread functionality correctly implemented with pick_for_spread and route_spread methods",
+    "SpreadOrderRequest correctly includes best_execution field"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration137_spread_routing_tier3.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "Unable to fully verify Admin Panel UI due to navigation issues"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend APIs for smart-routed spreads and tier3-progress are fully functional. Frontend Admin Panel access requires clicking user avatar dropdown then 'Admin Panel' menu item. The Conviction tab contains MLHealthStrip with 4 cards including the new Paper Days card. estimated_spread=1e9 is expected sentinel value when TRADIER_API_TOKEN is not set.",
+  "verified_features": {
+    "smart_routed_spread": {
+      "endpoint": "POST /api/options/spread",
+      "best_execution": true,
+      "verified_fields": ["routing.mode=smart", "routing.estimated_spread", "routing.spread_per_leg (length 2)", "provider=alpaca"]
+    },
+    "direct_route_spread": {
+      "endpoint": "POST /api/options/spread",
+      "best_execution": false,
+      "verified_fields": ["routing.mode=direct"]
+    },
+    "tier3_progress": {
+      "endpoint": "GET /api/admin/tier3-progress",
+      "verified_fields": ["days", "target_days (30)", "remaining_days", "progress_pct", "unlocked", "first_trade_at", "last_trade_at", "total_trades"]
+    },
+    "spread_cancel": {
+      "endpoint": "DELETE /api/options/order/{order_id}",
+      "verified": true
+    }
+  },
+  "regression_tests_passed": [
+    "GET /api/options/greeks",
+    "POST /api/options/order with best_execution=true",
+    "GET /api/options/providers returns [alpaca, tradier, tastytrade, ibkr]"
+  ]
+}

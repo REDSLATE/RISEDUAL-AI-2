@@ -7,6 +7,7 @@ import logging
 import asyncio
 import requests
 from datetime import datetime, timezone, timedelta
+from typing import Any
 
 
 import yfinance as yf
@@ -14,7 +15,7 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 FNG_API = "https://api.alternative.me/fng/"
-_fng_cache = {"data": None, "expires": None}
+_fng_cache: dict[str, Any] = {"data": None, "expires": None}
 
 
 async def get_fear_greed_index() -> dict:
@@ -45,7 +46,8 @@ def get_fear_greed_historical(days: int = 730) -> dict[str, int]:
     Used for training bootstrap to tag historical regimes with sentiment.
     """
     try:
-        resp = requests.get(FNG_API, params={"limit": days, "format": "json"}, timeout=30)
+        params: dict[str, Any] = {"limit": days, "format": "json"}
+        resp = requests.get(FNG_API, params=params, timeout=30)
         data = resp.json()
         entries = data.get("data", [])
         result = {}
