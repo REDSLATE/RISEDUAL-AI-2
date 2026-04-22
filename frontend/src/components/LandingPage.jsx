@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
+    <header className="sticky top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <a href="#" className="text-lg font-bold text-white tracking-tight">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
@@ -64,7 +64,7 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
 
 /* ─── Hero ─── */
 const Hero = ({ onGetStarted, onScroll, onTryDemo }) => (
-  <section className="relative pt-32 pb-20 sm:pt-40 sm:pb-28 overflow-hidden" data-testid="landing-hero">
+  <section className="relative pt-16 pb-20 sm:pt-20 sm:pb-28 overflow-hidden" data-testid="landing-hero">
     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(20,184,166,0.08),transparent_70%)]" />
     <div className="max-w-4xl mx-auto px-4 text-center relative z-10">
       <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-teal-500/20 bg-teal-500/5 text-teal-400 text-xs font-medium mb-8">
@@ -573,15 +573,19 @@ const LandingFooter = ({ onOpenLegal }) => (
 );
 
 import AboutUs from './AboutUs';
+import BetaBanner from './BetaBanner';
+import BetaSignupModal from './BetaSignupModal';
 
 /* ─── Main Landing Page ─── */
 const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo }) => {
+  const [showBeta, setShowBeta] = useState(false);
   const scrollToHow = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden" data-testid="landing-page">
+      <BetaBanner onClaim={() => setShowBeta(true)} />
       <Header onGetStarted={onGetStarted} onLogin={onLogin} onTryDemo={onTryDemo} />
       <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} onTryDemo={onTryDemo} />
       <QuantLiteCallout />
@@ -594,6 +598,7 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo }) => {
       <FAQ />
       <CTA onGetStarted={onGetStarted} />
       <LandingFooter onOpenLegal={onOpenLegal} />
+      {showBeta && <BetaSignupModal onClose={() => setShowBeta(false)} />}
     </div>
   );
 };
