@@ -24,6 +24,20 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+*Nothing queued. Agent will append here as changes land.*
+
+---
+
+## 🟢 Shipped to production
+
+> Blocks below were live at the time of the `mark-deployed` command. The
+> commit hash is the state that was deployed — use `git diff <hash> HEAD`
+> to see what's changed since.
+
+### 2026-04-22 15:14 UTC — Shipped as `date-rendering fix + quiverquant + code-review + landing video` (`b606dfd`)
+
+Commit: `b606dfd3a908df6511108348de5befa4975dce42`
+
 ### 2026-04-22 — Date-rendering bug fix: 27× `datetime.utcnow()` → `datetime.now(timezone.utc)`
 *Session: continued*
 
@@ -234,14 +248,6 @@ names and env-var presence assertions).
   yields a stable 64-char SHA-256 hex; downstream
   `market_memory_service` + `server.py` imports all clean.
 - Backend `/api/` returns 200 on the deployed preview.
-
----
-
-## 🟢 Shipped to production
-
-> Blocks below were live at the time of the `mark-deployed` command. The
-> commit hash is the state that was deployed — use `git diff <hash> HEAD`
-> to see what's changed since.
 
 ### 2026-04-22 13:34 UTC — Shipped as `safety layer (kill switch + safe_gather + error metrics + gather-guard migration)` (`3596127`)
 
