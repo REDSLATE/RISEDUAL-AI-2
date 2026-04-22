@@ -106,12 +106,14 @@ def compute_bot_score(bot_stats: dict) -> float:
     at 0.1 so losing bots still get a sliver of capital to
     rehabilitate rather than getting starved to zero.
     """
-    win_rate_raw = bot_stats.get("win_rate", 0.5)
-    pnl_raw = bot_stats.get("pnl", 0)
-    win_rate = 0.5 if win_rate_raw is None else float(win_rate_raw)
-    pnl = 0.0 if pnl_raw is None else float(pnl_raw)
+    win_rate = bot_stats.get("win_rate")
+    if win_rate is None:
+        win_rate = 0.5
+    pnl = bot_stats.get("pnl")
+    if pnl is None:
+        pnl = 0
 
-    score = (win_rate * 0.7) + (0.3 if pnl > 0 else 0.0)
+    score = (float(win_rate) * 0.7) + (0.3 if float(pnl) > 0 else 0.0)
     return max(score, 0.1)
 
 
