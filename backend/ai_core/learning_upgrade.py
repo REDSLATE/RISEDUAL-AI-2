@@ -123,6 +123,22 @@ def apply_calibration_to_size(
 
     Caller is still responsible for readiness/regime/kill-switch
     clamps; this function is purely about adding the ECE dimension.
+
+    Canonical call site:
+
+        from ai_core.learning_upgrade import apply_calibration_to_size
+
+        final_size = apply_calibration_to_size(
+            base_size=base_size,
+            confidence_multiplier=confidence_multiplier,
+            ece=calibration_error,
+        )
+
+    All three parameters are positional-or-keyword so you can mix
+    styles. Kwargs are the recommended form at call sites — it's
+    obvious which number is the ECE vs which is the multiplier,
+    and a future signature extension (e.g. adding `cap`) won't
+    silently misalign existing calls.
     """
     cal_mult = compute_calibration_multiplier(ece)
     return float(base_size) * float(confidence_multiplier) * cal_mult

@@ -120,6 +120,28 @@ def test_calibration_multiplier_never_zero():
     assert compute_calibration_multiplier(10.0) > 0.0  # impossibly bad ECE
 
 
+def test_apply_calibration_to_size_kwargs_call_site():
+    """Pin the exact call-site pattern from the upgrade spec:
+
+        final_size = apply_calibration_to_size(
+            base_size=base_size,
+            confidence_multiplier=confidence_multiplier,
+            ece=calibration_error,
+        )
+
+    If any future refactor renames these kwargs (e.g. `ece` → `cal_error`),
+    this test surfaces it immediately — downstream call sites across
+    the codebase would break silently otherwise.
+    """
+    final_size = apply_calibration_to_size(
+        base_size=1000.0,
+        confidence_multiplier=1.2,
+        ece=0.07,    # 5-10% tier → 0.8× multiplier
+    )
+    # 1000 × 1.2 × 0.8 = 960
+    assert final_size == pytest.approx(960.0, abs=0.01)
+
+
 def test_apply_calibration_to_size_composes_multiplicatively():
     """base × conf × cal — order and associativity matter because
     the downstream sizing clamp applies AFTER all three."""
