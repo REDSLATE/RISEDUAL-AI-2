@@ -180,6 +180,44 @@ def test_final_size_respects_absolute_floor():
     assert size >= 100.0   # 0.1 × 1000
 
 
+# ── Calibration-aware sizing (Phase 2) ─────────────────────────────
+#
+# `compute_final_position_size` now accepts an optional
+# `model_ece` kwarg. These tests pin the expected impact on size
+# without duplicating the tier-boundary tests that already live in
+# `test_learning_sizing.py`.
+
+
+def test_final_size_legacy_call_unchanged():
+    """Regression: callers that don't pass `model_ece` must get
+    the exact same size they got before the upgrade landed."""
+    r = _healthy_readiness()
+    legacy = compute_final_position_size(1000, r, {"confidence": 80})
+    with_none = compute_final_position_size(1000, r, {"confidence": 80}, model_ece=None)
+    assert legacy == with_none
+
+
+def test_final_size_degrades_with_miscalibration():
+    """Same confidence, same readiness, higher ECE → smaller size.
+    A miscalibrated model should never out-size its well-calibrated
+    self just because the confidence number was identical."""
+    r = _healthy_readiness()
+    good_ece = compute_final_position_size(1000, r, {"confidence": 80}, model_ece=0.03)
+    bad_ece = compute_final_position_size(1000, r, {"confidence": 80}, model_ece=0.25)
+    assert bad_ece < good_ece
+    # Floor still applies — miscalibrated model shouldn't drop below
+    # 0.1× base even with ECE off the scale.
+    assert bad_ece >= 100.0
+
+
+def test_final_size_well_calibrated_matches_legacy():
+    """ECE < 5% → multiplier 1.0 → identical to legacy (no-op)."""
+    r = _healthy_readiness()
+    legacy = compute_final_position_size(1000, r, {"confidence": 80})
+    well_cal = compute_final_position_size(1000, r, {"confidence": 80}, model_ece=0.02)
+    assert legacy == well_cal
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # apply_adaptive_position_size + apply_per_trade_sizing
 # ════════════════════════════════════════════════════════════════════════════════

@@ -56,7 +56,8 @@ async def test_nightly_retrain_skips_on_insufficient_samples(tmp_path, monkeypat
     # Fake DB that returns an empty dataframe via the private loader.
     async def fake_load(db, max_samples):
         import pandas as pd
-        return pd.DataFrame(), pd.Series(dtype=int), pd.Series(dtype=float), 0
+        empty_w = pd.Series(dtype=float)
+        return pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0
 
     monkeypatch.setattr("services.ml_retrain_service._load_training_dataframe", fake_load)
     fake_db = MagicMock()

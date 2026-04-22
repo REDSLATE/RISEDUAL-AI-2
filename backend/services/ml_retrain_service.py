@@ -69,31 +69,32 @@ def _next_version_number() -> int:
 
 async def _load_training_dataframe(
     db: Any, max_samples: int
-) -> tuple[Any, Any, Any, int]:
-    """Pull labeled snapshots and return ``(X_df, y_series, w_series, n_rows)``.
+) -> tuple[Any, Any, Any, Any, int]:
+    """Pull labeled snapshots and return
+    ``(X_df, y_series, w_final, w_severity_only, n_rows)``.
 
-    Tuple shape is ``(pandas.DataFrame, pandas.Series[int],
-    pandas.Series[float], int)`` — typed as `Any` to avoid the hard
-    pandas import cost on cold boot for non-training code paths.
-    Internal only.
+    Tuple is ``(pandas.DataFrame, pandas.Series[int],
+    pandas.Series[float], pandas.Series[float], int)`` — the fourth
+    element is the severity-only weights (pre-regime multiply),
+    exposed for drift-logging. Callers that only care about
+    training can ignore it.
 
-    The `w_series` is a **severity-weighted** sample weight derived
-    from `return_1d`. A -5% blown trade contributes 10× more
-    training signal than a -0.5% stop-out, matching the
-    `GRADE_WEIGHTS` asymmetry the conviction service already uses
-    for calibration. Rows with missing `return_1d` fall back to a
-    neutral weight of 1.0 (equivalent to the previous uniform
-    behavior).
+    The `w_final` series is a **severity × regime-relevance**
+    sample weight:
+      * severity comes from `return_1d` (see `_severity_weights`) —
+        a -5% blown trade contributes 4× a -0.5% stop-out.
+      * regime comes from `regime_label` — rows captured under a
+        regime different from the current regime are down-weighted
+        0.5× (see `ai_core.learning_sizing.compute_regime_weight`).
+    Missing columns default to neutral 1.0 — never less training
+    signal than the legacy uniform path.
     """
     import pandas as pd
 
     from risedual_core.ml.features import FEATURE_COLUMNS
 
-    # `return_1d` carries the movement magnitude — the single column
-    # that separates WEAK from STRONG outcomes. Pull it alongside
-    # `outcome` so we can grade without a second query.
     projection = {
-        "_id": 0, "outcome": 1, "return_1d": 1,
+        "_id": 0, "outcome": 1, "return_1d": 1, "regime_label": 1,
         **{c: 1 for c in FEATURE_COLUMNS},
     }
     cursor = (
@@ -104,16 +105,62 @@ async def _load_training_dataframe(
     )
     rows = await cursor.to_list(length=max_samples)
     if not rows:
-        return pd.DataFrame(), pd.Series(dtype=int), pd.Series(dtype=float), 0
+        empty_w = pd.Series(dtype=float)
+        return pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0
 
     df = pd.DataFrame(rows)
-    # Binary target: "up" outcomes are treated as positive signal for v1.
-    # Once `predicted_direction` is persisted on every snapshot we'll
-    # switch to is_correct = (predicted_direction == realised_direction).
     y = (df["outcome"] == "up").astype(int)
     X = df[[c for c in FEATURE_COLUMNS if c in df.columns]]
-    w = _severity_weights(df)
-    return X, y, w, len(rows)
+    severity = _severity_weights(df)
+    w_final = _apply_regime_weighting(
+        severity, df, current_regime=await _resolve_current_regime(db),
+    )
+    return X, y, w_final, severity, len(rows)
+
+
+async def _resolve_current_regime(db: Any) -> str | None:
+    """Best-effort fetch of the CURRENT regime label so we can
+    down-weight training rows captured under a different regime.
+
+    Reads from the latest `features_snapshots` row (captured_at DESC)
+    — whichever regime the most recent snapshot landed in is the
+    regime we're about to predict under. Returns None if the collection
+    has no regime labels yet (warm-start case), which keeps regime
+    weighting a no-op until the backfill lands."""
+    try:
+        latest = await db.features_snapshots.find_one(
+            {"regime_label": {"$nin": [None, ""]}},
+            {"_id": 0, "regime_label": 1},
+            sort=[("captured_at", -1)],
+        )
+    except Exception:
+        return None
+    if not latest:
+        return None
+    label = latest.get("regime_label")
+    return str(label) if label else None
+
+
+def _apply_regime_weighting(
+    severity: Any,
+    df: Any,
+    *,
+    current_regime: str | None,
+) -> Any:
+    """Multiply severity weights by per-row regime-match weight.
+
+    Returns severity unchanged when regime info is missing — a
+    warm-start model shouldn't silently cut all weights by half
+    just because `regime_label` isn't backfilled yet.
+    """
+    if "regime_label" not in df.columns or current_regime is None:
+        return severity
+    from ai_core.learning_sizing import compute_regime_weight
+
+    regime_weights = df["regime_label"].apply(
+        lambda r: compute_regime_weight(r if isinstance(r, str) else None, current_regime)
+    )
+    return (severity * regime_weights).astype(float)
 
 
 # Severity-weighting thresholds (abs return_1d).
@@ -225,7 +272,7 @@ async def run_nightly_retrain(
     try:
         from risedual_core.ml.signal_model import SignalModel, SignalModelConfig
 
-        X, y, w, n = await _load_training_dataframe(db, max_samples)
+        X, y, w, w_severity_only, n = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n
         log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
 
@@ -241,15 +288,33 @@ async def run_nightly_retrain(
 
         pos_rate = float(y.mean()) if n > 0 else 0.0
         log_row["positive_rate"] = round(pos_rate, 4)
-        # Expose the mean/std training weight so drift is visible in
-        # the retrain log without pulling the sample_weight array.
-        # A drop in mean_sample_weight means we're training on more
-        # noise/flat days (weaker signal); a spike means we're
-        # training on unusually high-magnitude windows.
+        # Expose training-weight statistics so drift is visible in
+        # the retrain log without pulling the sample_weight array:
+        #   mean_sample_weight — drop = training on more noise/flat
+        #     days (weaker signal); spike = high-magnitude regime.
+        #   severity_strong_frac — fraction of rows at the 2.0
+        #     severity cap BEFORE regime weighting. Pure magnitude
+        #     signal so the metric is comparable across retrains
+        #     regardless of current regime.
+        #   regime_match_frac — fraction of rows whose regime
+        #     matches the current regime. A value near 1.0 means
+        #     the training set is regime-homogeneous; near 0.5 means
+        #     half the rows are from a different regime and being
+        #     down-weighted accordingly.
         if n > 0:
             log_row["mean_sample_weight"] = round(float(w.mean()), 4)
             log_row["severity_strong_frac"] = round(
-                float((w >= _WEIGHT_CAP).mean()), 4,
+                float((w_severity_only >= _WEIGHT_CAP).mean()), 4,
+            )
+            # Infer regime match by dividing final weights by
+            # severity-only weights. Rows where the ratio is ~1.0
+            # kept full regime weight (match); ratio ~0.5 means
+            # regime mismatch. Runtime-safe division via
+            # `replace(0, 1)` for any severity-zero rows.
+            safe_sev = w_severity_only.replace(0, 1.0)
+            regime_ratio = (w / safe_sev).clip(0.0, 1.0)
+            log_row["regime_match_frac"] = round(
+                float((regime_ratio >= 0.99).mean()), 4,
             )
 
         version_n = _next_version_number()

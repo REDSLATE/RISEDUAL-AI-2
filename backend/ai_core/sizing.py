@@ -127,16 +127,25 @@ def compute_final_position_size(
     base_size: float,
     readiness: dict,
     prediction: dict,
+    *,
+    model_ece: float | None = None,
 ) -> float:
     """Return the adaptive dollar-notional size for this signal, or
     `0.0` when the signal fails the `MIN_CONFIDENCE_TO_TRADE` gate.
 
     Computation:
-      ``base_size × readiness_mult × confidence_mult``
+      ``base_size × readiness_mult × confidence_mult × calibration_mult``
     then clamped to `[0.1, 2.0]` of `base_size` as a final belt.
 
     `prediction` is expected to expose a `confidence` key on the
     0-100 scale (same contract as everywhere else in the pipeline).
+
+    `model_ece` (optional, keyword-only) pulls in the model's latest
+    Expected Calibration Error from `SignalModel.calibration_stats`.
+    When provided, position size is dampened to reflect the model's
+    actual reliability — a miscalibrated model at 70% "confidence"
+    shouldn't size like a well-calibrated one. `None` (default)
+    preserves legacy behavior so older callers don't regress.
     """
     if float(prediction.get("confidence", 0)) < MIN_CONFIDENCE_TO_TRADE:
         return 0.0
@@ -144,7 +153,21 @@ def compute_final_position_size(
     readiness_mult = compute_position_multiplier(readiness)
     conf_mult = compute_confidence_multiplier(float(prediction.get("confidence", 50)))
 
-    final_mult = readiness_mult * conf_mult
+    # Calibration dampener (Phase 2 of sizing): applied on TOP of
+    # confidence, not replacing it. Well-calibrated models (ECE<5%)
+    # get 1.0 — legacy callers unchanged. Badly calibrated ones
+    # (ECE≥20%) get 0.4×, matching the `_ECE_FLOOR_MULT` in
+    # `ai_core/learning_sizing.py`. When `model_ece` is None (e.g.,
+    # no training data yet, or calibration not yet computed), we
+    # trust confidence at face value — the readiness gate already
+    # prevents untrained-model trading.
+    if model_ece is not None:
+        from ai_core.learning_sizing import compute_calibration_multiplier
+        cal_mult = compute_calibration_multiplier(model_ece)
+    else:
+        cal_mult = 1.0
+
+    final_mult = readiness_mult * conf_mult * cal_mult
     final_mult = max(min(final_mult, _FINAL_MULT_CEIL), _FINAL_MULT_FLOOR)
 
     return round(float(base_size) * final_mult, 2)
