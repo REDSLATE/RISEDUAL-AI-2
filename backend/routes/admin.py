@@ -220,7 +220,7 @@ async def conviction_calibration(request: Request, days: int = 30):
 
     cursor = db.predictions.find(
         {
-            "verified_24h.correct": {"$exists": True},
+            "verified_24h.correct": {"$in": [True, False]},  # exclude NEUTRAL (stored as null)
             "timestamp": {"$gte": fetch_since.isoformat()},
         },
         {

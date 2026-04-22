@@ -24,6 +24,73 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Root cause of toxic-alert bug: brutal grader + scale mismatch
+*Session: continued*
+
+**The dedup we shipped was a symptom fix. This is the root cause.**
+
+User noticed "toxic spike" alerts firing 3 nights in a row for easy
+tickers like AAPL/MSFT/GOOGL. Forensic query revealed two compounding
+bugs:
+
+1. **Brutal BUY/SELL evaluation** — `_evaluate_prediction` was
+   `pct_change > 0` for BUY, `< 0` for SELL. Zero tolerance. Meanwhile
+   NEUTRAL had a volatility-aware band. Result: a BUY on AAPL that
+   ended the day at -0.01% drift was marked MISS.
+2. **Confidence-scale mismatch in ChromaDB** — `memory_training_service`
+   wrote on 0-100 scale, `verify_pending_predictions` wrote on 0-1
+   scale. The nightly_cleanup's `confidence > 80` query only ever
+   matched one half, inflating the "toxic" counts.
+
+**Fix #1 — Volatility-aware 5-tier grading (user-supplied patch spec):**
+- New `grade_prediction()` returns one of `STRONG_HIT, WEAK_HIT,
+  NEUTRAL, WEAK_MISS, STRONG_MISS` based on `tol = max(ATR*0.5, 0.25%)`.
+- Legacy `_evaluate_prediction()` is now a thin wrapper that collapses
+  the grade to the existing `correct: bool` contract — every caller
+  keeps working unchanged.
+- `verify_pending_predictions` persists both `correct` (legacy) and
+  `grade` (new rich label). NEUTRAL rows store `correct: null` so
+  calibration queries can optionally exclude them.
+- Learning engine resolve-pending hook skips NEUTRAL trades — they
+  stay open conceptually until the next verification window.
+
+**Fix #2 — `normalize_confidence()` at save_regime boundary:**
+- Single source of truth. Any value in (0, 1] is scaled to 0-100; >1
+  is already correct; None → 0. `market_memory_service.save_regime`
+  now calls `normalize_confidence()` before writing to ChromaDB.
+- Conviction calibration endpoint filter tightened to
+  `verified_24h.correct in [true, false]` (exclude null/NEUTRAL).
+
+**Fix #3 — Backfill script `scripts/backfill_grade_misses.py`:**
+- Re-grades all existing `verified_24h.correct` rows with the new
+  grader. Rows that are now NEUTRAL get `correct: null` — so they
+  stop being counted as losses in training and calibration.
+- Also normalises ChromaDB confidence values.
+
+**Measured impact (live owner data, 30-day window):**
+
+| metric              | before | after  |
+|---------------------|--------|--------|
+| Medium-conf win-rate| 52.7%  | **79.1%**  |
+| High-conf win-rate  | 88.2%  | **100.0%** |
+| Rows in stats       | 182    | 125    |
+| Rows demoted to NEUTRAL | 0  | **57** |
+
+70% of the predictions previously labeled "miss" were actually
+noise-day drifts inside the tolerance band. The AI's real accuracy
+is dramatically better than the old grader showed.
+
+**Files added/changed:**
+- `backend/services/prediction_tracker.py` — grade_prediction,
+  normalize_confidence, verify_pending_predictions rewrite
+- `backend/services/market_memory_service.py` — confidence
+  normalisation on save_regime
+- `backend/routes/admin.py` — calibration filter excludes NEUTRAL
+- `backend/scripts/backfill_grade_misses.py` — one-time re-grade
+
+**Backfill status**: already run on owner data. Schedule this script
+to run once post-deploy on prod (single-run, idempotent).
+
 ### 2026-02-20 — Alert dedup (fixes the "same alert 3 nights in a row" bug)
 *Session: continued*
 

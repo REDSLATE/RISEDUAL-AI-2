@@ -165,30 +165,143 @@ async def _neutral_tolerance(symbol: str, window: str = "24h") -> float:
 def _evaluate_prediction(direction: str, price_at_prediction: float,
                          price_now: float, window: str = "24h",
                          neutral_tolerance: Optional[float] = None) -> bool:
-    """Determine if a prediction was correct.
+    """Determine if a prediction was correct (boolean contract preserved).
 
-    BUY/BULLISH: price went up
-    SELL/BEARISH: price went down
-    HOLD/NEUTRAL: price moved within `neutral_tolerance` (or static default
-                  if none supplied — e.g. sync contexts). For production
-                  callers, pass a tolerance from `_neutral_tolerance()` so
-                  the band adapts per-symbol.
+    Thin wrapper around `grade_prediction()` that collapses the 5-tier
+    grade into the existing `correct: bool` contract for backwards
+    compatibility with every caller that already stores
+    `verified_24h.correct`. New callers should use `grade_prediction()`
+    directly to get the full grade (STRONG_HIT, WEAK_HIT, NEUTRAL,
+    WEAK_MISS, STRONG_MISS).
+
+    Bool mapping — NEUTRAL is critical here: a prediction that lands
+    inside the volatility tolerance band is NO LONGER counted as a miss.
+    Previously `pct_change > 0` forced every flat/noise day on a BUY
+    call to count as wrong, which was the "easy tickers keep getting
+    flagged toxic" bug.
+    """
+    grade = grade_prediction(direction, price_at_prediction, price_now,
+                             window=window, neutral_tolerance=neutral_tolerance)
+    if grade in ("STRONG_HIT", "WEAK_HIT"):
+        return True
+    if grade in ("STRONG_MISS", "WEAK_MISS"):
+        return False
+    # NEUTRAL → explicitly NOT a hit, but ALSO not a miss. Callers that
+    # only look at True/False lose the neutral state; they'll see False
+    # here, but downstream verification writes `correct = None` for the
+    # neutral grade path (see verify_pending_predictions).
+    return False
+
+
+# 5-tier prediction grade — superset of the legacy correct:bool signal.
+# Used by new callers (conviction calibration, learning engine) for
+# richer accuracy tracking. Order matters for UI sorting.
+OUTCOME_GRADES = ("STRONG_HIT", "WEAK_HIT", "NEUTRAL", "WEAK_MISS", "STRONG_MISS")
+
+# Tolerance config for the grading system. `ATR_MULTIPLIER` scales the
+# ATR-derived tolerance; `MIN_TOLERANCE_PCT` is the absolute floor (as
+# a percentage) so super-low-volatility names don't collapse to a
+# zero-tolerance grader. The floor (0.25%) deliberately matches the
+# user-supplied patch spec.
+ATR_MULTIPLIER = 0.5
+MIN_TOLERANCE_PCT = 0.25  # 0.25% floor — prevents zero-tolerance collapse
+
+
+def grade_prediction(direction: str, price_at_prediction: float,
+                     price_now: float, window: str = "24h",
+                     neutral_tolerance: Optional[float] = None) -> str:
+    """Return one of OUTCOME_GRADES based on volatility-aware tolerance.
+
+    `neutral_tolerance` is supplied by the async `_neutral_tolerance()`
+    helper when available (ATR-derived, per-symbol, windowed). Sync
+    callers can pass None and we'll fall back to the 0.25% floor.
+
+    Grade ladder relative to the tolerance band T:
+        pct_change > +2T  → STRONG_HIT  (BUY) / STRONG_MISS (SELL)
+        pct_change > +T   → WEAK_HIT    (BUY) / WEAK_MISS   (SELL)
+        |pct_change| <= T → NEUTRAL
+        pct_change < -T   → WEAK_MISS   (BUY) / WEAK_HIT    (SELL)
+        pct_change < -2T  → STRONG_MISS (BUY) / STRONG_HIT  (SELL)
+
+    For declared-NEUTRAL predictions: a TIGHT landing (|Δ| ≤ T) is
+    STRONG_HIT; a modest move (T < |Δ| ≤ 2T) is WEAK_HIT; larger is
+    a MISS scaled by magnitude.
     """
     if price_at_prediction <= 0 or price_now <= 0:
-        return False
+        return "STRONG_MISS"  # data hygiene fail → conservative miss
+
     pct_change = (price_now - price_at_prediction) / price_at_prediction * 100
     direction_upper = direction.upper()
 
+    # Derive the tolerance band — we honor an explicit override first,
+    # then the ATR-derived band (passed via `neutral_tolerance` from
+    # the async caller), then the floor.
+    if neutral_tolerance is not None and neutral_tolerance > 0:
+        tol = max(float(neutral_tolerance), MIN_TOLERANCE_PCT)
+    else:
+        # Sync fallback: static window-sized tolerance × ATR_MULTIPLIER,
+        # clamped to the floor.
+        fallback = (NEUTRAL_TOLERANCE_1W_DEFAULT if window == "1w"
+                    else NEUTRAL_TOLERANCE_24H_DEFAULT)
+        tol = max(fallback * ATR_MULTIPLIER, MIN_TOLERANCE_PCT)
+
     if direction_upper in DIRECTION_BULLISH:
-        return pct_change > 0
-    elif direction_upper in DIRECTION_BEARISH:
-        return pct_change < 0
-    elif direction_upper in DIRECTION_NEUTRAL:
-        if neutral_tolerance is None:
-            neutral_tolerance = (NEUTRAL_TOLERANCE_1W_DEFAULT
-                                 if window == "1w" else NEUTRAL_TOLERANCE_24H_DEFAULT)
-        return abs(pct_change) < neutral_tolerance
-    return False
+        if pct_change > 2 * tol:
+            return "STRONG_HIT"
+        if pct_change > tol:
+            return "WEAK_HIT"
+        if pct_change < -2 * tol:
+            return "STRONG_MISS"
+        if pct_change < -tol:
+            return "WEAK_MISS"
+        return "NEUTRAL"
+
+    if direction_upper in DIRECTION_BEARISH:
+        if pct_change < -2 * tol:
+            return "STRONG_HIT"
+        if pct_change < -tol:
+            return "WEAK_HIT"
+        if pct_change > 2 * tol:
+            return "STRONG_MISS"
+        if pct_change > tol:
+            return "WEAK_MISS"
+        return "NEUTRAL"
+
+    if direction_upper in DIRECTION_NEUTRAL:
+        # Declared NEUTRAL: the prediction is a bet on a tight band.
+        # Tighter landing → stronger hit.
+        abs_change = abs(pct_change)
+        if abs_change <= tol:
+            return "STRONG_HIT"
+        if abs_change <= 2 * tol:
+            return "WEAK_HIT"
+        # Beyond 2× tolerance → the neutral call was wrong. Strong
+        # vs weak depends on how far past 2T it went.
+        if abs_change >= 4 * tol:
+            return "STRONG_MISS"
+        return "WEAK_MISS"
+
+    return "STRONG_MISS"  # unknown direction → conservative
+
+
+def normalize_confidence(confidence: float | int | None) -> float:
+    """Canonicalise confidence to 0-100 scale.
+
+    Mixed-scale writes were the second leg of the "toxic alerts 3x" bug
+    — `memory_training_service` saved on 0-100 while
+    `verify_pending_predictions` saved on 0-1, so the nightly_cleanup's
+    `confidence > 80` query only ever matched one half of chroma.
+
+    Heuristic: any value in (0, 1] is treated as a fraction and scaled
+    up. Anything >1 is already on the 0-100 scale. `None` degrades to
+    0 so downstream math doesn't crash.
+    """
+    if confidence is None:
+        return 0.0
+    c = float(confidence)
+    if c <= 1.0:
+        return round(c * 100, 2)
+    return round(c, 2)
 
 
 # Sliding cache / dedup windows make the prices embedded in predictions
@@ -377,15 +490,32 @@ async def verify_pending_predictions(db):
         if price_now is None:
             continue
         tolerance_24h = await _neutral_tolerance(pred["symbol"], window="24h")
+        # New 5-tier grading: compute the rich label first, derive the
+        # legacy boolean from it. NEUTRAL outcomes are preserved so
+        # downstream learning/calibration skips them instead of
+        # counting noise-day drift as misses (the "toxic alerts on
+        # easy tickers" bug).
+        grade = grade_prediction(
+            pred["direction"], pred["price_at_prediction"], price_now,
+            window="24h", neutral_tolerance=tolerance_24h,
+        )
         correct = _evaluate_prediction(
             pred["direction"], pred["price_at_prediction"], price_now,
             window="24h", neutral_tolerance=tolerance_24h,
         )
+        # For NEUTRAL grade we store `correct: None` so the calibration
+        # queries (which filter on {"correct": {"$exists": true}}) can
+        # optionally include or exclude — legacy dashboards keep
+        # working because they read `correct` as True/False/None now
+        # instead of strictly True/False.
+        stored_correct = None if grade == "NEUTRAL" else bool(correct)
 
-        # Classify failure mode if prediction was wrong
+        # Classify failure mode only on real misses (WEAK_MISS or
+        # STRONG_MISS). NEUTRAL and HITs get None so we don't pollute
+        # the failure-mode histograms with noise-day "failures".
         failure_reason = "N/A"
         failure_code = None
-        if not correct:
+        if grade in ("WEAK_MISS", "STRONG_MISS"):
             failure_code = _classify_failure(
                 pred["direction"], pred["price_at_prediction"], price_now
             )
@@ -395,7 +525,8 @@ async def verify_pending_predictions(db):
             {"prediction_id": pred["prediction_id"]},
             {"$set": {"verified_24h": {
                 "price": price_now,
-                "correct": correct,
+                "correct": stored_correct,
+                "grade": grade,
                 "verified_at": now.isoformat(),
                 "failure_code": failure_code,
                 "failure_reason": failure_reason,
@@ -403,8 +534,8 @@ async def verify_pending_predictions(db):
             }}}
         )
         logger.info(
-            f"Verified 24h: {pred['symbol']} {pred['direction']} — "
-            f"{'CORRECT' if correct else f'WRONG ({failure_code})'}"
+            f"Verified 24h: {pred['symbol']} {pred['direction']} → "
+            f"{grade}"
         )
 
         # Push to SSE stream
@@ -414,13 +545,23 @@ async def verify_pending_predictions(db):
                 "ticker": pred["symbol"],
                 "direction": pred["direction"],
                 "confidence": pred.get("confidence", 0),
-                "correct": correct,
+                "correct": stored_correct,
+                "grade": grade,
                 "failure_code": failure_code,
                 "price_at": pred["price_at_prediction"],
                 "price_now": price_now,
             })
         except Exception:
             pass
+
+        # NEUTRAL-graded predictions are NOT resolved against the
+        # learning engine — the trade is still "open" conceptually
+        # (price within tolerance, outcome undecided). Let it expire
+        # naturally or resolve on the next verification window. This
+        # is the single line that prevents the "easy tickers flagged
+        # toxic" regression from re-introducing itself in the LE.
+        if grade == "NEUTRAL":
+            continue
 
         # Resolve the pending LearningEngine record for this trade so
         # the fleet-wide stats tick over from `pending` → `win`/`loss`.

@@ -146,11 +146,20 @@ async def save_regime(regime: dict) -> str:
     text = _regime_to_text(regime)
     doc_id = _make_id(regime)
 
+    # Canonicalise confidence to 0-100 scale. Two upstream paths write
+    # here — memory_training_service already uses 0-100, but
+    # prediction_tracker.verify_pending_predictions writes 0-1 raw
+    # floats from Mongo. Without this normalisation, the nightly
+    # cleanup's `confidence > 80` query only matches one half of the
+    # data, which is exactly what let "easy tickers" keep getting
+    # flagged toxic every night. See services/prediction_tracker.py
+    # ::normalize_confidence for the single source of truth.
+    from services.prediction_tracker import normalize_confidence
     metadata = {
         "symbol": regime.get("symbol", "UNKNOWN"),
         "date": regime.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
         "outcome": regime.get("outcome", "pending"),
-        "confidence": float(regime.get("confidence", 0)),
+        "confidence": normalize_confidence(regime.get("confidence")),
     }
 
     # Store failure classification if present
