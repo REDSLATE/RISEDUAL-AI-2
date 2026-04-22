@@ -193,62 +193,62 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
     earnings_task = asyncio.to_thread(fetch_earnings_surprises, symbol)
     insider_task = asyncio.to_thread(fetch_insider_trades, symbol)
 
-    gather_results: list = await asyncio.gather(
+    # Pre-declare variable types so mypy can narrow through the
+    # three-tier BaseException guards below. Without this, the
+    # `isinstance(x, BaseException)` branches + `{}` reassignments
+    # confuse mypy's tuple-unpack inference and downstream `.get(...)`
+    # calls lose their type.
+    overview: dict | BaseException
+    earnings: dict | BaseException
+    insiders: dict | BaseException
+    overview, earnings, insiders = await asyncio.gather(
         overview_task, earnings_task, insider_task,
         return_exceptions=True,
     )
-    raw_overview = gather_results[0]
-    raw_earnings = gather_results[1]
-    raw_insiders = gather_results[2]
 
     # Three-tier guard for `asyncio.gather(return_exceptions=True)` —
     # `asyncio.CancelledError` is a `BaseException` (not `Exception`)
     # and WILL land in the results during FastAPI request cancellation.
-    # Using `isinstance(x, Exception)` here was a latent bug that would
-    # crash downstream `overview.get(...)` calls with `AttributeError`.
     # See `services/fred_service.py` for the canonical comment.
-    overview: dict = raw_overview if isinstance(raw_overview, dict) else {}
-    if isinstance(raw_overview, BaseException) and not isinstance(
-        raw_overview, asyncio.CancelledError
-    ):
+
+    # ── OVERVIEW ──
+    if isinstance(overview, asyncio.CancelledError):
+        overview = {}
+    elif isinstance(overview, BaseException):
         log_error(logger, {
-            "error": str(raw_overview),
-            "type": type(raw_overview).__name__,
+            "error": str(overview),
+            "type": type(overview).__name__,
             "context": "war_room",
             "note": "War room overview error",
             "symbol": symbol,
         })
+        overview = {}
 
-    earnings: dict = (
-        raw_earnings if isinstance(raw_earnings, dict)
-        else {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
-    )
-    if isinstance(raw_earnings, BaseException) and not isinstance(
-        raw_earnings, asyncio.CancelledError
-    ):
+    # ── EARNINGS ──
+    if isinstance(earnings, asyncio.CancelledError):
+        earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
+    elif isinstance(earnings, BaseException):
         log_error(logger, {
-            "error": str(raw_earnings),
-            "type": type(raw_earnings).__name__,
+            "error": str(earnings),
+            "type": type(earnings).__name__,
             "context": "war_room",
             "note": "War room earnings error",
             "symbol": symbol,
         })
+        earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
 
-    insiders: dict = (
-        raw_insiders if isinstance(raw_insiders, dict)
-        else {"trades": [], "buy_volume": 0, "sell_volume": 0,
-              "net_sentiment": "neutral", "buy_ratio": 50}
-    )
-    if isinstance(raw_insiders, BaseException) and not isinstance(
-        raw_insiders, asyncio.CancelledError
-    ):
+    # ── INSIDERS ──
+    if isinstance(insiders, asyncio.CancelledError):
+        insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
+    elif isinstance(insiders, BaseException):
         log_error(logger, {
-            "error": str(raw_insiders),
-            "type": type(raw_insiders).__name__,
+            "error": str(insiders),
+            "type": type(insiders).__name__,
             "context": "war_room",
             "note": "War room insiders error",
             "symbol": symbol,
         })
+        insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
 
     # Run multi-agent crew (3 parallel agents + 1 synthesizer = ~20s)
     try:
