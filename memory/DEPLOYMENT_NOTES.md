@@ -24,6 +24,40 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Backfill `paper_trades.opened_at` from `timestamp`
+*Session: continued*
+
+One-time data migration. The manual paper-trading UI writer never
+populated BSON-date `opened_at`, so 77/82 existing rows were
+invisible to the new Tier 3 gate even though their ISO-string
+`timestamp` was perfectly valid. This script normalises the two
+writers by backfilling `opened_at` from `timestamp` (or `created_at`
+if present).
+
+**What shipped:**
+- `backend/scripts/backfill_opened_at.py` — idempotent migration
+  with dry-run by default (`--apply` writes). Parses ISO strings
+  (including trailing-Z variants) into tz-aware UTC datetimes.
+  Reports unparseable rows without silent corruption.
+- Script is safe to re-run — successive runs after `--apply` report
+  "candidates: 0 — already migrated".
+
+**Applied in preview DB:**
+- 77/82 rows backfilled, 0 skipped.
+- Tier 3 distinct-day count jumped **1 → 7** (23% of the 30-day gate).
+- First trade now correctly dated 2026-04-11; 7-day rolling activity
+  visible in admin strip (5 days in the last week with 1–30 trades
+  each).
+
+**How to run (prod):**
+    cd /app/backend
+    python -m scripts.backfill_opened_at            # dry run
+    python -m scripts.backfill_opened_at --apply    # commit
+
+**Files changed:**
+- `backend/scripts/backfill_opened_at.py` (new)
+
+
 ### 2026-02-20 — ML Tier 3 progress + conviction clamp canary
 *Session: continued*
 
