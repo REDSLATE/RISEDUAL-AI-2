@@ -10,7 +10,7 @@ import { getApiBase } from '../utils/apiBase';
 
 const API = `${getApiBase()}/api/auth`;
 
-const AuthModal = ({ onClose, initialTab = 'login', onOpenLegal }) => {
+const AuthModal = ({ onClose, initialTab = 'login', initialBetaKey = '', onOpenLegal }) => {
   const [tab, setTab] = useState(initialTab);
   const [view, setView] = useState('form');
   const [error, setError] = useState('');
@@ -19,7 +19,7 @@ const AuthModal = ({ onClose, initialTab = 'login', onOpenLegal }) => {
   const { login, register } = useAuth();
 
   // Beta key state
-  const [betaKey, setBetaKey] = useState('');
+  const [betaKey, setBetaKey] = useState(initialBetaKey);
   const [betaEmail, setBetaEmail] = useState('');
   const [betaPassword, setBetaPassword] = useState('');
   const [betaName, setBetaName] = useState('');

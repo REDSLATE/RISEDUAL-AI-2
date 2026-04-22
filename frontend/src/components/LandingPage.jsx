@@ -577,7 +577,7 @@ import BetaBanner from './BetaBanner';
 import BetaSignupModal from './BetaSignupModal';
 
 /* ─── Main Landing Page ─── */
-const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo }) => {
+const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo, onOpenBetaRedeem }) => {
   const [showBeta, setShowBeta] = useState(false);
   const scrollToHow = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
@@ -598,7 +598,15 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo }) => {
       <FAQ />
       <CTA onGetStarted={onGetStarted} />
       <LandingFooter onOpenLegal={onOpenLegal} />
-      {showBeta && <BetaSignupModal onClose={() => setShowBeta(false)} />}
+      {showBeta && (
+        <BetaSignupModal
+          onClose={() => setShowBeta(false)}
+          onOpenBetaRedeem={(key) => {
+            setShowBeta(false);
+            if (onOpenBetaRedeem) onOpenBetaRedeem(key);
+          }}
+        />
+      )}
     </div>
   );
 };

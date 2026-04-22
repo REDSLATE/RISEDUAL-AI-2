@@ -58,6 +58,7 @@ function AppContent() {
   const {
     paymentInfo, setPaymentInfo,
     showAuth, setShowAuth, authTab, setAuthTab,
+    initialBetaKey, setInitialBetaKey,
     showSubscription, setShowSubscription,
     showAdmin, setShowAdmin,
     showWorkspace, setShowWorkspace,
@@ -186,6 +187,11 @@ function AppContent() {
           onLogin={() => { setAuthTab('login'); setShowAuth(true); }}
           onOpenLegal={openLegalTab}
           onTryDemo={() => setShowDemo(true)}
+          onOpenBetaRedeem={(key) => {
+            setInitialBetaKey(key || '');
+            setAuthTab('beta');
+            setShowAuth(true);
+          }}
         />
         <Toaster />
         {showDemo && (
@@ -197,7 +203,7 @@ function AppContent() {
           </React.Suspense>
         )}
         {showWaitlist && <WaitlistModal onClose={() => setShowWaitlist(false)} onOpenBetaKey={() => { setShowWaitlist(false); setAuthTab('beta'); setShowAuth(true); }} />}
-        {showAuth && <AuthModal onClose={() => setShowAuth(false)} initialTab={authTab} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
+        {showAuth && <AuthModal onClose={() => { setShowAuth(false); setInitialBetaKey(''); }} initialTab={authTab} initialBetaKey={initialBetaKey} onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />}
         {showLegal && <LegalPages onClose={() => setShowLegal(false)} initialTab={legalTab} />}
         {resetToken && <ResetPasswordModal token={resetToken} onClose={() => setResetToken(null)} onLoginClick={() => { setResetToken(null); setAuthTab('login'); setShowAuth(true); }} />}
       </div>

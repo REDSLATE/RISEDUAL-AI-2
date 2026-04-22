@@ -4,6 +4,7 @@ export default function useModals() {
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
   const [authTab, setAuthTab] = useState('login');
+  const [initialBetaKey, setInitialBetaKey] = useState('');
   const [showSubscription, setShowSubscription] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
@@ -53,6 +54,7 @@ export default function useModals() {
   return {
     paymentInfo, setPaymentInfo,
     showAuth, setShowAuth, authTab, setAuthTab,
+    initialBetaKey, setInitialBetaKey,
     showSubscription, setShowSubscription,
     showAdmin, setShowAdmin,
     showWorkspace, setShowWorkspace,

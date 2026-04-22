@@ -232,6 +232,8 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
 
     waitlist_entry = await _validate_beta_key(beta_key, email)
 
+    trial_days = 30
+    cohort = waitlist_entry.get("cohort", "")
     user_doc = {
         "email": email,
         "password_hash": hash_password(req.password),
@@ -240,17 +242,54 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
         "subscription_status": "pro",
         "beta_access": True,
         "beta_key": beta_key,
+        "beta_cohort": cohort or None,
         "founding_member": waitlist_entry.get("founding_member", False),
-        "trial_ends_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+        "trial_ends_at": (datetime.now(timezone.utc) + timedelta(days=trial_days)).isoformat(),
         "created_at": datetime.now(timezone.utc),
     }
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
 
+    # Grant custom credit bundle if specified on the waitlist entry
+    # (set by the First-50 beta signup flow). Falls through silently
+    # when the field is absent — a regular waitlist invite just gets
+    # the Pro trial without a credit grant.
+    credit_grant = int(waitlist_entry.get("beta_credit_grant") or 0)
+    credits_granted = 0
+    if credit_grant > 0:
+        try:
+            from services.credit_service import grant_custom_credits
+            credits_granted = await grant_custom_credits(
+                user_id=str(user_doc["_id"]),
+                amount=credit_grant,
+                plan_key="pro",
+                reason=f"Beta cohort ({cohort or 'invite'}) — {credit_grant:,} credit grant",
+            )
+            # Mark the user doc with a granted-at marker so the signup
+            # flow's idempotency guard treats this user correctly if
+            # they ever re-hit the beta CTA after redeeming.
+            await db.users.update_one(
+                {"_id": user_doc["_id"]},
+                {"$set": {"beta_cohort_granted_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        except Exception as e:
+            logging.warning(f"Beta credit grant failed for {email}: {e}")
+
     await db.waitlist.update_one(
         {"beta_key": beta_key},
         {"$set": {"status": "active", "activated_at": datetime.now(timezone.utc).isoformat(), "activated_email": email}},
     )
+
+    # Flip the beta_signups `entitlements_granted` flag so admin
+    # listings accurately report who has redeemed vs. who is still
+    # sitting on an un-redeemed key.
+    try:
+        await db.beta_signups.update_one(
+            {"email": email},
+            {"$set": {"entitlements_granted": True, "user_id": str(user_doc["_id"])}},
+        )
+    except Exception as e:
+        logging.warning(f"beta_signups mark-granted failed for {email}: {e}")
 
     access = create_access_token(str(user_doc["_id"]), email)
     refresh = create_refresh_token(str(user_doc["_id"]))
@@ -260,6 +299,7 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
     resp["refresh_token"] = refresh
     resp["beta_activated"] = True
     resp["founding_member"] = waitlist_entry.get("founding_member", False)
+    resp["credits_granted"] = credits_granted
     return resp
 
 @auth_router.post("/login")

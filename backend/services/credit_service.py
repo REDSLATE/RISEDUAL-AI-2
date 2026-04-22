@@ -241,6 +241,42 @@ async def grant_signup_bonus(user_id: str) -> int:
     return bonus
 
 
+async def grant_custom_credits(user_id: str, amount: int, plan_key: str, reason: str) -> int:
+    """Grant a custom credit amount on top of the current balance.
+
+    Used by the beta-cohort redemption flow to hand out grants that
+    don't map cleanly onto a standard plan (e.g. "Pro + 30k credits
+    for the First 50"). The plan_key is still stamped on the wallet
+    row so per-plan accounting and rate-limits treat the user as a
+    Pro member.
+
+    Idempotent by caller: the helper always increments, so callers
+    must guard against double-granting (e.g. check a `*_granted_at`
+    marker on the user doc first).
+    """
+    if db is None or amount <= 0:
+        return 0
+
+    await db.user_credits.update_one(
+        {"user_id": user_id},
+        {
+            "$inc": {"credits": amount, "total_earned": amount},
+            "$set": {
+                "plan_key": plan_key,
+                "last_grant_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "$setOnInsert": {
+                "total_spent": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+        },
+        upsert=True,
+    )
+    await _log_event(user_id, "custom_grant", amount, False, reason)
+    return amount
+
+
+
 async def grant_plan_credits(user_id: str, plan_key: str) -> int:
     """Grant monthly plan credits on subscription activation/renewal."""
     if db is None:

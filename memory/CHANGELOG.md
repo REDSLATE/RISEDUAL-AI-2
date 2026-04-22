@@ -1,5 +1,16 @@
 # RISEDUAL AI — Changelog
 
+## February 2026 — Beta Signup Flow: Pro Access + 30k Credits for First 50
+- **New `routes/beta.py`**: `POST /api/beta/signup`, `GET /api/beta/stats`, `GET /api/beta/recent`, `GET /api/beta/admin/list`. Cohort hard-capped at 50 (`BETA_SEAT_CAP` env). Entitlements per joiner: Pro subscription, 30,000 credits, 30-day trial, founding_member badge.
+- **Dual-path signup**:
+  * New email → generates `BETA-XXXX-XXXX` key, seeds a `waitlist` row (`cohort: first_50`, `beta_credit_grant: 30000`), returns key to UI.
+  * Existing registered user → upgraded in-place (Pro + 30k credits), guarded against double-grant via `beta_cohort_granted_at` marker.
+- **`services/credit_service.grant_custom_credits()`** helper: stamps `plan_key=pro` on the wallet, logs event, idempotency guarded by caller.
+- **`routes/auth.redeem_beta_key` extended**: reads `beta_credit_grant` off the waitlist row, calls `grant_custom_credits`, marks `beta_signups.entitlements_granted=true`, returns `credits_granted` in the response.
+- **Social-proof banner**: `BetaBanner.jsx` rotates between default copy and `"🎉 {name} just claimed seat #{n} — Pro + 30k credits for the First 50"` when a recent joiner exists. Polls every 60s.
+- **`BetaSignupModal.jsx`**: entitlements checklist, live seat counter, copyable beta-key block on success, one-click "Redeem Now" button that opens the Auth modal's beta-key tab with the key pre-filled (via new `initialBetaKey` prop on `AuthModal` + `useModals.initialBetaKey` state).
+- **E2E verified**: signup → key → redeem → Pro account with 30,000 credits confirmed via `/api/credits/balance`. Idempotency, honeypot bot trap, invalid-email rejection, cap-reached 409, existing-user in-place upgrade all tested.
+
 ## February 2026 — R-Weighted ML Retrain Wiring + Admin Tile (P1 + P2)
 - **`services/ml_retrain_service._severity_weights`** now blends R-based weights over magnitude-based weights. Rows with `schema_version >= 4` and full execution data (entry/exit/stop/direction) route through `compute_sample_weight_from_trade`; `|R| < 0.25` → weight 0 (XGBoost dropped-from-gradient); legacy rows stay on the magnitude path. R-weight cap (2.5) matches magnitude cap → downstream 10× anti-explosion clip stays untriggered across either pipeline.
 - **New helper `_r_eligible_mask_and_weights(df)`** in `ml_retrain_service.py` — vectorised eligibility check + per-row R-weight computation.
