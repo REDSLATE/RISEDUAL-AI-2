@@ -24,6 +24,47 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Admin UI: `GatherErrorStrip` heat-stripe card
+*Session: continued*
+
+Surfaces the new `/api/admin/gather-error-rate` endpoint inside the
+Conviction tab of the admin panel, just below the existing
+`MLHealthStrip`. Same `#3DE8D9` accent, same 10px uppercase label
+rhythm, same `border-slate-400/20` card chrome — reads as part of a
+single "signal-integrity" header band now (ML health + upstream
+provider health).
+
+**New file:**
+- `frontend/src/components/admin/GatherErrorStrip.jsx`. Displays a
+  headline error count + window selector (1h / 6h / 24h), a status
+  badge (`quiet` / `mixed` / `one provider dominating`), and a
+  vertically-stacked list of per-context rows. Each row shows the
+  `context` string, its count, the top exception `type`, and a
+  proportional heat stripe. Tone flips to amber when any single
+  context contributes ≥40% of errors (the signal this tile was
+  built for).
+
+**Modified:**
+- `frontend/src/components/admin/ConvictionCalibration.jsx` — imports
+  and mounts `GatherErrorStrip` directly under `MLHealthStrip`.
+
+**Design notes:**
+- Empty-state copy is explicit about restart-clears-buffer so
+  operators don't misread "0 errors" after a deploy as a bug.
+- Only the top 8 contexts render; a `+N more contexts hidden` line
+  appears past that so long-tail noise doesn't dominate the card
+  height.
+- Every interactive element has `data-testid`:
+  `gather-error-strip`, `gather-error-total`,
+  `gather-error-window-{1|6|24}h-btn`, `gather-error-refresh-btn`,
+  `gather-error-context-list`, `gather-error-row-{context}`.
+
+**Verification:**
+- Live screenshot confirmed: card mounts, headline "0 errors",
+  "quiet" badge, window selector sitting on 24h — matches the
+  MLHealthStrip visual rhythm above it exactly.
+- Lint clean (ESLint, 0 warnings).
+
 ### 2026-02-20 — `/api/admin/gather-error-rate` observability tile
 *Session: continued*
 

@@ -661,6 +661,16 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — Admin UI `GatherErrorStrip` card
+* **New** `frontend/src/components/admin/GatherErrorStrip.jsx` — heat-
+  stripe card that renders the `/api/admin/gather-error-rate` payload
+  inside the admin Conviction tab, directly below `MLHealthStrip`.
+  Headline count + `1h/6h/24h` window selector + per-context row
+  stripes + tone that flips to amber when any one context hits ≥40%
+  share of the window's errors.
+* **Wiring** — `ConvictionCalibration.jsx` imports + mounts the new
+  card. Zero changes to existing ML strip or bucket grid.
+
 ### 2026-02-20 — `/api/admin/gather-error-rate` observability tile
 * **New rolling-counter module** `services/error_metrics.py` — thread-
   safe bounded deque (MAX_EVENTS=10k, ~1 MB cap). Every `log_error`

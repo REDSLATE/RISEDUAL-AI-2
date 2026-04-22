@@ -5,6 +5,7 @@ import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
 import MLHealthStrip from './MLHealthStrip';
+import GatherErrorStrip from './GatherErrorStrip';
 
 const API = `${getApiBase()}/api`;
 
@@ -215,6 +216,12 @@ const ConvictionCalibration = () => {
           the calibration buckets so admins see signal integrity at a
           glance before drilling into the per-bucket sparklines. */}
       <MLHealthStrip />
+
+      {/* Gather-error strip — rolling `log_error` counter grouped by
+          context. Sits next to the ML strip so "is ML healthy?" and
+          "is any upstream provider flaking?" share the same header
+          band of the panel. */}
+      <GatherErrorStrip />
 
       {/* Header + window selector */}
       <div className="flex items-center justify-between flex-wrap gap-3">
