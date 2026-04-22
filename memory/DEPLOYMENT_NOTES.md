@@ -24,6 +24,35 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Conviction score boundary clamp (soft caps)
+*Session: continued*
+
+Final safety belt on top of the grade-weighted scorer. The natural
+output of `score_prediction_outcome` is `[-2, +2]`, but any future
+bump to `GRADE_WEIGHTS` or confidence-scaling bug could push that
+range arbitrarily wide and swamp the calibration mean. We now clamp
+the final score to `[MAX_PENALTY=-2.5, MIN_REWARD=+2.5]`.
+
+**What shipped:**
+- `conviction_service.MAX_PENALTY = -2.5`, `MIN_REWARD = +2.5` — new
+  module-level constants, symmetric around 0.
+- `score_prediction_outcome()` now returns
+  `max(min(score, MIN_REWARD), MAX_PENALTY)`.
+- Current grade table (max ±2.0 at 100% confidence) is WITHIN the
+  clamp, so all calibration stats stay bit-identical today. This is
+  a guard for future edits, not a behaviour change.
+
+**Verified:**
+- New regression suite `backend/tests/test_conviction_score_boundaries.py`
+  — 15 tests, all green (natural-range pass-through, confidence
+  clamping, runaway-weight guard, full fuzz sweep).
+- Existing conviction tests still pass.
+
+**Files changed:**
+- `backend/services/conviction_service.py` — boundary constants + clamp
+- `backend/tests/test_conviction_score_boundaries.py` — new regression suite
+
+
 ### 2026-02-20 — Grade-weighted conviction calibration (user patch)
 *Session: continued*
 

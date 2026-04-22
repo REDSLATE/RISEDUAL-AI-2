@@ -68,11 +68,20 @@ GRADE_WEIGHTS = {
     "STRONG_MISS": -2.0,
 }
 
+# Hard boundary constraints on the weighted learning signal. Chosen as
+# soft caps just outside the natural `GRADE_WEIGHTS × confidence` range
+# of [-2.0, +2.0] so current behaviour is unchanged, but any future
+# weight increase or confidence-scale bug can't produce a runaway
+# signal that swamps the calibration mean. Keep MIN_REWARD ≥ max weight
+# and MAX_PENALTY ≤ min weight to preserve symmetry.
+MAX_PENALTY = -2.5
+MIN_REWARD  = +2.5
+
 
 def score_prediction_outcome(grade: str, confidence: float) -> float:
     """Convert a graded outcome + confidence into a weighted learning signal.
 
-    Output range: [-2.0, +2.0].
+    Output range: [MAX_PENALTY, MIN_REWARD] = [-2.5, +2.5].
       * `grade` — one of the 5 prediction_tracker grades.
       * `confidence` — the ORIGINAL prediction confidence on 0-100
         scale. Callers that hold 0-1 fractions should scale to 100
@@ -81,11 +90,14 @@ def score_prediction_outcome(grade: str, confidence: float) -> float:
 
     High-conviction wins and losses dominate. Low-conviction trades
     barely move the signal — which is correct: they shouldn't drive
-    calibration in either direction.
+    calibration in either direction. The final result is clamped to
+    [MAX_PENALTY, MIN_REWARD] as a belt-and-braces guard against
+    future weight-table changes or confidence-scaling bugs.
     """
     base_weight = GRADE_WEIGHTS.get(grade, 0.0)
     conf_factor = max(0.0, min(1.0, float(confidence) / 100.0))
-    return base_weight * conf_factor
+    score = base_weight * conf_factor
+    return max(min(score, MIN_REWARD), MAX_PENALTY)
 
 
 async def _calibration_expectancy(
