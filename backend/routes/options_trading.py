@@ -44,6 +44,7 @@ from services.brokers.registry import (
     get_options_adapter,
 )
 from services.structured_log import log_error
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/options", tags=["options-trading"])
@@ -141,8 +142,11 @@ async def odd_accept(body: ODDAcceptRequest, request: Request):
         raise HTTPException(status_code=400, detail="accept=true required")
     user = await get_current_user(request)
     now = datetime.now(timezone.utc)
+    # `get_current_user` stringifies `_id`; cast back so update_one
+    # matches the real ObjectId document (otherwise $set silently
+    # writes to zero docs — classic stale-auth-cache footgun).
     await _db.users.update_one(
-        {"_id": user["_id"]},
+        {"_id": ObjectId(user["_id"])},
         {"$set": {"compliance.odd_accepted_at": now}},
     )
     return {"accepted": True, "accepted_at": now.isoformat()}

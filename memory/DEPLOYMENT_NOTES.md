@@ -26,6 +26,75 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — Multi-broker options: Smart Order Router + live-ordering bug fixes
+*Session: continued*
+
+Built on Phase 1 by adding the Smart Order Router the user sketched,
+plus fixing three real bugs uncovered during live-order smoke
+testing.
+
+**New:**
+- `services/brokers/smart_router.py` — `SmartOrderRouter.pick()` +
+  `.route_order()`. Probes `get_enabled_adapters()` in parallel,
+  picks lowest estimated spread, tie-breaks alphabetically.
+  Sentinel score `1e9` for brokers whose spread probe fails so
+  they still route (last-choice) rather than blocking the order.
+- `registry.py` gained `get_enabled_adapters()` — parallel
+  probes every registered adapter, returns only those reporting
+  `enabled=True`. Adapter-level failures are caught + logged to
+  the gather-error tile (`context=smart_router_probe`).
+- `POST /api/options/order` now accepts `best_execution: bool`
+  (default false). When true, routes through SmartOrderRouter
+  instead of the user's default provider. Response now echoes
+  `routing: {mode: "smart" | "direct", estimated_spread, candidates[]}`
+  so the UI can display which broker won the contest and why.
+- `OptionsLiveTrade.jsx` — Best Execution toggle below the order
+  form.
+- `tests/test_smart_router.py` — 6 new tests: lowest-spread pick,
+  alphabetical tie-break, no-broker-enabled raises, spread-probe
+  failure doesn't crash, single-broker passthrough, route_order
+  returns both order + decision.
+
+**Bugs fixed during live smoke:**
+1. **ODD acceptance silently wrote to zero docs.**
+   `get_current_user` stringifies `_id`; the ODD route's
+   `update_one({_id: user["_id"]}, ...)` tried to match the string
+   against Mongo's ObjectId → silent no-op. Cast back to
+   `ObjectId(user["_id"])` in the update match.
+2. **Alpaca 422'd on every options order with "invalid
+   position_intent specified".** The field I'd followed from the
+   integration playbook is no longer accepted by the current
+   Alpaca API. Single-leg orders infer open/close from position
+   state; dropped the field.
+3. **Alpaca 422'd with "asset not found" on correctly-formatted
+   contracts.** Alpaca uses compact OCC (no space-padding in
+   root, e.g. `AAPL260422C00190000` — 19 chars for AAPL) instead
+   of canonical 21-char OCC. Added `_to_alpaca_symbol()` at the
+   adapter boundary translating canonical → compact for orders,
+   and compact → canonical for position parsing. Other brokers
+   keep receiving canonical form.
+
+**Live verification on preview:**
+- Direct order: BTO AAPL $190 Call 2026-04-22, limit $0.01 →
+  `status: accepted`, order_id `b7dc08dc…`, `routing: direct`.
+- Smart-routed order: BTO AAPL $195 Call 2026-04-22 with
+  `best_execution=true` → routed to Alpaca (only enabled broker),
+  `status: accepted`, order_id `4f359c7a…`.
+- Both orders cancelled cleanly via `DELETE /api/options/order/{id}`.
+  Account flat (positions = `[]`).
+- ODD acceptance persists (`compliance.odd_accepted_at` visible
+  in Mongo).
+
+**Tests:** 6 new. Full suite 161/161.
+**Gate:** typecheck baseline 69. Lint clean.
+
+**Still deferred to later phases:**
+- Real spread estimation (Alpaca options snapshot endpoint).
+  Today every adapter returns sentinel so single-broker routing
+  still works without pretending to measure spreads.
+- Tradier / TastyTrade / IBKR concrete adapters.
+- Multi-leg spreads, short legs, live websocket order updates.
+
 ### 2026-04-22 — Multi-broker live options trading (Phase 1: Alpaca)
 *Session: continued*
 

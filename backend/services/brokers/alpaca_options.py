@@ -86,6 +86,23 @@ def _leg_position_intent(side: OrderSide) -> str:
     return "to_close"
 
 
+def _to_alpaca_symbol(occ_symbol: str) -> str:
+    """Translate canonical 21-char OCC (space-padded root) to
+    Alpaca's compact variant (no space padding). Canonical roots
+    < 6 chars get right-padded with spaces by our builder; Alpaca
+    wants the bare root, so strip them.
+
+    Canonical: `AAPL  261218C00200000` (21 chars)
+    Alpaca:    `AAPL261218C00200000`   (variable, here 19 chars)
+    """
+    # Canonical layout is root(6) + YYMMDD(6) + type(1) + strike(8).
+    # Strip any trailing spaces from the 6-char root slice only —
+    # never touch the numeric tail or we'd corrupt the strike.
+    if len(occ_symbol) != 21:
+        return occ_symbol  # non-canonical input, pass through unchanged
+    return occ_symbol[:6].rstrip() + occ_symbol[6:]
+
+
 class AlpacaOptionsAdapter(BrokerOptionsAdapter):
     provider = "alpaca"
 
@@ -216,7 +233,17 @@ class AlpacaOptionsAdapter(BrokerOptionsAdapter):
             if p.get("asset_class") != "us_option":
                 continue
             try:
-                parsed = parse_occ_symbol(p.get("symbol", ""))
+                # Alpaca returns compact-form symbols; parse_occ_symbol
+                # expects the 21-char canonical. Right-pad the root
+                # back to 6 chars before parsing.
+                raw_sym = p.get("symbol", "")
+                # Compact form is root + 15-char suffix (6+1+8). So
+                # the root is everything before the last 15 chars.
+                if len(raw_sym) >= 15:
+                    canonical = raw_sym[:-15].ljust(6) + raw_sym[-15:]
+                else:
+                    canonical = raw_sym
+                parsed = parse_occ_symbol(canonical)
             except ValueError:
                 # Broker returned a non-OCC symbol; skip rather than
                 # crash the whole listing call.
@@ -250,11 +277,16 @@ class AlpacaOptionsAdapter(BrokerOptionsAdapter):
         # on leg count to keep both future-compatible.
         if len(legs) == 1:
             leg = legs[0]
+            # Single-leg: Alpaca infers open/close from current
+            # position state when `position_intent` is omitted.
+            # Recent API versions 422 when the field is sent
+            # explicitly — dropping it fixes the regression without
+            # losing functionality (you can still cancel an STC via
+            # DELETE if you want to reverse an auto-close).
             body = {
-                "symbol": leg.occ_symbol,
+                "symbol": _to_alpaca_symbol(leg.occ_symbol),
                 "qty": str(int(leg.qty)),
                 "side": _leg_side_to_alpaca(leg.side),
-                "position_intent": _leg_position_intent(leg.side),
                 "type": order_type,
                 "time_in_force": time_in_force,
             }
