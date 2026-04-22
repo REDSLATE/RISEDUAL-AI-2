@@ -249,6 +249,38 @@ def test_combined_update_hit_propagates_sign():
 
 # ── Conviction penalty (shim) ──────────────────────────────────────
 
+def test_conviction_penalty_accumulator_pattern():
+    """Pin the exact `+=` accumulation pattern from the upgrade spec:
+
+        penalty = compute_conviction_penalty(grade)
+        conviction_score += penalty
+
+    HITS must be no-ops (+= 0 doesn't change the running score).
+    MISSES must accumulate negatively.
+    Unknown grades must NOT corrupt the running score.
+    """
+    conviction_score = 100.0
+
+    # Hits are no-ops under this primitive.
+    for hit_grade in ("STRONG_HIT", "WEAK_HIT", "NEUTRAL"):
+        penalty = compute_conviction_penalty(hit_grade)
+        conviction_score += penalty
+    assert conviction_score == 100.0, (
+        f"HITS corrupted conviction_score — should be 100.0, got {conviction_score}"
+    )
+
+    # Misses accumulate. -1.0 + -2.0 = -3.0 total.
+    for miss_grade in ("WEAK_MISS", "STRONG_MISS"):
+        penalty = compute_conviction_penalty(miss_grade)
+        conviction_score += penalty
+    assert conviction_score == 97.0
+
+    # Unknown grade is a safe no-op — DB enum mismatch shouldn't
+    # silently drift the running score.
+    conviction_score += compute_conviction_penalty("NEW_ENUM_NOT_YET_HANDLED")
+    assert conviction_score == 97.0
+
+
 def test_conviction_penalty_is_negative_projection():
     """HITS should not REWARD conviction here — only negative grades
     count. This is the "penalty-only" projection the conviction

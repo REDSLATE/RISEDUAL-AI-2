@@ -244,6 +244,27 @@ def compute_conviction_penalty(grade: str) -> float:
     penalty side only. HITS return 0 (not a penalty). Use when you
     want "how much should this HURT conviction" and HIT grades
     should be a no-op rather than a positive bonus.
+
+    Canonical accumulation pattern:
+
+        from ai_core.learning_upgrade import compute_conviction_penalty
+
+        penalty = compute_conviction_penalty(grade)
+        conviction_score += penalty
+
+    Why negative-only (not the full signed weight): conviction is a
+    one-way ratchet in most deployments — hits confirm the existing
+    score, they don't boost it beyond the original confidence. A
+    STRONG_HIT doesn't mean "increase conviction by 2.0" because
+    the model was already asserting high confidence; it just
+    means "the penalty side didn't trigger this round".
+
+    If you want SYMMETRIC scoring (hits also reward), use
+    `score_prediction_outcome(grade)` directly — the signed
+    version. Keep this helper for the `+=` accumulation pattern
+    above where HIT = no-op is the correct semantic.
+
+    Unknown grades return 0.0 — never raises on a DB enum mismatch.
     """
     return min(score_prediction_outcome(grade), 0.0)
 
