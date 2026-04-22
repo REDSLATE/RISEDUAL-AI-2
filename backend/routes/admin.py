@@ -409,6 +409,18 @@ async def conviction_clamp_canary(request: Request, days: int = 30):
     return await conviction_clamp_counter(db, days=days)
 
 
+@router.get("/conviction/reliability")
+async def conviction_reliability(request: Request, days: int = 30):
+    """Classic reliability diagram — hit-rate bucketed by confidence
+    decile (0, 10, 20, …, 100). Complements `/conviction/calibration`
+    (which buckets by tier). Includes Expected Calibration Error
+    (ECE) so the admin UI can flag "well_calibrated" at a glance."""
+    await _require_admin(request)
+    from services.calibration_reliability import reliability_snapshot
+    days = max(1, min(int(days), 365))
+    return await reliability_snapshot(db, days=days)
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================

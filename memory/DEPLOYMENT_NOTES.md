@@ -24,6 +24,52 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Reliability-diagram calibration endpoint (decile buckets)
+*Session: continued*
+
+Classic reliability-diagram analysis alongside the existing tier-
+bucketed calibration view. Buckets verified predictions by the
+confidence decile rule `round(confidence / 10) * 10` (0, 10, …, 100)
+and compares hit-rate to bucket label. Complements
+`/api/admin/conviction/calibration` — that one audits sizing tiers,
+this one audits the underlying probability signal.
+
+**What shipped:**
+- `services/calibration_reliability.py` —
+  * `normalise_confidence(raw)` accepts both 0-1 fractional and
+    0-100 percent scales.
+  * `bucket_for(c)` is the `round(c / 10) * 10` decile rule (user-
+    specified pattern).
+  * `compute_reliability(rows)` — pure function, easy to unit-test.
+    Returns per-bucket `{total, correct, accuracy, avg_confidence,
+    gap}` plus overall `ece` (Expected Calibration Error, bucket-
+    weighted |gap|), `overall_accuracy`, and a `well_calibrated`
+    flag (ECE < 0.10 threshold).
+  * `reliability_snapshot(db, days=30)` wraps the DB fetch.
+- `routes/admin.py` — new `GET /api/admin/conviction/reliability`
+  (admin-guarded, `days` param clamped 1-365).
+
+**Verified:**
+- New regression suite `backend/tests/test_calibration_reliability.py`
+  — 29 tests (normalisation, decile rounding incl. banker's-rounding
+  edges, perfect/miscalibrated cases, NEUTRAL exclusion, weighted-ECE
+  across buckets, unparseable rows). All green.
+- Live owner smoke test on preview DB:
+  * 125 verified predictions, overall_accuracy=0.816
+  * ECE=0.217 → `well_calibrated: false`
+  * Bucket 50 (avg conf 49.5) hit 100% → gap +0.505 (underconfident)
+  * Bucket 60 (avg conf 59.1) hit 78.5% → gap +0.194
+  * Bucket 70 (avg conf 68.9) hit 100% → gap +0.311
+  * Signal: the model is systematically UNDERCONFIDENT — actual
+    accuracy exceeds stated probability in every populated bucket.
+    Future calibration pass should nudge confidences UP, not down.
+
+**Files changed:**
+- `backend/services/calibration_reliability.py` (new)
+- `backend/routes/admin.py` — new `/conviction/reliability` endpoint
+- `backend/tests/test_calibration_reliability.py` (new)
+
+
 ### 2026-02-20 — Backfill `paper_trades.opened_at` from `timestamp`
 *Session: continued*
 
