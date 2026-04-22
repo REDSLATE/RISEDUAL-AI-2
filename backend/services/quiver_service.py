@@ -118,7 +118,7 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
             "error": str(e),
             "type": type(e).__name__,
             "context": "quiver",
-            "note": "QuiverQuant <endpoint_key> network error",
+            "note": f"QuiverQuant {endpoint_key} network error",
             "endpoint_key": endpoint_key,
         })
         _record_failure(endpoint_key)
@@ -126,11 +126,12 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
 
     if resp.status_code != 200:
         log_warning(logger, {
-            "error": str(url),
-            "type": type(url).__name__,
+            "error": f"HTTP {resp.status_code}",
+            "type": "HTTPError",
             "context": "quiver",
-            "note": "QuiverQuant <endpoint_key>: HTTP <expr> —",
+            "note": f"QuiverQuant {endpoint_key}: upstream {resp.status_code}",
             "endpoint_key": endpoint_key,
+            "url": url,
         })
         # Only record server errors as circuit failures. 404s are "path
         # wrong / no data" not "server broken" and shouldn't trip the breaker.
@@ -145,7 +146,7 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
             "error": str(e),
             "type": type(e).__name__,
             "context": "quiver",
-            "note": "QuiverQuant <endpoint_key> JSON parse failed",
+            "note": f"QuiverQuant {endpoint_key} JSON parse failed",
             "endpoint_key": endpoint_key,
         })
         _record_failure(endpoint_key)
@@ -159,16 +160,93 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
     return data
 
 
-async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent congressional stock trades from QuiverQuant."""
-    if ticker:
-        url = f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker}"
-        endpoint_key = "congresstrading_historical"
-    else:
-        url = "https://api.quiverquant.com/beta/live/congresstrading"
-        endpoint_key = "congresstrading_live"
+# ────────────────────────────────────────────────────────────────────────────
+# Live-feed fallback helper
+# ────────────────────────────────────────────────────────────────────────────
+#
+# QuiverQuant's `beta/historical/{endpoint}/{TICKER}` routes have been
+# server-error-ing (HTTP 500) for weeks on multiple endpoints, while
+# the corresponding `beta/live/{endpoint}` routes (which return the
+# full live feed across ALL tickers) work fine. Rather than return
+# `[]` when the historical route dies, we fall back to the live feed
+# and filter client-side on the `Ticker` key.
+#
+# This is a strict improvement:
+#   * Response-cached — the live feed is fetched once per 6h and
+#     serves every per-ticker filter during that window.
+#   * Deterministic — filtering on `Ticker` is an O(n) scan over a
+#     few-thousand-row list, which in practice is sub-millisecond.
+#   * Graceful — if the live feed itself is also 500-ing, we still
+#     return `[]` (same failure mode as before).
+#
+# The trade-off: live feeds only cover recent activity, so per-ticker
+# lookups for older data (>~30 days) may return fewer rows than the
+# historical route would have. For a "just keep it running" UX that's
+# the right trade — partial data beats no data.
 
-    data = await _fetch_quiver(endpoint_key, url)
+def _filter_rows_by_ticker(rows: list[dict], ticker: str) -> list[dict]:
+    """Filter a live-feed payload down to a single ticker.
+
+    Quiver payloads use `Ticker` (capital T) as the canonical key,
+    but some legacy fields use `ticker`; handle both. Case-insensitive
+    so a caller passing `aapl` still matches `AAPL`.
+    """
+    if not ticker:
+        return rows
+    tkr = ticker.upper()
+    return [
+        r for r in rows
+        if str(r.get("Ticker") or r.get("ticker") or "").upper() == tkr
+    ]
+
+
+async def _fetch_with_live_fallback(
+    primary_url: str,
+    primary_key: str,
+    live_url: str,
+    live_key: str,
+    ticker: Optional[str],
+) -> list[dict]:
+    """Try `primary_url` (usually a per-ticker historical route); on
+    failure fall back to `live_url` (full feed) and filter by ticker.
+    Returns `[]` on total failure.
+
+    Caller responsibility: pass the same `ticker` used to build
+    `primary_url` so the fallback filter matches.
+    """
+    if primary_url:
+        data = await _fetch_quiver(primary_key, primary_url)
+        if data:
+            return list(data)
+
+    live_data = await _fetch_quiver(live_key, live_url)
+    if not live_data:
+        return []
+    return _filter_rows_by_ticker(list(live_data), ticker or "")
+
+
+async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
+    """Fetch recent congressional stock trades from QuiverQuant.
+
+    Ticker-specific calls route through `_fetch_with_live_fallback`
+    because Quiver's `beta/historical/congresstrading/{ticker}` has
+    been 500-ing persistently while `beta/live/congresstrading`
+    (full feed) works. The live feed is cached for 6h, so N per-ticker
+    lookups during that window cost exactly one upstream request.
+    """
+    if ticker:
+        data = await _fetch_with_live_fallback(
+            primary_url=f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker}",
+            primary_key="congresstrading_historical",
+            live_url="https://api.quiverquant.com/beta/live/congresstrading",
+            live_key="congresstrading_live",
+            ticker=ticker,
+        )
+    else:
+        data = await _fetch_quiver(
+            "congresstrading_live",
+            "https://api.quiverquant.com/beta/live/congresstrading",
+        ) or []
     if not data:
         return []
 
@@ -205,7 +283,14 @@ async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20
 
 
 async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent insider trades (SEC Form 4) from QuiverQuant."""
+    """Fetch recent insider trades (SEC Form 4) from QuiverQuant.
+
+    `beta/live/insiders` has been 500-ing upstream for weeks. We keep
+    the call so the circuit breaker + existing Finnhub/OpenInsider
+    fallback chain (in `gov_filings_service`) remains in force, but
+    don't add a live-feed fallback here — when insiders live 500s,
+    there's no per-ticker rescue route on Quiver's side.
+    """
     if ticker:
         url = f"https://api.quiverquant.com/beta/live/insiders?ticker={ticker}"
     else:
@@ -244,14 +329,27 @@ async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> l
 
 
 async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent corporate lobbying data from QuiverQuant."""
-    if ticker:
-        url = f"https://api.quiverquant.com/beta/historical/lobbying/{ticker}"
-    else:
-        url = "https://api.quiverquant.com/beta/live/lobbying"
-    endpoint_key = "lobbying"
+    """Fetch recent corporate lobbying data from QuiverQuant.
 
-    data = await _fetch_quiver(endpoint_key, url)
+    Ticker-specific calls route through `_fetch_with_live_fallback`
+    because Quiver's `beta/historical/lobbying/{ticker}` has been
+    500-ing persistently while `beta/live/lobbying` (full feed)
+    works. See the docstring on `_fetch_with_live_fallback` for the
+    trade-off (partial data, cached, deterministic).
+    """
+    if ticker:
+        data = await _fetch_with_live_fallback(
+            primary_url=f"https://api.quiverquant.com/beta/historical/lobbying/{ticker}",
+            primary_key="lobbying_historical",
+            live_url="https://api.quiverquant.com/beta/live/lobbying",
+            live_key="lobbying",
+            ticker=ticker,
+        )
+    else:
+        data = await _fetch_quiver(
+            "lobbying",
+            "https://api.quiverquant.com/beta/live/lobbying",
+        ) or []
     if not data:
         return []
 
@@ -285,17 +383,44 @@ async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> list[di
 async def get_gov_contracts(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """Fetch government contract data from QuiverQuant.
 
-    Note: the correct path is `govcontractsall`, not `govcontracts` —
-    verified from the official `quiverquant` SDK. Our prior code used the
-    shorter variant which returns 404.
+    Two live routes exist: `beta/live/govcontractsall` (detailed:
+    includes agency + description) and `beta/live/govcontracts`
+    (aggregated: ticker + amount + qtr + year only). The `-all`
+    variant has been 500-ing persistently upstream; the aggregated
+    route returns 200 with 12k+ rows. We prefer `-all` when it works
+    (richer data) and transparently fall back to the aggregated route
+    when it doesn't. For per-ticker calls we also filter the live
+    feed client-side so historical-route 500s don't starve
+    downstream consumers.
     """
     if ticker:
-        url = f"https://api.quiverquant.com/beta/historical/govcontractsall/{ticker}"
+        data = await _fetch_with_live_fallback(
+            primary_url=f"https://api.quiverquant.com/beta/historical/govcontractsall/{ticker}",
+            primary_key="govcontractsall_historical",
+            live_url="https://api.quiverquant.com/beta/live/govcontractsall",
+            live_key="govcontractsall",
+            ticker=ticker,
+        )
+        if not data:
+            # Last-resort fallback: aggregated `govcontracts`
+            # (ticker/amount/qtr/year only — no agency, no description,
+            # but better than nothing for a "show something" UX).
+            fallback = await _fetch_quiver(
+                "govcontracts_aggregated",
+                "https://api.quiverquant.com/beta/live/govcontracts",
+            ) or []
+            data = _filter_rows_by_ticker(list(fallback), ticker)
     else:
-        url = "https://api.quiverquant.com/beta/live/govcontractsall"
-    endpoint_key = "govcontractsall"
+        data = await _fetch_quiver(
+            "govcontractsall",
+            "https://api.quiverquant.com/beta/live/govcontractsall",
+        ) or []
+        if not data:
+            data = await _fetch_quiver(
+                "govcontracts_aggregated",
+                "https://api.quiverquant.com/beta/live/govcontracts",
+            ) or []
 
-    data = await _fetch_quiver(endpoint_key, url)
     if not data:
         return []
 

@@ -289,15 +289,29 @@ async def get_social_sentiment() -> dict[str, Any]:
 
 
 @router.get("/market/insider-trades")
-async def get_insider_trades() -> dict[str, Any]:
+async def get_insider_trades() -> list[dict[str, Any]]:
+    """Return the latest insider trades scraped from OpenInsider.
+
+    Response is a list of trade dicts — caller can wrap in a `{items: ...}`
+    envelope if desired, but the shape matches other scrape endpoints
+    (`/market/news`, `/market/social-sentiment`) for consistency.
+    Cache TTL is 5 min; OpenInsider's landing URL only refreshes a
+    handful of rows in that window so 300s keeps us fresh without
+    hammering them.
+    """
     try:
         from services.cache import cache
         from services.financial_scraping_service import FinancialScrapingService
-        return await cache.get_or_fetch(
+        result = await cache.get_or_fetch(
             "insider_trades",
             FinancialScrapingService().scrape_insider_trades,
             ttl=300,
         )
+        # Defensive coerce — legacy callers may have put a dict envelope
+        # in the cache; always return a list.
+        if isinstance(result, dict):
+            return result.get("items", [])
+        return result or []
     except Exception as e:
         logger.error(f"Error fetching insider trades: {e}")
         raise HTTPException(status_code=500, detail="Error fetching insider trades")

@@ -4,7 +4,7 @@ import requests
 from typing import Any
 from bs4 import BeautifulSoup
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from services.structured_log import log_error, log_warning
 
@@ -312,27 +312,52 @@ class FinancialScrapingService:
             return []
     
     async def scrape_insider_trades(self) -> list[dict]:
-        """Scrape recent insider trading activity"""
+        """Scrape recent insider trading activity from OpenInsider.
+
+        The previous implementation hit the `/screener?...` path which
+        returns a shell page with the filter form only — no results
+        table. The canonical landing URL below serves the fully-
+        rendered results table in one HTTP round-trip.
+
+        Column indices (verified against live HTML 2026-04-22):
+            [0] flag  [1] filing_date  [2] trade_date  [3] ticker
+            [4] company_name  [5] insider_name  [6] title
+            [7] trade_type  [8] price  [9] qty  [10] owned
+            [11] delta_own  [12] value
+        """
         try:
-            # Using OpenInsider.com
-            url = 'http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=730&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&page=1'
+            url = "http://openinsider.com/latest-insider-sales-of-1m"
             response = await self._get(url)
             soup = BeautifulSoup(response.content, 'html.parser')
-            
+
+            table = soup.find(
+                'table',
+                class_=lambda c: c is not None and 'tinytable' in c,
+            )
+            if not table:
+                return []
+
             trades = []
-            table = soup.find('table', class_='tinytable')
-            if table:
-                rows = table.find_all('tr')[1:11]  # Get first 10 trades
-                for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 5:
-                        trades.append({
-                            'ticker': cols[3].get_text(strip=True) if len(cols) > 3 else '',
-                            'insider': cols[1].get_text(strip=True) if len(cols) > 1 else '',
-                            'trade_type': cols[5].get_text(strip=True) if len(cols) > 5 else '',
-                            'value': cols[7].get_text(strip=True) if len(cols) > 7 else '',
-                            'timestamp': datetime.utcnow().isoformat()
-                        })
+            # Skip header row. Cap at 25 rows so a single API response
+            # doesn't balloon when the landing page bumps its default
+            # page size.
+            for row in table.find_all('tr')[1:26]:
+                cols = row.find_all('td')
+                if len(cols) < 13:
+                    continue
+                trades.append({
+                    'ticker':      cols[3].get_text(strip=True),
+                    'company':     cols[4].get_text(strip=True),
+                    'insider':     cols[5].get_text(strip=True),
+                    'title':       cols[6].get_text(strip=True),
+                    'trade_type':  cols[7].get_text(strip=True),
+                    'price':       cols[8].get_text(strip=True),
+                    'qty':         cols[9].get_text(strip=True),
+                    'value':       cols[12].get_text(strip=True),
+                    'filing_date': cols[1].get_text(strip=True),
+                    'trade_date':  cols[2].get_text(strip=True),
+                    'timestamp':   datetime.now(timezone.utc).isoformat(),
+                })
             return trades
         except Exception as e:
             log_error(logger, {

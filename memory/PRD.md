@@ -661,6 +661,26 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — P2 RESOLVED: QuiverQuant + insider scraper
+* **Root cause reframed**: not flakiness. Quiver's
+  `beta/historical/{endpoint}/{ticker}` routes have been 500-ing
+  across the board for weeks; `beta/live/*` (full feed) routes
+  work. Migrated four public getters to a cached live-feed +
+  client-side ticker filter fallback. Added two-tier fallback on
+  `govcontracts` (detailed `-all` → aggregated).
+* **Scraper bug fix**: OpenInsider scraper was hitting the wrong
+  URL (filter-form shell, no results) and reading wrong column
+  indices (insider = filing date, trade_type = title). New canon:
+  `latest-insider-sales-of-1m` URL, 13-col mapping verified
+  against live HTML.
+* **Route shape fix**: `/api/market/insider-trades` response type
+  corrected from `dict[str, Any]` to `list[dict[str, Any]]` —
+  pre-existing serializer mismatch was causing blanket 500s.
+* **Circuit breaker hygiene**: 404s no longer trip the breaker
+  (they're path errors, not server errors). Log placeholders
+  `<endpoint_key>` / `<expr>` were interpolated for real.
+* **7 new regression tests** in `test_quiver_fallback.py`.
+
 ### 2026-02-20 — Code-review cleanup
 * **`alert_dedup.py`** — swapped `hashlib.md5` → `hashlib.sha256`
   for alert-ID hashing. Collision risk was a non-issue either way;

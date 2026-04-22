@@ -24,6 +24,93 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — P2 RESOLVED: QuiverQuant flakiness + insider scraper
+*Session: continued*
+
+Not "flaky" — **their per-ticker historical routes have been 500-ing
+for weeks** while the full-feed `live/*` routes work. We're now
+routing per-ticker queries through a cached live-feed + filter
+fallback, plus a separate `govcontractsall` → `govcontracts`
+aggregated fallback. Separately found + fixed a pre-existing bug
+where the OpenInsider scraper had been returning scrambled field
+values (column indices off by 1-4) AND the results route declared
+the wrong response shape (dict vs list → 500s in FastAPI serializer).
+
+**Root-cause map (verified via direct HTTP probes with the real key):**
+| endpoint                                    | status | action                       |
+|---------------------------------------------|--------|------------------------------|
+| `beta/live/congresstrading`                 | 200 ✅ | preserved as canonical       |
+| `beta/live/lobbying`                        | 200 ✅ | preserved + filter fallback  |
+| `beta/live/govcontracts` (aggregated)       | 200 ✅ | NEW last-resort fallback     |
+| `beta/live/govcontractsall`                 | 500   | two-tier fallback            |
+| `beta/live/insiders`                        | 500   | keep (OpenInsider picks up)  |
+| `beta/historical/{endpoint}/{ticker}` × all | 500   | now falls to live-feed filter |
+
+**New behaviour:**
+- `get_congressional_trades(ticker=...)` and `get_lobbying(ticker=...)`
+  try the historical `/{ticker}` route first. If it returns nothing,
+  fetch the cached live feed (6 h TTL) and filter client-side on
+  `Ticker`. N per-ticker queries during the cache window cost one
+  upstream fetch.
+- `get_gov_contracts(ticker=...)` has a **two-tier fallback**: try
+  the ticker route → full-feed `-all` → aggregated `govcontracts`
+  (ticker/amount/qtr/year only). Better to return partial data than
+  nothing.
+- 404 responses no longer trip the circuit breaker (they're path
+  errors, not server errors); only ≥500 counts.
+- Log messages had unresolved `<endpoint_key>` / `<expr>` placeholders
+  — fixed to interpolate actual values.
+
+**OpenInsider scraper fixes:**
+- Old URL `/screener?...` returned a filter-form shell only (no
+  results). New URL `latest-insider-sales-of-1m` returns the fully-
+  rendered 100-row results table.
+- Column indices were off: old code mapped `insider = cols[1]`
+  (actually the filing date), `trade_type = cols[5]` (actually the
+  title). New mapping verified against live HTML 2026-04-22:
+  `ticker=[3]`, `company=[4]`, `insider=[5]`, `title=[6]`,
+  `trade_type=[7]`, `price=[8]`, `qty=[9]`, `value=[12]`,
+  `filing_date=[1]`, `trade_date=[2]`.
+- Capped return at 25 rows (was 10) — room for a deeper tile
+  without over-fetching.
+- Class matcher changed from `class_='tinytable'` (exact) to
+  `lambda c: c and 'tinytable' in c` (substring) — future-proofs
+  against OpenInsider adding modifier classes.
+
+**Route shape fix:**
+- `GET /api/market/insider-trades` response type changed from
+  `dict[str, Any]` to `list[dict[str, Any]]`. The underlying
+  scraper returns a list, so FastAPI's pydantic serializer was
+  raising `dict_type` validation errors → HTTP 500. Added a
+  defensive dict-envelope unwrap for any legacy cache entries.
+
+**Changes:**
+- `backend/services/quiver_service.py` — `_filter_rows_by_ticker`,
+  `_fetch_with_live_fallback`, rewrites of all four public getters,
+  placeholder-string log fixes.
+- `backend/services/financial_scraping_service.py` — OpenInsider URL
+  + column mapping + UTC-aware timestamp.
+- `backend/routes/market_data.py` — `get_insider_trades` response
+  type + unwrap shim.
+- `backend/tests/test_quiver_fallback.py` — new, 7 tests all green.
+  Pins: filter helper (both key casings), primary-wins path,
+  fallback-filters path, both-down-empty, public congress getter,
+  two-tier gov-contracts getter.
+
+**Live verification on the preview:**
+- `/api/lobbying` → 12,189 filings. Top spenders: META $35.8M, GM
+  $32.2M, Visa $30.7M, Pfizer $29.4M.
+- `/api/lobbying/ticker/AAPL` → 20 filings, first one
+  "WILMERHALE ON BEHALF OF APPLE INC." ($110k, IP/trade issues).
+- `/api/market/insider-trades` → live rows with correct field
+  mapping. Sample: Tofutti Brands `A-6684 Ltd.` $3,110 Purchase;
+  Axia Energia `Pedro Batista` –$17.5M Sale.
+
+**Gate status:**
+- 108/108 tests (7 new in `test_quiver_fallback.py`).
+- `typecheck.sh`: baseline 69 unchanged.
+- lint clean on all 3 touched backend files.
+
 ### 2026-02-20 — Landing demo video: full OAuth flow + user-facing copy fix
 *Session: continued*
 
