@@ -167,7 +167,12 @@ class SignalModel:
 
     # ── Training ──────────────────────────────────────────────────────────────
 
-    def fit(self, X: "pd.DataFrame", y: "pd.Series") -> None:
+    def fit(
+        self,
+        X: "pd.DataFrame",
+        y: "pd.Series",
+        sample_weight: "pd.Series | None" = None,
+    ) -> None:
         """Train XGBoost and fit Platt calibration on the same data.
 
         For production use, pass separate training and calibration splits to
@@ -182,6 +187,15 @@ class SignalModel:
             Missing values (``NaN``) are imputed with column medians.
         y:
             Binary target series (``int`` or ``bool``); 1 = correct prediction.
+        sample_weight:
+            Optional per-row training weight. Used to weight outcomes by
+            severity — a -5% blown trade should count 10× more than a
+            -0.5% stop-out. When ``None`` (legacy path), all rows carry
+            equal weight. Values outside ``[0, 10]`` are treated as
+            anomalies and clipped so no single row can swamp the
+            gradient. Propagated through ``CalibratedClassifierCV`` to
+            both the XGBoost base estimator and the sigmoid calibration
+            fold.
 
         Raises
         ------
@@ -229,7 +243,19 @@ class SignalModel:
             method="sigmoid",
             cv=5,
         )
-        calibrated.fit(X_imputed.values, y.values)
+        # sklearn's `CalibratedClassifierCV.fit` forwards
+        # `sample_weight` to both the CV-split XGBoost fit and the
+        # calibration-regression fit, which is exactly what we want:
+        # a high-magnitude outcome should dominate both decision-
+        # tree splits AND the probability calibration curve. Clip to
+        # [0, 10] as a belt-and-braces guard — anything larger than
+        # 10× uniform weight is almost certainly a data-quality bug,
+        # not a real 10× important trade.
+        if sample_weight is not None:
+            sw_array = sample_weight.clip(lower=0.0, upper=10.0).values
+            calibrated.fit(X_imputed.values, y.values, sample_weight=sw_array)
+        else:
+            calibrated.fit(X_imputed.values, y.values)
         self._model = calibrated
 
         # ── Cache feature importances from the first fold's base estimator ────

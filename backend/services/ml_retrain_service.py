@@ -69,18 +69,33 @@ def _next_version_number() -> int:
 
 async def _load_training_dataframe(
     db: Any, max_samples: int
-) -> tuple[Any, Any, int]:
-    """Pull labeled snapshots and return ``(X_df, y_series, n_rows)``.
+) -> tuple[Any, Any, Any, int]:
+    """Pull labeled snapshots and return ``(X_df, y_series, w_series, n_rows)``.
 
-    Tuple shape is ``(pandas.DataFrame, pandas.Series, int)`` — typed
-    as `Any` to avoid the hard pandas import cost on cold boot for
-    non-training code paths. Internal only.
+    Tuple shape is ``(pandas.DataFrame, pandas.Series[int],
+    pandas.Series[float], int)`` — typed as `Any` to avoid the hard
+    pandas import cost on cold boot for non-training code paths.
+    Internal only.
+
+    The `w_series` is a **severity-weighted** sample weight derived
+    from `return_1d`. A -5% blown trade contributes 10× more
+    training signal than a -0.5% stop-out, matching the
+    `GRADE_WEIGHTS` asymmetry the conviction service already uses
+    for calibration. Rows with missing `return_1d` fall back to a
+    neutral weight of 1.0 (equivalent to the previous uniform
+    behavior).
     """
     import pandas as pd
 
     from risedual_core.ml.features import FEATURE_COLUMNS
 
-    projection = {"_id": 0, "outcome": 1, **{c: 1 for c in FEATURE_COLUMNS}}
+    # `return_1d` carries the movement magnitude — the single column
+    # that separates WEAK from STRONG outcomes. Pull it alongside
+    # `outcome` so we can grade without a second query.
+    projection = {
+        "_id": 0, "outcome": 1, "return_1d": 1,
+        **{c: 1 for c in FEATURE_COLUMNS},
+    }
     cursor = (
         db.features_snapshots
         .find({"outcome": {"$in": ["up", "down", "flat"]}}, projection)
@@ -89,7 +104,7 @@ async def _load_training_dataframe(
     )
     rows = await cursor.to_list(length=max_samples)
     if not rows:
-        return pd.DataFrame(), pd.Series(dtype=int), 0
+        return pd.DataFrame(), pd.Series(dtype=int), pd.Series(dtype=float), 0
 
     df = pd.DataFrame(rows)
     # Binary target: "up" outcomes are treated as positive signal for v1.
@@ -97,7 +112,55 @@ async def _load_training_dataframe(
     # switch to is_correct = (predicted_direction == realised_direction).
     y = (df["outcome"] == "up").astype(int)
     X = df[[c for c in FEATURE_COLUMNS if c in df.columns]]
-    return X, y, len(rows)
+    w = _severity_weights(df)
+    return X, y, w, len(rows)
+
+
+# Severity-weighting thresholds (abs return_1d).
+#   <1% → noise; 1-3% → weak directional; ≥3% → strong directional.
+# Chosen to match the retail trader's "that was a real move" intuition
+# and the `GRADE_WEIGHTS` ±2.0 asymmetry on the conviction side.
+_WEAK_THRESHOLD = 0.01
+_STRONG_THRESHOLD = 0.03
+# Cap the training weight at 2.0 so a single outlier 20% mover
+# doesn't swamp the gradient.
+_WEIGHT_CAP = 2.0
+
+
+def _severity_weights(df: Any) -> Any:
+    """Map `return_1d` → per-row training weight.
+
+    Formula mirrors `GRADE_WEIGHTS`:
+      |r| < 1%   → 0.5   (NEUTRAL-ish — barely a move)
+      1-3%       → 1.0   (WEAK)
+      ≥ 3%       → 2.0   (STRONG — capped)
+      missing    → 1.0   (fallback to uniform weight)
+
+    Implementing with clip+scaling keeps the mapping continuous
+    enough for gradient boosters without discrete step jumps that
+    destabilise calibration.
+    """
+    import pandas as pd
+
+    if "return_1d" not in df.columns:
+        return pd.Series([1.0] * len(df), index=df.index)
+
+    # Absolute magnitude of the move, NaN-safe.
+    mag = df["return_1d"].abs().fillna(_WEAK_THRESHOLD)
+
+    # Piecewise mapping. `pandas.cut`-style would also work but the
+    # explicit formula is easier to inspect in future drift audits.
+    weights = mag.copy()
+    weights[mag < _WEAK_THRESHOLD] = 0.5
+    # Linear ramp 1.0 → 2.0 across the [1%, 3%] band so a 2%
+    # mover sits at ~1.5 — the ramp smoothness matters for XGBoost.
+    ramp_mask = (mag >= _WEAK_THRESHOLD) & (mag < _STRONG_THRESHOLD)
+    weights[ramp_mask] = 1.0 + (
+        (mag[ramp_mask] - _WEAK_THRESHOLD)
+        / (_STRONG_THRESHOLD - _WEAK_THRESHOLD)
+    )
+    weights[mag >= _STRONG_THRESHOLD] = _WEIGHT_CAP
+    return weights.astype(float)
 
 
 async def _collect_rejection_context(db: Any) -> dict:
@@ -162,7 +225,7 @@ async def run_nightly_retrain(
     try:
         from risedual_core.ml.signal_model import SignalModel, SignalModelConfig
 
-        X, y, n = await _load_training_dataframe(db, max_samples)
+        X, y, w, n = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n
         log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
 
@@ -178,6 +241,16 @@ async def run_nightly_retrain(
 
         pos_rate = float(y.mean()) if n > 0 else 0.0
         log_row["positive_rate"] = round(pos_rate, 4)
+        # Expose the mean/std training weight so drift is visible in
+        # the retrain log without pulling the sample_weight array.
+        # A drop in mean_sample_weight means we're training on more
+        # noise/flat days (weaker signal); a spike means we're
+        # training on unusually high-magnitude windows.
+        if n > 0:
+            log_row["mean_sample_weight"] = round(float(w.mean()), 4)
+            log_row["severity_strong_frac"] = round(
+                float((w >= _WEIGHT_CAP).mean()), 4,
+            )
 
         version_n = _next_version_number()
         new_version_tag = f"0.1.{version_n}"  # bumps the patch number
@@ -186,9 +259,10 @@ async def run_nightly_retrain(
 
         logger.info(
             f"ML retrain: fitting v{version_n} on {n} samples "
-            f"(positive rate={pos_rate:.3f})"
+            f"(positive rate={pos_rate:.3f}, "
+            f"mean weight={log_row.get('mean_sample_weight', 1.0):.3f})"
         )
-        model.fit(X, y)
+        model.fit(X, y, sample_weight=w)
 
         artefact_path = MODELS_DIR / f"{MODEL_ARTIFACT_PREFIX}{version_n}.joblib"
         model.save(artefact_path)
