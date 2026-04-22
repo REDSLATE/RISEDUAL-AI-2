@@ -54,6 +54,21 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Structured-Log Migration (156 sites) + 2 CancelledError Fixes (Feb 20, 2026)
+- Migrated **156 logger.warning/error sites across 21 services** to
+  `log_warning(logger, {...})` / `log_error(...)`. Every operational
+  event in prod is now queryable by `context` and `type` fields.
+- Built `/app/scripts/migrate_logs.py` — parses f-string bodies,
+  extracts exception vars + interpolations, inserts imports. Left
+  117 rarer-pattern sites for manual review (safer than mechanical).
+- Fleet-wide audit for the `isinstance(x, Exception)` anti-pattern
+  after `asyncio.gather(return_exceptions=True)` — found **2 more
+  real CancelledError crash paths** (war_room_service + crew_engine)
+  on top of the FRED one from earlier. All three now use the
+  three-tier guard with structured logging.
+- mypy baseline: 85 → **77** (8 more errors resolved as a knock-on
+  from properly narrowing exception handling).
+
 ### [union-attr] Crash-Path Sweep (COMPLETED Feb 20, 2026)
 - Audited and fixed all 13 mypy `[union-attr]` errors. **Found one
   real reachable runtime bug**: FRED service's

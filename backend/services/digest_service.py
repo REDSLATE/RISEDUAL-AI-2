@@ -22,6 +22,8 @@ from services.email_service import (
     _routed_send,
 )
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 # Resend free plan = 5 req/sec; pace sends to stay comfortably under the limit.
@@ -60,7 +62,12 @@ async def collect_digest_data(db: Any) -> dict:
                 "updated_at": cache_doc.get("updatedAt"),
             }
     except Exception as e:
-        logger.warning(f"Digest: error fetching market overview: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "Digest: error fetching market overview",
+        })
 
     # ── Top AI Predictions (last 48h, by confidence) ──
     try:
@@ -87,7 +94,12 @@ async def collect_digest_data(db: Any) -> dict:
             if len(data["predictions"]) >= 5:
                 break
     except Exception as e:
-        logger.warning(f"Digest: error fetching predictions: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "Digest: error fetching predictions",
+        })
 
     # ── Smart Money Scores (latest per symbol, strongest signals) ──
     try:
@@ -113,7 +125,12 @@ async def collect_digest_data(db: Any) -> dict:
                 "net_flow_usd": float(doc.get("net_flow_usd") or 0),
             })
     except Exception as e:
-        logger.warning(f"Digest: error fetching smart money scores: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "Digest: error fetching smart money scores",
+        })
 
     # ── Alerts — largest abs delta in last 7 days ──
     try:
@@ -136,7 +153,12 @@ async def collect_digest_data(db: Any) -> dict:
         alerts.sort(key=lambda a: a["abs_delta"], reverse=True)
         data["alerts"] = alerts[:5]
     except Exception as e:
-        logger.warning(f"Digest: error fetching alerts: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "Digest: error fetching alerts",
+        })
 
     return data
 
@@ -150,7 +172,13 @@ async def get_user_watchlist_intel(db: Any, user_id: Any) -> dict | None:
         if cached and cached.get("data"):
             return cached["data"]
     except Exception as e:
-        logger.warning(f"Digest: error fetching watchlist intel for {user_id}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "Digest: error fetching watchlist intel for <user_id>",
+            "user_id": user_id,
+        })
     return None
 
 
@@ -549,7 +577,13 @@ async def send_daily_digest(db: Any) -> dict:
                 error_count += 1
         except Exception as e:
             error_count += 1
-            logger.error(f"Digest send failed for {email}: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "digest",
+                "note": "Digest send failed for <email>",
+                "email": email,
+            })
 
         # Pace to respect Resend's 5-req/sec rate limit.
         await asyncio.sleep(_DIGEST_SEND_PACE_SEC)
@@ -600,7 +634,13 @@ async def send_digest_to_user(db: Any, user: dict) -> dict:
     try:
         ok = await _routed_send([email], subject, html)
     except Exception as e:
-        logger.error(f"On-demand digest send failed for {email}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "digest",
+            "note": "On-demand digest send failed for <email>",
+            "email": email,
+        })
         return {"sent": False, "reason": "send_error", "detail": str(e)}
 
     return {

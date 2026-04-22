@@ -29,6 +29,8 @@ from typing import Optional
 
 from services.sliding_cache import SlidingCache
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 _api_key: Optional[str] = None
@@ -112,12 +114,24 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
             lambda: requests.get(url, headers=headers, timeout=30)
         )
     except Exception as e:
-        logger.warning(f"QuiverQuant {endpoint_key} network error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "quiver",
+            "note": "QuiverQuant <endpoint_key> network error",
+            "endpoint_key": endpoint_key,
+        })
         _record_failure(endpoint_key)
         return None
 
     if resp.status_code != 200:
-        logger.warning(f"QuiverQuant {endpoint_key}: HTTP {resp.status_code} — {url}")
+        log_warning(logger, {
+            "error": str(url),
+            "type": type(url).__name__,
+            "context": "quiver",
+            "note": "QuiverQuant <endpoint_key>: HTTP <expr> —",
+            "endpoint_key": endpoint_key,
+        })
         # Only record server errors as circuit failures. 404s are "path
         # wrong / no data" not "server broken" and shouldn't trip the breaker.
         if resp.status_code >= 500:
@@ -127,7 +141,13 @@ async def _fetch_quiver(endpoint_key: str, url: str) -> Optional[list]:
     try:
         data = resp.json()
     except Exception as e:
-        logger.warning(f"QuiverQuant {endpoint_key} JSON parse failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "quiver",
+            "note": "QuiverQuant <endpoint_key> JSON parse failed",
+            "endpoint_key": endpoint_key,
+        })
         _record_failure(endpoint_key)
         return None
 

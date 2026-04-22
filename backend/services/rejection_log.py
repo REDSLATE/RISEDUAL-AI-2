@@ -20,6 +20,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 _db: Any = None
@@ -68,7 +70,12 @@ async def ensure_indexes() -> None:
             name="asset_logged_at",
         )
     except Exception as e:
-        logger.warning(f"[rejection_log] index setup failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "rejection_log",
+            "note": "[rejection_log] index setup failed",
+        })
 
 
 async def log_rejected(
@@ -108,7 +115,12 @@ async def log_rejected(
         })
     except Exception as e:
         # Swallow — logging failures must never break the trading pipeline.
-        logger.warning(f"[rejection_log] write failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "rejection_log",
+            "note": "[rejection_log] write failed",
+        })
 
 
 async def recent_rejections(
@@ -130,7 +142,12 @@ async def recent_rejections(
         ).sort("logged_at", -1).limit(limit)
         return [doc async for doc in cursor]
     except Exception as e:
-        logger.warning(f"[rejection_log] recent() failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "rejection_log",
+            "note": "[rejection_log] recent() failed",
+        })
         return []
 
 
@@ -152,7 +169,12 @@ async def rejection_stats(hours: int = 24) -> dict:
             total += row["n"]
         return {"total": total, "by_source": by_source, "window_hours": hours}
     except Exception as e:
-        logger.warning(f"[rejection_log] stats() failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "rejection_log",
+            "note": "[rejection_log] stats() failed",
+        })
         return {"total": 0, "by_source": {}, "window_hours": hours, "error": str(e)}
 
 
@@ -251,7 +273,12 @@ async def compute_rejection_bias(
         flagged.sort(key=lambda r: (-r["rate"], -r["attempts"]))
         return flagged
     except Exception as e:
-        logger.warning(f"[rejection_log] compute_rejection_bias failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "rejection_log",
+            "note": "[rejection_log] compute_rejection_bias failed",
+        })
         return []
 
 

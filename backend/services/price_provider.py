@@ -16,6 +16,8 @@ import yfinance as yf
 
 from services.sliding_cache import price_cache
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 AV_BASE = "https://www.alphavantage.co/query"
@@ -99,7 +101,13 @@ def _av_quote(symbol: str) -> Optional[dict]:
             "source": "alpha_vantage",
         }
     except Exception as e:
-        logger.warning(f"AV quote failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "AV quote failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -127,7 +135,13 @@ def _yf_quote(symbol: str) -> Optional[dict]:
             "source": "yfinance",
         }
     except Exception as e:
-        logger.warning(f"yfinance quote failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "yfinance quote failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -155,7 +169,13 @@ async def get_quote(symbol: str) -> Optional[dict]:
                 price_cache.set(cache_key, pool_result)
                 return pool_result
     except Exception as e:
-        logger.warning(f"Market data pool failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "Market data pool failed for <symbol>",
+            "symbol": symbol,
+        })
 
     # MongoDB cross-restart cache (longer-lived persistence)
     if _db is not None:
@@ -241,7 +261,13 @@ def _av_daily(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
             })
         return rows if rows else None
     except Exception as e:
-        logger.warning(f"AV daily failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "AV daily failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -265,7 +291,13 @@ def _yf_daily(symbol: str, period: str = "3mo") -> Optional[list[dict]]:
         rows.reverse()
         return rows if rows else None
     except Exception as e:
-        logger.warning(f"yfinance daily failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "yfinance daily failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -292,7 +324,13 @@ async def get_daily_history(symbol: str, outputsize: str = "compact") -> Optiona
                 price_cache.set(cache_key, pool_result, ttl_seconds=DAILY_TTL)
                 return pool_result
     except Exception as e:
-        logger.warning(f"Market data pool daily failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "Market data pool daily failed for <symbol>",
+            "symbol": symbol,
+        })
 
     if _db is not None:
         cached = await _db.price_cache.find_one(
@@ -359,7 +397,13 @@ def _av_overview(symbol: str) -> Optional[dict]:
             return None
         return data
     except Exception as e:
-        logger.warning(f"AV overview failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "AV overview failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -388,7 +432,13 @@ def _yf_overview(symbol: str) -> Optional[dict]:
             "source": "yfinance",
         }
     except Exception as e:
-        logger.warning(f"yfinance overview failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "yfinance overview failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -429,7 +479,13 @@ def _av_crypto(symbol: str, market: str = "USD") -> Optional[dict]:
             "source": "alpha_vantage",
         }
     except Exception as e:
-        logger.warning(f"AV crypto failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "AV crypto failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 
@@ -454,7 +510,13 @@ def _yf_crypto(symbol: str) -> Optional[dict]:
             "source": "yfinance",
         }
     except Exception as e:
-        logger.warning(f"yfinance crypto failed for {symbol}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "price_provider",
+            "note": "yfinance crypto failed for <symbol>",
+            "symbol": symbol,
+        })
         return None
 
 

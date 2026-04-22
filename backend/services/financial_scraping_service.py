@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 
 from datetime import datetime
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 class FinancialScrapingService:
@@ -57,7 +59,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"CNBC scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "CNBC scraping error",
+            })
             return []
     
     async def _scrape_reuters(self) -> list[dict]:
@@ -78,7 +85,12 @@ class FinancialScrapingService:
                 })
             return articles
         except Exception as e:
-            logger.error(f"Reuters scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Reuters scraping error",
+            })
             return []
     
     async def _scrape_marketwatch(self) -> list[dict]:
@@ -101,7 +113,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"MarketWatch scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "MarketWatch scraping error",
+            })
             return []
     
     async def _scrape_fox_business(self) -> list[dict]:
@@ -124,7 +141,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"Fox Business scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Fox Business scraping error",
+            })
             return []
     
     async def _scrape_wsj(self) -> list[dict]:
@@ -156,7 +178,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"WSJ scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "WSJ scraping error",
+            })
             return []
     
     async def _scrape_bloomberg(self) -> list[dict]:
@@ -184,7 +211,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"Bloomberg scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Bloomberg scraping error",
+            })
             return []
     
     async def _scrape_oan(self) -> list[dict]:
@@ -207,7 +239,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"OAN scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "OAN scraping error",
+            })
             return []
     
     async def _scrape_epoch_times(self) -> list[dict]:
@@ -235,7 +272,12 @@ class FinancialScrapingService:
                     })
             return articles
         except Exception as e:
-            logger.error(f"Epoch Times scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Epoch Times scraping error",
+            })
             return []
 
     
@@ -261,7 +303,12 @@ class FinancialScrapingService:
                 })
             return posts
         except Exception as e:
-            logger.error(f"Reddit scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Reddit scraping error",
+            })
             return []
     
     async def scrape_insider_trades(self) -> list[dict]:
@@ -288,5 +335,10 @@ class FinancialScrapingService:
                         })
             return trades
         except Exception as e:
-            logger.error(f"Insider trades scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "financial_scrape",
+                "note": "Insider trades scraping error",
+            })
             return []

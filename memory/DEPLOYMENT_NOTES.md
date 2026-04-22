@@ -24,6 +24,72 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Structured-log migration (156 sites) + 2 more CancelledError crash paths fixed
+*Session: continued*
+
+Converted 156 ad-hoc `logger.warning(f"{err}")` / `logger.error(...)`
+call sites across 21 services to the new `log_warning(logger, {...})`
+/ `log_error(logger, {...})` structured pattern. Every operational
+event in prod is now queryable by `context` and `type`.
+
+**Files migrated (site count):**
+- `broker_service.py` (46), `real_estate_scraping_service.py` (11),
+  `financial_scraping_service.py` (10), `price_provider.py` (10),
+  `market_memory_service.py` (9), `sec_13f_service.py` (7),
+  `digest_service.py` (7), `war_room_service.py` (7),
+  `post_mortem_service.py` (6), `trading_bot_service.py` (5),
+  `gov_filings_service.py` (5), `rejection_log.py` (5),
+  `market_prediction_service.py` (4), `prediction_tracker.py` (4),
+  `web_intelligence_service.py` (4), `email_service.py` (3),
+  `memory_training_service.py` (3), `quiver_service.py` (3),
+  `usaspending_service.py` (3), `providerrouter.py` (2),
+  `orderflow_ws_service.py` (2).
+
+Each call now carries four stable keys:
+- `error` — `str(exc)`
+- `type` — `type(exc).__name__` (e.g. `ConnectionError`,
+  `TimeoutError`)
+- `context` — stable per-file (e.g. `broker_alpaca`, `fred_fetch`,
+  `war_room`)
+- Variable extras (`symbol`, `spec_id`, `method`, `note`)
+  preserved from the original f-string interpolations.
+
+**Migration tool** — `/app/scripts/migrate_logs.py` (~130 lines).
+Runs file-by-file (`migrate_logs.py <path> <context>`), parses
+f-string bodies to extract the exception variable + any
+interpolation vars, rewrites the call, and inserts the
+`from services.structured_log import ...` import. 117 call sites
+with rarer patterns (string concatenation, complex expressions)
+were left untouched for manual review — safer than a mechanical
+"best guess".
+
+**2 more real `CancelledError` crash paths found via `--update` gate:**
+
+**1. `war_room_service.py` — multi-agent research endpoint.**
+Same `isinstance(x, Exception)` anti-pattern after
+`asyncio.gather(overview_task, earnings_task, insider_task,
+return_exceptions=True)`. A cancelled fetch would slip past the
+guard and crash at `overview.get(...)` inside `run_war_room_crew`.
+Refactored to `raw_overview = gather_results[0]` (explicit index
+access to sidestep mypy tuple-unpack confusion) + three-tier
+guard. `CancelledError` yields a silent empty dict; other
+`BaseException`s go through `log_error` with `symbol` context.
+
+**2. `crew_engine.py` — agent orchestration loop.**
+Same bug in `agent_results` handling. A cancelled agent would
+fall into the `else` branch and crash at `tr.success` with
+`AttributeError`. Fixed with the three-tier guard; cancelled
+agents now yield `TaskResult(output="(agent cancelled)",
+success=False)` instead of crashing the whole crew.
+
+**mypy baseline: 85 → 77** (8 more errors resolved during the
+migration, mostly knock-on `[operator]` and `[union-attr]` from
+now-properly-narrowed exception handling). Gate locked at 77.
+
+**Regression:** 278/278 passing. Ruff clean. HTTP 200.
+
+---
+
 ### 2026-02-20 — [union-attr] sweep: 13 potential crash paths closed
 *Session: continued*
 

@@ -4,6 +4,8 @@ from typing import Optional
 from dataclasses import dataclass
 import requests
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f"Alpaca get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -51,7 +58,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f"Alpaca get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -78,7 +90,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f"Alpaca place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -88,7 +105,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f"Alpaca get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -97,7 +119,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Alpaca cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "cancel_order",
+            })
             return False
 
     def get_order(self, order_id: str) -> Optional[dict]:
@@ -106,7 +133,12 @@ class AlpacaTradingService:
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            logger.error(f"Alpaca get_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_alpaca",
+                "method": "get_order",
+            })
             return None
 
 
@@ -138,7 +170,12 @@ class SchwabTradingService:
                 }
             return accounts
         except Exception as e:
-            logger.error(f"Schwab get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_schwab",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -162,7 +199,12 @@ class SchwabTradingService:
                     })
             return positions
         except Exception as e:
-            logger.error(f"Schwab get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_schwab",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -189,7 +231,12 @@ class SchwabTradingService:
             r.raise_for_status()
             return {"id": r.headers.get("Location", ""), "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"Schwab place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_schwab",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -201,7 +248,12 @@ class SchwabTradingService:
             r.raise_for_status()
             return r.json() if isinstance(r.json(), list) else []
         except Exception as e:
-            logger.error(f"Schwab get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_schwab",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -213,7 +265,12 @@ class SchwabTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Schwab cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_schwab",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -245,7 +302,12 @@ class IBKRTradingService:
                 }
             return None
         except Exception as e:
-            logger.error(f"IBKR get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_ibkr",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -267,7 +329,12 @@ class IBKRTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"IBKR get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_ibkr",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -292,7 +359,12 @@ class IBKRTradingService:
             result = r.json()
             return {"id": str(result), "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"IBKR place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_ibkr",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -302,7 +374,12 @@ class IBKRTradingService:
             r.raise_for_status()
             return r.json().get("orders", []) if isinstance(r.json(), dict) else r.json()
         except Exception as e:
-            logger.error(f"IBKR get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_ibkr",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -313,7 +390,12 @@ class IBKRTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"IBKR cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_ibkr",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -347,7 +429,12 @@ class MooMooTradingService:
                 }
             return {"account_number": self.account_id, "cash": 0, "buying_power": 0, "equity": 0, "portfolio_value": 0}
         except Exception as e:
-            logger.error(f"MooMoo get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_moomoo",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -369,7 +456,12 @@ class MooMooTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"MooMoo get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_moomoo",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -392,7 +484,12 @@ class MooMooTradingService:
             result = r.json().get("data", {})
             return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"MooMoo place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_moomoo",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -402,7 +499,12 @@ class MooMooTradingService:
             r.raise_for_status()
             return r.json().get("data", {}).get("orders", [])
         except Exception as e:
-            logger.error(f"MooMoo get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_moomoo",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -412,7 +514,12 @@ class MooMooTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"MooMoo cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_moomoo",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -446,7 +553,12 @@ class WebullTradingService:
                 if accounts:
                     self._account_id = str(accounts[0].get("secAccountId", ""))
         except Exception as e:
-            logger.error(f"Webull get_account_id error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "get_account_id",
+            })
         return self._account_id or ""
 
     def get_account(self) -> Optional[dict]:
@@ -465,7 +577,12 @@ class WebullTradingService:
                 "portfolio_value": float(data.get("totalMarketValue", data.get("accountMembers", {}).get("totalMarketValue", 0))),
             }
         except Exception as e:
-            logger.error(f"Webull get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -488,7 +605,12 @@ class WebullTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"Webull get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -513,7 +635,12 @@ class WebullTradingService:
             result = r.json()
             return {"id": str(result.get("orderId", "")), "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"Webull place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -524,7 +651,12 @@ class WebullTradingService:
             r.raise_for_status()
             return r.json() if isinstance(r.json(), list) else r.json().get("data", [])
         except Exception as e:
-            logger.error(f"Webull get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -535,7 +667,12 @@ class WebullTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Webull cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_webull",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -566,7 +703,12 @@ class RobinhoodTradingService:
                 self._account_id = results[0].get("account_number", "")
             return self._account_url or ""
         except Exception as e:
-            logger.error(f"Robinhood get_account_url error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "get_account_url",
+            })
             return ""
 
     def get_account(self) -> Optional[dict]:
@@ -590,7 +732,12 @@ class RobinhoodTradingService:
                 }
             return None
         except Exception as e:
-            logger.error(f"Robinhood get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -625,7 +772,12 @@ class RobinhoodTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"Robinhood get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -661,7 +813,12 @@ class RobinhoodTradingService:
             result = r.json()
             return {"id": result.get("id", ""), "status": result.get("state", "submitted"), "symbol": symbol}
         except Exception as e:
-            logger.error(f"Robinhood place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -671,7 +828,12 @@ class RobinhoodTradingService:
             r.raise_for_status()
             return r.json().get("results", [])
         except Exception as e:
-            logger.error(f"Robinhood get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -681,7 +843,12 @@ class RobinhoodTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Robinhood cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_robinhood",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -712,7 +879,12 @@ class PublicTradingService:
                 "portfolio_value": float(data.get("portfolioValue", data.get("equity", 0))),
             }
         except Exception as e:
-            logger.error(f"Public get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_account",
+            })
             return None
 
     def get_positions(self) -> list[dict]:
@@ -734,7 +906,12 @@ class PublicTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"Public get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -759,7 +936,12 @@ class PublicTradingService:
             result = r.json()
             return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"Public place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -769,7 +951,12 @@ class PublicTradingService:
             r.raise_for_status()
             return r.json().get("orders", [])[:limit]
         except Exception as e:
-            logger.error(f"Public get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -779,7 +966,12 @@ class PublicTradingService:
             r.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Public cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "cancel_order",
+            })
             return False
 
 
@@ -816,7 +1008,12 @@ class KrakenTradingService:
         r.raise_for_status()
         result = r.json()
         if result.get("error"):
-            logger.warning(f"Kraken API error on {endpoint}: {result['error']}")
+            log_warning(logger, {
+                "error": str(result["error"]),
+                "type": "KrakenAPIError",
+                "context": "broker_kraken",
+                "endpoint": endpoint,
+            })
         return result.get("result", {})
 
     def get_account(self) -> Optional[dict]:
@@ -837,7 +1034,12 @@ class KrakenTradingService:
                 "holdings_count": len(holdings),
             }
         except Exception as e:
-            logger.error(f"Kraken get_account error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "get_account",
+            })
             return None
 
     def get_balances(self) -> dict:
@@ -846,7 +1048,12 @@ class KrakenTradingService:
             balance = self._private("Balance")
             return {k: float(v) for k, v in balance.items() if float(v) > 0.0001}
         except Exception as e:
-            logger.error(f"Kraken get_balances error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "get_balances",
+            })
             return {}
 
     def get_trade_history(self, limit: int = 50) -> list[dict]:
@@ -867,7 +1074,12 @@ class KrakenTradingService:
                 })
             return trades
         except Exception as e:
-            logger.error(f"Kraken get_trade_history error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "get_trade_history",
+            })
             return []
 
     def get_positions(self) -> list[dict]:
@@ -887,7 +1099,12 @@ class KrakenTradingService:
                 })
             return positions
         except Exception as e:
-            logger.error(f"Kraken get_positions error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "get_positions",
+            })
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
@@ -908,7 +1125,12 @@ class KrakenTradingService:
             txid = result.get("txid", [""])[0] if isinstance(result.get("txid"), list) else result.get("txid", "")
             return {"id": txid, "status": "submitted", "symbol": symbol}
         except Exception as e:
-            logger.error(f"Kraken place_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "place_order",
+            })
             return None
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
@@ -926,7 +1148,12 @@ class KrakenTradingService:
                 })
             return orders[:limit]
         except Exception as e:
-            logger.error(f"Kraken get_orders error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "get_orders",
+            })
             return []
 
     def cancel_order(self, order_id: str) -> bool:
@@ -934,7 +1161,12 @@ class KrakenTradingService:
             self._private("CancelOrder", {"txid": order_id})
             return True
         except Exception as e:
-            logger.error(f"Kraken cancel_order error: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_kraken",
+                "method": "cancel_order",
+            })
             return False
 
 

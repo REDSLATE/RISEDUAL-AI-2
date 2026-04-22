@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 _db: Any = None
@@ -522,7 +524,12 @@ async def run_grid_bots() -> None:
                 if order["side"] == "buy" and price <= order["grid_price"]:
                     result = await _execute_bot_trade(bot, symbol, "buy", qty, order["grid_price"])
                     if result and result.get("error"):
-                        logger.warning(f"Grid bot {bot.get('name')} buy failed: {result['error']}")
+                        log_warning(logger, {
+                            "error": str(result['error']),
+                            "type": type(result['error']).__name__,
+                            "context": "trading_bot",
+                            "note": "Grid bot <expr> buy failed",
+                        })
                         continue
                     order["filled"] = True
                     order["filled_at"] = now
@@ -531,7 +538,12 @@ async def run_grid_bots() -> None:
                 elif order["side"] == "sell" and price >= order["grid_price"]:
                     result = await _execute_bot_trade(bot, symbol, "sell", qty, order["grid_price"])
                     if result and result.get("error"):
-                        logger.warning(f"Grid bot {bot.get('name')} sell failed: {result['error']}")
+                        log_warning(logger, {
+                            "error": str(result['error']),
+                            "type": type(result['error']).__name__,
+                            "context": "trading_bot",
+                            "note": "Grid bot <expr> sell failed",
+                        })
                         continue
                     order["filled"] = True
                     order["filled_at"] = now
@@ -789,7 +801,12 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         except Exception as e:
             # LearningEngine is a best-effort sink; never block trade
             # execution on its availability.
-            logger.warning(f"[signal-bot] learning-engine log failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "trading_bot",
+                "note": "[signal-bot] learning-engine log failed",
+            })
 
         # Update stats + daily cap counters. We persist cap state on the
         # config (not stats) so it survives `update_bot_config` merges
@@ -1099,7 +1116,12 @@ async def _apply_bot_risk_guards(bot: dict, user_id: str, qty: float) -> tuple[f
                 pass
             return new_qty, ctx
     except Exception as e:
-        logger.warning(f"[bot-guard] check failed (failing-open): {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "trading_bot",
+            "note": "[bot-guard] check failed (failing-open)",
+        })
     return qty, ctx
 
 
@@ -1175,7 +1197,13 @@ async def _execute_bot_trade(
             return {"status": "filled", "broker_order_id": result.get("id"),
                     "symbol": symbol, "side": side, "qty": qty}
         except Exception as e:
-            logger.error(f"Live bot trade failed ({bot.get('name')} {symbol}): {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "trading_bot",
+                "note": "Live bot trade failed (<expr> <symbol>)",
+                "symbol": symbol,
+            })
             return {"error": f"Live execution failed: {e}"}
 
     return {"error": f"Unknown bot mode: {mode}"}

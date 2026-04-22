@@ -18,6 +18,8 @@ from typing import Any
 import numpy as np
 import websockets
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 BINANCE_WS_BASE = "wss://stream.binance.us:9443/ws"
@@ -101,7 +103,13 @@ class OrderFlowStream:
                                 self._cache_snapshot(symbol, snapshot)
                                 await self._broadcast(symbol, snapshot)
                         except Exception as e:
-                            logger.warning(f"Error processing WS message for {symbol}: {e}")
+                            log_warning(logger, {
+                                "error": str(e),
+                                "type": type(e).__name__,
+                                "context": "orderflow_ws",
+                                "note": "Error processing WS message for <symbol>",
+                                "symbol": symbol,
+                            })
             except asyncio.CancelledError:
                 logger.info(f"Binance WS cancelled for {symbol}")
                 break
@@ -269,7 +277,12 @@ class OrderFlowStream:
                 )
                 logger.info(f"Whale alert sent: {symbol} {w['side']} wall at ${w['price']} (intensity {w['intensity']})")
             except Exception as e:
-                logger.warning(f"Whale alert failed: {e}")
+                log_warning(logger, {
+                    "error": str(e),
+                    "type": type(e).__name__,
+                    "context": "orderflow_ws",
+                    "note": "Whale alert failed",
+                })
 
     def _cache_snapshot(self, symbol: str, snapshot: dict) -> None:
         """Store in rolling history buffer."""

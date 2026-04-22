@@ -184,8 +184,18 @@ class CrewEngine:
         clean_results = []
         accumulated_context = ""
         for i, r in enumerate(agent_results):
-            if isinstance(r, Exception):
-                tr = TaskResult(agent_role=agents[i].role, output=f"Error: {r}", success=False)
+            # Three-tier guard for `asyncio.gather(return_exceptions=True)` —
+            # `asyncio.CancelledError` is `BaseException`, not `Exception`,
+            # so the old `isinstance(r, Exception)` exclusion would let a
+            # cancelled agent fall into the `else` branch and crash at
+            # `tr.success` with `AttributeError`. Reachable when an LLM
+            # request is cancelled mid-stream.
+            if isinstance(r, asyncio.CancelledError):
+                tr = TaskResult(agent_role=agents[i].role,
+                                output="(agent cancelled)", success=False)
+            elif isinstance(r, BaseException):
+                tr = TaskResult(agent_role=agents[i].role,
+                                output=f"Error: {r}", success=False)
             else:
                 tr = r
             clean_results.append(tr)

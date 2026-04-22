@@ -10,6 +10,8 @@ import time
 from typing import Optional
 from datetime import datetime, timezone
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,12 @@ def _subprocess_ddg_text(query: str, max_results: int = 5, timelimit: str = None
         if result.returncode == 0 and result.stdout.strip():
             return _json.loads(result.stdout.strip())
     except Exception as e:
-        logger.warning(f"DDG subprocess text fallback error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "web_intel",
+            "note": "DDG subprocess text fallback error",
+        })
     return []
 
 
@@ -39,7 +46,12 @@ def _subprocess_ddg_news(query: str, max_results: int = 5, timelimit: str = "w")
         if result.returncode == 0 and result.stdout.strip():
             return _json.loads(result.stdout.strip())
     except Exception as e:
-        logger.warning(f"DDG subprocess news fallback error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "web_intel",
+            "note": "DDG subprocess news fallback error",
+        })
     return []
 
 
@@ -107,7 +119,12 @@ async def _search_ddg(query: str, max_results: int = 10,
         _set_cache(cache_key, results)
         return results
     except Exception as e:
-        logger.warning(f"DuckDuckGo search error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "web_intel",
+            "note": "DuckDuckGo search error",
+        })
         return []
 
 
@@ -147,7 +164,12 @@ async def _news_ddg(query: str, max_results: int = 10,
         _set_cache(cache_key, results)
         return results
     except Exception as e:
-        logger.warning(f"DuckDuckGo news error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "web_intel",
+            "note": "DuckDuckGo news error",
+        })
         return []
 
 

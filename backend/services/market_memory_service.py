@@ -16,6 +16,8 @@ from typing import Any, Optional
 
 import chromadb
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 CHROMA_DIR = "/app/backend/data/chromadb"
@@ -188,7 +190,12 @@ async def save_regime(regime: dict) -> str:
                 upsert=True,
             )
         except Exception as e:
-            logger.warning(f"MongoDB memory log failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_memory",
+                "note": "MongoDB memory log failed",
+            })
 
     return doc_id
 
@@ -300,7 +307,12 @@ async def get_strategist_context(ticker: str, current_rsi: float = None, n_resul
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
-        logger.warning(f"Strategist context query failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Strategist context query failed",
+        })
         return "No similar successful patterns in memory yet."
 
     if not results or not results.get("documents") or not results["documents"][0]:
@@ -361,7 +373,12 @@ async def get_strategist_veto_context(ticker: str, current_rsi: float = None, n_
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
-        logger.warning(f"Toxic lessons query failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Toxic lessons query failed",
+        })
         return ""
 
     if not results or not results.get("documents") or not results["documents"][0]:
@@ -510,7 +527,12 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
             results["toxic_removed"] = len(toxic_ids)
             logger.info(f"Cleanup: Re-tagged {len(toxic_ids)} toxic high-confidence failures as 'toxic_lesson'")
     except Exception as e:
-        logger.warning(f"Toxic outlier cleanup failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Toxic outlier cleanup failed",
+        })
 
     # ── B. Prune Obsolete Data ──
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
@@ -535,7 +557,12 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
             results["obsolete_removed"] = len(old_ids)
             logger.info(f"Cleanup: Pruned {len(old_ids)} episodes older than {cutoff_date}")
     except Exception as e:
-        logger.warning(f"Obsolete data cleanup failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Obsolete data cleanup failed",
+        })
 
     results["total_after"] = await asyncio.to_thread(_collection.count)
     results["status"] = "complete"
@@ -548,7 +575,12 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         try:
             await _db.memory_cleanup_log.insert_one(results.copy())
         except Exception as e:
-            logger.warning(f"Cleanup log save failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_memory",
+                "note": "Cleanup log save failed",
+            })
 
     logger.info(
         f"Nightly cleanup complete: {results['toxic_removed']} toxic re-tagged + "
@@ -631,7 +663,12 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             f"{persistence_tag}"
         )
     except Exception as e:
-        logger.error(f"Failed to send toxic spikes email: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Failed to send toxic spikes email",
+        })
 
     # ── 2. In-App Notifications for all Pro users ──
     if _db is None:
@@ -686,7 +723,12 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         await _db.notifications.insert_many(notifications)
         logger.info(f"Toxic spike in-app notifications sent to {len(pro_users)} Pro user(s)")
     except Exception as e:
-        logger.error(f"Failed to create toxic spike notifications: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "Failed to create toxic spike notifications",
+        })
 
     # ── 3. Record the alert for dedup ──
     # Done AFTER email+notifications so a failure in either doesn't
@@ -707,4 +749,9 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             },
         )
     except Exception as e:
-        logger.warning(f"alert_dedup record failed (non-fatal): {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "market_memory",
+            "note": "alert_dedup record failed (non-fatal)",
+        })

@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 from typing import Optional
 from datetime import datetime
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 class RealEstateScrapingService:
@@ -75,7 +77,12 @@ class RealEstateScrapingService:
                 'note': 'Zillow Home Value Index data available'
             }
         except Exception as e:
-            logger.error(f"Zillow scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Zillow scraping error",
+            })
             return None
     
     async def _scrape_redfin(self) -> Optional[dict]:
@@ -90,7 +97,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Redfin scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Redfin scraping error",
+            })
             return None
     
     async def _scrape_realtor(self) -> Optional[dict]:
@@ -105,7 +117,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Realtor.com scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Realtor.com scraping error",
+            })
             return None
     
     async def scrape_commercial_real_estate(self) -> dict:
@@ -131,7 +148,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Office market scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Office market scraping error",
+            })
             return {}
     
     async def _scrape_retail_market(self) -> dict:
@@ -144,7 +166,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Retail market scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Retail market scraping error",
+            })
             return {}
     
     async def _scrape_industrial_market(self) -> dict:
@@ -157,7 +184,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Industrial market scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Industrial market scraping error",
+            })
             return {}
     
     async def _scrape_multifamily_market(self) -> dict:
@@ -170,7 +202,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"Multifamily market scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Multifamily market scraping error",
+            })
             return {}
     
     async def scrape_mortgage_rates(self) -> dict:
@@ -194,7 +231,12 @@ class RealEstateScrapingService:
             
             return rates
         except Exception as e:
-            logger.error(f"Mortgage rates scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Mortgage rates scraping error",
+            })
             return {
                 'note': 'Mortgage rates data unavailable',
                 'timestamp': datetime.utcnow().isoformat()
@@ -217,7 +259,12 @@ class RealEstateScrapingService:
                 'timestamp': datetime.utcnow().isoformat()
             }
         except Exception as e:
-            logger.error(f"REIT market scraping error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "REIT market scraping error",
+            })
             return {}
     
     async def analyze_real_estate_trends(self) -> dict:
@@ -238,7 +285,12 @@ class RealEstateScrapingService:
             
             return trends
         except Exception as e:
-            logger.error(f"Trend analysis error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Trend analysis error",
+            })
             return {}
     
     def _aggregate_housing_metrics(self, housing_data: dict) -> dict:
@@ -258,5 +310,10 @@ class RealEstateScrapingService:
             
             return housing_data
         except Exception as e:
-            logger.error(f"Aggregation error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "real_estate_scrape",
+                "note": "Aggregation error",
+            })
             return housing_data

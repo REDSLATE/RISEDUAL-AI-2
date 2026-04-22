@@ -23,6 +23,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from collections.abc import Awaitable, Callable
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 # Class-level registry: lane → ProviderRouter instance
@@ -225,7 +227,13 @@ class ProviderRouter:
                 {"lane": self.lane, "provider": provider_name}, {"$set": doc}, upsert=True,
             )
         except Exception as e:
-            logger.warning(f"Failed to persist provider health for {provider_name}: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "provider_router",
+                "note": "Failed to persist provider health for <provider_name>",
+                "provider_name": provider_name,
+            })
 
     async def mark_success(self, provider_name: str, latency_ms: float) -> None:
         async with self._lock:
@@ -279,7 +287,13 @@ class ProviderRouter:
                 }
             except Exception as exc:
                 last_exc = exc
-                logger.warning(f"Provider failure lane={self.lane} provider={name}: {exc}")
+                log_warning(logger, {
+                    "error": str(exc),
+                    "type": type(exc).__name__,
+                    "context": "provider_router",
+                    "note": "Provider failure lane=<expr> provider=<name>",
+                    "name": name,
+                })
                 await self.mark_failure(name, exc)
                 continue
 

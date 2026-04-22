@@ -12,6 +12,8 @@ from services.provider_registry import get_email_provider_pool
 
 load_dotenv(Path(__file__).parent.parent / '.env')
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
@@ -79,7 +81,14 @@ async def _routed_send(to: list, subject: str, html: str) -> bool:
         logger.info(f"Email sent via {provider_name}: '{subject}' to {to}, id: {result.get('id', '?')}")
         return True
     except Exception as e:
-        logger.error(f"All email providers failed for '{subject}' to {to}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "email",
+            "note": "All email providers failed for '<subject>' to <to>",
+            "subject": subject,
+            "to": to,
+        })
         return False
 
 
@@ -357,7 +366,13 @@ async def send_toxic_spikes_email(
         logger.info(f"Toxic spikes alert email sent to {recipient_email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send toxic spikes email to {recipient_email}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "email",
+            "note": "Failed to send toxic spikes email to <recipient_email>",
+            "recipient_email": recipient_email,
+        })
         return False
 
 
@@ -722,5 +737,11 @@ async def send_referral_success(email: str, name: str, new_rank: int, referral_c
         logger.info(f"Referral success email sent to {email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send referral success email to {email}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "email",
+            "note": "Failed to send referral success email to <email>",
+            "email": email,
+        })
         return False

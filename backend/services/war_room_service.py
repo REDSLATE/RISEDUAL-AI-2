@@ -12,6 +12,8 @@ from services.price_provider import get_overview_sync, get_quote_sync
 def _av_key() -> str:
     return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,7 +70,13 @@ def fetch_company_overview(symbol: str) -> dict:
             }
         return {}
     except Exception as e:
-        logger.error(f"Company overview error for {symbol}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "war_room",
+            "note": "Company overview error for <symbol>",
+            "symbol": symbol,
+        })
         return {}
 
 
@@ -114,7 +122,13 @@ def fetch_earnings_surprises(symbol: str) -> dict:
             "total_quarters": len(results),
         }
     except Exception as e:
-        logger.error(f"Earnings surprise error for {symbol}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "war_room",
+            "note": "Earnings surprise error for <symbol>",
+            "symbol": symbol,
+        })
         return {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
 
 
@@ -160,7 +174,13 @@ def fetch_insider_trades(symbol: str) -> dict:
             "buy_ratio": round(buy_volume / max(total, 1) * 100),
         }
     except Exception as e:
-        logger.error(f"Insider trades error for {symbol}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "war_room",
+            "note": "Insider trades error for <symbol>",
+            "symbol": symbol,
+        })
         return {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
 
 
@@ -173,21 +193,62 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
     earnings_task = asyncio.to_thread(fetch_earnings_surprises, symbol)
     insider_task = asyncio.to_thread(fetch_insider_trades, symbol)
 
-    overview, earnings, insiders = await asyncio.gather(
+    gather_results: list = await asyncio.gather(
         overview_task, earnings_task, insider_task,
         return_exceptions=True,
     )
+    raw_overview = gather_results[0]
+    raw_earnings = gather_results[1]
+    raw_insiders = gather_results[2]
 
-    # Handle exceptions gracefully
-    if isinstance(overview, Exception):
-        logger.error(f"War room overview error: {overview}")
-        overview: dict = {}
-    if isinstance(earnings, Exception):
-        logger.error(f"War room earnings error: {earnings}")
-        earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
-    if isinstance(insiders, Exception):
-        logger.error(f"War room insiders error: {insiders}")
-        insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
+    # Three-tier guard for `asyncio.gather(return_exceptions=True)` —
+    # `asyncio.CancelledError` is a `BaseException` (not `Exception`)
+    # and WILL land in the results during FastAPI request cancellation.
+    # Using `isinstance(x, Exception)` here was a latent bug that would
+    # crash downstream `overview.get(...)` calls with `AttributeError`.
+    # See `services/fred_service.py` for the canonical comment.
+    overview: dict = raw_overview if isinstance(raw_overview, dict) else {}
+    if isinstance(raw_overview, BaseException) and not isinstance(
+        raw_overview, asyncio.CancelledError
+    ):
+        log_error(logger, {
+            "error": str(raw_overview),
+            "type": type(raw_overview).__name__,
+            "context": "war_room",
+            "note": "War room overview error",
+            "symbol": symbol,
+        })
+
+    earnings: dict = (
+        raw_earnings if isinstance(raw_earnings, dict)
+        else {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
+    )
+    if isinstance(raw_earnings, BaseException) and not isinstance(
+        raw_earnings, asyncio.CancelledError
+    ):
+        log_error(logger, {
+            "error": str(raw_earnings),
+            "type": type(raw_earnings).__name__,
+            "context": "war_room",
+            "note": "War room earnings error",
+            "symbol": symbol,
+        })
+
+    insiders: dict = (
+        raw_insiders if isinstance(raw_insiders, dict)
+        else {"trades": [], "buy_volume": 0, "sell_volume": 0,
+              "net_sentiment": "neutral", "buy_ratio": 50}
+    )
+    if isinstance(raw_insiders, BaseException) and not isinstance(
+        raw_insiders, asyncio.CancelledError
+    ):
+        log_error(logger, {
+            "error": str(raw_insiders),
+            "type": type(raw_insiders).__name__,
+            "context": "war_room",
+            "note": "War room insiders error",
+            "symbol": symbol,
+        })
 
     # Run multi-agent crew (3 parallel agents + 1 synthesizer = ~20s)
     try:
@@ -218,7 +279,12 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
             "agent_analyses": crew_result.get("agent_analyses", []),
         }
     except Exception as e:
-        logger.error(f"War room crew failed, falling back: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "war_room",
+            "note": "War room crew failed, falling back",
+        })
         ed = earnings if isinstance(earnings, dict) else {}
         ind = insiders if isinstance(insiders, dict) else {}
         br = ed.get("beat_rate", 50) if ed.get("total_quarters", 0) > 0 else 50

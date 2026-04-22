@@ -24,6 +24,8 @@ from typing import Any
 
 import httpx
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = os.environ.get("SEC_EDGAR_USER_AGENT", "RISEDUAL INC contact@risedual.ai")
@@ -95,7 +97,12 @@ async def _load_sec_tickers() -> list[dict]:
                     logger.info(f"SEC tickers cache loaded: {len(_SEC_TICKERS_CACHE)} entries")
                     return _SEC_TICKERS_CACHE
         except Exception as e:
-            logger.warning(f"SEC tickers fetch failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "sec_13f",
+                "note": "SEC tickers fetch failed",
+            })
         _SEC_TICKERS_CACHE = []
         return []
 
@@ -294,7 +301,13 @@ async def fetch_13f_holdings(cik: str, accession: str) -> list[dict]:
                 "put_call": put_call,
             })
     except ET.ParseError as e:
-        logger.warning(f"13F XML parse error {accession}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "sec_13f",
+            "note": "13F XML parse error <accession>",
+            "accession": accession,
+        })
         return []
     return holdings
 
@@ -330,7 +343,13 @@ async def refresh_institution(db: Any, cik: str, institution_name: str, max_fili
     try:
         filings = await fetch_institution_filings(cik, max_filings=max_filings)
     except Exception as e:
-        logger.warning(f"13F refresh list error {cik}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "sec_13f",
+            "note": "13F refresh list error <cik>",
+            "cik": cik,
+        })
         result["errors"] = 1
         return result
 
@@ -384,7 +403,13 @@ async def refresh_institution(db: Any, cik: str, institution_name: str, max_fili
             result["filings_new"] += 1
             logger.info(f"13F refreshed: {institution_name} {f.get('period_end')} ({len(holdings)} positions, ${total_value/1e9:.1f}B)")
         except Exception as e:
-            logger.warning(f"13F holdings fetch error {accession}: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "sec_13f",
+                "note": "13F holdings fetch error <accession>",
+                "accession": accession,
+            })
             result["errors"] += 1
 
     return result
@@ -402,7 +427,13 @@ async def refresh_all_institutions(db: Any, max_filings: int = 2) -> dict:
             else:
                 summary["errors"] += 1
         except Exception as e:
-            logger.warning(f"13F refresh_all error for {name}: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "sec_13f",
+                "note": "13F refresh_all error for <name>",
+                "name": name,
+            })
             summary["errors"] += 1
     return summary
 
@@ -1022,9 +1053,19 @@ async def scan_and_alert(db: Any) -> dict:
             sms_alerts = await detect_smart_money_shifts(db, sorted(symbols), threshold=10)
             summary["sms_alerts_created"] = sms_alerts
         except Exception as e:
-            logger.warning(f"Smart Money shift detection error: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "sec_13f",
+                "note": "Smart Money shift detection error",
+            })
             summary["sms_alerts_created"] = 0
     except Exception as e:
-        logger.warning(f"13F scan_and_alert error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "sec_13f",
+            "note": "13F scan_and_alert error",
+        })
         summary["errors"] += 1
     return summary

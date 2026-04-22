@@ -17,6 +17,8 @@ from typing import Any
 from datetime import datetime, timezone
 
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 FAILURE_MODES = {
@@ -66,7 +68,13 @@ async def _fetch_ticker_news(ticker: str) -> list:
         articles = await service.get_company_news(ticker)
         return articles[:10]
     except Exception as e:
-        logger.warning(f"Post-mortem news fetch failed for {ticker}: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "post_mortem",
+            "note": "Post-mortem news fetch failed for <ticker>",
+            "ticker": ticker,
+        })
         return []
 
 
@@ -78,7 +86,12 @@ async def _fetch_market_news() -> list:
         articles = await service.scrape_financial_news()
         return articles[:10]
     except Exception as e:
-        logger.warning(f"Post-mortem market news fetch failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "post_mortem",
+            "note": "Post-mortem market news fetch failed",
+        })
         return []
 
 
@@ -114,10 +127,20 @@ async def _llm_classify(prompt: str) -> dict:
         result["failure_code"] = code
         return result
     except json.JSONDecodeError as e:
-        logger.warning(f"AI post-mortem JSON parse failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "post_mortem",
+            "note": "AI post-mortem JSON parse failed",
+        })
         return {}
     except Exception as e:
-        logger.warning(f"AI post-mortem LLM call failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "post_mortem",
+            "note": "AI post-mortem LLM call failed",
+        })
         return {}
 
 
@@ -242,7 +265,12 @@ async def run_and_update_post_mortem(
                 meta["failure_code"] = code
                 await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])
     except Exception as e:
-        logger.warning(f"ChromaDB post-mortem update failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "post_mortem",
+            "note": "ChromaDB post-mortem update failed",
+        })
 
     # Log the post-mortem
     if db is not None:
@@ -260,7 +288,12 @@ async def run_and_update_post_mortem(
                 "run_at": datetime.now(timezone.utc).isoformat(),
             })
         except Exception as e:
-            logger.warning(f"Post-mortem log save failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "post_mortem",
+                "note": "Post-mortem log save failed",
+            })
 
     # Push to SSE stream
     try:

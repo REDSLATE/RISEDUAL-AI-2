@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 
 from services.market_memory_service import save_regime, _collection, init_memory
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 # Symbols to train on — diversified across sectors, market cap, and asset classes
@@ -222,7 +224,13 @@ def _process_symbol(symbol: str, sector: str, fg_history: dict = None) -> list[d
 
         return regimes
     except Exception as e:
-        logger.error(f"Error processing {symbol}: {e}")
+        log_error(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "memory_training",
+            "note": "Error processing <symbol>",
+            "symbol": symbol,
+        })
         return []
 
 
@@ -275,7 +283,13 @@ async def run_memory_training(mongo_db: Any = None, progress_callback: Any = Non
                 })
 
         except Exception as e:
-            logger.error(f"Training failed for {symbol}: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "memory_training",
+                "note": "Training failed for <symbol>",
+                "symbol": symbol,
+            })
             failed_symbols.append(symbol)
             processed += 1
 
@@ -305,6 +319,11 @@ async def run_memory_training(mongo_db: Any = None, progress_callback: Any = Non
                 "training_symbols": list(TRAINING_SYMBOLS.keys()),
             })
         except Exception as e:
-            logger.warning(f"Failed to log training run: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "memory_training",
+                "note": "Failed to log training run",
+            })
 
     return result

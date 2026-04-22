@@ -16,6 +16,8 @@ from uuid import uuid4
 
 from services.price_provider import get_quote_sync
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 # Direction classification constants
@@ -444,7 +446,12 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
                 risk_ctx=None,      # no risk-manager context here
             )
         except Exception as e:
-            logger.warning(f"[prediction] conviction auto-compute failed: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "prediction_tracker",
+                "note": "[prediction] conviction auto-compute failed",
+            })
             conviction = None
     if conviction is not None:
         doc["conviction"] = conviction
@@ -619,7 +626,12 @@ async def verify_pending_predictions(db: Any) -> None:
                     upsert=True,
                 )
         except Exception as e:
-            logger.warning(f"[learning-engine] resolve failed for {pred['symbol']}: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "prediction_tracker",
+                "note": "[learning-engine] resolve failed for <expr>",
+            })
 
         # Auto-save verified prediction to vector memory
         try:
@@ -638,7 +650,12 @@ async def verify_pending_predictions(db: Any) -> None:
                 }
                 await save_regime(regime)
         except Exception as e:
-            logger.warning(f"Memory save skipped for {pred['symbol']}: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "prediction_tracker",
+                "note": "Memory save skipped for <expr>",
+            })
 
         # Run AI post-mortem for wrong predictions (upgrades heuristic with news context)
         if not correct and failure_code:
@@ -646,7 +663,12 @@ async def verify_pending_predictions(db: Any) -> None:
                 from services.post_mortem_service import run_and_update_post_mortem
                 await run_and_update_post_mortem(db, pred, price_now, failure_code)
             except Exception as e:
-                logger.warning(f"AI post-mortem skipped for {pred['symbol']}: {e}")
+                log_warning(logger, {
+                    "error": str(e),
+                    "type": type(e).__name__,
+                    "context": "prediction_tracker",
+                    "note": "AI post-mortem skipped for <expr>",
+                })
 
     # Find predictions needing 1-week verification
     pending_1w = db.predictions.find({

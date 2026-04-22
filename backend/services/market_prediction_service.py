@@ -4,6 +4,8 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 from datetime import datetime
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 class MarketPredictionService:
@@ -71,7 +73,12 @@ class MarketPredictionService:
             if veto_context:
                 logger.info(f"Injecting {veto_context.count('FAILED Pattern')} veto pattern(s) into strategist")
         except Exception as e:
-            logger.warning(f"Memory context fetch skipped: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_prediction",
+                "note": "Memory context fetch skipped",
+            })
 
         # Fetch order flow
         order_flow_context = ""
@@ -82,7 +89,12 @@ class MarketPredictionService:
             if order_flow_context:
                 logger.info(f"Injecting {flow_symbol} order flow into prediction")
         except Exception as e:
-            logger.warning(f"Order flow fetch skipped: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_prediction",
+                "note": "Order flow fetch skipped",
+            })
 
         # Append ticker-specific context if available
         if ticker and ticker_ctx:
@@ -101,7 +113,12 @@ class MarketPredictionService:
             )
             return result
         except Exception as e:
-            logger.error(f"Crew prediction failed, falling back to single-agent: {e}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_prediction",
+                "note": "Crew prediction failed, falling back to single-agent",
+            })
             return await self._single_agent_prediction(
                 financial_news, crypto_data, insider_trades, social_sentiment,
                 real_estate_data, world_events, foreign_markets, gov_filings,
@@ -227,7 +244,12 @@ Provide your analysis in JSON format with:
             return prediction
             
         except Exception as e:
-            logger.error(f"Market prediction error: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "market_prediction",
+                "note": "Market prediction error",
+            })
             return self._fallback_prediction()
     
     def _prepare_data_summary(self, news: list, crypto: list, trades: list, social: list,

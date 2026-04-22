@@ -26,6 +26,8 @@ import httpx
 
 from services.sliding_cache import SlidingCache
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 # Injected by route_registry on startup so we can share the app's Mongo
@@ -204,7 +206,12 @@ async def get_gov_contracts(
                 json=payload,
             )
     except Exception as e:
-        logger.warning(f"USASpending network error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "usaspending",
+            "note": "USASpending network error",
+        })
         return []
 
     if resp.status_code != 200:
@@ -214,7 +221,12 @@ async def get_gov_contracts(
     try:
         rows = resp.json().get("results", [])
     except Exception as e:
-        logger.warning(f"USASpending JSON parse failed: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "usaspending",
+            "note": "USASpending JSON parse failed",
+        })
         return []
 
     contracts: list[dict] = []
@@ -298,7 +310,12 @@ async def warmup_top_recipients(limit: int = 500) -> dict:
                 json=payload,
             )
     except Exception as e:
-        logger.warning(f"Warmup network error: {e}")
+        log_warning(logger, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "context": "usaspending",
+            "note": "Warmup network error",
+        })
         return {"scanned": 0, "resolved": 0, "skipped": 0, "error": str(e)}
 
     if resp.status_code != 200:

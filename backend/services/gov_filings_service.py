@@ -6,6 +6,8 @@ from typing import Any, Optional
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
+from services.structured_log import log_error, log_warning
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,12 @@ class GovFilingsService:
                         'description': 'Insider Transaction',
                     })
         except Exception as e:
-            logger.error(f"Error fetching SEC filings: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "gov_filings",
+                "note": "Error fetching SEC filings",
+            })
 
         # Fallback: scrape OpenInsider
         if not filings:
@@ -77,7 +84,12 @@ class GovFilingsService:
                             'description': f"Insider {cols[7].get_text(strip=True)} by {cols[5].get_text(strip=True)}",
                         })
         except Exception as e:
-            logger.error(f"Error scraping OpenInsider: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "gov_filings",
+                "note": "Error scraping OpenInsider",
+            })
         return trades
 
     async def get_fed_announcements(self) -> list[dict]:
@@ -102,7 +114,12 @@ class GovFilingsService:
                     'type': 'fed_announcement',
                 })
         except Exception as e:
-            logger.error(f"Error fetching Fed announcements: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "gov_filings",
+                "note": "Error fetching Fed announcements",
+            })
         return announcements
 
     async def get_congressional_trades(self) -> list[dict]:
@@ -129,7 +146,12 @@ class GovFilingsService:
                 if trade:
                     trades.append(trade)
         except Exception as e:
-            logger.error(f"Error scraping Capitol Trades: {str(e)}")
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "gov_filings",
+                "note": "Error scraping Capitol Trades",
+            })
         return trades
 
     @staticmethod
@@ -188,7 +210,12 @@ class GovFilingsService:
             if fh._is_configured():
                 return await fh.get_all_data_for_predictions()
         except Exception as e:
-            logger.warning(f"Finnhub fetch failed, falling back to scrapers: {e}")
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "gov_filings",
+                "note": "Finnhub fetch failed, falling back to scrapers",
+            })
         return {}
 
     async def _resolve_insider_trades(self, finnhub_data: dict) -> list[dict]:
