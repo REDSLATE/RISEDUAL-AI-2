@@ -55,12 +55,12 @@ class KeyRotator:
         logger.warning(f"[KeyRotator:{self.env_var}] All {len(self.keys)} keys in cooldown, forcing {oldest[:8]}...")
         return oldest
 
-    def mark_failed(self, key: str):
+    def mark_failed(self, key: str) -> None:
         self._failures[key] = time.time()
         healthy = sum(1 for k in self.keys if self._is_healthy(k))
         logger.warning(f"[KeyRotator:{self.env_var}] Key {key[:8]}... failed. {healthy}/{len(self.keys)} healthy.")
 
-    def mark_success(self, key: str):
+    def mark_success(self, key: str) -> None:
         self._failures.pop(key, None)
 
     def status(self) -> dict:

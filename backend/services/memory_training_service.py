@@ -8,6 +8,7 @@ Run as a background task — takes 2-5 minutes to complete.
 """
 import logging
 import asyncio
+from typing import Any
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timezone
@@ -225,7 +226,7 @@ def _process_symbol(symbol: str, sector: str, fg_history: dict = None) -> list[d
         return []
 
 
-async def run_memory_training(mongo_db=None, progress_callback=None) -> dict:
+async def run_memory_training(mongo_db: Any = None, progress_callback: Any = None) -> dict:
     """Run the full memory training pipeline. Returns stats on completion.
 
     This is designed to run as a background task (takes 2-5 minutes).

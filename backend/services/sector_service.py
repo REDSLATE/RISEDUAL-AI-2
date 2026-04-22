@@ -55,7 +55,7 @@ def _calc_returns(prices: list[dict]) -> dict:
     current = prices[-1]["close"]
     returns = {}
 
-    def pct(old, new):
+    def pct(old: float, new: float) -> float:
         return round((new - old) / old * 100, 2) if old else 0
 
     returns["1d"] = pct(prices[-2]["close"], current) if len(prices) >= 2 else 0

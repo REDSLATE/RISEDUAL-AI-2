@@ -10,6 +10,8 @@ Usage:
 import os
 import json as json_mod
 import logging
+from typing import Any
+
 import httpx
 
 from services.provider_pool import ProviderPool, ProviderEntry
@@ -142,7 +144,7 @@ _DISPATCH = {
 }
 
 
-def _get_caller(provider: ProviderEntry):
+def _get_caller(provider: ProviderEntry) -> Any:
     """Determine which caller to use based on provider config."""
     if provider.api_key.startswith("sk-emergent"):
         return _call_emergent

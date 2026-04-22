@@ -39,7 +39,7 @@ class ProviderPool:
         self.providers: list[ProviderEntry] = []
         self._load(entries)
 
-    def _load(self, entries: list[dict]):
+    def _load(self, entries: list[dict]) -> None:
         for entry in sorted(entries, key=lambda e: e.get("priority", 99)):
             api_key = entry.get("api_key", "")
             if not api_key:
@@ -79,13 +79,13 @@ class ProviderPool:
             return sorted(self.providers, key=lambda p: p.last_failure)
         return healthy
 
-    def mark_success(self, provider: ProviderEntry):
+    def mark_success(self, provider: ProviderEntry) -> None:
         provider.failures = 0
         provider.last_failure = 0.0
         provider.total_calls += 1
         provider.total_successes += 1
 
-    def mark_failure(self, provider: ProviderEntry, error: str = ""):
+    def mark_failure(self, provider: ProviderEntry, error: str = "") -> None:
         provider.failures += 1
         provider.last_failure = time.time()
         provider.total_calls += 1

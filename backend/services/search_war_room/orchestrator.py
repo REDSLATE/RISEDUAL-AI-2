@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 AI_ANALYSIS_TIMEOUT = 18.0
 
 
-def classify_mode(query: str, mode: str):
+def classify_mode(query: str, mode: str) -> str:
     if mode != "auto":
         return mode
 

@@ -58,7 +58,7 @@ class TTLCache:
             self._store[key] = {"data": data, "ts": time.monotonic(), "refreshing": False}
             return data
 
-    async def _refresh(self, key: str, fetch_fn: Callable, ttl: int):
+    async def _refresh(self, key: str, fetch_fn: Callable, ttl: int) -> None:
         """Background refresh — updates cache without blocking callers."""
         try:
             data = await fetch_fn()
@@ -81,11 +81,11 @@ class TTLCache:
                 return entry["data"]
             raise
 
-    def invalidate(self, key: str):
+    def invalidate(self, key: str) -> None:
         """Remove a specific key from cache."""
         self._store.pop(key, None)
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear entire cache."""
         self._store.clear()
 

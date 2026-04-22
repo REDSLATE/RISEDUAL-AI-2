@@ -9,13 +9,13 @@ Smart orders are stored in MongoDB and monitored by a background price checker.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global _db
     _db = database
 
@@ -200,7 +200,9 @@ def _build_ladder_legs(side: str, total_qty: float, current_price: float,
     return legs
 
 
-def _build_simulation_preview(symbol, side, qty, current_price, legs, tp_chain, stop_loss, break_even) -> dict:
+def _build_simulation_preview(symbol: str, side: str, qty: float, current_price: float,
+                              legs: list[dict], tp_chain: list[dict],
+                              stop_loss: dict | None, break_even: dict) -> dict:
     """Preview a smart order without executing."""
     entry_cost = sum(leg["price"] * leg["qty"] for leg in legs)
     avg_entry = entry_cost / qty if qty > 0 else current_price
@@ -304,7 +306,7 @@ async def cancel_smart_order(user_id: str, order_id: str) -> dict:
     return {"status": "cancelled", "order_id": order_id}
 
 
-async def check_smart_orders():
+async def check_smart_orders() -> None:
     """Background task: Check all active smart orders against live prices.
     Handles: ladder fills, stop-loss triggers, take-profit triggers, trailing updates, break-even moves.
     """

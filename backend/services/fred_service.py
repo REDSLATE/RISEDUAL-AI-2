@@ -7,7 +7,7 @@ import os
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -422,7 +422,7 @@ async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> di
     }
 
 
-async def detect_revisions(db) -> list[dict]:
+async def detect_revisions(db: Any) -> list[dict]:
     """Compare today's FRED data against the most recent stored snapshot to detect revisions.
 
     Returns a list of indicators where the current value differs from what was stored.

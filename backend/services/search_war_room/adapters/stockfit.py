@@ -37,7 +37,7 @@ async def _safe_get(client: httpx.AsyncClient, url: str, params: dict, headers: 
     return {}
 
 
-async def run(query: str, symbol: str = None):
+async def run(query: str, symbol: str = None) -> EngineResult:
     """War Room adapter: pull financials + insider summary + earnings for a ticker."""
     key = _get_key()
     if not key:

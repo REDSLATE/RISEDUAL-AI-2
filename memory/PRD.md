@@ -54,6 +54,25 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Type-hint Coverage 100% in `/backend/services/` (COMPLETED Feb 20, 2026)
+- Pushed Python type-hint coverage across **866 functions** in the
+  services directory from **88.4% → 100%**. Every parameter + return
+  type now explicit. Closes the long-standing P3 code-quality item.
+- Standard patterns applied: `set_db(database: Any) -> None`,
+  `-> EngineResult` on all 10 `/search_war_room/adapters/*.run(...)`
+  entries, `np.ndarray` / `tuple[float, float, float]` on technical
+  indicator helpers, `Any` on schema-agnostic crew/agent signatures.
+- Added `from typing import Any` to ~15 files that previously didn't
+  need it.
+- Side catch: `services/ai_intelligence_service.py` had 3 orphan
+  tail lines (dangling `datetime.now(timezone.utc).isoformat()`
+  fragment from a pre-existing bad merge) — removed during the
+  sweep. Python's lazy import had masked it.
+- Ruff lint clean on the entire directory. **209/209** regression
+  tests green.
+- Also dropped "Adversitao Everywhere" from the P3 roadmap per user
+  request (see `/app/memory/ROADMAP.md`).
+
 ### Portfolio Risk Engine + NewsAPI.ai Metadata Flags (COMPLETED Feb 20, 2026)
 - **Portfolio Risk Engine** (`services/trading_bot_service.py`): three
   global caps on top of the existing per-trade `MAX_POSITION_USD=$2000`

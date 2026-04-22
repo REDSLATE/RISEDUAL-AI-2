@@ -75,7 +75,7 @@ class MarketDataService:
                 crypto_data.append(quote)
         return crypto_data
 
-    async def _fetch_top_stocks(self, provider: dict):
+    async def _fetch_top_stocks(self, provider: dict) -> list[dict]:
         p = provider.get("provider")
         key = provider.get("api_key")
 
@@ -103,7 +103,7 @@ class MarketDataService:
 
         raise RuntimeError(f"Unsupported market data provider: {p}")
 
-    async def get_top_stocks(self):
+    async def get_top_stocks(self) -> dict:
         routed = await self.router.run(self._fetch_top_stocks)
         return {
             "data": routed["result"],

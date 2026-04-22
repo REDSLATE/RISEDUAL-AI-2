@@ -22,7 +22,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 
 # Retention: 90 days. Rejections older than that rarely inform retraining
 # (market regime has already shifted) so we let MongoDB age them out.
@@ -43,7 +43,7 @@ SOURCES = frozenset({
 })
 
 
-def set_db(database) -> None:
+def set_db(database: Any) -> None:
     global _db
     _db = database
 

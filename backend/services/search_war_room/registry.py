@@ -34,22 +34,22 @@ class ProviderEntry:
 _REGISTRY: dict[str, ProviderEntry] = {}
 
 
-def register(entry: ProviderEntry):
+def register(entry: ProviderEntry) -> None:
     """Register a provider. Overwrites if name already exists."""
     _REGISTRY[entry.name] = entry
 
 
-def deregister(name: str):
+def deregister(name: str) -> None:
     """Remove a provider by name."""
     _REGISTRY.pop(name, None)
 
 
-def enable(name: str):
+def enable(name: str) -> None:
     if name in _REGISTRY:
         _REGISTRY[name].enabled = True
 
 
-def disable(name: str):
+def disable(name: str) -> None:
     if name in _REGISTRY:
         _REGISTRY[name].enabled = False
 
@@ -98,7 +98,7 @@ def registry_status() -> dict:
 #  Auto-register all built-in adapters
 # ─────────────────────────────────────────────
 
-def _bootstrap():
+def _bootstrap() -> None:
     """Register all built-in adapters. Called once at import time."""
     from services.search_war_room.adapters import (
         ddg, wikipedia, fred, sec, yahoo, tavily,

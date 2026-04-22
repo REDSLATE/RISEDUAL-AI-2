@@ -30,7 +30,7 @@ _DIGEST_SEND_PACE_SEC = 0.25
 
 # ─────────────────────────── Data collection ───────────────────────────
 
-async def collect_digest_data(db) -> dict:
+async def collect_digest_data(db: Any) -> dict:
     """Aggregate market data needed for the daily digest from live collections."""
     now = datetime.now(timezone.utc)
     since_48h = (now - timedelta(hours=48)).isoformat()
@@ -141,7 +141,7 @@ async def collect_digest_data(db) -> dict:
     return data
 
 
-async def get_user_watchlist_intel(db, user_id) -> dict | None:
+async def get_user_watchlist_intel(db: Any, user_id: Any) -> dict | None:
     """Return cached watchlist intelligence for a user if available."""
     try:
         cached = await db.watchlist_intelligence.find_one(
@@ -482,7 +482,7 @@ def build_digest_html(data: dict, is_pro: bool, user_name: str,
 
 # ─────────────────────────── Send ───────────────────────────
 
-async def send_daily_digest(db) -> dict:
+async def send_daily_digest(db: Any) -> dict:
     """Collect data, render per-user digest, send via Resend (→ SendGrid failover)."""
     if not _is_configured():
         logger.info("Daily digest skipped: no email providers configured")
@@ -572,7 +572,7 @@ async def send_daily_digest(db) -> dict:
     }
 
 
-async def send_digest_to_user(db, user: dict) -> dict:
+async def send_digest_to_user(db: Any, user: dict) -> dict:
     """Build and send a single on-demand digest to the supplied user.
 
     Used by `POST /api/digest/send-now` — separate from the scheduled

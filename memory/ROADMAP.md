@@ -85,32 +85,11 @@ signals a first-class browsing primitive.
     - Tier 2: 500 labeled predictions
     - Tier 3 (live execution): 1000 labeled predictions
 
-### 🎨 Adversitao Everywhere — *unified product brand across surfaces*
-**Source:** `adversitao_everywhere_memo.pdf`
-
-Unify **"Adversitao"** as the single product brand across web, mobile,
-and desktop to compound trust, muscle memory, and credibility.
-
-- Shared `@adversitao/ui` package exposing six primitives:
-  - Signal Gauge · Regime Chip · Pattern Row · Tier Pill · AI Chat
-    Bubble · N-Throbber
-- Three surfaces launched **sequentially**, each gated by the next
-  calibration tier:
-  1. **Web** — `adversitao.com` · Next.js · ships first, validates the
-     design system.
-  2. **Mobile** — React Native · ships after Tier 2 (500 predictions).
-  3. **Desktop Navigator** — Tauri · ships after Tier 3 (1000 predictions,
-     live execution unlocked).
-- **Success metrics:** compounding cross-surface trust · reduced
-  marketing/dev cost via the shared design system · seamless user
-  transition between surfaces.
-
-### Sequencing note
-These two memos are the same project at different scales. Navigator is
-*surface #3* of the Adversitao rollout. The roll-out sequence locks the
-three into a dependency chain: finish current RISEDUAL web site → fold
-it into the `@adversitao/ui` design system → ship mobile → ship
-Navigator desktop.
+> **Dropped (2026-02-20):** "Adversitao Everywhere" cross-surface
+> brand rollout (React Native mobile + Tauri Navigator desktop as
+> a unified `@adversitao/ui` design system). No longer on the
+> backlog at user request. RISEDUAL Navigator above stands on its
+> own as a P3 desktop vision, independent of any mobile track.
 
 ---
 

@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 from datetime import datetime
@@ -108,7 +108,7 @@ class MarketPredictionService:
                 memory_context=memory_context,
             )
 
-    def _build_regime_snapshot(self, news, crypto, trades, social, world_events, foreign_markets) -> dict:
+    def _build_regime_snapshot(self, news: Any, crypto: Any, trades: Any, social: Any, world_events: Any, foreign_markets: Any) -> dict:
         """Build a compact regime description from current market data for memory queries."""
         snapshot = {"metrics": {}, "sentiment": {}}
 
@@ -147,11 +147,11 @@ class MarketPredictionService:
 
         return snapshot
 
-    async def _single_agent_prediction(self, financial_news, crypto_data,
-                                        insider_trades, social_sentiment,
-                                        real_estate_data=None, world_events=None,
-                                        foreign_markets=None, gov_filings=None,
-                                        memory_context="") -> dict:
+    async def _single_agent_prediction(self, financial_news: Any, crypto_data: Any,
+                                        insider_trades: Any, social_sentiment: Any,
+                                        real_estate_data: Any = None, world_events: Any = None,
+                                        foreign_markets: Any = None, gov_filings: Any = None,
+                                        memory_context: str = "") -> dict:
         """Fallback single-agent prediction if crew fails."""
         try:
             # Prepare data summary for AI

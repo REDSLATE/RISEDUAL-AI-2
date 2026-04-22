@@ -20,7 +20,7 @@ SERIES_MAP = {
 }
 
 
-async def run(query: str):
+async def run(query: str) -> EngineResult:
     if not fred_rotator.available:
         return EngineResult(engine='fred', status='skipped', source_type='macro', query=query, error='missing_fred_api_keys')
     q = query.lower()

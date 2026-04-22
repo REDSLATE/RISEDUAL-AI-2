@@ -13,6 +13,7 @@ import os
 import json
 import logging
 import asyncio
+from typing import Any
 from datetime import datetime, timezone
 
 
@@ -204,7 +205,7 @@ async def run_post_mortem(
 
 
 async def run_and_update_post_mortem(
-    db, prediction: dict, price_now: float, heuristic_code: str = "UNKNOWN"
+    db: Any, prediction: dict, price_now: float, heuristic_code: str = "UNKNOWN"
 ) -> dict:
     """Run AI post-mortem AND update MongoDB + ChromaDB with the result.
 

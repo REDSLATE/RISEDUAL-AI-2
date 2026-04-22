@@ -6,21 +6,21 @@ Billing period: Monthly, resets on the 1st.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 FEE_RATE = 0.015  # 1.5%
 PROFIT_THRESHOLD = 1000.0  # $1,000 minimum before fee applies
 
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global db
     db = database
 
 
-def _current_period():
+def _current_period() -> tuple[datetime, datetime]:
     """Return (start, end) datetimes for the current billing period."""
     now = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)

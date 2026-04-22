@@ -11,7 +11,7 @@ from services.search_war_room.cache import get_cached, set_cached
 TTL = 600  # 10 min cache
 
 
-async def run(query: str):
+async def run(query: str) -> EngineResult:
     api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
         return EngineResult(engine="tavily", status="skipped", source_type="search", query=query, error="missing_tavily_api_key")

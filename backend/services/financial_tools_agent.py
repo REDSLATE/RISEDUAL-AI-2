@@ -13,7 +13,7 @@ Usage:
 """
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -46,7 +46,7 @@ class FinancialToolsAgent:
         self.db = db
         self.router = ProviderRouter("ai_tools", get_ai_provider_pool(), db=db)
 
-    async def _call_llm(self, provider: dict, messages: list):
+    async def _call_llm(self, provider: dict, messages: list) -> Any:
         """Call the LLM with tool definitions via OpenAI-compatible API."""
         api_key = provider.get("api_key")
         model = provider.get("model", "gpt-5.2")
@@ -84,7 +84,7 @@ class FinancialToolsAgent:
         )
         return response.choices[0].message
 
-    async def _call_anthropic_tools(self, api_key: str, model: str, messages: list):
+    async def _call_anthropic_tools(self, api_key: str, model: str, messages: list) -> Any:
         anthropic_tools = [
             {"name": t["function"]["name"], "description": t["function"]["description"],
              "input_schema": t["function"]["parameters"]}

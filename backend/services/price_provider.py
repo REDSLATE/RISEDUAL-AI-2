@@ -50,7 +50,7 @@ def _get_av_key() -> str:
     return keys[_active_key_idx % len(keys)]
 
 
-def _rotate_av_key():
+def _rotate_av_key() -> None:
     """Switch to the other AV key after a rate limit hit."""
     global _active_key_idx
     keys = [_av_key(), _av_key_2()]

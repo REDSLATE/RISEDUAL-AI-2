@@ -11,7 +11,7 @@ TTL = 600
 av_rotator = KeyRotator("ALPHA_VANTAGE_API_KEY")
 
 
-async def run(query: str, symbol: str = None):
+async def run(query: str, symbol: str = None) -> EngineResult:
     import os
     api_key = os.environ.get("ALPHA_VANTAGE_API_KEY") or os.environ.get("ALPHAVANTAGEAPIKEY", "")
     if not api_key:

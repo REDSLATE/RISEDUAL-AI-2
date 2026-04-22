@@ -92,7 +92,7 @@ class KeyVault:
         result = await self.db[COLLECTION].delete_one({"name": name})
         return result.deleted_count > 0
 
-    async def load_into_env(self):
+    async def load_into_env(self) -> int:
         """Load all vault keys into os.environ (called at startup)."""
         cursor = self.db[COLLECTION].find({}, {"_id": 0})
         loaded = 0
@@ -109,7 +109,7 @@ class KeyVault:
         return loaded
 
     async def inject_and_reload(self, name: str, value: str, category: str = "general",
-                                description: str = "", stored_by: str = "admin"):
+                                description: str = "", stored_by: str = "admin") -> None:
         """Store a key, inject into env, and reload affected provider pools."""
         await self.store(name, value, category, description, stored_by)
         os.environ[name] = value

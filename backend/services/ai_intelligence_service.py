@@ -35,7 +35,7 @@ async def _fetch_quote(symbol: str) -> dict:
     }
 
 
-def _ema(arr, period):
+def _ema(arr: np.ndarray, period: int) -> float:
     """Calculate Exponential Moving Average."""
     if len(arr) < period:
         return float(np.mean(arr))
@@ -46,7 +46,7 @@ def _ema(arr, period):
     return val
 
 
-def _calc_rsi(closes, period=14):
+def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
     """Calculate Relative Strength Index."""
     deltas = np.diff(closes)
     gains = np.where(deltas > 0, deltas, 0.0)
@@ -56,14 +56,14 @@ def _calc_rsi(closes, period=14):
     return 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 100
 
 
-def _calc_bollinger(closes, period=20):
+def _calc_bollinger(closes: np.ndarray, period: int = 20) -> tuple[float, float, float]:
     """Calculate Bollinger Bands."""
     mid = float(np.mean(closes[-period:]))
     std = float(np.std(closes[-period:]))
     return mid, mid + 2 * std, mid - 2 * std
 
 
-def _determine_trend(current, sma_20, sma_50):
+def _determine_trend(current: float, sma_20: float | None, sma_50: float | None) -> str:
     """Determine trend direction from moving averages."""
     trend = "bullish" if current > sma_20 else "bearish"
     if sma_50 and current > sma_50:
@@ -71,7 +71,7 @@ def _determine_trend(current, sma_20, sma_50):
     return trend
 
 
-def _safe_sma(closes: np.ndarray, period: int):
+def _safe_sma(closes: np.ndarray, period: int) -> float | None:
     """Return SMA for the given period, or None if insufficient data."""
     return round(float(np.mean(closes[-period:])), 2) if len(closes) >= period else None
 

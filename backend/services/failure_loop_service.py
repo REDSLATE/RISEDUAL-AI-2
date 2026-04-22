@@ -154,7 +154,7 @@ async def build_memory_warnings(user_id: str) -> list:
     return warnings
 
 
-async def _log_event(user_id: str, event_type: str, idea_id: str, payload: dict):
+async def _log_event(user_id: str, event_type: str, idea_id: str, payload: dict) -> None:
     """Log a failure loop event."""
     if db is None:
         return

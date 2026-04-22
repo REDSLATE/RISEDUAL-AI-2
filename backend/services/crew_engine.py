@@ -72,7 +72,7 @@ def _run_agent_sync(api_key: str, role: str, goal: str, backstory: str,
             f"{task_prompt}"
         )
 
-    async def _call():
+    async def _call() -> str:
         session_id = f"crew_{role.replace(' ', '_')}_{session_suffix}"
         chat = LlmChat(
             api_key=api_key,

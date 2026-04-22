@@ -9,6 +9,7 @@ Uses frozen dataclasses for plan config and pure functions for credit logic.
 import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ def set_db(database: object) -> None:
     db = database
 
 
-def _to_oid(user_id: str):
+def _to_oid(user_id: str) -> Any:
     from bson import ObjectId
     try:
         return ObjectId(user_id)
@@ -356,7 +357,7 @@ async def get_usage_events(user_id: str, limit: int = 30) -> list:
     return events
 
 
-async def _log_event(user_id: str, action: str, credits_charged: int, was_unlimited: bool, description: str):
+async def _log_event(user_id: str, action: str, credits_charged: int, was_unlimited: bool, description: str) -> None:
     """Log a usage event."""
     if db is None:
         return

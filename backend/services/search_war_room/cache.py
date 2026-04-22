@@ -20,7 +20,7 @@ def get_cached(engine: str, query: str, ttl_seconds: int) -> Optional[dict]:
     return item['value']
 
 
-def set_cached(engine: str, query: str, value: dict):
+def set_cached(engine: str, query: str, value: dict) -> None:
     key = make_key(engine, query)
     _CACHE[key] = {'stored_at': time.time(), 'value': value}
     if len(_CACHE) > 500:

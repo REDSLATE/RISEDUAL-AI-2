@@ -2,7 +2,7 @@ import logging
 import asyncio
 import requests
 import re
-from typing import Optional
+from typing import Any, Optional
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
@@ -16,7 +16,7 @@ class GovFilingsService:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         }
 
-    async def _get(self, url, **kwargs):
+    async def _get(self, url: str, **kwargs: Any) -> Any:
         kwargs.setdefault('timeout', 10)
         return await asyncio.to_thread(requests.get, url, **kwargs)
 
@@ -138,7 +138,7 @@ class GovFilingsService:
         return re.sub(r'(\d{4})$', r' \1', raw.strip()) if raw else ''
 
     @staticmethod
-    def _parse_capitol_row(row) -> Optional[dict]:
+    def _parse_capitol_row(row: Any) -> Optional[dict]:
         """Parse a single row from Capitol Trades table using CSS selectors."""
         cols = row.find_all('td')
         if len(cols) < 8:

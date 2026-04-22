@@ -2,6 +2,7 @@
 import os
 import jwt
 from datetime import datetime, timezone
+from typing import Any
 from fastapi import HTTPException, Request
 from bson import ObjectId
 
@@ -10,11 +11,11 @@ JWT_ALGORITHM = "HS256"
 # Will be set by server.py
 db = None
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global db
     db = database
 
-def get_jwt_secret():
+def get_jwt_secret() -> str:
     return os.environ["JWT_SECRET"]
 
 async def get_current_user(request: Request) -> dict:
@@ -41,7 +42,7 @@ async def get_current_user(request: Request) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-async def get_optional_user(request: Request):
+async def get_optional_user(request: Request) -> dict | None:
     """Returns user dict or None (no error if not logged in)."""
     try:
         return await get_current_user(request)

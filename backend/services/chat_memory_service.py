@@ -6,13 +6,14 @@ Injects relevant memories into future chat prompts for continuity.
 import os
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global db
     db = database
 
@@ -25,7 +26,7 @@ async def get_memory_enabled(user_id: str) -> bool:
     return pref.get("enabled", True)
 
 
-async def set_memory_enabled(user_id: str, enabled: bool):
+async def set_memory_enabled(user_id: str, enabled: bool) -> None:
     """Toggle chat memory on/off for a user."""
     await db.chat_memory_prefs.update_one(
         {"user_id": user_id},
@@ -55,7 +56,7 @@ async def clear_all_memories(user_id: str) -> int:
     return result.deleted_count
 
 
-async def save_memory(user_id: str, content: str, category: str = "general", source_session: str = ""):
+async def save_memory(user_id: str, content: str, category: str = "general", source_session: str = "") -> str:
     """Save a single memory entry."""
     import uuid
     memory_id = f"mem_{uuid.uuid4().hex[:12]}"
@@ -71,7 +72,7 @@ async def save_memory(user_id: str, content: str, category: str = "general", sou
     return memory_id
 
 
-async def extract_memories_from_conversation(user_id: str, messages: list[dict], session_id: str):
+async def extract_memories_from_conversation(user_id: str, messages: list[dict], session_id: str) -> None:
     """Use AI to extract key facts/preferences from a conversation and store them.
     
     Called after each chat exchange to build persistent memory.

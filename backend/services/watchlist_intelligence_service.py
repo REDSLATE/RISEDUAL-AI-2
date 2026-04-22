@@ -1,6 +1,7 @@
 """Watchlist Intelligence Service — Batch AI analysis of user's watchlist tickers."""
 import logging
 import asyncio
+from typing import Any
 import numpy as np
 from datetime import datetime, timezone
 
@@ -106,7 +107,7 @@ def _gather_ticker_data(tickers: list[str]) -> list[dict]:
     return results
 
 
-async def generate_watchlist_summary(api_key: str, tickers: list[str], db=None, user_id=None) -> dict:
+async def generate_watchlist_summary(api_key: str, tickers: list[str], db: Any = None, user_id: Any = None) -> dict:
     """Generate a batch AI intelligence summary for all watchlist tickers."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 

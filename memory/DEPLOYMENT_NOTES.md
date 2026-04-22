@@ -24,6 +24,58 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Type-hint coverage 88.4% → 100% in `/backend/services/`
+*Session: continued*
+
+Closed out the long-standing P3 code-quality item. Every function
+in `/app/backend/services/` (866 total) now carries full parameter
+and return-type annotations. Ruff lint passes clean across the
+entire directory.
+
+**Signature patterns applied:**
+- `set_db(database)` → `set_db(database: Any) -> None` across every
+  service with a module-level DB injection hook (12 files).
+- Cache / provider / rotator helpers (`set`, `invalidate`, `clear`,
+  `mark_success`, `mark_failure`, `_persist_health`, `snapshot`)
+  picked up explicit `-> None` / `-> dict` / `-> int` return types
+  where the body was already unambiguous.
+- `/search_war_room/adapters/*.run(...)` — all ten adapters now
+  declare `-> EngineResult` (the existing contract was implicit).
+- Technical-indicator helpers in `ai_intelligence_service.py` +
+  `scanner_service.py` (`_ema`, `_calc_rsi`, `_calc_bollinger`,
+  `_calc_macd_full`, `_calc_prev_macd`, `_safe_sma`,
+  `_determine_trend`) got proper `np.ndarray` / `float` /
+  `tuple[...]` signatures — matches how they're actually called.
+- Large agent/crew entry points (`run_prediction_crew`,
+  `_single_agent_prediction`, `_build_regime_snapshot`) landed on
+  `Any` for the market-feed dict-blob arguments (they're
+  deliberately schema-agnostic today — can narrow later once the
+  feed types stabilise).
+- `from typing import Any` added to the ~15 files that hadn't yet
+  needed it.
+
+**Stray-line cleanup (bonus):**
+`services/ai_intelligence_service.py` had three orphan lines at the
+tail (probably a pre-existing bad merge — lines 321-322 fragment
+of a `datetime.now(timezone.utc).isoformat()` call dangling on its
+own). Python's lazy import meant nobody noticed until ruff tried to
+parse the whole file during this coverage sweep. Removed — the
+preceding `generate_quick_brief()` return statement was already
+complete.
+
+**Dropped from roadmap:**
+"Adversitao Everywhere" cross-surface brand rollout (React Native
++ Tauri unified `@adversitao/ui` design system) — no longer on
+backlog at user request. RISEDUAL Navigator (P3, Tauri desktop)
+stands on its own. See `memory/ROADMAP.md`.
+
+**Regression check:** 209/209 targeted tests passing across
+portfolio, USD-notional, adaptive-sizing, Tier 3, conviction,
+calibration, patterns, Polygon, digest, and clamp-canary suites.
+Ruff on `services/` = clean.
+
+---
+
 ### 2026-02-20 — Sector concentration cap (no stacking 3 tech longs)
 *Session: continued*
 

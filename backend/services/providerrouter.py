@@ -213,7 +213,7 @@ class ProviderRouter:
     def get_ranked_providers(self) -> list[dict]:
         return sorted(self.providers, key=self._score_provider)
 
-    async def _persist_health(self, provider_name: str):
+    async def _persist_health(self, provider_name: str) -> None:
         if self.db is None:
             return
         try:
@@ -227,7 +227,7 @@ class ProviderRouter:
         except Exception as e:
             logger.warning(f"Failed to persist provider health for {provider_name}: {e}")
 
-    async def mark_success(self, provider_name: str, latency_ms: float):
+    async def mark_success(self, provider_name: str, latency_ms: float) -> None:
         async with self._lock:
             state = self._state[self.lane][provider_name]
             state["successes"] += 1
@@ -240,7 +240,7 @@ class ProviderRouter:
                 state["avg_latency_ms"] = round(latency_ms, 2)
         await self._persist_health(provider_name)
 
-    async def mark_failure(self, provider_name: str, exc: Exception):
+    async def mark_failure(self, provider_name: str, exc: Exception) -> None:
         error_type = self._classify_error(exc)
         async with self._lock:
             state = self._state[self.lane][provider_name]
@@ -333,7 +333,7 @@ class ProviderRouter:
     # ── Snapshot ──
 
     @classmethod
-    def snapshot(cls, lane: Optional[str] = None):
+    def snapshot(cls, lane: Optional[str] = None) -> dict:
         if lane:
             return cls._serialize_state(cls._state.get(lane, {}))
         result = {}

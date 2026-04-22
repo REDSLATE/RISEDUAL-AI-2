@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import json
-from typing import Optional
+from typing import Any, Optional
 from services.market_data_service import MarketDataService
 from services.financial_scraping_service import FinancialScrapingService
 from services.ai_service import AIService
@@ -80,7 +80,7 @@ class CompanyResearchService:
             'provider': provider_meta,
         }
 
-    def _filter_relevant_news(self, news_data, symbol: str, company_name: str) -> list:
+    def _filter_relevant_news(self, news_data: Any, symbol: str, company_name: str) -> list:
         """Filter news articles relevant to the target company."""
         all_articles = news_data if isinstance(news_data, list) else []
         relevant = [a for a in all_articles
@@ -88,7 +88,7 @@ class CompanyResearchService:
                     or company_name.lower() in a.get('title', '').lower()]
         return relevant if relevant else all_articles[:5]
 
-    def _build_research_context(self, symbol: str, company_name: str, overview, quote, news: list) -> tuple:
+    def _build_research_context(self, symbol: str, company_name: str, overview: Any, quote: Any, news: list) -> tuple:
         """Build data context string and sources list for AI synthesis."""
         ctx = f"""
 COMPANY RESEARCH REQUEST: {symbol}

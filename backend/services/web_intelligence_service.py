@@ -58,7 +58,7 @@ def _get_cached(key: str) -> Optional[list[dict]]:
     return None
 
 
-def _set_cache(key: str, data: list[dict]):
+def _set_cache(key: str, data: list[dict]) -> None:
     _cache[key] = (time.time(), data)
     # Evict old entries
     if len(_cache) > 200:
@@ -77,7 +77,7 @@ async def _search_ddg(query: str, max_results: int = 10,
     try:
         from ddgs import DDGS
 
-        def _do_search():
+        def _do_search() -> list[dict]:
             # Use subprocess as primary — avoids long-running process rate limits
             raw = _subprocess_ddg_text(query, max_results, timelimit)
             if raw:
@@ -122,7 +122,7 @@ async def _news_ddg(query: str, max_results: int = 10,
     try:
         from ddgs import DDGS
 
-        def _do_news():
+        def _do_news() -> list[dict]:
             # Subprocess primary — avoids long-running process rate limits
             r = _subprocess_ddg_news(query, max_results, timelimit)
             if r:

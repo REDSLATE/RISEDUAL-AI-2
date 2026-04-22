@@ -83,7 +83,7 @@ class AICacheService:
             return None
 
     async def set(self, cache_key: str, namespace: str, data: dict[str, Any],
-                  ttl_seconds: int = 300, meta: Optional[dict] = None):
+                  ttl_seconds: int = 300, meta: Optional[dict] = None) -> None:
         """Store a result in cache with TTL."""
         if self.db is None:
             return
@@ -105,7 +105,7 @@ class AICacheService:
         except Exception as e:
             logger.warning(f"Cache set error: {e}")
 
-    async def invalidate(self, cache_key: str):
+    async def invalidate(self, cache_key: str) -> None:
         """Remove a cached entry."""
         if self.db is None:
             return
@@ -114,7 +114,7 @@ class AICacheService:
         except Exception as e:
             logger.warning(f"Cache invalidate error: {e}")
 
-    async def cleanup_expired(self):
+    async def cleanup_expired(self) -> int:
         """Remove all expired entries."""
         if self.db is None:
             return 0

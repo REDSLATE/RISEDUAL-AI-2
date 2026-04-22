@@ -6,7 +6,7 @@ from services.search_war_room.cache import get_cached, set_cached
 TTL = 300
 
 
-async def run(query: str, symbol: str | None = None):
+async def run(query: str, symbol: str | None = None) -> EngineResult:
     ticker = (symbol or query.strip().split()[0]).upper()
     cached = get_cached('yahoo', ticker, TTL)
     if cached:

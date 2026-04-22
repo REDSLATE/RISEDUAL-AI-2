@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from services.price_provider import get_overview_sync, get_quote_sync
 
 
-def _av_key():
+def _av_key() -> str:
     return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
 logger = logging.getLogger(__name__)
 
 
-def _fh_key():
+def _fh_key() -> str:
     return os.environ.get("FINNHUB_API_KEY", "")
 
 

@@ -439,7 +439,7 @@ async def get_user_bots(user_id: str) -> list[dict]:
 
 # ── Grid Bot Engine ──
 
-async def run_grid_bots():
+async def run_grid_bots() -> None:
     """Background: Check all enabled grid bots and place/fill orders."""
     if _db is None:
         return
@@ -787,7 +787,7 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
     return results
 
 
-async def run_signal_bot_dispatcher():
+async def run_signal_bot_dispatcher() -> dict:
     """Fan scanner output into all enabled signal bots. Scheduled job.
 
     Runs every ~5 min via APScheduler. Aggregates the distinct symbol +
@@ -1087,7 +1087,7 @@ async def _execute_bot_trade(
     price: float,
     stop_loss: float | None = None,
     take_profit: float | None = None,
-):
+) -> dict:
     """Execute a trade for a bot.
 
     - mode=paper: routes through paper_trading_service

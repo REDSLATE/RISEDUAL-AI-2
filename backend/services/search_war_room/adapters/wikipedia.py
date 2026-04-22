@@ -6,7 +6,7 @@ from services.search_war_room.cache import get_cached, set_cached
 TTL = 86400
 
 
-async def run(query: str):
+async def run(query: str) -> EngineResult:
     cached = get_cached('wikipedia', query, TTL)
     if cached:
         return EngineResult(**cached)

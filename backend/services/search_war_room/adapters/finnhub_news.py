@@ -8,7 +8,7 @@ from services.search_war_room.cache import get_cached, set_cached
 TTL = 600
 
 
-async def run(query: str, symbol: str = None):
+async def run(query: str, symbol: str = None) -> EngineResult:
     api_key = os.environ.get("FINNHUB_API_KEY", "")
     if not api_key or not symbol:
         return EngineResult(engine="finnhub_news", status="skipped", source_type="news", query=query,

@@ -20,7 +20,7 @@ Scope decisions:
 import asyncio
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 # Injected by route_registry on startup so we can share the app's Mongo
 # handle without re-importing the full motor stack here.
-_db = None
+_db: Any = None
 
 
-def set_db(database) -> None:
+def set_db(database: Any) -> None:
     """Injected during FastAPI startup for OpenFIGI name→ticker caching."""
     global _db
     _db = database

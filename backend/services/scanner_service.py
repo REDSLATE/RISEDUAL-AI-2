@@ -6,7 +6,7 @@ Reuses existing technical indicator functions from ai_intelligence_service.
 import logging
 import numpy as np
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from services.ai_intelligence_service import (
     _fetch_daily, _compute_technicals, _calc_rsi, _calc_bollinger, _ema
@@ -14,9 +14,9 @@ from services.ai_intelligence_service import (
 
 logger = logging.getLogger(__name__)
 
-_db = None
+_db: Any = None
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global _db
     _db = database
 
@@ -95,7 +95,7 @@ STRATEGIES = {
 }
 
 
-def _calc_macd_full(closes):
+def _calc_macd_full(closes: np.ndarray) -> tuple[float, float, float]:
     """Calculate MACD line, signal line, and histogram."""
     if len(closes) < 26:
         return 0, 0, 0
@@ -113,7 +113,7 @@ def _calc_macd_full(closes):
     return macd_line, signal, histogram
 
 
-def _calc_prev_macd(closes):
+def _calc_prev_macd(closes: np.ndarray) -> tuple[float, float]:
     """Get MACD values for the previous day (for crossover detection)."""
     if len(closes) < 27:
         return 0, 0

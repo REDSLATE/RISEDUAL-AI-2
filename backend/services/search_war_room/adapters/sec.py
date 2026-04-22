@@ -17,7 +17,7 @@ async def _ticker_to_cik(symbol: str) -> str | None:
     return None
 
 
-async def run(query: str, symbol: str | None = None):
+async def run(query: str, symbol: str | None = None) -> EngineResult:
     ticker = symbol or query.strip().split()[0].upper()
     cached = get_cached('sec', ticker, TTL)
     if cached:

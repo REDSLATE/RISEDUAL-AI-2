@@ -2,7 +2,7 @@
 from services.search_war_room.schemas import SearchBrief
 
 
-def build_brief(query: str, results) -> SearchBrief:
+def build_brief(query: str, results: list) -> SearchBrief:
     ok = [r for r in results if r.status in {'ok', 'cached'}]
     degraded = any(r.status in {'error', 'timeout'} for r in results)
     sources = [r.engine for r in ok]

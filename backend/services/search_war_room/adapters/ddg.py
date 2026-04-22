@@ -134,7 +134,7 @@ def _stale_or_error(engine: str, source_type: str, query: str, exc: Exception) -
     )
 
 
-async def run(query: str):
+async def run(query: str) -> EngineResult:
     cached = get_cached("ddg", query, TTL)
     if cached:
         data = dict(cached)
@@ -154,7 +154,7 @@ async def run(query: str):
             return _stale_or_error("ddg", "search", query, exc)
 
 
-async def run_news(query: str):
+async def run_news(query: str) -> EngineResult:
     cached = get_cached("ddg_news", query, TTL)
     if cached:
         data = dict(cached)

@@ -7,6 +7,7 @@ CrewEngine to run them sequentially or in parallel.
 
 import json
 import logging
+from typing import Any
 
 from datetime import datetime, timezone
 
@@ -306,11 +307,11 @@ PREDICTION_SYNTHESIZER = AgentConfig(
 
 
 async def run_prediction_crew(
-    financial_news, crypto_data, insider_trades, social_sentiment,
-    real_estate_data=None, world_events=None, foreign_markets=None,
-    gov_filings=None, api_key: str = "", memory_context: str = "",
+    financial_news: Any, crypto_data: Any, insider_trades: Any, social_sentiment: Any,
+    real_estate_data: Any = None, world_events: Any = None, foreign_markets: Any = None,
+    gov_filings: Any = None, api_key: str = "", memory_context: str = "",
     strategist_context: str = "", veto_context: str = "",
-    order_flow_context: str = "", ticker_focus: str = None
+    order_flow_context: str = "", ticker_focus: str | None = None
 ) -> dict:
     """Run the Market Prediction multi-agent crew."""
     engine = CrewEngine(api_key)
@@ -477,7 +478,7 @@ SECTOR_SENTIMENT_SYNTHESIZER = AgentConfig(
 )
 
 
-def calculate_heatmap_sentiment(agent_results):
+def calculate_heatmap_sentiment(agent_results: list[float]) -> float:
     """Aggregates Multi-Agent scores for the sector heatmap.
     agent_results: List of floats from [-1.0, 1.0]
     Returns: 0 to 100 for the UI."""

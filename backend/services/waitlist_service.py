@@ -8,15 +8,15 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-db = None
+db: Any = None
 _position_counter = None
 
 
-def set_db(database):
+def set_db(database: Any) -> None:
     global db
     db = database
 
@@ -368,7 +368,7 @@ async def get_waitlist_analytics(days: int = 30) -> dict:
 
 def _generate_beta_key() -> str:
     """Generate a secure, unique beta access key. Format: BETA-XXXX-XXXX-XXXX"""
-    def seg():
+    def seg() -> str:
         return secrets.token_hex(2).upper()
     return f"BETA-{seg()}-{seg()}-{seg()}"
 
@@ -438,7 +438,7 @@ async def auto_invite_top_users(batch_size: int = 5) -> list[dict]:
     return invited
 
 
-async def notify_referral_success(referrer_code: str):
+async def notify_referral_success(referrer_code: str) -> None:
     """Send a referral success email to the referrer when someone joins via their link."""
     from services.email_service import send_referral_success, _is_configured
 

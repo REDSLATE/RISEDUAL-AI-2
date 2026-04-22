@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Any
 from dotenv import load_dotenv
 from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
@@ -63,6 +64,6 @@ class StripePaymentService:
         checkout = self._get_checkout(webhook_url)
         return await checkout.get_checkout_status(session_id)
 
-    async def handle_webhook(self, body: bytes, signature: str, webhook_url: str):
+    async def handle_webhook(self, body: bytes, signature: str, webhook_url: str) -> Any:
         checkout = self._get_checkout(webhook_url)
         return await checkout.handle_webhook(body, signature)

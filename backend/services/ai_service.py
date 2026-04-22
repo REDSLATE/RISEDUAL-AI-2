@@ -74,7 +74,7 @@ class AIService:
         return system
 
     async def _call_provider(self, provider: dict, message: str, session_id: str,
-                             system: str, image_base64: str = None):
+                             system: str, image_base64: str = None) -> str:
         p = provider.get("provider")
 
         if p == "openai":

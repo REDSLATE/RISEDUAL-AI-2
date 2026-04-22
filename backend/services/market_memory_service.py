@@ -12,7 +12,7 @@ import logging
 import asyncio
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import chromadb
 
@@ -26,7 +26,7 @@ _collection = None
 _db = None  # MongoDB reference for stats
 
 
-def init_memory(mongo_db=None):
+def init_memory(mongo_db: Any = None) -> None:
     """Initialize ChromaDB with built-in embedding model."""
     global _client, _collection, _db
     os.makedirs(CHROMA_DIR, exist_ok=True)
@@ -576,7 +576,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
     return results
 
 
-async def _send_toxic_alerts(cleanup_results: dict):
+async def _send_toxic_alerts(cleanup_results: dict) -> None:
     """Send email and in-app notifications when toxic spikes are detected.
 
     Deduplicated: if an alert with the same (type, tickers, date_bucket)

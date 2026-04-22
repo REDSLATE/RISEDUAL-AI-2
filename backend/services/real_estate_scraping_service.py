@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from typing import Any
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
@@ -15,7 +16,7 @@ class RealEstateScrapingService:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
-    async def _get(self, url, **kwargs):
+    async def _get(self, url: str, **kwargs: Any) -> Any:
         kwargs.setdefault('headers', self.headers)
         kwargs.setdefault('timeout', 10)
         return await asyncio.to_thread(requests.get, url, **kwargs)
