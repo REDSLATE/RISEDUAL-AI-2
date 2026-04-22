@@ -1,13 +1,14 @@
 """Alert deduplication — prevents the same alert from firing repeatedly.
 
 The canonical pattern:
-    alert_id = md5(type + sorted(tickers) + date_bucket)
+    alert_id = sha256(type + sorted(tickers) + date_bucket)
     if already_alerted_within(48h): skip
     else: record_alert() and send it
 
-Why md5: deterministic, compact, no collision risk at our volume, and
-avoids the "hash changes when Python switches to a new seed" gotcha
-that plain `hash()` would hit across restarts.
+Why sha256: deterministic, collision-resistant, no "hash changes when
+Python switches to a new seed" gotcha that plain `hash()` would hit
+across restarts. Previously MD5; swapped to SHA-256 for hygiene even
+though collision risk at our volume is non-existent either way.
 
 Why 48h: gives the nightly cleanup room to run twice without
 alerting twice. Longer windows risk hiding genuinely-different spikes;
@@ -50,7 +51,7 @@ def compute_alert_id(alert_type: str, tickers: list[str], date_bucket: str) -> s
     and dedup will NEVER fire — caller bug, not our bug.
     """
     key = f"{alert_type}-{sorted(t.upper() for t in tickers)}-{date_bucket}"
-    return hashlib.md5(key.encode("utf-8")).hexdigest()
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def date_bucket_today() -> str:

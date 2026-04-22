@@ -11,6 +11,7 @@
  */
 import { useEffect } from 'react';
 import { getApiBase } from '../utils/apiBase';
+import logger from '../utils/logger';
 
 const SESSION_KEY = 'risedual-ref-logged';
 const API = `${getApiBase()}/api/analytics/ref`;
@@ -32,9 +33,14 @@ export default function useReferralCapture() {
         credentials: 'include',
         body: JSON.stringify({ ref, path: window.location.pathname || '/' }),
         keepalive: true,
-      }).catch(() => { /* non-fatal */ });
+      }).catch((err) => logger.warn('referral capture fetch failed', err));
 
       sessionStorage.setItem(SESSION_KEY, ref);
-    } catch { /* SSR / privacy mode safety */ }
+    } catch (err) {
+      // Expected: SSR (no window) or privacy-mode browsers that throw
+      // on sessionStorage access. Dev-only log so we can diagnose if a
+      // real regression sneaks in.
+      logger.warn('referral capture skipped', err);
+    }
   }, []);
 }

@@ -20,6 +20,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Terminal, Activity, Newspaper, Gauge } from 'lucide-react';
 import { getApiBase } from '../../utils/apiBase';
 import { authFetch } from '../../contexts/AuthContext';
+import logger from '../../utils/logger';
 import Watchlist from '../Watchlist';
 
 const MarketSignals = React.lazy(() => import('../MarketSignals'));
@@ -96,7 +97,12 @@ const HeadlinesStream = () => {
         if (!r.ok) return;
         const d = await r.json();
         setItems(d.headlines || d.items || []);
-      } catch { /* silent */ }
+      } catch (err) {
+        // Headlines stream is non-critical — the 60s interval will
+        // retry. Dev-only log preserves diagnosability without
+        // console-spamming prod on transient network blips.
+        logger.warn('headlines stream poll failed', err);
+      }
     };
     load();
     const id = setInterval(load, 60000);

@@ -29,7 +29,12 @@ const ChatInput = ({ input, setInput, onSend, loading, imagePreview, onImageSele
           const data = await r.json();
           setPrecheck(data.gap_signal ? data : null);
         }
-      } catch { /* silent */ }
+      } catch (err) {
+        // Precheck is a UX hint, not critical path. Dev-only log so
+        // noisy network blips don't spam prod consoles but real bugs
+        // are still diagnosable when hacking locally.
+        logger.warn('chat precheck suggestion fetch failed', err);
+      }
     }, 650);
     return () => precheckTimer.current && clearTimeout(precheckTimer.current);
   }, [input, apiBase]);
