@@ -334,8 +334,13 @@ async def send_toxic_spikes_email(
     total_before: int,
     total_after: int,
     spike_details: list = None,
+    persistence_tag: str = "",
 ):
-    """Send toxic spikes alert email after nightly cleanup detects bad predictions."""
+    """Send toxic spikes alert email after nightly cleanup detects bad
+    predictions. `persistence_tag` is appended to the subject when the
+    same alert has been recurring on consecutive days (e.g. " —
+    Persisting (3 days in a row)"); empty string by default for the
+    first occurrence."""
     if not email_router.providers:
         logger.info(f"Email skipped (no providers configured): toxic spikes alert to {recipient_email}")
         return False
@@ -343,7 +348,7 @@ async def send_toxic_spikes_email(
         params = {
             "from": SENDER_EMAIL,
             "to": [recipient_email],
-            "subject": f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected",
+            "subject": f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected{persistence_tag}",
             "html": _toxic_spikes_html(
                 toxic_count, obsolete_count, total_before, total_after, spike_details or []
             ),

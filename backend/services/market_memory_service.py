@@ -568,9 +568,35 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
 
 
 async def _send_toxic_alerts(cleanup_results: dict):
-    """Send email and in-app notifications when toxic spikes are detected."""
+    """Send email and in-app notifications when toxic spikes are detected.
+
+    Deduplicated: if an alert with the same (type, tickers, date_bucket)
+    already fired within 48h, we skip. If the same alert has been
+    repeating on consecutive days, the subject escalates to
+    "Persisting (N days in a row)" — the real ask from the user who
+    was getting the exact same alert 3 nights running.
+    """
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])
+
+    # Dedup gate — compute BEFORE we do any expensive email prep. The
+    # alert key blends `toxic_spike` + the affected ticker set + the
+    # UTC date bucket so a different set of tickers on the same day
+    # is NOT suppressed (they're a different alert).
+    from services.alert_dedup import should_send_alert, record_alert
+    affected = sorted({d.get("symbol", "?") for d in toxic_details})
+    should, ctx = await should_send_alert(_db, "toxic_spike", affected)
+    if not should:
+        logger.info(
+            f"[toxic-alert] suppressed — same ticker set already alerted "
+            f"within 48h (alert_id={ctx['alert_id']})"
+        )
+        return
+
+    # Escalate the subject/title when this is a persisting streak.
+    # run=0 → first occurrence, run>=1 → "Persisting (N+1 days in a row)".
+    run = ctx.get("run", 0)
+    persistence_tag = f" — Persisting ({run + 1} days in a row)" if run >= 1 else ""
 
     # ── 1. Email Alert to admins/owner ──
     try:
@@ -589,8 +615,12 @@ async def _send_toxic_alerts(cleanup_results: dict):
                 total_before=cleanup_results.get("total_before", 0),
                 total_after=cleanup_results.get("total_after", 0),
                 spike_details=toxic_details,
+                persistence_tag=persistence_tag,
             )
-        logger.info(f"Toxic spikes email alerts sent to {len(recipients)} admin(s)")
+        logger.info(
+            f"Toxic spikes email alerts sent to {len(recipients)} admin(s)"
+            f"{persistence_tag}"
+        )
     except Exception as e:
         logger.error(f"Failed to send toxic spikes email: {e}")
 
@@ -620,11 +650,15 @@ async def _send_toxic_alerts(cleanup_results: dict):
 
         # Batch insert notifications for all Pro users
         now = datetime.now(timezone.utc).isoformat()
+        title = (
+            f"Toxic Spikes: {toxic_count} Bad Predictions Detected"
+            + persistence_tag
+        )
         notifications = [
             {
                 "user_id": uid,
                 "type": "toxic_spike",
-                "title": f"Toxic Spikes: {toxic_count} Bad Predictions Detected",
+                "title": title,
                 "message": f"Nightly cleanup found {toxic_count} high-confidence failures ({ticker_summary}). Re-tagged as negative lessons in memory.",
                 "read": False,
                 "created_at": now,
@@ -633,6 +667,8 @@ async def _send_toxic_alerts(cleanup_results: dict):
                     "affected_tickers": affected_tickers,
                     "total_before": cleanup_results.get("total_before", 0),
                     "total_after": cleanup_results.get("total_after", 0),
+                    "persistence_run": run + 1,
+                    "alert_id": ctx["alert_id"],
                 },
             }
             for uid in pro_users
@@ -642,3 +678,24 @@ async def _send_toxic_alerts(cleanup_results: dict):
         logger.info(f"Toxic spike in-app notifications sent to {len(pro_users)} Pro user(s)")
     except Exception as e:
         logger.error(f"Failed to create toxic spike notifications: {e}")
+
+    # ── 3. Record the alert for dedup ──
+    # Done AFTER email+notifications so a failure in either doesn't
+    # trap us in "recorded but never sent" — next run retries cleanly.
+    # Intentionally fire-and-forget: recording failures can't block the
+    # main cleanup flow.
+    try:
+        await record_alert(
+            _db,
+            alert_id=ctx["alert_id"],
+            alert_type="toxic_spike",
+            tickers=affected,
+            date_bucket=ctx["date_bucket"],
+            metadata={
+                "toxic_count": toxic_count,
+                "affected_tickers": affected,
+                "persistence_run": run + 1,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"alert_dedup record failed (non-fatal): {e}")

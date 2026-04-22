@@ -24,6 +24,56 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Alert dedup (fixes the "same alert 3 nights in a row" bug)
+*Session: continued*
+
+Systemic fix. Toxic-spike alerts were firing on every nightly cleanup
+run even when the SAME (type, tickers, date) matched. User reported
+getting the identical email 3 nights straight.
+
+**What shipped:**
+- New `backend/services/alert_dedup.py` — generalised alert dedup with:
+  - `compute_alert_id(type, tickers, date_bucket)` — md5 of sorted
+    normalised key, deterministic across restarts (not `hash()` which
+    randomises per-process).
+  - `should_send_alert(db, type, tickers)` — single gate returning
+    `(should_send, ctx)`. ctx carries alert_id + persistence `run`
+    counter so callers can escalate subject lines without more queries.
+  - 48h suppress window per exact alert id + 7d persistence tracking
+    for "Persisting (N days in a row)" escalation labels.
+  - Streak gap detection — one missing day breaks the run counter, so
+    we don't false-escalate on sporadic repeats.
+  - TTL auto-purge after 14 days to keep the collection bounded.
+- `market_memory_service._send_toxic_alerts()` — gates on
+  `should_send_alert` BEFORE email prep, escalates subject/title with
+  `persistence_tag` (" — Persisting (3 days in a row)") when run>=1,
+  and records the alert at the end of the flow.
+- `email_service.send_toxic_spikes_email()` — accepts new optional
+  `persistence_tag` kwarg, stitched into the subject.
+- `server.py` lifespan — `ensure_indexes(db)` call wires TTL + lookup
+  indexes on the `alerts_sent` collection on every boot (idempotent).
+
+**4-scenario smoke test passed:**
+1. First fire → sends, run=0 ✓
+2. Same-day duplicate → **suppressed** (the bug fixed) ✓
+3. After 2-day streak → sends with "Persisting (3 days in a row)" ✓
+4. Gap in streak → resets to run=0 (no false escalation) ✓
+
+**What the user will notice:**
+- No more identical toxic-spike alerts on consecutive nights.
+- When the same predictions DO keep failing, the subject upgrades to
+  "Persisting (N days in a row)" so the signal is escalated, not
+  silenced.
+- Conviction-drift alerts (`conviction_drift_alerts.py`) already had
+  their own dedup from an earlier session — left untouched, they're
+  consistent with this pattern.
+
+**Files added/changed:**
+- `backend/services/alert_dedup.py` — new (183 lines)
+- `backend/services/market_memory_service.py` — dedup gate + escalation
+- `backend/services/email_service.py` — persistence_tag kwarg
+- `backend/server.py` — ensure_indexes boot hook
+
 ### 2026-02-20 — ai_core/ full migration (simulator + execution + LE + pipeline)
 *Session: continued*
 

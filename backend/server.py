@@ -199,6 +199,13 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Index creation failed (non-critical): {e}")
 
+    # Alert-dedup collection indexes (idempotent — safe to call every boot).
+    try:
+        from services.alert_dedup import ensure_indexes as _alert_dedup_indexes
+        await _alert_dedup_indexes(db)
+    except Exception as e:
+        logger.debug(f"Alert dedup indexes: {e}")
+
     # Restore dynamically registered providers from MongoDB
     try:
         from services.providerrouter import ProviderRouter
