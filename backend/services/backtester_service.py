@@ -3,7 +3,7 @@ import logging
 import asyncio
 import numpy as np
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import ast
 
@@ -88,7 +88,9 @@ def _rsi(closes: np.ndarray, period: int = 14) -> np.ndarray:
     return result
 
 
-def _macd(closes: np.ndarray, fast=12, slow=26, signal=9):
+def _macd(
+    closes: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ema_fast = _ema(closes, fast)
     ema_slow = _ema(closes, slow)
     macd_line = ema_fast - ema_slow
@@ -97,7 +99,9 @@ def _macd(closes: np.ndarray, fast=12, slow=26, signal=9):
     return macd_line, signal_line, histogram
 
 
-def _bollinger(closes: np.ndarray, period=20, std_dev=2.0):
+def _bollinger(
+    closes: np.ndarray, period: int = 20, std_dev: float = 2.0
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     mid = _sma(closes, period)
     rolling_std = np.full_like(closes, np.nan)
     for i in range(period - 1, len(closes)):
@@ -223,7 +227,7 @@ _BOOL_OPS = {
 }
 
 
-def _safe_eval_node(node, ctx: dict):
+def _safe_eval_node(node: ast.AST, ctx: dict) -> Any:
     """Recursively evaluate an AST node using only whitelisted operations."""
     _NODE_HANDLERS = {
         ast.Expression: lambda n, c: _safe_eval_node(n.body, c),
@@ -240,13 +244,13 @@ def _safe_eval_node(node, ctx: dict):
     return handler(node, ctx)
 
 
-def _handle_constant(node):
+def _handle_constant(node: ast.Constant) -> float:
     if isinstance(node.value, (int, float)):
         return node.value
     raise ValueError(f"Unsupported constant: {node.value!r}")
 
 
-def _handle_name(node, ctx: dict):
+def _handle_name(node: ast.Name, ctx: dict) -> Any:
     name = node.id
     if name not in _ALLOWED_INDICATORS:
         raise ValueError(f"Unknown indicator: {name}")
@@ -256,20 +260,20 @@ def _handle_name(node, ctx: dict):
     return val
 
 
-def _handle_unary(node, ctx: dict):
+def _handle_unary(node: ast.UnaryOp, ctx: dict) -> Any:
     if isinstance(node.op, ast.USub):
         return -_safe_eval_node(node.operand, ctx)
     raise ValueError(f"Unsupported unary op: {type(node.op).__name__}")
 
 
-def _handle_binop(node, ctx: dict):
+def _handle_binop(node: ast.BinOp, ctx: dict) -> Any:
     op_func = _BIN_OPS.get(type(node.op))
     if not op_func:
         raise ValueError(f"Unsupported binary op: {type(node.op).__name__}")
     return op_func(_safe_eval_node(node.left, ctx), _safe_eval_node(node.right, ctx))
 
 
-def _handle_compare(node, ctx: dict):
+def _handle_compare(node: ast.Compare, ctx: dict) -> bool:
     left = _safe_eval_node(node.left, ctx)
     for op_node, comparator in zip(node.ops, node.comparators):
         op_func = _CMP_OPS.get(type(op_node))
@@ -282,7 +286,7 @@ def _handle_compare(node, ctx: dict):
     return True
 
 
-def _handle_boolop(node, ctx: dict):
+def _handle_boolop(node: ast.BoolOp, ctx: dict) -> bool:
     func = _BOOL_OPS.get(type(node.op))
     if not func:
         raise ValueError(f"Unsupported bool op: {type(node.op).__name__}")

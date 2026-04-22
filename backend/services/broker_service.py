@@ -22,7 +22,7 @@ class OrderParams:
 class AlpacaTradingService:
     """Alpaca — commission-free API-first trading. Supports paper + live + OAuth."""
 
-    def __init__(self, api_key: str, api_secret: str, paper: bool = True, oauth: bool = False):
+    def __init__(self, api_key: str, api_secret: str, paper: bool = True, oauth: bool = False) -> None:
         self.api_key = api_key
         self.api_secret = api_secret
         self.oauth = oauth
@@ -54,7 +54,7 @@ class AlpacaTradingService:
             logger.error(f"Alpaca get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
                     time_in_force: str = "day", limit_price: Optional[float] = None,
                     stop_price: Optional[float] = None) -> Optional[dict]:
         order = OrderParams(symbol=symbol, qty=qty, side=side, order_type=order_type,
@@ -113,7 +113,7 @@ class AlpacaTradingService:
 class SchwabTradingService:
     """Charles Schwab (formerly TD Ameritrade) — API key-based trading."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = "https://api.schwabapi.com/trader/v1"
@@ -165,8 +165,9 @@ class SchwabTradingService:
             logger.error(f"Schwab get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             account = self.get_account()
             acc_num = account.get("account_number", "") if account else ""
@@ -219,7 +220,7 @@ class SchwabTradingService:
 class IBKRTradingService:
     """Interactive Brokers — Client Portal API (gateway-based)."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         # IBKR uses a local gateway. api_key = gateway URL, api_secret = account ID
         self.gateway_url = api_key if api_key.startswith("http") else "https://localhost:5000"
         self.account_id = api_secret
@@ -269,8 +270,9 @@ class IBKRTradingService:
             logger.error(f"IBKR get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             data = {
                 "orders": [{
@@ -318,7 +320,7 @@ class IBKRTradingService:
 class MooMooTradingService:
     """MooMoo (Futu) — OpenAPI REST trading. Uses App Token from developer portal."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.app_token = api_key
         self.account_id = api_secret
         self.base_url = "https://openapi.moomoo.com"
@@ -370,8 +372,9 @@ class MooMooTradingService:
             logger.error(f"MooMoo get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             data = {
                 "accountId": self.account_id,
@@ -416,7 +419,7 @@ class MooMooTradingService:
 class WebullTradingService:
     """Webull — REST API trading. Uses Access Token + Device ID."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.access_token = api_key
         self.device_id = api_secret
         self.trade_url = "https://tradeapi.webullbroker.com/api/trade"
@@ -488,8 +491,9 @@ class WebullTradingService:
             logger.error(f"Webull get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             acc_id = self._get_account_id()
             data = {
@@ -538,7 +542,7 @@ class WebullTradingService:
 class RobinhoodTradingService:
     """Robinhood — REST API trading. Uses OAuth Bearer Token."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.access_token = api_key
         self.account_url = api_secret if api_secret.startswith("http") else ""
         self.base_url = "https://api.robinhood.com"
@@ -624,8 +628,9 @@ class RobinhoodTradingService:
             logger.error(f"Robinhood get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             # Resolve instrument URL
             instr_r = requests.get(f"{self.base_url}/instruments/?symbol={symbol.upper()}",
@@ -683,7 +688,7 @@ class RobinhoodTradingService:
 class PublicTradingService:
     """Public.com — REST API trading. Uses Bearer Token from developer portal."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.access_token = api_key
         self.account_id = api_secret
         self.base_url = "https://api.public.com/userapigateway"
@@ -732,8 +737,9 @@ class PublicTradingService:
             logger.error(f"Public get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             acc_id = self.account_id
             data = {
@@ -780,7 +786,7 @@ class PublicTradingService:
 class KrakenTradingService:
     """Kraken — Crypto exchange REST API. Uses API-Key + API-Sign (HMAC-SHA512)."""
 
-    def __init__(self, api_key: str, api_secret: str, **kwargs):
+    def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = "https://api.kraken.com"
@@ -884,8 +890,9 @@ class KrakenTradingService:
             logger.error(f"Kraken get_positions error: {e}")
             return []
 
-    def place_order(self, symbol: str, qty, side: str, order_type: str = "market",
-                    time_in_force: str = "day", limit_price=None, stop_price=None) -> Optional[dict]:
+    def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
+                    time_in_force: str = "day", limit_price: Optional[float] = None,
+                    stop_price: Optional[float] = None) -> Optional[dict]:
         try:
             data = {
                 "pair": symbol.upper(),
@@ -1010,7 +1017,7 @@ class BrokerService:
     }
 
     @staticmethod
-    def get_broker_client(broker_id: str, credentials: dict):
+    def get_broker_client(broker_id: str, credentials: dict) -> "AlpacaTradingService | SchwabTradingService | IBKRTradingService | MooMooTradingService | WebullTradingService | RobinhoodTradingService | PublicTradingService | KrakenTradingService":
         if broker_id == "alpaca":
             return AlpacaTradingService(
                 api_key=credentials.get("api_key", ""),
@@ -1057,5 +1064,5 @@ class BrokerService:
             raise ValueError(f"Unsupported broker: {broker_id}. Supported: {list(BrokerService.SUPPORTED_BROKERS.keys())}")
 
     @staticmethod
-    def get_supported_brokers():
+    def get_supported_brokers() -> dict:
         return BrokerService.SUPPORTED_BROKERS

@@ -108,6 +108,80 @@ def _compute_atr(df: "pd.DataFrame", period: int = 14) -> "pd.Series":
 # ── Detector 1 — Double Bottom ────────────────────────────────────────────────
 
 
+# Threshold constants for the double-bottom detector, lifted to module level
+# so tuners don't have to dig through nested conditionals. The percent values
+# are all fractional (0.03 = 3%).
+_DB_WINDOW_BARS = 40           # how far back we look
+_DB_MIN_SEPARATION_BARS = 5    # minima must be ≥ N bars apart
+_DB_MAX_LOW_SPREAD = 0.03      # the two lows must be within 3%
+_DB_MIN_NECKLINE_RISE = 0.02   # neckline must be ≥2% above the avg low
+
+
+def _find_local_minima(lows: "pd.Series") -> list[int]:
+    """Bars where `low[i]` is strictly lower than both neighbours."""
+    minima: list[int] = []
+    for i in range(1, len(lows) - 1):
+        if lows.iloc[i] < lows.iloc[i - 1] and lows.iloc[i] < lows.iloc[i + 1]:
+            minima.append(i)
+    return minima
+
+
+def _evaluate_bottom_pair(
+    i: int,
+    j: int,
+    lows: "pd.Series",
+    closes: "pd.Series",
+    name: str,
+) -> "PatternResult | None":
+    """Return a :class:`PatternResult` if the (i, j) pair forms a valid
+    double-bottom pattern, else `None`. Kept as a single-return helper
+    so the parent loop is trivially linear.
+    """
+    if j - i < _DB_MIN_SEPARATION_BARS:
+        return None
+    low_a, low_b = lows.iloc[i], lows.iloc[j]
+    if low_a == 0 or low_b == 0:
+        return None
+
+    avg_low = (low_a + low_b) / 2
+    if avg_low == 0:
+        return None
+
+    # a. Both lows must be close to each other.
+    separation_pct = abs(low_a - low_b) / avg_low
+    if separation_pct > _DB_MAX_LOW_SPREAD:
+        return None
+
+    # b. The "neckline" peak between them must sit well above both lows.
+    neckline = float(closes.iloc[i:j].max())
+    if (neckline - avg_low) / avg_low < _DB_MIN_NECKLINE_RISE:
+        return None
+
+    # c. Most-recent close must have broken back above the neckline.
+    current_close = float(closes.iloc[-1])
+    if current_close < neckline:
+        return None
+
+    confidence = _clamp(
+        min(
+            (_DB_MAX_LOW_SPREAD - separation_pct) / _DB_MAX_LOW_SPREAD,
+            (current_close - neckline) / (neckline * 0.01),
+        )
+    )
+    desc = (
+        f"Double bottom at ${avg_low:.2f}, "
+        f"{separation_pct * 100:.1f}% low separation, "
+        f"neckline ${neckline:.2f} broken"
+    )
+    return PatternResult(
+        name=name,
+        detected=True,
+        confidence=confidence,
+        bar_index=int(j),
+        description=desc,
+    )
+
+
 def detect_double_bottom(df: "pd.DataFrame") -> PatternResult:
     """Detect a double-bottom reversal pattern.
 
@@ -116,83 +190,38 @@ def detect_double_bottom(df: "pd.DataFrame") -> PatternResult:
     1. Take the last 40 bars (or fewer if unavailable, minimum 20).
     2. Find all local minima: bars where ``low[i] < low[i-1]`` and
        ``low[i] < low[i+1]``.
-    3. For each pair of minima separated by at least 5 bars, check if:
-       a. Their lows are within 3% of each other.
-       b. The highest ``close`` between the two minima (the «neckline peak»)
-          is at least 2% above both lows.
-       c. The most-recent close has recovered above the neckline peak.
-    4. The strongest (most-recent qualifying) pair is reported.
+    3. For each pair of minima, :func:`_evaluate_bottom_pair` checks:
+       a. They are at least 5 bars apart.
+       b. Their lows are within 3% of each other.
+       c. The highest ``close`` between them (the neckline peak) is
+          at least 2% above both lows.
+       d. The most-recent close has recovered above the neckline peak.
+    4. Among all qualifying pairs, the most-recent (highest ``j``) wins.
 
     Confidence
     ----------
-    ``min(low_separation_score, neckline_breakout_score)`` where each score
-    is the ratio of the observed value to the threshold (capped at 1.0).
+    ``min(low_separation_score, neckline_breakout_score)`` where each
+    score is the ratio of the observed value to the threshold, capped
+    at 1.0.
     """
     name = "double_bottom"
     if len(df) < _MIN_BARS:
         return _not_detected(name)
 
-    window = df.tail(40).reset_index(drop=True)
+    window = df.tail(_DB_WINDOW_BARS).reset_index(drop=True)
     lows = window["low"]
     closes = window["close"]
 
-    # Find local minima
-    minima: list[int] = []
-    for i in range(1, len(lows) - 1):
-        if lows.iloc[i] < lows.iloc[i - 1] and lows.iloc[i] < lows.iloc[i + 1]:
-            minima.append(i)
+    minima = _find_local_minima(lows)
 
     best: PatternResult | None = None
-    for a_idx in range(len(minima)):
-        for b_idx in range(a_idx + 1, len(minima)):
-            i, j = minima[a_idx], minima[b_idx]
-            if j - i < 5:
+    for a_idx, i in enumerate(minima):
+        for j in minima[a_idx + 1:]:
+            result = _evaluate_bottom_pair(i, j, lows, closes, name)
+            if result is None:
                 continue
-
-            low_a = lows.iloc[i]
-            low_b = lows.iloc[j]
-            if low_a == 0 or low_b == 0:
-                continue
-
-            # ── a. proximity of the two lows ──────────────────────────────────
-            separation_pct = abs(low_a - low_b) / ((low_a + low_b) / 2)
-            if separation_pct > 0.03:
-                continue
-
-            # ── b. neckline peak ──────────────────────────────────────────────
-            neckline = float(closes.iloc[i:j].max())
-            avg_low = (low_a + low_b) / 2
-            if avg_low == 0:
-                continue
-            peak_rise_pct = (neckline - avg_low) / avg_low
-            if peak_rise_pct < 0.02:
-                continue
-
-            # ── c. current close above neckline (breakout confirmed) ──────────
-            current_close = float(closes.iloc[-1])
-            if current_close < neckline:
-                continue
-
-            confidence = _clamp(
-                min(
-                    (0.03 - separation_pct) / 0.03,
-                    (current_close - neckline) / (neckline * 0.01),
-                )
-            )
-            desc = (
-                f"Double bottom at ${avg_low:.2f}, "
-                f"{separation_pct * 100:.1f}% low separation, "
-                f"neckline ${neckline:.2f} broken"
-            )
-            result = PatternResult(
-                name=name,
-                detected=True,
-                confidence=confidence,
-                bar_index=int(j),
-                description=desc,
-            )
-            # Keep the most-recent (highest j) qualifying pattern
-            if best is None or j > best.bar_index:
+            # Keep the most-recent (highest j) qualifying pattern.
+            if best is None or result.bar_index > best.bar_index:
                 best = result
 
     return best if best is not None else _not_detected(name)

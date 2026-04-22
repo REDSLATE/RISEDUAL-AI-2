@@ -242,6 +242,11 @@ async def execute_trade(
 
     # Record trade — only non-None SL/TP/risk/r_multiple land on the
     # document so legacy analytics scripts don't see a flood of nulls.
+    # `opened_at` is a BSON-date duplicate of `timestamp` so the Tier 3
+    # distinct-day aggregator (services.paper_trading_progress) counts
+    # these manual-UI rows too. Keep `timestamp` as the canonical
+    # ISO-string field for backwards compatibility with legacy readers.
+    now_dt = datetime.now(timezone.utc)
     trade_record = {
         "user_id": user_id,
         "symbol": symbol,
@@ -250,6 +255,7 @@ async def execute_trade(
         "price": round(live_price, 4),
         "total": round(live_price * qty, 2),
         "timestamp": now,
+        "opened_at": now_dt,
     }
     if trade_sl is not None:
         trade_record["stop_loss"] = float(trade_sl)

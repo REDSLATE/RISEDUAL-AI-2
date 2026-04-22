@@ -24,6 +24,120 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Polygon.io adapter prototype (rate-limit relief Phase 1)
+*Session: continued*
+
+Drop-in alternative to `FinnhubClient` that mirrors its full public
+surface so we can flip the market-data provider via configuration
+without touching call sites. Ships the groundwork for the Phase-1
+consolidation away from Finnhub's 60/min rate-limit ceiling.
+
+**What shipped:**
+- `risedual_core/clients/polygon.py` — `PolygonClient(BaseMarketClient)`:
+  * `get_quote()` — `/v2/last/trade` + `/v2/aggs/.../prev` combined
+    into Finnhub's normalised shape (current_price / change / pct /
+    high / low / open / previous_close / timestamp).
+  * `get_company_profile()` — `/v3/reference/tickers/{id}` mapped,
+    including the detail that Polygon reports `market_cap` in full
+    dollars while Finnhub uses millions (auto-scaled to match).
+  * `get_news()` — `/v2/reference/news` with Polygon's ISO-8601
+    `published_utc` preserved as-is (no epoch conversion needed).
+  * `get_recommendation_trends()` — Polygon has no equivalent;
+    returns `[]` with a debug log so callers fall back gracefully.
+  * Bonus `get_aggregates()` — historical OHLCV bars (Polygon's
+    strength; no Finnhub equivalent in this client).
+- Rate-limit knobs:
+  * `MARKET_DATA_POLYGON_RPS` env var (default 0.08 = 5/min, Polygon
+    free tier). Flip to e.g. `10` once upgraded to Starter.
+  * `MARKET_DATA_POLYGON_BURST` — token-bucket capacity override.
+
+**Interface-parity check:** both clients expose the same 4 public
+methods (`get_quote`, `get_company_profile`, `get_news`,
+`get_recommendation_trends`); Polygon adds `get_aggregates` on top.
+Confirmed programmatically.
+
+**Verified:**
+- 10 new tests in `tests/test_polygon_client.py` using
+  `httpx.MockTransport` — field-map correctness for every method,
+  scale normalisation (market_cap millions), fallback for missing
+  prev-day bar (fresh IPO case), empty-path fallbacks, historical
+  aggregate shape. All green.
+- No call sites swapped yet — this is a prototype. A follow-up
+  commit will add a `MARKET_DATA_PROVIDER` switch in `pool_config.py`
+  once we stress-test Polygon against a live key.
+
+**Files changed:**
+- `backend/risedual_core/risedual_core/clients/polygon.py` (new)
+- `backend/tests/test_polygon_client.py` (new)
+
+### 2026-02-20 — Fix forward: manual paper-trades write `opened_at`
+*Session: continued*
+
+Eliminates the need to re-run `scripts/backfill_opened_at.py` after
+every deploy. The manual paper-trading writer now populates the
+BSON-date field directly.
+
+**What shipped:**
+- `services/paper_trading_service.py::execute_trade_internal` —
+  adds `opened_at: datetime.now(timezone.utc)` (BSON-date) alongside
+  the existing ISO-string `timestamp`. Kept the string field so any
+  legacy readers don't break.
+
+**Verified:**
+- Live smoke test: placed an AAPL paper trade as owner; freshly-
+  written row contains `opened_at` as BSON `datetime` and
+  `timestamp` as `str`. Tier-3 aggregator now counts this row
+  without backfill.
+
+### 2026-02-20 — Type-hint push round 2 (services/ 80.6% → 83.8%)
+*Session: continued*
+
+**Files annotated:**
+- `backtester_service.py` — 6 missing (`_macd` + `_bollinger`
+  numeric params, 5 `_handle_*` AST node handlers). Required
+  adding `Any` to typing imports.
+- `broker_service.py` — all 16 missing: 7 `__init__(self,
+  api_key, api_secret, **kwargs)` constructors plus 7 `place_order`
+  methods (missing `qty: float`, `limit_price`, `stop_price`),
+  plus `get_broker_client` and `get_supported_brokers`.
+
+**Result:** `services/` coverage: **682/846 → 709/846 = 83.8%
+(+3.2 pp)**. Ruff clean.
+
+### 2026-02-20 — Refactor: `detect_double_bottom()` cyclomatic 17 → 8
+*Session: continued*
+
+Split the monolithic detector into three single-responsibility
+helpers so each is well under the radon B-grade ceiling.
+
+**What shipped:**
+- `risedual_core/ml/patterns.py`:
+  * Extracted `_find_local_minima(lows)` — strict 3-bar minimum detector.
+  * Extracted `_evaluate_bottom_pair(i, j, lows, closes, name)` —
+    encapsulates the rule-of-four (separation / neckline rise /
+    breakout / avg-low sanity). Single return point.
+  * `detect_double_bottom()` is now a clean pairs iterator.
+  * Lifted all thresholds (`_DB_WINDOW_BARS`, `_DB_MIN_SEPARATION_BARS`,
+    `_DB_MAX_LOW_SPREAD`, `_DB_MIN_NECKLINE_RISE`) to module-level
+    constants so tuners don't have to spelunk through nested ifs.
+
+**Complexity:**
+- Before: `detect_double_bottom` = C(17) — C grade.
+- After: `detect_double_bottom` = C(8), `_evaluate_bottom_pair` = C(8),
+  `_find_local_minima` = C(4) — all A/B grade.
+
+**Verified:**
+- New regression suite `tests/test_patterns_double_bottom.py` — 11
+  tests covering the detection happy-path, each rejection path
+  independently, strict-minimum rule (ties disqualify), minimum-bar
+  guard, and "most-recent pair wins" tie-breaker. All green.
+- Ruff clean.
+
+**Files changed:**
+- `backend/risedual_core/risedual_core/ml/patterns.py`
+- `backend/tests/test_patterns_double_bottom.py` (new)
+
+
 ### 2026-02-20 — Tier 3 readiness daily digest (owner-facing)
 *Session: continued*
 
