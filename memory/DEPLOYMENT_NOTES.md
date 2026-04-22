@@ -24,6 +24,72 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Portfolio Risk Engine + Event Registry metadata flags
+*Session: continued*
+
+Two patches from the user, now test-covered and green.
+
+**1. Portfolio Risk Engine** — `services/trading_bot_service.py`
+
+Adds a global risk layer on top of the per-trade `MAX_POSITION_USD`
+cap so a single bot can fire up to $2k, but the **aggregate** across
+all open positions stays inside $3k and 5 concurrent trades.
+
+- `MAX_PORTFOLIO_EXPOSURE = 3000.0` and
+  `MAX_CONCURRENT_TRADES = 5` — module-level caps.
+- `get_total_exposure(open_positions)` — sums `size_usd` across
+  open positions; tolerates missing/garbage values (never raises).
+- `get_open_trade_count(open_positions)` — concurrency counter.
+- `apply_portfolio_constraints(new_trade_size, open_positions)`:
+  1. Concurrency cap hit → return 0.
+  2. `remaining = MAX_PORTFOLIO_EXPOSURE - total_exposure`.
+     If `remaining <= 0` → return 0.
+  3. Otherwise return `min(new_trade_size, remaining)`.
+- `execute_signal(..., open_positions=None)` — new opt-in kwarg.
+  When supplied, step 3b runs the portfolio gate and short-circuits
+  with `reason="portfolio limits reached"` when either cap is hit.
+  `None` / omitted preserves backwards-compatible behaviour.
+
+**2. NewsAPI.ai metadata flags** — `services/search_war_room/adapters/newsapi.py`
+
+Opt-in metadata fields flagged in the NewsAPI onboarding email —
+all off by default upstream, but we turn them on so the War Room UI
+gets richer cards (article thumbnails, topic concepts, category
+tags, source logo and Alexa ranking).
+
+Request params added: `includeArticleImage`, `includeArticleConcepts`,
+`includeArticleCategories`, `includeSourceRanking`,
+`includeSourceImage` — all `"true"`.
+
+Response parser extended: each `items[]` entry now carries
+`image`, `source_image`, `source_ranking` (Alexa global rank),
+top-3 `concepts` (label/type/score), and top-2 `categories`.
+The `dict` → flat-url normaliser on `source.image` handles the
+NewsAPI quirk where that field is sometimes a string, sometimes
+a `{"url": "..."}` object.
+
+**Tests added:**
+- `tests/test_portfolio_risk_engine.py` — 21 tests covering
+  exposure summation, concurrency counting, shrink-to-headroom,
+  cap-saturation zeroing, ordering (concurrency trumps exposure),
+  and end-to-end integration through `execute_signal`
+  (`open_positions=None`, empty list, shrink, saturation,
+  portfolio-cap-trumps-`MAX_POSITION_USD` edge).
+- `tests/test_newsapi_metadata_flags.py` — 4 tests covering
+  request-shape (all 5 flags sent), ticker→company-name keyword
+  mapping, response-parser metadata preservation, and the
+  missing-API-key skip path.
+
+**Regression suite:** 195/195 passing
+(`tier3_sizing`, `execute_signal_usd`, `trading_bot_adaptive_sizing`,
+ `portfolio_risk_engine`, `newsapi_metadata_flags`,
+ `conviction_score_boundaries`, `tier3_and_clamp_canary`,
+ `calibration_reliability`, `tier3_readiness`,
+ `tier3_readiness_digest`, `patterns_double_bottom`,
+ `polygon_client`).
+
+---
+
 ### 2026-02-20 — USD-notional `execute_signal` helper
 *Session: continued*
 
