@@ -1,5 +1,11 @@
 # RISEDUAL AI — Changelog
 
+## February 2026 — R-Multiple Risk Weighting Test Coverage (P0)
+- **New: `/app/backend/tests/test_risk_weighting.py`** — 39 tests covering the unwired `ai_core/risk_weighting.py` module: core R math (LONG/SHORT, sign, case-insensitivity, unknown→LONG default), edge cases (None/NaN/non-numeric/zero-risk/integer), piecewise tier mapping (noise/weak/ramp/strong cap), `_LOSS_AMPLIFIER=1.25` cross-module identity pin with `learning_upgrade`, loss penalty (strict `<0` boundary), end-to-end composition, long/short symmetry, max-weight ceiling matches magnitude path (2.5), drift summaries (empty/NaN/all-NaN).
+- **mypy**: `risk_weighting.py` passes with 0 issues; gate on `services/` still 0/0.
+- **pytest**: 39/39 pass. Full ML weighting family (learning_upgrade + signal_model + risk_weighting) 76/76 pass.
+- **Status**: Module is now test-verified but still unwired — awaits `features_snapshots` schema extension (entry_price, exit_price, stop_loss, direction) before ML retrain integration.
+
 ## April 12, 2026 — Code Quality Sweep (P0/P1)
 - **Security: MD5 → SHA-256** in `routes/accuracy.py`, `services/market_memory_service.py`, `services/post_mortem_service.py`
 - **Security: Hardcoded test credentials centralized** — 25 test files updated to import from `conftest_creds.py`
