@@ -24,6 +24,20 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+*Nothing queued. Agent will append here as changes land.*
+
+---
+
+## 🟢 Shipped to production
+
+> Blocks below were live at the time of the `mark-deployed` command. The
+> commit hash is the state that was deployed — use `git diff <hash> HEAD`
+> to see what's changed since.
+
+### 2026-04-22 13:34 UTC — Shipped as `safety layer (kill switch + safe_gather + error metrics + gather-guard migration)` (`3596127`)
+
+Commit: `359612789953953dbeeca706d96f3f2247ddbfb1`
+
 ### 2026-02-20 — Global kill switch + `safe_gather` helper (fleet-wide circuit breaker)
 *Session: continued*
 
@@ -2717,15 +2731,6 @@ Pro card 2px taller + wider and pushed its content down relative to neighbors.
 
 **Verified:** live preview screenshot (desktop + mobile) — all 4 cards
 now have identical top + bottom edges, CTAs flush on the bottom row.
-
-
----
-
-## 🟢 Shipped to production
-
-> Blocks below were live at the time of the `mark-deployed` command. The
-> commit hash is the state that was deployed — use `git diff <hash> HEAD`
-> to see what's changed since.
 
 ### 2026-04-19 16:43 UTC — Shipped as `feb19-pricing-ml-retrain-resilience` (`1f76967`)
 
