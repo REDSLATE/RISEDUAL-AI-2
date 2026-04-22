@@ -18,7 +18,7 @@ export const StepSuccess = ({ goToStep, setStep, setAnimating }) => (
           {[
             { label: 'Account', val: 'Paper Trading', color: 'text-white' },
             { label: 'Buying Power', val: '$100,000.00', color: 'text-white' },
-            { label: 'Auth Method', val: 'OAuth 2.0', color: 'text-emerald-400', icon: <Shield className="w-3 h-3" /> },
+            { label: 'Connection', val: 'Synchronized', color: 'text-emerald-400', icon: <Shield className="w-3 h-3" /> },
             { label: 'Status', val: 'Active', color: 'text-emerald-400', icon: <CheckCircle className="w-3 h-3" /> },
           ].map(c => (
             <div key={c.label} className="bg-slate-800/60 rounded-lg p-3">
@@ -68,14 +68,14 @@ export const StepRevoke = ({ goToStep }) => (
                       <h3 className="text-white font-semibold">Alpaca</h3>
                       <span className="bg-emerald-500/15 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><CheckCircle className="w-2.5 h-2.5" /> Connected</span>
                     </div>
-                    <p className="text-slate-400 text-xs">Paper Trading · OAuth 2.0 · Connected today</p>
+                    <p className="text-slate-400 text-xs">Paper Trading · Account Synchronized · Connected today</p>
                   </div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
                   { label: 'Buying Power', val: '$100,000.00', color: 'text-white' },
-                  { label: 'Auth Method', val: 'OAuth 2.0', color: 'text-emerald-400' },
+                  { label: 'Connection', val: 'Synchronized', color: 'text-emerald-400' },
                   { label: 'Status', val: 'Active', color: 'text-emerald-400' },
                 ].map(c => (
                   <div key={c.label} className="bg-slate-800/50 rounded-lg p-2.5">

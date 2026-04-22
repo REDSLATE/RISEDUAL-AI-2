@@ -24,6 +24,52 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Landing demo video: full OAuth flow + user-facing copy fix
+*Session: continued*
+
+Replaced the 1 KB placeholder on the landing page with a real ~23 s
+screen recording of the public `?demo=oauth` walkthrough. Covers
+arrival → sign-in → account dashboard with disclaimers → broker
+catalog → disclosure → authorize → connected-success screen. Also
+fixed UI copy on the success + revoke steps so "OAuth 2.0" (backend
+plumbing) no longer surfaces as a user-facing field label — it's
+now "Connection: Synchronized".
+
+**Changes:**
+- `frontend/src/components/oauth-demo/StepSuccessRevoke.jsx` — three
+  label/value swaps:
+  * Success-grid "Auth Method · OAuth 2.0" → "Connection · Synchronized"
+  * Revoke-subtitle "Paper Trading · OAuth 2.0 · Connected today"
+    → "Paper Trading · Account Synchronized · Connected today"
+  * Revoke-grid "Auth Method · OAuth 2.0" → "Connection · Synchronized"
+- `scripts/record_oauth_demo.py` — new Playwright-based recorder
+  that captures the `?demo=oauth` flow at 1280×720, produces both
+  `.webm` (native) and `.mp4` (ffmpeg H.264/AAC-less/yuv420p with
+  `+faststart` so iOS can stream it without a full download).
+- Landing video swap — new file uploaded via
+  `/api/media/upload` (category `landing`), previous 1 KB
+  placeholder deleted. `/api/media/landing-video` now returns
+  `{file_id: 22457cb2-ae04-423a-ac04-db93c85186ca, size: 520 KB}`.
+
+**Ops notes:**
+- `ffmpeg` was installed (`apt-get install ffmpeg`) for the
+  transcode step. Already on the box going forward.
+- Playwright was installed (`pip install playwright` + chromium
+  browser). Browser cached at `/pw-browsers/chromium-1208`;
+  re-using it across re-records is free.
+- Re-recording: if you want to iterate on copy or add steps,
+  update the demo component, run `python3 /app/scripts/record_oauth_demo.py`,
+  then re-upload the output `.mp4` via Admin → Media → Landing.
+
+**Verified on the live preview:**
+- `GET /api/media/landing-video` returns the new record.
+- `GET /api/media/file/{id}` serves 520 KB of valid `video/mp4` (ftyp
+  marker confirmed, 22.96 s duration per ffprobe).
+- Mid-video frame shows the Dashboard step with broker-unconnected
+  prompt; end-video frame shows the Success grid with the new
+  "Connection: Synchronized" label — no "OAuth 2.0" string visible
+  as a field value.
+
 ### 2026-02-20 — Code-review cleanup (MD5 → SHA-256 + empty catch logging)
 *Session: continued*
 
