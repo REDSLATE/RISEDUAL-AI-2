@@ -287,3 +287,182 @@ def compute_expectancy(
     """
     p = float(win_rate)
     return p * float(avg_win) - (1.0 - p) * abs(float(avg_loss))
+
+
+# ══════════════════════════════════════════════════════════════════
+# SIGN-AWARE SEVERITY (loss amplification)
+# ══════════════════════════════════════════════════════════════════
+#
+# Core insight: markets punish mistakes asymmetrically. A 3% loss
+# hurts more than a 3% gain helps (drawdown math + behavioural bias
+# on the operator side). Teach the model the same asymmetry by
+# weighting losses higher on the gradient.
+#
+# `_LOSS_AMPLIFIER` = 1.25 matches the retail "avoid losses more than
+# you chase gains" intuition without being so large it tips the
+# training distribution into paranoid behavior. Combined with the
+# regime-weight 0.5× mismatch and the severity 2.0× cap, the largest
+# single-row training weight is 2.0 × 1.25 = 2.5. Still well inside
+# the XGBoost 10× anti-explosion clip in `SignalModel.fit`.
+
+_LOSS_AMPLIFIER: float = 1.25
+
+
+# Severity tier thresholds (abs return_1d). Kept in sync with
+# `_WEAK_THRESHOLD` / `_STRONG_THRESHOLD` in `ml_retrain_service` so
+# the scalar and DataFrame paths agree to the cent. Any drift
+# surfaces immediately in `test_severity_weight_scalar_matches_df`.
+_SEVERITY_NOISE_THRESHOLD: float = 0.01
+_SEVERITY_STRONG_THRESHOLD: float = 0.03
+_SEVERITY_NOISE_WEIGHT: float = 0.5
+_SEVERITY_STRONG_WEIGHT: float = 2.0
+_SEVERITY_MIN_WEIGHT: float = 1.0  # ramp base
+
+
+def severity_weight_for_return(return_1d: float) -> float:
+    """Scalar version of the DataFrame `_severity_weights` helper.
+
+    Use this for single-row scoring (e.g. streaming inference
+    scoring, one-off regrades). For bulk training weights, the
+    DataFrame path in `ml_retrain_service._severity_weights` is
+    faster thanks to vectorization.
+
+    Piecewise:
+      * |r| < 1% → 0.5 (noise)
+      * 1-3% → linear ramp 1.0 → 2.0
+      * ≥3% → 2.0 (capped)
+    NaN / None / non-numeric → 1.0 (neutral fallback, matches
+    DataFrame path).
+    """
+    import math
+
+    try:
+        mag = abs(float(return_1d))
+    except (TypeError, ValueError):
+        return 1.0
+    # NaN is a valid float but yields nonsense comparisons —
+    # short-circuit to neutral before the tier checks.
+    if math.isnan(mag):
+        return 1.0
+    if mag < _SEVERITY_NOISE_THRESHOLD:
+        return _SEVERITY_NOISE_WEIGHT
+    if mag >= _SEVERITY_STRONG_THRESHOLD:
+        return _SEVERITY_STRONG_WEIGHT
+    # Linear ramp across the [1%, 3%] band.
+    ramp_position = (mag - _SEVERITY_NOISE_THRESHOLD) / (
+        _SEVERITY_STRONG_THRESHOLD - _SEVERITY_NOISE_THRESHOLD
+    )
+    return _SEVERITY_MIN_WEIGHT + ramp_position * (
+        _SEVERITY_STRONG_WEIGHT - _SEVERITY_MIN_WEIGHT
+    )
+
+
+def compute_signed_weight(return_1d: float) -> float:
+    """Sign-aware severity: base magnitude weight amplified 1.25×
+    when the return is negative.
+
+    Canonical call site:
+
+        from ai_core.learning_upgrade import compute_signed_weight
+
+        sample_weight = compute_signed_weight(row["return_1d"])
+
+    Rationale — markets punish mistakes asymmetrically:
+      * avoiding losses > capturing gains (drawdown math)
+      * behavioural bias: humans weight losses ~2× gains (Kahneman)
+    1.25× sits deliberately below the full prospect-theory 2× so
+    the model learns loss-aversion WITHOUT flipping into paranoia
+    (which would kill the HIT rate).
+
+    NaN / None → 1.0 (same as scalar severity — no direction to
+    amplify). Positive returns and zero are unaffected (amplifier
+    stays at 1.0×).
+    """
+    import math
+
+    base = severity_weight_for_return(return_1d)
+    try:
+        r = float(return_1d)
+    except (TypeError, ValueError):
+        return base
+    if math.isnan(r):
+        return base
+    if r < 0:
+        return base * _LOSS_AMPLIFIER
+    return base
+
+
+# ══════════════════════════════════════════════════════════════════
+# VOLATILITY REGIME CLASSIFIER
+# ══════════════════════════════════════════════════════════════════
+#
+# Data-driven regime signal derived from `severity_strong_frac` —
+# the fraction of the training set at the 2.0× severity cap (≥3%
+# moves). Complementary to the HMM-based `regime_label` in the
+# features pipeline; this one runs on whatever slice of rows you
+# just loaded and needs no historical context.
+
+_HIGH_VOL_THRESHOLD: float = 0.30
+_LOW_VOL_THRESHOLD: float = 0.10
+
+
+def classify_vol_regime(severity_strong_frac: float) -> str:
+    """Map `severity_strong_frac` → data-driven vol regime label.
+
+    Returns one of ``"high_vol" | "normal" | "low_vol"``.
+
+    Thresholds:
+      * ≥ 30% of rows at severity cap → ``"high_vol"``
+      * ≤ 10% of rows at severity cap → ``"low_vol"``
+      * otherwise → ``"normal"``
+
+    Use the output as a drift canary, a retrain-gating signal, or a
+    cross-check against the HMM's regime_label. A disagreement is
+    usually informative — HMM might call "bull" while this returns
+    "high_vol", meaning a volatile bull regime, which deserves a
+    conviction dampener.
+    """
+    f = float(severity_strong_frac)
+    if f >= _HIGH_VOL_THRESHOLD:
+        return "high_vol"
+    if f <= _LOW_VOL_THRESHOLD:
+        return "low_vol"
+    return "normal"
+
+
+# ══════════════════════════════════════════════════════════════════
+# RETRAIN QUALITY GATE
+# ══════════════════════════════════════════════════════════════════
+#
+# `mean_sample_weight < 0.8` means the training set is dominated by
+# noise-band rows (< 1% moves, weight 0.5). Retraining on that data
+# pushes the model toward flat-tape predictions — exactly the failure
+# mode that caused v0.1.3 → v0.1.4 to regress last cycle.
+
+_MIN_SIGNAL_QUALITY: float = 0.8
+
+
+def should_skip_retrain_low_signal(mean_sample_weight: float) -> bool:
+    """Return True when the training set is too noise-heavy to be
+    worth retraining on. Used upstream of `SignalModel.fit` to
+    abort cleanly with a logged reason, rather than fit a worse
+    model than the one already in production.
+
+    Threshold (0.8) sits between the severity-noise weight (0.5)
+    and the base weight (1.0). A set that averages below 0.8 is
+    majority-noise; above 0.8 has enough directional rows to justify
+    the retrain cost.
+
+    NaN / None / non-numeric → False (don't silently block retraining
+    on a stats-logging bug). The gate's job is to catch real
+    low-signal data, not to block on telemetry failures.
+    """
+    import math
+
+    try:
+        v = float(mean_sample_weight)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(v):
+        return False
+    return v < _MIN_SIGNAL_QUALITY

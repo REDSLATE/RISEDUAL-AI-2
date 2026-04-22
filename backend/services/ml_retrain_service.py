@@ -172,6 +172,13 @@ _STRONG_THRESHOLD = 0.03
 # Cap the training weight at 2.0 so a single outlier 20% mover
 # doesn't swamp the gradient.
 _WEIGHT_CAP = 2.0
+# Sign-aware loss amplifier — duplicated from
+# `ai_core.learning_upgrade._LOSS_AMPLIFIER` to avoid a circular
+# import at module load time (learning_upgrade → conviction_service
+# → some services → ml_retrain_service). Pinned identical by
+# `test_loss_amplifier_matches_scalar_module` so a drift on either
+# side fails fast.
+from ai_core.learning_upgrade import _LOSS_AMPLIFIER  # noqa: E402
 
 
 def _severity_weights(df: Any) -> Any:
@@ -179,9 +186,16 @@ def _severity_weights(df: Any) -> Any:
 
     Formula mirrors `GRADE_WEIGHTS`:
       |r| < 1%   → 0.5   (NEUTRAL-ish — barely a move)
-      1-3%       → 1.0   (WEAK)
+      1-3%       → ramp 1.0 → 2.0   (WEAK → STRONG)
       ≥ 3%       → 2.0   (STRONG — capped)
       missing    → 1.0   (fallback to uniform weight)
+
+    After the magnitude-based weight, losses (`return_1d < 0`) are
+    amplified by `_LOSS_AMPLIFIER` (1.25×) — see
+    `ai_core.learning_upgrade.compute_signed_weight` for the
+    rationale. The amplifier compounds with severity so the largest
+    single-row weight is 2.0 × 1.25 = 2.5; `SignalModel.fit` still
+    clips at 10× before handing to XGBoost.
 
     Implementing with clip+scaling keeps the mapping continuous
     enough for gradient boosters without discrete step jumps that
@@ -207,7 +221,15 @@ def _severity_weights(df: Any) -> Any:
         / (_STRONG_THRESHOLD - _WEAK_THRESHOLD)
     )
     weights[mag >= _STRONG_THRESHOLD] = _WEIGHT_CAP
-    return weights.astype(float)
+
+    # Sign-aware amplification: losses weighted 1.25× higher than
+    # wins of the same magnitude. Vectorised per-row multiply — no
+    # per-row Python callback. NaN returns are treated as
+    # non-negative (amplifier stays at 1.0) so we don't double-
+    # penalise the fallback path.
+    is_loss = (df["return_1d"].fillna(0.0) < 0).astype(float)
+    amplifier = 1.0 + is_loss * (_LOSS_AMPLIFIER - 1.0)
+    return (weights * amplifier).astype(float)
 
 
 async def _collect_rejection_context(db: Any) -> dict:
@@ -316,6 +338,34 @@ async def run_nightly_retrain(
             log_row["regime_match_frac"] = round(
                 float((regime_ratio >= 0.99).mean()), 4,
             )
+            # Data-driven vol regime derived from severity_strong_frac
+            # — complementary to the HMM regime_label. High_vol means
+            # we're training on a lot of ≥3% movers and should probably
+            # tighten position sizing downstream.
+            from ai_core.learning_upgrade import (
+                classify_vol_regime,
+                should_skip_retrain_low_signal,
+            )
+            log_row["vol_regime"] = classify_vol_regime(
+                log_row["severity_strong_frac"]
+            )
+
+            # Retrain quality gate — abort if the training set is
+            # mostly noise. Better to keep the previous model in
+            # production than push a regression trained on flat
+            # days. Threshold 0.8 lives in `learning_upgrade`.
+            if should_skip_retrain_low_signal(log_row["mean_sample_weight"]):
+                log_row.update({
+                    "status": "skipped",
+                    "reason": (
+                        f"low_signal_quality "
+                        f"(mean_sample_weight={log_row['mean_sample_weight']:.3f} < 0.8)"
+                    ),
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                })
+                logger.warning(f"ML retrain skipped: {log_row['reason']}")
+                await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
+                return log_row
 
         version_n = _next_version_number()
         new_version_tag = f"0.1.{version_n}"  # bumps the patch number

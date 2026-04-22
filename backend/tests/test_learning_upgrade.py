@@ -18,14 +18,19 @@ import pytest
 from ai_core.learning_upgrade import (
     GRADE_WEIGHTS,
     _ECE_FLOOR_MULT,
+    _LOSS_AMPLIFIER,
     apply_calibration_to_size,
     build_regime_key,
+    classify_vol_regime,
     compute_calibration_multiplier,
     compute_conviction_penalty,
     compute_expectancy,
     compute_regime_weight,
+    compute_signed_weight,
     compute_weighted_learning_update,
     score_prediction_outcome,
+    severity_weight_for_return,
+    should_skip_retrain_low_signal,
 )
 
 
@@ -312,3 +317,114 @@ def test_expectancy_handles_negative_loss_convention():
     positive = compute_expectancy(0.5, 100.0, 50.0)
     negative = compute_expectancy(0.5, 100.0, -50.0)
     assert positive == negative == 25.0  # 0.5*100 - 0.5*50
+
+
+# ── Scalar severity + sign-aware weighting ─────────────────────────
+#
+# These pin the pure-function primitives that mirror the
+# DataFrame-level `_severity_weights` in `ml_retrain_service`.
+# Keeping both paths tested against each other catches drift
+# before it lands in production training weights.
+
+
+def test_severity_weight_scalar_piecewise():
+    """Same tiers as the DataFrame helper: <1% → 0.5, ≥3% → 2.0,
+    linear ramp in between."""
+    assert severity_weight_for_return(0.005) == 0.5   # noise
+    assert severity_weight_for_return(-0.005) == 0.5  # noise (magnitude only)
+    assert severity_weight_for_return(0.01) == 1.0    # ramp base
+    assert severity_weight_for_return(0.02) == pytest.approx(1.5, abs=0.01)
+    assert severity_weight_for_return(0.029) == pytest.approx(1.95, abs=0.01)
+    assert severity_weight_for_return(0.03) == 2.0    # cap
+    assert severity_weight_for_return(0.20) == 2.0    # capped
+    assert severity_weight_for_return(-0.20) == 2.0   # same on loss side
+
+
+def test_severity_weight_scalar_nan_safe():
+    """None and bad types should fall back to neutral 1.0 — never
+    raise, never return 0 (silent loss of training signal)."""
+    assert severity_weight_for_return(float("nan")) == 1.0
+    assert severity_weight_for_return(None) == 1.0  # type: ignore[arg-type]
+    assert severity_weight_for_return("not_a_number") == 1.0  # type: ignore[arg-type]
+
+
+def test_compute_signed_weight_amplifies_losses():
+    """Canonical call site from the upgrade spec:
+
+        sample_weight = compute_signed_weight(row["return_1d"])
+
+    Loss amplifier is 1.25× on negative returns ONLY. Positive
+    returns are unchanged."""
+    # Positive 5% mover: cap, no amplifier.
+    assert compute_signed_weight(0.05) == 2.0
+    # Negative 5% mover: cap × 1.25 = 2.5.
+    assert compute_signed_weight(-0.05) == 2.5
+    # Same magnitude, different sign → exactly 1.25× ratio.
+    win = compute_signed_weight(0.02)
+    loss = compute_signed_weight(-0.02)
+    assert loss / win == _LOSS_AMPLIFIER
+
+
+def test_compute_signed_weight_zero_is_neutral():
+    """Return of exactly 0 → noise band 0.5, no amplifier."""
+    assert compute_signed_weight(0.0) == 0.5
+
+
+def test_compute_signed_weight_matches_df_path():
+    """The scalar and DataFrame paths must return the same value
+    for the same input. Catches drift between the two pipelines."""
+    import pandas as pd
+    from services.ml_retrain_service import _severity_weights
+
+    returns = [0.05, -0.05, 0.02, -0.02, 0.002, -0.005, 0.03, -0.03]
+    df = pd.DataFrame({"return_1d": returns})
+    df_w = _severity_weights(df).tolist()
+    scalar_w = [compute_signed_weight(r) for r in returns]
+    assert df_w == pytest.approx(scalar_w, abs=0.001)
+
+
+# ── Volatility regime classifier ───────────────────────────────────
+
+def test_classify_vol_regime_tiers():
+    """Pin the exact thresholds so drift on either side is visible.
+    30%+ at severity cap → high_vol. 10% or less → low_vol."""
+    assert classify_vol_regime(0.40) == "high_vol"
+    assert classify_vol_regime(0.30) == "high_vol"   # inclusive
+    assert classify_vol_regime(0.29) == "normal"
+    assert classify_vol_regime(0.15) == "normal"
+    assert classify_vol_regime(0.11) == "normal"
+    assert classify_vol_regime(0.10) == "low_vol"    # inclusive
+    assert classify_vol_regime(0.05) == "low_vol"
+    assert classify_vol_regime(0.0) == "low_vol"
+
+
+def test_classify_vol_regime_returns_string_not_enum():
+    """Output must be a plain str so the log row serialises cleanly
+    to Mongo without a custom encoder."""
+    result = classify_vol_regime(0.35)
+    assert isinstance(result, str)
+
+
+# ── Retrain quality gate ───────────────────────────────────────────
+
+def test_should_skip_retrain_below_threshold():
+    """mean_sample_weight < 0.8 → skip. Matches `_MIN_SIGNAL_QUALITY`
+    documented in the module."""
+    assert should_skip_retrain_low_signal(0.5) is True
+    assert should_skip_retrain_low_signal(0.79) is True
+
+
+def test_should_skip_retrain_at_or_above_threshold():
+    """0.8 exactly → proceed. The threshold is strict-less-than so
+    a training set that sits exactly on the line gets retrained."""
+    assert should_skip_retrain_low_signal(0.8) is False
+    assert should_skip_retrain_low_signal(1.0) is False
+    assert should_skip_retrain_low_signal(1.5) is False
+
+
+def test_should_skip_retrain_bad_input_does_not_block():
+    """None / malformed input → False (don't silently block
+    retraining on a stats-logging bug)."""
+    assert should_skip_retrain_low_signal(float("nan")) is False
+    assert should_skip_retrain_low_signal(None) is False  # type: ignore[arg-type]
+    assert should_skip_retrain_low_signal("abc") is False  # type: ignore[arg-type]

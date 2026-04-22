@@ -78,41 +78,49 @@ async def test_nightly_retrain_skips_on_insufficient_samples(tmp_path, monkeypat
 
 
 def test_severity_weights_maps_noise_to_low_weight():
+    """Tiny moves → 0.5 (noise band). A positive 0.2% move stays
+    at 0.5; a negative -0.5% move gets loss-amplified to 0.625."""
     import pandas as pd
     from services.ml_retrain_service import _severity_weights
 
     df = pd.DataFrame({"return_1d": [0.002, -0.005, 0.009]})  # all <1%
     w = _severity_weights(df)
-    assert all(w == 0.5), f"expected 0.5 for <1% moves, got {w.tolist()}"
+    assert w.iloc[0] == 0.5   # +0.2% → noise, no amplifier
+    assert w.iloc[1] == 0.625  # -0.5% → noise × 1.25 loss amplifier
+    assert w.iloc[2] == 0.5   # +0.9% → noise, no amplifier
 
 
 def test_severity_weights_ramps_through_weak_band():
-    """Linear 1.0 → 2.0 ramp across [1%, 3%]. A 2% mover should
-    sit near 1.5; a 2.9% mover should be close to 2.0 but not at it."""
+    """Linear 1.0 → 2.0 ramp across [1%, 3%]. Winners unchanged;
+    losers get 1.25× amplified on top."""
     import pandas as pd
     from services.ml_retrain_service import _severity_weights
 
     df = pd.DataFrame({"return_1d": [0.01, 0.02, 0.029, -0.015]})
     w = _severity_weights(df)
-    # Row 0 (exactly 1%) → 1.0
+    # Row 0 (+1% exactly) → 1.0, no amplifier
     assert abs(w.iloc[0] - 1.0) < 0.01
-    # Row 1 (2%) → ~1.5 (midpoint of ramp)
+    # Row 1 (+2%) → ~1.5 ramp midpoint, no amplifier
     assert abs(w.iloc[1] - 1.5) < 0.01
-    # Row 2 (2.9%) → ~1.95
+    # Row 2 (+2.9%) → ~1.95, no amplifier
     assert abs(w.iloc[2] - 1.95) < 0.01
-    # Row 3 (abs 1.5%) → ~1.25
-    assert abs(w.iloc[3] - 1.25) < 0.01
+    # Row 3 (-1.5%) → ramp 1.25 × loss amplifier 1.25 = 1.5625
+    assert abs(w.iloc[3] - 1.5625) < 0.01
 
 
 def test_severity_weights_caps_strong_moves():
-    """A 5% or 20% move both hit the cap. The user's -5% blown trade
-    example should weight exactly 2.0."""
+    """A 5% win hits the 2.0 cap. A -5% loss hits 2.0 × 1.25 = 2.5.
+    This is the core user-facing upgrade: losing big hurts the
+    model MORE than winning big helps it."""
     import pandas as pd
     from services.ml_retrain_service import _severity_weights
 
     df = pd.DataFrame({"return_1d": [0.05, -0.05, 0.20, -0.30]})
     w = _severity_weights(df)
-    assert all(w == 2.0), f"expected 2.0 (cap) for ≥3% moves, got {w.tolist()}"
+    assert w.iloc[0] == 2.0   # +5% → cap, no amplifier
+    assert w.iloc[1] == 2.5   # -5% → cap × 1.25 loss amplifier
+    assert w.iloc[2] == 2.0   # +20% → cap, no amplifier
+    assert w.iloc[3] == 2.5   # -30% → cap × 1.25 loss amplifier
 
 
 def test_severity_weights_fallback_on_missing_column():
@@ -127,36 +135,58 @@ def test_severity_weights_fallback_on_missing_column():
 
 
 def test_severity_weights_handles_nan_returns():
-    """NaN `return_1d` falls back to neutral 1.0 (uniform weight).
-    We intentionally DON'T penalise missing magnitude as noise —
-    a NaN means "we don't know", not "the move was tiny". Uniform
-    weight is the safe default: matches the legacy path's behavior
-    for rows that have no return_1d at all."""
+    """NaN `return_1d` falls back to neutral 1.0. NaN is treated
+    as non-negative (no loss amplifier) to avoid double-penalising
+    the unknown-direction path."""
     import pandas as pd
     import numpy as np
     from services.ml_retrain_service import _severity_weights
 
     df = pd.DataFrame({"return_1d": [np.nan, 0.05, np.nan]})
     w = _severity_weights(df)
-    assert w.iloc[0] == 1.0  # NaN → neutral uniform
-    assert w.iloc[1] == 2.0  # real 5% move → cap
-    assert w.iloc[2] == 1.0
+    assert w.iloc[0] == 1.0   # NaN → neutral, no amplifier
+    assert w.iloc[1] == 2.0   # +5% → cap, no amplifier
+    assert w.iloc[2] == 1.0   # NaN → neutral, no amplifier
 
 
 def test_severity_weighting_asymmetry_matches_conviction_scale():
-    """The core user-facing claim: a -5% blown trade carries more
-    training signal than a -0.5% stop-out. Pins the 4:1 ratio so
-    future tweaks to the ramp can't silently flatten the asymmetry.
+    """The core claim: a -5% blown trade carries more training
+    signal than a -0.5% stop-out. Now the ratio is 2.5 / 0.625 = 4×
+    (same as before — both sides get the 1.25× loss amplifier and it
+    cancels in the ratio) — proving the pipeline upgrade is
+    orthogonal to the severity asymmetry.
     """
     import pandas as pd
     from services.ml_retrain_service import _severity_weights
 
     df = pd.DataFrame({"return_1d": [-0.005, -0.05]})
     w = _severity_weights(df)
-    # -0.5% stop-out → 0.5, -5% blown trade → 2.0.
-    # Ratio is 4× (not 10× as one might naively expect — the cap
-    # at ≥3% prevents a single outlier from dominating). This is
-    # intentional: sklearn `sample_weight` is multiplicative on the
-    # gradient, so 4× is plenty of skew without destabilising the
-    # calibration curve.
+    assert w.iloc[0] == 0.625  # -0.5% × 1.25 amplifier
+    assert w.iloc[1] == 2.5    # -5% × 1.25 amplifier
+    # Ratio preserved through the amplification.
     assert w.iloc[1] / w.iloc[0] == 4.0
+
+
+def test_sign_aware_loss_amplification_ratio():
+    """Same-magnitude win vs loss: the loss carries exactly 1.25×
+    more training weight. This pins the sign-aware asymmetry that
+    teaches the model 'avoiding losses > capturing gains'.
+    """
+    import pandas as pd
+    from services.ml_retrain_service import _severity_weights
+
+    df = pd.DataFrame({"return_1d": [0.05, -0.05]})  # identical |r|
+    w = _severity_weights(df)
+    assert w.iloc[1] / w.iloc[0] == 1.25
+
+
+def test_loss_amplifier_matches_scalar_module():
+    """The DataFrame-level _LOSS_AMPLIFIER must agree with the
+    scalar `compute_signed_weight` in `ai_core.learning_upgrade`.
+    If someone tunes one side and forgets the other, training-time
+    weights and inference-time single-row scoring would silently
+    disagree.
+    """
+    from services.ml_retrain_service import _LOSS_AMPLIFIER as df_amp
+    from ai_core.learning_upgrade import _LOSS_AMPLIFIER as scalar_amp
+    assert df_amp == scalar_amp
