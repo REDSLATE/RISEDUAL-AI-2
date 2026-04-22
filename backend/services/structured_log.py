@@ -139,3 +139,48 @@ def unwrap_gather_result(
     # `.method()` calls type-check. Runtime-safe because steps 1-3
     # exhaust the exception/None branches.
     return cast(T, value)
+
+
+
+async def safe_gather(
+    *tasks: Any,
+    fallbacks: list[Any],
+    logger: logging.Logger | None = None,
+    context: str = "",
+) -> list[Any]:
+    """Run ``asyncio.gather(*tasks, return_exceptions=True)`` and unwrap
+    every result through :func:`unwrap_gather_result`, using a matching
+    entry from ``fallbacks`` for each task.
+
+    Thin sugar over the `gather + for-loop` pattern the codebase has
+    been using. Use this when you have N tasks with N distinct
+    fallback shapes — e.g. war_room's ``(overview_task, earnings_task,
+    insider_task)`` each needing its own default dict on failure.
+    Prefer a manual ``unwrap_gather_result`` loop when tasks share one
+    fallback (ticker fan-out) since the loop reads more clearly there.
+
+    Contract:
+      * ``len(fallbacks)`` SHOULD equal ``len(tasks)``. If a caller
+        passes fewer fallbacks than tasks, extra tasks use ``None``
+        as fallback — matches how `zip` would behave and keeps the
+        helper non-throwing on mis-sized inputs.
+      * Preserves the three-tier guard exactly: silent on
+        `CancelledError`, structured log_error on other
+        `BaseException`, fallback on `None`.
+      * ``note`` is auto-tagged per index (``task_0_failure``,
+        ``task_1_failure``, …) so a failed first task and a failed
+        third task are distinguishable in logs without the caller
+        threading names through.
+    """
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    unwrapped: list[Any] = []
+    for i, result in enumerate(results):
+        fallback = fallbacks[i] if i < len(fallbacks) else None
+        unwrapped.append(unwrap_gather_result(
+            result, fallback,
+            logger=logger,
+            context=context,
+            note=f"task_{i}_failure",
+        ))
+    return unwrapped

@@ -661,6 +661,29 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — Global kill switch + `safe_gather` helper
+* **New module** `ai_core/kill_switch.py` — thread-safe fleet-wide
+  circuit breaker. Trips on ≥25% drawdown OR ≥30% rolling error
+  rate (min 5 samples). 5-min auto-clearing cooldown. Env-tunable
+  thresholds. Module-level singleton + `guarded_execute()` wrapper
+  that accepts both sync and async callables, records broker-style
+  `{"error": ...}` failures, and exempts `CancelledError`.
+* **Hook** in `trading_bot_service.execute_signal()` at a new step 0
+  — guard fires before any sizing math, short-circuits with a
+  `cooldown_remaining_seconds` payload when active. Outcome
+  recorded into the rolling window after the broker call.
+* **Admin endpoints** — `GET /api/admin/kill-switch` (status) and
+  `POST /api/admin/kill-switch/reset` (owner-only force-clear that
+  wipes both flag and error window).
+* **New helper** `services/structured_log.safe_gather()` — paired-
+  fallbacks wrapper over `asyncio.gather(return_exceptions=True)` +
+  `unwrap_gather_result` loop. Auto-tags per-task failures with
+  `note=task_N_failure`.
+* **Tests** — 14 kill-switch tests + 3 safe_gather tests + 2 new
+  integration tests on `execute_signal`. Autouse conftest fixture
+  resets the singleton between tests to prevent cross-test
+  contamination. All 120 tests green.
+
 ### 2026-02-20 — Admin UI `GatherErrorStrip` card
 * **New** `frontend/src/components/admin/GatherErrorStrip.jsx` — heat-
   stripe card that renders the `/api/admin/gather-error-rate` payload

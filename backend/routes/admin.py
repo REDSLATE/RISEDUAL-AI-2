@@ -679,6 +679,49 @@ async def gather_error_rate(
     }
 
 
+@router.get("/kill-switch")
+async def kill_switch_status(request: Request):
+    """Current state of the global fleet-wide kill switch.
+
+    Returns `active` flag, trip reason + timestamp, cooldown
+    remaining, trip count since process start, current rolling
+    error rate, and the config thresholds (so the UI can render
+    "15 / 30% error rate" style comparisons).
+
+    In-process by design — matches the gather-error tile's
+    philosophy. Restarts wipe both flag and error window, which is
+    the conservative choice (fleet comes back *armed but ready*,
+    not *latched-off from a past incident*).
+    """
+    await _require_admin(request)
+    from ai_core.kill_switch import kill_switch
+    return kill_switch.status()
+
+
+@router.post("/kill-switch/reset")
+async def kill_switch_reset(request: Request):
+    """Force-clear the kill switch (owner only).
+
+    Wipes the active flag **and** the error window — the
+    alternative (flag-only) leaves the window full of stale
+    failures that would immediately re-trip the next guarded
+    execution. That's not a reset, that's a stutter.
+    """
+    await _require_owner(request)
+    from ai_core.kill_switch import kill_switch
+    before = kill_switch.status()
+    kill_switch.reset()
+    return {
+        "cleared": True,
+        "previous": {
+            "active": before["active"],
+            "last_reason": before["last_reason"],
+            "trip_count": before["trip_count"],
+        },
+        "current": kill_switch.status(),
+    }
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================

@@ -367,14 +367,71 @@ async def test_execute_signal_only_equity_curve_supplied_skips_risk_layer(
 ):
     """If bot_capital is None but equity_curve provided, layer is skipped.
     Both args must be supplied together — matches the `is not None` guard.
-    Tier 3 still scales $1000 → $1500 at confidence=100."""
+    Tier 3 still scales $1000 → $1500 at confidence=100.
+
+    Uses a 15% drawdown — above SOFT_DRAWDOWN (10%) so the allocator
+    layer would have applied a 0.5× multiplier if engaged, but below
+    the 25% global kill-switch threshold so the fleet-wide circuit
+    breaker stays armed-but-quiet. The contrast (layer: $750 vs.
+    skipped: $1500) keeps the test's original intent intact.
+    """
     signal = {"symbol": "AAPL", "entry": 100, "direction": "LONG", "confidence": 100}
     config = SimpleNamespace(trade_size=1000)
 
     out = await tbs.execute_signal(
         signal, {}, _healthy_readiness(), config,
-        equity_curve=[10_000, 7000],  # would be 30% drawdown → 0.3× mult
+        equity_curve=[10_000, 8500],  # 15% drawdown → 0.5× mult if layer ran
         bot_capital=None,
     )
     # Layer skipped → Tier-3-sized trade
     assert out["size_usd"] == pytest.approx(1500.0, abs=0.01)
+
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Kill-switch integration at step 0 of execute_signal
+# ════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_execute_signal_skips_when_kill_switch_already_active(
+    capture_execution,
+):
+    """Manually-tripped kill switch short-circuits before any sizing
+    math. Broker must not be called, result carries the cooldown
+    countdown so callers can surface "try again in X seconds"."""
+    from ai_core.kill_switch import kill_switch
+    kill_switch.activate("manual pre-test trip")
+
+    signal = {"symbol": "AAPL", "entry": 100, "direction": "LONG", "confidence": 100}
+    config = SimpleNamespace(trade_size=1000)
+
+    out = await tbs.execute_signal(signal, {}, _healthy_readiness(), config)
+
+    assert out["skipped"] is True
+    assert out["reason"] == "kill switch active"
+    assert out["cooldown_remaining_seconds"] > 0
+    assert len(capture_execution) == 0  # broker not reached
+
+
+@pytest.mark.asyncio
+async def test_execute_signal_trips_kill_switch_at_fleet_drawdown(
+    capture_execution,
+):
+    """Equity curve breaching the fleet-wide 25% drawdown threshold
+    trips the global kill switch at step 0, before per-bot sizing.
+    Distinct from the per-bot allocator at step 3c — the 25% cap is
+    "halt the whole fleet", not "shrink this one bot's slice"."""
+    from ai_core.kill_switch import kill_switch
+    signal = {"symbol": "AAPL", "entry": 100, "direction": "LONG", "confidence": 100}
+    config = SimpleNamespace(trade_size=1000)
+
+    out = await tbs.execute_signal(
+        signal, {}, _healthy_readiness(), config,
+        equity_curve=[10_000, 7000],  # 30% drawdown → above kill threshold
+        bot_capital=2000.0,
+    )
+
+    assert out["skipped"] is True
+    assert "kill switch tripped" in out["reason"]
+    assert kill_switch.is_active() is True
+    assert len(capture_execution) == 0

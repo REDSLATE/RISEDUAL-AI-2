@@ -197,6 +197,30 @@ async def execute_signal(
     `_execute_bot_trade` returns `{"error": ...}` dicts and we
     surface those to the caller.
     """
+    # ── 0. Global kill switch (fleet-wide circuit breaker) ──
+    # Fires before any sizing math so a tripped switch can never
+    # leak an order through. Also short-circuits if the supplied
+    # equity curve breaches the drawdown threshold — that trip
+    # condition applies here even when the per-bot allocator in
+    # step 3c is skipped because `bot_capital` is None.
+    from ai_core.kill_switch import kill_switch
+    from ai_core import compute_drawdown
+
+    if kill_switch.is_active():
+        ks_status = kill_switch.status()
+        return {
+            "skipped": True,
+            "reason": "kill switch active",
+            "cooldown_remaining_seconds": ks_status["cooldown_remaining_seconds"],
+            "last_reason": ks_status["last_reason"],
+        }
+    if equity_curve:
+        dd = compute_drawdown(equity_curve)
+        should_trip, trip_reason = kill_switch.should_trip(drawdown=dd)
+        if should_trip:
+            kill_switch.activate(trip_reason)
+            return {"skipped": True, "reason": f"kill switch tripped: {trip_reason}"}
+
     # ── 1. Base size ──
     base_size = _extract_trade_size(config)
     if base_size is None or base_size <= 0:
@@ -270,6 +294,17 @@ async def execute_signal(
     )
 
     # ── 8. Enriched result ──
+    # Feed outcome to the kill-switch error window. Broker-layer
+    # `{"error": ...}` dicts count as failures alongside raised
+    # exceptions — that way the error-rate branch fires on 4xx/5xx
+    # storms, not just uncaught Python errors.
+    is_failure = isinstance(order, dict) and order.get("error") is not None
+    kill_switch.record_result(success=not is_failure)
+    if is_failure:
+        trip, trip_reason = kill_switch.should_trip()
+        if trip:
+            kill_switch.activate(trip_reason)
+
     return {
         "order": order,
         "size_usd": round(adjusted_size, 2),

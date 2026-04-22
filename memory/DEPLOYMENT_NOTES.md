@@ -24,6 +24,86 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Global kill switch + `safe_gather` helper (fleet-wide circuit breaker)
+*Session: continued*
+
+Ships the final safety layer — a thread-safe fleet-wide kill switch
+that halts all guarded signal execution when either the equity
+curve draws down ≥25% or the rolling error rate over the last 50
+executions breaches 30%. Paired with a `safe_gather` helper that
+collapses the `gather + per-task-unwrap` pattern into one call.
+
+**New files:**
+- `backend/ai_core/kill_switch.py` — thread-safe `KillSwitch` class
+  with rolling-error deque, drawdown + rate trip branches (rate
+  requires ≥5 samples to avoid noisy early-trip), auto-clearing
+  5-min cooldown, and a module-level singleton. Env-tunable
+  thresholds (`KILL_SWITCH_MAX_DRAWDOWN`, `KILL_SWITCH_MAX_ERROR_RATE`,
+  `KILL_SWITCH_ERROR_WINDOW`, `KILL_SWITCH_COOLDOWN_SECONDS`).
+  `guarded_execute()` wraps both sync and async callables, records
+  broker-style `{"error": ...}` dicts as failures, and propagates
+  `CancelledError` without polluting the error window.
+- `backend/tests/test_kill_switch.py` — 14 tests covering trip
+  conditions, cooldown auto-clear, reset, and guarded_execute
+  short-circuit + result recording. All green.
+- `backend/tests/test_safe_gather.py` — 3 tests for the new helper,
+  all green.
+
+**Modified:**
+- `backend/services/structured_log.py` — added `safe_gather()`
+  async helper next to `unwrap_gather_result`. Takes paired
+  fallbacks per task and auto-tags each failure with
+  `note=task_N_failure`.
+- `backend/services/trading_bot_service.py` — `execute_signal()`
+  now guards at a new step 0:
+  * Returns `{"skipped": True, "reason": "kill switch active",
+    "cooldown_remaining_seconds": N, "last_reason": "..."}` when
+    the switch is already tripped.
+  * Computes drawdown from the supplied `equity_curve` and trips
+    the switch at ≥25% — fires BEFORE any sizing math, so no
+    order ever leaks through.
+  * After the broker call, records the outcome in the rolling
+    error window; on a `{"error": ...}` response re-evaluates
+    and activates eagerly if the rate branch just crossed.
+- `backend/routes/admin.py` — two new endpoints:
+  * `GET /api/admin/kill-switch` (admin) — full state snapshot
+    `{active, tripped_at, last_reason, trip_count,
+    cooldown_remaining_seconds, error_rate, error_window_size,
+    config{...}}`.
+  * `POST /api/admin/kill-switch/reset` (owner) — wipes flag
+    AND error window (not a stutter) with a before/after
+    payload for audit.
+- `backend/tests/conftest.py` — autouse fixture that clears the
+  singleton between every test. Prevents cross-test
+  contamination where one test's failure cascades skips through
+  unrelated tests downstream.
+- `backend/tests/test_drawdown_allocator.py` — two new tests
+  (`test_execute_signal_skips_when_kill_switch_already_active`,
+  `test_execute_signal_trips_kill_switch_at_fleet_drawdown`)
+  pinning the step-0 guard. Existing
+  `test_execute_signal_only_equity_curve_supplied_skips_risk_layer`
+  updated from a 30% drawdown (now trips the switch) to 15%
+  (below kill threshold, above SOFT_DRAWDOWN so the per-bot
+  layer contrast is preserved).
+
+**Behavioural delta:**
+- No signal can be executed while the switch is tripped, full stop.
+  The guard runs before portfolio constraints, before sizing,
+  before the broker call.
+- A drawdown ≥25% trips the switch regardless of per-bot capital
+  being supplied — distinct from the per-bot allocator's 20%
+  taper, which only shrinks a bot's slice. 25% is
+  "halt-the-fleet", 20% is "shrink-this-bot".
+- CancelledError is exempt from the error window (cancellation
+  is not a logical error).
+
+**Gate status:**
+- `typecheck.sh`: 69 errors (unchanged baseline).
+- Full suite of new + affected tests: 120/120 green.
+- Live: `GET /api/admin/kill-switch` returns the clean default
+  state; `POST /api/admin/kill-switch/reset` round-trips OK on the
+  deployed preview.
+
 ### 2026-02-20 — Admin UI: `GatherErrorStrip` heat-stripe card
 *Session: continued*
 

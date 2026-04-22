@@ -23,3 +23,37 @@ try:
     load_dotenv(TESTS_DIR.parent.parent / "frontend" / ".env")  # /app/frontend/.env
 except Exception:
     pass
+
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_kill_switch():
+    """Isolate the module-level `ai_core.kill_switch.kill_switch`
+    singleton between tests.
+
+    Execution-path tests (execute_signal, drawdown allocator, etc.)
+    fire through `kill_switch.is_active()` and record outcomes into
+    its rolling error window. Without a reset, a failing test early
+    in the run can trip the switch and cascade "kill switch active"
+    skips through every later test in the module — which reads as
+    10+ unrelated failures.
+
+    Autouse so no test has to remember to import / invoke the fix
+    — the invariant is "every test starts with a cleared switch".
+    """
+    try:
+        from ai_core.kill_switch import kill_switch
+        kill_switch.reset()
+    except ImportError:
+        # Kill switch module may not be importable in isolated
+        # micro-tests; silently skip.
+        pass
+    yield
+    try:
+        from ai_core.kill_switch import kill_switch
+        kill_switch.reset()
+    except ImportError:
+        pass
