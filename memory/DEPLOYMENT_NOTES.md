@@ -26,6 +26,79 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — Smart-routed spreads + mypy baseline 69→47 + Paper days tile
+*Session: continued*
+
+Three-item batch. All testing-agent-verified (14/14 backend + code
+review on the frontend tile).
+
+**P2 · Smart-routed spread orders:**
+- New `supports_multileg: bool` class attribute on
+  `BrokerOptionsAdapter` (default `False`, safe-closed posture).
+  Alpaca flipped to `True`. Tradier / TastyTrade / IBKR keep the
+  default so they can never win a spread contest they can't
+  fulfil.
+- `SmartOrderRouter.pick_for_spread(occ_symbols)` +
+  `.route_spread(occ_symbols, legs, ...)` — aggregate-spread
+  scoring across legs, filters by `supports_multileg` upstream of
+  scoring. Raises with a distinct "no multi-leg capable broker"
+  message so 503 replies are self-explanatory.
+- `POST /api/options/spread` now accepts `best_execution: bool`.
+  Live-verified: AAPL 190/195 vertical call debit (BTO/STO,
+  limit $1.50, best_execution=true) → `routing.mode=smart` →
+  `provider=alpaca` → order_id `2906d399…` → cancelled cleanly.
+  Audit record persisted with `odd_accepted_at` and
+  `routing_mode=smart`.
+- 5 new tests in `test_smart_router.py` (filter-non-multileg,
+  aggregate math, no-capable-broker-raises, route_spread
+  happy-path, length-mismatch ValueError).
+
+**P3 · mypy baseline 69 → 47 (32% reduction):**
+- Root cause of 15+ errors: 7 services had `def set_db(database:
+  object)` combined with `db = None`, which made mypy infer the
+  module-level `db` as `object`. Swapped all to `database: Any`
+  + `db: Any = None`. Zero runtime change.
+- Targeted annotation fixes where mypy had real signal:
+  `broker_service._account_id: str | None = None`,
+  `data: dict[str, Any]` for mixed-type request payload dicts,
+  `TOPUP_TIERS: list[dict[str, Any]]`, `REASON_TAGS: list[str]`,
+  `_fng_cache: dict[str, Any]`, `result` / `summary` dicts in
+  `sec_13f_service`.
+- Latent-bug hardening (not mypy noise): BeautifulSoup `.get('href')`
+  can return `str | AttributeValueList` for malformed markup —
+  added `isinstance(href, str): continue` guards in two
+  `financial_scraping_service.py` scrapers. Scraper stays
+  resilient on broken pages instead of `TypeError`.
+- Baseline locked at **47**. 22 errors gone, no code behaviour
+  change, 239/239 regression tests green.
+
+**P1 · Paper days → Tier 3 progress tile:**
+- New `PaperDaysProgressCard` in `MLHealthStrip.jsx` backed by
+  the existing `/api/admin/tier3-progress` endpoint (which had
+  no UI surface until now). Shows `days/30`, progress bar,
+  remaining-days subtitle, unlocked state, RISEDUAL_LIVE_DAYS
+  override warning if set. Grid widens from `sm:grid-cols-3` to
+  `sm:grid-cols-2 lg:grid-cols-4`.
+- `data-testid="ml-health-paper-days"` for test coverage.
+- Current state on preview: 2/30 days · 13 trades · 28 remaining
+  — visibility restored to runway toward ML Tier 3 unlock without
+  shell access.
+
+**Live verification:**
+- `curl .../api/options/spread` with `best_execution=true` →
+  order_id `2906d399-03f8-466c-b98f-31592169f47d` accepted.
+- `curl .../api/admin/tier3-progress` → `{days: 2, target: 30,
+  remaining: 28, unlocked: false}`.
+- Testing agent: 14/14 backend tests pass, 100% regression green,
+  code review confirms 4-card grid correctly implemented.
+
+**Files:**
+- New: `tests/test_iteration137_spread_routing_tier3.py`
+- Modified: `services/brokers/smart_router.py`,
+  `options_adapter.py`, `alpaca_options.py`,
+  `routes/options_trading.py`, 8 services for mypy sweep,
+  `MLHealthStrip.jsx`, `scripts/typecheck_baseline.txt`
+
 ### 2026-04-22 — Options Phase 2: Greeks engine, Tradier quote source, multi-leg spreads, ODD audit trail
 *Session: continued*
 

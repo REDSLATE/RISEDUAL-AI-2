@@ -54,6 +54,28 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Smart-routed spreads + mypy 69→47 + Tier 3 paper-days tile (Feb 22, 2026)
+- **P2**: `SmartOrderRouter.route_spread()` — new
+  `supports_multileg` capability flag on the adapter interface
+  filters out quote-only brokers before scoring. `POST
+  /api/options/spread` now accepts `best_execution=true`.
+  Live-verified on Alpaca paper: 2-leg AAPL 190/195 call debit
+  vertical, order accepted + cancelled.
+- **P3**: mypy baseline reduced 69→47 (32%). Seven services had
+  `set_db(database: object)` + `db = None` making the module-level
+  `db` resolve to `object`; swapped to `Any`. Added targeted
+  `dict[str, Any]` / `list[str]` annotations where mypy had
+  real signal. Two BS scraper `.get('href')` sites hardened
+  against malformed HTML. No runtime behaviour change.
+- **P1**: New `PaperDaysProgressCard` in `MLHealthStrip.jsx` —
+  4th card in the admin Conviction strip, backed by
+  `/api/admin/tier3-progress`. Shows `days/30`, progress bar,
+  remaining-days + env override. Grid widens to
+  `sm:grid-cols-2 lg:grid-cols-4`.
+- Tests: 5 new router tests + testing-agent 14/14 backend pass.
+  Testing agent code-reviewed the frontend tile. 239/239
+  regression tests green.
+
 ### Options Phase 2: Greeks, Tradier quotes, multi-leg spreads, ODD audit (Feb 22, 2026)
 - `compute_greeks()` + `compute_greeks_for_contract()` in
   `ai_core/options_pricing.py` — delta/gamma/theta/vega/rho using
