@@ -3,17 +3,18 @@
 Pure-function surface exposing three independent primitives that
 sharpen the feedback loop:
 
-1. **Outcome-weighted learning** — `GRADE_WEIGHTS` / `score_prediction_outcome`
-   (re-exported from `conviction_service` so there's a single source
-   of truth; this module is the canonical import path for the rest
-   of the pipeline).
+1. **Outcome-weighted learning** — `score_prediction_outcome(grade)`
+   returns the raw severity weight. For the confidence-scaled
+   variant used by conviction calibration, import the 2-arg
+   `conviction_service.score_prediction_outcome(grade, confidence)`
+   directly (it's a different primitive).
 
 2. **Calibration-aware sizing** — `compute_calibration_multiplier(ece)`
    dampens position size when the model's Expected Calibration Error
    is wide. Intuition: if the model says "70% confidence" but that
    actually means 50% right half the time (ECE=0.2), you shouldn't
    scale position size linearly with the confidence the way
-   `compute_confidence_multiplier` does. This mutliplies on top of
+   `compute_confidence_multiplier` does. This multiplies on top of
    confidence sizing to re-anchor the output to reality.
 
 3. **Regime-aware learning** — `compute_regime_weight(trade_regime,
@@ -23,39 +24,50 @@ sharpen the feedback loop:
    chop-regime prediction, and vice versa.
 
 All functions are side-effect-free and import nothing beyond
-stdlib, so they're safe to import from anywhere including hot
-paths. The actual wiring into `ml_retrain_service` and
-`ai_core/sizing` is done at the call sites.
+stdlib + `conviction_service.GRADE_WEIGHTS`, so they're safe to
+import from any hot path. The actual wiring into
+`ml_retrain_service` and `ai_core/sizing` is done at the call
+sites.
+
+Canonical import:
+
+    from ai_core.learning_upgrade import score_prediction_outcome
+
+    score_delta = score_prediction_outcome(grade)
 """
 from __future__ import annotations
 
 from typing import Optional
 
-# Re-export the single source of truth for grade → weight lookup.
-# Historical readers may find `GRADE_WEIGHTS` in `conviction_service`
-# — this module keeps the canonical public-API surface so future
-# imports converge here.
-from services.conviction_service import (  # noqa: F401
-    GRADE_WEIGHTS,
-    score_prediction_outcome,  # (grade, confidence) — conviction-weighted
-)
+# Single source of truth for the grade → weight table. We import
+# rather than redefine so any future edit to `GRADE_WEIGHTS`
+# propagates to both the conviction-service scoring and this
+# learning-upgrade surface automatically.
+from services.conviction_service import GRADE_WEIGHTS  # noqa: F401
 
 
-def grade_to_weight(grade: str) -> float:
-    """Raw grade → signed weight lookup. Pure dict access, no
-    confidence scaling.
+def score_prediction_outcome(grade: str) -> float:
+    """Raw grade → signed severity weight.
 
-    Use when you want the UNSCALED severity — e.g. for threshold
-    checks like "is this a strong miss?" or when the caller has
-    no confidence to multiply by (stats aggregation, bucket keys).
+    Single-argument; no confidence scaling. Returns the canonical
+    per-grade value from `GRADE_WEIGHTS`:
 
-    For calibration-weighted learning signal, use
-    `score_prediction_outcome(grade, confidence)` — that one does
-    the full `GRADE_WEIGHTS[grade] × (confidence/100)` math.
+        STRONG_HIT   → +2.0
+        WEAK_HIT     → +1.0
+        NEUTRAL      →  0.0
+        WEAK_MISS    → -1.0
+        STRONG_MISS  → -2.0
 
-    Unknown grades return 0.0 rather than raising — downstream
-    callers pass raw DB strings and shouldn't crash on an enum
-    addition.
+    This is the primitive the learning layer uses when it wants the
+    raw asymmetry: "how much should this outcome move stats". For
+    the confidence-scaled version (used for per-trade conviction
+    calibration), import from `conviction_service` directly —
+    that one takes `(grade, confidence)` and returns
+    `base_weight × confidence/100`.
+
+    Unknown grades return 0.0 rather than raising. Downstream
+    callers frequently pass raw DB strings, and an enum addition
+    shouldn't crash aggregation jobs.
     """
     return float(GRADE_WEIGHTS.get(grade, 0.0))
 
@@ -175,28 +187,29 @@ def compute_weighted_learning_update(
     """Full scalar learning signal = raw grade weight × regime
     relevance.
 
-    Note this uses `grade_to_weight` (raw severity) rather than
-    `score_prediction_outcome` (confidence-weighted). The combined
-    scalar is usually fed to stats aggregation where confidence
-    has already been factored in upstream. Callers that want
-    confidence baked in should multiply at the call site.
+    Note this uses the 1-arg `score_prediction_outcome` (raw
+    severity) rather than the conviction-service variant
+    (confidence-weighted). The combined scalar is usually fed to
+    stats aggregation where confidence has already been factored
+    in upstream. Callers that want confidence baked in should
+    multiply at the call site.
     """
-    return grade_to_weight(grade) * compute_regime_weight(
+    return score_prediction_outcome(grade) * compute_regime_weight(
         trade_regime, current_regime,
     )
 
 
 # ══════════════════════════════════════════════════════════════════
-# CONVICTION PENALTY (re-export shim)
+# CONVICTION PENALTY (negative-only projection)
 # ══════════════════════════════════════════════════════════════════
 
 def compute_conviction_penalty(grade: str) -> float:
-    """Negative-only projection of `grade_to_weight` — the penalty
-    side only. HITS return 0 (not a penalty). Safer to use when
-    you explicitly want "how much should this HURT conviction" and
-    want HIT grades to be a no-op rather than a positive bonus.
+    """Negative-only projection of `score_prediction_outcome` — the
+    penalty side only. HITS return 0 (not a penalty). Use when you
+    want "how much should this HURT conviction" and HIT grades
+    should be a no-op rather than a positive bonus.
     """
-    return min(grade_to_weight(grade), 0.0)
+    return min(score_prediction_outcome(grade), 0.0)
 
 
 # ══════════════════════════════════════════════════════════════════

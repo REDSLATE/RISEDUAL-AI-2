@@ -1,16 +1,21 @@
-"""Tests for `ai_core.learning_sizing` — pure-function upgrades
+"""Tests for `ai_core.learning_upgrade` — pure-function upgrades
 to outcome weighting, calibration-aware sizing, and regime
 scoping.
 
 These don't touch the database. Each upgrade is a scalar in,
 scalar out, so every test pins a specific boundary or ratio
 that matters downstream.
+
+The canonical call site these tests lock in:
+
+    from ai_core.learning_upgrade import score_prediction_outcome
+    score_delta = score_prediction_outcome(grade)   # 1-arg, raw
 """
 from __future__ import annotations
 
 import pytest
 
-from ai_core.learning_sizing import (
+from ai_core.learning_upgrade import (
     GRADE_WEIGHTS,
     _ECE_FLOOR_MULT,
     apply_calibration_to_size,
@@ -20,7 +25,6 @@ from ai_core.learning_sizing import (
     compute_expectancy,
     compute_regime_weight,
     compute_weighted_learning_update,
-    grade_to_weight,
     score_prediction_outcome,
 )
 
@@ -37,40 +41,55 @@ def test_grade_weights_preserves_hit_miss_asymmetry():
     assert GRADE_WEIGHTS["NEUTRAL"] == 0.0
 
 
+def test_score_prediction_outcome_is_single_arg_raw_lookup():
+    """The canonical 1-arg form — no confidence scaling. Matches
+    the scaffold's documented signature. For the 2-arg
+    confidence-scaled version, import from `conviction_service`
+    directly (different primitive, different module).
+    """
+    assert score_prediction_outcome("STRONG_MISS") == -2.0
+    assert score_prediction_outcome("STRONG_HIT") == 2.0
+    assert score_prediction_outcome("NEUTRAL") == 0.0
+
+
 def test_score_prediction_outcome_unknown_grade_is_neutral():
-    """Unknown grades should NOT crash — downstream callers pass
+    """Unknown grades must NOT crash — downstream callers pass
     raw DB strings. Fallback to 0 is the safe default."""
-    # Raw lookup (unscaled by confidence).
-    assert grade_to_weight("MISSING_ENUM") == 0.0
-    assert grade_to_weight("") == 0.0
-    # Confidence-weighted (same fallback).
-    assert score_prediction_outcome("MISSING_ENUM", 100) == 0.0
+    assert score_prediction_outcome("MISSING_ENUM") == 0.0
+    assert score_prediction_outcome("") == 0.0
 
 
 def test_score_prediction_outcome_strong_miss_is_doubled():
     """Regression-lock on the 2:1 severity ratio the whole pipeline
     assumes."""
-    strong = grade_to_weight("STRONG_MISS")
-    weak = grade_to_weight("WEAK_MISS")
+    strong = score_prediction_outcome("STRONG_MISS")
+    weak = score_prediction_outcome("WEAK_MISS")
     assert strong / weak == 2.0
 
 
-def test_grade_to_weight_matches_grade_weights_dict():
+def test_score_prediction_outcome_matches_grade_weights_dict():
     """The public helper must agree with the canonical dict —
     catches accidental divergence if someone edits one but not
     the other."""
     for grade, expected in GRADE_WEIGHTS.items():
-        assert grade_to_weight(grade) == expected
+        assert score_prediction_outcome(grade) == expected
 
 
-def test_score_prediction_outcome_scales_by_confidence():
-    """The existing confidence-weighted primitive: high-confidence
-    misses hurt more than low-confidence misses at the same grade."""
-    hi = score_prediction_outcome("STRONG_MISS", 100)
-    lo = score_prediction_outcome("STRONG_MISS", 30)
-    assert hi < lo  # both negative; hi is "more negative"
-    assert hi == pytest.approx(-2.0, abs=0.01)
-    assert lo == pytest.approx(-0.6, abs=0.01)
+def test_does_not_collide_with_conviction_service_version():
+    """Both `learning_upgrade.score_prediction_outcome(grade)` AND
+    `conviction_service.score_prediction_outcome(grade, confidence)`
+    are callable from their own modules. This test pins that
+    separation — importing the 2-arg version from conviction_service
+    and the 1-arg version from here must work simultaneously.
+    """
+    from services.conviction_service import (
+        score_prediction_outcome as conviction_score,
+    )
+    # 1-arg from learning_upgrade: pure grade weight.
+    assert score_prediction_outcome("STRONG_MISS") == -2.0
+    # 2-arg from conviction: confidence-scaled.
+    assert conviction_score("STRONG_MISS", 50) == -1.0   # 50/100 * -2.0
+    assert conviction_score("STRONG_MISS", 100) == -2.0  # full conviction
 
 
 # ── Calibration-aware sizing ───────────────────────────────────────

@@ -157,12 +157,12 @@ def compute_final_position_size(
     # confidence, not replacing it. Well-calibrated models (ECE<5%)
     # get 1.0 — legacy callers unchanged. Badly calibrated ones
     # (ECE≥20%) get 0.4×, matching the `_ECE_FLOOR_MULT` in
-    # `ai_core/learning_sizing.py`. When `model_ece` is None (e.g.,
+    # `ai_core/learning_upgrade.py`. When `model_ece` is None (e.g.,
     # no training data yet, or calibration not yet computed), we
     # trust confidence at face value — the readiness gate already
     # prevents untrained-model trading.
     if model_ece is not None:
-        from ai_core.learning_sizing import compute_calibration_multiplier
+        from ai_core.learning_upgrade import compute_calibration_multiplier
         cal_mult = compute_calibration_multiplier(model_ece)
     else:
         cal_mult = 1.0

@@ -85,7 +85,7 @@ async def _load_training_dataframe(
         a -5% blown trade contributes 4× a -0.5% stop-out.
       * regime comes from `regime_label` — rows captured under a
         regime different from the current regime are down-weighted
-        0.5× (see `ai_core.learning_sizing.compute_regime_weight`).
+        0.5× (see `ai_core.learning_upgrade.compute_regime_weight`).
     Missing columns default to neutral 1.0 — never less training
     signal than the legacy uniform path.
     """
@@ -155,7 +155,7 @@ def _apply_regime_weighting(
     """
     if "regime_label" not in df.columns or current_regime is None:
         return severity
-    from ai_core.learning_sizing import compute_regime_weight
+    from ai_core.learning_upgrade import compute_regime_weight
 
     regime_weights = df["regime_label"].apply(
         lambda r: compute_regime_weight(r if isinstance(r, str) else None, current_regime)

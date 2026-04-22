@@ -185,7 +185,7 @@ def test_final_size_respects_absolute_floor():
 # `compute_final_position_size` now accepts an optional
 # `model_ece` kwarg. These tests pin the expected impact on size
 # without duplicating the tier-boundary tests that already live in
-# `test_learning_sizing.py`.
+# `test_learning_upgrade.py`.
 
 
 def test_final_size_legacy_call_unchanged():
