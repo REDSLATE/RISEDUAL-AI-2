@@ -1,5 +1,15 @@
 # RISEDUAL AI — Changelog
 
+## February 2026 — R-Distribution Wired into LearningEngine Admin Summary
+- **`ai_core/learning_engine.py` → `get_summary()`** now includes an `r_distribution: {mean_r, strong_r_frac}` block, sourced from the most recent 500 resolved trades via `summarize_r_distribution` (from `ai_core.risk_weighting`).
+  - Reads precomputed `r_multiple` already stamped by `prediction_tracker` resolve path — no schema migration needed.
+  - Resolved-only filter (`status ∈ {win, loss}`) prevents pending trades (r_multiple=None) from poisoning aggregates.
+  - Never-raise sidecar contract: DB failures return zero-stats, never 500 the admin endpoint.
+  - Rounded to 4 decimals for clean JSON and stable UI diffs.
+- **New: `/app/backend/tests/test_learning_engine_r_distribution.py`** — 5 tests covering empty-state shape, resolved-only query contract, None-row filtering, 4-decimal rounding, and DB-failure isolation.
+- **Live-verified**: `GET /api/admin/learning-engine/summary` returns the new block (owner-only, `admin@risedual.ai`).
+- **Status**: First consumer of `risk_weighting.summarize_r_distribution` is live. ML retrain integration still BLOCKED on full `features_snapshots` schema extension (entry/exit/stop/direction).
+
 ## February 2026 — R-Multiple Risk Weighting Test Coverage (P0)
 - **New: `/app/backend/tests/test_risk_weighting.py`** — 39 tests covering the unwired `ai_core/risk_weighting.py` module: core R math (LONG/SHORT, sign, case-insensitivity, unknown→LONG default), edge cases (None/NaN/non-numeric/zero-risk/integer), piecewise tier mapping (noise/weak/ramp/strong cap), `_LOSS_AMPLIFIER=1.25` cross-module identity pin with `learning_upgrade`, loss penalty (strict `<0` boundary), end-to-end composition, long/short symmetry, max-weight ceiling matches magnitude path (2.5), drift summaries (empty/NaN/all-NaN).
 - **mypy**: `risk_weighting.py` passes with 0 issues; gate on `services/` still 0/0.
