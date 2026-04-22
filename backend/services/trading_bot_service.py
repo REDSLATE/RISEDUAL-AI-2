@@ -33,6 +33,173 @@ ADAPTIVE_SIZING_ENABLED: bool = (
 _MIN_SCALED_QTY: float = 0.01
 
 
+# Hard cap per trade for the USD-notional execution path below.
+# Independent of the per-bot `qty` config — protects against a
+# misconfigured base_size or a runaway readiness multiplier ever
+# sending more than $2000 of notional at a single bot.
+MAX_POSITION_USD: float = 2000.0
+
+
+async def execute_signal(
+    signal: dict,
+    market_data: dict,
+    tier3_readiness: dict,
+    config: Any,
+) -> dict:
+    """USD-notional execution path for signal bots.
+
+    Alternative to `process_signal_for_bots` for callers that
+    already think in dollars (`config.trade_size`) rather than
+    shares (`config.qty`). The two paths are compatible — pick one
+    per bot, don't mix.
+
+    Flow:
+      1. Read `base_size` (USD) from config. Accepts either a dict
+         (legacy `{"trade_size": 1000}`) or an object with a
+         `.trade_size` attribute (the shape the user patch uses).
+      2. Scale via `ai_core.apply_per_trade_sizing`
+         (readiness × confidence). Short-circuits to
+         ``{"skipped": True}`` when the signal fails the confidence
+         gate or the risk filters reduce size to zero.
+      3. Hard-cap the notional at :data:`MAX_POSITION_USD`.
+      4. Convert USD → share count via `signal.entry` or
+         `market_data.price`. Abort on missing/zero price.
+      5. Route the order through the existing `_execute_bot_trade`
+         helper so paper/live mode, broker selection, and circuit-
+         breaker logic stay DRY.
+      6. Emit a structured log line with before/after sizing for
+         observability.
+      7. Return an enriched dict with `order`, `size_usd`, `qty`,
+         `confidence`, and `readiness_score` for the caller.
+
+    Never raises on execution errors — the broker branch of
+    `_execute_bot_trade` returns `{"error": ...}` dicts and we
+    surface those to the caller.
+    """
+    # ── 1. Base size ──
+    base_size = _extract_trade_size(config)
+    if base_size is None or base_size <= 0:
+        return {"skipped": True, "reason": "invalid trade_size"}
+
+    # ── 2. Apply Tier 3 + confidence sizing ──
+    from ai_core import apply_per_trade_sizing
+
+    adjusted_size = apply_per_trade_sizing(
+        base_size=base_size,
+        readiness=tier3_readiness,
+        prediction=signal,
+    )
+
+    # ── 3. Low-confidence / risk-filter skip ──
+    if adjusted_size <= 0:
+        return {"skipped": True, "reason": "low confidence / risk filter"}
+
+    # ── 4. Hard cap ──
+    adjusted_size = min(adjusted_size, MAX_POSITION_USD)
+
+    # ── 5. USD → qty ──
+    price = signal.get("entry") or (market_data or {}).get("price")
+    if not price or price <= 0:
+        return {"skipped": True, "reason": "invalid price"}
+    qty = round(adjusted_size / price, 6)
+    if qty <= 0:
+        return {"skipped": True, "reason": "size too small"}
+
+    # ── 6. Route the order through the existing executor ──
+    symbol = signal["symbol"]
+    side = "buy" if str(signal.get("direction", "LONG")).upper() == "LONG" else "sell"
+    # Synthesise a thin bot record so `_execute_bot_trade` can drive
+    # paper/live mode, circuit-breaker pre-flight, and reconciliation.
+    # If the caller passed a real bot dict on `config._bot`, prefer it.
+    synthetic_bot = _bot_from_config(config, symbol)
+    order = await _execute_bot_trade(
+        synthetic_bot,
+        symbol,
+        side.upper(),
+        qty,
+        float(price),
+        stop_loss=signal.get("stop_loss") or signal.get("sl"),
+        take_profit=signal.get("take_profit") or signal.get("tp"),
+    )
+
+    # ── 7. Log before/after for observability ──
+    logger.info(
+        "[signal-bot/usd] %s %s: base=$%s adjusted=$%s qty=%s "
+        "conf=%s readiness=%s",
+        side.upper(), symbol,
+        round(base_size, 2), round(adjusted_size, 2), qty,
+        signal.get("confidence"),
+        tier3_readiness.get("confidence_score"),
+    )
+
+    # ── 8. Enriched result ──
+    return {
+        "order": order,
+        "size_usd": round(adjusted_size, 2),
+        "qty": qty,
+        "confidence": signal.get("confidence"),
+        "readiness_score": tier3_readiness.get("confidence_score"),
+        "base_size": round(base_size, 2),
+    }
+
+
+def _extract_trade_size(config: Any) -> float | None:
+    """Read `trade_size` from either an object-style config
+    (``config.trade_size``) or a dict-style one
+    (``config["trade_size"]``). Returns `None` when missing."""
+    if config is None:
+        return None
+    if hasattr(config, "trade_size"):
+        val = getattr(config, "trade_size", None)
+    elif isinstance(config, dict):
+        val = config.get("trade_size")
+    else:
+        return None
+    try:
+        return float(val) if val is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _bot_from_config(config: Any, symbol: str) -> dict:
+    """Minimal bot dict suitable for `_execute_bot_trade`. Prefers
+    a pre-built bot doc hung off `config._bot` when the caller has
+    one; otherwise synthesises a paper-mode stub.
+
+    This keeps the USD-path compatible with the existing mode /
+    user_id / risk-guard plumbing without forcing the caller to
+    hand-roll a full bot record.
+    """
+    if hasattr(config, "_bot") and isinstance(getattr(config, "_bot"), dict):
+        return config._bot
+    if isinstance(config, dict) and isinstance(config.get("_bot"), dict):
+        return config["_bot"]
+    # Fallback: synthesise. Without a user_id we can't run the risk
+    # pre-flight but the order will still execute in paper mode.
+    mode = "paper"
+    user_id = None
+    name = "usd-exec"
+    if hasattr(config, "mode"):
+        mode = getattr(config, "mode", "paper")
+    elif isinstance(config, dict):
+        mode = config.get("mode", "paper")
+    if hasattr(config, "user_id"):
+        user_id = getattr(config, "user_id", None)
+    elif isinstance(config, dict):
+        user_id = config.get("user_id")
+    if hasattr(config, "name"):
+        name = getattr(config, "name", name)
+    elif isinstance(config, dict):
+        name = config.get("name", name)
+    return {"_id": f"usd-bot-{symbol}", "user_id": user_id, "name": name, "mode": mode}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# END — USD-notional execution path
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+
 BOT_TYPES = {"grid", "signal", "webhook"}
 
 

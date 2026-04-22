@@ -24,6 +24,67 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — USD-notional `execute_signal` helper
+*Session: continued*
+
+Second signal-bot execution path driven off the user's patch. Works
+in **dollar-notional terms** (`config.trade_size`) rather than
+shares, with a hard `$2000` cap per trade. Complements the existing
+share-based `process_signal_for_bots` — pick one per bot, don't mix.
+
+**What shipped in `services/trading_bot_service.py`:**
+- `MAX_POSITION_USD = 2000.0` — module-level hard cap so a
+  misconfigured `base_size` or runaway readiness multiplier can
+  never send more than $2k of notional at a single bot.
+- `execute_signal(signal, market_data, tier3_readiness, config)` —
+  implements the 7-step flow from the user patch:
+  1. Read `base_size` from config (accepts both object
+     `config.trade_size` and dict `config["trade_size"]`).
+  2. Scale via `ai_core.apply_per_trade_sizing`.
+  3. Short-circuit on 0-size (low confidence / risk filter).
+  4. Hard-cap at `MAX_POSITION_USD`.
+  5. Convert USD → shares via `signal.entry` or `market_data.price`
+     (guards missing/zero price).
+  6. Route through the existing `_execute_bot_trade` executor so
+     paper/live mode, circuit-breaker pre-flight, and broker
+     selection stay DRY.
+  7. Return enriched dict: `order`, `size_usd`, `qty`,
+     `confidence`, `readiness_score`, `base_size`.
+- Helpers:
+  * `_extract_trade_size(config)` — reads from object or dict shape.
+  * `_bot_from_config(config, symbol)` — prefers an embedded
+    `config._bot` when the caller has a real bot record;
+    otherwise synthesises a minimal paper-mode stub so the USD
+    path can be used headlessly (e.g. backtests, ad-hoc scripts).
+
+**Two implementation notes vs the exact patch:**
+1. Called `_execute_bot_trade` instead of a bare `place_order`
+   function — that hooks us into the existing circuit-breaker
+   pre-flight, paper/live mode branching, and broker reconciliation
+   without duplicating code.
+2. Replaced the `print()` logging with `logger.info()` so
+   structured logs route through the existing supervisor pipeline.
+
+**Verified:**
+- 18 new tests in `tests/test_execute_signal_usd.py`:
+  * `_extract_trade_size`: object / dict / missing / garbage.
+  * Happy paths: scaling + USD→qty conversion, throttled readiness,
+    SHORT direction, market_data fallback when signal has no entry,
+    dict-config acceptance.
+  * Skip paths: below-confidence gate, invalid trade_size, zero
+    price, missing price, tiny-size.
+  * `MAX_POSITION_USD` cap enforced.
+  * `_bot_from_config`: embedded bot preferred, paper stub
+    synthesis, dict-mode extraction.
+- Full 10-suite regression: **170/170 green**.
+- Ruff clean. Backend restart clean.
+
+**Files changed:**
+- `backend/services/trading_bot_service.py` — MAX_POSITION_USD +
+  `execute_signal` + helpers.
+- `backend/tests/test_execute_signal_usd.py` (new)
+
+
 ### 2026-02-20 — Adaptive sizing wired into signal-bot dispatcher
 *Session: continued*
 
