@@ -27,6 +27,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { Label } from './ui/label';
+import { TradeModePill } from './ui/TradeModePill';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 
@@ -122,25 +123,25 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
           size="sm"
           onClick={() => openModal('buy')}
           data-testid={`options-paper-buy-${row.contract}`}
-          className="bg-green-600 hover:bg-green-700 flex items-center gap-1.5 text-xs"
+          className="bg-green-600 hover:bg-green-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
         >
-          <TrendingUp className="w-3.5 h-3.5" />
-          Buy
-          <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-400 text-slate-900 rounded">
-            PAPER
+          <span className="flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" />
+            Buy
           </span>
+          <TradeModePill mode="paper" />
         </Button>
         <Button
           size="sm"
           onClick={() => openModal('sell')}
           data-testid={`options-paper-sell-${row.contract}`}
-          className="bg-red-600 hover:bg-red-700 flex items-center gap-1.5 text-xs"
+          className="bg-red-600 hover:bg-red-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
         >
-          <TrendingDown className="w-3.5 h-3.5" />
-          Sell
-          <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-400 text-slate-900 rounded">
-            PAPER
+          <span className="flex items-center gap-1.5">
+            <TrendingDown className="w-3.5 h-3.5" />
+            Sell
           </span>
+          <TradeModePill mode="paper" />
         </Button>
       </div>
 
@@ -156,9 +157,7 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
                   <h3 className="text-white text-xl font-bold">
                     {sideLabel}
                   </h3>
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-400 text-slate-900 rounded">
-                    PAPER
-                  </span>
+                  <TradeModePill mode="paper" size="md" />
                 </div>
                 <p className="text-slate-300 text-sm mt-1">
                   {row.contract} ${parsed.strike} {parsed.type.toUpperCase()}

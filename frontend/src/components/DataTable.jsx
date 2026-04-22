@@ -201,7 +201,7 @@ const getCellContent = (col, row) => {
         </p>
         <button 
           onClick={() => toast.info('Full data view coming soon!')}
-          className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+          className="text-[#3DE8D9] hover:text-[#7AEEE0] text-sm font-medium transition-colors"
         >
           See more →
         </button>
