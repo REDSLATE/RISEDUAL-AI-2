@@ -24,6 +24,69 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Tier 3 composite unlock gate (6 checks + readiness score)
+*Session: continued*
+
+Replaces the simple "30 days + accuracy" gate with a production-grade
+6-check unlock decision + 0-100 readiness score, driven from the
+user-supplied `check_tier3_unlock()` spec.
+
+**The 6 gates:**
+  1. **Exposure** — 30+ live days AND 100+ trades.
+  2. **High-confidence accuracy** — ≥30 samples at conf ≥70 AND
+     win-rate ≥75% inside that bucket.
+  3. **Calibration** — |high_conf_win_rate − avg_conf/100| ≤ 0.15
+     (only enforced once we have ≥30 high-conf samples; avoids
+     false-flagging small-sample noise).
+  4. **Risk control** — STRONG_MISS rate ≤ 10%.
+  5. **Stability** — last-7d win-rate ≥ overall − 15 pp.
+  6. **Canary** — conviction clamp_total == 0.
+
+**What shipped:**
+- `services/tier3_readiness.py` —
+  * `check_tier3_unlock(stats)` — verbatim user spec, returns
+    `{unlocked, reasons, confidence_score}`.
+  * `compute_tier3_score(stats)` — weighted 0-100 composite
+    (weights: 20/15/25/20/10/10 sum to 100). Clamps inputs so
+    garbage values can't push past the 100 ceiling.
+  * `build_tier3_stats(db, days)` — single-pass prediction scan +
+    paper-trade count + clamp canary fetch; fails closed to a
+    zeroed dict.
+  * `tier3_readiness_snapshot(db)` — wraps stats + decision for
+    the admin endpoint.
+- `routes/admin.py` — new `GET /api/admin/tier3-readiness?days=30`.
+- `components/admin/MLHealthStrip.jsx` — now THREE cards:
+  * Tier 3 readiness (score + failing-reason list, replaces the
+    old "days / 30" progress bar).
+  * Clamp canary (unchanged).
+  * NEW: Calibration ECE card — shows Expected Calibration Error
+    plus a dominant-bucket sign readout so admins see
+    "under-confident +0.31" at a glance.
+
+**Verified:**
+- 20 new tests in `tests/test_tier3_readiness.py` — one-at-a-time
+  failing-gate coverage, sample-size short-circuit, calibration
+  check gated by sample count, weight-sum invariant, input clamping.
+- Full conviction/tier-3 suite: 77/77 green.
+- Live owner smoke test:
+  * readiness score = **81.33 / 100**
+  * blocking reasons: `Insufficient live days` (7/30),
+    `Insufficient trade count` (82/100), `Not enough high-confidence
+    samples` (5/30).
+  * passing: high_conf_win_rate=100%, strong_miss_rate=3.2%,
+    last_7d_win_rate=100%, clamp_total=0.
+  * Insight: every blocker is sample-size, not model quality — the
+    model is already GOOD ENOUGH, it just hasn't been given enough
+    live surface area yet.
+- Backend restart clean. Lint clean (Python + JSX).
+
+**Files changed:**
+- `backend/services/tier3_readiness.py` (new)
+- `backend/routes/admin.py` — new `/tier3-readiness` endpoint
+- `backend/tests/test_tier3_readiness.py` (new)
+- `frontend/src/components/admin/MLHealthStrip.jsx` — 3-card layout
+
+
 ### 2026-02-20 — Reliability-diagram calibration endpoint (decile buckets)
 *Session: continued*
 

@@ -421,6 +421,18 @@ async def conviction_reliability(request: Request, days: int = 30):
     return await reliability_snapshot(db, days=days)
 
 
+@router.get("/tier3-readiness")
+async def tier3_readiness(request: Request, days: int = 30):
+    """Composite Tier 3 unlock gate — 6 checks plus a 0-100 readiness
+    score. Stricter than the simple 30-day + accuracy gate: adds
+    high-confidence win-rate, calibration gap, strong-miss rate,
+    last-7d stability, and the conviction clamp canary."""
+    await _require_admin(request)
+    from services.tier3_readiness import tier3_readiness_snapshot
+    days = max(1, min(int(days), 365))
+    return await tier3_readiness_snapshot(db, days=days)
+
+
 # ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
