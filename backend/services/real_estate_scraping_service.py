@@ -4,7 +4,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from services.structured_log import log_error, log_warning
 
@@ -73,7 +73,7 @@ class RealEstateScrapingService:
             return {
                 'source': 'Zillow',
                 'data_available': True,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'note': 'Zillow Home Value Index data available'
             }
         except Exception as e:
@@ -94,7 +94,7 @@ class RealEstateScrapingService:
             return {
                 'source': 'Redfin',
                 'data_available': True,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -114,7 +114,7 @@ class RealEstateScrapingService:
             return {
                 'source': 'Realtor.com',
                 'data_available': True,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -145,7 +145,7 @@ class RealEstateScrapingService:
                 'avg_rent_psf': 'N/A',
                 'trend': 'declining',
                 'note': 'Office market showing weakness post-pandemic',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -163,7 +163,7 @@ class RealEstateScrapingService:
                 'vacancy_rate': 'N/A',
                 'trend': 'mixed',
                 'note': 'Retail showing bifurcation: luxury strong, mid-tier weak',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -181,7 +181,7 @@ class RealEstateScrapingService:
                 'vacancy_rate': 'Low',
                 'trend': 'strong',
                 'note': 'Industrial/logistics remain strong with e-commerce growth',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -199,7 +199,7 @@ class RealEstateScrapingService:
                 'occupancy_rate': 'High',
                 'trend': 'stable',
                 'note': 'Multifamily remains resilient with housing demand',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -221,7 +221,7 @@ class RealEstateScrapingService:
                 '30_year_fixed': None,
                 '15_year_fixed': None,
                 'trend': None,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
             # Try to extract rate data
@@ -239,7 +239,7 @@ class RealEstateScrapingService:
             })
             return {
                 'note': 'Mortgage rates data unavailable',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
     
     async def scrape_reit_market(self) -> dict:
@@ -256,7 +256,7 @@ class RealEstateScrapingService:
                     'healthcare': 'stable'
                 },
                 'sentiment': 'mixed',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             log_error(logger, {
@@ -280,7 +280,7 @@ class RealEstateScrapingService:
                     'crypto': 'Real estate weakness may drive alternative asset interest',
                     'bonds': 'Housing data could influence Fed policy decisions'
                 },
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
             return trends

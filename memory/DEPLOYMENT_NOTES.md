@@ -24,7 +24,41 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
-### 2026-02-20 — P2 RESOLVED: QuiverQuant flakiness + insider scraper
+### 2026-04-22 — Date-rendering bug fix: 27× `datetime.utcnow()` → `datetime.now(timezone.utc)`
+*Session: continued*
+
+User caught that emails were showing timestamps "all over the place".
+Root cause: 27 calls to `datetime.utcnow().isoformat()` scattered
+across 4 scraping services returned naive ISO strings
+(`"2026-04-22T14:30:00"`) — no `Z` or `+00:00` suffix. Email
+clients + JS `new Date()` render naive strings in the recipient's
+local time, not UTC, so the same timestamp appeared to be different
+dates to different readers.
+
+**Fix:** mechanical sweep, `datetime.utcnow()` → `datetime.now(timezone.utc)`.
+Output now ends with `+00:00`, which every downstream renderer
+(email clients, browser timezone logic, MongoDB driver) interprets
+correctly.
+
+**Files touched (all-27 sites closed):**
+- `services/market_prediction_service.py` — 4 sites (prediction
+  timestamps used in UI cards AND alert emails).
+- `services/real_estate_scraping_service.py` — 11 sites.
+- `services/crypto_scraping_service.py` — 4 sites.
+- `services/financial_scraping_service.py` — 8 sites (insider
+  trades, news, sentiment — all of which feed into the daily
+  digest email).
+
+**Verification:**
+- Zero `datetime.utcnow()` calls remain in non-test backend code
+  (was 27).
+- Live `GET /api/market/insider-trades` response timestamps now
+  end with `+00:00`:
+  `"timestamp": "2026-04-22T15:08:47.354464+00:00"`.
+- `ruff` clean on all 4 files.
+- `typecheck.sh` still at baseline 69.
+
+### 2026-04-22 — P2 RESOLVED: QuiverQuant flakiness + insider scraper
 *Session: continued*
 
 Not "flaky" — **their per-ticker historical routes have been 500-ing
@@ -111,7 +145,7 @@ the wrong response shape (dict vs list → 500s in FastAPI serializer).
 - `typecheck.sh`: baseline 69 unchanged.
 - lint clean on all 3 touched backend files.
 
-### 2026-02-20 — Landing demo video: full OAuth flow + user-facing copy fix
+### 2026-04-22 — Landing demo video: full OAuth flow + user-facing copy fix
 *Session: continued*
 
 Replaced the 1 KB placeholder on the landing page with a real ~23 s
@@ -157,7 +191,7 @@ now "Connection: Synchronized".
   "Connection: Synchronized" label — no "OAuth 2.0" string visible
   as a field value.
 
-### 2026-02-20 — Code-review cleanup (MD5 → SHA-256 + empty catch logging)
+### 2026-04-22 — Code-review cleanup (MD5 → SHA-256 + empty catch logging)
 *Session: continued*
 
 Low-risk hygiene wins from a static-analysis pass. Full review was

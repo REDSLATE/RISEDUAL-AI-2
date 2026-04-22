@@ -1,7 +1,7 @@
 import logging
 import requests
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class CryptoScrapingService:
                     'ask_volume': asks,
                     'pressure': pressure,
                     'sentiment': 'bullish' if pressure > 0.1 else 'bearish' if pressure < -0.1 else 'neutral',
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 })
             
             return orderbooks
@@ -70,7 +70,7 @@ class CryptoScrapingService:
                         'exchange': 'Coinbase',
                         'symbol': crypto,
                         'rate': float(rates[crypto]),
-                        'timestamp': datetime.utcnow().isoformat()
+                        'timestamp': datetime.now(timezone.utc).isoformat()
                     })
             
             return cryptos
@@ -94,7 +94,7 @@ class CryptoScrapingService:
                     'amount_usd': 75000000,
                     'from': 'unknown',
                     'to': 'exchange',
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                     'impact': 'high'
                 }
             ]
@@ -118,7 +118,7 @@ class CryptoScrapingService:
                 'btc_dominance': global_data.get('market_cap_percentage', {}).get('btc', 0),
                 'eth_dominance': global_data.get('market_cap_percentage', {}).get('eth', 0),
                 'sentiment': 'bullish' if global_data.get('market_cap_change_percentage_24h_usd', 0) > 2 else 'bearish' if global_data.get('market_cap_change_percentage_24h_usd', 0) < -2 else 'neutral',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             logger.error(f"Crypto sentiment error: {str(e)}")

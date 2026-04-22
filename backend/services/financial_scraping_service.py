@@ -54,7 +54,7 @@ class FinancialScrapingService:
                         'source': 'CNBC',
                         'title': title.get_text(strip=True),
                         'url': title.get('href'),
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None  # Will be analyzed by AI
                     })
             return articles
@@ -80,7 +80,7 @@ class FinancialScrapingService:
                     'source': 'Reuters',
                     'title': article.get_text(strip=True),
                     'url': 'https://www.reuters.com' + article.get('href', ''),
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                     'sentiment': None
                 })
             return articles
@@ -108,7 +108,7 @@ class FinancialScrapingService:
                         'source': 'MarketWatch',
                         'title': link.get_text(strip=True),
                         'url': link.get('href'),
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles
@@ -136,7 +136,7 @@ class FinancialScrapingService:
                         'source': 'Fox Business',
                         'title': link.get_text(strip=True),
                         'url': 'https://www.foxbusiness.com' + link.get('href', ''),
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles
@@ -173,7 +173,7 @@ class FinancialScrapingService:
                         'source': 'Wall Street Journal',
                         'title': link.get_text(strip=True),
                         'url': full_url,
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles
@@ -206,7 +206,7 @@ class FinancialScrapingService:
                         'source': 'Bloomberg',
                         'title': headline.get_text(strip=True),
                         'url': full_url,
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles
@@ -234,7 +234,7 @@ class FinancialScrapingService:
                         'source': 'OAN',
                         'title': link.get_text(strip=True),
                         'url': link.get('href'),
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles
@@ -267,7 +267,7 @@ class FinancialScrapingService:
                         'source': 'Epoch Times',
                         'title': link.get_text(strip=True),
                         'url': full_url,
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'sentiment': None
                     })
             return articles

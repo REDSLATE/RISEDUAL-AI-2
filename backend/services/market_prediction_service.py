@@ -2,7 +2,7 @@ import logging
 from typing import Any, Optional
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from services.structured_log import log_error, log_warning
 
@@ -184,7 +184,7 @@ class MarketPredictionService:
             # Get AI analysis
             chat = LlmChat(
                 api_key=self.api_key,
-                session_id=f"prediction_{datetime.utcnow().timestamp()}",
+                session_id=f"prediction_{datetime.now(timezone.utc).timestamp()}",
                 system_message=self.system_message
             ).with_model("openai", "gpt-5.2")
             
@@ -226,10 +226,10 @@ Provide your analysis in JSON format with:
                     'confidence_score': 70,
                     'summary': 'AI analysis complete. See signals and risk factors below.',
                     'key_signals': ['AI analysis in progress'],
-                    'timestamp': datetime.utcnow().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
             
-            prediction['timestamp'] = datetime.utcnow().isoformat()
+            prediction['timestamp'] = datetime.now(timezone.utc).isoformat()
             prediction['data_sources'] = {
                 'news_articles': len(financial_news),
                 'crypto_signals': len(crypto_data),
@@ -398,5 +398,5 @@ Provide your analysis in JSON format with:
             'summary': 'Insufficient data for prediction. Market appears neutral.',
             'key_signals': ['Data collection in progress'],
             'risk_factors': ['Limited data available'],
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }

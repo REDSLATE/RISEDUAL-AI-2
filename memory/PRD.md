@@ -661,7 +661,19 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
-### 2026-02-20 — P2 RESOLVED: QuiverQuant + insider scraper
+### 2026-04-22 — Date-rendering fix: 27× `datetime.utcnow()` → `datetime.now(timezone.utc)`
+* User reported emails showing timestamps "all over the place". Root
+  cause: 27 calls to `datetime.utcnow().isoformat()` across 4
+  scraping services returned naive ISO strings with no `+00:00`
+  suffix; email clients rendered them in recipient local time,
+  producing inconsistent dates across recipients.
+* Mechanical sweep closed all 27 sites in
+  `market_prediction_service`, `real_estate_scraping_service`,
+  `crypto_scraping_service`, and `financial_scraping_service`.
+* Live verification: insider-trade timestamps now end with
+  `+00:00`. Zero remaining `utcnow()` calls in non-test backend.
+
+### 2026-04-22 — P2 RESOLVED: QuiverQuant + insider scraper
 * **Root cause reframed**: not flakiness. Quiver's
   `beta/historical/{endpoint}/{ticker}` routes have been 500-ing
   across the board for weeks; `beta/live/*` (full feed) routes
