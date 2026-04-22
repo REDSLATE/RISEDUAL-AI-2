@@ -89,3 +89,106 @@ def test_payload_attached_under_structured_extra_key(logger, caplog):
 def test_structured_extra_uses_caller_logger_name(logger, caplog):
     log_warning(logger, {"context": "x"})
     assert caplog.records[-1].name == "test.structured"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# unwrap_gather_result
+# ════════════════════════════════════════════════════════════════════════════
+
+from services.structured_log import unwrap_gather_result  # noqa: E402
+import asyncio  # noqa: E402
+
+
+def test_unwrap_passes_through_plain_value(logger, caplog):
+    """Non-exception, non-None value comes back unchanged."""
+    out = unwrap_gather_result({"k": 1}, {}, logger, "ctx")
+    assert out == {"k": 1}
+    assert not caplog.records  # no logging on happy path
+
+
+def test_unwrap_returns_fallback_on_none(logger, caplog):
+    out = unwrap_gather_result(None, {"fallback": True}, logger, "ctx")
+    assert out == {"fallback": True}
+    assert not caplog.records  # None is a silent skip
+
+
+def test_unwrap_cancelled_error_is_silent(logger, caplog):
+    """CancelledError returns fallback without ANY log — would be shutdown spam."""
+    out = unwrap_gather_result(
+        asyncio.CancelledError("shutdown"),
+        {"fallback": True},
+        logger, "ctx", "note",
+    )
+    assert out == {"fallback": True}
+    assert not caplog.records, (
+        f"CancelledError should not log, got: "
+        f"{[r.getMessage() for r in caplog.records]}"
+    )
+
+
+def test_unwrap_real_exception_logs_at_error_level(logger, caplog):
+    """A real BaseException (not Cancelled) logs via log_error."""
+    err = ValueError("boom")
+    out = unwrap_gather_result(
+        err, {"fallback": True},
+        logger, "test_ctx", "something failed",
+    )
+    assert out == {"fallback": True}
+    assert len(caplog.records) == 1
+    rec = caplog.records[0]
+    assert rec.levelname == "ERROR"
+    assert rec.structured["context"] == "test_ctx"
+    assert rec.structured["type"] == "ValueError"
+    assert rec.structured["error"] == "boom"
+    assert rec.structured["note"] == "something failed"
+
+
+def test_unwrap_extra_kwargs_propagate_to_structured_payload(logger, caplog):
+    """Arbitrary `**extra` kwargs land on the structured log dict —
+    used by callers to pass `symbol=AAPL`, `spec_id=CPIAUCSL`, etc."""
+    unwrap_gather_result(
+        ValueError("x"), {},
+        logger, "ctx", "note",
+        symbol="AAPL", spec_id="CPIAUCSL", attempt=3,
+    )
+    assert len(caplog.records) == 1
+    s = caplog.records[0].structured
+    assert s["symbol"] == "AAPL"
+    assert s["spec_id"] == "CPIAUCSL"
+    assert s["attempt"] == 3
+
+
+def test_unwrap_without_logger_silently_swallows(caplog):
+    """logger=None opt-out path — used in tests where observability
+    isn't the concern. Real errors still swap for fallback, just no log."""
+    out = unwrap_gather_result(ValueError("x"), {"f": 1})
+    assert out == {"f": 1}
+    assert not caplog.records
+
+
+def test_unwrap_cancelled_takes_priority_over_base_exception_check():
+    """Narrowing-order sanity: CancelledError is both a BaseException
+    AND CancelledError. Make sure it hits the silent branch, not
+    the log branch. Without a logger we can still observe via
+    fallback — same returned value, but if log branch fired we'd
+    have seen a log_error attempt."""
+    # No logger passed; if the CancelledError branch is first, nothing
+    # happens. If the BaseException branch is first and logger is None
+    # it still returns fallback — so we can't distinguish by return
+    # value alone. Instead, pass a logger and assert no log fires.
+    import logging as _l
+    lg = _l.getLogger("test.order")
+    records: list = []
+
+    class _Handler(_l.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    h = _Handler()
+    lg.addHandler(h)
+    lg.setLevel(_l.DEBUG)
+    try:
+        unwrap_gather_result(asyncio.CancelledError("x"), None, lg, "ctx", "note")
+    finally:
+        lg.removeHandler(h)
+    assert not records

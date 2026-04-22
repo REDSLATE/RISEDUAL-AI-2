@@ -53,7 +53,7 @@ async def test_get_macro_indicators_survives_cancelled_error_in_gather_result(
     (no log line), because cancellation is expected during shutdown and
     logging would spam operator consoles."""
     import logging as _logging
-    caplog.set_level(_logging.WARNING, logger="services.fred_service")
+    caplog.set_level(_logging.DEBUG, logger="services.fred_service")
     monkeypatch.setenv("FRED_API_KEY", "test-key")
     _clear_cache()
 
@@ -92,7 +92,7 @@ async def test_get_macro_indicators_logs_plain_exception(monkeypatch, caplog):
     type, error, and spec_id all land on the LogRecord so log
     aggregators can index and query them."""
     import logging as _logging
-    caplog.set_level(_logging.WARNING, logger="services.fred_service")
+    caplog.set_level(_logging.DEBUG, logger="services.fred_service")
     monkeypatch.setenv("FRED_API_KEY", "test-key")
     _clear_cache()
 
@@ -111,17 +111,17 @@ async def test_get_macro_indicators_logs_plain_exception(monkeypatch, caplog):
 
     assert result["indicators"] == []
     # Real errors DO log — this is the observability part of the fix.
-    fred_warnings = [r for r in caplog.records
+    fred_errors = [r for r in caplog.records
                      if r.name == "services.fred_service"
-                     and r.levelname == "WARNING"]
-    assert len(fred_warnings) == 1, (
-        f"Expected 1 warning for ValueError, got {len(fred_warnings)}: "
-        f"{[r.getMessage() for r in fred_warnings]}"
+                     and r.levelname == "ERROR"]
+    assert len(fred_errors) == 1, (
+        f"Expected 1 ERROR for ValueError, got {len(fred_errors)}: "
+        f"{[r.getMessage() for r in fred_errors]}"
     )
     # Message is human-readable for log tailing.
-    assert "upstream 503" in fred_warnings[0].getMessage()
+    assert "upstream 503" in fred_errors[0].getMessage()
     # Structured payload is attached for log-aggregator queries.
-    record = fred_warnings[0]
+    record = fred_errors[0]
     assert hasattr(record, "structured"), "structured payload missing"
     s = record.structured
     assert s["context"] == "fred_fetch"

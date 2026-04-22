@@ -12,7 +12,7 @@ from services.price_provider import get_overview_sync, get_quote_sync
 def _av_key() -> str:
     return os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 
-from services.structured_log import log_error, log_warning
+from services.structured_log import log_error, log_warning, unwrap_gather_result
 
 logger = logging.getLogger(__name__)
 
@@ -193,11 +193,7 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
     earnings_task = asyncio.to_thread(fetch_earnings_surprises, symbol)
     insider_task = asyncio.to_thread(fetch_insider_trades, symbol)
 
-    # Pre-declare variable types so mypy can narrow through the
-    # three-tier BaseException guards below. Without this, the
-    # `isinstance(x, BaseException)` branches + `{}` reassignments
-    # confuse mypy's tuple-unpack inference and downstream `.get(...)`
-    # calls lose their type.
+    # Pre-declare types so mypy narrows through `unwrap_gather_result`.
     overview: dict | BaseException
     earnings: dict | BaseException
     insiders: dict | BaseException
@@ -206,49 +202,29 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
         return_exceptions=True,
     )
 
-    # Three-tier guard for `asyncio.gather(return_exceptions=True)` —
-    # `asyncio.CancelledError` is a `BaseException` (not `Exception`)
-    # and WILL land in the results during FastAPI request cancellation.
-    # See `services/fred_service.py` for the canonical comment.
-
-    # ── OVERVIEW ──
-    if isinstance(overview, asyncio.CancelledError):
-        overview = {}
-    elif isinstance(overview, BaseException):
-        log_error(logger, {
-            "error": str(overview),
-            "type": type(overview).__name__,
-            "context": "war_room",
-            "note": "War room overview error",
-            "symbol": symbol,
-        })
-        overview = {}
-
-    # ── EARNINGS ──
-    if isinstance(earnings, asyncio.CancelledError):
-        earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
-    elif isinstance(earnings, BaseException):
-        log_error(logger, {
-            "error": str(earnings),
-            "type": type(earnings).__name__,
-            "context": "war_room",
-            "note": "War room earnings error",
-            "symbol": symbol,
-        })
-        earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}
-
-    # ── INSIDERS ──
-    if isinstance(insiders, asyncio.CancelledError):
-        insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
-    elif isinstance(insiders, BaseException):
-        log_error(logger, {
-            "error": str(insiders),
-            "type": type(insiders).__name__,
-            "context": "war_room",
-            "note": "War room insiders error",
-            "symbol": symbol,
-        })
-        insiders = {"trades": [], "buy_volume": 0, "sell_volume": 0, "net_sentiment": "neutral", "buy_ratio": 50}
+    # Canonical three-tier `asyncio.gather` guard — see
+    # `services/structured_log.unwrap_gather_result`. Silent skip on
+    # CancelledError (shutdown noise), structured log_error on real
+    # BaseExceptions, fallback on None.
+    overview = unwrap_gather_result(
+        overview, {},
+        logger, "war_room", "overview fetch failed",
+        symbol=symbol,
+    )
+    earnings = unwrap_gather_result(
+        earnings,
+        {"quarters": [], "beat_rate": 0,
+         "current_streak": 0, "total_quarters": 0},
+        logger, "war_room", "earnings fetch failed",
+        symbol=symbol,
+    )
+    insiders = unwrap_gather_result(
+        insiders,
+        {"trades": [], "buy_volume": 0, "sell_volume": 0,
+         "net_sentiment": "neutral", "buy_ratio": 50},
+        logger, "war_room", "insiders fetch failed",
+        symbol=symbol,
+    )
 
     # Run multi-agent crew (3 parallel agents + 1 synthesizer = ~20s)
     try:

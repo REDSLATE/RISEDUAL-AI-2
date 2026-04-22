@@ -18,6 +18,8 @@ import os
 import logging
 import asyncio
 
+from services.structured_log import unwrap_gather_result
+
 from dataclasses import dataclass
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -184,23 +186,21 @@ class CrewEngine:
         clean_results = []
         accumulated_context = ""
         for i, r in enumerate(agent_results):
-            # Three-tier guard for `asyncio.gather(return_exceptions=True)` —
-            # `asyncio.CancelledError` is `BaseException`, not `Exception`,
-            # so the old `isinstance(r, Exception)` exclusion would let a
-            # cancelled agent fall into the `else` branch and crash at
-            # `tr.success` with `AttributeError`. Reachable when an LLM
-            # request is cancelled mid-stream.
-            if isinstance(r, asyncio.CancelledError):
-                tr = TaskResult(agent_role=agents[i].role,
-                                output="(agent cancelled)", success=False)
-            elif isinstance(r, BaseException):
-                tr = TaskResult(agent_role=agents[i].role,
-                                output=f"Error: {r}", success=False)
-            else:
-                tr = r
-            clean_results.append(tr)
-            if tr.success:
-                accumulated_context += f"\n\n--- {tr.agent_role} Analysis ---\n{tr.output}"
+            # Canonical `asyncio.gather` unwrap — silent on
+            # CancelledError, logged on other BaseExceptions.
+            # Fallback is a failure TaskResult so downstream
+            # synthesis doesn't crash at `tr.success`.
+            r = unwrap_gather_result(
+                r,
+                TaskResult(agent_role=agents[i].role,
+                           output=f"Error or cancelled: {r}",
+                           success=False),
+                logger, "crew_engine", "agent run failed",
+                agent_role=agents[i].role,
+            )
+            clean_results.append(r)
+            if r.success:
+                accumulated_context += f"\n\n--- {r.agent_role} Analysis ---\n{r.output}"
 
         # Synthesizer runs on its own thread (not blocking the main loop)
         synth_result = await asyncio.to_thread(

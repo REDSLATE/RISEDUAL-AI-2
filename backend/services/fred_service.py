@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import httpx
 
-from services.structured_log import log_warning
+from services.structured_log import unwrap_gather_result
 
 logger = logging.getLogger(__name__)
 
@@ -95,28 +95,17 @@ async def get_macro_indicators() -> dict:
         tasks = [_fetch_series(client, s["id"], key) for s in MACRO_SERIES]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    indicators = []
+    indicators: list[dict] = []
     categories: dict[str, Any] = {}
 
     for spec, result in zip(MACRO_SERIES, results):
-        # Three-tier guard for `asyncio.gather(return_exceptions=True)`:
-        #   1. CancelledError — expected during FastAPI shutdown /
-        #      ASGI timeout. Skip silently; logging would spam.
-        #   2. Any other BaseException — real failure worth surfacing
-        #      (the upstream fetcher already logs its own context, but
-        #      we log the spec id so drift detection picks it up).
-        #   3. None — fetcher returned empty. Skip silently.
-        # Only then does `result` narrow to a dict and `.get()` is safe.
-        if isinstance(result, asyncio.CancelledError):
-            continue
-        if isinstance(result, BaseException):
-            log_warning(logger, {
-                "error": str(result),
-                "type": type(result).__name__,
-                "context": "fred_fetch",
-                "spec_id": spec.get("id"),
-            })
-            continue
+        # Canonical `asyncio.gather` unwrap — silent on CancelledError,
+        # log_error on other BaseExceptions, skip on None.
+        result = unwrap_gather_result(
+            result, None,
+            logger, "fred_fetch", "macro series fetch failed",
+            spec_id=spec.get("id"),
+        )
         if result is None:
             continue
 
@@ -398,21 +387,12 @@ async def get_vintage_comparison(series_id: str, vintage_dates: list[str]) -> di
     # Build vintage maps
     vintage_results = []
     for vdate, vdata in zip(vintage_dates, vintages):
-        # Three-tier guard — see `get_macro_indicators` for the full
-        # rationale. Cancelled = silent skip, other BaseException =
-        # logged so drift-detection doesn't silently lose a vintage.
-        if isinstance(vdata, asyncio.CancelledError):
-            vintage_results.append({"date": vdate, "observations": [], "revisions": []})
-            continue
-        if isinstance(vdata, BaseException):
-            log_warning(logger, {
-                "error": str(vdata),
-                "type": type(vdata).__name__,
-                "context": "fred_vintage_fetch",
-                "vintage_date": vdate,
-            })
-            vintage_results.append({"date": vdate, "observations": [], "revisions": []})
-            continue
+        # Canonical `asyncio.gather` unwrap — see `get_macro_indicators`.
+        vdata = unwrap_gather_result(
+            vdata, None,
+            logger, "fred_vintage_fetch", "vintage fetch failed",
+            vintage_date=vdate,
+        )
         if vdata is None:
             vintage_results.append({"date": vdate, "observations": [], "revisions": []})
             continue
