@@ -24,6 +24,47 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Grade-weighted conviction calibration (user patch)
+*Session: continued*
+
+Closes the last loop from today's root-cause fix. The new 5-tier grader
+produces richer outcome labels — the conviction service now USES them
+instead of collapsing everything back to a win/loss bool.
+
+**What shipped:**
+- `conviction_service.GRADE_WEIGHTS` — `STRONG_HIT=+2, WEAK_HIT=+1,
+  NEUTRAL=0, WEAK_MISS=-1, STRONG_MISS=-2`. Symmetric around 0 so
+  mislabeled NEUTRAL rows (noise drift) contribute zero signal.
+- `score_prediction_outcome(grade, confidence) -> float` — returns the
+  grade weight scaled by confidence. Range [-2, +2].
+- `_calibration_expectancy(db, user_id, lookback_days=30)` — replaces
+  the naive win-rate with a mean-expectancy calculation, mapped from
+  [-2, +2] → [0, 1] via `(mean + 2) / 4`. 0.5 = neutral anchor when
+  data is sparse (still requires ≥10 graded rows).
+- `_calibration_win_rate()` kept as a thin wrapper for backwards
+  compatibility with any callers/tests that imported it by name.
+- `compute_conviction()` now calls `_calibration_expectancy` directly
+  — behaviour is identical for data-sparse users but dramatically
+  more accurate for anyone with 10+ graded predictions.
+
+**Why this matters (trading economics):**
+- A confident STRONG_MISS (-5% blown trade at 90% conviction) scores
+  -1.8 → pulls calibration down hard.
+- A lukewarm WEAK_MISS (-0.5% stop-out at 60% conviction) scores -0.6
+  → barely moves the dial.
+- Aligns with how real PnL works: confident losers hurt 3× more than
+  cautious losers.
+
+**Verified:**
+- 8-case unit test on `score_prediction_outcome` — all pass.
+- Live owner calibration: **0.585** (above the 0.5 neutral anchor,
+  reflecting the actual grade-weighted performance now that 57 noise
+  rows are NEUTRAL instead of miscounted as losses).
+- Lint clean.
+
+**Files changed:**
+- `backend/services/conviction_service.py` — GRADE_WEIGHTS + new helper
+
 ### 2026-02-20 — Root cause of toxic-alert bug: brutal grader + scale mismatch
 *Session: continued*
 
