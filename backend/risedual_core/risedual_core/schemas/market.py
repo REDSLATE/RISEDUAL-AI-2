@@ -144,9 +144,33 @@ class FeaturesSnapshot(BaseModel):
         default=None,
         description="Data source used: 'yfinance', 'finnhub', 'live', etc.",
     )
+
+    # ── Execution economics (stamped post-resolve) ────────────────────────────
+    # Populated by `services.snapshot_enricher.stamp_execution_on_snapshot`
+    # when the prediction resolves — NOT at snapshot-capture time. Enables
+    # R-multiple-weighted ML training via
+    # `ai_core.risk_weighting.compute_sample_weight_from_trade`. All four
+    # default to None so pre-extension snapshots (and any snapshot that
+    # never reached resolution) remain valid.
+    entry_price: float | None = Field(
+        default=None,
+        description="Fill price when the trade was entered (post-resolve).",
+    )
+    exit_price: float | None = Field(
+        default=None,
+        description="Fill price when the trade was exited (post-resolve).",
+    )
+    stop_loss: float | None = Field(
+        default=None,
+        description="Trader-configured stop-loss price at entry (post-resolve).",
+    )
+    direction: str | None = Field(
+        default=None,
+        description="Trade direction: 'LONG' or 'SHORT' (post-resolve).",
+    )
     schema_version: int = Field(
         default=2,
-        description="Schema version. 1=Phase 1, 2=Phase 2+patterns, 3=backfill with outcomes.",
+        description="Schema version. 1=Phase 1, 2=Phase 2+patterns, 3=backfill with outcomes, 4=execution economics.",
     )
 
 

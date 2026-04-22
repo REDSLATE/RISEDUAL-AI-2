@@ -30,25 +30,15 @@ current live deploy queue.
 
 ## P1 — Next sprint
 
-- **`features_snapshots` schema extension for R-multiple weighting.**
-  The `ai_core/risk_weighting.py` module is now test-verified (39/39 pass,
-  mypy 0) but unwired because the feature snapshots don't yet carry
-  execution economics. Required fields:
-  - `entry_price` — trade entry fill price
-  - `exit_price` — trade exit fill price
-  - `stop_loss` — trader-configured stop
-  - `direction` — "LONG"/"SHORT"
-  Touchpoints: `services/hypothesis_logger.py` writer, execution-close
-  paths in `routes/paper_trading.py` and `routes/options_trading.py`,
-  + a backfill script reading from `paper_trades` / `option_orders`
-  collections.
-
-- **Wire R-multiple + directional weighting into ML retrain.**
-  BLOCKED on schema extension above. Once rows carry execution data,
-  update `services/ml_retrain_service._severity_weights` (or add a
-  parallel `_r_weights`) to route to `compute_sample_weight_from_trade`
-  when trade fields are present, falling back to `compute_signed_weight`
-  on magnitude when they aren't.
+- **Wire R-multiple filter + weighting into ML retrain** ← now the
+  single remaining blocker for the R-weighted training path.
+  Schema + writer + backfill landed Feb 2026. Next step: in
+  `services/ml_retrain_service._severity_weights` (or a parallel
+  `_r_weights`), when a training row has all 4 execution fields
+  present (`schema_version >= 4`), route to
+  `compute_sample_weight_from_trade` after dropping rows via
+  `should_skip_row_by_r`. Fall back to `compute_signed_weight` on
+  magnitude for legacy/unenriched rows.
 
 - **30-day paper-trading accumulation → ML Tier 3 unlock.** Currently at
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see

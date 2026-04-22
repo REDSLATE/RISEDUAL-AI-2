@@ -625,6 +625,28 @@ async def verify_pending_predictions(db: Any) -> None:
                     }, "$set": {"last_update": now.isoformat()}},
                     upsert=True,
                 )
+                # Mirror the execution economics onto the originating
+                # features_snapshot so ML retrain can feed R-weighted
+                # training via risk_weighting.compute_sample_weight_from_trade.
+                # Fire-and-forget: the helper is never-raise, so any
+                # Mongo hiccup doesn't cascade into the labeling loop.
+                try:
+                    from services.snapshot_enricher import stamp_execution_on_snapshot
+                    await stamp_execution_on_snapshot(
+                        db=db,
+                        prediction_id=pred.get("prediction_id") or "",
+                        entry_price=entry,
+                        exit_price=round(price_now, 4),
+                        stop_loss=float(sl_stored) if sl_stored else None,
+                        direction=ai_dir,
+                    )
+                except Exception as e:
+                    log_warning(logger, {
+                        "error": str(e),
+                        "type": type(e).__name__,
+                        "context": "snapshot_enricher",
+                        "note": "[snapshot-enricher] stamp failed (non-fatal)",
+                    })
         except Exception as e:
             log_warning(logger, {
                 "error": str(e),
