@@ -24,6 +24,61 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Admin allocation-preview endpoint
+*Session: continued*
+
+Wired the new Drawdown Allocator into an admin-only preview
+endpoint. Gives a one-click view of "if I rebalance the fleet
+right now, who gets how much" without moving any money.
+
+**New endpoint — `GET /api/admin/allocation-preview`:**
+- Query params: `total_capital: float = 10000` (must be > 0 or 400).
+- Auth: `_require_admin` — 401 for anon, 403 for non-admin, 200
+  for owner/admin.
+- Returns `{total_capital, bot_count, allocations, scores, bots}`.
+
+**Data source (no mocks):**
+- `trading_bots` Mongo collection, `enabled=true` only.
+- `pnl` read directly from `stats.pnl`.
+- `win_rate` read from `stats.win_rate` if present, else derived
+  from `stats.winning_trades / stats.trades`, else `None` — the
+  allocator's scorer falls back to 0.5 (neutral) so brand-new
+  bots get a fair initial share instead of being punished for
+  having no history yet. Matches the compute_bot_score
+  None-check fix shipped this morning.
+
+**Response shape:**
+```json
+{
+  "total_capital": 10000,
+  "bot_count": 8,
+  "allocations": { "BTC Grid": 1250.00, "Tier3 · SPY": 1250.00, ... },
+  "scores":      { "BTC Grid": 0.35,    "Tier3 · SPY": 0.35,    ... },
+  "bots":        { "BTC Grid": {"win_rate": null, "pnl": 0}, ... }
+}
+```
+
+The `scores` key lets the admin UI show *why* each bot got its
+slice — same pattern the ConvictionCalibration panel uses.
+
+**Live smoke test** (admin@risedual.ai): 8 enabled bots, all at
+0 pnl / null win_rate → score 0.35 each → even split at $1,250
+each on a $10k pool. As bots realize P&L the allocator will
+automatically skew toward winners.
+
+**Tests added — `tests/test_admin_allocation_preview.py`** (12):
+- Auth matrix: anon → 401, owner → 200, admin → 200.
+- Response shape: all four keys present.
+- Query params: default `10000`, custom passed through, negative
+  rejected 400, zero rejected 400.
+- Math: allocations sum ≈ total_capital (±cents rounding),
+  every bot has a score, every score ≥ 0.1 floor.
+- `allocations` key set matches `scores` key set.
+
+**Regression:** 260/260 passing. Ruff + mypy gates both clean.
+
+---
+
 ### 2026-02-20 — Drawdown control + Multi-bot capital allocator
 *Session: continued*
 

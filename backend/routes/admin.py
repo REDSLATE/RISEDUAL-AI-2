@@ -434,6 +434,81 @@ async def tier3_readiness(request: Request, days: int = 30):
 
 
 # ============================================================
+# CAPITAL ALLOCATION PREVIEW (fleet-wide)
+# ============================================================
+
+@router.get("/allocation-preview")
+async def allocation_preview(request: Request, total_capital: float = 10000.0):
+    """Preview how a given USD pool would be split across the enabled
+    trading-bot fleet, using :func:`ai_core.allocate_capital`.
+
+    Each bot is scored on `(win_rate, pnl)` — winners get a larger
+    slice, losing bots get a 0.1 floor so they can rehabilitate rather
+    than being starved of capital.
+
+    Data source: the `trading_bots` Mongo collection (enabled bots
+    only). We read `stats.pnl` directly. `win_rate` is read from
+    `stats.win_rate` if the bot has it, else we derive it from
+    `stats.winning_trades / stats.trades` when both exist, else we
+    hand `None` to :func:`compute_bot_score` which falls back to 0.5
+    (neutral) — matches how a brand-new bot gets a fair initial share.
+
+    Useful for deciding whether to toggle new bots on: the preview
+    tells you exactly who would get what at the next capital
+    rebalance, without actually moving any money.
+    """
+    await _require_admin(request)
+
+    if total_capital <= 0:
+        raise HTTPException(status_code=400, detail="total_capital must be positive")
+
+    from ai_core.drawdown_allocator import allocate_capital, compute_bot_score
+
+    enabled_bots = await db.trading_bots.find(
+        {"enabled": True}, {"_id": 0, "name": 1, "type": 1, "stats": 1}
+    ).to_list(length=100)
+
+    if not enabled_bots:
+        return {
+            "total_capital": total_capital,
+            "bot_count": 0,
+            "allocations": {},
+            "scores": {},
+            "note": "no enabled bots",
+        }
+
+    # Name-key each bot, deriving win_rate when absent but computable.
+    bots_for_allocator: dict[str, dict] = {}
+    for b in enabled_bots:
+        name = b.get("name") or f"{b.get('type', 'bot')}-{len(bots_for_allocator)}"
+        stats = b.get("stats") or {}
+        win_rate = stats.get("win_rate")
+        if win_rate is None:
+            trades = stats.get("trades") or 0
+            wins = stats.get("winning_trades")
+            if wins is not None and trades > 0:
+                win_rate = wins / trades
+        bots_for_allocator[name] = {
+            "win_rate": win_rate,  # None → scorer defaults to 0.5
+            "pnl": stats.get("pnl", 0),
+        }
+
+    allocations = allocate_capital(total_capital, bots_for_allocator)
+    # Return the scores alongside so the UI can show "why" each bot got
+    # its slice — matches how the ConvictionCalibration panel works.
+    scores = {name: round(compute_bot_score(s), 4)
+              for name, s in bots_for_allocator.items()}
+
+    return {
+        "total_capital": total_capital,
+        "bot_count": len(enabled_bots),
+        "allocations": allocations,
+        "scores": scores,
+        "bots": bots_for_allocator,
+    }
+
+
+# ============================================================
 # BROKER OAUTH CONFIGURATION (Owner only)
 # ============================================================
 

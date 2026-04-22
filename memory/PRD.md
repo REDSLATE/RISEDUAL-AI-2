@@ -54,6 +54,21 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Admin Allocation-Preview Endpoint (COMPLETED Feb 20, 2026)
+- `GET /api/admin/allocation-preview?total_capital=<USD>` — wraps
+  the new Drawdown Allocator in an admin-only preview. Returns the
+  allocation split, per-bot scores, and the source stats for each
+  enabled bot in the `trading_bots` Mongo collection.
+- Auth: `_require_admin` — 401 anon, 403 non-admin, 200 owner/admin.
+- `total_capital ≤ 0` rejected with 400. Empty fleet returns
+  `{allocations: {}, bot_count: 0, note: "no enabled bots"}`.
+- Derives `win_rate` from `stats.winning_trades / stats.trades` when
+  the dedicated field is absent; `None` is passed to `compute_bot_score`
+  (which defaults to 0.5) so brand-new bots get a fair share.
+- **12 new integration tests** (`tests/test_admin_allocation_preview.py`)
+  covering the auth matrix, query-param validation, response shape,
+  allocation math (sum ≈ total_capital), and score-floor invariants.
+
 ### Drawdown Control + Multi-Bot Capital Allocator (COMPLETED Feb 20, 2026)
 - New pure-function module `ai_core/drawdown_allocator.py` with
   five primitives: `compute_drawdown`, `compute_drawdown_multiplier`,
