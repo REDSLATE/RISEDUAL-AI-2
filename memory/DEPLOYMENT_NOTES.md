@@ -24,6 +24,56 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — mypy pre-deploy gate (`scripts/typecheck.sh`)
+*Session: continued*
+
+Follow-up to the 100% type-hint sweep. Wires an opinionated
+baseline-diff mypy gate so new type errors block deploy, but the
+existing 136 baseline errors don't force a week of cleanup before
+anything can ship.
+
+**What shipped:**
+- `/app/backend/mypy.ini` — mypy config. Lenient enough for real
+  life (`ignore_missing_imports`, `no_strict_optional`,
+  `follow_imports = silent`), strict enough to catch the stuff
+  that actually breaks prod (`[return-value]`, `[attr-defined]`,
+  syntax errors, unbound names, arg-type mismatches).
+- `/app/scripts/typecheck.sh` — bash gate with three modes:
+  * default → run mypy, diff against baseline, exit 1 on new errors.
+  * `--update` → snapshot current error list as the new baseline
+    (run after intentional fixes so wins can't silently regress).
+  * `--list` → print current errors, no diff.
+  Normalises mypy output (strips line/column numbers, sorts) so
+  unrelated refactors don't flap the gate.
+- `/app/scripts/typecheck_baseline.txt` — 136 pre-existing error
+  signatures. Every line is `services/path.py: error: <msg>
+  [<code>]` — the tuple that actually defines "is this the same
+  bug or a new one".
+
+**Why this flavour of gate (not `mypy --strict`):**
+- Hard-strict would fire ~2000+ errors on the existing codebase
+  (lots of motor / chromadb / alpaca SDK dicts) and nobody would
+  ever run it. Baseline-diff means the gate is useful **today**.
+- Catches the exact category of bug that bit us this morning:
+  the orphan `timezone.utc).isoformat(),` lines in
+  `ai_intelligence_service.py` were silent because Python
+  lazy-loads; mypy would have flagged the `[syntax]` error on
+  first run. Verified with a probe test.
+
+**Verified behaviour:**
+- Clean state: exit 0, "gate passed."
+- Probe file with `return int not str`: exit 1, flagged as a new
+  `[return-value]` error, blocking deploy.
+- Probe file with orphan syntax: exit 1, flagged as `[syntax]`.
+
+**How to use:**
+- Manual: `./scripts/typecheck.sh`
+- Pre-deploy: run it from your deploy script. Non-zero = abort.
+- After fixing a real error: `./scripts/typecheck.sh --update` and
+  commit the new `typecheck_baseline.txt`.
+
+---
+
 ### 2026-02-20 — Type-hint coverage 88.4% → 100% in `/backend/services/`
 *Session: continued*
 

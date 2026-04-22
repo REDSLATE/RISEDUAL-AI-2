@@ -54,6 +54,22 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### mypy Pre-Deploy Gate (COMPLETED Feb 20, 2026)
+- Wired a baseline-diff mypy gate at `/app/scripts/typecheck.sh`
+  with config at `/app/backend/mypy.ini` and a snapshot of the
+  current 136 error signatures at `/app/scripts/typecheck_baseline.txt`.
+- Three modes: default (run & diff, exit 1 on new errors),
+  `--update` (lock in fixes as new baseline), `--list` (print).
+- Normalises mypy output (drops line/col numbers, sorts) so unrelated
+  refactors don't flap the gate. Focuses on file + error-code + message.
+- Lenient config (`ignore_missing_imports`, `no_strict_optional`,
+  `follow_imports = silent`) — catches the categories that break
+  prod (`[return-value]`, `[attr-defined]`, `[syntax]`, `[arg-type]`)
+  without forcing cleanup of ~2k third-party-sdk noise.
+- **Verified** catches: return-type mismatches (exit 1), syntax
+  errors like the orphan-lines issue that lazy-loaded silently
+  past ruff (exit 1). Clean state exits 0.
+
 ### Type-hint Coverage 100% in `/backend/services/` (COMPLETED Feb 20, 2026)
 - Pushed Python type-hint coverage across **866 functions** in the
   services directory from **88.4% → 100%**. Every parameter + return
