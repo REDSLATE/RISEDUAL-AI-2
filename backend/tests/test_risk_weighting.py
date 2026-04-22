@@ -25,6 +25,7 @@ from ai_core.learning_upgrade import _LOSS_AMPLIFIER as _LEARNING_LOSS_AMPLIFIER
 from ai_core.risk_weighting import (
     _LOSS_AMPLIFIER,
     _R_BASE_WEIGHT,
+    _R_NOISE_FLOOR,
     _R_NOISE_THRESHOLD,
     _R_NOISE_WEIGHT,
     _R_STRONG_THRESHOLD,
@@ -33,6 +34,7 @@ from ai_core.risk_weighting import (
     compute_r_multiple,
     compute_sample_weight_from_trade,
     r_multiple_to_weight,
+    should_skip_row_by_r,
     summarize_r_distribution,
 )
 
@@ -311,10 +313,76 @@ def test_max_possible_weight_matches_magnitude_path():
 
 
 # ══════════════════════════════════════════════════════════════════
-# summarize_r_distribution — drift metrics
+# should_skip_row_by_r — noise-floor hard drop filter
 # ══════════════════════════════════════════════════════════════════
 
-def test_empty_batch_returns_zero_stats():
+def test_noise_floor_constant_below_noise_weight_threshold():
+    """The filter floor (0.25) must stay strictly below the
+    down-weight threshold (0.5) — the two layers compose: floor
+    drops trash, tier down-weights weak signal."""
+    assert _R_NOISE_FLOOR < _R_NOISE_THRESHOLD
+    assert _R_NOISE_FLOOR == 0.25
+
+
+def test_rows_below_noise_floor_are_skipped():
+    """|R| < 0.25 → True (skip). These are trader fingers, slippage,
+    or data glitches — not trainable signal."""
+    assert should_skip_row_by_r(0.0) is True
+    assert should_skip_row_by_r(0.24) is True
+    assert should_skip_row_by_r(-0.1) is True
+    assert should_skip_row_by_r(-0.249) is True
+
+
+def test_boundary_value_not_skipped():
+    """|R| == 0.25 is NOT skipped — the filter uses `<`, not `<=`.
+    Pins the strict-inequality boundary so a future tweak can't
+    silently drop the edge rows too."""
+    assert should_skip_row_by_r(0.25) is False
+    assert should_skip_row_by_r(-0.25) is False
+
+
+def test_rows_at_or_above_noise_floor_kept():
+    """|R| ≥ 0.25 → False (keep). Covers weak-tier, ramp, and
+    strong-tier rows."""
+    assert should_skip_row_by_r(0.3) is False
+    assert should_skip_row_by_r(1.0) is False
+    assert should_skip_row_by_r(-2.5) is False
+    assert should_skip_row_by_r(10.0) is False
+
+
+def test_nan_r_is_skipped_conservatively():
+    """NaN magnitude is untrustworthy — skip rather than train on
+    unknown signal."""
+    assert should_skip_row_by_r(float("nan")) is True
+
+
+def test_non_numeric_r_is_skipped():
+    """Bad types (string / None from a dirty Mongo row) → skip.
+    Conservative default: when in doubt, don't train on it."""
+    assert should_skip_row_by_r("bad") is True  # type: ignore[arg-type]
+    assert should_skip_row_by_r(None) is True  # type: ignore[arg-type]
+
+
+def test_skip_floor_composes_with_tier_mapping():
+    """Sanity integration: every kept row falls in a defined
+    weight tier (never < _R_NOISE_WEIGHT). Every skipped row
+    would have landed in the noise tier anyway — so the filter
+    removes exactly the lowest-value training rows without
+    disturbing the weight distribution above the floor."""
+    # Below floor → would map to noise weight (0.5); now skipped.
+    assert should_skip_row_by_r(0.1) is True
+    assert r_multiple_to_weight(0.1) == _R_NOISE_WEIGHT
+    # At/above floor → kept; weight is well-defined.
+    assert should_skip_row_by_r(0.25) is False
+    assert r_multiple_to_weight(0.25) == _R_NOISE_WEIGHT  # still noise tier
+    # Above threshold → kept; weight ramps.
+    assert should_skip_row_by_r(1.5) is False
+    assert r_multiple_to_weight(1.5) == pytest.approx(1.5)
+
+
+# ══════════════════════════════════════════════════════════════════
+# summarize_r_distribution — drift metrics
+# ══════════════════════════════════════════════════════════════════
     """Cold-start: no rows → zero stats, no crash."""
     out = summarize_r_distribution([])
     assert out == {"mean_r": 0.0, "strong_r_frac": 0.0}

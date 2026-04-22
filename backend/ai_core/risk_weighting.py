@@ -224,6 +224,49 @@ def compute_sample_weight_from_trade(
 
 
 # ══════════════════════════════════════════════════════════════════
+# NOISE-FLOOR ROW FILTER (hard drop, not down-weight)
+# ══════════════════════════════════════════════════════════════════
+#
+# This is stricter than the r_multiple_to_weight piecewise tiers:
+# the 0.5 tier down-weights near-zero R rows to 0.5. The noise
+# floor here *removes them from training entirely*. Rationale:
+# below 0.25R the exit was effectively at the entry price — these
+# aren't winners, losers, or stop-outs, they're trader fingers,
+# slippage, or data-provider glitches. Feeding them to the model
+# at any non-zero weight teaches it to predict "flat" whenever
+# conviction is mid, which hurts precision on the real signal tail.
+#
+# Keep _R_NOISE_FLOOR < _R_NOISE_THRESHOLD (0.5) so the two layers
+# compose: floor drops trash, tier down-weights weak signal, ramp
+# up-weights strong signal.
+
+_R_NOISE_FLOOR: float = 0.25
+
+
+def should_skip_row_by_r(r: float) -> bool:
+    """Return True if ``|R| < _R_NOISE_FLOOR`` — row should be
+    dropped from training.
+
+    Canonical call site (once the retrain loop wires
+    `compute_sample_weight_from_trade`):
+
+        if should_skip_row_by_r(r):
+            skip_row = True
+            continue
+
+    NaN / non-numeric → skip (conservative: we can't trust the
+    magnitude, so don't train on it).
+    """
+    try:
+        r_val = float(r)
+    except (TypeError, ValueError):
+        return True
+    if math.isnan(r_val):
+        return True
+    return abs(r_val) < _R_NOISE_FLOOR
+
+
+# ══════════════════════════════════════════════════════════════════
 # LOGGING / DRIFT METRICS
 # ══════════════════════════════════════════════════════════════════
 
