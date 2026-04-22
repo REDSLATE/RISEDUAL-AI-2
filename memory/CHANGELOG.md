@@ -1,5 +1,14 @@
 # RISEDUAL AI — Changelog
 
+## February 2026 — R-Weighted ML Retrain Wiring + Admin Tile (P1 + P2)
+- **`services/ml_retrain_service._severity_weights`** now blends R-based weights over magnitude-based weights. Rows with `schema_version >= 4` and full execution data (entry/exit/stop/direction) route through `compute_sample_weight_from_trade`; `|R| < 0.25` → weight 0 (XGBoost dropped-from-gradient); legacy rows stay on the magnitude path. R-weight cap (2.5) matches magnitude cap → downstream 10× anti-explosion clip stays untriggered across either pipeline.
+- **New helper `_r_eligible_mask_and_weights(df)`** in `ml_retrain_service.py` — vectorised eligibility check + per-row R-weight computation.
+- **Drift logging**: every retrain log now stamps `r_eligible_frac` and `r_skipped_frac` so R-adoption coverage and noise-floor drops are visible per run.
+- **New admin tile: `RDistributionCard`** in `MLHealthStrip.jsx` — pulls from `/api/admin/learning-engine/summary`, renders mean R + strong-R fraction with tone-aware coloring (healthy/drift/flat). Grid extended to 5 columns.
+- **Tests**: 12 new (`test_ml_retrain_r_weighting.py`) covering eligibility mask, schema-version gating, invalid-direction rejection, LONG/SHORT weight symmetry, noise-floor zero-weight, weight-cap parity with magnitude path, and mixed-batch blending. Full ML/R suite **120/120 pass**. **mypy gate 0/0**.
+- **Verified**: `scripts/backfill_snapshot_execution.py --dry-run` runs clean (0 resolved trades today; will populate via live resolve path). Frontend compiled successfully.
+- **Skipped by design**: paper_trading_service manual-SELL enrichment — manual UI trades have no `prediction_id` linking them to `features_snapshots`, so there's no target row to enrich. The `prediction_tracker` wiring covers the actual ML training surface.
+
 ## February 2026 — features_snapshots Schema Extension for R-Weighted Retrain (P1)
 - **`FeaturesSnapshot` schema extended** (`risedual_core/schemas/market.py`) with 4 optional execution-economics fields: `entry_price`, `exit_price`, `stop_loss`, `direction`. Schema version bumps to `4` on rows that carry the execution block. Backward-compatible — all default None.
 - **New: `services/snapshot_enricher.py`** → `stamp_execution_on_snapshot(db, prediction_id, entry_price, exit_price, stop_loss, direction)`. Contracts: never-raise sidecar; only non-None fields written (no field-wipe); direction normalised to LONG/SHORT (invalid values dropped); non-numeric inputs silently dropped; requires non-empty `prediction_id` to avoid broad-match updates.

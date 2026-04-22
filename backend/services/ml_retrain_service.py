@@ -69,15 +69,17 @@ def _next_version_number() -> int:
 
 async def _load_training_dataframe(
     db: Any, max_samples: int
-) -> tuple[Any, Any, Any, Any, int]:
+) -> tuple[Any, Any, Any, Any, int, dict]:
     """Pull labeled snapshots and return
-    ``(X_df, y_series, w_final, w_severity_only, n_rows)``.
+    ``(X_df, y_series, w_final, w_severity_only, n_rows, r_drift)``.
 
     Tuple is ``(pandas.DataFrame, pandas.Series[int],
-    pandas.Series[float], pandas.Series[float], int)`` — the fourth
-    element is the severity-only weights (pre-regime multiply),
-    exposed for drift-logging. Callers that only care about
-    training can ignore it.
+    pandas.Series[float], pandas.Series[float], int, dict)`` — the
+    fourth element is the severity-only weights (pre-regime
+    multiply), exposed for drift-logging. The sixth is a dict of
+    R-weighting adoption metrics (``r_eligible_frac``,
+    ``r_skipped_frac``) for the retrain log. Callers that only care
+    about training can ignore them.
 
     The `w_final` series is a **severity × regime-relevance**
     sample weight:
@@ -95,6 +97,11 @@ async def _load_training_dataframe(
 
     projection = {
         "_id": 0, "outcome": 1, "return_1d": 1, "regime_label": 1,
+        # Execution-economics block (schema_version >= 4) — enables
+        # R-multiple-weighted training. Rows missing these fields
+        # fall back to magnitude-based severity weighting.
+        "schema_version": 1, "entry_price": 1, "exit_price": 1,
+        "stop_loss": 1, "direction": 1,
         **{c: 1 for c in FEATURE_COLUMNS},
     }
     cursor = (
@@ -106,7 +113,8 @@ async def _load_training_dataframe(
     rows = await cursor.to_list(length=max_samples)
     if not rows:
         empty_w = pd.Series(dtype=float)
-        return pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0
+        return (pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0,
+                {"r_eligible_frac": 0.0, "r_skipped_frac": 0.0})
 
     df = pd.DataFrame(rows)
     y = (df["outcome"] == "up").astype(int)
@@ -115,7 +123,19 @@ async def _load_training_dataframe(
     w_final = _apply_regime_weighting(
         severity, df, current_regime=await _resolve_current_regime(db),
     )
-    return X, y, w_final, severity, len(rows)
+    # Compute R-adoption drift metrics while df is still in scope.
+    r_elig_mask, r_w = _r_eligible_mask_and_weights(df)
+    n = len(rows)
+    elig_count = int(r_elig_mask.sum())
+    if elig_count > 0:
+        skipped_frac = float((r_w.loc[r_elig_mask] == 0.0).mean())
+    else:
+        skipped_frac = 0.0
+    r_drift = {
+        "r_eligible_frac": elig_count / n if n else 0.0,
+        "r_skipped_frac": skipped_frac,
+    }
+    return X, y, w_final, severity, n, r_drift
 
 
 async def _resolve_current_regime(db: Any) -> str | None:
@@ -181,6 +201,71 @@ _WEIGHT_CAP = 2.0
 from ai_core.learning_upgrade import _LOSS_AMPLIFIER  # noqa: E402
 
 
+def _r_eligible_mask_and_weights(df: Any) -> tuple[Any, Any]:
+    """Identify rows carrying the full execution-economics block
+    (``schema_version >= 4`` AND all four of entry_price, exit_price,
+    stop_loss, direction populated) and compute their R-based
+    training weights.
+
+    Returns ``(boolean_mask, weights_series)``. For non-eligible
+    rows the weight is ``NaN`` — callers must blend with the
+    magnitude fallback. For eligible rows with ``|R| < 0.25`` the
+    weight is ``0.0`` (XGBoost treats 0-weight samples as
+    effectively dropped from the gradient — equivalent to row
+    skipping without breaking index alignment with X/y).
+
+    The weight upper bound matches the magnitude pipeline's
+    ``2.0 × 1.25 = 2.5`` so switching between the two paths leaves
+    the downstream 10× clip untriggered either way.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from ai_core.risk_weighting import (
+        compute_r_multiple,
+        compute_sample_weight_from_trade,
+        should_skip_row_by_r,
+    )
+
+    required = ("schema_version", "entry_price", "exit_price",
+                "stop_loss", "direction")
+    if not all(c in df.columns for c in required):
+        return (
+            pd.Series([False] * len(df), index=df.index),
+            pd.Series([np.nan] * len(df), index=df.index),
+        )
+
+    eligible = (
+        (pd.to_numeric(df["schema_version"], errors="coerce").fillna(0) >= 4)
+        & df["entry_price"].notna()
+        & df["exit_price"].notna()
+        & df["stop_loss"].notna()
+        & df["direction"].isin(["LONG", "SHORT"])
+    )
+
+    weights = pd.Series([np.nan] * len(df), index=df.index, dtype=float)
+    for idx in df.index[eligible]:
+        row = df.loc[idx]
+        r = compute_r_multiple(
+            entry_price=row["entry_price"],
+            exit_price=row["exit_price"],
+            stop_loss=row["stop_loss"],
+            direction=row["direction"],
+        )
+        if should_skip_row_by_r(r):
+            # Zero-weight equals dropped-from-gradient in XGBoost.
+            # Preserve index alignment so X/y stay in lockstep.
+            weights.loc[idx] = 0.0
+        else:
+            weights.loc[idx] = compute_sample_weight_from_trade(
+                entry_price=row["entry_price"],
+                exit_price=row["exit_price"],
+                stop_loss=row["stop_loss"],
+                direction=row["direction"],
+            )
+    return eligible, weights
+
+
 def _severity_weights(df: Any) -> Any:
     """Map `return_1d` → per-row training weight.
 
@@ -200,36 +285,56 @@ def _severity_weights(df: Any) -> Any:
     Implementing with clip+scaling keeps the mapping continuous
     enough for gradient boosters without discrete step jumps that
     destabilise calibration.
+
+    R-weighted override: rows carrying ``schema_version >= 4`` with
+    full execution data (entry/exit/stop/direction) bypass the
+    magnitude path entirely and use
+    :func:`ai_core.risk_weighting.compute_sample_weight_from_trade`.
+    Rows with ``|R| < 0.25`` are zero-weighted (drop from gradient).
+    Legacy/unenriched rows stay on the magnitude path — no
+    regression in the warm-start period before the
+    features_snapshots backfill catches up.
     """
     import pandas as pd
 
     if "return_1d" not in df.columns:
-        return pd.Series([1.0] * len(df), index=df.index)
+        magnitude = pd.Series([1.0] * len(df), index=df.index)
+    else:
+        # Absolute magnitude of the move, NaN-safe.
+        mag = df["return_1d"].abs().fillna(_WEAK_THRESHOLD)
 
-    # Absolute magnitude of the move, NaN-safe.
-    mag = df["return_1d"].abs().fillna(_WEAK_THRESHOLD)
+        # Piecewise mapping. `pandas.cut`-style would also work but the
+        # explicit formula is easier to inspect in future drift audits.
+        weights = mag.copy()
+        weights[mag < _WEAK_THRESHOLD] = 0.5
+        # Linear ramp 1.0 → 2.0 across the [1%, 3%] band so a 2%
+        # mover sits at ~1.5 — the ramp smoothness matters for XGBoost.
+        ramp_mask = (mag >= _WEAK_THRESHOLD) & (mag < _STRONG_THRESHOLD)
+        weights[ramp_mask] = 1.0 + (
+            (mag[ramp_mask] - _WEAK_THRESHOLD)
+            / (_STRONG_THRESHOLD - _WEAK_THRESHOLD)
+        )
+        weights[mag >= _STRONG_THRESHOLD] = _WEIGHT_CAP
 
-    # Piecewise mapping. `pandas.cut`-style would also work but the
-    # explicit formula is easier to inspect in future drift audits.
-    weights = mag.copy()
-    weights[mag < _WEAK_THRESHOLD] = 0.5
-    # Linear ramp 1.0 → 2.0 across the [1%, 3%] band so a 2%
-    # mover sits at ~1.5 — the ramp smoothness matters for XGBoost.
-    ramp_mask = (mag >= _WEAK_THRESHOLD) & (mag < _STRONG_THRESHOLD)
-    weights[ramp_mask] = 1.0 + (
-        (mag[ramp_mask] - _WEAK_THRESHOLD)
-        / (_STRONG_THRESHOLD - _WEAK_THRESHOLD)
-    )
-    weights[mag >= _STRONG_THRESHOLD] = _WEIGHT_CAP
+        # Sign-aware amplification: losses weighted 1.25× higher than
+        # wins of the same magnitude. Vectorised per-row multiply — no
+        # per-row Python callback. NaN returns are treated as
+        # non-negative (amplifier stays at 1.0) so we don't double-
+        # penalise the fallback path.
+        is_loss = (df["return_1d"].fillna(0.0) < 0).astype(float)
+        amplifier = 1.0 + is_loss * (_LOSS_AMPLIFIER - 1.0)
+        magnitude = (weights * amplifier).astype(float)
 
-    # Sign-aware amplification: losses weighted 1.25× higher than
-    # wins of the same magnitude. Vectorised per-row multiply — no
-    # per-row Python callback. NaN returns are treated as
-    # non-negative (amplifier stays at 1.0) so we don't double-
-    # penalise the fallback path.
-    is_loss = (df["return_1d"].fillna(0.0) < 0).astype(float)
-    amplifier = 1.0 + is_loss * (_LOSS_AMPLIFIER - 1.0)
-    return (weights * amplifier).astype(float)
+    # Blend: R-based weights take precedence for eligible rows.
+    # Non-eligible rows keep the magnitude-based weight.
+    r_eligible, r_weights = _r_eligible_mask_and_weights(df)
+    final = magnitude.astype(float).copy()
+    # Boolean-mask assignment keeps index aligned; `.loc` selects
+    # the eligible rows and replaces their magnitude weight with
+    # the R-derived one (including 0.0 for noise-floor drops).
+    if r_eligible.any():
+        final.loc[r_eligible] = r_weights.loc[r_eligible].astype(float)
+    return final
 
 
 async def _collect_rejection_context(db: Any) -> dict:
@@ -294,7 +399,7 @@ async def run_nightly_retrain(
     try:
         from risedual_core.ml.signal_model import SignalModel, SignalModelConfig
 
-        X, y, w, w_severity_only, n = await _load_training_dataframe(db, max_samples)
+        X, y, w, w_severity_only, n, r_drift = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n
         log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
 
@@ -328,6 +433,16 @@ async def run_nightly_retrain(
             log_row["severity_strong_frac"] = round(
                 float((w_severity_only >= _WEIGHT_CAP).mean()), 4,
             )
+            # R-weighting adoption + signal-purity metrics. As the
+            # features_snapshots backfill catches up and the live
+            # resolve path stamps execution economics, these values
+            # climb from 0 → stabilise at the coverage the trading
+            # book supports. r_skipped_frac is the fraction of
+            # R-eligible rows dropped via the 0.25 noise floor — a
+            # spike here means lots of stop-outs / tiny exits in the
+            # recent book, worth investigating.
+            log_row["r_eligible_frac"] = round(float(r_drift.get("r_eligible_frac", 0.0)), 4)
+            log_row["r_skipped_frac"] = round(float(r_drift.get("r_skipped_frac", 0.0)), 4)
             # Infer regime match by dividing final weights by
             # severity-only weights. Rows where the ratio is ~1.0
             # kept full regime weight (match); ratio ~0.5 means

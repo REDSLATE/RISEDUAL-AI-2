@@ -30,16 +30,6 @@ current live deploy queue.
 
 ## P1 — Next sprint
 
-- **Wire R-multiple filter + weighting into ML retrain** ← now the
-  single remaining blocker for the R-weighted training path.
-  Schema + writer + backfill landed Feb 2026. Next step: in
-  `services/ml_retrain_service._severity_weights` (or a parallel
-  `_r_weights`), when a training row has all 4 execution fields
-  present (`schema_version >= 4`), route to
-  `compute_sample_weight_from_trade` after dropping rows via
-  `should_skip_row_by_r`. Fall back to `compute_signed_weight` on
-  magnitude for legacy/unenriched rows.
-
 - **30-day paper-trading accumulation → ML Tier 3 unlock.** Currently at
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see
   `AI_PREDICTION_WINS.md`). Need 100/500/1000 labeled predictions for

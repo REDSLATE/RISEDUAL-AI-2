@@ -23,6 +23,7 @@ import {
   Gauge,
   Rocket,
   Scale,
+  TrendingUp,
 } from 'lucide-react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
@@ -229,6 +230,100 @@ const ReliabilityCard = ({ data }) => {
   );
 };
 
+const RDistributionCard = ({ data }) => {
+  if (!data) {
+    return (
+      <Card icon={TrendingUp} title="R-distribution" testId="ml-health-r-dist">
+        <div className="text-xs text-slate-400">Loading…</div>
+      </Card>
+    );
+  }
+  const rDist = data.r_distribution || {};
+  const meanR = typeof rDist.mean_r === 'number' ? rDist.mean_r : null;
+  const strongFrac =
+    typeof rDist.strong_r_frac === 'number' ? rDist.strong_r_frac : null;
+  const resolved = data.total_resolved ?? 0;
+  const hasSignal = resolved > 0 && meanR !== null;
+
+  // Tone: strong negative mean_r is a regime-shift warning.
+  // >= 0: healthy book; 0 to -0.25: neutral/flat; < -0.25: warn.
+  const tone = !hasSignal
+    ? 'default'
+    : meanR >= 0
+    ? 'ok'
+    : meanR < -0.25
+    ? 'warn'
+    : 'default';
+  const barColor =
+    tone === 'ok'
+      ? 'bg-emerald-400'
+      : tone === 'warn'
+      ? 'bg-amber-400'
+      : 'bg-[#3DE8D9]';
+  // Map mean_r in [-2, +2] to 0-100% fill; 50% = break-even.
+  const fillPct = hasSignal
+    ? Math.max(0, Math.min(100, ((meanR + 2) / 4) * 100))
+    : 0;
+  const Icon = hasSignal && tone === 'warn' ? AlertTriangle : TrendingUp;
+  const iconColor = tone === 'warn' ? 'text-amber-400' : 'text-emerald-400';
+
+  return (
+    <Card
+      icon={TrendingUp}
+      title="R-distribution · trade book"
+      testId="ml-health-r-dist"
+      tone={tone}
+    >
+      <div className="flex items-baseline justify-between">
+        <div
+          className="text-xl font-bold text-white tabular-nums"
+          data-testid="r-dist-mean"
+        >
+          {hasSignal ? (meanR >= 0 ? '+' : '') + meanR.toFixed(2) : '—'}
+          <span className="text-sm text-slate-400 font-normal"> mean R</span>
+        </div>
+        <span className={`flex items-center gap-1 text-[10px] ${iconColor}`}>
+          <Icon className="w-3 h-3" />
+          {!hasSignal
+            ? 'no data'
+            : tone === 'ok'
+            ? 'healthy'
+            : tone === 'warn'
+            ? 'drift'
+            : 'flat'}
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-900/60 rounded-full overflow-hidden mt-2">
+        <div
+          className={`h-full ${barColor} transition-all`}
+          style={{ width: `${fillPct}%` }}
+          data-testid="r-dist-mean-bar"
+        />
+      </div>
+      <div className="mt-2 text-[10px] text-slate-400">
+        {resolved} resolved ·{' '}
+        {strongFrac !== null ? (
+          <span className="tabular-nums" data-testid="r-dist-strong-frac">
+            {(strongFrac * 100).toFixed(0)}% strong (|R| ≥ 1.5)
+          </span>
+        ) : (
+          '—'
+        )}
+      </div>
+      <div className="mt-1 text-[10px] text-slate-500">
+        {!hasSignal
+          ? 'waiting on resolved trades'
+          : tone === 'warn'
+          ? 'sustained negative mean — regime shift risk'
+          : tone === 'ok'
+          ? 'book expectancy positive'
+          : 'near break-even'}
+      </div>
+    </Card>
+  );
+};
+
+
 const PaperDaysProgressCard = ({ data }) => {
   if (!data) {
     return (
@@ -291,19 +386,22 @@ const MLHealthStrip = () => {
   const [progress, setProgress] = useState(null);
   const [canary, setCanary] = useState(null);
   const [reliability, setReliability] = useState(null);
+  const [leSummary, setLeSummary] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [t3, pr, c, r] = await Promise.all([
+      const [t3, pr, c, r, le] = await Promise.all([
         authFetch(`${API}/admin/tier3-readiness?days=30`),
         authFetch(`${API}/admin/tier3-progress`),
         authFetch(`${API}/admin/conviction/clamp-canary?days=30`),
         authFetch(`${API}/admin/conviction/reliability?days=30`),
+        authFetch(`${API}/admin/learning-engine/summary`),
       ]);
       if (t3.ok) setTier3(await t3.json());
       if (pr.ok) setProgress(await pr.json());
       if (c.ok) setCanary(await c.json());
       if (r.ok) setReliability(await r.json());
+      if (le.ok) setLeSummary(await le.json());
     } catch (e) {
       logger.error('ml health strip load failed', e);
     }
@@ -315,11 +413,12 @@ const MLHealthStrip = () => {
 
   return (
     <div
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"
       data-testid="ml-health-strip"
     >
       <Tier3ReadinessCard data={tier3} />
       <PaperDaysProgressCard data={progress} />
+      <RDistributionCard data={leSummary} />
       <ClampCanaryCard data={canary} />
       <ReliabilityCard data={reliability} />
     </div>
