@@ -73,6 +73,14 @@ class OptionOrderRequest(BaseModel):
     order_type: str = Field(default="market", pattern="^(market|limit)$")
     time_in_force: str = Field(default="day", pattern="^(day|gtc|ioc|fok)$")
     limit_price: Optional[float] = Field(default=None, gt=0)
+    best_execution: bool = Field(
+        default=False,
+        description=(
+            "When true, route to the broker with lowest estimated "
+            "spread across all enabled connections (ignoring user's "
+            "default provider choice). Requires ≥1 enabled broker."
+        ),
+    )
 
 
 class ODDAcceptRequest(BaseModel):
@@ -257,6 +265,58 @@ async def place_order(body: OptionOrderRequest, request: Request):
         side=OrderSide(body.side),
     )
 
+    # ── Smart-router path ──
+    # When the client sets `best_execution=true`, route to the
+    # lowest-spread enabled broker instead of the user's default
+    # provider. Smart routing still honours ODD (gate already ran
+    # above) and bubbles the same broker-level errors.
+    if body.best_execution:
+        from services.brokers.smart_router import SmartOrderRouter
+        try:
+            order, decision = await SmartOrderRouter().route_order(
+                occ,
+                [leg],
+                order_type=body.order_type,
+                time_in_force=body.time_in_force,
+                limit_price=body.limit_price,
+            )
+        except RuntimeError as exc:
+            # "no enabled brokers" — reachable but retryable.
+            raise HTTPException(status_code=503, detail=str(exc))
+        except BrokerNotImplementedError as exc:
+            raise HTTPException(status_code=501, detail=str(exc))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except Exception as exc:
+            log_error(logger, {
+                "context": "options_routes",
+                "type": type(exc).__name__,
+                "error": str(exc),
+                "note": f"smart-routed order placement failed for user={user['_id']}",
+            })
+            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+
+        return {
+            "order_id": order.order_id,
+            "status": order.status.value,
+            "qty": order.qty,
+            "filled_qty": order.filled_qty,
+            "limit_price": order.limit_price,
+            "time_in_force": order.time_in_force,
+            "created_at": order.created_at.isoformat(),
+            "occ_symbol": occ,
+            "provider": decision.provider,
+            "routing": {
+                "mode": "smart",
+                "estimated_spread": decision.estimated_spread,
+                "candidates": [
+                    {"provider": p, "estimated_spread": s}
+                    for p, s in decision.all_candidates
+                ],
+            },
+        }
+
+    # ── Direct-broker path ──
     adapter = get_options_adapter(provider)
     try:
         order = await adapter.place_option_order(
@@ -292,6 +352,7 @@ async def place_order(body: OptionOrderRequest, request: Request):
         "created_at": order.created_at.isoformat(),
         "occ_symbol": occ,
         "provider": provider,
+        "routing": {"mode": "direct"},
     }
 
 

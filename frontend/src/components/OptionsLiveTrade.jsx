@@ -60,6 +60,7 @@ const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
   const [limitPrice, setLimitPrice] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [bestExecution, setBestExecution] = useState(false);
 
   // ODD + broker status, fetched when the modal opens.
   const [oddAccepted, setOddAccepted] = useState(null);
@@ -120,6 +121,7 @@ const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
         qty,
         order_type: orderType,
         time_in_force: 'day',
+        best_execution: bestExecution,
       };
       if (orderType === 'limit' && limitPrice) {
         body.limit_price = parseFloat(limitPrice);
