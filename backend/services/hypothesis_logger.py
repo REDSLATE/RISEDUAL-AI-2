@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase  # noqa: F401  (kept for runtime isinstance checks)
 from risedual_core.schemas.market import FeaturesSnapshot
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ async def log_hypothesis_snapshot(
     ticker: str,
     prediction_id: str,
     market_data_dict: dict[str, Any],
-    db: AsyncIOMotorDatabase,
+    db: Any,
 ) -> FeaturesSnapshot:
     """Capture a point-in-time FeaturesSnapshot and persist it to MongoDB."""
     now_utc = datetime.now(timezone.utc)
@@ -84,7 +84,7 @@ async def log_hypothesis_snapshot(
 async def _enrich_with_patterns(
     snapshot: FeaturesSnapshot,
     ticker: str,
-    db: AsyncIOMotorDatabase,
+    db: Any,
 ) -> FeaturesSnapshot:
     """Fetch OHLCV history and run all 8 pattern detectors."""
     try:

@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase  # noqa: F401
 
 logger = logging.getLogger(__name__)
 _COLLECTION = "features_snapshots"
@@ -18,7 +18,7 @@ _LABELING_DELAY_HOURS = 4
 _FLAT_THRESHOLD = 0.015  # ±1.5%
 
 
-async def label_pending_snapshots(db: AsyncIOMotorDatabase) -> None:
+async def label_pending_snapshots(db: Any) -> None:
     """Label FeaturesSnapshots that have no outcome yet and are >4h old."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=_LABELING_DELAY_HOURS)
     cursor = db[_COLLECTION].find({"outcome": None, "captured_at": {"$lt": cutoff}})
@@ -91,7 +91,7 @@ def _compute_outcome(prediction_price: float, current_price: float) -> str:
     return "flat"
 
 
-async def _fetch_current_price(ticker: str, db: AsyncIOMotorDatabase) -> float:
+async def _fetch_current_price(ticker: str, db: Any) -> float:
     from services.price_provider import get_quote
     try:
         quote: dict[str, Any] = await get_quote(ticker)

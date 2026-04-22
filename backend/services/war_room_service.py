@@ -72,8 +72,12 @@ def fetch_company_overview(symbol: str) -> dict:
         return {}
 
 
-def fetch_earnings_surprises(symbol: str) -> list[dict]:
-    """Fetch quarterly earnings history to detect surprise patterns."""
+def fetch_earnings_surprises(symbol: str) -> dict:
+    """Fetch quarterly earnings history to detect surprise patterns.
+
+    Returns a summary dict
+    ``{quarters, beat_rate, current_streak, total_quarters}``.
+    """
     try:
         r = requests.get("https://www.alphavantage.co/query", params={
             "function": "EARNINGS", "symbol": symbol, "apikey": _av_key()
@@ -177,7 +181,7 @@ async def generate_war_room(symbol: str, api_key: str) -> dict:
     # Handle exceptions gracefully
     if isinstance(overview, Exception):
         logger.error(f"War room overview error: {overview}")
-        overview = {}
+        overview: dict = {}
     if isinstance(earnings, Exception):
         logger.error(f"War room earnings error: {earnings}")
         earnings = {"quarters": [], "beat_rate": 0, "current_streak": 0, "total_quarters": 0}

@@ -53,7 +53,7 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
     losses = np.where(deltas < 0, -deltas, 0.0)
     avg_gain = np.mean(gains[-period:])
     avg_loss = np.mean(losses[-period:])
-    return 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 100
+    return float(100 - (100 / (1 + avg_gain / avg_loss))) if avg_loss > 0 else 100.0
 
 
 def _calc_bollinger(closes: np.ndarray, period: int = 20) -> tuple[float, float, float]:

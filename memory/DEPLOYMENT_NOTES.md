@@ -24,6 +24,68 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — mypy baseline: 136 → 98 (28% reduction)
+*Session: continued*
+
+Worked through the easy tiers of the mypy baseline without
+touching anything that could plausibly hide a runtime bug.
+
+**What got fixed (38 errors):**
+- `pip install types-requests` — killed 13 `[import-untyped]`
+  errors across crypto_scraping, broker, quiver, market_sentiment,
+  foreign_markets, world_events, real_estate_scraping,
+  headlines_pipeline, financial_scraping, order_flow, and
+  several others that all import `requests`.
+- 16 `[var-annotated]` — module-level dicts / lists that needed
+  explicit type annotations (`CACHE: dict[str, Any] = {}`,
+  `trades: list[dict] = []`, etc.). No behaviour change.
+- 5 `[valid-type]` — pattern where an untyped SDK
+  (`motor.AsyncIOMotorDatabase`, `chromadb.PersistentClient`)
+  was used as a type annotation. Switched to `Any`; runtime
+  imports preserved as `# noqa: F401` for instanceof checks.
+  Also caught one `dict[str, any]` → `dict[str, Any]` typo in
+  `polygon_dark_pool_service.py`.
+- 2 `[return-value]` that were **real type-annotation bugs**:
+  * `ai_service.py::chat(...) -> str` was lying — it returns
+    `dict | str` and callers in `routes/ai.py` already branch
+    on `isinstance(result, dict)`. Annotation now matches
+    reality.
+  * `war_room_service.py::fetch_earnings_surprises(...) -> list[dict]`
+    was lying — returns `{quarters, beat_rate, current_streak,
+    total_quarters}`. Callers already expect the dict shape
+    (the error-path fallback inline constructs it).
+- 2 `[return-value]` numpy-wrapping fixes in the RSI calculators
+  (`ai_intelligence_service.py`, `memory_training_service.py`):
+  explicit `float(...)` cast on the `np.mean()` output instead
+  of returning the `floating[Any]` sentinel.
+
+**What's still in the baseline (98 errors):**
+The remaining surface legitimately needs case-by-case judgment —
+sweeping fixes could mask latent `None` dereference bugs. Top
+categories:
+- `[attr-defined]` 21 — SDK attributes mypy can't validate
+  (mostly motor/chromadb/alpaca). Likely all real at runtime
+  but stubs are missing.
+- `[arg-type]` 16 — call-site type mismatches; each needs
+  a look at the call chain.
+- `[union-attr]` 13 — calling methods on `X | None` without a
+  None check. **Every one of these is a potential
+  `AttributeError` at runtime** under the right input.
+- `[assignment]` 12, `[operator]` 10 — variable gets
+  reassigned to an incompatible type or ops between mismatched
+  types. Usually require restructuring the logic.
+- `[str]` 9, `[dict-item]` 7, `[index]` 3 — bytes/str or
+  container-type confusion at boundaries.
+- `[return-value]` 4, `[misc]` 3, `[call-overload]` 2,
+  `[typeddict-item]` 1, `[object]` 1, `[no-redef]` 1.
+
+Baseline is now locked at 98 in `scripts/typecheck_baseline.txt`.
+Any new error on any path fails the gate and blocks deploy.
+
+**Regression:** 260/260 tests passing. Ruff clean.
+
+---
+
 ### 2026-02-20 — Admin allocation-preview endpoint
 *Session: continued*
 

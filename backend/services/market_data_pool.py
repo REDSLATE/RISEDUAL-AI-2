@@ -11,7 +11,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 import httpx
@@ -438,7 +438,7 @@ async def get_technical_indicators(ticker: str) -> dict:
     Best-effort: returns whatever indicators are available. Missing fields are None.
     Added for ML signal pipeline — does not modify existing pool internals.
     """
-    result = {}
+    result: dict[str, Any] = {}
     symbol = ticker.upper()
     av_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
     if not av_key:
@@ -456,7 +456,7 @@ async def get_technical_indicators(ticker: str) -> dict:
                 data = resp.json()
                 rsi_data = data.get("Technical Analysis: RSI", {})
                 if rsi_data:
-                    latest = next(iter(rsi_data.values()), {})
+                    latest: dict = next(iter(rsi_data.values()), {})
                     result["rsi_14"] = float(latest.get("RSI", 0)) if latest.get("RSI") else None
 
             # MACD

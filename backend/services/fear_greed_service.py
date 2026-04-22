@@ -38,7 +38,7 @@ class FearGreedService:
             return live
 
         # Fallback to latest DB record
-        doc = await self.col.find_one(
+        doc: dict | None = await self.col.find_one(
             {}, {"_id": 0}, sort=[("date", -1)]
         )
         if doc:

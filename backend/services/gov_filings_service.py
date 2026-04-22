@@ -112,7 +112,7 @@ class GovFilingsService:
 
     async def _scrape_capitol_trades(self) -> list[dict]:
         """Primary: scrape Capitol Trades for congressional stock trades."""
-        trades = []
+        trades: list[dict] = []
         try:
             url = 'https://www.capitoltrades.com/trades?assetType=stock'
             resp = await self._get(url, headers=self.headers, timeout=15)
@@ -253,8 +253,8 @@ class GovFilingsService:
         # Quiver's gov_contracts endpoint has been returning 500 for weeks;
         # we fall through to USASpending.gov (free public API) when that
         # happens so `gov_contracts` isn't permanently empty on the UI.
-        quiver_lobbying = []
-        gov_contracts = []
+        quiver_lobbying: list[dict] = []
+        gov_contracts: list[dict] = []
         if quiver_ok():
             quiver_lobbying, gov_contracts = await asyncio.gather(
                 get_lobbying(limit=15),

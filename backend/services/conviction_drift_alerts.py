@@ -120,7 +120,7 @@ async def _build_calibration_snapshot(db: Any) -> Optional[dict]:
     def _trend_series(weekly: list[list[dict]]) -> dict[str, list[dict]]:
         if not weekly:
             return {}
-        out = {}
+        out: dict[str, Any] = {}
         for bucket_idx in range(len(weekly[0])):
             label = weekly[0][bucket_idx]["label"]
             out[label] = []

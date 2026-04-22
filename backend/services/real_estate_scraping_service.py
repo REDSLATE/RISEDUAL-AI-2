@@ -33,7 +33,7 @@ class RealEstateScrapingService:
     
     async def scrape_housing_market(self) -> dict:
         """Scrape housing market data from multiple sources"""
-        housing_data = {
+        housing_data: dict[str, Any] = {
             'national_median': None,
             'inventory': None,
             'days_on_market': None,

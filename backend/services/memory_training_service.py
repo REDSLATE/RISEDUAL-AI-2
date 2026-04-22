@@ -60,7 +60,7 @@ def _calc_rsi(closes: np.ndarray, period: int = 14) -> float:
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
-    return round(100 - (100 / (1 + rs)), 1)
+    return float(round(100 - (100 / (1 + rs)), 1))
 
 
 def _classify_trend(closes: np.ndarray) -> str:

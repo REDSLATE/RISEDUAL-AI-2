@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 CHROMA_DIR = "/app/backend/data/chromadb"
 COLLECTION_NAME = "market_regimes"
 
-_client: Optional[chromadb.PersistentClient] = None
+_client: Optional[Any] = None
 _collection = None
 _db = None  # MongoDB reference for stats
 

@@ -121,7 +121,7 @@ async def summarize_failure_patterns(user_id: str) -> list:
         "approved_for_learning": True,
     }, {"_id": 0})
 
-    tag_counts = Counter()
+    tag_counts: Counter = Counter()
     tag_pnl = defaultdict(list)
     tag_symbols = defaultdict(set)
 

@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 BASE = "https://api.stlouisfed.org/fred"
-CACHE = {}
+CACHE: dict[str, Any] = {}
 CACHE_TTL = 3600  # 1 hour — macro data doesn't change fast
 
 
@@ -94,7 +94,7 @@ async def get_macro_indicators() -> dict:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     indicators = []
-    categories = {}
+    categories: dict[str, Any] = {}
 
     for spec, result in zip(MACRO_SERIES, results):
         if isinstance(result, Exception) or result is None:

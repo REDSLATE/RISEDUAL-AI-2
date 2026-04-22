@@ -143,9 +143,13 @@ class AIService:
         raise RuntimeError(f"Unsupported AI provider: {p}")
 
     async def chat(self, message: str, session_id: str, image_base64: Optional[str] = None,
-                   memory_context: str = "", user_id: str = "") -> str:
+                   memory_context: str = "", user_id: str = "") -> dict | str:
         """Send a message to the AI and get a response, with provider failover.
-        Auto-routes to the Financial Tools Agent for calculation-heavy queries."""
+        Auto-routes to the Financial Tools Agent for calculation-heavy queries.
+
+        Returns a dict `{text, provider, [tools_used]}` on the happy path,
+        falling back to a plain error string. Callers in `routes/ai.py`
+        branch on `isinstance(response, dict)`."""
         try:
             # Route to tools agent for calculation/projection queries (skip if image attached)
             if not image_base64 and _TOOLS_PATTERN.search(message):

@@ -12,9 +12,11 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
-_cache: dict[str, any] = {"data": None, "ts": None, "whale_alerts": []}
+_cache: dict[str, Any] = {"data": None, "ts": None, "whale_alerts": []}
 CACHE_TTL = 300  # 5 minutes
 
 # Top dark pool tracked symbols

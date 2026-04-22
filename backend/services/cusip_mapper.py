@@ -83,7 +83,10 @@ async def lookup_batch(db: Any, cusips: Iterable[str]) -> dict[str, dict]:
                 "figi": row.get("figi"),
             }
 
-    missing = sorted(wanted - set(out.keys()) - {c["cusip"] for c in []})
+    # The `c for c in []` is a leftover no-op from a refactor —
+    # previously filtered against a populated list, now a dead branch.
+    # Keep it for clarity until the callsite's data flow is clear.
+    missing = sorted(wanted - set(out.keys()))
     # Also skip cusips we've already tried and found nothing for recently
     if missing:
         negative_cursor = db.cusip_ticker_map.find(

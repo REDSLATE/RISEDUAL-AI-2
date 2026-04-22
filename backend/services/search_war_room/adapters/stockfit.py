@@ -10,6 +10,7 @@ import os
 import asyncio
 import httpx
 import logging
+from typing import Any
 from services.search_war_room.schemas import EngineResult
 from services.search_war_room.cache import get_cached, set_cached
 
@@ -67,7 +68,7 @@ async def run(query: str, symbol: str = None) -> EngineResult:
                 _safe_get(client, f"{BASE}/api/financials/balance-sheet",
                           {"symbol": ticker, "period": "annual", "limit": 1}, h),
             )
-        insider_summary = {}  # Not available on free plan
+        insider_summary: dict[str, Any] = {}  # Not available on free plan
 
         items = []
         summary_parts = [f"{ticker} SEC Intelligence"]

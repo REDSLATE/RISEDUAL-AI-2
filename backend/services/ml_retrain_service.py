@@ -38,7 +38,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import Any
+from motor.motor_asyncio import AsyncIOMotorDatabase  # noqa: F401
 
 # Make risedual_core importable without side effects at module import time.
 _RISEDUAL_CORE_PATH = Path(__file__).parent.parent / "risedual_core"
@@ -67,7 +68,7 @@ def _next_version_number() -> int:
 
 
 async def _load_training_dataframe(
-    db: AsyncIOMotorDatabase, max_samples: int
+    db: Any, max_samples: int
 ) -> tuple[object, object, int]:
     """Pull labeled snapshots and return ``(X_df, y_series, n_rows)``.
 
@@ -99,7 +100,7 @@ async def _load_training_dataframe(
     return X, y, len(rows)
 
 
-async def _collect_rejection_context(db: AsyncIOMotorDatabase) -> dict:
+async def _collect_rejection_context(db: Any) -> dict:
     """Summarise rejections since the most recent successful retrain.
 
     The retrainer doesn't join rejections into its training set yet (we'd
@@ -143,7 +144,7 @@ async def _collect_rejection_context(db: AsyncIOMotorDatabase) -> dict:
 
 
 async def run_nightly_retrain(
-    db: AsyncIOMotorDatabase,
+    db: Any,
     max_samples: int = MAX_SAMPLES,
 ) -> dict:
     """Retrain ``SignalModel`` on freshly labeled snapshots. Writes a new
@@ -221,7 +222,7 @@ async def run_nightly_retrain(
 
 
 async def run_backfill_labeling(
-    db: AsyncIOMotorDatabase,
+    db: Any,
 ) -> dict:
     """Force a manual labeler run (wraps the existing job for admin trigger)."""
     from services.prediction_labeler import label_pending_snapshots
@@ -232,7 +233,7 @@ async def run_backfill_labeling(
 
 
 async def get_training_history(
-    db: AsyncIOMotorDatabase, limit: int = 20
+    db: Any, limit: int = 20
 ) -> list[dict]:
     """Most-recent training runs, newest first. Owner-only surface."""
     cursor = (

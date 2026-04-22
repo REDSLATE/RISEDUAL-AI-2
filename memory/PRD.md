@@ -54,6 +54,18 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### mypy Baseline 136 → 98 (COMPLETED Feb 20, 2026)
+- Reduced the mypy baseline by 28% (38 errors) via three safe
+  sweeps: `types-requests` stubs install, 16 var-annotated fixes,
+  5 `[valid-type]` SDK-annotation-to-`Any` swaps, 4 real annotation
+  bugs (2 `chat()` / `fetch_earnings_surprises` return-type lies,
+  2 numpy `floating[Any]` → `float` casts).
+- 98 errors remain in the baseline. Top categories still require
+  case-by-case judgment: `[attr-defined]` 21, `[arg-type]` 16,
+  `[union-attr]` 13 (**each a potential `None` dereference**),
+  `[assignment]` 12, `[operator]` 10.
+- Gate locked at 98. Any new error fails the pre-deploy check.
+
 ### Admin Allocation-Preview Endpoint (COMPLETED Feb 20, 2026)
 - `GET /api/admin/allocation-preview?total_capital=<USD>` — wraps
   the new Drawdown Allocator in an admin-only preview. Returns the

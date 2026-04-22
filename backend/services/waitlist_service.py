@@ -312,7 +312,7 @@ async def get_waitlist_analytics(days: int = 30) -> dict:
         {"_id": 0, "invited_at": 1},
     ).to_list(length=10000)
 
-    invite_daily = {}
+    invite_daily: dict[str, int] = {}
     for entry in invited_entries:
         day = (entry.get("invited_at") or "")[:10]
         if day:

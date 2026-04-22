@@ -227,7 +227,7 @@ async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m
 
     num_buckets = min(40, max(20, int(price_range / (current_price * 0.002))))
     bucket_size = price_range / num_buckets
-    buckets = defaultdict(float)
+    buckets: defaultdict[float, float] = defaultdict(float)
 
     for i in range(len(prices)):
         bucket_idx = int((float(prices[i]) - price_min) / bucket_size)
