@@ -48,6 +48,13 @@ MAX_POSITION_USD: float = 2000.0
 MAX_PORTFOLIO_EXPOSURE: float = 3000.0
 MAX_CONCURRENT_TRADES: int = 5
 
+# Sector concentration cap. Prevents the classic "stack 3 tech
+# longs at the top" failure mode — if a signal's sector already
+# represents more than this share of total exposure, refuse NEW
+# trades in that sector. Compared case-insensitively; signals
+# without a sector tag bypass the check.
+MAX_SECTOR_EXPOSURE_PCT: float = 0.50
+
 
 def get_total_exposure(open_positions: list[dict]) -> float:
     """Sum USD-notional size across a list of open positions.
@@ -69,17 +76,47 @@ def get_open_trade_count(open_positions: list[dict]) -> int:
     return len(open_positions or [])
 
 
+def get_sector_exposure(sector: str, open_positions: list[dict]) -> float:
+    """Return the given sector's share of total exposure (0.0 - 1.0).
+
+    Case-insensitive sector match on a position's ``sector`` key.
+    Returns 0.0 when there are no open positions, total exposure is
+    zero, or `sector` is falsy.
+    """
+    if not sector or not open_positions:
+        return 0.0
+    total = get_total_exposure(open_positions)
+    if total <= 0:
+        return 0.0
+    target = sector.lower()
+    sector_total = 0.0
+    for p in open_positions:
+        if (p.get("sector") or "").lower() != target:
+            continue
+        try:
+            sector_total += float(p.get("size_usd", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(sector_total / total, 4)
+
+
 def apply_portfolio_constraints(
-    new_trade_size: float, open_positions: list[dict]
+    new_trade_size: float,
+    open_positions: list[dict],
+    signal_sector: str | None = None,
 ) -> float:
     """Shrink the proposed trade size to fit remaining portfolio
-    headroom, or zero it when either cap is saturated.
+    headroom, or zero it when any cap is saturated.
 
     Rules (evaluated in order):
       1. If `open_trade_count >= MAX_CONCURRENT_TRADES` → return 0.
       2. `remaining = MAX_PORTFOLIO_EXPOSURE - total_exposure`. If
          `remaining <= 0` → return 0.
-      3. Otherwise return `min(new_trade_size, remaining)`.
+      3. If `signal_sector` is provided and that sector already
+         represents more than `MAX_SECTOR_EXPOSURE_PCT` of total
+         exposure → return 0 (no stacking in an over-concentrated
+         sector).
+      4. Otherwise return `min(new_trade_size, remaining)`.
 
     Zero is the signal to callers to skip the trade with a
     `"portfolio limits reached"` reason.
@@ -88,6 +125,11 @@ def apply_portfolio_constraints(
         return 0.0
     remaining = MAX_PORTFOLIO_EXPOSURE - get_total_exposure(open_positions)
     if remaining <= 0:
+        return 0.0
+    if (
+        signal_sector
+        and get_sector_exposure(signal_sector, open_positions) > MAX_SECTOR_EXPOSURE_PCT
+    ):
         return 0.0
     return round(min(float(new_trade_size), remaining), 2)
 
@@ -159,7 +201,9 @@ async def execute_signal(
 
     # ── 3b. Portfolio-level constraints (opt-in via open_positions) ──
     if open_positions is not None:
-        adjusted_size = apply_portfolio_constraints(adjusted_size, open_positions)
+        adjusted_size = apply_portfolio_constraints(
+            adjusted_size, open_positions, signal_sector=signal.get("sector")
+        )
         if adjusted_size <= 0:
             return {"skipped": True, "reason": "portfolio limits reached"}
 

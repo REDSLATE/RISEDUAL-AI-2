@@ -24,6 +24,48 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Sector concentration cap (no stacking 3 tech longs)
+*Session: continued*
+
+Third gate on top of the Portfolio Risk Engine landed this morning.
+Prevents the classic "all-in on tech at the top" failure mode: if
+an incoming signal's sector already represents more than 50% of
+total portfolio exposure, the trade is refused.
+
+**Changes in `services/trading_bot_service.py`:**
+- `MAX_SECTOR_EXPOSURE_PCT = 0.50` — module-level threshold.
+- `get_sector_exposure(sector, open_positions) -> float` —
+  case-insensitive share of total notional held in the given
+  sector (0.0–1.0). Tolerates untagged positions and empty books.
+- `apply_portfolio_constraints(new_trade_size, open_positions,
+  signal_sector=None)` — new third rule (step 3):
+  `get_sector_exposure(signal_sector, ...) > MAX_SECTOR_EXPOSURE_PCT
+  → return 0`. The cap is **strict `>`**, so 50.00% exactly is still
+  allowed — same trade either enters at the boundary or it doesn't.
+- `execute_signal(...)` — now passes `signal.get("sector")` into
+  the gate. Signals without a `sector` tag bypass the check
+  (back-compat; existing paper-bot fleets keep firing).
+
+**Skip reason** stays `"portfolio limits reached"` (shared with the
+concurrency + total-exposure gates) so existing log consumers don't
+need updating.
+
+**Tests added to `tests/test_portfolio_risk_engine.py`** (21 → 35):
+- `get_sector_exposure`: empty/None inputs, missing sector arg,
+  zero total, share-of-total math, case-insensitive match,
+  no-match returns 0, untagged-position tolerance.
+- `apply_portfolio_constraints` sector gate: over-cap blocks,
+  under-cap passes, exact-50% boundary passes, other-sector not
+  blocked by tech saturation, `signal_sector=None` bypasses.
+- `execute_signal` integration: third-tech-long blocked (user's
+  canonical example), diversifying into utilities allowed,
+  untagged signal still fires (back-compat).
+
+**Regression:** 92/92 passing across portfolio, USD-notional,
+adaptive-sizing, Tier 3, and NewsAPI suites.
+
+---
+
 ### 2026-02-20 — Portfolio Risk Engine + Event Registry metadata flags
 *Session: continued*
 

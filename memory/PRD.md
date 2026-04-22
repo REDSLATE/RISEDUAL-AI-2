@@ -55,16 +55,23 @@ adversarial trading platform with:
 ## 4. What's Been Implemented (cumulative)
 
 ### Portfolio Risk Engine + NewsAPI.ai Metadata Flags (COMPLETED Feb 20, 2026)
-- **Portfolio Risk Engine** (`services/trading_bot_service.py`): global
-  caps on top of the existing per-trade `MAX_POSITION_USD=$2000` limit.
-  `MAX_PORTFOLIO_EXPOSURE=$3000` (aggregate notional across open
-  positions) and `MAX_CONCURRENT_TRADES=5` (concurrency). New helpers
-  `get_total_exposure`, `get_open_trade_count`, and
-  `apply_portfolio_constraints` (concurrency-cap-first, then shrink to
-  remaining headroom). `execute_signal(..., open_positions=...)` gains
-  an opt-in kwarg; when supplied, trades that exceed either cap skip
-  with `reason="portfolio limits reached"` (no broker order fires).
-  Omitting the kwarg preserves backwards-compatible behaviour.
+- **Portfolio Risk Engine** (`services/trading_bot_service.py`): three
+  global caps on top of the existing per-trade `MAX_POSITION_USD=$2000`
+  limit.
+  - `MAX_PORTFOLIO_EXPOSURE=$3000` (aggregate notional across open
+    positions).
+  - `MAX_CONCURRENT_TRADES=5` (concurrency).
+  - `MAX_SECTOR_EXPOSURE_PCT=0.50` (no single sector > 50% of total
+    exposure — prevents stacking a 3rd tech long at the top).
+  Helpers: `get_total_exposure`, `get_open_trade_count`,
+  `get_sector_exposure`, and `apply_portfolio_constraints`
+  (concurrency-first → total-exposure headroom → sector gate →
+  shrink-to-remaining). `execute_signal(..., open_positions=...)`
+  takes the opt-in kwarg and passes `signal.get("sector")` through;
+  trades that saturate any cap skip with
+  `reason="portfolio limits reached"` (no broker order fires).
+  Untagged signals / omitted kwarg preserve backwards-compatible
+  behaviour.
 - **NewsAPI.ai metadata flags**
   (`services/search_war_room/adapters/newsapi.py`): opt-in fields
   from the NewsAPI onboarding email — `includeArticleImage`,
@@ -73,10 +80,10 @@ adversarial trading platform with:
   surfaces `image`, `source_image`, `source_ranking` (Alexa rank),
   top-3 `concepts` (label/type/score), and top-2 `categories` on
   each item — used by the War Room UI for richer cards.
-- **Tests**: 25 new tests — `test_portfolio_risk_engine.py` (21) and
-  `test_newsapi_metadata_flags.py` (4). Full regression green:
-  **195/195 passing** across the Tier 3 / conviction / calibration /
-  patterns / polygon test surface.
+- **Tests**: 39 new tests — `test_portfolio_risk_engine.py` (35,
+  incl. sector gate) and `test_newsapi_metadata_flags.py` (4).
+  Full regression green: **92/92 passing** across portfolio,
+  USD-notional, adaptive-sizing, Tier 3, and NewsAPI surfaces.
 
 ### risedual_core Refactor Overlay (COMPLETED Feb 19, 2026)
 - User uploaded a pre-tested refactored zip of `risedual_core`. I did NOT
