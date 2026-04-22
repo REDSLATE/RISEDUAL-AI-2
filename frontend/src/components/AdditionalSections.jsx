@@ -61,17 +61,17 @@ const AdditionalSections = () => {
         <div className="p-0">
           {tab === 'momentum' && (
             <div id="momentum">
-              <DataTable title="Momentum Close Strength" columns={momentumColumns} data={momentumData} />
+              <DataTable title="Momentum Close Strength" columns={momentumColumns} data={momentumData} tradeVariant="options" />
             </div>
           )}
           {tab === 'fast-movers' && (
             <div id="fast-movers">
-              <DataTable title="Fast Mover Calls" columns={momentumColumns} data={fastMoverCallsData} />
+              <DataTable title="Fast Mover Calls" columns={momentumColumns} data={fastMoverCallsData} tradeVariant="options" />
             </div>
           )}
           {tab === 'unusual-vol' && (
             <div id="unusual-volume">
-              <DataTable title="Unusual Options Volume" columns={unusualVolumeColumns} data={unusualVolumeData} />
+              <DataTable title="Unusual Options Volume" columns={unusualVolumeColumns} data={unusualVolumeData} tradeVariant="options" />
             </div>
           )}
         </div>

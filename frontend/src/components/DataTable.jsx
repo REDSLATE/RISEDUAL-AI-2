@@ -4,8 +4,19 @@ import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import FilterPanel from './FilterPanel';
 import QuickTrade from './QuickTrade';
+import OptionsPaperTrade from './OptionsPaperTrade';
 
-const DataTable = ({ title, subtitle, columns, data, showLikes = true, showFilters = false, showTrading = true }) => {
+const DataTable = ({
+  title, subtitle, columns, data,
+  showLikes = true, showFilters = false,
+  showTrading = true,
+  // `tradeVariant` picks which quick-action component renders in the
+  // rightmost column. `"equity"` (default) uses the existing live-broker
+  // `QuickTrade` for stock rows. `"options"` uses the paper-only
+  // `OptionsPaperTrade` for option-scanner rows where passing a
+  // display string to Alpaca's equity endpoint would always 400.
+  tradeVariant = 'equity',
+}) => {
   const [filteredData, setFilteredData] = useState(data);
   const [filters, setFilters] = useState(null);
 
@@ -148,7 +159,7 @@ const getCellContent = (col, row) => {
               ))}
               {showTrading && (
                 <th className="text-left py-3 px-3 text-slate-300 text-xs font-medium uppercase tracking-wider">
-                  QUICK TRADE
+                  {tradeVariant === 'options' ? 'PAPER TRADE' : 'QUICK TRADE'}
                 </th>
               )}
             </tr>
@@ -166,7 +177,9 @@ const getCellContent = (col, row) => {
                 ))}
                 {showTrading && (
                   <td className="py-3 px-3">
-                    <QuickTrade symbol={row.contract} />
+                    {tradeVariant === 'options'
+                      ? <OptionsPaperTrade row={row} />
+                      : <QuickTrade symbol={row.contract} />}
                   </td>
                 )}
               </tr>

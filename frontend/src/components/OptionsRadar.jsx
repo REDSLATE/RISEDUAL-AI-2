@@ -35,6 +35,7 @@ const OptionsRadar = () => {
         columns={columns}
         data={optionsRadarData.mostActivelyTraded}
         showFilters={true}
+        tradeVariant="options"
       />
 
       {/* Volatility Opportunities */}
@@ -44,6 +45,7 @@ const OptionsRadar = () => {
           columns={columns}
           data={optionsRadarData.volatilityOpportunities}
           showFilters={true}
+          tradeVariant="options"
         />
       </div>
     </div>

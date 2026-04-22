@@ -26,6 +26,60 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — Options paper-trading plumbing (fixes broken scanner Buy/Sell)
+*Session: continued*
+
+User reported Buy/Sell buttons on every Options scanner table were
+broken. Root cause: shared `QuickTrade` was hardcoded to hit
+`/api/trading/order/alpaca` (live Alpaca, equities only) with
+option-contract display strings like `"$38 Call Jun 18 ASHR"` as
+`symbol` — Alpaca rejected every click.
+
+User picked option 🅱️ from the scoped plan: paper-options
+infrastructure now, multi-broker live options deferred.
+
+**New backend modules:**
+- `ai_core/options_pricing.py` — pure-function Black-Scholes pricer.
+  Verified against Hull's textbook case (S=K=100, T=1y, r=5%, σ=20%
+  → call $10.45, put $5.57). Put-call parity holds. T→0 collapses
+  to intrinsic, σ→0 floors at 1%, unknown type defaults to call.
+  No scipy dependency — uses `math.erf`.
+- `services/paper_options_service.py` — `execute_option_trade()`
+  stores option legs on the existing `paper_portfolios` document
+  under a new `option_positions` key. Supports BTO + STC; short
+  legs rejected with explicit "not yet supported" message.
+  Contract multiplier 100 (OCC standard).
+
+**Route extension:**
+- `/api/paper/trade` accepts optional `option: {strike, expiry, type,
+  iv_percent}` sub-payload. Equity callers omit it, see zero
+  behavioural change. Pydantic validates strike > 0 and type ∈
+  {call,put} at the HTTP boundary.
+
+**Frontend:**
+- `OptionsPaperTrade.jsx` — Buy/Sell with amber **PAPER** badge on
+  buttons AND modal. Expiry defaults to next third-Friday (monthly
+  OCC). Parses scanner row `price` → strike + type.
+- `DataTable.jsx` — new `tradeVariant` prop. Options tables (7 sites
+  across OptionsRadar, OptionsFlowScreener, AdditionalSections)
+  flipped to `"options"`; Dark Pool keeps equity `QuickTrade`.
+  Column header flips to "PAPER TRADE" on options variant.
+
+**Live verification:**
+- BTO AAPL $200 Call 2026-12-18 @ IV 25% → filled $74.30 × 100
+  = $7,430.41 debited, position persisted.
+- Equity BUY SPY unchanged (regression-tested).
+- Negative strike → HTTP 422 with clean pydantic error.
+
+**Tests:** 21 new (11 pricing + 10 service). Full suite 111/111.
+**Gate:** typecheck baseline 69. Lint clean on 5 files.
+
+**Deferred (future work):**
+- Multi-broker (Alpaca + Tradier + TastyTrade + IBKR).
+- Live options order entry (Greeks, OCC symbols, Reg-T margin, OCC
+  disclosure flow, options-enabled account check).
+- Short options legs (margin math required).
+
 ---
 
 ## 🟢 Shipped to production

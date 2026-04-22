@@ -37,6 +37,7 @@ const OptionsFlowScreener = () => {
           title="Most Actively Traded"
           columns={columns}
           data={optionsFlowData.mostActivelyTraded}
+          tradeVariant="options"
         />
 
         {/* 0-DTE Edge */}
@@ -44,6 +45,7 @@ const OptionsFlowScreener = () => {
           title="0-DTE Edge"
           columns={columns}
           data={optionsFlowData.dteEdge}
+          tradeVariant="options"
         />
       </div>
 
@@ -53,11 +55,13 @@ const OptionsFlowScreener = () => {
           title="Volatility Opportunities (Low IV Rank)"
           columns={columns}
           data={optionsFlowData.volatilityLow}
+          tradeVariant="options"
         />
         <DataTable
           title="Volatility Opportunities (High IV Rank)"
           columns={columns}
           data={optionsFlowData.volatilityHigh}
+          tradeVariant="options"
         />
       </div>
     </div>
