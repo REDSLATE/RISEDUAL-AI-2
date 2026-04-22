@@ -13,10 +13,12 @@ Usage:
 """
 import json
 import logging
-from typing import Any, Optional
-from collections.abc import AsyncGenerator
+from typing import Any, Optional, cast
+from collections.abc import AsyncGenerator, Iterable
 
 import httpx
+
+from openai.types.chat import ChatCompletionToolParam
 
 from services.providerrouter import ProviderRouter
 from services.provider_registry import get_ai_provider_pool
@@ -76,10 +78,17 @@ class FinancialToolsAgent:
         else:
             client = AsyncOpenAI(api_key=api_key)
 
+        # Cast preserves mypy's structural check of the TypedDict
+        # shape (unlike `# type: ignore`, which silently drops it).
+        # If `TOOL_SCHEMAS` drifts away from OpenAI's required
+        # `{type, function: {name, description, parameters}}` shape,
+        # we'll still get the error at the function-tool builder —
+        # we just can't prove shape equivalence on a `list[dict]`
+        # literal at this call site.
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=TOOL_SCHEMAS,  # type: ignore[arg-type]
+            tools=cast(Iterable[ChatCompletionToolParam], TOOL_SCHEMAS),
             temperature=0,
         )
         return response.choices[0].message
