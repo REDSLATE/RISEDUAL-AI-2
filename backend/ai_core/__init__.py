@@ -34,3 +34,12 @@ from .pipeline import (  # noqa: F401
     run_full_pipeline_live,
     run_full_pipeline_backtest,
 )
+from .sizing import (  # noqa: F401
+    apply_adaptive_position_size,
+    apply_per_trade_sizing,
+    build_tier3_snapshot_message,
+    compute_confidence_multiplier,
+    compute_final_position_size,
+    compute_position_multiplier,
+    execute_trade_with_sizing,
+)

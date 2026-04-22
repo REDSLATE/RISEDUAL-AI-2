@@ -24,6 +24,76 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Tier 3 adaptive sizing engine (`ai_core/sizing.py`)
+*Session: continued*
+
+Ships the user-supplied sizing stack into the canonical `ai_core/`
+package. Pure functions — no DB, no broker, no state — so call sites
+compose at will. Before today, readiness only fed the admin UI and
+the daily email digest; now it actually drives position sizes.
+
+**What shipped in `ai_core/sizing.py`:**
+- `compute_position_multiplier(readiness)` — readiness snapshot →
+  `[0.25, 1.0]` scalar. Safety throttles compound:
+  * `strong_miss_rate > 10%` → ×0.5
+  * `clamp_total > 0`        → ×0.25 (heaviest)
+  * `high_conf_trades < 30`  → ×0.75
+- `compute_confidence_multiplier(confidence)` — 0-100 confidence →
+  `[0.3, 1.5]` scalar via linear ramp between `MIN_CONFIDENCE=50`
+  and `MAX_CONFIDENCE=100`.
+- `compute_final_position_size(base, readiness, prediction)` —
+  combined `base × readiness_mult × conf_mult`, hard-clamped to
+  `[0.1, 2.0]` of base, zero below the `MIN_CONFIDENCE_TO_TRADE=55`
+  gate.
+- `apply_adaptive_position_size(base, readiness)` — daily-scheduler
+  hook (readiness only, no per-signal confidence).
+- `apply_per_trade_sizing(base, readiness, prediction)` — per-trade
+  alias for the full composite.
+- `build_tier3_snapshot_message(current, previous)` — plain-text
+  one-liner for Slack / log lines / CLI (distinct from the HTML
+  email body the digest produces). Example output:
+  `Tier 3 readiness: 81.3 ▲ +1.93 — LOCKED 🔒 | Blockers: Days 7/30, Trades 82/100`
+- `execute_trade_with_sizing(signal, readiness, base, df)` — end-to-
+  end drop-in that normalises the user-spec signal dict
+  (`sl`/`tp` short keys), computes size, delegates to the canonical
+  `get_trade_result_from_df` simulator, and surfaces a `result`
+  field (`WIN`/`LOSS`/`PENDING`, uppercased from the simulator's
+  `status`) alongside `size` for the user-spec contract.
+
+**Exports:** all 7 public functions re-exported from
+`ai_core.__init__` so downstream calls are as simple as
+``from ai_core import apply_per_trade_sizing``.
+
+**Verified:**
+- 30 new tests in `tests/test_tier3_sizing.py`:
+  * Position-multiplier: ceiling/floor, each throttle firing in
+    isolation, all three compounding, empty-dict fail-closed,
+    garbage-score ceiling.
+  * Confidence-multiplier: min/mid/max, above/below clamps.
+  * Final sizing: trade-gate boundary, high-conf scale-up,
+    absolute ceiling @ 2x base, absolute floor @ 0.1x base.
+  * Snapshot message: up/down/flat/no-prior delta paths, unlocked
+    state, all five blocker-chip enrichments.
+  * Execute wrapper: skip path, pending-without-df path, long-win
+    simulator round-trip, long-loss round-trip, long-form alias
+    keys.
+- Full session regression: **146/146 tests green**.
+- Live example smoke-run reproduces the user's expected output:
+  `conf=92 → $797.88`, `conf=75 → $549.00`, `conf=52 → $0` (gate).
+- Ruff clean. Backend restart clean.
+
+**What's already in place (not duplicated):**
+- `get_trade_result_from_df` — `ai_core/simulator.py`
+- `get_trade_result_from_bars` — `ai_core/simulator.py`
+- `ExecutionClient` — `ai_core/execution.py`
+- Tier 3 readiness snapshot — `services/tier3_readiness.py`
+
+**Files changed:**
+- `backend/ai_core/sizing.py` (new)
+- `backend/ai_core/__init__.py` — re-exports
+- `backend/tests/test_tier3_sizing.py` (new)
+
+
 ### 2026-02-20 — Type-hint push round 3 (services/ 83.8% → 88.4%)
 *Session: continued*
 
