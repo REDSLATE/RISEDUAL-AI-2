@@ -24,6 +24,88 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
+### 2026-02-20 — Drawdown control + Multi-bot capital allocator
+*Session: continued*
+
+Fourth gate on top of the Portfolio Risk Engine. User patch —
+implemented as a pure-function module, then opt-in wired into
+`execute_signal` so existing callers don't see any behaviour change.
+
+**New module — `/app/backend/ai_core/drawdown_allocator.py`:**
+
+Config:
+- `MAX_DRAWDOWN = 0.20` (20%) — beyond this the risk multiplier
+  clamps to the floor.
+- `SOFT_DRAWDOWN = 0.10` (10%) — risk taper begins.
+- `MIN_RISK_MULTIPLIER = 0.3` — floor, never cut risk below 30%.
+  Chosen so bots keep generating signal-quality data even in
+  deep drawdowns (Tier 3 accuracy stats need the flow).
+- `DEFAULT_BOT_WEIGHT = 1.0`.
+
+Pure functions:
+- `compute_drawdown(equity_curve) -> float` — single-pass
+  peak-to-trough max. Returns 0.0 for empty / monotonic-up
+  curves. Four-decimal rounded.
+- `compute_drawdown_multiplier(equity_curve) -> float` — piecewise:
+  `dd ≤ 0.10` → 1.0; `0.10 < dd < 0.20` → linear taper to
+  `MIN_RISK_MULTIPLIER`; `dd ≥ 0.20` → floor.
+- `compute_bot_score(bot_stats) -> float` — `0.7 * win_rate +
+  (0.3 if pnl > 0 else 0)`, floored at 0.1 so losing bots keep a
+  sliver of capital. Tolerates missing or `None` inputs.
+- `allocate_capital(total_capital, bots) -> dict[str, float]` —
+  splits a USD pool across bots weighted by their scores. Empty
+  dict in, empty dict out (caller falls back to its own default).
+- `apply_global_risk_controls(base_size, equity_curve, bot_capital)
+  -> float` — caps at the per-bot envelope, then multiplies by
+  the drawdown taper. Returns 0.0 for zero/negative capital.
+
+**`execute_signal` extension** (`services/trading_bot_service.py`):
+- Two new opt-in kwargs: `equity_curve: list[float] | None = None`
+  and `bot_capital: float | None = None`.
+- Step **3c** inserted between the portfolio constraints (3b) and
+  the hard cap (4). Only runs when **both** kwargs are supplied —
+  matches the `is not None` guard.
+- Skip reason: `"risk control"` when the combined multiplier
+  zeroes the trade (e.g. `bot_capital == 0`).
+- Fully backwards-compatible: every existing caller that doesn't
+  pass these kwargs gets the exact same behaviour as before.
+
+**Bug fix caught during test-writing:**
+`compute_bot_score` originally used `float(bot_stats.get("win_rate", 0.5) or 0.5)`,
+which clobbered legitimate `0.0` values because Python treats
+`0.0` as falsy. Switched to an explicit `None` check so
+`{"win_rate": 0.0}` scores correctly at 0.1 (floor) instead of
+0.35 (hitting the neutral default). Would have quietly
+over-allocated capital to brand-new losing bots. Regression
+tested.
+
+**Tests added — `tests/test_drawdown_allocator.py`** (39 new):
+- `compute_drawdown`: empty, single point, monotonic up/down,
+  peak-to-trough tracking across recovery, post-trough-recovery
+  doesn't reset peak, 4-dp rounding.
+- `compute_drawdown_multiplier`: empty, flat, below-soft, at
+  exact soft, midway (scale=0.5), three-quarters (clamps to
+  floor), at max, beyond max, pathological -99%.
+- `compute_bot_score`: perfect winner, perfect winner flat pnl,
+  losing bot floor, default neutral win rate, empty dict, None
+  tolerance.
+- `allocate_capital`: empty, single bot, score-weighted split
+  (winner vs loser ~10×), equal scores even split.
+- `apply_global_risk_controls`: flat curve pass-through,
+  capital-cap, drawdown taper, floor clamp, zero/negative
+  capital returns zero.
+- `execute_signal` integration: omitted kwargs bypass layer,
+  flat equity passes through, drawdown taper shrinks, bot
+  capital cap beats base, zero capital → `"risk control"` skip,
+  full 3-gate stack (portfolio + drawdown + sector), only one
+  of the two kwargs bypasses.
+
+**Regression:** 248/248 passing across the full test surface.
+Ruff clean. mypy baseline-diff gate passes at 0 delta (nothing
+new leaked into the 136 pre-existing baseline).
+
+---
+
 ### 2026-02-20 — mypy pre-deploy gate (`scripts/typecheck.sh`)
 *Session: continued*
 

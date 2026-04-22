@@ -43,3 +43,14 @@ from .sizing import (  # noqa: F401
     compute_position_multiplier,
     execute_trade_with_sizing,
 )
+from .drawdown_allocator import (  # noqa: F401
+    DEFAULT_BOT_WEIGHT,
+    MAX_DRAWDOWN,
+    MIN_RISK_MULTIPLIER,
+    SOFT_DRAWDOWN,
+    allocate_capital,
+    apply_global_risk_controls,
+    compute_bot_score,
+    compute_drawdown,
+    compute_drawdown_multiplier,
+)

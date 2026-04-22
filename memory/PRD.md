@@ -54,6 +54,30 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Drawdown Control + Multi-Bot Capital Allocator (COMPLETED Feb 20, 2026)
+- New pure-function module `ai_core/drawdown_allocator.py` with
+  five primitives: `compute_drawdown`, `compute_drawdown_multiplier`,
+  `compute_bot_score`, `allocate_capital`, and
+  `apply_global_risk_controls`.
+- Thresholds: `SOFT_DRAWDOWN=10%`, `MAX_DRAWDOWN=20%`,
+  `MIN_RISK_MULTIPLIER=0.3` (floor — never cut risk below 30% so
+  Tier 3 accuracy stats keep accumulating). Linear taper between
+  soft and max.
+- Bot score: `0.7 × win_rate + (0.3 if pnl > 0 else 0)`, floored
+  at 0.1 so losing bots rehabilitate instead of getting starved.
+- `execute_signal` gained two opt-in kwargs (`equity_curve`,
+  `bot_capital`). When both supplied, a new step 3c applies the
+  global risk controls between the portfolio gate and the hard
+  cap; skips with `reason="risk control"` when the combined
+  multiplier zeroes the trade.
+- Caught a real bug during test-writing: original
+  `compute_bot_score` used `X or 0.5` as the fallback, which
+  clobbered legitimate `0.0` values (Python treats 0.0 as falsy).
+  Switched to explicit `None` check.
+- **39 new tests** in `tests/test_drawdown_allocator.py`; full
+  regression green at **248/248** across the trading-engine test
+  surface; lint + mypy baseline-diff both pass.
+
 ### mypy Pre-Deploy Gate (COMPLETED Feb 20, 2026)
 - Wired a baseline-diff mypy gate at `/app/scripts/typecheck.sh`
   with config at `/app/backend/mypy.ini` and a snapshot of the

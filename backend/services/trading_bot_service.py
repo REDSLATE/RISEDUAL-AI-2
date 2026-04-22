@@ -140,6 +140,8 @@ async def execute_signal(
     tier3_readiness: dict,
     config: Any,
     open_positions: list[dict] | None = None,
+    equity_curve: list[float] | None = None,
+    bot_capital: float | None = None,
 ) -> dict:
     """USD-notional execution path for signal bots.
 
@@ -154,6 +156,13 @@ async def execute_signal(
     portfolio check — useful for unit tests and backtests where the
     portfolio is tracked elsewhere.
 
+    When both `equity_curve` and `bot_capital` are supplied, the
+    drawdown + allocator layer (:func:`ai_core.apply_global_risk_controls`)
+    runs in step 3c. This taper-throttles the trade as the fleet
+    equity curve drops and caps it at the per-bot capital envelope
+    assigned by :func:`ai_core.allocate_capital`. Either arg `None`
+    → that layer is skipped.
+
     Flow:
       1. Read `base_size` (USD) from config. Accepts either a dict
          (legacy `{"trade_size": 1000}`) or an object with a
@@ -166,6 +175,11 @@ async def execute_signal(
          shrinks the trade to fit remaining headroom (or zeroes it
          when the concurrency/exposure caps are saturated). Only
          runs when `open_positions` is provided.
+      3c. **Drawdown + allocator throttle** — only when both
+         `equity_curve` and `bot_capital` are supplied. Taper
+         position during drawdowns and cap at the bot's allocated
+         capital envelope. Skips with ``reason="risk control"``
+         when the combined multiplier zeroes the trade.
       4. Hard-cap the notional at :data:`MAX_POSITION_USD`.
       5. Convert USD → share count via `signal.entry` or
          `market_data.price`. Abort on missing/zero price.
@@ -206,6 +220,16 @@ async def execute_signal(
         )
         if adjusted_size <= 0:
             return {"skipped": True, "reason": "portfolio limits reached"}
+
+    # ── 3c. Drawdown + allocator throttle (opt-in) ──
+    if equity_curve is not None and bot_capital is not None:
+        from ai_core import apply_global_risk_controls
+
+        adjusted_size = apply_global_risk_controls(
+            adjusted_size, equity_curve, bot_capital
+        )
+        if adjusted_size <= 0:
+            return {"skipped": True, "reason": "risk control"}
 
     # ── 4. Hard cap ──
     adjusted_size = min(adjusted_size, MAX_POSITION_USD)
