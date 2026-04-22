@@ -69,12 +69,12 @@ def _next_version_number() -> int:
 
 async def _load_training_dataframe(
     db: Any, max_samples: int
-) -> tuple[object, object, int]:
+) -> tuple[Any, Any, int]:
     """Pull labeled snapshots and return ``(X_df, y_series, n_rows)``.
 
-    Tuple shape is ``(pandas.DataFrame, pandas.Series, int)`` — we keep the
-    return type untyped here to avoid a hard import cost on cold boot for
-    non-training paths. Internal only.
+    Tuple shape is ``(pandas.DataFrame, pandas.Series, int)`` — typed
+    as `Any` to avoid the hard pandas import cost on cold boot for
+    non-training code paths. Internal only.
     """
     import pandas as pd
 

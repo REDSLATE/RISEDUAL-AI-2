@@ -201,7 +201,7 @@ def _check_strategy(strategy_id: str, closes: np.ndarray, volumes: np.ndarray, t
 async def scan_symbols(symbols: list[str], strategies: Optional[list[str]] = None) -> dict:
     """Scan a list of symbols against selected strategies. Returns matches grouped by strategy."""
     active_strategies = strategies or list(STRATEGIES.keys())
-    results = {sid: {"info": STRATEGIES[sid], "matches": []} for sid in active_strategies if sid in STRATEGIES}
+    results: dict[str, dict[str, Any]] = {sid: {"info": STRATEGIES[sid], "matches": []} for sid in active_strategies if sid in STRATEGIES}
 
     scanned = 0
     errors = 0
@@ -261,7 +261,7 @@ async def get_user_scan_symbols(user_id: str) -> list[str]:
 
 # ── Custom Rule Engine ──
 
-AVAILABLE_INDICATORS = {
+AVAILABLE_INDICATORS: dict[str, dict[str, Any]] = {
     "rsi": {"name": "RSI (14)", "type": "number", "range": [0, 100]},
     "rsi_7": {"name": "RSI (7)", "type": "number", "range": [0, 100]},
     "macd": {"name": "MACD Line", "type": "number", "range": [-50, 50]},
@@ -287,7 +287,7 @@ AVAILABLE_INDICATORS = {
     "trend": {"name": "Trend", "type": "category", "values": ["strong_bullish", "bullish", "neutral", "bearish"]},
 }
 
-OPERATORS = {
+OPERATORS: dict[str, list[dict[str, Any]]] = {
     "number": [
         {"id": "gt", "label": ">", "fn": lambda a, b: a > b},
         {"id": "gte", "label": ">=", "fn": lambda a, b: a >= b},

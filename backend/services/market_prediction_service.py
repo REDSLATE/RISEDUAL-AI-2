@@ -127,7 +127,7 @@ class MarketPredictionService:
 
     def _build_regime_snapshot(self, news: Any, crypto: Any, trades: Any, social: Any, world_events: Any, foreign_markets: Any) -> dict:
         """Build a compact regime description from current market data for memory queries."""
-        snapshot: dict[str, dict] = {"metrics": {}, "sentiment": {}}
+        snapshot: dict[str, Any] = {"metrics": {}, "sentiment": {}}
 
         # Derive simple sentiment from news
         pos = neg = 0

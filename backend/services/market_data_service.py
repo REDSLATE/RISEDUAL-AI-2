@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import secrets as _secrets
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 
 import httpx
@@ -169,8 +169,14 @@ class MarketDataService:
             c['sentiment'] = _rng.choice(['Bearish', 'Bullish'])
         return contracts
 
-    def generate_mock_options_data(self, data_type: str) -> dict:
-        """Generate realistic mock options data based on type."""
+    def generate_mock_options_data(self, data_type: str) -> Any:
+        """Generate realistic mock options data based on type.
+
+        Return shape depends on `data_type` — `radar` / `flow` yield
+        dicts keyed by bucket, while `momentum` / `fast_movers` /
+        `unusual_volume` yield flat lists of contracts. Typed `Any`
+        because the caller branches on `data_type` and knows what it
+        asked for."""
         generators = {
             'radar': lambda: {
                 'mostActivelyTraded': self._generate_contracts(4),

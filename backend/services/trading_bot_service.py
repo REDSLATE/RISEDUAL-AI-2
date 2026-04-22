@@ -1076,7 +1076,7 @@ async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payloa
             "symbol": symbol, "side": action, "qty": qty,
             "mode": bot.get("mode", "paper"), "order_type": "market",
         })
-        result = {"status": "executed", "type": "smart_order", "order": order_result}
+        result: dict[str, Any] = {"status": "executed", "type": "smart_order", "order": order_result}
     else:
         await _execute_bot_trade(bot, symbol, action, qty, 0)
         result = {"status": "executed", "type": "paper_trade", "symbol": symbol, "side": action, "qty": qty}

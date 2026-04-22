@@ -7,6 +7,7 @@ import json
 import logging
 import asyncio
 import os
+from typing import Any
 
 import httpx
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 #  TOOL SCHEMAS (OpenAI function calling format)
 # ─────────────────────────────────────────────
 
-TOOL_SCHEMAS = [
+TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {

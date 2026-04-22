@@ -214,7 +214,7 @@ async def query_similar_regimes(
 
     text = _regime_to_text(current_state)
 
-    where_filter = None
+    where_filter: dict[str, Any] | None
     if outcome_filter:
         where_filter = {"outcome": outcome_filter}
     else:
@@ -227,7 +227,7 @@ async def query_similar_regimes(
         _collection.query,
         query_texts=[text],
         n_results=actual_n,
-        where=where_filter,
+        where=where_filter,  # type: ignore[arg-type]
         include=["documents", "metadatas", "distances"],
     )
 
@@ -303,7 +303,7 @@ async def get_strategist_context(ticker: str, current_rsi: float = None, n_resul
             _collection.query,
             query_texts=[query_text],
             n_results=actual_n,
-            where=where_filter,
+            where=where_filter,  # type: ignore[arg-type]
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
@@ -473,7 +473,7 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
     if not _collection:
         return {"error": "Market Memory not initialized"}
 
-    results = {
+    results: dict[str, Any] = {
         "toxic_removed": 0,
         "obsolete_removed": 0,
         "total_before": 0,
@@ -487,14 +487,18 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
 
     # ── A. Re-tag Toxic Outliers as "toxic_lesson" ──
     try:
+        # Cast avoids a ChromaDB Where-literal strictness: our $and
+        # filter is runtime-valid but mypy can't reason about nested
+        # $gt dict items against the tight Where union.
+        toxic_where: dict[str, Any] = {
+            "$and": [
+                {"outcome": "miss"},
+                {"confidence": {"$gt": toxic_confidence_threshold}},
+            ]
+        }
         toxic = await asyncio.to_thread(
             _collection.get,
-            where={
-                "$and": [
-                    {"outcome": "miss"},
-                    {"confidence": {"$gt": toxic_confidence_threshold}},
-                ]
-            },
+            where=toxic_where,  # type: ignore[arg-type]
             include=["metadatas"],
         )
         toxic_ids = toxic.get("ids", [])
@@ -512,17 +516,19 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
                     "failure_code": meta.get("failure_code", "UNKNOWN"),
                 })
 
-            # Re-tag as toxic_lesson instead of deleting
+            # Re-tag as toxic_lesson instead of deleting. `.copy()`
+            # is runtime-safe on ChromaDB metadata dicts; the stubs
+            # type the return as Mapping (no .copy) so we cast.
             updated_metas = []
             for i, tid in enumerate(toxic_ids):
-                meta = toxic_metas[i].copy() if i < len(toxic_metas) else {}
+                meta = dict(toxic_metas[i]) if i < len(toxic_metas) else {}
                 meta["outcome"] = "toxic_lesson"
                 updated_metas.append(meta)
 
             await asyncio.to_thread(
                 _collection.update,
                 ids=toxic_ids,
-                metadatas=updated_metas,
+                metadatas=updated_metas,  # type: ignore[arg-type]
             )
             results["toxic_removed"] = len(toxic_ids)
             logger.info(f"Cleanup: Re-tagged {len(toxic_ids)} toxic high-confidence failures as 'toxic_lesson'")
@@ -544,10 +550,14 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         )
         all_ids = all_data.get("ids", [])
         all_metas = all_data.get("metadatas", [])
+        # `.get("date", "9999")` return type is `str | int | float |
+        # SparseVector` per ChromaDB stubs. Runtime always gets
+        # back a str (we write dates as ISO strings). str <-> str
+        # compare is safe; cast to str to appease the union.
         old_ids = [
             all_ids[i]
             for i in range(len(all_ids))
-            if i < len(all_metas) and all_metas[i].get("date", "9999") < cutoff_date
+            if i < len(all_metas) and str(all_metas[i].get("date", "9999")) < cutoff_date
         ]
         if old_ids:
             # Delete in batches of 500 to avoid ChromaDB limits

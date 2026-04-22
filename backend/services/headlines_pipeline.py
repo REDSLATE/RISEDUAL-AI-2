@@ -15,7 +15,7 @@ import hashlib
 import logging
 import re
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -86,7 +86,7 @@ class HeadlinesPipeline:
         total_scraped = 0
         total_new = 0
         total_dupes = 0
-        source_stats = {}
+        source_stats: dict[str, dict[str, Any]] = {}
         now = datetime.now(timezone.utc)
 
         for source_name, url, selector in self.sources:
@@ -142,7 +142,7 @@ class HeadlinesPipeline:
         if self.db is None:
             return []
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-        query = {"scraped_at": {"$gt": cutoff}}
+        query: dict[str, Any] = {"scraped_at": {"$gt": cutoff}}
         if source:
             query["source"] = source
         cursor = self.db[COLLECTION].find(

@@ -21,9 +21,9 @@ try:
     from ddgs import DDGS
     from duckduckgo_search.exceptions import DuckDuckGoSearchException, RatelimitException
 except Exception:
-    DDGS = None
-    DuckDuckGoSearchException = Exception
-    RatelimitException = Exception
+    DDGS = None  # type: ignore[assignment,misc]
+    DuckDuckGoSearchException = Exception  # type: ignore[assignment,misc]
+    RatelimitException = Exception  # type: ignore[assignment,misc]
 
 
 class RetryableDDGError(Exception):

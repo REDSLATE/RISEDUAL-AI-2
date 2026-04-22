@@ -26,6 +26,63 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — mypy baseline 47 → 0 (clean slate)
+*Session: continued*
+
+Second sweep. Went from 47 → 0 mypy errors across `backend/services/`.
+Root-caused most of the remaining errors to five patterns, each fixed
+cheaply:
+
+**Pattern 1 — mixed-value dicts/lists annotated with narrow types.**
+Twelve files had `MODULE_CONSTANT = [{...mixed...}]` that mypy
+inferred as `list[dict[str, Collection[str]]]`. Explicit
+`: list[dict[str, Any]]` annotations let the concrete shape flow
+through. Changed: `scanner_service.AVAILABLE_INDICATORS` /
+`.OPERATORS`, `order_flow_service.BINANCE_ENDPOINTS`,
+`fred_service.MACRO_SERIES`,
+`multi_model_hypothesis_service.MODELS`,
+`market_sentiment_service._fng_cache`, `financial_tools.TOOL_SCHEMAS`,
+`sec_13f_service.result/summary`, `failure_loop_service.idea`,
+`market_memory_service.results/where_filter`,
+`market_prediction_service.snapshot`,
+`trading_bot_service.result`, `lobbying_service.pipeline/issue_pipeline`.
+
+**Pattern 2 — BeautifulSoup `.get('href')` can return
+`str | AttributeValueList`.** Two scrapers crashed silently on
+malformed HTML. Added `isinstance(href, str): continue` guards in
+`financial_scraping_service.py` (Reuters + Fox Business scrapers).
+Latent bug hardening.
+
+**Pattern 3 — ChromaDB stubs reject runtime-valid Where filters.**
+`market_memory_service` and `post_mortem_service` write complex
+`$and` / `$gt` filters that ChromaDB accepts but the stubs' Where
+TypedDict doesn't. Five `# type: ignore[arg-type]` + two
+`dict(metadata)` casts to mirror runtime `.copy()`.
+
+**Pattern 4 — Real runtime bug: `referral_rewards.py` imported
+`send_to_user` which didn't exist in `push_service.py`.** Wrapped in
+try/except so it was silent-failing. Implemented `send_to_user(db,
+user_id, title, body, url, tag)` as a proper generic user-scoped
+push helper. Referral reward notifications now work.
+
+**Pattern 5 — SDK stub strictness on OpenAI / Anthropic / Resend /
+httpx.** Five `# type: ignore[arg-type,misc]` on calls where the
+outgoing JSON is structurally identical to the SDK's TypedDict but
+mypy can't unify. Each ignore is scoped to a single call.
+
+**Extra:**
+- Refined `broker_service._account_id: str | None = None`.
+- Fixed `storage_service.list_media` `query: dict[str, Any]`.
+- Annotated `headlines_pipeline.source_stats` + `query`.
+- `ml_retrain_service._load_training_dataframe` return type
+  `tuple[object, object, int]` → `tuple[Any, Any, int]` so `.mean()`
+  works without phantom errors.
+- Fixed `typecheck.sh` normalize pipe-fail bug — `grep` returning
+  exit 1 on zero matches now short-circuits to `true`.
+
+**Baseline locked at 0 errors.** Any regression from now on is a
+real signal. 239/239 tests green, backend healthy.
+
 ### 2026-04-22 — Smart-routed spreads + mypy baseline 69→47 + Paper days tile
 *Session: continued*
 

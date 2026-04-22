@@ -26,7 +26,7 @@ def _get_key() -> str:
 
 
 # Key macro series to track
-MACRO_SERIES = [
+MACRO_SERIES: list[dict[str, Any]] = [
     # Growth
     {"id": "GDP", "name": "Gross Domestic Product", "category": "Growth", "unit": "$T", "divisor": 1000, "decimals": 2},
     {"id": "GDPC1", "name": "Real GDP", "category": "Growth", "unit": "$T", "divisor": 1000, "decimals": 2},

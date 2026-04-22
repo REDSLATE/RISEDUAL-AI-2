@@ -38,7 +38,7 @@ async def create_trade_idea(user_id: str, symbol: str, direction: str, thesis: s
     if db is None:
         return {}
 
-    idea = {
+    idea: dict[str, Any] = {
         "idea_id": str(uuid4()),
         "user_id": user_id,
         "symbol": symbol.upper(),

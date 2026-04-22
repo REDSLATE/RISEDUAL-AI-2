@@ -261,9 +261,12 @@ async def run_and_update_post_mortem(
             ).hexdigest()
             existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
             if existing and existing.get("ids"):
-                meta = existing["metadatas"][0].copy()
+                # ChromaDB stubs type metadatas entries as Mapping
+                # (no .copy); runtime returns plain dicts. dict()
+                # cast is the safe mirror of `.copy()`.
+                meta = dict(existing["metadatas"][0])
                 meta["failure_code"] = code
-                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])
+                await asyncio.to_thread(_collection.update, ids=[doc_id], metadatas=[meta])  # type: ignore[arg-type]
     except Exception as e:
         log_warning(logger, {
             "error": str(e),

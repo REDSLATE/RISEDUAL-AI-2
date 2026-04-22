@@ -79,7 +79,7 @@ class FinancialToolsAgent:
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=TOOL_SCHEMAS,
+            tools=TOOL_SCHEMAS,  # type: ignore[arg-type]
             temperature=0,
         )
         return response.choices[0].message

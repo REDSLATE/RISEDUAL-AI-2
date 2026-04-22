@@ -54,6 +54,22 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### mypy baseline 47 → 0 (clean slate) (Feb 22, 2026)
+- Eliminated all remaining type errors in `backend/services/`.
+  Categorised into 5 patterns: mixed-value dicts needing
+  `dict[str, Any]` annotations (12 files), BeautifulSoup
+  `.get('href')` union-attr guards (scraper hardening), ChromaDB
+  stub strictness (targeted `# type: ignore[arg-type]`), SDK
+  TypedDict strictness (scoped ignores), and one **real runtime
+  bug** — `referral_rewards.py` imported a non-existent
+  `send_to_user` from `push_service.py` (silent-fail try/except
+  was masking it). Added a proper user-scoped push helper —
+  referral reward notifications now work.
+- Fixed `typecheck.sh` pipefail bug where `grep` returning empty
+  caused the whole gate to exit non-zero.
+- Baseline locked at 0. Any new mypy error from now on is a real
+  signal. 239/239 tests green.
+
 ### Smart-routed spreads + mypy 69→47 + Tier 3 paper-days tile (Feb 22, 2026)
 - **P2**: `SmartOrderRouter.route_spread()` — new
   `supports_multileg` capability flag on the adapter interface

@@ -1,6 +1,7 @@
 """Lobbying data service — queries imported lobbying disclosure data from MongoDB."""
 import os
 import logging
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -31,7 +32,7 @@ class LobbyingService:
 
     async def get_top_spenders(self, limit: int = 15) -> list[dict]:
         """Get top lobbying spenders by total amount."""
-        pipeline = [
+        pipeline: list[dict[str, Any]] = [
             {"$match": {"amount": {"$gt": 0}}},
             {"$group": {
                 "_id": "$ticker",
@@ -72,7 +73,7 @@ class LobbyingService:
         recent = await self.get_recent_lobbying(10)
 
         # Top issues
-        issue_pipeline = [
+        issue_pipeline: list[dict[str, Any]] = [
             {"$match": {"amount": {"$gt": 0}}},
             {"$group": {"_id": "$issue", "total": {"$sum": "$amount"}, "count": {"$sum": 1}}},
             {"$sort": {"total": -1}},

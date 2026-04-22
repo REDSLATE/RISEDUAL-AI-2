@@ -13,6 +13,7 @@ The output feeds into all 3 AI crew synthesizer prompts alongside Edge/Veto.
 import logging
 import asyncio
 import requests
+from typing import Any
 from datetime import datetime, timezone
 
 from collections import defaultdict
@@ -31,7 +32,7 @@ def _ratio_to_intensity(ratio: float) -> int:
     """Convert volume ratio (vs median) to 0-100 intensity score."""
     return min(int(((ratio - 1) / 9.0) * 100), 100) if ratio >= 1 else 0
 
-BINANCE_ENDPOINTS = [
+BINANCE_ENDPOINTS: list[dict[str, str]] = [
     {"depth": "https://api.binance.us/api/v3/depth", "price": "https://api.binance.us/api/v3/ticker/price"},
     {"depth": "https://api.binance.com/api/v3/depth", "price": "https://api.binance.com/api/v3/ticker/price"},
 ]
@@ -68,12 +69,14 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> dict:
 
     for ep in BINANCE_ENDPOINTS:
         try:
+            depth_params: dict[str, Any] = {"symbol": symbol, "limit": limit}
+            price_params: dict[str, Any] = {"symbol": symbol}
             depth_resp, price_resp = await asyncio.gather(
                 asyncio.to_thread(
-                    lambda url=ep["depth"]: requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=10)
+                    lambda url=ep["depth"]: requests.get(url, params=depth_params, timeout=10)  # type: ignore[misc]
                 ),
                 asyncio.to_thread(
-                    lambda url=ep["price"]: requests.get(url, params={"symbol": symbol}, timeout=5)
+                    lambda url=ep["price"]: requests.get(url, params=price_params, timeout=5)  # type: ignore[misc]
                 ),
             )
             d = depth_resp.json()
@@ -110,7 +113,7 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> dict:
         return {"error": "Zero median volume", "walls": [], "source": "binance"}
 
     # Detect walls from bids (support) and asks (resistance)
-    walls = []
+    walls: list[dict[str, Any]] = []
 
     for level in bid_levels:
         ratio = level["volume"] / median_vol
@@ -243,7 +246,7 @@ async def _fetch_yf_profile(ticker: str, period: str = "2d", interval: str = "5m
 
     median_vol = float(np.median(vol_values))
 
-    walls = []
+    walls: list[dict[str, Any]] = []
     for bucket in profile:
         if median_vol <= 0:
             continue

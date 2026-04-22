@@ -4,7 +4,7 @@ import uuid
 import logging
 import requests
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ class MediaService:
 
     async def list_media(self, category: str = None) -> list:
         """List all active (non-deleted) media files."""
-        query = {"is_deleted": False}
+        query: dict[str, Any] = {"is_deleted": False}
         if category:
             query["category"] = category
         cursor = self.col.find(query, {"_id": 0}).sort("created_at", -1)

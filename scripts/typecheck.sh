@@ -41,8 +41,9 @@ run_mypy() {
 
 normalize() {
     # Drop line numbers (column numbers too) + blank "Found N errors" summary.
-    # Sort so order doesn't matter.
-    grep -E "^services/.*\[[a-z-]+\]$" \
+    # Sort so order doesn't matter. `grep || true` so empty input
+    # (zero errors) doesn't propagate exit 1 through pipefail.
+    (grep -E "^services/.*\[[a-z-]+\]$" || true) \
         | sed -E 's/:[0-9]+(:[0-9]+)?: /: /' \
         | sort -u
 }

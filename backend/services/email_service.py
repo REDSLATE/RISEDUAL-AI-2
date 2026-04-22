@@ -2,6 +2,7 @@
 import os
 import asyncio
 import logging
+from typing import Any
 import resend
 import httpx
 from dotenv import load_dotenv
@@ -35,9 +36,12 @@ def _is_configured() -> bool:
 async def _send_via_resend(api_key: str, to: list, subject: str, html: str) -> dict:
     """Send email through Resend API."""
     resend.api_key = api_key
-    params = {"from": SENDER_EMAIL, "to": to, "subject": subject, "html": html}
-    result = await asyncio.to_thread(resend.Emails.send, params)
-    return result
+    # Resend SDK typed SendParams is a TypedDict with required
+    # literal keys ("from"/"to"/"subject"/"html"). Our plain dict is
+    # structurally identical but mypy can't convert without a cast.
+    params: dict[str, Any] = {"from": SENDER_EMAIL, "to": to, "subject": subject, "html": html}
+    result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
+    return dict(result) if result else {}
 
 
 async def _send_via_sendgrid(api_key: str, to: list, subject: str, html: str) -> dict:
@@ -362,7 +366,7 @@ async def send_toxic_spikes_email(
                 toxic_count, obsolete_count, total_before, total_after, spike_details or []
             ),
         }
-        result = await asyncio.to_thread(resend.Emails.send, params)
+        result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
         logger.info(f"Toxic spikes alert email sent to {recipient_email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -733,7 +737,7 @@ async def send_referral_success(email: str, name: str, new_rank: int, referral_c
             "subject": f"You just skipped 20 spots — now #{new_rank} in line",
             "html": _referral_success_html(name, new_rank, referral_count, spots_skipped),
         }
-        result = await asyncio.to_thread(resend.Emails.send, params)
+        result = await asyncio.to_thread(resend.Emails.send, params)  # type: ignore[arg-type]
         logger.info(f"Referral success email sent to {email}, id: {result.get('id', 'unknown')}")
         return True
     except Exception as e:

@@ -1,6 +1,6 @@
 import re
 import logging
-from typing import Optional
+from typing import Optional, Any
 from services.providerrouter import ProviderRouter
 from services.provider_registry import get_ai_provider_pool
 
@@ -98,8 +98,8 @@ class AIService:
 
         if p == "anthropic":
             from anthropic import AsyncAnthropic
-            client = AsyncAnthropic(api_key=provider["api_key"])
-            messages_content = [{"type": "text", "text": message}]
+            client: Any = AsyncAnthropic(api_key=provider["api_key"])
+            messages_content: list[dict[str, Any]] = [{"type": "text", "text": message}]
             if image_base64:
                 messages_content.insert(0, {
                     "type": "image",
@@ -122,7 +122,7 @@ class AIService:
 
         if p == "openrouter":
             import httpx
-            messages = [
+            messages: list[dict[str, str]] = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": message},
             ]

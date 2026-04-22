@@ -162,6 +162,35 @@ async def notify_watchlist_alert(db: Any, user_id: str, ticker: str, change_pct:
     )
 
 
+async def send_to_user(
+    db: Any,
+    user_id: str,
+    title: str,
+    body: str,
+    url: str = "/",
+    tag: str = "risedual",
+) -> bool:
+    """Generic user-scoped push — used by ad-hoc notifications like
+    referral rewards where no domain-specific helper exists.
+
+    Silently no-ops when the user has no push subscription (the
+    common case — most users never subscribe to push). Returns
+    True only on a confirmed successful send."""
+    sub = await db.push_subscriptions.find_one({"user_id": user_id})
+    if not sub:
+        return False
+    return await send_push(
+        subscription_info=sub["subscription"],
+        title=title,
+        body=body,
+        url=url,
+        tag=tag,
+        db=db,
+        user_id=user_id,
+        is_pro=sub.get("is_pro", False),
+    )
+
+
 async def notify_market_signal(db: Any, signal_type: str, ticker: str, strength: str) -> None:
     """Trigger push for new market signal."""
     await broadcast_notification(

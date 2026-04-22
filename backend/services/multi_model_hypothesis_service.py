@@ -2,13 +2,14 @@
 import json
 import asyncio
 import logging
+from typing import Any
 
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 logger = logging.getLogger(__name__)
 
-MODELS = {
+MODELS: dict[str, dict[str, Any]] = {
     "gpt-5.2": {"provider": "openai", "model": "gpt-5.2", "label": "GPT-5.2", "weight": 0.35},
     "claude-sonnet-4.5": {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5", "weight": 0.35},
     "gemini-pro": {"provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini Pro", "weight": 0.30},
