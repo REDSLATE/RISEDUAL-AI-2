@@ -661,6 +661,19 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-02-20 — Code-review cleanup
+* **`alert_dedup.py`** — swapped `hashlib.md5` → `hashlib.sha256`
+  for alert-ID hashing. Collision risk was a non-issue either way;
+  change is hygiene. SHA-256 hex is 64 chars vs MD5's 32, so
+  in-flight dedup rows from the MD5 era won't collide with new
+  SHA-256 rows (at most one extra alert per stale row during
+  cut-over).
+* **3 empty `catch {}` blocks** — `useReferralCapture.js`,
+  `ChatInput.jsx` precheck fetch, `TerminalModeHub.jsx` headlines
+  poll — all now call `logger.warn(...)` via the dev-only
+  `utils/logger.js`. Prod stays quiet, local debugging gains a
+  diagnostic line.
+
 ### 2026-02-20 — Global kill switch + `safe_gather` helper
 * **New module** `ai_core/kill_switch.py` — thread-safe fleet-wide
   circuit breaker. Trips on ≥25% drawdown OR ≥30% rolling error

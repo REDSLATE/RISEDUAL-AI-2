@@ -24,7 +24,49 @@
 > sandbox/preview but has **not** been marked as shipped. Review before
 > hitting Deploy.
 
-*Nothing queued. Agent will append here as changes land.*
+### 2026-02-20 — Code-review cleanup (MD5 → SHA-256 + empty catch logging)
+*Session: continued*
+
+Low-risk hygiene wins from a static-analysis pass. Full review was
+triaged and most findings were verified false positives (auth is
+already on httpOnly cookies, `exec()`/`eval()` flags were import-alias
+and comment substring matches, test "hardcoded secrets" were cookie
+names and env-var presence assertions).
+
+**Applied:**
+- `backend/services/alert_dedup.py` — swapped `hashlib.md5` → `hashlib.sha256`
+  for the alert-dedup hash. Collision risk at our volume is
+  non-existent either way, but SHA-256 is hygiene hygiene. Note:
+  any in-flight dedup rows in Mongo used MD5 (32-char) hashes;
+  after deploy, SHA-256 (64-char) hashes won't collide with them,
+  so at most one extra alert per stale row during cut-over.
+  Updated module docstring to match.
+- `frontend/src/hooks/useReferralCapture.js`,
+  `frontend/src/components/chat/ChatInput.jsx`,
+  `frontend/src/components/hubs/TerminalModeHub.jsx` — replaced
+  three empty `catch {}` blocks with `logger.warn(...)` calls via
+  the existing dev-only `utils/logger.js`. Zero console spam in
+  prod, diagnosable locally. All still non-fatal (UX hints,
+  headlines poll, privacy-mode sessionStorage probe).
+
+**Explicitly NOT applied (verified false positives):**
+- `exec()` / `eval()` code-injection flags — matched `import ... as
+  _pt_exec` alias and "replaces eval()" comment, not real calls.
+- `localStorage auth-token` warnings — auth tokens are in httpOnly
+  cookies already; the 22 flagged sites store UX state only
+  (watchlist, tour-seen, nav prefs, chat pos, pane splits).
+- Array-index key in `<Sparkline>` — SVG segments don't reorder,
+  full redraw on data change.
+- Hardcoded test "secrets" — cookie names, env-var presence
+  checks, mock-transport fake keys.
+
+**Gate status:**
+- ESLint clean on all three touched frontend files.
+- `ruff` clean on `alert_dedup.py`.
+- `from services.alert_dedup import compute_alert_id` round-trip
+  yields a stable 64-char SHA-256 hex; downstream
+  `market_memory_service` + `server.py` imports all clean.
+- Backend `/api/` returns 200 on the deployed preview.
 
 ---
 
