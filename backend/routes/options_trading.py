@@ -44,6 +44,7 @@ from services.brokers.registry import (
     get_options_adapter,
 )
 from services.structured_log import log_error
+from ai_core.options_pricing import compute_greeks_for_contract
 from bson import ObjectId
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,62 @@ _db = None
 def set_db(database):
     global _db
     _db = database
+
+
+async def _log_order_audit(
+    *,
+    user: dict,
+    provider: str,
+    occ_symbol: str | None,
+    legs: list[dict],
+    order_type: str,
+    time_in_force: str,
+    limit_price: Optional[float],
+    order_id: str,
+    status: str,
+    routing_mode: str,
+    is_spread: bool,
+) -> None:
+    """Persist a one-line audit record for every live options order.
+
+    Writes to the `option_orders` collection. Key field is
+    `odd_accepted_at` — the timestamp at which the user accepted
+    the Options Disclosure Document, copied onto the order record
+    so future audits can prove ODD was accepted BEFORE the order
+    was placed without having to cross-reference the user document
+    (which could be modified later).
+
+    Best-effort: a Mongo write failure is logged but never blocks
+    the order from completing. The broker already accepted the
+    order at this point; losing the audit line is a recoverable
+    regression, not a trading halt.
+    """
+    if _db is None:
+        return
+    try:
+        odd_at = (user.get("compliance") or {}).get("odd_accepted_at")
+        await _db.option_orders.insert_one({
+            "user_id": str(user.get("_id")),
+            "provider": provider,
+            "occ_symbol": occ_symbol,
+            "legs": legs,
+            "order_type": order_type,
+            "time_in_force": time_in_force,
+            "limit_price": limit_price,
+            "order_id": order_id,
+            "status": status,
+            "routing_mode": routing_mode,
+            "is_spread": is_spread,
+            "odd_accepted_at": odd_at,
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception as exc:
+        log_error(logger, {
+            "context": "options_routes",
+            "type": type(exc).__name__,
+            "error": str(exc),
+            "note": f"audit write failed for order_id={order_id}",
+        })
 
 
 # ── Request models ─────────────────────────────────────────────────
@@ -80,6 +137,47 @@ class OptionOrderRequest(BaseModel):
             "When true, route to the broker with lowest estimated "
             "spread across all enabled connections (ignoring user's "
             "default provider choice). Requires ≥1 enabled broker."
+        ),
+    )
+
+
+class SpreadLegRequest(BaseModel):
+    """Single leg within a multi-leg spread.
+
+    `underlying` is shared across legs and declared on the parent;
+    each leg carries its own strike/expiry/type/side to allow
+    verticals (same expiry, two strikes), calendars (same strike,
+    two expiries), diagonals (different both), and iron condors
+    (4 legs, different strikes + sides)."""
+    strike: float = Field(gt=0)
+    expiry: str = Field(description="ISO date YYYY-MM-DD")
+    option_type: str = Field(pattern="^(call|put)$")
+    side: str = Field(
+        pattern="^(buy_to_open|sell_to_close|buy_to_close|sell_to_open)$"
+    )
+    qty: int = Field(gt=0, le=1000)
+
+
+class SpreadOrderRequest(BaseModel):
+    """Multi-leg options order. 2-4 legs — supports verticals,
+    calendars, diagonals, straddles, strangles, iron condors,
+    butterflies. The route enforces the 2-4 range; the adapter
+    additionally enforces broker-specific capacity.
+
+    Phase 2 restriction: only routes through the user's configured
+    provider (typically Alpaca). Smart-routed spreads wait for
+    Phase 3 when more adapters support multi-leg natively.
+    """
+    underlying: str
+    legs: list[SpreadLegRequest] = Field(min_length=2, max_length=4)
+    order_type: str = Field(default="market", pattern="^(market|limit)$")
+    time_in_force: str = Field(default="day", pattern="^(day|gtc|ioc|fok)$")
+    limit_price: Optional[float] = Field(
+        default=None,
+        description=(
+            "Net debit/credit across all legs. Positive = debit "
+            "(you pay), negative = credit (you receive). Ignored "
+            "for market orders."
         ),
     )
 
@@ -300,6 +398,20 @@ async def place_order(body: OptionOrderRequest, request: Request):
             })
             raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
 
+        await _log_order_audit(
+            user=user,
+            provider=decision.provider,
+            occ_symbol=occ,
+            legs=[{"occ_symbol": occ, "qty": leg.qty, "side": leg.side.value}],
+            order_type=body.order_type,
+            time_in_force=body.time_in_force,
+            limit_price=body.limit_price,
+            order_id=order.order_id,
+            status=order.status.value,
+            routing_mode="smart",
+            is_spread=False,
+        )
+
         return {
             "order_id": order.order_id,
             "status": order.status.value,
@@ -346,6 +458,20 @@ async def place_order(body: OptionOrderRequest, request: Request):
         })
         raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
 
+    await _log_order_audit(
+        user=user,
+        provider=provider,
+        occ_symbol=occ,
+        legs=[{"occ_symbol": occ, "qty": leg.qty, "side": leg.side.value}],
+        order_type=body.order_type,
+        time_in_force=body.time_in_force,
+        limit_price=body.limit_price,
+        order_id=order.order_id,
+        status=order.status.value,
+        routing_mode="direct",
+        is_spread=False,
+    )
+
     return {
         "order_id": order.order_id,
         "status": order.status.value,
@@ -357,6 +483,180 @@ async def place_order(body: OptionOrderRequest, request: Request):
         "occ_symbol": occ,
         "provider": provider,
         "routing": {"mode": "direct"},
+    }
+
+
+# ── Greeks preview ─────────────────────────────────────────────────
+
+@router.get("/greeks")
+async def greeks_preview(
+    underlying_price: float,
+    strike: float,
+    expiry: str,
+    option_type: str,
+    iv_percent: Optional[float] = None,
+    request: Request = None,  # type: ignore[assignment]
+):
+    """Return delta/gamma/theta/vega/rho for a single contract.
+
+    Auth-gated (any logged-in user) but ODD-ungated — Greeks are a
+    read-only preview, not an order. The UI order-modal calls this
+    before the user clicks Submit so they see the risk profile
+    without having to place the trade.
+
+    Conventions (retail-broker style, matching `compute_greeks` doc):
+      * `theta` per calendar day (not per year).
+      * `vega` per 1% IV change.
+      * `rho` per 1% rate change.
+    All per-contract; multiply by 100 for per-lot dollar P&L.
+    """
+    await get_current_user(request)
+    if option_type.lower() not in ("call", "put"):
+        raise HTTPException(status_code=400, detail="option_type must be call|put")
+    if underlying_price <= 0 or strike <= 0:
+        raise HTTPException(status_code=400, detail="prices must be positive")
+    try:
+        data = compute_greeks_for_contract(
+            underlying_price=underlying_price,
+            strike=strike,
+            expiry=expiry,
+            option_type=option_type,
+            iv_percent=iv_percent,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid inputs: {exc}")
+    return {
+        "underlying_price": underlying_price,
+        "strike": strike,
+        "expiry": expiry,
+        "option_type": option_type.lower(),
+        "iv_percent": iv_percent,
+        **data,
+    }
+
+
+# ── Multi-leg spread orders ─────────────────────────────────────────
+
+@router.post("/spread")
+async def place_spread_order(body: SpreadOrderRequest, request: Request):
+    """Submit a multi-leg option spread (2-4 legs).
+
+    Supported structures (broker-agnostic — expressed as leg tuples):
+      * Vertical: 2 legs, same expiry, same type, different strikes.
+      * Calendar: 2 legs, same strike, different expiries.
+      * Diagonal: 2 legs, different strike + different expiry.
+      * Straddle/strangle: 2 legs, same side, call + put.
+      * Iron condor/butterfly: 4 legs, mix.
+
+    Phase 2 routes ALL spreads through the user's configured provider
+    (no smart routing yet — provider-specific multi-leg semantics
+    differ enough that we ship narrow first). Non-Alpaca providers
+    return 501 since only Alpaca's mleg envelope is implemented
+    today.
+    """
+    user = await get_current_user(request)
+    _ensure_odd_accepted(user)
+
+    provider = _user_provider(user)
+
+    # Build OCC symbols + option legs up front so a bad input fails
+    # before we hit the broker.
+    occ_legs: list[tuple[str, OptionLeg]] = []
+    for i, leg in enumerate(body.legs):
+        try:
+            occ = build_occ_symbol(
+                body.underlying, leg.expiry, leg.option_type, leg.strike,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid leg {i + 1}: {exc}",
+            )
+        occ_legs.append((occ, OptionLeg(
+            occ_symbol=occ,
+            qty=leg.qty,
+            side=OrderSide(leg.side),
+        )))
+
+    # Basic structural sanity: require at least one opening leg.
+    # Pure "close/close" spreads are legal but rare; flag them as a
+    # user-mistake hint instead of silently submitting.
+    opens = [
+        leg for _, leg in occ_legs
+        if leg.side in (OrderSide.BUY_TO_OPEN, OrderSide.SELL_TO_OPEN)
+    ]
+    if not opens:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "spread must contain at least one opening leg "
+                "(buy_to_open or sell_to_open)"
+            ),
+        )
+
+    adapter = get_options_adapter(provider)
+    try:
+        order = await adapter.place_option_order(
+            [leg for _, leg in occ_legs],
+            order_type=body.order_type,
+            time_in_force=body.time_in_force,
+            limit_price=body.limit_price,
+        )
+    except BrokerNotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except (ValueError, NotImplementedError) as exc:
+        # Adapter-level validation (leg count, ratio mismatch) or
+        # broker doesn't support multi-leg yet.
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log_error(logger, {
+            "context": "options_routes",
+            "type": type(exc).__name__,
+            "error": str(exc),
+            "note": f"spread order failed for user={user['_id']} provider={provider}",
+        })
+        raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+
+    legs_response = [
+        {
+            "occ_symbol": occ,
+            "qty": leg.qty,
+            "side": leg.side.value,
+            "strike": body.legs[i].strike,
+            "expiry": body.legs[i].expiry,
+            "option_type": body.legs[i].option_type,
+        }
+        for i, (occ, leg) in enumerate(occ_legs)
+    ]
+
+    await _log_order_audit(
+        user=user,
+        provider=provider,
+        occ_symbol=None,  # spreads have no single OCC
+        legs=legs_response,
+        order_type=body.order_type,
+        time_in_force=body.time_in_force,
+        limit_price=body.limit_price,
+        order_id=order.order_id,
+        status=order.status.value,
+        routing_mode="direct",
+        is_spread=True,
+    )
+
+    return {
+        "order_id": order.order_id,
+        "status": order.status.value,
+        "qty": order.qty,
+        "filled_qty": order.filled_qty,
+        "limit_price": order.limit_price,
+        "time_in_force": order.time_in_force,
+        "created_at": order.created_at.isoformat(),
+        "provider": provider,
+        "legs": legs_response,
+        "underlying": body.underlying.upper(),
+        "is_spread": True,
     }
 
 

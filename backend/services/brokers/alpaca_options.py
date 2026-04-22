@@ -293,11 +293,47 @@ class AlpacaOptionsAdapter(BrokerOptionsAdapter):
             if limit_price is not None and order_type in ("limit", "stop_limit"):
                 body["limit_price"] = str(round(float(limit_price), 2))
         else:
-            # Reserved for multi-leg (Phase 2+). Fail explicitly so
-            # we don't accidentally submit a half-configured order.
-            raise NotImplementedError(
-                "multi-leg option orders not yet supported"
-            )
+            # Multi-leg path (Phase 2). Alpaca's envelope shape:
+            #   order_class=mleg, qty=str(base), type, time_in_force,
+            #   legs=[{symbol, side, ratio_qty, position_intent}, ...]
+            # `qty` is the spread multiplier; each leg carries a
+            # `ratio_qty` relative to that base so 1:2 verticals work
+            # alongside 1:1 verticals and 1:1:1:1 iron condors.
+            if len(legs) > 4:
+                raise ValueError(
+                    f"multi-leg orders support up to 4 legs, got {len(legs)}"
+                )
+            base_qty = min(int(leg.qty) for leg in legs)
+            if base_qty <= 0:
+                raise ValueError("multi-leg leg qty must be > 0")
+            alpaca_legs = []
+            for leg in legs:
+                leg_qty = int(leg.qty)
+                if leg_qty % base_qty != 0:
+                    raise ValueError(
+                        f"leg qtys must share a common multiplier "
+                        f"(got {leg_qty} with base {base_qty})"
+                    )
+                alpaca_legs.append({
+                    "symbol": _to_alpaca_symbol(leg.occ_symbol),
+                    "side": _leg_side_to_alpaca(leg.side),
+                    "ratio_qty": str(leg_qty // base_qty),
+                    # position_intent intentionally omitted — recent
+                    # Alpaca API versions 422 when it's sent
+                    # explicitly on either single OR multi-leg
+                    # orders; they infer open/close from
+                    # position state. Kept the helper function in
+                    # case a future API version reintroduces it.
+                })
+            body = {
+                "order_class": "mleg",
+                "qty": str(base_qty),
+                "type": order_type,
+                "time_in_force": time_in_force,
+                "legs": alpaca_legs,  # type: ignore[dict-item]
+            }
+            if limit_price is not None and order_type in ("limit", "stop_limit"):
+                body["limit_price"] = str(round(float(limit_price), 2))
 
         raw = await self._request("POST", "/v2/orders", json_body=body)
         return self._parse_order(raw, legs, time_in_force, limit_price)

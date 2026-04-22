@@ -34,8 +34,18 @@ def test_registry_resolves_alpaca():
     assert adapter.provider == "alpaca"
 
 
+def test_registry_resolves_tradier_adapter():
+    """Tradier is now a concrete (quote-only) adapter — not a stub.
+    Phase 2: quote source for smart router; order methods still
+    raise BrokerNotImplementedError."""
+    from services.brokers.tradier_options import TradierOptionsAdapter
+    adapter = get_options_adapter("tradier")
+    assert isinstance(adapter, TradierOptionsAdapter)
+    assert adapter.provider == "tradier"
+
+
 def test_registry_resolves_stub_providers():
-    for p in ("tradier", "tastytrade", "ibkr"):
+    for p in ("tastytrade", "ibkr"):
         adapter = get_options_adapter(p)
         assert isinstance(adapter, StubOptionsAdapter)
         assert adapter.provider == p

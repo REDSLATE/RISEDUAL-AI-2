@@ -62,16 +62,18 @@ async def _estimate_spread(
     """Return an estimated bid-ask spread in dollars for the given
     OCC contract. Lower is better. Never raises.
 
-    Phase 1 implementation is deliberately simple: Alpaca's adapter
-    has no quote endpoint yet in our wrapper, so we use a
-    `try_get_spread()` optional method (duck-typed). Adapters that
-    don't implement it return the sentinel, ranking them last only
-    if a better alternative is probed.
-
-    When Tradier comes online we'll grow this into a real
-    per-adapter quote fetch; the sentinel keeps today's single-
-    broker case working without breaking tomorrow's multi-broker
-    case.
+    Resolution order:
+      1. `adapter.try_get_spread(occ_symbol)` — adapter's own quote
+         source (Tradier implements this natively).
+      2. Tradier cross-broker fallback — if the adapter itself has
+         no quote source but a `TRADIER_API_TOKEN` is configured,
+         we use Tradier's quote as a proxy spread estimate for
+         other brokers. This is fair because OPRA-sourced NBBO is
+         the same regardless of routing broker; the spread is a
+         property of the contract, not the executor.
+      3. Sentinel — adapter has no quote AND Tradier isn't
+         configured. The broker stays in the candidate list but
+         ranks last.
     """
     try:
         if hasattr(adapter, "try_get_spread"):
@@ -83,7 +85,25 @@ async def _estimate_spread(
             "context": "smart_router_spread",
             "type": type(exc).__name__,
             "error": str(exc),
-            "note": f"spread probe failed for {adapter.provider}/{occ_symbol}",
+            "note": f"adapter spread probe failed for {adapter.provider}/{occ_symbol}",
+        })
+
+    # Tradier-as-proxy fallback. Keeps the sentinel in place when
+    # Tradier isn't configured (fetch_tradier_option_quote returns
+    # None in that case — same shape as a failed probe).
+    try:
+        from services.brokers.tradier_options import fetch_tradier_option_quote
+        quote = await fetch_tradier_option_quote(occ_symbol)
+        if quote and quote.get("spread") is not None:
+            spread = float(quote["spread"])
+            if spread >= 0:
+                return spread
+    except Exception as exc:
+        log_warning(logger, {
+            "context": "smart_router_spread",
+            "type": type(exc).__name__,
+            "error": str(exc),
+            "note": f"tradier proxy-spread failed for {adapter.provider}/{occ_symbol}",
         })
     return _SPREAD_PROBE_FAIL
 

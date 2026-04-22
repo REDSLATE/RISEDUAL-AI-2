@@ -48,6 +48,16 @@ def _norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
+def _norm_pdf(x: float) -> float:
+    """Standard normal PDF — the φ in Greeks formulae.
+
+    Implemented inline for the same reason as `_norm_cdf`: no scipy
+    means the pure-function pricer works in every environment (CI,
+    cold-start serverless, tests) without a conditional import.
+    """
+    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+
 def years_to_expiry(expiry: str | date | datetime, now: datetime | None = None) -> float:
     """Convert an expiry marker to a year-fraction.
 
@@ -134,3 +144,114 @@ def estimate_fill_price(
 
     spread_factor = 1.0075 if side.lower() == "buy" else 0.9925
     return max(round(mid * spread_factor, 4), 0.01)
+
+
+# ── Greeks engine ───────────────────────────────────────────────────
+#
+# Standard Black-Scholes partial derivatives. Matches the formulae in
+# Hull (10th ed., §15.6) and John Hull's reference spreadsheet. All
+# outputs are rounded to 4 decimals — tighter than any downstream
+# consumer needs but keeps snapshot tests stable.
+#
+# **Convention choices** (match what retail brokers display in their
+# options chains, not the "academic" per-unit values):
+#   • theta is quoted **per calendar day** (annual value / 365). A
+#     theta of -0.04 means "this contract loses $0.04 per day if
+#     everything else stays the same." Matches TastyTrade /
+#     ThinkOrSwim / Robinhood chains.
+#   • vega is quoted **per 1 percentage-point** change in IV (not per
+#     1.0 change — a vega of 0.15 means "+$0.15 per +1% IV move").
+#   • rho is quoted **per 1 percentage-point** change in the risk-
+#     free rate. Mostly a curiosity for short-dated options but
+#     included for completeness.
+#
+# Multiply any Greek by 100 to get the effect on an entire contract
+# (OCC multiplier).
+
+
+def compute_greeks(
+    spot: float,
+    strike: float,
+    years: float,
+    iv: float,
+    option_type: str,
+    risk_free: float = DEFAULT_RISK_FREE_RATE,
+) -> dict[str, float]:
+    """Return delta, gamma, theta (per day), vega (per 1% IV), rho
+    (per 1% rate) for a single option contract.
+
+    Same floors as `bs_price`: T clamps to MIN_T_YEARS, σ clamps to
+    MIN_VOL. Unknown `option_type` strings fall back to "call".
+    """
+    t = max(float(years), MIN_T_YEARS)
+    sigma = max(float(iv), MIN_VOL)
+    s = float(spot)
+    k = float(strike)
+    r = float(risk_free)
+
+    sqrt_t = math.sqrt(t)
+    d1 = (math.log(s / k) + (r + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+
+    pdf_d1 = _norm_pdf(d1)
+    disc = math.exp(-r * t)  # discount factor
+
+    is_call = option_type.lower() != "put"
+
+    # Delta
+    if is_call:
+        delta = _norm_cdf(d1)
+    else:
+        delta = _norm_cdf(d1) - 1.0
+
+    # Gamma (same for calls + puts)
+    gamma = pdf_d1 / (s * sigma * sqrt_t)
+
+    # Theta — per-day (÷365). The convention at the top of the
+    # module is deliberately retail-friendly; academic texts often
+    # quote per-year.
+    theta_annual_common = -(s * pdf_d1 * sigma) / (2.0 * sqrt_t)
+    if is_call:
+        theta_annual = theta_annual_common - r * k * disc * _norm_cdf(d2)
+    else:
+        theta_annual = theta_annual_common + r * k * disc * _norm_cdf(-d2)
+    theta = theta_annual / 365.0
+
+    # Vega — per 1% IV change (÷100). Same for calls + puts.
+    vega = s * pdf_d1 * sqrt_t / 100.0
+
+    # Rho — per 1% rate change (÷100).
+    if is_call:
+        rho = k * t * disc * _norm_cdf(d2) / 100.0
+    else:
+        rho = -k * t * disc * _norm_cdf(-d2) / 100.0
+
+    return {
+        "delta": round(delta, 4),
+        "gamma": round(gamma, 4),
+        "theta": round(theta, 4),
+        "vega": round(vega, 4),
+        "rho": round(rho, 4),
+    }
+
+
+def compute_greeks_for_contract(
+    underlying_price: float,
+    strike: float,
+    expiry: str | date | datetime,
+    option_type: str,
+    iv_percent: float | None = None,
+    risk_free: float = DEFAULT_RISK_FREE_RATE,
+) -> dict[str, float]:
+    """Route-friendly wrapper around `compute_greeks`. Same contract
+    as `estimate_fill_price`: accepts an ISO-date expiry + IV in
+    percent units (what the scanner shows). Returns the five Greeks
+    plus the mid-price so the UI can render one modal from one call.
+    """
+    iv = (iv_percent / 100.0) if iv_percent is not None else DEFAULT_IV
+    years = years_to_expiry(expiry)
+    greeks = compute_greeks(
+        underlying_price, strike, years, iv, option_type, risk_free=risk_free,
+    )
+    mid = bs_price(underlying_price, strike, years, iv, option_type, risk_free=risk_free)
+    return {**greeks, "mid_price": mid, "years_to_expiry": round(years, 6)}

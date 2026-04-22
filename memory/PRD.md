@@ -54,6 +54,32 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Options Phase 2: Greeks, Tradier quotes, multi-leg spreads, ODD audit (Feb 22, 2026)
+- `compute_greeks()` + `compute_greeks_for_contract()` in
+  `ai_core/options_pricing.py` — delta/gamma/theta/vega/rho using
+  retail conventions (theta per calendar day, vega/rho per 1%).
+  Matches Hull reference within 1% at ATM.
+- `services/brokers/tradier_options.py` — concrete quote-only
+  adapter. `fetch_tradier_option_quote` handles Tradier's nested
+  `{quotes: {quote: {...}|[...]}}` envelope + the `"null"`
+  literal-string quirk. Never raises.
+- `SmartOrderRouter._estimate_spread` now resolves in 3 tiers:
+  adapter's own `try_get_spread()` → Tradier proxy-spread (NBBO
+  is routing-agnostic) → sentinel. Keeps single-broker case
+  working without regression.
+- Alpaca multi-leg `mleg` envelope — up to 4 legs, ratio math
+  with common-multiplier enforcement. `position_intent` dropped
+  the same way single-leg required.
+- `GET /api/options/greeks` (auth-gated preview) + `POST
+  /api/options/spread` (ODD-gated, 2-4 legs, opening-leg
+  required). Non-Alpaca providers still return 501 on spreads.
+- `_log_order_audit()` writes every live single-leg AND spread
+  order to a new `option_orders` collection with `odd_accepted_at`
+  stamped on the record itself — closes P2 regulatory audit.
+- Tests: 26 new (10 Greeks + 12 Tradier + 4 multi-leg + stub
+  registry fix). Testing-agent validated **20/20** Phase 2
+  features against live API. mypy gate 69. Ruff clean.
+
 ### Structured-Log Migration (156 sites) + 2 CancelledError Fixes (Feb 20, 2026)
 - Migrated **156 logger.warning/error sites across 21 services** to
   `log_warning(logger, {...})` / `log_error(...)`. Every operational

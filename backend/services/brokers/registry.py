@@ -21,13 +21,14 @@ from services.brokers.options_adapter import (
     BrokerOptionsAdapter,
     StubOptionsAdapter,
 )
+from services.brokers.tradier_options import TradierOptionsAdapter
 
 # Factory dict — each value returns a FRESH adapter instance per
 # call so we don't leak httpx client state across users (adapters
 # read env-vars, not a shared client pool).
 _PROVIDERS: dict[str, Callable[[], BrokerOptionsAdapter]] = {
     "alpaca":     AlpacaOptionsAdapter,
-    "tradier":    lambda: StubOptionsAdapter("tradier"),
+    "tradier":    TradierOptionsAdapter,
     "tastytrade": lambda: StubOptionsAdapter("tastytrade"),
     "ibkr":       lambda: StubOptionsAdapter("ibkr"),
 }

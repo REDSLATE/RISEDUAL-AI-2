@@ -17,7 +17,8 @@ import pytest
 
 from ai_core.options_pricing import (
     bs_price, years_to_expiry, estimate_fill_price,
-    MIN_T_YEARS, MIN_VOL,
+    compute_greeks, compute_greeks_for_contract,
+    MIN_T_YEARS,
 )
 
 
@@ -122,3 +123,111 @@ def test_estimate_fill_price_ivrank_is_percent_not_decimal():
     hi = estimate_fill_price(100, 100, future, "call", iv_percent=50)
     lo = estimate_fill_price(100, 100, future, "call", iv_percent=10)
     assert hi > lo
+
+
+# ── Greeks engine (Phase 2) ─────────────────────────────────────────
+#
+# Reference values cross-checked against Hull's spreadsheet (Options,
+# Futures, and Other Derivatives, 10th ed.) for the canonical case
+# S=K=100, T=1y, r=5%, σ=20%. Deltas use retail conventions (theta
+# per-day, vega/rho per 1%).
+
+
+def test_greeks_call_atm_hull_reference():
+    """S=K=100, T=1, r=5%, σ=20% → delta ≈ 0.6368, gamma ≈ 0.0188,
+    annual theta ≈ -6.41 → per-day ≈ -0.0176, vega per 1% ≈ 0.3752,
+    rho per 1% ≈ 0.5323."""
+    g = compute_greeks(100, 100, 1.0, 0.20, "call", risk_free=0.05)
+    assert g["delta"] == pytest.approx(0.6368, abs=0.005)
+    assert g["gamma"] == pytest.approx(0.0188, abs=0.002)
+    assert g["theta"] == pytest.approx(-0.0176, abs=0.002)
+    assert g["vega"] == pytest.approx(0.3752, abs=0.005)
+    assert g["rho"] == pytest.approx(0.5323, abs=0.01)
+
+
+def test_greeks_put_atm_hull_reference():
+    """Same setup, put side.
+    delta ≈ -0.3632, gamma identical, theta ≈ -0.0046,
+    vega identical, rho ≈ -0.4189."""
+    g = compute_greeks(100, 100, 1.0, 0.20, "put", risk_free=0.05)
+    assert g["delta"] == pytest.approx(-0.3632, abs=0.005)
+    assert g["gamma"] == pytest.approx(0.0188, abs=0.002)
+    assert g["vega"] == pytest.approx(0.3752, abs=0.005)
+    assert g["rho"] == pytest.approx(-0.4189, abs=0.01)
+
+
+def test_greeks_delta_bounds():
+    """Deep ITM call delta → 1.0; deep OTM call delta → 0.
+    Deep ITM put delta → -1.0; deep OTM put delta → 0."""
+    itm_call = compute_greeks(200, 100, 1.0, 0.20, "call")
+    otm_call = compute_greeks(50, 100, 1.0, 0.20, "call")
+    itm_put = compute_greeks(50, 100, 1.0, 0.20, "put")
+    otm_put = compute_greeks(200, 100, 1.0, 0.20, "put")
+    assert itm_call["delta"] > 0.95
+    assert otm_call["delta"] < 0.1
+    assert itm_put["delta"] < -0.95
+    assert otm_put["delta"] > -0.1
+
+
+def test_greeks_call_put_parity():
+    """Delta parity: delta_call - delta_put = 1 (for non-dividend
+    paying underlying). Holds to float precision."""
+    c = compute_greeks(100, 95, 0.5, 0.25, "call", risk_free=0.03)
+    p = compute_greeks(100, 95, 0.5, 0.25, "put", risk_free=0.03)
+    assert (c["delta"] - p["delta"]) == pytest.approx(1.0, abs=0.005)
+    # Gamma identical (same formula).
+    assert c["gamma"] == pytest.approx(p["gamma"], abs=0.0001)
+    # Vega identical.
+    assert c["vega"] == pytest.approx(p["vega"], abs=0.0001)
+
+
+def test_greeks_gamma_positive_always():
+    """Gamma is always non-negative, for both calls and puts."""
+    for otype in ("call", "put"):
+        for spot in (50, 100, 150):
+            g = compute_greeks(spot, 100, 1.0, 0.20, otype)
+            assert g["gamma"] >= 0
+
+
+def test_greeks_vega_atm_peak():
+    """Vega peaks ATM. 100/100 strike should have higher vega than
+    80/100 or 120/100 at the same σ/T."""
+    atm = compute_greeks(100, 100, 0.5, 0.30, "call")["vega"]
+    itm = compute_greeks(120, 100, 0.5, 0.30, "call")["vega"]
+    otm = compute_greeks(80, 100, 0.5, 0.30, "call")["vega"]
+    assert atm > itm
+    assert atm > otm
+
+
+def test_greeks_for_contract_ivpercent_conversion():
+    """`iv_percent=30` should produce same Greeks as
+    `compute_greeks(..., iv=0.30)` — the route helper converts
+    percent-units to decimal."""
+    now = datetime.now(timezone.utc)
+    future = (now + timedelta(days=365)).date().isoformat()
+    route = compute_greeks_for_contract(
+        underlying_price=100, strike=100, expiry=future,
+        option_type="call", iv_percent=30,
+    )
+    # Route output is a superset (adds mid_price + years_to_expiry).
+    assert "delta" in route and "gamma" in route
+    assert "mid_price" in route
+    assert route["years_to_expiry"] == pytest.approx(1.0, abs=0.01)
+    assert route["mid_price"] > 0
+
+
+def test_greeks_theta_negative_for_atm_long_options():
+    """Long ATM options always decay (theta ≤ 0). Note: deep ITM
+    European puts can have positive theta when rates are high enough
+    — that's a known BS quirk, not a bug. We only pin the ATM case."""
+    for otype in ("call", "put"):
+        g = compute_greeks(100, 100, 0.5, 0.25, otype)
+        assert g["theta"] <= 0
+
+
+def test_greeks_min_vol_floor_does_not_crash():
+    """σ=0 input must not divide-by-zero inside the Greek formulae."""
+    g = compute_greeks(100, 100, 1.0, 0.0, "call")
+    assert "delta" in g and "gamma" in g
+    # Gamma at σ→0 is huge by convention — we just want no crash.
+    assert g["gamma"] >= 0

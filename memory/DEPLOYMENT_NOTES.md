@@ -26,6 +26,71 @@
 
 *Nothing queued. Agent will append here as changes land.*
 
+### 2026-04-22 — Options Phase 2: Greeks engine, Tradier quote source, multi-leg spreads, ODD audit trail
+*Session: continued*
+
+Shipped the user's Phase 2 scaffold end-to-end. Live-verified a
+2-leg call debit spread against Alpaca paper (BTO AAPL 190C + STO
+AAPL 195C 2026-12-18, limit $1.50 → order_id `591615f4…` →
+cancelled cleanly). Greeks endpoint returns deltas inside 1% of
+Hull's spreadsheet reference for the canonical ATM case.
+
+**New:**
+- `ai_core/options_pricing.py` — `compute_greeks()` returns
+  delta/gamma/theta/vega/rho using retail conventions (theta per
+  calendar day, vega/rho per 1% move). Added `_norm_pdf` helper.
+  `compute_greeks_for_contract()` is the route-friendly wrapper
+  that also returns mid_price + years_to_expiry from one call.
+- `services/brokers/tradier_options.py` — concrete quote-only
+  adapter. `fetch_tradier_option_quote()` module-level function
+  hits Tradier's `/v1/markets/quotes`, handles the literal-string
+  "null" quirk, returns bid/ask/mid/spread. Never raises. Adapter
+  reports `enabled=true, level=0` (quote-only mode) when
+  `TRADIER_API_TOKEN` is set; order-placement methods still raise
+  `BrokerNotImplementedError` pending Phase 3.
+- `services/brokers/registry.py` — swapped tradier from
+  `StubOptionsAdapter` to `TradierOptionsAdapter`.
+- `services/brokers/smart_router.py` — `_estimate_spread` now has
+  a 3-tier resolution: adapter's own `try_get_spread()` → Tradier
+  proxy-spread fallback (if `TRADIER_API_TOKEN` configured) →
+  sentinel. NBBO is routing-agnostic so Tradier's spread is a
+  valid proxy for any broker's spread.
+- `services/brokers/alpaca_options.py` — added multi-leg `mleg`
+  envelope construction (up to 4 legs, ratio math with common
+  multiplier enforcement, `position_intent` omitted to avoid the
+  same 422 that bit single-leg).
+- `routes/options_trading.py` — three new routes:
+  * `GET /api/options/greeks?underlying_price=&strike=&expiry=&option_type=&iv_percent=`
+    — auth-gated, ODD-ungated preview.
+  * `POST /api/options/spread` — 2-4 legs, ODD-gated. Builds per-leg
+    OCC, validates "at least one opening leg", dispatches to
+    provider's `place_option_order`. Non-Alpaca providers 501 for
+    now.
+  * `_log_order_audit()` helper + new `option_orders` Mongo
+    collection. Every live single-leg + spread order record
+    persists `odd_accepted_at` alongside the order_id — closes the
+    P2 regulatory audit-trail item.
+
+**Bug fixed during live smoke:**
+- Alpaca's multi-leg order API rejects `position_intent` the same
+  way single-leg did. Dropped the field; account-state infers
+  open/close. Fix ships alongside the Phase 2 code so the very
+  first live-verified spread succeeded.
+
+**Tests:** 26 new (10 Greeks + 12 Tradier + 7 multi-leg + fixes to
+existing stub-registry test to reflect Tradier being concrete).
+Full options surface: **82/82 green**.
+**Gate:** typecheck baseline 69. Ruff clean.
+
+**Explicitly deferred to Phase 3+:**
+- TastyTrade + IBKR concrete adapters (still 501 stubs).
+- Tradier order placement (quote-only today — separate envelope
+  deserves dedicated test coverage).
+- Smart-routed SPREAD orders (single-leg smart routing works;
+  spreads route through user's provider only in Phase 2).
+- `TRADIER_API_TOKEN` env var not set yet; adapter reports
+  `enabled=false` in production until you add it.
+
 ### 2026-04-22 — Multi-broker options: Smart Order Router + live-ordering bug fixes
 *Session: continued*
 
