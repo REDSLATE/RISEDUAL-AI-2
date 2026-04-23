@@ -137,10 +137,25 @@ async def maybe_paper_trade(
         )
         try:
             from services.agent_activity_service import log_paper_trade_skipped
+            from ai_core.explainability import extract_top_features
+            from risedual_core.ml.features import FEATURE_COLUMNS
+            # Build parallel name/value lists from the snapshot. Every
+            # FEATURE_COLUMNS entry should be a numeric attr on the
+            # snapshot; missing attrs surface as None and explainability
+            # drops them silently.
+            fnames = list(FEATURE_COLUMNS)
+            fvalues = [getattr(snapshot, c, None) for c in fnames]
+            why = extract_top_features(
+                feature_names=fnames,
+                feature_values=fvalues,
+                importances=signal.feature_importance or {},
+                top_k=3,
+            )
             await log_paper_trade_skipped(
                 ticker=ticker,
                 reason=f"conviction below {_MIN_PAPER_CONFIDENCE * 100:.0f}% threshold",
                 confidence=directional_conf,
+                why=why,
             )
         except Exception:
             pass  # activity logging must never break the trade loop
@@ -231,6 +246,16 @@ async def maybe_paper_trade(
         )
         try:
             from services.agent_activity_service import log_paper_trade_opened
+            from ai_core.explainability import extract_top_features
+            from risedual_core.ml.features import FEATURE_COLUMNS
+            fnames = list(FEATURE_COLUMNS)
+            fvalues = [getattr(snapshot, c, None) for c in fnames]
+            why = extract_top_features(
+                feature_names=fnames,
+                feature_values=fvalues,
+                importances=signal.feature_importance or {},
+                top_k=3,
+            )
             await log_paper_trade_opened(
                 ticker=ticker,
                 direction=direction_val,
@@ -238,6 +263,7 @@ async def maybe_paper_trade(
                 confidence=directional_conf,
                 patterns=patterns,
                 regime=regime,
+                why=why,
             )
         except Exception:
             pass

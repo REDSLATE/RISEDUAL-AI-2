@@ -56,8 +56,73 @@ function formatRelativeTime(isoTimestamp) {
   return `${Math.floor(diffSec / 86400)}d ago`;
 }
 
+// Turns a structured `why` list into a one-line narrative used
+// above the per-feature breakdown. Design goal: convert
+// "momentum_14 · bullish · 0.42" rows into a sentence someone
+// unfamiliar with the feature names can still parse. Keep tight
+// — this is a teaching hook, not a dissertation.
+function summarizeWhy(why, eventType) {
+  if (!why || why.length === 0) return null;
+  const bearish = why.filter((w) => w.impact < 0).map((w) => w.feature);
+  const bullish = why.filter((w) => w.impact >= 0).map((w) => w.feature);
+  if (bearish.length === 0 && bullish.length === 0) return null;
+  // Phrasing flips based on event type — a skip reads as "what
+  // held back"; an open reads as "what drove in".
+  const isSkip = eventType === 'paper_trade_skip';
+  if (isSkip && bearish.length > 0 && bullish.length > 0) {
+    return `Skipped because ${bearish.join(', ')} outweighed ${bullish.join(', ')}`;
+  }
+  if (isSkip && bearish.length > 0) {
+    return `Held back by ${bearish.join(', ')}`;
+  }
+  if (isSkip && bullish.length > 0) {
+    return `Bullish signals (${bullish.join(', ')}) didn't clear conviction threshold`;
+  }
+  if (bullish.length > 0) {
+    return `Driven by ${bullish.join(', ')}`;
+  }
+  return `Contrarian take — ${bearish.join(', ')} pushed this trade`;
+}
+
+const WhyBlock = ({ why, eventType }) => {
+  if (!why || why.length === 0) return null;
+  const summary = summarizeWhy(why, eventType);
+  return (
+    <div
+      className="mt-2 pt-2 border-t border-slate-700/40"
+      data-testid="agent-activity-why"
+    >
+      {summary && (
+        <p className="text-[10px] italic text-slate-400 leading-snug">
+          {summary}
+        </p>
+      )}
+      <ul className="mt-1 space-y-0.5">
+        {why.map((w, i) => (
+          <li
+            key={`${w.feature}-${i}`}
+            className="text-[9px] text-slate-500 flex items-center justify-between gap-2 font-mono"
+          >
+            <span className="truncate">{w.feature}</span>
+            <span
+              className={`shrink-0 tabular-nums ${
+                w.direction === 'bullish' ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {w.direction === 'bullish' ? '↑' : '↓'}{' '}
+              {w.impact >= 0 ? '+' : ''}
+              {w.impact.toFixed(3)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 const EventRow = ({ event, isNew }) => {
   const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.info;
+  const why = event.metadata?.why;
   return (
     <div
       className={`relative flex items-start gap-3 py-2.5 px-3 border-l-2 ${
@@ -102,6 +167,7 @@ const EventRow = ({ event, isNew }) => {
         >
           {formatRelativeTime(event.timestamp)}
         </p>
+        <WhyBlock why={why} eventType={event.type} />
       </div>
     </div>
   );

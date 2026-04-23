@@ -118,10 +118,16 @@ async def log_event(
 
 async def log_paper_trade_opened(ticker: str, direction: str,
                                  position_usd: float, confidence: float,
-                                 patterns: list[str], regime: str) -> None:
+                                 patterns: list[str], regime: str,
+                                 why: Optional[list[dict]] = None) -> None:
     """Paper-trading agent just opened a new position. This is a
     user-delighting event — the feed row should feel like a coworker
-    saying 'I just did something'."""
+    saying 'I just did something'.
+
+    ``why`` is an optional list of top-feature contributions from
+    :func:`ai_core.explainability.extract_top_features`; when
+    present the UI renders a "Why?" block under the event detail.
+    """
     patterns_str = ", ".join(patterns) if patterns else "no-pattern / high-conf"
     await log_event(
         type="paper_trade_open",
@@ -136,15 +142,23 @@ async def log_paper_trade_opened(ticker: str, direction: str,
             "patterns": patterns,
             "regime": regime,
             "direction": direction,
+            "why": why or [],
         },
     )
 
 
 async def log_paper_trade_skipped(ticker: str, reason: str,
-                                  confidence: Optional[float] = None) -> None:
+                                  confidence: Optional[float] = None,
+                                  why: Optional[list[dict]] = None) -> None:
     """Agent considered and passed on a setup — transparency event.
     These are frequent and should default to info severity (quieter
-    than trade opens)."""
+    than trade opens).
+
+    ``why`` carries the same top-feature contributions as the open
+    event; rendered identically in the feed. For a skip, the
+    contributions tell users *which features outweighed the bullish
+    case* — the most teachable moments.
+    """
     detail = reason
     if confidence is not None:
         detail = f"{reason} · directional conviction {confidence * 100:.0f}%"
@@ -154,7 +168,7 @@ async def log_paper_trade_skipped(ticker: str, reason: str,
         title=f"Skipped {ticker} · {reason[:60]}",
         detail=detail,
         symbol=ticker,
-        metadata={"reason": reason, "confidence": confidence},
+        metadata={"reason": reason, "confidence": confidence, "why": why or []},
     )
 
 
