@@ -154,6 +154,20 @@ class KillSwitch:
             "error": reason,
             "note": "all guarded execution halted",
         })
+        # Fire-and-forget narration into the agent activity feed.
+        # Scheduled rather than awaited because `activate` is a sync
+        # method (holds a threading lock) — we can't block on async IO
+        # here. The task runs on the next event loop tick and the
+        # never-raise contract of the activity logger handles any
+        # Mongo transient failures silently.
+        try:
+            import asyncio
+            from services.agent_activity_service import log_kill_switch_armed
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(log_kill_switch_armed(reason=reason))
+        except Exception:
+            pass  # never break the safety path for narration
 
     def deactivate(self, reason: str = "manual reset") -> None:
         with self._lock:
@@ -164,6 +178,14 @@ class KillSwitch:
             "type": "KillSwitchCleared",
             "error": reason,
         })
+        try:
+            import asyncio
+            from services.agent_activity_service import log_kill_switch_cleared
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(log_kill_switch_cleared(by_user=reason))
+        except Exception:
+            pass
 
     def is_active(self) -> bool:
         """True iff the switch is tripped AND cooldown hasn't expired.

@@ -272,6 +272,21 @@ async def _start_schedulers():
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
+        # ── Autonomous trading agents (all narrate into agent_activity) ──
+        # Trading agents — staggered so they don't hammer yfinance
+        # simultaneously. Mean-rev runs most often; earnings only
+        # needs once daily pre-market.
+        scheduler.add_job(_run_agent_mean_reversion, 'interval', minutes=15,
+                          id='agent_mean_reversion')
+        scheduler.add_job(_run_agent_options_paper, 'interval', minutes=30,
+                          id='agent_options_paper')
+        scheduler.add_job(_run_agent_earnings_watchdog, 'cron',
+                          hour=8, minute=30, id='agent_earnings_watchdog')
+        # Observer agents — daily rollups
+        scheduler.add_job(_run_agent_regime_drift, 'cron',
+                          hour=8, minute=45, id='agent_regime_drift')
+        scheduler.add_job(_run_agent_performance_monitor, 'cron',
+                          hour=8, minute=50, id='agent_performance_monitor')
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -348,6 +363,58 @@ async def _run_tier3_readiness_digest():
             )
     except Exception as e:
         logger.debug(f"Tier 3 readiness digest error: {e}")
+
+
+
+# ── Autonomous trading + observer agents ────────────────────────────
+# Each wrapper is defensive: any uncaught failure is logged but never
+# bubbles up to APScheduler (a raise there would poison the job state
+# and kill future runs). All narration happens inside the agent itself.
+
+async def _run_agent_mean_reversion():
+    """Scheduled: scan large-cap watchlist for 2σ SMA dislocations."""
+    try:
+        from services.trading_agents import mean_reversion
+        await mean_reversion.run(db)
+    except Exception as e:
+        logger.debug(f"agent mean_reversion error: {e}")
+
+
+async def _run_agent_options_paper():
+    """Scheduled: mirror high-conviction ML signals into paper options."""
+    try:
+        from services.trading_agents import options_paper
+        await options_paper.run(db)
+    except Exception as e:
+        logger.debug(f"agent options_paper error: {e}")
+
+
+async def _run_agent_earnings_watchdog():
+    """Scheduled daily: contrarian entries on pre-earnings drift."""
+    try:
+        from services.trading_agents import earnings_watchdog
+        await earnings_watchdog.run(db)
+    except Exception as e:
+        logger.debug(f"agent earnings_watchdog error: {e}")
+
+
+async def _run_agent_regime_drift():
+    """Scheduled daily: compare feature stability week-over-week."""
+    try:
+        from services.trading_agents.observers import regime_drift_check
+        await regime_drift_check(db)
+    except Exception as e:
+        logger.debug(f"agent regime_drift error: {e}")
+
+
+async def _run_agent_performance_monitor():
+    """Scheduled daily: alert on degraded strategy performance."""
+    try:
+        from services.trading_agents.observers import performance_monitor_check
+        await performance_monitor_check(db)
+    except Exception as e:
+        logger.debug(f"agent performance_monitor error: {e}")
+
 
 
 async def _run_headlines_pipeline():
