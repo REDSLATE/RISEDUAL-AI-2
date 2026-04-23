@@ -205,8 +205,12 @@ const MarketScanner = ({ onClose }) => {
           </div>
         ) : (
         <>
-        {/* Filter Bar */}
-        <div className="flex items-center gap-1.5 px-4 md:px-5 py-2 border-b border-slate-400/15 shrink-0 overflow-x-auto scrollbar-hide">
+        {/* Filter Bar — wrap onto a second row on narrow screens rather
+            than hiding pills behind an invisible scroll. Improves
+            discoverability of every filter on mobile. Active state
+            uses dark text on the teal accent so it reads crisply
+            against the bright brand color. */}
+        <div className="flex flex-wrap items-center gap-1.5 px-4 md:px-5 py-2 border-b border-slate-400/15 shrink-0">
           {[
             { id: 'all', label: 'All' },
             { id: 'bullish', label: 'Bullish' },
@@ -218,8 +222,10 @@ const MarketScanner = ({ onClose }) => {
             { id: 'volume', label: 'Volume' },
           ].map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
-                filter === f.id ? 'bg-[#3DE8D9] text-white' : 'bg-slate-800/60 text-slate-400 hover:text-white'
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold leading-tight whitespace-nowrap transition-colors ${
+                filter === f.id
+                  ? 'bg-[#3DE8D9] text-slate-900 shadow-[0_0_0_1px_rgba(61,232,217,0.4)]'
+                  : 'bg-slate-800/60 text-slate-300 hover:text-white hover:bg-slate-700/70 border border-slate-700/40'
               }`} data-testid={`scanner-filter-${f.id}`}>
               {f.label}
             </button>
