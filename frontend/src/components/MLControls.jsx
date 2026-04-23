@@ -10,7 +10,7 @@ import { getApiBase } from '../utils/apiBase';
 const MLPaperPnL = lazy(() => import('./MLPaperPnL'));
 const CalibrationChart = lazy(() => import('./CalibrationChart'));
 
-const API = getApiBase();
+const API = `${getApiBase()}/api`;
 
 const TIER_CONFIG = [
   { key: 'tier1_alerts', label: 'Smart Alerts', icon: Zap, desc: 'Push notifications when AI detects high-confidence setups', color: 'amber', req: '55% accuracy, 100+ predictions' },

@@ -30,7 +30,7 @@ export default function SearchWarRoom({ onClose }) {
     try {
       const body = { query: query.trim(), mode };
       if (symbol.trim()) body.symbol = symbol.trim().toUpperCase();
-      const res = await authFetch(`${API}/web-intel/war-room`, {
+      const res = await authFetch(`${API}/api/web-intel/war-room`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
