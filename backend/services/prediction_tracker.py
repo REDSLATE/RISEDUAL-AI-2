@@ -647,6 +647,18 @@ async def verify_pending_predictions(db: Any) -> None:
                         "context": "snapshot_enricher",
                         "note": "[snapshot-enricher] stamp failed (non-fatal)",
                     })
+                # Narrate this resolution into the agent activity feed.
+                try:
+                    from services.agent_activity_service import log_prediction_resolved
+                    await log_prediction_resolved(
+                        symbol=pred["symbol"],
+                        direction=ai_dir,
+                        outcome=status_new,
+                        pnl=float(pnl),
+                        r_multiple=float(r_mult),
+                    )
+                except Exception:
+                    pass
         except Exception as e:
             log_warning(logger, {
                 "error": str(e),

@@ -65,6 +65,8 @@ from routes.share import router as share_router
 from routes.share_image import router as share_image_router
 from routes.options_trading import router as options_trading_router, set_db as set_options_trading_db
 from routes.beta import router as beta_router, set_db as set_beta_db
+from routes.agent import router as agent_router
+from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
 from services.auth_helpers import set_db as set_auth_helpers_db
@@ -105,6 +107,7 @@ ALL_ROUTERS = [
     share_image_router,
     options_trading_router,
     beta_router,
+    agent_router,
 ]
 
 
@@ -143,6 +146,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_self_test_db,
         set_usaspending_db,
         set_beta_db,
+        set_agent_activity_db,
     ]
     for setter in _setters:
         try:

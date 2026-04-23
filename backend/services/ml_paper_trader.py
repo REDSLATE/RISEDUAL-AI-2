@@ -135,6 +135,15 @@ async def maybe_paper_trade(
             _MIN_PAPER_CONFIDENCE,
             ticker,
         )
+        try:
+            from services.agent_activity_service import log_paper_trade_skipped
+            await log_paper_trade_skipped(
+                ticker=ticker,
+                reason=f"conviction below {_MIN_PAPER_CONFIDENCE * 100:.0f}% threshold",
+                confidence=directional_conf,
+            )
+        except Exception:
+            pass  # activity logging must never break the trade loop
         return None
 
     patterns = _detected_patterns(snapshot)
@@ -220,6 +229,18 @@ async def maybe_paper_trade(
             signal.confidence * 100,
             ", ".join(patterns),
         )
+        try:
+            from services.agent_activity_service import log_paper_trade_opened
+            await log_paper_trade_opened(
+                ticker=ticker,
+                direction=direction_val,
+                position_usd=position_usd,
+                confidence=directional_conf,
+                patterns=patterns,
+                regime=regime,
+            )
+        except Exception:
+            pass
         return trade_id
 
     except Exception as exc:  # noqa: BLE001

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Briefcase, PieChart, BookOpen, LineChart, Users, Bot, Layers, Calculator, Radar as RadarIcon, AlertTriangle, Brain, Coins } from 'lucide-react';
+import { Briefcase, PieChart, BookOpen, LineChart, Users, Bot, Layers, Calculator, Radar as RadarIcon, AlertTriangle, Brain, Coins, Activity } from 'lucide-react';
 import useV2Nav from '../../hooks/useV2Nav';
 import IconTabBar from './IconTabBar';
 
 const TABS = [
+  { key: 'agent',       label: 'Agent',        icon: Activity,       desc: 'Live narrative of what the AI agent is doing right now' },
   { key: 'watchlist',   label: 'Watchlist',    icon: Briefcase,      desc: 'Your tracked symbols with AI scoring & sparklines' },
   { key: 'portfolio',   label: 'Portfolio',    icon: PieChart,       desc: 'Positions, allocation, risk concentration' },
   { key: 'journal',     label: 'Journal',      icon: BookOpen,       desc: 'Trade log with entry/exit notes & tagging' },
@@ -34,10 +35,11 @@ const MLControls = React.lazy(() => import('../MLControls'));
 const CreditStore = React.lazy(() => import('../CreditStore'));
 const ReferralLeaderboard = React.lazy(() => import('../ReferralLeaderboard'));
 const FailureLoopDashboard = React.lazy(() => import('../FailureLoopDashboard'));
+const AgentActivityFeed = React.lazy(() => import('../AgentActivityFeed'));
 
 export default function WorkspaceHub({ onSubscribe, initialTab }) {
   const { enabled: v2Nav } = useV2Nav();
-  const [tab, setTab] = useState(initialTab || 'watchlist');
+  const [tab, setTab] = useState(initialTab || 'agent');
   const fallback = <div className="text-slate-400 text-sm py-8 text-center">Loading...</div>;
 
   return (
@@ -50,6 +52,7 @@ export default function WorkspaceHub({ onSubscribe, initialTab }) {
       />
       <React.Suspense fallback={fallback}>
         <div className="animate-enter">
+          {tab === 'agent' && <AgentActivityFeed />}
           {tab === 'watchlist' && (
             <div className="space-y-6">
               <Watchlist onSubscribe={onSubscribe} />

@@ -410,6 +410,11 @@ async def run_nightly_retrain(
                 "finished_at": datetime.now(timezone.utc).isoformat(),
             })
             logger.warning(f"ML retrain skipped: {log_row['reason']}")
+            try:
+                from services.agent_activity_service import log_retrain_gated
+                await log_retrain_gated(reason=str(log_row['reason']))
+            except Exception:
+                pass
             await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
             return log_row
 
@@ -512,6 +517,15 @@ async def run_nightly_retrain(
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"ML retrain complete: {artefact_path} ({n} samples)")
+        try:
+            from services.agent_activity_service import log_retrain_complete
+            await log_retrain_complete(
+                samples=n,
+                mean_weight=float(log_row.get("mean_sample_weight") or 0.0),
+                r_eligible_frac=float(log_row.get("r_eligible_frac") or 0.0),
+            )
+        except Exception:
+            pass
 
     except Exception as e:
         logger.exception("ML retrain failed")
