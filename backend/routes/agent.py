@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query, Request
 
-from services.agent_activity_service import fetch_recent
+from services.agent_activity_service import fetch_feature_stability, fetch_recent
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -52,4 +52,35 @@ async def agent_activity(
     return {
         "events": rows,
         "count": len(rows),
+    }
+
+
+@router.get("/feature-stability")
+async def feature_stability(
+    days: int = Query(7, ge=1, le=90),
+    min_appearances: int = Query(3, ge=1, le=100),
+    top_k: int = Query(15, ge=1, le=50),
+) -> dict:
+    """Per-feature rollup over a trailing window.
+
+    Surfaces three things users can't see from raw events:
+      * **Dominance** — which features keep showing up in the
+        agent's top-3 reasoning.
+      * **Drift** — signed ``avg_impact``. Sustained negative =
+        the feature is pushing bearish more than bullish.
+      * **Regime flip** — `bullish_frac` close to 0.5 means the
+        feature is noisy / non-directional right now.
+
+    Params:
+      * ``days`` — window (default 7)
+      * ``min_appearances`` — hide features seen fewer than N times
+      * ``top_k`` — cap rows (UI renders compactly)
+    """
+    rows = await fetch_feature_stability(
+        days=days, min_appearances=min_appearances, top_k=top_k,
+    )
+    return {
+        "features": rows,
+        "count": len(rows),
+        "window_days": days,
     }

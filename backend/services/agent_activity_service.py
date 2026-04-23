@@ -30,7 +30,7 @@ real trading flows. A Mongo hiccup just drops the row.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 from uuid import uuid4
 
@@ -249,6 +249,106 @@ async def log_kill_switch_cleared(by_user: str) -> None:
 
 
 # ── Read path ──
+
+
+async def fetch_feature_stability(days: int = 7, min_appearances: int = 3,
+                                  top_k: int = 15) -> list[dict]:
+    """Aggregate feature-importance drift metrics from the recent
+    agent activity stream.
+
+    Walks every event in the window whose metadata contains a
+    ``why`` array (the per-feature contributions attached by
+    :func:`ai_core.explainability.extract_top_features`) and rolls
+    them up per feature::
+
+        {
+          "feature": "momentum_14",
+          "appearances": 47,          # # events where this was top-3
+          "avg_impact": -0.043,        # signed drift signal
+          "avg_abs_impact": 0.312,    # magnitude / raw importance
+          "bullish_frac": 0.38,        # fraction bullish
+          "last_seen": "2026-02-22T14:30:00+00:00",
+          "first_seen": "2026-02-16T09:15:00+00:00",
+        }
+
+    Returns rows sorted by ``appearances`` desc, filtered to those
+    meeting ``min_appearances`` (keeps noise from brand-new features
+    out of the dashboard). Top ``top_k`` rows by appearance count.
+
+    Never-raise: returns empty list on failure. This is a reporting
+    surface, must not 500 the Agent tab.
+    """
+    if _db is None:
+        return []
+
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))
+    try:
+        cursor = _db[_COLLECTION].find(
+            {"timestamp": {"$gte": since},
+             "metadata.why": {"$type": "array", "$ne": []}},
+            {"_id": 0, "timestamp": 1, "metadata.why": 1},
+        )
+        rows = await cursor.to_list(length=5000)
+    except Exception as e:
+        logger.warning("[agent_activity] feature stability fetch failed: %s", e)
+        return []
+
+    # Per-feature accumulators. Using plain dicts rather than pandas
+    # to keep the import graph lean on this hot path.
+    acc: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        ts = row.get("timestamp")
+        why_list = (row.get("metadata") or {}).get("why") or []
+        for w in why_list:
+            name = w.get("feature")
+            if not name:
+                continue
+            try:
+                impact = float(w.get("impact", 0.0))
+                abs_impact = float(w.get("abs_impact", abs(impact)))
+            except (TypeError, ValueError):
+                continue
+            bucket = acc.setdefault(name, {
+                "appearances": 0, "sum_impact": 0.0,
+                "sum_abs_impact": 0.0, "bullish_count": 0,
+                "first_seen": ts, "last_seen": ts,
+            })
+            bucket["appearances"] += 1
+            bucket["sum_impact"] += impact
+            bucket["sum_abs_impact"] += abs_impact
+            if impact >= 0:
+                bucket["bullish_count"] += 1
+            # Timestamps flow in newest-first; track min/max by
+            # comparing as ISO strings (works because ISO 8601 is
+            # lex-comparable when UTC-normalised).
+            if ts:
+                if not bucket["first_seen"] or ts < bucket["first_seen"]:
+                    bucket["first_seen"] = ts
+                if not bucket["last_seen"] or ts > bucket["last_seen"]:
+                    bucket["last_seen"] = ts
+
+    out: list[dict] = []
+    for name, b in acc.items():
+        if b["appearances"] < max(1, int(min_appearances)):
+            continue
+        n = b["appearances"]
+        first = b["first_seen"]
+        last = b["last_seen"]
+        if isinstance(first, datetime):
+            first = first.isoformat()
+        if isinstance(last, datetime):
+            last = last.isoformat()
+        out.append({
+            "feature": name,
+            "appearances": n,
+            "avg_impact": round(b["sum_impact"] / n, 4),
+            "avg_abs_impact": round(b["sum_abs_impact"] / n, 4),
+            "bullish_frac": round(b["bullish_count"] / n, 4),
+            "first_seen": first,
+            "last_seen": last,
+        })
+    out.sort(key=lambda r: r["appearances"], reverse=True)
+    return out[: max(1, int(top_k))]
 
 
 async def fetch_recent(limit: int = 50, since: Optional[datetime] = None,
