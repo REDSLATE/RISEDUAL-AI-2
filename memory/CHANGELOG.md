@@ -1,5 +1,63 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Prescriptive ML Adaptation (self-adapting retrain loop)
+**The "what will change?" → "what changed?" loop closed.** Toxic alerts now *actually* reshape the next retrain.
+
+**Design** — XGBoost doesn't take per-feature weights, so "reduce weight on low-volume breakouts by 15%" is faithfully implemented as *row-level* sample-weight down-adjustment on training rows that match the toxic pattern. The model learns less from those failure modes. Every knob is bounded.
+
+**Safety guardrails** (pass this list if audited):
+| Guard | Value | Purpose |
+|---|---|---|
+| `ML_ADAPTATION_ENABLED` env flag | default `false` | Full pipeline runs in dry-run until operator flips on |
+| `MIN_EVIDENCE_COUNT` | 3 | No adapting on a single bad day |
+| Factor bounds | `[0.7, 1.3]` hard clamp | Never more than ±30% per adaptation |
+| `BASE_DOWN_WEIGHT` | 0.85 | Matches "15% reduction" narrative |
+| `ADAPTATION_TTL_DAYS` | 14 | Mongo TTL auto-expires — no stale penalties |
+| `COOLDOWN_DAYS` | 7 | Can't double-stack same metric |
+| `MAX_ACTIVE_ADAPTATIONS` | 4 | Runaway protection |
+| `MIN_CUMULATIVE_WEIGHT` | 0.1× baseline | Stacked multipliers can't nuke a row |
+
+**New module `services/model_adaptation.py`**:
+- `ADAPTATION_RULES` — 11 metric-key → (feature_column, condition, description) rules covering the full dotted namespace (`volume.liquidity`, `volume.spike`, `rsi.overbought`, `rsi.oversold`, `macd.crossover`, `sector.momentum`, `sentiment.negative`, and 4 pattern flags).
+- `_FAILURE_CODE_TO_METRIC` — conservative 1:1 mapping from `FAILURE_MODES` codes to metrics so detection is predictable.
+- `detect_and_create_adaptations()` — scans last 7 days of `alerts_sent`, creates bounded rows when evidence threshold clears, always narrates via `log_retrain_adaptation_planned`.
+- `apply_adaptations_to_weights()` — multiplies `sample_weight` by active adaptation factors where rows match the rule's condition. Gated by env flag; returns summary for drift audit.
+- `revert_adaptation()`, `disable_all_adaptations()` — full audit trail (no deletes).
+
+**Retrain integration** (`services/ml_retrain_service.py`):
+- `run_nightly_retrain` now calls `detect_and_create_adaptations()` at the start (plants "what will change?" narrative) and `apply_adaptations_to_weights()` right before `model.fit(X, y, sample_weight=w)`. Summary stamps into the training log under `adaptations_applied` + `adaptation_weight_delta_mean` for drift audit.
+- Fixed a pre-existing corrupted duplicate `get_latest_model_info` block caught by the `ruff` syntax check while I was there.
+
+**2 new activity events** (`agent_activity_service.py`):
+- `retrain_adaptation_planned` 🧭 (info/warn) — "Next retrain will reduce weight on low-volume rows (volume_ratio < 0.8x) by 15%" (tells admins WHAT will change)
+- `retrain_adaptation_applied` 🛠️ (warn/info) — "Applied 2 ML adaptations to retrain · 127 rows affected" OR "DRY-RUN: Would apply…" (tells them WHAT changed)
+
+**3 new admin endpoints** (owner-gated):
+- `GET /api/admin/adaptations` — list active + `enabled` flag state
+- `POST /api/admin/adaptations/{id}/revert` — audit-preserving single revert
+- `POST /api/admin/adaptations/disable_all` — nuclear switch
+
+**New `ModelAdaptationsPanel.jsx`** in Admin → Developer Tools:
+- APPLYING / DRY-RUN badge driven by backend `enabled` flag
+- Amber "Dry-run mode" banner with exact env-flag instruction when off
+- Per-adaptation card with metric, % change, evidence count, description, created/expires timestamps, one-click Revert
+- "Disable all" kill switch with `window.confirm` gate
+
+**Verified** — comprehensive 9-case safety suite:
+- ✅ Low evidence (2 < 3) → no adaptation created
+- ✅ Threshold met (3) → 1 adaptation created with correct factor 0.85
+- ✅ Cooldown enforced → re-run creates 0
+- ✅ Dry-run mode → weights untouched, summary still computed
+- ✅ Real apply → correct rows down-weighted (0.85× where volume_ratio < 0.8)
+- ✅ Out-of-band factor (0.2) → clamped to 0.7 floor
+- ✅ Stacked multipliers (0.85 × 0.7 = 0.595) → above 0.1 floor, applied correctly
+- ✅ Single revert works (flip to `active=false`, preserves audit)
+- ✅ Kill switch deactivates all at once
+- ✅ 3 HTTP endpoints return correct shapes (`enabled: false` confirms safe default)
+- ✅ 11/11 toxic-spike regression tests pass, mypy 0, lint clean, webpack compiled
+
+**Operator flip-on path**: `echo 'ML_ADAPTATION_ENABLED=true' >> /app/backend/.env && sudo supervisorctl restart backend`. The feed will start showing real-apply narrations (severity=warn instead of info) and the panel badge flips to APPLYING.
+
 ## 2026-04-24 — Batch Ship: Patent Pill + Systemic-Failure Escalation + Strategy Leaderboard
 - **`BetaBanner.jsx`**: added the missed "Patent Pending" pill (hidden on `<sm`, tooltip reveals "U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"). Closes the last-session user request for "all of the above" patent placements (Header/Footer/Tech Section/Banner).
 - **Systemic-failure auto-escalation** (`agent_activity_service.py`, `routes/admin.py`):

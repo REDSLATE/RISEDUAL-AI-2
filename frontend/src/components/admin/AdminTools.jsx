@@ -9,6 +9,7 @@ import { getApiBase } from '../../utils/apiBase';
 import SelfTestPanel from './SelfTestPanel';
 import AlertAuditPanel from './AlertAuditPanel';
 import StrategyLeaderboardPanel from './StrategyLeaderboardPanel';
+import ModelAdaptationsPanel from './ModelAdaptationsPanel';
 
 const API = `${getApiBase()}/api`;
 
@@ -64,6 +65,8 @@ const AdminTools = () => {
       <SelfTestPanel />
 
       <StrategyLeaderboardPanel />
+
+      <ModelAdaptationsPanel />
 
       <AlertAuditPanel />
 

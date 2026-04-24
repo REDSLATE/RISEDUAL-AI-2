@@ -1397,3 +1397,56 @@ async def alert_why(alert_id: str, request: Request):
         "alert_type": alert.get("alert_type", "toxic_spike"),
         "items": enriched,
     }
+
+
+# ============================================================
+# ML ADAPTATIONS — prescriptive training-weight adjustments
+# ============================================================
+
+@router.get("/adaptations")
+async def list_adaptations(request: Request):
+    """Active model adaptations — bounded row-weight adjustments
+    applied at retrain time based on recent toxic-alert patterns.
+    Owner-gated (touches ML behaviour)."""
+    await _require_owner(request)
+    if db is None:
+        return {"items": [], "enabled": False, "total": 0}
+    from services.model_adaptation import (
+        adaptation_enabled,
+        list_active_adaptations,
+    )
+    items = await list_active_adaptations(db)
+    return {
+        "items": items,
+        "enabled": adaptation_enabled(),
+        "total": len(items),
+    }
+
+
+@router.post("/adaptations/{adaptation_id}/revert")
+async def revert_adaptation_endpoint(adaptation_id: str, request: Request):
+    """Flip one adaptation to inactive — the next retrain will
+    ignore it. Audit trail preserved (not deleted)."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.model_adaptation import revert_adaptation
+    ok = await revert_adaptation(db, adaptation_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Adaptation not found or already inactive")
+    return {"status": "reverted", "adaptation_id": adaptation_id}
+
+
+@router.post("/adaptations/disable_all")
+async def disable_all_adaptations_endpoint(request: Request):
+    """Kill switch — deactivates every active adaptation at once.
+    Use when the retrain-level adaptation loop is misbehaving and
+    you want model weights back to pristine severity+regime-only
+    on the next retrain."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.model_adaptation import disable_all_adaptations
+    n = await disable_all_adaptations(db)
+    return {"status": "disabled_all", "deactivated": n}
+

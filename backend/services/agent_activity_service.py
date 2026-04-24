@@ -66,6 +66,10 @@ EVENT_TYPES = {
     # multiple replay attempts — the signal a human should actually
     # intervene (mail-server outage, bad recipient address, etc.)
     "alert_systemic_failure": "🆘",
+    # Prescriptive ML adaptations — narrates the "what will change?"
+    # + "what changed?" sides of the self-adapting retrain loop.
+    "retrain_adaptation_planned": "🧭",
+    "retrain_adaptation_applied": "🛠️",
     # Research / market scans
     "research": "📰",
     # Generic
@@ -391,6 +395,77 @@ async def log_alert_systemic_failure(alert_id: str, alert_type: str,
             "alert_type": alert_type,
             "delivery_attempts": delivery_attempts,
             "still_failed": still_failed,
+        },
+    )
+
+
+# ── ML Adaptation lifecycle helpers ──
+
+
+async def log_retrain_adaptation_planned(metric: str, factor: float,
+                                         evidence_count: int,
+                                         description: str,
+                                         enabled: bool) -> None:
+    """A new adaptation was created based on recent toxic alerts.
+
+    When ``enabled=False`` the retrain engine is in dry-run mode
+    (detection + narration only) — the title explicitly says so
+    so the admin isn't confused about why model behaviour hasn't
+    changed yet.
+    """
+    pct = int(round((1 - factor) * 100))
+    suffix = " (dry-run — ML_ADAPTATION_ENABLED=false)" if not enabled else ""
+    await log_event(
+        type="retrain_adaptation_planned",
+        severity="info" if enabled else "warn",
+        title=(
+            f"Next retrain will reduce weight on {description} by "
+            f"{pct}%{suffix}"
+        ),
+        detail=(
+            f"Triggered by {evidence_count} recent toxic alert"
+            f"{'s' if evidence_count != 1 else ''} tagged with "
+            f"{metric}."
+        ),
+        metadata={
+            "metric": metric,
+            "factor": factor,
+            "evidence_count": evidence_count,
+            "description": description,
+            "enabled": enabled,
+        },
+    )
+
+
+async def log_retrain_adaptation_applied(enabled: bool,
+                                         adaptations: list[dict],
+                                         total_matched: int) -> None:
+    """Retrain just applied (or dry-ran) the active adaptations.
+
+    The ``adaptations`` summary lists each rule, its matched row
+    count, and the factor used — so admins can see in one place how
+    the retrain actually behaved.
+    """
+    n = len(adaptations)
+    if n == 0:
+        return  # nothing to narrate
+    prefix = "Applied" if enabled else "DRY-RUN: Would apply"
+    title = (
+        f"{prefix} {n} ML adaptation{'s' if n != 1 else ''} to retrain · "
+        f"{total_matched} row{'s' if total_matched != 1 else ''} affected"
+    )
+    metrics = ", ".join(a.get("metric", "?") for a in adaptations[:4])
+    if n > 4:
+        metrics += f" (+{n - 4} more)"
+    await log_event(
+        type="retrain_adaptation_applied",
+        severity="warn" if enabled else "info",
+        title=title,
+        detail=f"Metrics: {metrics}",
+        metadata={
+            "enabled": enabled,
+            "adaptations": adaptations,
+            "total_matched": total_matched,
         },
     )
 

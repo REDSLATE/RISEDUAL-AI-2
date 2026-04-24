@@ -398,6 +398,21 @@ async def run_nightly_retrain(
 
     try:
         from risedual_core.ml.signal_model import SignalModel, SignalModelConfig
+        from services.model_adaptation import (
+            apply_adaptations_to_weights,
+            detect_and_create_adaptations,
+        )
+
+        # Detect + create bounded adaptations from recent toxic-alert
+        # failure patterns BEFORE the heavy lifting. This plants the
+        # "retrain_adaptation_planned" narrative into the feed so admins
+        # see what's about to change. Always safe to call — every
+        # guardrail (cooldown, MAX_ACTIVE_ADAPTATIONS, evidence floor)
+        # lives inside the function.
+        try:
+            await detect_and_create_adaptations(db)
+        except Exception as e:
+            logger.warning(f"[retrain] adaptation detection failed: {e}")
 
         X, y, w, w_severity_only, n, r_drift = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n

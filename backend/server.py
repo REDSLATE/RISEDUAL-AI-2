@@ -206,6 +206,13 @@ async def startup_event():
     except Exception as e:
         logger.debug(f"Alert dedup indexes: {e}")
 
+    # ML-adaptation collection indexes (TTL + unique + lookup).
+    try:
+        from services.model_adaptation import ensure_indexes as _adaptation_indexes
+        await _adaptation_indexes(db)
+    except Exception as e:
+        logger.debug(f"Adaptation indexes: {e}")
+
     # Restore dynamically registered providers from MongoDB
     try:
         from services.providerrouter import ProviderRouter
