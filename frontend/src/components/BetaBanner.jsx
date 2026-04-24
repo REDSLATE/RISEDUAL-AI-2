@@ -81,7 +81,7 @@ const BetaBanner = ({ onClaim }) => {
           </span>
           <span
             className="hidden sm:inline-flex items-center text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded border border-slate-950/40 bg-slate-950/10 text-slate-950"
-            title="U.S. Provisional Patents — App #64/047,926 (04/23/2026) & App #64/048,466 (04/24/2026)"
+            title="Two U.S. Provisional Patents filed — 04/23/2026 & 04/24/2026"
             data-testid="beta-banner-patent-pill"
           >
             2× Patents Pending

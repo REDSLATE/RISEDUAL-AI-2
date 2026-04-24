@@ -28,7 +28,7 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
           </span>
           <span
             className="self-start inline-flex items-center text-[8px] sm:text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded border border-amber-400/40 bg-amber-500/10 text-amber-300 mt-1"
-            title="U.S. Provisional Patents — App #64/047,926 (04/23/2026): Adversarial dual-model system · App #64/048,466 (04/24/2026): Quantum enhancement, options gating, visual confirmation, Monte Carlo"
+            title="Two U.S. Provisional Patents filed — 04/23/2026: Adversarial dual-model system · 04/24/2026: Quantum enhancement, options gating, visual confirmation, Monte Carlo"
             data-testid="patent-pending-pill"
           >
             2× Patents Pending
@@ -502,11 +502,11 @@ const Technology = () => (
       <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-300">
           <FileCheck className="w-3 h-3" />
-          U.S. Patent Pending · App #64/047,926
+          U.S. Patent Pending · Filing #1
         </span>
         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-300">
           <FileCheck className="w-3 h-3" />
-          U.S. Patent Pending · App #64/048,466
+          U.S. Patent Pending · Filing #2
         </span>
       </div>
       <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-4">
@@ -611,7 +611,7 @@ const Technology = () => (
               with Veto-Based Confidence Filtering
             </div>
             <div className="text-[11px] text-slate-400 tabular-nums">
-              U.S. App #64/047,926 · 04/23/2026
+              U.S. Provisional Patent · 04/23/2026
             </div>
           </div>
           <div
@@ -630,7 +630,7 @@ const Technology = () => (
               Monte Carlo Pre-Trade Simulation
             </div>
             <div className="text-[11px] text-slate-400 tabular-nums">
-              U.S. App #64/048,466 · 04/24/2026
+              U.S. Provisional Patent · 04/24/2026
             </div>
           </div>
           <p className="text-xs text-slate-500 max-w-xs mx-auto lg:mx-0 leading-relaxed">
@@ -736,9 +736,9 @@ const LandingFooter = ({ onOpenLegal }) => (
           <span
             className="text-[10px] text-slate-500 border-l border-slate-700/60 pl-3"
             data-testid="footer-patent-pending"
-            title="U.S. Provisional Patents — App #64/047,926 (04/23/2026) & App #64/048,466 (04/24/2026)"
+            title="Two U.S. Provisional Patents filed — 04/23/2026 & 04/24/2026"
           >
-            Patent Pending · U.S. Apps #64/047,926 & #64/048,466
+            Patent Pending · Two U.S. Provisional Patents
           </span>
         </div>
         <div className="flex items-center gap-6 text-xs text-slate-400">
