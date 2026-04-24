@@ -64,6 +64,15 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **Backtest/Live data labeling (Option B)** — add `data_source:
+  "backtest" | "live"` derived at API response time based on row
+  timestamp vs `PUBLIC_DATA_FLOOR_DATE` (default 2026-04-23,
+  Patent #1 filing). UI shows a small "Backtest" badge on
+  pre-filing rows so pre-formation dates read as "5-year backtest
+  depth" instead of suspect failures. Read-side only — **no DB
+  writes, no migration, no Tier 3 collection changes**. Feature-
+  flagged for instant rollback. Est. ~1.5 hr. Context: chat
+  thread 2026-04-24 "spike failures dated 1-2 years before IP".
 - **QuantConnect ↔ QuiverQuant bridge** (user's QC algo pending).
   Replaces flaky Quiver REST with QC Cloud pipeline for Lobbying +
   Insider Trading datasets.
