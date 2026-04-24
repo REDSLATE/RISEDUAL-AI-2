@@ -54,6 +54,33 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### SHAP + Directional ML Adaptation — unblock + wire-up (Feb 24, 2026)
+- **P0** Fixed 4× `E702` semicolon syntax errors (model_adaptation.py
+  lines 733-740) + 2× `F541` f-string cleanups (lines 441-442)
+  left from prior session. Added explicit `dict[str, Any]` annotation
+  at line 688 so `cond` can accept bool/str values under strict mypy
+  (resolves 3 `[dict-item]` gate failures). `/app/scripts/typecheck.sh`
+  baseline back at 0.
+- **P1** Fixed real UI bug in `AgentActivityFeed.jsx` — the
+  `SpikeDetailsBlock` was rendered without its `alertId` prop so the
+  `/api/admin/alerts/why/{id}` enrichment fetch never fired and the
+  SHAP bullets stayed empty. Now passes `alertId={event.metadata?.alert_id}`.
+- **Verified end-to-end**: synthesised a toxic-spike alert → GET
+  `/api/admin/alerts/why/{id}` returns `shap_top` with signed XGBoost
+  `pred_contribs` values per ticker (AAPL: macd=+0.0721, NVDA:
+  rsi_14=-0.1493), averaged across CalibratedClassifierCV folds.
+  Admin panel `ModelAdaptationsPanel` shows direction + contrast +
+  severity + evidence badges.
+- Pytest 15/15 green (test_iteration59_toxic_spikes_alert +
+  test_signal_model_sample_weight). Testing agent iteration_138:
+  zero critical backend/frontend issues.
+- Side cleanup: dropped the unused in-function `from datetime import …`
+  re-import in `signal_model.py::predict()`; added explanatory
+  `# noqa: F401` on the numpy guard that powers the `"np.ndarray"`
+  forward-ref annotation.
+
+
+
 ### mypy baseline 47 → 0 (clean slate) (Feb 22, 2026)
 - Eliminated all remaining type errors in `backend/services/`.
   Categorised into 5 patterns: mixed-value dicts needing

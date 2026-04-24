@@ -300,7 +300,7 @@ class SignalModel:
             )
 
         try:
-            import numpy as np  # noqa: PLC0415
+            import numpy as np  # noqa: PLC0415,F401  # used below in "np.ndarray" type annotation
         except ImportError as exc:
             raise ImportError(
                 "numpy is required for SignalModel.predict_proba. "
@@ -410,8 +410,6 @@ class SignalModel:
         RuntimeError
             If the model has not been trained yet.
         """
-        from datetime import datetime, timezone  # noqa: PLC0415
-
         # Step 1 – convert snapshot to flat feature dict
         vector = snapshot_to_vector(snapshot)
 
