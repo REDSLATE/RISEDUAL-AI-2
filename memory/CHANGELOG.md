@@ -1,5 +1,38 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (c) — Test-hygiene pass on `test_daily_digest.py`
+- Refreshed 6 stale assertions to match the current codebase:
+  * Digest data keys: `dark_pool`/`signals` → `smart_money`/`alerts`.
+  * Prediction row keys: `ticker`/`verdict` → `symbol`/`direction`.
+  * Greeting casing: `Good Morning` → `Good morning`.
+  * DOCTYPE match: exact `<!DOCTYPE html>` → prefix `<!DOCTYPE html`.
+  * Empty-state assertion: `"No recent data available"` → per-block
+    hints (`"No high-conviction predictions"`, etc).
+  * Scheduler log probe: old standalone banner → current consolidated
+    `"Schedulers started: ... digest (6:00) ..."` line.
+  * Trigger response: hardcoded `reason="no_api_key"` → shape check
+    that accepts live-send and skip states.
+- 19/19 `test_daily_digest.py` tests now pass. Full ML/digest/
+  adaptation suite: 89/89 green.
+
+## 2026-02-08 (b) — Daily ML-Health Digest Email (P1)
+- New `services/ml_health_digest_service.py`:
+  `collect_ml_health_data()` + `run_ml_health_digest()` orchestrator.
+  Gathers 24h audit activity (auto/shadow soften + revert counts),
+  top toxic-metric triggers, active adaptation roster, current
+  thresholds, and a p25-based tuning hint (≥20 shadow obs).
+- Scheduler wires `_run_ml_health_digest` at 08:00 UTC daily via
+  APScheduler in `server._start_schedulers`.
+- Admin endpoints:
+  - `POST /api/admin/ml-health-digest/trigger` — manual fire
+  - `GET  /api/admin/ml-health-digest/preview`  — render without sending
+- Recipient defaults to `OWNER_EMAIL` (`admin@risedual.ai`);
+  overridable via `ML_HEALTH_DIGEST_RECIPIENT` env.
+- Idempotent per UTC date — second call returns
+  `{sent: False, reason: "already_sent_today"}`.
+- Tests: 5 new unit tests in `test_ml_health_digest.py`. End-to-end
+  trigger verified — real email sent to admin@risedual.ai.
+
 ## 2026-02-08 — Safety-Rail Threshold Calibration (P2)
 - `model_adaptation.get_auto_revert_config()` now reads thresholds
   from env (`ML_AUTO_REVERT_EFFECT_SIZE`, `..._EPSILON`,

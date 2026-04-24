@@ -30,11 +30,6 @@ current live deploy queue.
 
 ## P1 — Next sprint
 
-- **Daily Summary Email Digest.** Wire the existing digest
-  generation to a daily cron (08:00 UTC → admin@risedual.ai). Needs
-  to include ML health brief: shadow/soften/revert counts + top
-  metric triggers. Reuses `routes/digest.py` and
-  `services/model_adaptation.get_auto_revert_config`.
 - **30-day paper-trading accumulation → ML Tier 3 unlock.** Currently at
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see
   `AI_PREDICTION_WINS.md`). Need 100/500/1000 labeled predictions for

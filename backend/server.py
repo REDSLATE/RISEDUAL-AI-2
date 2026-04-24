@@ -279,6 +279,7 @@ async def _start_schedulers():
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
+        scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only
@@ -302,7 +303,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -370,6 +371,25 @@ async def _run_tier3_readiness_digest():
             )
     except Exception as e:
         logger.debug(f"Tier 3 readiness digest error: {e}")
+
+
+async def _run_ml_health_digest():
+    """Background: Daily ML safety-rail health brief to the owner
+    (08:00 UTC). Surfaces 24h soften/revert/shadow counts, top
+    toxic-metric triggers, active-rule roster, and the latest
+    tuning recommendation."""
+    try:
+        from services.ml_health_digest_service import run_ml_health_digest
+        result = await run_ml_health_digest(db)
+        if result.get("sent"):
+            logger.info(
+                "ML health digest sent: recipient=%s counts=%s active=%d",
+                result.get("recipient"),
+                result.get("counts"),
+                result.get("active_count", 0),
+            )
+    except Exception as e:
+        logger.debug(f"ML health digest error: {e}")
 
 
 

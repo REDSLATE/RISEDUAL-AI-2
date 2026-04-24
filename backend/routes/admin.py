@@ -1835,3 +1835,50 @@ async def explain_adaptation(adaptation_id: str, request: Request):
         "explanation": explanation,
         "projected_effect": projected_effect,
     }
+
+
+
+# ============================================================
+# ML HEALTH DIGEST — admin-only daily brief
+# ============================================================
+
+@router.post("/ml-health-digest/trigger")
+async def trigger_ml_health_digest(request: Request):
+    """Owner/admin: manually fire the daily ML-health digest now
+    (same code path as the 08:00 UTC scheduler). Useful for
+    testing the email template without waiting for cron.
+
+    Note: the scheduled path is idempotent per UTC date — if the
+    digest has already run today it will be a no-op. This manual
+    trigger wraps the same function, so a second call on the same
+    day returns ``{"sent": False, "reason": "already_sent_today"}``
+    rather than double-sending."""
+    await _require_admin(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.ml_health_digest_service import run_ml_health_digest
+    return await run_ml_health_digest(db)
+
+
+@router.get("/ml-health-digest/preview")
+async def preview_ml_health_digest(request: Request):
+    """Render the ML-health digest WITHOUT sending. Returns raw
+    HTML + the collected data payload so the admin UI can mount an
+    inline preview tile."""
+    await _require_admin(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.ml_health_digest_service import (
+        collect_ml_health_data, _format_body_html, _format_subject,
+    )
+    from services.email_service import _base_html
+    data = await collect_ml_health_data(db, window_hours=24)
+    subject = _format_subject(data)
+    counts = data.get("counts") or {}
+    preheader = (
+        f"soften={counts.get('auto_soften',0)+counts.get('shadow_soften',0)} · "
+        f"revert={counts.get('auto_revert',0)+counts.get('shadow_revert',0)} · "
+        f"active={data.get('active_count',0)}"
+    )
+    html = _base_html(_format_body_html(data), preheader=preheader)
+    return {"subject": subject, "html": html, "data": data}

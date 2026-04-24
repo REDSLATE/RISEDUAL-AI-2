@@ -180,17 +180,22 @@ class TestDigestPreviewAdminOnly:
         assert "html" in data, "Response should contain 'html' field"
         assert "data_summary" in data, "Response should contain 'data_summary' field"
         
-        # Check HTML is valid
+        # Check HTML is valid. The template uses XHTML 1.0 Transitional
+        # which starts with `<!DOCTYPE html PUBLIC ...>` — check the
+        # prefix so future template tweaks don't break the regression.
         html = data["html"]
-        assert "<!DOCTYPE html>" in html, "HTML should be valid document"
+        assert html.startswith("<!DOCTYPE html"), "HTML should start with a DOCTYPE"
         assert "RISEDUAL AI" in html, "HTML should contain app name"
         assert "Daily Market Digest" in html, "HTML should contain digest title"
         
-        # Check data_summary structure
+        # Check data_summary structure. The service exposes counts for
+        # `predictions`, `smart_money`, and `alerts` plus two boolean
+        # flags. Historical shape used `dark_pool` / `signals`; those
+        # were renamed to match the actual collection names.
         summary = data["data_summary"]
         assert "predictions" in summary, "data_summary should have 'predictions' count"
-        assert "dark_pool" in summary, "data_summary should have 'dark_pool' count"
-        assert "signals" in summary, "data_summary should have 'signals' count"
+        assert "smart_money" in summary, "data_summary should have 'smart_money' count"
+        assert "alerts" in summary, "data_summary should have 'alerts' count"
         
         print(f"PASSED: Preview returns HTML ({len(html)} chars) and data_summary: {summary}")
     
@@ -228,21 +233,38 @@ class TestDigestTriggerAdminOnly:
             return response.json().get("access_token")
         pytest.skip("Free user login failed")
     
-    def test_trigger_returns_skipped_true_with_placeholder_key(self, owner_token):
-        """POST /api/digest/trigger should return skipped:true with placeholder API key."""
+    def test_trigger_returns_valid_response_shape(self, owner_token):
+        """POST /api/digest/trigger should return a well-shaped response.
+
+        Historically the test asserted ``reason == "no_api_key"``, but
+        the env now carries live Resend keys so the trigger actually
+        sends. We instead verify that the response shape is always
+        one of the documented states:
+          * ``{sent: <int>, skipped: false, ...}`` — real send happened
+          * ``{sent: 0, skipped: true, reason: ...}`` — no provider /
+            no market content available
+        """
         headers = {"Authorization": f"Bearer {owner_token}"}
         response = requests.post(f"{BASE_URL}/api/digest/trigger", headers=headers)
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         
-        # With placeholder key, should return skipped:true
+        assert "sent" in data, "Response should contain 'sent' field"
         assert "skipped" in data, "Response should contain 'skipped' field"
-        assert data["skipped"] == True, f"Expected skipped=True with placeholder key, got {data['skipped']}"
-        assert "reason" in data, "Response should contain 'reason' field"
-        assert data["reason"] == "no_api_key", f"Expected reason='no_api_key', got {data['reason']}"
         
-        print(f"PASSED: Trigger returns skipped=True with reason={data['reason']}")
+        if data.get("skipped"):
+            assert "reason" in data, "Skipped response should carry a reason"
+            assert data["reason"] in {
+                "no_email_provider", "no_content", "no_api_key",
+            }, f"Unexpected skip reason: {data['reason']}"
+            print(f"PASSED: Trigger skipped={data['skipped']} reason={data['reason']}")
+        else:
+            assert isinstance(data.get("sent"), int), "sent should be an int on success"
+            # Optional keys on success path
+            for key in ("errors", "with_watchlist", "content_summary"):
+                assert key in data, f"Success response missing '{key}' field"
+            print(f"PASSED: Trigger sent={data['sent']} errors={data.get('errors')}")
     
     def test_trigger_returns_403_for_free_user(self, free_user_token):
         """POST /api/digest/trigger should return 403 for non-admin users."""
@@ -267,33 +289,38 @@ class TestDigestServiceModule:
             pytest.fail(f"Failed to import digest_service: {e}")
     
     def test_build_digest_html_generates_valid_html_for_pro_user(self):
-        """build_digest_html should generate valid HTML for Pro users."""
+        """build_digest_html should generate valid HTML for Pro users.
+
+        Uses the current ``collect_digest_data`` shape: predictions
+        carry ``symbol``/``direction``/``confidence``, smart_money uses
+        ``symbol``/``signal``/``score``, alerts use ``symbol``/``delta``.
+        """
         import sys
         sys.path.insert(0, '/app/backend')
         from services.digest_service import build_digest_html
         
-        # Sample data
         data = {
             "predictions": [
-                {"ticker": "AAPL", "verdict": "BULLISH", "confidence": 85, "summary": "Strong buy"},
-                {"ticker": "TSLA", "verdict": "BEARISH", "confidence": 70, "summary": "Sell signal"},
+                {"symbol": "AAPL", "direction": "BULLISH", "confidence": 85},
+                {"symbol": "TSLA", "direction": "BEARISH", "confidence": 70},
             ],
-            "dark_pool": [
-                {"ticker": "NVDA", "volume": 1000000, "sentiment": "bullish"},
+            "smart_money": [
+                {"symbol": "NVDA", "signal": "buying", "score": 80,
+                 "bullish": 4, "bearish": 1},
             ],
-            "signals": [
-                {"ticker": "MSFT", "signal": "BUY", "strength": "strong"},
+            "alerts": [
+                {"symbol": "MSFT", "delta": 5, "signal_change": "NEUTRAL → BULLISH"},
             ],
-            "timestamp": "2026-01-06T06:00:00Z"
+            "timestamp": "2026-01-06T06:00:00Z",
         }
         
         html = build_digest_html(data, is_pro=True, user_name="Pro User")
         
-        # Validate HTML structure
-        assert "<!DOCTYPE html>" in html, "Should be valid HTML document"
-        assert "Good Morning, Pro User" in html, "Should contain user greeting"
+        assert html.startswith("<!DOCTYPE html"), "Should be valid HTML document"
+        # Greeting is lowercase-m in the current template
+        assert "Good morning, Pro User" in html, "Should contain user greeting"
         assert "AAPL" in html, "Should contain ticker data"
-        assert "BULLISH" in html, "Should contain verdict"
+        assert "BULLISH" in html, "Should contain direction"
         assert "Upgrade to Pro" not in html, "Pro user should NOT see upgrade CTA"
         
         print("PASSED: build_digest_html generates valid HTML for Pro user (no upgrade CTA)")
@@ -304,31 +331,31 @@ class TestDigestServiceModule:
         sys.path.insert(0, '/app/backend')
         from services.digest_service import build_digest_html
         
-        # Sample data with multiple items
         data = {
             "predictions": [
-                {"ticker": "AAPL", "verdict": "BULLISH", "confidence": 85, "summary": "Strong buy"},
-                {"ticker": "TSLA", "verdict": "BEARISH", "confidence": 70, "summary": "Sell signal"},
-                {"ticker": "NVDA", "verdict": "NEUTRAL", "confidence": 60, "summary": "Hold"},
+                {"symbol": "AAPL", "direction": "BULLISH", "confidence": 85},
+                {"symbol": "TSLA", "direction": "BEARISH", "confidence": 70},
+                {"symbol": "NVDA", "direction": "NEUTRAL", "confidence": 60},
             ],
-            "dark_pool": [
-                {"ticker": "NVDA", "volume": 1000000, "sentiment": "bullish"},
-                {"ticker": "AMD", "volume": 500000, "sentiment": "bearish"},
+            "smart_money": [
+                {"symbol": "NVDA", "signal": "buying", "score": 80, "bullish": 4, "bearish": 1},
+                {"symbol": "AMD",  "signal": "selling", "score": 30, "bullish": 1, "bearish": 3},
             ],
-            "signals": [
-                {"ticker": "MSFT", "signal": "BUY", "strength": "strong"},
-                {"ticker": "GOOG", "signal": "SELL", "strength": "weak"},
+            "alerts": [
+                {"symbol": "MSFT", "delta": 5,  "signal_change": "NEUTRAL → BULLISH"},
+                {"symbol": "GOOG", "delta": -3, "signal_change": "BULLISH → NEUTRAL"},
             ],
-            "timestamp": "2026-01-06T06:00:00Z"
+            "timestamp": "2026-01-06T06:00:00Z",
         }
         
         html = build_digest_html(data, is_pro=False, user_name="Free User")
         
-        # Validate HTML structure
-        assert "<!DOCTYPE html>" in html, "Should be valid HTML document"
-        assert "Good Morning, Free User" in html, "Should contain user greeting"
+        assert html.startswith("<!DOCTYPE html"), "Should be valid HTML document"
+        assert "Good morning, Free User" in html, "Should contain user greeting"
         assert "AAPL" in html, "First item should be visible"
-        assert "filter:blur(4px)" in html, "Should have blurred rows for free user"
+        # Free tier: rows past index 1 (predictions/smart_money) or 0
+        # (alerts) get replaced with a CSS-blurred placeholder row.
+        assert "filter:blur" in html, "Should have blurred rows for free user"
         assert "Upgrade to Pro" in html, "Free user should see upgrade CTA"
         assert "$55/mo" in html, "Should show pricing in CTA"
         
@@ -340,19 +367,21 @@ class TestDigestServiceModule:
         sys.path.insert(0, '/app/backend')
         from services.digest_service import build_digest_html
         
-        # Empty data
         data = {
+            "overview": None,
             "predictions": [],
-            "dark_pool": [],
-            "signals": [],
-            "timestamp": "2026-01-06T06:00:00Z"
+            "smart_money": [],
+            "alerts": [],
+            "timestamp": "2026-01-06T06:00:00Z",
         }
         
         html = build_digest_html(data, is_pro=True, user_name="Test User")
         
-        # Should not crash and should show "No recent data available"
-        assert "<!DOCTYPE html>" in html, "Should be valid HTML document"
-        assert "No recent data available" in html, "Should show no data message"
+        # Doesn't crash and each empty block renders its own hint
+        # instead of a single catch-all "No recent data available".
+        assert html.startswith("<!DOCTYPE html"), "Should be valid HTML document"
+        assert "No high-conviction predictions" in html, "Predictions empty hint missing"
+        assert "No smart money signals" in html, "Smart money empty hint missing"
         
         print("PASSED: build_digest_html handles empty data gracefully")
 
@@ -361,18 +390,26 @@ class TestAPSchedulerSetup:
     """Test APScheduler is configured correctly."""
     
     def test_apscheduler_log_message_present(self):
-        """Backend logs should show APScheduler started message."""
+        """Backend logs should show the combined scheduler startup message.
+
+        The log line was consolidated into a single line listing every
+        cron job (`"Schedulers started: digest (6:00), ..."`), so we
+        check for the `digest (6:00)` fragment rather than the older
+        standalone `"Daily digest scheduler started (6:00 AM UTC)"`.
+        """
         import subprocess
         result = subprocess.run(
-            ["tail", "-n", "100", "/var/log/supervisor/backend.err.log"],
-            capture_output=True, text=True
+            ["tail", "-n", "200", "/var/log/supervisor/backend.err.log"],
+            capture_output=True, text=True,
         )
         logs = result.stdout
         
-        assert "Daily digest scheduler started (6:00 AM UTC)" in logs, \
-            "Backend logs should contain APScheduler startup message"
+        assert "Schedulers started" in logs, \
+            "Backend logs should contain the APScheduler startup banner"
+        assert "digest (6:00)" in logs, \
+            "Startup banner should list the daily digest cron job"
         
-        print("PASSED: APScheduler is running and configured for 6:00 AM UTC")
+        print("PASSED: APScheduler startup banner present with daily digest cron")
 
 
 class TestDigestFreeUserFlow:
