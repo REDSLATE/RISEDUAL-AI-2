@@ -42,13 +42,43 @@ _COLLECTION = "model_adaptations"
 
 # ── Tunables (see module docstring for the safety rationale) ──
 MIN_EVIDENCE_COUNT = 3
-BASE_DOWN_WEIGHT = 0.85  # matches the "15% reduction" user narrative
+BASE_DOWN_WEIGHT = 0.85  # used as fallback when severity can't be measured
 ADJUSTMENT_FLOOR = 0.7   # hardest a single adaptation can push
 ADJUSTMENT_CEILING = 1.3
 ADAPTATION_TTL_DAYS = 14
 COOLDOWN_DAYS = 7
 MAX_ACTIVE_ADAPTATIONS = 4
 MIN_CUMULATIVE_WEIGHT = 0.1  # no row can drop below 10% of baseline
+
+# ── Contrast gate ──
+# Only adapt when the toxic-bucket's failure rate is materially
+# worse than the global baseline. Without this, noisy-but-useful
+# metrics (e.g. "RSI > 70" is often right but will sometimes be
+# wrong at volume) would get penalized for being noisy, not for
+# being systematically bad. The 1.25× multiplier matches the user's
+# "materially worse" heuristic.
+CONTRAST_MULTIPLIER = 1.25
+# How many snapshots we need in the bucket before the rate
+# comparison is trustworthy. Below this we fall back to
+# "MIN_EVIDENCE_COUNT passed" and skip the contrast gate to avoid
+# blocking valid adaptations on small sample size.
+MIN_BUCKET_SNAPSHOTS = 50
+# Sliding window for contrast + severity measurement. Same as the
+# toxic-alert scan window so the two signals are apples-to-apples.
+CONTRAST_WINDOW_DAYS = 7
+
+# ── Severity tiers ──
+# Scale the down-weight factor by the mean absolute return of the
+# failing bucket. Uses the same thresholds as `_WEAK_THRESHOLD` /
+# `_STRONG_THRESHOLD` in `ml_retrain_service` so the adaptation
+# engine speaks the same "that was a real move" vocabulary as the
+# severity-weighted retrain.
+SEVERITY_TIERS: list[tuple[float, float]] = [
+    # (upper_bound_abs_return, factor)
+    (0.01, 0.95),  # mild — barely-a-move misses, light touch
+    (0.03, 0.85),  # moderate — standard retail-sized miss
+    (float("inf"), 0.75),  # strong — outsized move, stronger push
+]
 
 # ── Metric → training-row condition mapping ──
 #
@@ -195,6 +225,160 @@ async def _active_count(db: Any) -> int:
     return int(await db[_COLLECTION].count_documents({"active": True}))
 
 
+async def _compute_contrast_and_severity(
+    db: Any, metric: str,
+) -> dict | None:
+    """Measure how much worse this bucket fails vs. the global
+    baseline, plus the mean absolute return of the failing bucket
+    for severity-aware factor selection.
+
+    Returns a dict with:
+
+    * ``bucket_total`` — rows in window where the rule's condition fires
+    * ``bucket_failures`` — subset of those with ``outcome='down'``
+    * ``global_total`` — all rows in window
+    * ``global_failures`` — subset of those with ``outcome='down'``
+    * ``bucket_rate`` / ``global_rate`` — failure ratios
+    * ``contrast`` — ``bucket_rate / global_rate`` (None when no baseline)
+    * ``severity`` — mean absolute ``return_1d`` on the failing bucket
+    * ``bucket_snapshots`` — alias of ``bucket_total`` for readability
+
+    "Failure" is approximated by ``outcome='down'`` (model's
+    typical error mode is a bullish prediction that reverses —
+    we don't store the model's prediction per snapshot directly,
+    but this proxy holds for the overwhelming majority of toxic
+    events). The proxy is documented on the event metadata so
+    drift audits know what's being measured.
+
+    Returns None when the bucket is too small to be trustworthy
+    (caller skips the contrast gate in that case).
+    """
+    rule = ADAPTATION_RULES.get(metric)
+    if rule is None:
+        return None
+    column = rule["column"]
+
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=CONTRAST_WINDOW_DAYS)
+    )
+    # features_snapshots.captured_at is stored as a BSON datetime,
+    # NOT an ISO string — a string $gte would return zero rows.
+    # Pass the datetime object directly so Mongo does the right
+    # tz-aware comparison.
+
+    # Serialize the condition into a Mongo filter. The rule
+    # conditions are tiny (single-column threshold / boolean flag)
+    # so we can express them declaratively here and let Mongo do
+    # the counting server-side.
+    # Serialize the condition into a Mongo filter. Typed as
+    # ``dict[str, Any]`` so the mixed threshold-vs-boolean shapes
+    # for pattern flags vs numeric columns coexist cleanly.
+    cond: dict[str, Any]
+    if metric == "volume.liquidity":
+        cond = {column: {"$lt": 0.8, "$ne": None}}
+    elif metric == "volume.spike":
+        cond = {column: {"$gt": 2.0}}
+    elif metric == "rsi.overbought":
+        cond = {column: {"$gt": 70}}
+    elif metric == "rsi.oversold":
+        cond = {column: {"$lt": 30, "$ne": None}}
+    elif metric == "macd.crossover":
+        cond = {column: {"$lt": 0, "$ne": None}}
+    elif metric == "sector.momentum":
+        cond = {column: {"$lt": -0.02, "$ne": None}}
+    elif metric == "sentiment.negative":
+        cond = {column: {"$lt": -0.3, "$ne": None}}
+    elif metric.startswith("pattern."):
+        cond = {column: True}
+    else:
+        return None
+
+    base_window = {
+        "captured_at": {"$gte": since},
+        "outcome": {"$in": ["up", "down", "flat"]},
+    }
+
+    try:
+        coll = db["features_snapshots"]
+        global_total = await coll.count_documents(base_window)
+        if global_total == 0:
+            return None
+        global_failures = await coll.count_documents(
+            {**base_window, "outcome": "down"},
+        )
+        bucket_total = await coll.count_documents({**base_window, **cond})
+        bucket_failures = await coll.count_documents(
+            {**base_window, **cond, "outcome": "down"},
+        )
+    except Exception as e:
+        logger.warning(f"[adaptation] contrast stats failed for {metric}: {e}")
+        return None
+
+    if bucket_total < MIN_BUCKET_SNAPSHOTS:
+        # Caller can still create the adaptation (MIN_EVIDENCE_COUNT
+        # already cleared) but we'll skip the contrast multiplier
+        # gate. Severity remains best-effort.
+        bucket_rate: float | None = None
+        contrast: float | None = None
+    else:
+        bucket_rate = bucket_failures / bucket_total
+        global_rate_local = global_failures / global_total
+        contrast = (
+            bucket_rate / global_rate_local if global_rate_local > 0 else None
+        )
+
+    # Severity — mean |return_1d| on the FAILING rows of this
+    # bucket. If nothing failed in the bucket yet we fall back to
+    # the bucket mean so the factor ladder still has a number.
+    severity = 0.0
+    try:
+        sev_pipeline = [
+            {"$match": {
+                **base_window,
+                **cond,
+                "outcome": "down",
+                "return_1d": {"$ne": None},
+            }},
+            {"$group": {
+                "_id": None,
+                "sev": {"$avg": {"$abs": "$return_1d"}},
+            }},
+        ]
+        async for row in coll.aggregate(sev_pipeline):
+            if row.get("sev") is not None:
+                severity = float(row["sev"])
+                break
+    except Exception as e:
+        logger.debug(f"[adaptation] severity calc failed for {metric}: {e}")
+
+    return {
+        "metric": metric,
+        "bucket_total": bucket_total,
+        "bucket_snapshots": bucket_total,
+        "bucket_failures": bucket_failures,
+        "global_total": global_total,
+        "global_failures": global_failures,
+        "bucket_rate": (
+            round(bucket_rate, 4) if bucket_rate is not None else None
+        ),
+        "global_rate": round(global_failures / global_total, 4) if global_total else 0.0,
+        "contrast": round(contrast, 3) if contrast is not None else None,
+        "severity": round(severity, 4),
+    }
+
+
+def _factor_from_severity(severity: float) -> float:
+    """Map severity (mean |return_1d| on failures) to a bounded
+    down-weight factor. Mild misses → light touch, strong misses
+    → firmer push. Always clamped to the ADJUSTMENT_FLOOR/CEILING
+    band so a rogue severity value can't push outside limits.
+    """
+    for upper, factor in SEVERITY_TIERS:
+        if severity < upper:
+            return max(min(factor, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
+    return BASE_DOWN_WEIGHT  # unreachable in practice, kept for safety
+
+
 async def detect_and_create_adaptations(db: Any) -> list[dict]:
     """Scan recent toxic alerts, create bounded adaptations for
     metrics that cleared the evidence threshold. Returns the list of
@@ -224,11 +408,41 @@ async def detect_and_create_adaptations(db: Any) -> list[dict]:
         if rule is None:
             continue  # mapping drift — metric without a rule is a no-op
 
+        # Contrast gate — only adapt when this bucket fails more
+        # than the global baseline. Bypassed when the bucket is
+        # too small for the rate comparison to be trustworthy
+        # (MIN_BUCKET_SNAPSHOTS); the evidence_count threshold
+        # still governs those cases.
+        stats = await _compute_contrast_and_severity(db, metric)
+        if stats is None:
+            logger.info(
+                f"[adaptation] skip {metric}: no contrast stats "
+                f"(rule mapping or DB error)"
+            )
+            continue
+        contrast = stats.get("contrast")
+        if contrast is not None and contrast < CONTRAST_MULTIPLIER:
+            # Bucket fails less than 1.25× the baseline — the metric
+            # isn't systematically bad, just appearing in recent
+            # toxic alerts. Skipping protects useful-but-noisy
+            # signals from being down-weighted.
+            logger.info(
+                f"[adaptation] skip {metric}: contrast={contrast:.3f} "
+                f"< {CONTRAST_MULTIPLIER} (bucket_rate="
+                f"{stats.get('bucket_rate')} vs global="
+                f"{stats.get('global_rate')})"
+            )
+            continue
+
         adaptation_id = str(uuid.uuid4())
-        # Factor is fixed at BASE_DOWN_WEIGHT for now (0.85 = -15%).
-        # Future work: scale by count (more evidence → stronger push)
-        # while keeping the ADJUSTMENT_FLOOR clamp.
-        factor = max(min(BASE_DOWN_WEIGHT, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
+        # Severity-aware factor. Falls through to BASE_DOWN_WEIGHT
+        # when severity couldn't be computed (bucket had no failing
+        # rows with return_1d populated). Belt-and-braces clamp.
+        severity = float(stats.get("severity") or 0.0)
+        if severity > 0:
+            factor = _factor_from_severity(severity)
+        else:
+            factor = max(min(BASE_DOWN_WEIGHT, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
         row = {
             "adaptation_id": adaptation_id,
             "metric": metric,
@@ -236,6 +450,11 @@ async def detect_and_create_adaptations(db: Any) -> list[dict]:
             "description": rule["description"],
             "adjustment_factor": factor,
             "evidence_count": count,
+            "contrast": contrast,
+            "bucket_rate": stats.get("bucket_rate"),
+            "global_rate": stats.get("global_rate"),
+            "severity": severity,
+            "bucket_snapshots": stats.get("bucket_snapshots"),
             "created_at": now.isoformat(),
             "expires_at": now + timedelta(days=ADAPTATION_TTL_DAYS),
             "active": True,
@@ -248,7 +467,8 @@ async def detect_and_create_adaptations(db: Any) -> list[dict]:
             new_rows.append(row)
             logger.info(
                 f"[adaptation] created {metric} factor={factor:.2f} "
-                f"evidence={count} (enabled={adaptation_enabled()})"
+                f"evidence={count} contrast={contrast} severity={severity:.4f} "
+                f"(enabled={adaptation_enabled()})"
             )
             try:
                 await log_retrain_adaptation_planned(

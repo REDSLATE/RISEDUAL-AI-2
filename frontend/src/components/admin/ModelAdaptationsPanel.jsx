@@ -162,6 +162,16 @@ const ModelAdaptationsPanel = () => {
                         <Badge className="bg-slate-700/60 text-slate-200 border-slate-600/40 text-[10px]">
                           {a.evidence_count} toxic event{a.evidence_count === 1 ? '' : 's'}
                         </Badge>
+                        {a.contrast != null && (
+                          <Badge className="bg-purple-500/15 text-purple-200 border-purple-500/30 text-[10px]" title={`Bucket failure rate ${((a.bucket_rate || 0) * 100).toFixed(1)}% vs global ${((a.global_rate || 0) * 100).toFixed(1)}%`}>
+                            {a.contrast.toFixed(2)}× baseline
+                          </Badge>
+                        )}
+                        {typeof a.severity === 'number' && a.severity > 0 && (
+                          <Badge className="bg-amber-500/10 text-amber-200 border-amber-500/30 text-[10px]" title="Mean |return_1d| on failing rows in this bucket">
+                            {(a.severity * 100).toFixed(1)}% avg miss
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1 leading-snug">{a.description}</p>
                       <p className="text-[10px] text-slate-500 mt-1 tabular-nums">

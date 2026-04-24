@@ -1,5 +1,46 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Adaptation Engine Upgrade: Contrast Gate + Severity Ladder
+Two statistical guardrails added on top of the existing bounds. Both caught REAL false-positive adaptations on first run against live data — concrete proof the gates were needed.
+
+**1. Contrast gate** (`CONTRAST_MULTIPLIER = 1.25`)
+Before creating an adaptation, compare `failure_rate(bucket) / failure_rate(global)` measured over the last 7 days of `features_snapshots`. Only proceed when the bucket fails at least 25% more often than baseline. Prevents penalizing useful-but-noisy signals.
+
+**Live validation against current data**:
+| Metric | Bucket rate | Global rate | Contrast | Decision |
+|---|---|---|---|---|
+| volume.liquidity | 28.9% | 26.8% | 1.08× | **BLOCKED** (marginal) |
+| sector.momentum | 25.7% | 26.8% | 0.96× | **BLOCKED** (actually better) |
+| macd.crossover | 27.8% | 26.8% | 1.04× | **BLOCKED** (marginal) |
+| rsi.overbought | — | 26.8% | None | bucket=39 < 50 → **bypass**, evidence rules |
+
+Without this gate, we would have blindly down-weighted volume.liquidity rows in retrain despite them failing only 7.8% more often than everything else.
+
+**2. Severity ladder** — scales the adjustment factor by the mean absolute `return_1d` on failing rows in the bucket, matching the `_WEAK_THRESHOLD` / `_STRONG_THRESHOLD` vocabulary already used by severity-weighted retraining:
+| Mean |return_1d| | Factor | Label |
+|---|---|---|
+| < 1% | 0.95 | mild |
+| 1-3% | 0.85 | moderate |
+| ≥ 3% | 0.75 | strong |
+
+Forced-scenario tests verified each tier produces the expected factor.
+
+**Bucket-size safety**: `MIN_BUCKET_SNAPSHOTS = 50`. Below this the rate comparison is too noisy to trust; the contrast gate is bypassed (evidence + cooldown still apply) and severity is best-effort.
+
+**Latent bug fixed on the way**: `captured_at` on `features_snapshots` is stored as BSON `datetime`, not ISO string. Initial ISO-string `$gte` filter silently returned 0 rows — would have made every contrast check return None → silently bypass. Switched to native datetime object so Mongo does the tz-aware comparison correctly.
+
+**UI**: `ModelAdaptationsPanel.jsx` surfaces the new stats — purple "1.08× baseline" contrast badge (with bucket/global rate tooltip) and amber "2.1% avg miss" severity badge. Admins see exactly why each adaptation was greenlit.
+
+**Stored on each adaptation row**: `contrast`, `bucket_rate`, `global_rate`, `severity`, `bucket_snapshots`. Full forensic trail.
+
+**Verified — 4-case gate suite + severity ladder + existing 9-case safety suite**:
+- ✅ Contrast > 1.25 + severity=0.028 → creates with factor=0.85
+- ✅ Contrast = 1.125 → **blocked**
+- ✅ Small bucket (20 < 50) → bypass, creates with severity-derived factor=0.95
+- ✅ Strong severity (0.055) → factor=0.75
+- ✅ Real-data contrast across 5 metrics printed and matched expectations
+- ✅ 11/11 regression tests pass, mypy 0, lint clean, webpack compiled
+
 ## 2026-04-24 — Prescriptive ML Adaptation (self-adapting retrain loop)
 **The "what will change?" → "what changed?" loop closed.** Toxic alerts now *actually* reshape the next retrain.
 
