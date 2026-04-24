@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Zap, Shield, BarChart3, Radio, Brain, LineChart,
   Check, X, ArrowRight, ChevronDown, Menu, X as XIcon,
-  TrendingUp, Clock, Users, Play
+  TrendingUp, Clock, Users, Play, FileCheck, Gavel, Swords
 } from 'lucide-react';
 import { getApiBase } from '../utils/apiBase';
 
 const NAV_ITEMS = [
   { label: 'How It Works', href: '#how-it-works' },
+  { label: 'Technology', href: '#technology' },
   { label: 'Features', href: '#features' },
   { label: 'About Us', href: '#about-us' },
   { label: 'Pricing', href: '#pricing' },
@@ -20,9 +21,18 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
   return (
     <header className="sticky top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <a href="#" className="text-lg font-bold text-white tracking-tight">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
-          <span className="text-slate-300 text-sm ml-1">AI</span>
+        <a href="#" className="text-lg font-bold text-white tracking-tight flex items-center gap-2" data-testid="landing-logo">
+          <span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
+            <span className="text-slate-300 text-sm ml-1">AI</span>
+          </span>
+          <span
+            className="hidden sm:inline-flex items-center text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded border border-amber-400/40 bg-amber-500/10 text-amber-300"
+            title="U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"
+            data-testid="patent-pending-pill"
+          >
+            Patent Pending
+          </span>
         </a>
         <nav className="hidden md:flex items-center gap-8">
           {NAV_ITEMS.map(n => (
@@ -471,6 +481,144 @@ const PlanCard = ({ name, price, period, credits, creditsLabel, desc, badge, fea
   </div>
 );
 
+
+/* ─── Technology / Patent Section ─── */
+const Technology = () => (
+  <section
+    id="technology"
+    className="relative py-20 sm:py-24 overflow-hidden border-y border-amber-500/10 bg-gradient-to-b from-slate-950 via-slate-900/40 to-slate-950"
+    data-testid="landing-technology"
+  >
+    {/* Faint patent-grade grid texture — conveys 'engineering' without shouting */}
+    <div
+      className="absolute inset-0 opacity-[0.04] pointer-events-none"
+      style={{
+        backgroundImage:
+          'linear-gradient(rgba(251,191,36,1) 1px, transparent 1px), linear-gradient(90deg, rgba(251,191,36,1) 1px, transparent 1px)',
+        backgroundSize: '40px 40px',
+      }}
+    />
+    <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+      <div className="flex items-center justify-center gap-2 mb-4">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-300">
+          <FileCheck className="w-3 h-3" />
+          U.S. Patent Pending · App #64/047,926
+        </span>
+      </div>
+      <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-4">
+        A protected architecture,
+        <br className="sm:hidden" />
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-400">
+          {' '}not just a wrapper.
+        </span>
+      </h2>
+      <p className="text-sm text-slate-400 text-center max-w-2xl mx-auto mb-14 leading-relaxed">
+        Most AI trading tools are a single model with a ticker-shaped prompt.
+        RISEDUAL's core invention is an{' '}
+        <span className="text-amber-300 font-semibold">adversarial dual-model system</span>{' '}
+        with veto-based confidence filtering — filed as a U.S. Provisional Utility Patent.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-14">
+        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-5" data-testid="tech-card-strategist">
+          <Brain className="w-6 h-6 text-teal-400 mb-3" />
+          <h3 className="text-white font-semibold text-sm mb-1.5">Strategist Model</h3>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Generates directional signals from price action, macro regime,
+            and feature-importance patterns. Assigns a conviction score to every call.
+          </p>
+        </div>
+        <div className="bg-slate-900/60 border border-amber-500/30 rounded-xl p-5 relative" data-testid="tech-card-auditor">
+          <Swords className="w-6 h-6 text-amber-400 mb-3" />
+          <h3 className="text-white font-semibold text-sm mb-1.5">Auditor Model</h3>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Runs adversarial — actively tries to disprove the Strategist's thesis
+            by checking for liquidity traps, false breakouts, and regime mismatches.
+          </p>
+          <span className="absolute top-3 right-3 text-[9px] font-bold text-amber-300">CORE CLAIM</span>
+        </div>
+        <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-5" data-testid="tech-card-veto">
+          <Gavel className="w-6 h-6 text-red-400 mb-3" />
+          <h3 className="text-white font-semibold text-sm mb-1.5">Veto-Based Filter</h3>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Only trades where Strategist ≥ threshold AND Auditor fails to veto.
+            Silent rejection preserves capital during single-model overconfidence.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6 items-center">
+        <div className="bg-slate-900/40 border border-slate-700/50 rounded-xl p-6">
+          <h3 className="text-sm font-semibold text-amber-300 uppercase tracking-wider mb-4">
+            Why the architecture matters
+          </h3>
+          <ul className="space-y-3 text-sm text-slate-300">
+            <li className="flex items-start gap-3">
+              <Check className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+              <span>
+                <strong className="text-white">Learning is visible.</strong>{' '}
+                Every decision surfaces its top feature drivers — users see *why*,
+                not just *what*.
+              </span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Check className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+              <span>
+                <strong className="text-white">R-weighted retrain loop.</strong>{' '}
+                The model weighs losses 1.25× heavier than wins of the same
+                magnitude — loss avoidance beats gain capture.
+              </span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Check className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+              <span>
+                <strong className="text-white">Multi-agent ensemble.</strong>{' '}
+                Six autonomous agents (momentum, mean reversion, earnings, options,
+                plus two observers) trade in paper with strategy-tagged performance attribution.
+              </span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Check className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+              <span>
+                <strong className="text-white">Global kill switch.</strong>{' '}
+                A single safety invariant halts every trading surface under
+                drawdown, regime shock, or model drift.
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="text-center lg:text-left">
+          <div
+            className="inline-block bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-4"
+            data-testid="tech-patent-card"
+          >
+            <FileCheck className="w-10 h-10 text-amber-300 mx-auto lg:mx-0 mb-3" />
+            <div className="text-[10px] font-bold tracking-widest text-amber-300 uppercase mb-1">
+              Provisional Utility Patent Filed
+            </div>
+            <div className="text-white font-semibold text-sm leading-snug mb-2">
+              Adversarial Dual-Model System for
+              <br />
+              Real-Time Market Signal Generation
+              <br />
+              with Veto-Based Confidence Filtering
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              U.S. App #64/047,926 · 04/23/2026
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 max-w-xs mx-auto lg:mx-0 leading-relaxed">
+            A 12-month priority date giving RISEDUAL time to iterate on beta
+            feedback before the non-provisional locks in final claims.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+
 /* ─── FAQ ─── */
 const FAQ = () => {
   const [open, setOpen] = useState(null);
@@ -558,7 +706,16 @@ const LandingFooter = ({ onOpenLegal }) => (
       </div>
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL INC. All rights reserved.</span>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <span className="text-xs text-slate-400">&copy; {new Date().getFullYear()} RISEDUAL INC. All rights reserved.</span>
+          <span
+            className="text-[10px] text-slate-500 border-l border-slate-700/60 pl-3"
+            data-testid="footer-patent-pending"
+            title="U.S. Provisional Patent App #64/047,926"
+          >
+            Patent Pending · U.S. App #64/047,926
+          </span>
+        </div>
         <div className="flex items-center gap-6 text-xs text-slate-400">
           <button onClick={() => onOpenLegal?.('privacy')} className="hover:text-slate-300 transition-colors" data-testid="landing-privacy-link">Privacy</button>
           <button onClick={() => onOpenLegal?.('terms')} className="hover:text-slate-300 transition-colors" data-testid="landing-terms-link">Terms</button>
@@ -592,6 +749,7 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo, onOpenBeta
       <CommercialVideo />
       <HowItWorks />
       <Comparison />
+      <Technology />
       <Features />
       <AboutUs embedded />
       <Pricing onGetStarted={onGetStarted} />
