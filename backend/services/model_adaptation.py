@@ -30,6 +30,7 @@ the nightly retrain job.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -214,6 +215,11 @@ AUTO_SOFTEN_MAX_FACTOR = 0.95  # next step above → disable instead
 # detection cooldown in ``_has_recent_adaptation`` — the whole
 # learning loop breathes on the same clock.
 AUTO_ACTION_COOLDOWN_DAYS = 7
+# ── Parallel scanner cap ──
+# How many adaptations we evaluate concurrently. Keeps Mongo
+# roundtrips pipelined without thundering-herding the cluster.
+# Low enough that even 200 active rules add bounded latency.
+AUTO_SCAN_PARALLELISM = 4
 
 
 def auto_revert_enabled() -> bool:
@@ -226,48 +232,41 @@ def auto_revert_enabled() -> bool:
     )
 
 
-async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
-    """Scan active adaptations and for each one whose last
-    `AUTO_REVERT_CONSECUTIVE_NEGATIVE` retrains AT THE CURRENT
-    FACTOR meet every gate (consistent negative ΔR + coverage +
-    no risk-compression), either:
+def auto_revert_shadow_mode() -> bool:
+    """Shadow mode — run the full evaluation but don't mutate
+    anything. Writes ``shadow_soften`` / ``shadow_revert`` rows to
+    ``adaptation_audit`` so operators can observe what the rail
+    WOULD do for 2 weeks before flipping
+    ``ML_ADAPTATION_AUTO_REVERT_ENABLED=true``.
 
-    * **Soften** the adaptation — raise its ``adjustment_factor``
-      by ``AUTO_SOFTEN_STEP`` (closer to 1.0 = less down-weight),
-      OR
-    * **Revert** it — flip ``active=False`` when the next step
-      would push the factor above ``AUTO_SOFTEN_MAX_FACTOR``.
-
-    Returns the list of actions taken (each record tagged with
-    ``action`` ∈ {"soften", "revert"}) so the caller can narrate.
-    Safe to call once per retrain — every candidate is evaluated
-    independently and the update is idempotent (the ``active:True``
-    gate makes concurrent operator reverts a no-op on our side).
+    Flag precedence:
+      * `_ENABLED=true` + `_SHADOW_MODE=true`  → live mode wins
+      * `_ENABLED=false` + `_SHADOW_MODE=true` → shadow only (observed)
+      * `_ENABLED=false` + `_SHADOW_MODE=false` → no-op
     """
-    if not auto_revert_enabled():
-        return []
+    return os.environ.get("ML_ADAPTATION_SHADOW_MODE", "").lower() in (
+        "1", "true", "yes", "on",
+    )
 
-    active = await list_active_adaptations(db)
-    if not active:
-        return []
 
-    actions: list[dict] = []
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat()
-    cooldown_cutoff = now - timedelta(days=AUTO_ACTION_COOLDOWN_DAYS)
-
-    for ad in active:
+async def _evaluate_one_adaptation(
+    db: Any, ad: dict, cooldown_cutoff: Any, now_iso: str,
+    shadow: bool, semaphore: asyncio.Semaphore,
+) -> dict | None:
+    """Per-adaptation evaluation extracted so the outer scanner
+    can run them concurrently. Returns one action dict (or ``None``
+    if no action was taken). When ``shadow=True`` we write a
+    ``shadow_soften`` / ``shadow_revert`` audit row but leave the
+    adaptation doc untouched."""
+    async with semaphore:
         aid = ad.get("adaptation_id")
         if not aid:
-            continue
+            return None
         current_factor = float(ad.get("adjustment_factor") or 1.0)
 
-        # ── Gate 0: cooldown ──
-        # Skip if we've already softened or reverted this
-        # adaptation within the last COOLDOWN_DAYS. The audit
-        # collection is the single source of truth (operator-fired
-        # actions land there too) so manual touches also pause the
-        # rail, which is usually what you want.
+        # ── Gate 0: cooldown (live actions only) ──
+        # Shadow rows don't pause the rail — else shadow mode
+        # would only emit one observation per rule per 7 days.
         try:
             recent = await db["adaptation_audit"].find_one(
                 {
@@ -278,19 +277,12 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                 {"_id": 0, "at": 1, "action": 1},
             )
             if recent:
-                continue
+                return None
         except Exception:
-            # Audit query failure → proceed (fail open) but log.
-            # We'd rather err on the side of ACTING on clearly-bad
-            # adaptations than freeze the rail.
             logger.warning(f"[auto-revert] cooldown query failed for {aid}")
+            # fail-open
 
-        # Pull the most recent retrain rows that applied THIS
-        # adaptation AT THE CURRENT FACTOR. We only consider runs
-        # where ``adaptations_applied[i].factor == current_factor``
-        # so softening resets the evidence counter — the rule gets
-        # a fresh 3-run window to prove itself at its new strength
-        # before the next step.
+        # Pull last-N retrain rows at the current factor.
         cursor = (
             db["ml_training_log"]
             .find(
@@ -299,12 +291,10 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                  "adaptations_applied": 1, "model_version": 1},
             )
             .sort("started_at", -1)
-            .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)  # headroom
+            .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
         )
         runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
 
-        # Filter runs whose recorded factor matches the current one
-        # (within a small tolerance — rounding in the log row).
         deltas_r: list[float] = []
         deltas_wr: list[float] = []
         coverages: list[float] = []
@@ -321,8 +311,6 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                 continue
             run_factor = match.get("factor")
             if run_factor is None or abs(float(run_factor) - current_factor) > 0.001:
-                # Run used a different factor (pre-soften) — skip,
-                # not out-of-scope for the current window.
                 continue
             d_r = match.get("delta_mean_r")
             d_wr = match.get("delta_win_rate")
@@ -339,31 +327,21 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                 complete = False
                 break
         if not complete or len(deltas_r) < AUTO_REVERT_CONSECUTIVE_NEGATIVE:
-            continue
+            return None
 
-        # ── Gate 1: consistently negative ΔR below epsilon ──
+        # Gates 1-4
         if not all(d < -AUTO_REVERT_EPSILON for d in deltas_r):
-            continue
-        # ── Gate 2: sufficient coverage on at least one run ──
+            return None
         if max(coverages) < AUTO_REVERT_MIN_COVERAGE:
-            continue
-        # ── Gate 3: effect size (|ΔR| × coverage) above floor ──
-        # A rule can pass Gates 1+2 independently and still be
-        # noise — e.g. ΔR=-0.012 with coverage=5% → effect-size
-        # 0.0006 ≈ floor variance. Require every run's product of
-        # |ΔR| × coverage to clear AUTO_REVERT_EFFECT_SIZE so only
-        # real, material-impact signals trigger the rail.
+            return None
         effect_sizes = [abs(d) * c for d, c in zip(deltas_r, coverages)]
         if not all(es > AUTO_REVERT_EFFECT_SIZE for es in effect_sizes):
-            continue
-        # ── Gate 4: not just risk compression ──
+            return None
         if not all(wr <= 0 for wr in deltas_wr):
-            continue
+            return None
 
-        # All gates trip — decide between soften and revert.
         next_factor = round(current_factor + AUTO_SOFTEN_STEP, 4)
         is_final_step = next_factor > AUTO_SOFTEN_MAX_FACTOR
-
         base_reason_parts = (
             f"ΔR={[round(d, 4) for d in deltas_r]}, "
             f"Δwin_rate={[round(w, 4) for w in deltas_wr]}, "
@@ -371,106 +349,146 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
             f"effect_size={[round(es, 4) for es in effect_sizes]}, "
             f"factor={current_factor}"
         )
+        # ``prefix`` appears in logs + audit row so admins can grep
+        # shadow vs. live.
+        prefix = "SHADOW " if shadow else ""
+        action_record = {
+            "adaptation_id": aid,
+            "metric": ad.get("metric"),
+            "direction": ad.get("direction"),
+            "factor": current_factor,
+            "deltas_r": [round(d, 4) for d in deltas_r],
+            "deltas_wr": [round(w, 4) for w in deltas_wr],
+            "coverages": [round(c, 3) for c in coverages],
+            "effect_sizes": [round(es, 4) for es in effect_sizes],
+            "shadow": shadow,
+        }
 
         if is_final_step:
-            # Next step would exceed MAX — flip inactive.
             reason = (
-                f"delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} "
+                f"{prefix}delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} "
                 f"at softened factor ({current_factor:.2f} ≥ "
                 f"MAX {AUTO_SOFTEN_MAX_FACTOR:.2f}); final revert. "
                 f"{base_reason_parts}"
             )
-            res = await db[_COLLECTION].update_one(
-                {"adaptation_id": aid, "active": True},
-                {"$set": {
-                    "active": False,
-                    "reverted_at": now_iso,
-                    "auto_reverted": True,
-                    "auto_reverted_reason": reason,
-                    "auto_reverted_deltas_r": [round(d, 4) for d in deltas_r],
-                    "auto_reverted_deltas_wr": [round(w, 4) for w in deltas_wr],
-                    "auto_reverted_coverages": [round(c, 3) for c in coverages],
-                }},
-            )
-            if res.modified_count:
-                actions.append({
-                    "action": "revert",
-                    "adaptation_id": aid,
-                    "metric": ad.get("metric"),
-                    "direction": ad.get("direction"),
-                    "factor": current_factor,
-                    "next_factor": None,
-                    "deltas_r": [round(d, 4) for d in deltas_r],
-                    "deltas_wr": [round(w, 4) for w in deltas_wr],
-                    "coverages": [round(c, 3) for c in coverages],
-                    "reason": reason,
-                })
-                try:
-                    await db["adaptation_audit"].insert_one({
-                        "adaptation_id": aid,
-                        "action": "auto_revert",
-                        "reason": reason,
-                        "metric": ad.get("metric"),
-                        "direction": ad.get("direction"),
-                        "factor_before": current_factor,
-                        "factor_after": None,
-                        "deltas_r": [round(d, 4) for d in deltas_r],
-                        "deltas_wr": [round(w, 4) for w in deltas_wr],
-                        "coverages": [round(c, 3) for c in coverages],
-                        "at": now_iso,
-                    })
-                except Exception as audit_err:
-                    logger.warning(f"[auto-revert] audit insert failed: {audit_err}")
+            audit_action = "shadow_revert" if shadow else "auto_revert"
+            if not shadow:
+                res = await db[_COLLECTION].update_one(
+                    {"adaptation_id": aid, "active": True},
+                    {"$set": {
+                        "active": False,
+                        "reverted_at": now_iso,
+                        "auto_reverted": True,
+                        "auto_reverted_reason": reason,
+                        "auto_reverted_deltas_r": [round(d, 4) for d in deltas_r],
+                        "auto_reverted_deltas_wr": [round(w, 4) for w in deltas_wr],
+                        "auto_reverted_coverages": [round(c, 3) for c in coverages],
+                    }},
+                )
+                if not res.modified_count:
+                    return None  # concurrent operator revert won the race
+            action_record.update({
+                "action": "revert", "next_factor": None, "reason": reason,
+            })
         else:
-            # Soften — raise factor toward 1.0, leave active.
             reason = (
-                f"delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} — "
+                f"{prefix}delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} — "
                 f"softening {current_factor:.2f} → {next_factor:.2f}. "
                 f"{base_reason_parts}"
             )
-            res = await db[_COLLECTION].update_one(
-                {"adaptation_id": aid, "active": True},
-                {"$set": {
-                    "adjustment_factor": next_factor,
-                    "auto_softened": True,
-                    "last_auto_softened_at": now_iso,
-                    "auto_softening_reason": reason,
-                },
-                 "$inc": {"auto_softening_steps": 1}},
-            )
-            if res.modified_count:
-                actions.append({
-                    "action": "soften",
-                    "adaptation_id": aid,
-                    "metric": ad.get("metric"),
-                    "direction": ad.get("direction"),
-                    "factor": current_factor,
-                    "next_factor": next_factor,
-                    "deltas_r": [round(d, 4) for d in deltas_r],
-                    "deltas_wr": [round(w, 4) for w in deltas_wr],
-                    "coverages": [round(c, 3) for c in coverages],
-                    "reason": reason,
-                })
-                try:
-                    await db["adaptation_audit"].insert_one({
-                        "adaptation_id": aid,
-                        "action": "auto_soften",
-                        "reason": reason,
-                        "metric": ad.get("metric"),
-                        "direction": ad.get("direction"),
-                        "factor_before": current_factor,
-                        "factor_after": next_factor,
-                        "deltas_r": [round(d, 4) for d in deltas_r],
-                        "deltas_wr": [round(w, 4) for w in deltas_wr],
-                        "coverages": [round(c, 3) for c in coverages],
-                        "at": now_iso,
-                    })
-                except Exception as audit_err:
-                    logger.warning(f"[auto-soften] audit insert failed: {audit_err}")
+            audit_action = "shadow_soften" if shadow else "auto_soften"
+            if not shadow:
+                res = await db[_COLLECTION].update_one(
+                    {"adaptation_id": aid, "active": True},
+                    {"$set": {
+                        "adjustment_factor": next_factor,
+                        "auto_softened": True,
+                        "last_auto_softened_at": now_iso,
+                        "auto_softening_reason": reason,
+                    },
+                     "$inc": {"auto_softening_steps": 1}},
+                )
+                if not res.modified_count:
+                    return None
+            action_record.update({
+                "action": "soften", "next_factor": next_factor, "reason": reason,
+            })
 
-    # Narrate into the agent activity feed. Fire-and-forget — a
-    # feed failure must never break the retrain.
-    if actions:
+        # Audit row — live OR shadow.
+        try:
+            await db["adaptation_audit"].insert_one({
+                "adaptation_id": aid,
+                "action": audit_action,
+                "reason": reason,
+                "metric": ad.get("metric"),
+                "direction": ad.get("direction"),
+                "factor_before": current_factor,
+                "factor_after": next_factor if not is_final_step else None,
+                "deltas_r": [round(d, 4) for d in deltas_r],
+                "deltas_wr": [round(w, 4) for w in deltas_wr],
+                "coverages": [round(c, 3) for c in coverages],
+                "effect_sizes": [round(es, 4) for es in effect_sizes],
+                "shadow": shadow,
+                "at": now_iso,
+            })
+        except Exception as audit_err:
+            logger.warning(f"[auto-revert] audit insert failed: {audit_err}")
+
+        return action_record
+
+
+async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
+    """Scan active adaptations and soften/revert any that meet all
+    gates (see module docstring). Runs each candidate concurrently
+    under a bounded semaphore so the scanner stays snappy even
+    with 200+ active rules.
+
+    Observes two env flags:
+
+    * ``ML_ADAPTATION_AUTO_REVERT_ENABLED`` — live mode. Mutates
+      the adaptation doc on action.
+    * ``ML_ADAPTATION_SHADOW_MODE`` — observation mode. Runs every
+      gate and writes ``shadow_soften`` / ``shadow_revert`` audit
+      rows but leaves the adaptation unchanged. Used for 2 weeks
+      of validation before flipping the live flag.
+
+    If neither is set we short-circuit to ``[]``. Live wins if both
+    are set.
+    """
+    live = auto_revert_enabled()
+    shadow = (not live) and auto_revert_shadow_mode()
+    if not (live or shadow):
+        return []
+
+    active = await list_active_adaptations(db)
+    if not active:
+        return []
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    cooldown_cutoff = now - timedelta(days=AUTO_ACTION_COOLDOWN_DAYS)
+    semaphore = asyncio.Semaphore(AUTO_SCAN_PARALLELISM)
+
+    results = await asyncio.gather(
+        *[
+            _evaluate_one_adaptation(db, ad, cooldown_cutoff, now_iso,
+                                      shadow=shadow, semaphore=semaphore)
+            for ad in active
+        ],
+        return_exceptions=True,
+    )
+    actions: list[dict] = []
+    for r in results:
+        if isinstance(r, dict):
+            actions.append(r)
+        elif isinstance(r, BaseException):
+            logger.warning(f"[auto-revert] candidate eval raised: {r}")
+
+    # Narrate into the agent activity feed. Fire-and-forget. Shadow
+    # mode emits nothing here — the audit rows are the only signal
+    # for observation-only mode so operators don't get noisy
+    # notifications for non-actions.
+    if actions and not shadow:
         try:
             from services.agent_activity_service import log_event
             softens = [a for a in actions if a["action"] == "soften"]

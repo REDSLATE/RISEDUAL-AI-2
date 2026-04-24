@@ -1505,8 +1505,13 @@ async def list_adaptations(request: Request):
     try:
         cursor = (
             db["adaptation_audit"]
-            .find({"action": {"$in": ["auto_revert", "auto_soften"]}},
-                  {"_id": 0})
+            .find(
+                {"action": {"$in": [
+                    "auto_revert", "auto_soften",
+                    "shadow_revert", "shadow_soften",
+                ]}},
+                {"_id": 0},
+            )
             .sort("at", -1)
             .limit(10)
         )

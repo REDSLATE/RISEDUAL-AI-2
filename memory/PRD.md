@@ -54,6 +54,45 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Shadow Mode + Parallel Scanner (Feb 24, 2026)
+- **Shadow mode** — new env flag `ML_ADAPTATION_SHADOW_MODE`.
+  When set (and live mode is off) the rail runs every gate
+  exactly like live but:
+  * writes `shadow_soften` / `shadow_revert` audit rows instead of
+    `auto_soften` / `auto_revert`
+  * leaves the adaptation doc untouched (no factor/active mutation)
+  * emits no agent-activity-feed events (audit is the only signal
+    so operators aren't spammed with non-actions)
+  * **doesn't self-block** via cooldown — the cooldown filter only
+    counts `auto_*` actions, so shadow observations emit every
+    retrain even on the same rule.
+  Precedence: `live && shadow` → live wins; `!live && shadow` →
+  observation-only; neither → no-op. Two weeks of shadow-mode
+  observation before flipping the live flag is the recommended
+  validation flow.
+- **Parallel scanner** — extracted per-adaptation logic into
+  `_evaluate_one_adaptation()`. Main scanner now runs every
+  candidate concurrently via `asyncio.gather` under a semaphore
+  of 4. Cuts latency on retrains with 20+ active rules from
+  O(N × mongo_rtt) → O(⌈N/4⌉ × mongo_rtt). Each eval is
+  independent (distinct `adaptation_id`, idempotent `active:True`
+  guard on the update) so no locking concerns. Exceptions from
+  individual candidates are logged as warnings and don't kill
+  the batch.
+- **Admin UI**: `ModelAdaptationsPanel`'s audit strip now
+  surfaces shadow rows with distinct styling — dashed borders,
+  grey tone, "WOULD SOFTEN" / "WOULD REVERT" labels, and a
+  separate pill count in the header. Click-to-expand body shows
+  the computed `|ΔR|·Coverage` effect-size array so operators
+  can audit why the rail picked this run.
+- **Tests**: 3 new pytest cases — shadow observes without
+  acting + writes shadow audit only, shadow doesn't self-block
+  via cooldown, parallel scanner handles 5 adaptations at once.
+  14/14 in `test_auto_revert_safety_rail.py`, **50/50** full
+  regression. Mypy 0, ruff + eslint clean.
+
+
+
 ### Safety Rail Hardening — cooldown + effect-size gate (Feb 24, 2026)
 Two additional guards on top of the graduated soften/revert rail
 to handle the edge cases the previous iteration missed:

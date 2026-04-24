@@ -12,12 +12,14 @@ import logger from '../../utils/logger';
 //    safety-rail actions. Soften entries (lavender) and revert
 //    entries (rose) are visually distinct so admins can skim
 //    which rules are being gently walked down vs which crossed
-//    the ceiling. Each row is click-to-expand for the full ΔR /
-//    Δwin-rate / coverage / factor-before-after history.
+//    the ceiling. Shadow entries are dashed-border "would-have"
+//    observations — they never mutated state, just show what the
+//    rail would do if the live flag were flipped on.
 const AutoRevertStrip = ({ items }) => {
   const [expanded, setExpanded] = useState(null);
   const softenCount = items.filter((i) => i.action === 'auto_soften').length;
   const revertCount = items.filter((i) => i.action === 'auto_revert').length;
+  const shadowCount = items.filter((i) => String(i.action).startsWith('shadow_')).length;
   return (
     <div
       className="mb-3 p-3 rounded-lg bg-slate-900/40 border border-slate-700/50"
@@ -28,6 +30,15 @@ const AutoRevertStrip = ({ items }) => {
         <div className="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">
           Safety-rail audit
         </div>
+        {shadowCount > 0 && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-300 border border-dashed border-slate-500/50"
+            title="Observation-only: these are what the rail WOULD have done if ML_ADAPTATION_AUTO_REVERT_ENABLED were true"
+            data-testid="adaptations-auto-revert-shadow-count"
+          >
+            {shadowCount} shadow
+          </span>
+        )}
         {softenCount > 0 && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-200 border border-purple-500/30">
             {softenCount} soften{softenCount === 1 ? '' : 's'}
@@ -43,12 +54,21 @@ const AutoRevertStrip = ({ items }) => {
         {items.map((it, i) => {
           const key = it.adaptation_id || `${it.metric}-${it.at}-${i}`;
           const isOpen = expanded === key;
-          const isSoften = it.action === 'auto_soften';
-          const actionTone = isSoften
-            ? 'bg-purple-500/10 border-purple-500/30'
-            : 'bg-rose-500/10 border-rose-500/30';
-          const actionLabel = isSoften ? 'SOFTEN' : 'REVERT';
-          const actionLabelTone = isSoften ? 'text-purple-200' : 'text-rose-200';
+          const isShadow = String(it.action).startsWith('shadow_');
+          const isSoften = it.action === 'auto_soften' || it.action === 'shadow_soften';
+          const actionTone = isShadow
+            ? 'bg-slate-800/40 border-dashed border-slate-500/40'
+            : isSoften
+              ? 'bg-purple-500/10 border-purple-500/30'
+              : 'bg-rose-500/10 border-rose-500/30';
+          const actionLabel = isSoften
+            ? (isShadow ? 'WOULD SOFTEN' : 'SOFTEN')
+            : (isShadow ? 'WOULD REVERT' : 'REVERT');
+          const actionLabelTone = isShadow
+            ? 'text-slate-300'
+            : isSoften
+              ? 'text-purple-200'
+              : 'text-rose-200';
           return (
             <li
               key={key}
@@ -100,6 +120,14 @@ const AutoRevertStrip = ({ items }) => {
                       {it.coverages?.map((c) => (c * 100).toFixed(1) + '%').join(' · ')}
                     </span>
                   </div>
+                  {Array.isArray(it.effect_sizes) && (
+                    <div>
+                      <span className="text-slate-500 uppercase tracking-wider text-[9px] mr-1">|ΔR|·Coverage</span>
+                      <span className="font-mono tabular-nums">
+                        {it.effect_sizes.map((es) => es.toFixed(4)).join(' · ')}
+                      </span>
+                    </div>
+                  )}
                   <p className="text-slate-500 italic mt-1 break-all">{it.reason}</p>
                 </div>
               )}

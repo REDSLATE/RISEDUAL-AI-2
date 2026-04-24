@@ -532,3 +532,159 @@ def test_auto_revert_cooldown_pauses_scanner(patch_auto_revert_enabled):
 
     asyncio.get_event_loop().run_until_complete(_run())
 
+
+
+
+@pytest.fixture()
+def patch_shadow_mode(monkeypatch):
+    """Flip ML_ADAPTATION_SHADOW_MODE on WITHOUT live flag."""
+    monkeypatch.setenv("ML_ADAPTATION_SHADOW_MODE", "true")
+    monkeypatch.delenv("ML_ADAPTATION_AUTO_REVERT_ENABLED", raising=False)
+
+
+def test_shadow_mode_observes_without_acting(patch_shadow_mode):
+    """Shadow mode runs every gate and writes a ``shadow_soften``
+    audit row but leaves the adaptation doc untouched — no
+    active/factor flip, no activity-feed noise."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-shadow-{uuid.uuid4().hex[:8]}"
+        await _seed_adaptation(db, aid)
+        await _seed_training_log(
+            db, aid,
+            delta_r_list=[-0.03, -0.02, -0.04],
+            delta_wr_list=[-0.02, -0.03, -0.02],
+            rows_matched_list=[150, 150, 150],
+            samples=1000,
+        )
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert len(actions) == 1
+            assert actions[0]["action"] == "soften"
+            assert actions[0]["shadow"] is True
+            # Adaptation doc NOT mutated
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0},
+            )
+            assert doc["active"] is True
+            assert doc["adjustment_factor"] == 0.85  # unchanged
+            assert "auto_softened" not in doc or doc.get("auto_softened") is not True
+            # Audit row written with shadow_ prefix
+            audit = await db.adaptation_audit.find_one(
+                {"adaptation_id": aid}, {"_id": 0},
+            )
+            assert audit is not None
+            assert audit["action"] == "shadow_soften"
+            assert audit["shadow"] is True
+            # NO activity event emitted in shadow mode
+            evt = await db.agent_activity.find_one(
+                {"type": {"$in": ["adaptation_auto_softened",
+                                  "adaptation_auto_reverted"]}},
+                {"_id": 0},
+                sort=[("timestamp", -1)],
+            )
+            assert evt is None
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_shadow_mode_does_not_block_itself_via_cooldown(patch_shadow_mode):
+    """Shadow rows don't count toward the 7-day cooldown — else
+    shadow mode would only emit one observation per rule per week.
+    Only live actions block."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-shadow-cd-{uuid.uuid4().hex[:8]}"
+        await _seed_adaptation(db, aid)
+        # Seed a recent SHADOW audit row — should NOT block.
+        await db.adaptation_audit.insert_one({
+            "adaptation_id": aid,
+            "action": "shadow_soften",
+            "reason": "prior shadow",
+            "metric": "volume.liquidity",
+            "direction": "LONG",
+            "factor_before": 0.85,
+            "factor_after": 0.90,
+            "deltas_r": [-0.03, -0.03, -0.03],
+            "deltas_wr": [-0.02, -0.02, -0.02],
+            "coverages": [0.15, 0.15, 0.15],
+            "shadow": True,
+            "at": (datetime.now(timezone.utc)
+                   - __import__("datetime").timedelta(days=2)).isoformat(),
+        })
+        await _seed_training_log(
+            db, aid,
+            delta_r_list=[-0.03, -0.02, -0.04],
+            delta_wr_list=[-0.02, -0.03, -0.02],
+            rows_matched_list=[150, 150, 150],
+        )
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert len(actions) == 1  # shadow rows don't cool down
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_parallel_scanner_handles_multiple_adaptations(
+    patch_auto_revert_enabled,
+):
+    """Scanner must process multiple adaptations concurrently and
+    return a stable list of action records."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        # Seed 5 distinct adaptations, each with 3 bad runs at 0.85
+        aids = [f"test-par-{i}-{uuid.uuid4().hex[:6]}" for i in range(5)]
+        for i, aid in enumerate(aids):
+            await _seed_adaptation(db, aid)
+            # Keep each run's model_version unique across
+            # adaptations so cleanup filter still catches them.
+            base = datetime.now(timezone.utc).timestamp()
+            for j, (dr, dwr, rm) in enumerate(zip(
+                [-0.03, -0.02, -0.04],
+                [-0.02, -0.03, -0.02],
+                [150, 150, 150],
+            )):
+                ts = datetime.fromtimestamp(base - (3 - j) * 3600,
+                                            tz=timezone.utc)
+                await db.ml_training_log.insert_one({
+                    "started_at": ts, "finished_at": ts,
+                    "status": "success", "samples": 1000,
+                    "model_version": 940 + i * 10 + j,
+                    "adaptations_applied": [{
+                        "adaptation_id": aid,
+                        "metric": "volume.liquidity",
+                        "direction": "LONG", "rows_matched": rm,
+                        "factor": 0.85,
+                        "delta_mean_r": dr, "delta_win_rate": dwr,
+                    }],
+                })
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            # All 5 should soften (0.85 → 0.90)
+            assert len(actions) == 5
+            acted_ids = {a["adaptation_id"] for a in actions}
+            assert acted_ids == set(aids)
+            assert all(a["action"] == "soften" for a in actions)
+            assert all(a["next_factor"] == 0.90 for a in actions)
+        finally:
+            for aid in aids:
+                await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
