@@ -28,6 +28,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from pymongo.errors import DuplicateKeyError
+
 logger = logging.getLogger(__name__)
 
 _COLLECTION = "alerts_sent"
@@ -130,7 +132,15 @@ async def record_alert(
     date_bucket: str,
     metadata: dict | None = None,
 ) -> None:
-    """Persist the alert so future `already_alerted` checks see it."""
+    """Persist the alert so future `already_alerted` checks see it.
+
+    Raises `DuplicateKeyError` when the unique index on `alert_id`
+    rejects the insert — callers use this as the atomic "reserve-first"
+    gate (try to record BEFORE sending; if the reserve fails, another
+    process already owns this alert and we must suppress).
+    All other exceptions are swallowed — worst case we send a duplicate
+    on the next cycle, better than crashing the alert pipeline.
+    """
     if db is None:
         return
     try:
@@ -143,6 +153,10 @@ async def record_alert(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "metadata": metadata or {},
         })
+    except DuplicateKeyError:
+        # Race: another process reserved this same alert_id first.
+        # Propagate so the caller can suppress the send cleanly.
+        raise
     except Exception as e:
         # Non-fatal — at worst we send a duplicate alert the next
         # cycle. Crashing the alert pipeline would be worse.
@@ -195,7 +209,20 @@ async def ensure_indexes(db: Any) -> None:
     if db is None:
         return
     try:
-        await db[_COLLECTION].create_index("alert_id")
+        # alert_id MUST be unique — this is the atomic gate for the
+        # reserve-first pattern in callers. If a non-unique legacy
+        # index exists from an earlier build, drop it first so the
+        # unique create can succeed (MongoDB refuses to replace an
+        # existing index with incompatible options in-place).
+        existing = await db[_COLLECTION].index_information()
+        legacy = existing.get("alert_id_1")
+        if legacy is not None and not legacy.get("unique", False):
+            try:
+                await db[_COLLECTION].drop_index("alert_id_1")
+                logger.info("[alert-dedup] dropped legacy non-unique alert_id index")
+            except Exception as drop_exc:
+                logger.debug(f"[alert-dedup] legacy index drop: {drop_exc}")
+        await db[_COLLECTION].create_index("alert_id", unique=True)
         await db[_COLLECTION].create_index(
             [("alert_type", 1), ("tickers_sorted", 1), ("created_at", -1)]
         )

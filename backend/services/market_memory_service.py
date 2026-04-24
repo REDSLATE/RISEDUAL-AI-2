@@ -637,33 +637,76 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])
 
-    # Dedup gate — compute BEFORE we do any expensive email prep.
+    # Reserve-first dedup pattern.
     #
-    # IMPORTANT: We intentionally bucket by DAY + ALERT TYPE only, NOT
-    # by the exact ticker set. The ticker-set bucket was too granular:
-    # two cleanup runs 35s apart on the same day could report slightly
+    # We bucket by DAY + ALERT TYPE only, NOT by the exact ticker set.
+    # Two cleanup runs 35s apart on the same day could report slightly
     # different toxic sets (e.g. run 1 finds {MSFT, AAPL}, run 2 also
-    # finds TEST_FAIL_61), which produced different alert_ids and
-    # bypassed the 48h suppress window — the user got back-to-back
-    # emails on 2026-04-10 and 2026-04-19.
+    # finds TEST_FAIL_61), which produced different alert_ids on the
+    # old ticker-set-based key and bypassed the 48h suppress window —
+    # back-to-back emails fired on 2026-04-10 and 2026-04-19.
     #
     # The ACTUAL product requirement is "max one toxic-spike email per
-    # day", so the dedup key should reflect that directly.
-    from services.alert_dedup import should_send_alert, record_alert
+    # day", so we key off a stable daily bucket and let the DB's unique
+    # index on `alert_id` be the atomic gate. If `record_alert` raises
+    # `DuplicateKeyError`, another run already reserved this slot and
+    # we silently suppress — no race window between read and write.
+    from services.alert_dedup import (
+        compute_alert_id,
+        date_bucket_today,
+        persistence_run_count,
+        record_alert,
+    )
+    from pymongo.errors import DuplicateKeyError
+
     affected = sorted({d.get("symbol", "?") for d in toxic_details})
     dedup_key = ["toxic_spike_daily"]
-    should, ctx = await should_send_alert(_db, "toxic_spike", dedup_key)
-    if not should:
+    date_bucket = date_bucket_today()
+    alert_id = compute_alert_id("toxic_spike", dedup_key, date_bucket)
+    run_id = datetime.now(timezone.utc).isoformat()
+
+    # Persistence run is informational (used only for subject
+    # escalation), so a racy read here is fine — the reserve below is
+    # the only decision point for whether we actually send.
+    run = await persistence_run_count(_db, "toxic_spike", dedup_key)
+
+    # Atomic reserve: unique index on alert_id rejects duplicates.
+    try:
+        await record_alert(
+            _db,
+            alert_id=alert_id,
+            alert_type="toxic_spike",
+            tickers=dedup_key,
+            date_bucket=date_bucket,
+            metadata={
+                "toxic_count": toxic_count,
+                "affected_tickers": affected,
+                "persistence_run": run + 1,
+                "run_id": run_id,
+                "reserved": True,
+            },
+        )
         logger.info(
-            f"[toxic-alert] suppressed — same ticker set already alerted "
-            f"within 48h (alert_id={ctx['alert_id']})"
+            f"[toxic-alert] reserved alert_id={alert_id[:12]} run_id={run_id}"
+        )
+    except DuplicateKeyError:
+        logger.info(
+            f"[toxic-alert] suppressed — already reserved ({alert_id[:12]})"
         )
         return
+    except Exception as e:
+        # DB issue on reserve — fail open so we don't silently swallow
+        # alerts because Mongo hiccuped. Duplicate on next run is
+        # preferable to missing the alert entirely.
+        logger.warning(
+            f"[toxic-alert] reserve failed — failing open: {type(e).__name__}: {e}"
+        )
 
+    # One (and only one) process reaches here per day.
     # Escalate the subject/title when this is a persisting streak.
-    # run=0 → first occurrence, run>=1 → "Persisting (N+1 days in a row)".
-    run = ctx.get("run", 0)
-    persistence_tag = f" — Persisting ({run + 1} days in a row)" if run >= 1 else ""
+    persistence_tag = (
+        f" — Persisting ({run + 1} days in a row)" if run >= 1 else ""
+    )
 
     # ── 1. Email Alert to admins/owner ──
     try:
@@ -740,7 +783,8 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
                     "total_before": cleanup_results.get("total_before", 0),
                     "total_after": cleanup_results.get("total_after", 0),
                     "persistence_run": run + 1,
-                    "alert_id": ctx["alert_id"],
+                    "alert_id": alert_id,
+                    "run_id": run_id,
                 },
             }
             for uid in pro_users
@@ -754,34 +798,4 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             "type": type(e).__name__,
             "context": "market_memory",
             "note": "Failed to create toxic spike notifications",
-        })
-
-    # ── 3. Record the alert for dedup ──
-    # Done AFTER email+notifications so a failure in either doesn't
-    # trap us in "recorded but never sent" — next run retries cleanly.
-    # Intentionally fire-and-forget: recording failures can't block the
-    # main cleanup flow.
-    try:
-        # Record under the SAME dedup_key we checked with, otherwise
-        # the next run's `already_alerted` / `persistence_run_count`
-        # lookup would never find this row (they key on tickers_sorted).
-        # The real affected tickers are preserved in metadata for audit.
-        await record_alert(
-            _db,
-            alert_id=ctx["alert_id"],
-            alert_type="toxic_spike",
-            tickers=dedup_key,
-            date_bucket=ctx["date_bucket"],
-            metadata={
-                "toxic_count": toxic_count,
-                "affected_tickers": affected,
-                "persistence_run": run + 1,
-            },
-        )
-    except Exception as e:
-        log_warning(logger, {
-            "error": str(e),
-            "type": type(e).__name__,
-            "context": "market_memory",
-            "note": "alert_dedup record failed (non-fatal)",
         })

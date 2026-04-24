@@ -1,5 +1,11 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Toxic-Spike Dedup: Race-Condition Hardened (reserve-first)
+- **Follow-up to same-day fix**: closed the read-then-write race window. Two concurrent cleanup runs could both pass `should_send_alert` before either wrote `record_alert`, producing ghost duplicates.
+- **`services/alert_dedup.py`**: `alert_id` index migrated to `unique=True` (legacy non-unique `alert_id_1` is auto-dropped in `ensure_indexes` before the unique create — safe re-run). `record_alert` now propagates `DuplicateKeyError` while still swallowing other Mongo hiccups.
+- **`services/market_memory_service._send_toxic_alerts`**: flipped to reserve-first pattern — `record_alert` is called BEFORE email/notifications. On `DuplicateKeyError` the flow suppresses silently. `should_send_alert` is no longer called on this path (the unique-index insert IS the gate). Added `run_id` (UTC ISO timestamp) to alert + notification metadata for forensic tracing.
+- **Verified**: concurrent probe with 5 async reserves of the same `alert_id` → `oks=1 dupes=4`. Unique index confirmed live after boot. 11/11 toxic-spike tests still pass. Lint + mypy clean.
+
 ## 2026-04-24 — Toxic-Spike Dedup Bug Fix (repeat emails leaked)
 - **Bug**: Admin received back-to-back toxic-spike emails 35s apart on 2026-04-10 and 2026-04-19. Root cause: dedup key was built from the exact affected-ticker set, so two cleanup runs seconds apart that produced slightly different toxic lists (e.g. `{MSFT, AAPL}` vs `{MSFT, AAPL, TEST_FAIL_61}`) hashed to different `alert_id`s and both passed the 48h suppress gate.
 - **Fix in `services/market_memory_service._send_toxic_alerts`**: dedup key decoupled from the ticker set — now uses stable daily bucket `["toxic_spike_daily"]` so the 48h window collapses any same-day rerun to a single email. Real affected tickers are preserved in `metadata.affected_tickers` for audit. `record_alert` updated to write under the same dedup key so `persistence_run_count` keeps working.
