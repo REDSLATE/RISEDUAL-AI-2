@@ -1,5 +1,9 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Dotted-Namespace Metric Keys
+- **`routes/admin._extract_drivers`**: refactored canonical dedup keys from flat strings (`volume`, `macd`, `pattern`) to dotted namespaces (`volume.liquidity`, `volume.spike`, `macd.crossover`, `pattern.bull_flag`, `pattern.rsi_divergence`, `pattern.head_and_shoulders`, `pattern.bearish_engulfing`, `rsi.overbought`, `rsi.oversold`, `sector.momentum`, `sentiment.negative`, `liquidity.slippage`, `trend.exhaustion`, `macro.regime`).
+- **Behavior preserved + clarified**: same-semantic signals still dedup (e.g. LIQUIDITY_GAP "low liquidity" vs fallback "low volume" both tag `volume.liquidity` → higher-weight wins). Opposite-semantic signals now coexist cleanly by design (`volume.liquidity` ≠ `volume.spike`, different pattern flags each get their own key). Unit suite verifies.
+
 ## 2026-04-24 — Failure-Code-Aware Drivers + Weighted Ranking + Metric Dedup
 - **`routes/admin._extract_drivers`** rewritten as a two-layer engine:
   1. **Failure-code specific (HIGH signal)** — maps to our canonical `FAILURE_MODES` vocab: `TECH_FAKEOUT` (bull flag broke down, bearish momentum reversal), `LIQUIDITY_GAP` (low liquidity, slippage/spread expansion), `REGIME_SHIFT` (overbought RSI, trend exhaustion — covers "overextension"), `MACRO_SHOCK` (negative sector momentum, macro regime misalignment).

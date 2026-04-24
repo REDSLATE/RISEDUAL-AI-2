@@ -1097,9 +1097,14 @@ def _extract_drivers(snap: dict, failure_code: str | None = None) -> list[str]:
     drivers: list[dict] = []
 
     def add(label: str, weight: float, metric: str) -> None:
-        """`metric` is a canonical key (rsi, volume, sector, ...) so
-        we can dedup across the failure-code + fallback layers when
-        both phrasings describe the same underlying signal."""
+        """`metric` is a canonical dotted key (e.g. ``volume.liquidity``,
+        ``macd.crossover``, ``pattern.bull_flag``) so we can dedup
+        across the failure-code + fallback layers when both
+        phrasings describe the same underlying signal. The namespace
+        prefix (``volume.``, ``pattern.``, ...) groups related
+        signals without collapsing distinct ones (e.g.
+        ``volume.liquidity`` and ``volume.spike`` coexist — they
+        mean opposite things)."""
         drivers.append({"label": label, "weight": weight, "metric": metric})
 
     rsi = snap.get("rsi_14")
@@ -1112,26 +1117,26 @@ def _extract_drivers(snap: dict, failure_code: str | None = None) -> list[str]:
     # ── 1. Failure-code specific overrides (HIGH SIGNAL) ──
     if failure_code == "TECH_FAKEOUT":
         if snap.get("pattern_bull_flag"):
-            add("bull flag broke down", 0.95, "pattern")
+            add("bull flag broke down", 0.95, "pattern.bull_flag")
         if isinstance(macd, (int, float)) and macd < 0:
-            add("bearish momentum reversal", 0.9, "macd")
+            add("bearish momentum reversal", 0.9, "macd.crossover")
 
     elif failure_code == "LIQUIDITY_GAP":
         if isinstance(vol, (int, float)) and vol < 0.8:
-            add(f"low liquidity ({vol:.2f}x volume)", 0.95, "volume")
-        add("slippage / spread expansion", 0.85, "liquidity")
+            add(f"low liquidity ({vol:.2f}x volume)", 0.95, "volume.liquidity")
+        add("slippage / spread expansion", 0.85, "liquidity.slippage")
 
     elif failure_code == "REGIME_SHIFT":
         # Overextension / trend exhaustion lives under REGIME_SHIFT
         # in our FAILURE_MODES vocabulary.
         if isinstance(rsi, (int, float)) and rsi > 70:
-            add(f"overbought RSI ({int(rsi)})", 0.95, "rsi")
-        add("trend exhaustion", 0.85, "trend")
+            add(f"overbought RSI ({int(rsi)})", 0.95, "rsi.overbought")
+        add("trend exhaustion", 0.85, "trend.exhaustion")
 
     elif failure_code == "MACRO_SHOCK":
         if isinstance(sector, (int, float)) and sector < 0:
-            add(f"negative sector momentum ({sector * 100:+.1f}%)", 0.95, "sector")
-        add("macro regime misalignment", 0.85, "macro")
+            add(f"negative sector momentum ({sector * 100:+.1f}%)", 0.95, "sector.momentum")
+        add("macro regime misalignment", 0.85, "macro.regime")
 
     # ── 2. Fallback heuristics (MEDIUM SIGNAL) ──
     # Only fill slots that the failure-code layer didn't already
@@ -1140,32 +1145,32 @@ def _extract_drivers(snap: dict, failure_code: str | None = None) -> list[str]:
     if len(drivers) < 3:
         if isinstance(rsi, (int, float)):
             if rsi > 70:
-                add(f"overbought RSI ({int(rsi)})", 0.6, "rsi")
+                add(f"overbought RSI ({int(rsi)})", 0.6, "rsi.overbought")
             elif rsi < 30:
-                add(f"oversold RSI ({int(rsi)})", 0.6, "rsi")
+                add(f"oversold RSI ({int(rsi)})", 0.6, "rsi.oversold")
 
         if isinstance(vol, (int, float)):
             if vol < 0.8:
-                add(f"low volume ({vol:.2f}x)", 0.55, "volume")
+                add(f"low volume ({vol:.2f}x)", 0.55, "volume.liquidity")
             elif vol > 1.5:
-                add(f"volume spike ({vol:.2f}x)", 0.55, "volume")
+                add(f"volume spike ({vol:.2f}x)", 0.55, "volume.spike")
 
         if isinstance(macd, (int, float)) and isinstance(macd_sig, (int, float)):
             if macd < macd_sig and macd < 0:
-                add("MACD bearish crossover", 0.6, "macd")
+                add("MACD bearish crossover", 0.6, "macd.crossover")
 
         if isinstance(sector, (int, float)) and sector < -0.02:
-            add(f"negative sector ({sector * 100:+.1f}%)", 0.55, "sector")
+            add(f"negative sector ({sector * 100:+.1f}%)", 0.55, "sector.momentum")
 
         if isinstance(sentiment, (int, float)) and sentiment < -0.3:
-            add(f"negative sentiment ({sentiment:+.2f})", 0.5, "sentiment")
+            add(f"negative sentiment ({sentiment:+.2f})", 0.5, "sentiment.negative")
 
         if snap.get("pattern_rsi_divergence"):
-            add("RSI divergence", 0.55, "pattern_divergence")
+            add("RSI divergence", 0.55, "pattern.rsi_divergence")
         if snap.get("pattern_head_and_shoulders"):
-            add("head & shoulders pattern", 0.55, "pattern_hs")
+            add("head & shoulders pattern", 0.55, "pattern.head_and_shoulders")
         if snap.get("pattern_bearish_engulfing"):
-            add("bearish engulfing", 0.55, "pattern_engulf")
+            add("bearish engulfing", 0.55, "pattern.bearish_engulfing")
 
     # Rank by weight desc, then dedup by canonical metric so we never
     # show two phrasings of the same underlying signal. Failure-code
