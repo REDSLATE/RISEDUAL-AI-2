@@ -14,13 +14,38 @@
  * fetch, so polling is cheap.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Wifi, WifiOff, RotateCcw, Loader2, ChevronDown, HelpCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 
-const API = `${getApiBase()}/api/agent/activity`;
+const API_BASE = getApiBase();
+const API = `${API_BASE}/api/agent/activity`;
+const REPLAY_API = `${API_BASE}/api/admin/alerts/replay`;
 const POLL_INTERVAL_MS = 10_000;
+
+// Filter chip definitions. `test` receives the raw event type and
+// returns true when the event belongs in the category. Kept as
+// startsWith so new alert_*/paper_trade_*/retrain_* variants fold
+// into the existing chips with zero wiring.
+const FILTERS = [
+  { key: 'all', label: 'All', test: () => true },
+  { key: 'trades', label: 'Trades', test: (t) => t?.startsWith('paper_trade_') || t?.startsWith('prediction_') },
+  { key: 'alerts', label: 'Alerts', test: (t) => t?.startsWith('alert_') || t?.startsWith('kill_switch_') },
+  { key: 'ml', label: 'ML', test: (t) => t?.startsWith('retrain_') },
+];
+
+// Mirror of backend FAILURE_MODES in services/post_mortem_service.py.
+// Kept small + inline so admins see the teaching copy directly in
+// the alert_reserved drilldown without another round trip.
+const FAILURE_MODE_DESCRIPTIONS = {
+  TECH_FAKEOUT: 'Indicators were bullish but price reversed immediately (stop-loss hunt).',
+  MACRO_SHOCK: 'Unexpected news/data (CPI, Fed, etc.) invalidated the setup.',
+  LIQUIDITY_GAP: 'Low volume caused slippage or erratic price spikes.',
+  REGIME_SHIFT: 'Market shifted from trending to range-bound unexpectedly.',
+  UNKNOWN: 'Price moved against prediction without clear technical or news trigger.',
+};
 
 // Severity → classnames. Kept local to this component since no
 // other surface renders agent-activity tone.
@@ -120,13 +145,80 @@ const WhyBlock = ({ why, eventType }) => {
   );
 };
 
+// Drilldown for `alert_reserved` rows — shows the top toxic
+// predictions with their confidence, failure code, and the human
+// description. Turns the feed from "something fired" into
+// "here's what went wrong and why".
+const SpikeDetailsBlock = ({ spikes }) => {
+  if (!spikes || spikes.length === 0) {
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-700/40">
+        <p className="text-[10px] italic text-slate-500">
+          No per-prediction detail recorded for this alert.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="mt-2 pt-2 border-t border-slate-700/40"
+      data-testid="agent-activity-spike-details"
+    >
+      <p className="text-[10px] italic text-slate-400 leading-snug mb-1.5">
+        Top {spikes.length} highest-confidence miss{spikes.length === 1 ? '' : 'es'} — model was most sure and most wrong here:
+      </p>
+      <ul className="space-y-1.5">
+        {spikes.map((s, i) => {
+          const confPct =
+            typeof s.confidence === 'number'
+              ? s.confidence > 1
+                ? s.confidence
+                : s.confidence * 100
+              : null;
+          const code = s.failure_code || 'UNKNOWN';
+          const desc = FAILURE_MODE_DESCRIPTIONS[code] || FAILURE_MODE_DESCRIPTIONS.UNKNOWN;
+          return (
+            <li
+              key={`${s.symbol || '?'}-${i}`}
+              className="rounded bg-slate-900/50 border border-slate-700/40 px-2 py-1.5"
+              data-testid={`agent-activity-spike-row-${i}`}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-mono font-bold text-white">
+                  {s.symbol || '?'}
+                </span>
+                {confPct != null && (
+                  <span className="text-[9px] font-semibold text-amber-300 tabular-nums">
+                    {confPct.toFixed(0)}% confidence
+                  </span>
+                )}
+                <span className="text-[9px] font-semibold text-red-300 px-1.5 rounded bg-red-500/10 border border-red-500/30">
+                  {code}
+                </span>
+                {s.date && (
+                  <span className="text-[9px] text-slate-500 tabular-nums">{s.date}</span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{desc}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
 const EventRow = ({ event, isNew, onReplay, replayingId }) => {
+  const [drillOpen, setDrillOpen] = useState(false);
   const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.info;
   const why = event.metadata?.why;
   const isDelivery = event.type === 'alert_delivery';
+  const isReserved = event.type === 'alert_reserved';
   const failedCount = isDelivery ? (event.metadata?.failed?.length || 0) : 0;
   const canReplay = isDelivery && failedCount > 0 && event.metadata?.alert_id;
   const isReplaying = replayingId && replayingId === event.metadata?.alert_id;
+  const spikes = isReserved ? (event.metadata?.spike_details || []) : [];
+  const canDrill = isReserved && spikes.length > 0;
   return (
     <div
       className={`relative flex items-start gap-3 py-2.5 px-3 border-l-2 ${
@@ -186,6 +278,21 @@ const EventRow = ({ event, isNew, onReplay, replayingId }) => {
             )}
           </button>
         )}
+        {canDrill && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setDrillOpen((v) => !v); }}
+            className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-[#3DE8D9] hover:text-[#7AEEE0]"
+            data-testid={`agent-activity-drill-${event.metadata.alert_id?.slice(0, 12)}`}
+          >
+            {drillOpen ? (
+              <><ChevronDown className="w-3 h-3" /> Hide why</>
+            ) : (
+              <><HelpCircle className="w-3 h-3" /> Why did this fire? ({spikes.length})</>
+            )}
+          </button>
+        )}
+        {canDrill && drillOpen && <SpikeDetailsBlock spikes={spikes} />}
         <WhyBlock why={why} eventType={event.type} />
       </div>
     </div>

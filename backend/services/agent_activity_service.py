@@ -257,8 +257,17 @@ async def log_kill_switch_cleared(by_user: str) -> None:
 
 
 async def log_alert_reserved(alert_id: str, run_id: str, alert_type: str,
-                             toxic_count: int, tickers: list[str]) -> None:
-    """Reserve-first pattern just claimed a new alert slot."""
+                             toxic_count: int, tickers: list[str],
+                             spike_details: Optional[list[dict]] = None) -> None:
+    """Reserve-first pattern just claimed a new alert slot.
+
+    ``spike_details`` is an optional trimmed list of the worst
+    offenders (top ~5 toxic predictions). Each item is passed
+    through verbatim and rendered as a "Why did this fire?"
+    drilldown in the Agent Activity feed. Callers should pre-trim
+    — we don't defensively truncate here so the schema matches
+    what the caller curated.
+    """
     preview = ", ".join(tickers[:5]) if tickers else "—"
     if len(tickers) > 5:
         preview += f" (+{len(tickers) - 5} more)"
@@ -273,6 +282,7 @@ async def log_alert_reserved(alert_id: str, run_id: str, alert_type: str,
             "alert_type": alert_type,
             "toxic_count": toxic_count,
             "tickers": tickers[:20],
+            "spike_details": spike_details or [],
         },
     )
 

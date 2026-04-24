@@ -705,14 +705,32 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             f"[toxic-alert] reserved alert_id={alert_id[:12]} run_id={run_id}"
         )
         # Narrate the reservation into the agent activity feed.
+        # Pass the top-5 worst offenders so the feed row can render
+        # a "Why did this fire?" drilldown without another API call.
         try:
             from services.agent_activity_service import log_alert_reserved
+            # Sort by confidence descending — highest-conf misses are
+            # the most teachable (model was MOST sure AND wrong).
+            top_offenders = sorted(
+                toxic_details,
+                key=lambda d: float(d.get("confidence") or 0),
+                reverse=True,
+            )[:5]
             await log_alert_reserved(
                 alert_id=alert_id,
                 run_id=run_id,
                 alert_type="toxic_spike",
                 toxic_count=toxic_count,
                 tickers=affected,
+                spike_details=[
+                    {
+                        "symbol": d.get("symbol"),
+                        "confidence": d.get("confidence"),
+                        "date": d.get("date"),
+                        "failure_code": d.get("failure_code", "UNKNOWN"),
+                    }
+                    for d in top_offenders
+                ],
             )
         except Exception:
             pass

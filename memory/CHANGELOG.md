@@ -1,5 +1,20 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — "Why Did This Alert Fire?" Drilldown + Latent Import Bug Caught
+- **Latent runtime bug fixed**: `AgentActivityFeed.jsx` was using `RotateCcw`, `Loader2`, and `toast` without importing them. Webpack compiled fine (no static checker) but the failed-delivery replay button would have thrown `ReferenceError` at runtime the first time a user saw it. Added the full import set.
+- **`services/agent_activity_service.log_alert_reserved`**: new optional `spike_details` arg — caller passes a pre-trimmed list of top offenders; persisted verbatim in the event metadata.
+- **`services/market_memory_service._send_toxic_alerts`**: sorts `toxic_details` by confidence descending, passes top 5 to `log_alert_reserved` as `spike_details` (each row carries `symbol`, `confidence`, `date`, `failure_code`). Highest-conf misses surface first — the "model was most sure AND most wrong" cohort, the most teachable.
+- **`AgentActivityFeed.jsx`**:
+  - New `SpikeDetailsBlock` component rendered inside `alert_reserved` rows on demand. Shows symbol · confidence% · failure_code badge · date per row, plus a plain-English description of the failure mode.
+  - Inline "Why did this fire? (N)" toggle button (using `HelpCircle` icon) on `alert_reserved` rows that have `spike_details`. Click → expands the drilldown; click again → hides.
+  - `FAILURE_MODE_DESCRIPTIONS` mirrored from backend `post_mortem_service.FAILURE_MODES` (5 codes: TECH_FAKEOUT, MACRO_SHOCK, LIQUIDITY_GAP, REGIME_SHIFT, UNKNOWN).
+- **Verified E2E** via probe with 6 fake toxic details (varied failure codes, descending confidence):
+  - `spike_details` trimmed to top 5 (TSLA @ 75% cut, correct) ✅
+  - Sorted desc: NVDA 92% → META 81% ✅
+  - All 5 failure codes render with their human descriptions ✅
+  - `fetch_recent` returns event with icon + full metadata shape the frontend expects ✅
+  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — Alerts Wired Into Agent Activity Feed (+ Filter Chips + Inline Replay + Toasts)
 - **`services/agent_activity_service.py`**: added 4 event types to the controlled vocabulary — `alert_reserved` 🚨, `alert_suppressed` ⏭️, `alert_delivery` 📬, `alert_replay` 🔁 — plus matching `log_alert_*` convenience helpers. Severity mapping: reserved=warn, suppressed=info, delivery=error-if-any-failed-else-success, replay=success-if-clean-else-warn. Metadata carries `alert_id`, `run_id`, `delivered`, `failed`, `delivery_attempts` so the feed row can render inline actions.
 - **`services/market_memory_service._send_toxic_alerts`**: emits `alert_reserved` on successful reserve, `alert_suppressed` on `DuplicateKeyError`, `alert_delivery` after per-recipient outcomes are stamped. All three calls are wrapped in `try/except: pass` per the "never break trading flow" contract even though `log_event` is already never-raise.
