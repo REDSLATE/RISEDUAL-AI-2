@@ -8,6 +8,7 @@ import logger from '../../utils/logger';
 import { getApiBase } from '../../utils/apiBase';
 import SelfTestPanel from './SelfTestPanel';
 import AlertAuditPanel from './AlertAuditPanel';
+import StrategyLeaderboardPanel from './StrategyLeaderboardPanel';
 
 const API = `${getApiBase()}/api`;
 
@@ -61,6 +62,8 @@ const AdminTools = () => {
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
 
       <SelfTestPanel />
+
+      <StrategyLeaderboardPanel />
 
       <AlertAuditPanel />
 

@@ -62,6 +62,10 @@ EVENT_TYPES = {
     "alert_suppressed": "⏭️",
     "alert_delivery": "📬",
     "alert_replay": "🔁",
+    # Add a new event type for systemic failures that persist across
+    # multiple replay attempts — the signal a human should actually
+    # intervene (mail-server outage, bad recipient address, etc.)
+    "alert_systemic_failure": "🆘",
     # Research / market scans
     "research": "📰",
     # Generic
@@ -353,6 +357,40 @@ async def log_alert_replay(alert_id: str, alert_type: str,
             "replayed": replayed,
             "still_failed": still_failed,
             "delivery_attempts": delivery_attempts,
+        },
+    )
+
+
+async def log_alert_systemic_failure(alert_id: str, alert_type: str,
+                                     delivery_attempts: int,
+                                     still_failed: list[dict]) -> None:
+    """Emit a high-severity event when an alert has failed delivery
+    ``delivery_attempts`` times without recovering. This is the
+    signal a human should actually step in — something is
+    systemically broken (mail provider down, address typo, DNS, …).
+
+    Callers should fire this from the replay path AFTER the replay
+    itself has run, so the ``still_failed`` list reflects the most
+    recent attempt's survivors.
+    """
+    n_fail = len(still_failed)
+    emails = ", ".join((f.get("email") or "?") for f in still_failed[:3])
+    if n_fail > 3:
+        emails += " …"
+    await log_event(
+        type="alert_systemic_failure",
+        severity="error",
+        title=(
+            f"Systemic delivery failure · {alert_type} · "
+            f"{n_fail} recipient{'s' if n_fail != 1 else ''} failing after "
+            f"{delivery_attempts} attempts"
+        ),
+        detail=f"Still failing: {emails}" if emails else None,
+        metadata={
+            "alert_id": alert_id,
+            "alert_type": alert_type,
+            "delivery_attempts": delivery_attempts,
+            "still_failed": still_failed,
         },
     )
 

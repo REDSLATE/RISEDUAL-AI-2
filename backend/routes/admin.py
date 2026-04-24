@@ -1,6 +1,6 @@
 """Admin-only routes: cache monitoring, system diagnostics, broker OAuth config."""
 from fastapi import APIRouter, HTTPException, Request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -904,6 +904,129 @@ async def learning_engine_trades(
 
 
 # ============================================================
+# STRATEGY LEADERBOARD — which of the agents is actually winning?
+# ============================================================
+
+@router.get("/strategies/leaderboard")
+async def strategies_leaderboard(request: Request, days: int = 30):
+    """Roll up ``learning_engine_trades`` by ``strategy_id`` so we
+    can see at a glance which autonomous agent (near_52w_high,
+    mean_reversion, earnings_watchdog, options_paper, rsi_overbought,
+    …) is actually generating PnL.
+
+    Returns per-strategy:
+    - ``trades``: total count in window
+    - ``wins`` / ``losses`` / ``pending``: status breakdown
+    - ``win_rate``: wins / (wins + losses) — null when no resolved
+    - ``avg_r``: mean R-multiple on resolved trades only
+    - ``total_pnl``: sum on resolved trades
+    - ``last_trade_at``: most recent entry
+
+    Rows with ``strategy_id=None`` are grouped under ``"(untagged)"``
+    so the admin sees the tail the dashboard code forgot to label.
+    Results sorted by total_pnl desc (money talks); pending-only
+    strategies drop to the bottom since their PnL sums to zero.
+
+    Owner-only — reveals agent performance.
+    """
+    await _require_owner(request)
+    if db is None:
+        return {"items": [], "window_days": days, "resolved_total": 0, "pending_total": 0}
+
+    days = max(1, min(int(days), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    pipeline: list[dict] = [
+        {"$match": {"logged_at": {"$gte": since.isoformat()}}},
+        {"$addFields": {
+            # Two generations of trade-logging code coexist in this
+            # collection: older rows use `strategy_id`, the newer
+            # agents (mean_reversion, earnings_watchdog, …) use
+            # `strategy`. Coalesce so a single tile surfaces both.
+            "_strategy": {
+                "$ifNull": [
+                    "$strategy",
+                    {"$ifNull": ["$strategy_id", "(untagged)"]},
+                ],
+            },
+        }},
+        {"$group": {
+            "_id": "$_strategy",
+            "trades": {"$sum": 1},
+            "wins": {"$sum": {"$cond": [{"$eq": ["$status", "win"]}, 1, 0]}},
+            "losses": {"$sum": {"$cond": [{"$eq": ["$status", "loss"]}, 1, 0]}},
+            "pending": {"$sum": {"$cond": [{"$eq": ["$status", "pending"]}, 1, 0]}},
+            # Only resolved rows contribute to R and PnL averages —
+            # pending trades have r_multiple=0 / pnl=0 by default
+            # and would dilute the metric if included.
+            "resolved_r_sum": {
+                "$sum": {
+                    "$cond": [
+                        {"$in": ["$status", ["win", "loss"]]},
+                        {"$ifNull": ["$r_multiple", 0]},
+                        0,
+                    ],
+                },
+            },
+            "resolved_count": {
+                "$sum": {
+                    "$cond": [{"$in": ["$status", ["win", "loss"]]}, 1, 0],
+                },
+            },
+            "total_pnl": {
+                "$sum": {
+                    "$cond": [
+                        {"$in": ["$status", ["win", "loss"]]},
+                        {"$ifNull": ["$pnl", 0]},
+                        0,
+                    ],
+                },
+            },
+            "last_trade_at": {"$max": "$logged_at"},
+        }},
+        {"$sort": {"total_pnl": -1, "trades": -1}},
+    ]
+
+    items: list[dict] = []
+    resolved_total = 0
+    pending_total = 0
+    try:
+        async for row in db["learning_engine_trades"].aggregate(pipeline):
+            resolved = int(row.get("resolved_count", 0))
+            wins = int(row.get("wins", 0))
+            losses = int(row.get("losses", 0))
+            pending = int(row.get("pending", 0))
+            r_sum = float(row.get("resolved_r_sum", 0.0) or 0.0)
+            avg_r = (r_sum / resolved) if resolved > 0 else None
+            win_rate = (wins / (wins + losses)) if (wins + losses) > 0 else None
+
+            items.append({
+                "strategy": row.get("_id") or "(untagged)",
+                "trades": int(row.get("trades", 0)),
+                "wins": wins,
+                "losses": losses,
+                "pending": pending,
+                "win_rate": round(win_rate, 4) if win_rate is not None else None,
+                "avg_r": round(avg_r, 3) if avg_r is not None else None,
+                "total_pnl": round(float(row.get("total_pnl", 0.0) or 0.0), 2),
+                "last_trade_at": row.get("last_trade_at"),
+            })
+            resolved_total += resolved
+            pending_total += pending
+    except Exception as e:
+        logger.warning(f"[strategies-leaderboard] aggregate failed: {e}")
+
+    return {
+        "items": items,
+        "window_days": days,
+        "resolved_total": resolved_total,
+        "pending_total": pending_total,
+    }
+
+
+
+
+# ============================================================
 # ALERT AUDIT — dedup + delivery forensics
 # ============================================================
 
@@ -1052,12 +1175,30 @@ async def alerts_replay(request: Request, alert_id: str):
     except Exception:
         pass
 
+    # Systemic-failure escalation: after 3+ attempts a recipient
+    # is still failing, that's not a transient hiccup — a human
+    # needs to intervene (SMTP outage, typo, DNS, …). Fire a
+    # high-severity event once per threshold crossing so the feed
+    # lights up red.
+    if still_failed and new_attempts >= 3:
+        try:
+            from services.agent_activity_service import log_alert_systemic_failure
+            await log_alert_systemic_failure(
+                alert_id=alert_id,
+                alert_type=alert.get("alert_type", "toxic_spike"),
+                delivery_attempts=new_attempts,
+                still_failed=still_failed,
+            )
+        except Exception:
+            pass
+
     return {
         "status": "replayed",
         "alert_id": alert_id,
         "replayed": replayed_ok,
         "still_failed": still_failed,
         "delivery_attempts": new_attempts,
+        "systemic_failure": bool(still_failed and new_attempts >= 3),
     }
 
 

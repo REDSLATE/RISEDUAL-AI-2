@@ -1,5 +1,21 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Batch Ship: Patent Pill + Systemic-Failure Escalation + Strategy Leaderboard
+- **`BetaBanner.jsx`**: added the missed "Patent Pending" pill (hidden on `<sm`, tooltip reveals "U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"). Closes the last-session user request for "all of the above" patent placements (Header/Footer/Tech Section/Banner).
+- **Systemic-failure auto-escalation** (`agent_activity_service.py`, `routes/admin.py`):
+  - New event type `alert_systemic_failure` 🆘 with `log_alert_systemic_failure` helper (error severity).
+  - Fires automatically inside `POST /api/admin/alerts/replay` AFTER the regular replay event, *only* when `delivery_attempts >= 3` AND `still_failed` is non-empty.
+  - Endpoint response adds `"systemic_failure": bool` so the frontend can surface a "needs human" banner on the matching audit row.
+  - Verified: Case A (2→3 attempts, persistent failure) → both `alert_replay` (warn) + `alert_systemic_failure` (error) fire ✅. Case B (1→2 attempts, failing) → no escalation ✅. Case C (2→3 attempts, recovered) → no escalation ✅.
+- **Strategy Leaderboard** (`GET /api/admin/strategies/leaderboard?days=…`, `StrategyLeaderboardPanel.jsx`):
+  - Rolls up `learning_engine_trades` by strategy, coalescing the dual-schema `strategy` (newer agents) and `strategy_id` (older rows) into one group key (rows missing both → `(untagged)`).
+  - Per strategy: trades, wins, losses, pending, win_rate, avg_r (resolved only), total_pnl (resolved only), last_trade_at.
+  - Sorted by total_pnl desc; window selector (7/30/90/365 days); `🏆 #1` badge on the leader when there's a meaningful winner.
+  - "Data warming up" banner when all trades in the window are still pending (current state: 51 pending across `near_52w_high`/`rsi_overbought`/`mean_reversion`, 0 resolved).
+  - Owner-gated (reveals agent performance).
+  - Verified via curl: 3 strategies surfaced correctly, dual-schema coalesce works.
+- **Checks**: 11/11 toxic-spike tests pass, mypy 0 on all touched files, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — Dotted-Namespace Metric Keys
 - **`routes/admin._extract_drivers`**: refactored canonical dedup keys from flat strings (`volume`, `macd`, `pattern`) to dotted namespaces (`volume.liquidity`, `volume.spike`, `macd.crossover`, `pattern.bull_flag`, `pattern.rsi_divergence`, `pattern.head_and_shoulders`, `pattern.bearish_engulfing`, `rsi.overbought`, `rsi.oversold`, `sector.momentum`, `sentiment.negative`, `liquidity.slippage`, `trend.exhaustion`, `macro.regime`).
 - **Behavior preserved + clarified**: same-semantic signals still dedup (e.g. LIQUIDITY_GAP "low liquidity" vs fallback "low volume" both tag `volume.liquidity` → higher-weight wins). Opposite-semantic signals now coexist cleanly by design (`volume.liquidity` ≠ `volume.spike`, different pattern flags each get their own key). Unit suite verifies.

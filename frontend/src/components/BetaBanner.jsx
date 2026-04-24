@@ -79,6 +79,13 @@ const BetaBanner = ({ onClaim }) => {
               </span>
             )}
           </span>
+          <span
+            className="hidden sm:inline-flex items-center text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded border border-slate-950/40 bg-slate-950/10 text-slate-950"
+            title="U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"
+            data-testid="beta-banner-patent-pill"
+          >
+            Patent Pending
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {typeof remaining === 'number' && !isFull && (
