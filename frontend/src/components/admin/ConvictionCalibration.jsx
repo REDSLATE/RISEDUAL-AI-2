@@ -71,7 +71,7 @@ const Sparkline = ({ series, color = 'currentColor', width = 64, height = 20 }) 
       {segments.map((seg, idx) =>
         seg.length > 1 ? (
           <polyline
-            key={idx}
+            key={`seg-${idx}-${seg[0] || ''}`}
             points={seg.join(' ')}
             fill="none"
             stroke={color}
@@ -81,7 +81,7 @@ const Sparkline = ({ series, color = 'currentColor', width = 64, height = 20 }) 
           />
         ) : (
           <circle
-            key={idx}
+            key={`pt-${idx}-${seg[0] || ''}`}
             cx={seg[0].split(',')[0]}
             cy={seg[0].split(',')[1]}
             r={1.25}

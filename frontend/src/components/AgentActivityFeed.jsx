@@ -257,7 +257,7 @@ const SpikeDetailsBlock = ({ spikes, alertId }) => {
                   data-testid={`agent-activity-spike-drivers-${i}`}
                 >
                   {s.drivers.map((d, j) => (
-                    <li key={j} className="leading-snug">{d}</li>
+                    <li key={`${i}-driver-${j}-${String(d).slice(0, 24)}`} className="leading-snug">{d}</li>
                   ))}
                 </ul>
               )}
@@ -273,7 +273,7 @@ const SpikeDetailsBlock = ({ spikes, alertId }) => {
                     {s.shap_top.map((c, j) => {
                       const pushed = c.contribution >= 0 ? 'up' : 'down';
                       return (
-                        <li key={j} className="text-[10px] font-mono tabular-nums flex items-center gap-2">
+                        <li key={`${i}-shap-${c.feature || j}`} className="text-[10px] font-mono tabular-nums flex items-center gap-2">
                           <span className="text-slate-300">{c.feature}</span>
                           <span className={pushed === 'up' ? 'text-emerald-300' : 'text-rose-300'}>
                             {c.contribution >= 0 ? '+' : ''}{c.contribution.toFixed(3)}

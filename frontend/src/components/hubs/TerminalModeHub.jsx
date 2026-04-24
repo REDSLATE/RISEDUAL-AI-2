@@ -169,8 +169,15 @@ const Splitter = ({ orientation, value, onChange, defaultValue, min = 15, max = 
     // Capture the pointer on the target so dragging off the
     // splitter doesn't drop the drag — pointer capture is the
     // right primitive for drag-handles in 2026.
-    try { e.currentTarget.setPointerCapture(pointerId); } catch {
-      /* older browsers without setPointerCapture — fall through */
+    try {
+      e.currentTarget.setPointerCapture(pointerId);
+    } catch (err) {
+      // Older browsers (Safari <13, some mobile) don't implement
+      // setPointerCapture. Drag still works via the window-level
+      // pointermove listener — we just lose the "drag off the
+      // handle doesn't drop" guarantee. Debug-log so QA can spot
+      // when we hit this branch in the wild.
+      logger.debug('[terminal] setPointerCapture unavailable:', err?.message || err);
     }
     const move = (ev) => {
       const pct = isH
@@ -179,7 +186,14 @@ const Splitter = ({ orientation, value, onChange, defaultValue, min = 15, max = 
       onChange(Math.max(min, Math.min(max, pct)));
     };
     const up = () => {
-      try { e.currentTarget.releasePointerCapture(pointerId); } catch { /* noop */ }
+      try {
+        e.currentTarget.releasePointerCapture(pointerId);
+      } catch (err) {
+        // Mirror of the capture fallback — silently safe in all
+        // browsers but we still surface it at debug level for
+        // symmetry and to avoid the "empty catch" code-smell.
+        logger.debug('[terminal] releasePointerCapture failed:', err?.message || err);
+      }
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);

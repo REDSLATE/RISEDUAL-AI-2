@@ -54,6 +54,42 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Code-Review Triage (Feb 24, 2026) — 10-item report
+Received a new code-review report with 10 findings. Validated each before acting:
+- **#1 Circular import** → FALSE (`import ai_core` succeeds)
+- **#2 exec/eval RCE** → FALSE (scanner flagged variable name
+  `_pt_exec` and a comment `# ── Safe Expression Evaluator
+  (replaces eval()) ──` above an AST-based safe evaluator)
+- **#3 Hardcoded secrets in tests** → FALSE (placeholders like
+  `token="test-token"`, `api_key="test-key"`, `token="x"`)
+- **#4 47 undefined variables** → FALSE (pyflakes reports 0 in
+  `routes/`, `services/`, `server.py`)
+- **#5 240 missing hook deps** → FALSE (eslint
+  `react-hooks/exhaustive-deps` reports 0 on flagged hooks)
+- **#6 High complexity** → deferred (production-critical paths,
+  per Feb-19 policy)
+- **#7 localStorage "security"** → FALSE (UI preferences only;
+  auth uses httpOnly cookies)
+- **#8 Index-as-key** → **REAL**. Fixed in `AgentActivityFeed.jsx`
+  (spike drivers + SHAP rows → composite keys), `MLHealthStrip.jsx`
+  (RAdoptionCard sparkline bars → `r-${h.at}`),
+  `UserWorkspace.jsx` (digest alert titles → composite),
+  `ConvictionCalibration.jsx` (polyline/circle segments → composite).
+- **#9 Empty catch blocks** → **REAL** in my own recent code
+  (`TerminalModeHub.jsx` splitter pointer-capture). Replaced with
+  `logger.debug()` calls that surface browser-compat fallbacks.
+- **#10 `is` vs `==`** → mostly valid pytest patterns
+  (`is True/False/None`); non-issue.
+
+Net: 2 real findings, 8 false positives. Report appears generated
+by a static-analysis tool that lacks comment/AST awareness — it
+flagged "exec" in `_pt_exec`, the word "eval" inside a comment
+explaining a safe evaluator, and placeholder test tokens. Saved
+in this log so future reviewers can point at the same diff when
+the same tool flags the same lines again.
+
+
+
 ### 4-item batch: magnitude retirement eval, admin audit, Terminal polish, digest shine (Feb 24, 2026)
 - **Magnitude-path retirement plan (P2)**: `GET /api/admin/tier3-progress`
   now returns an `r_adoption` block with a 14-run `history[]` (each

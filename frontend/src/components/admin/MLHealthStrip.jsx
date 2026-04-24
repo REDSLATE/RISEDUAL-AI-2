@@ -436,7 +436,7 @@ const RAdoptionCard = ({ data }) => {
           const isStable = h.r_eligible_frac >= threshold;
           return (
             <div
-              key={i}
+              key={`r-${h.at || i}`}
               className={`flex-1 rounded-sm ${isStable ? 'bg-[#3DE8D9]' : 'bg-slate-600'}`}
               style={{ height: `${pct}%`, minHeight: '2px' }}
             />

@@ -567,7 +567,7 @@ const DigestPreviewModal = ({ open, onClose, onConfirm, preview, loading, sendin
                 <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Regime alerts</div>
                 <ul className="space-y-1">
                   {pv.alert_titles.filter(Boolean).map((t, i) => (
-                    <li key={i} className="text-xs text-slate-300 truncate">• {t}</li>
+                    <li key={`alert-${i}-${String(t).slice(0, 32)}`} className="text-xs text-slate-300 truncate">• {t}</li>
                   ))}
                 </ul>
               </div>
