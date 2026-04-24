@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Bell, RefreshCw, CheckCircle2, AlertTriangle, MailX, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bell, RefreshCw, CheckCircle2, AlertTriangle, MailX, ChevronDown, ChevronRight, RotateCcw, Loader2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -23,6 +23,8 @@ const AlertAuditPanel = () => {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [error, setError] = useState(null);
+  const [replaying, setReplaying] = useState(null); // alert_id currently being replayed
+  const [replayResult, setReplayResult] = useState(null); // {alert_id, message, tone}
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +44,31 @@ const AlertAuditPanel = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const replay = useCallback(async (alertId) => {
+    setReplaying(alertId);
+    setReplayResult(null);
+    try {
+      const res = await authFetch(`${API}/admin/alerts/replay?alert_id=${encodeURIComponent(alertId)}`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+      const replayedCount = (data.replayed || []).length;
+      const stillFailed = (data.still_failed || []).length;
+      setReplayResult({
+        alert_id: alertId,
+        tone: stillFailed === 0 ? 'success' : 'partial',
+        message: stillFailed === 0
+          ? `Replayed to ${replayedCount} recipient(s). Attempt #${data.delivery_attempts}.`
+          : `Replayed ${replayedCount}; ${stillFailed} still failing. Attempt #${data.delivery_attempts}.`,
+      });
+      await load();
+    } catch (e) {
+      logger.error('[alert-audit] replay error', e);
+      setReplayResult({ alert_id: alertId, tone: 'error', message: e.message || 'Replay failed' });
+    } finally {
+      setReplaying(null);
+    }
+  }, [load]);
 
   const fmtDate = (iso) => {
     if (!iso) return '—';
@@ -121,6 +148,11 @@ const AlertAuditPanel = () => {
                       {typeof r.toxic_count === 'number' && (
                         <span className="text-slate-300">{r.toxic_count} toxic</span>
                       )}
+                      {r.delivery_attempts > 1 && (
+                        <Badge className="bg-cyan-500/15 text-cyan-300 border-cyan-500/30 text-[10px]">
+                          attempt #{r.delivery_attempts}
+                        </Badge>
+                      )}
                       {r.persistence_run > 1 && (
                         <Badge className="bg-amber-500/15 text-amber-300 border-amber-500/30 text-[10px]">
                           <AlertTriangle className="w-3 h-3 mr-1" /> {r.persistence_run}d streak
@@ -139,6 +171,13 @@ const AlertAuditPanel = () => {
                       <div><span className="text-slate-400">alert_id:</span> <span className="font-mono text-slate-200">{r.alert_id}</span></div>
                       <div><span className="text-slate-400">run_id:</span> <span className="font-mono text-slate-200">{r.run_id || '—'}</span></div>
                       <div><span className="text-slate-400">date_bucket:</span> {r.date_bucket || '—'}</div>
+                      <div>
+                        <span className="text-slate-400">delivery_attempts:</span>{' '}
+                        <span className="text-slate-200">{r.delivery_attempts || 1}</span>
+                        {r.email_replayed_at && (
+                          <span className="text-slate-500 ml-2">(last replayed {fmtDate(r.email_replayed_at)})</span>
+                        )}
+                      </div>
                       <div>
                         <span className="text-slate-400">affected tickers:</span>{' '}
                         {(r.affected_tickers?.length ?? 0) === 0 ? (
@@ -169,6 +208,41 @@ const AlertAuditPanel = () => {
                               </div>
                             ))}
                           </div>
+                        </div>
+                      )}
+                      {hasFailure && (
+                        <div className="pt-2 flex items-center gap-3">
+                          <Button
+                            onClick={(ev) => { ev.stopPropagation(); replay(r.alert_id); }}
+                            disabled={replaying === r.alert_id || !r.replayable}
+                            className="bg-amber-500 hover:bg-amber-400 text-slate-900 text-[11px] h-7 px-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                            data-testid={`alert-audit-replay-${r.alert_id?.slice(0, 12)}`}
+                          >
+                            {replaying === r.alert_id ? (
+                              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Replaying…</>
+                            ) : (
+                              <><RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Replay Failed</>
+                            )}
+                          </Button>
+                          {!r.replayable && (
+                            <span className="text-slate-500 text-[10px]">
+                              (legacy row — no replay payload stored)
+                            </span>
+                          )}
+                          {replayResult && replayResult.alert_id === r.alert_id && (
+                            <span
+                              className={`text-[10px] ${
+                                replayResult.tone === 'success'
+                                  ? 'text-emerald-300'
+                                  : replayResult.tone === 'partial'
+                                  ? 'text-amber-300'
+                                  : 'text-rose-300'
+                              }`}
+                              data-testid={`alert-audit-replay-result-${r.alert_id?.slice(0, 12)}`}
+                            >
+                              {replayResult.message}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

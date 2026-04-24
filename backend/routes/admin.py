@@ -942,10 +942,105 @@ async def alerts_audit(
             "toxic_count": meta.get("toxic_count"),
             "affected_tickers": (meta.get("affected_tickers") or [])[:10],
             "persistence_run": meta.get("persistence_run"),
+            "delivery_attempts": meta.get("delivery_attempts", 1),
             "email_recipients": meta.get("email_recipients") or [],
             "email_failed": bool(meta.get("email_failed", False)),
             "email_failed_recipients": meta.get("email_failed_recipients") or [],
+            "email_replayed_at": meta.get("email_replayed_at"),
+            "replayable": bool(meta.get("replay_payload")) and bool(meta.get("email_failed_recipients")),
         })
 
     total = await db["alerts_sent"].count_documents(query)
     return {"items": items, "total": total, "limit": limit}
+
+
+@router.post("/alerts/replay")
+async def alerts_replay(request: Request, alert_id: str):
+    """Replay email delivery to the failed recipients of a past alert.
+
+    Reads `metadata.replay_payload` from the reserved `alerts_sent`
+    row — no re-running of the expensive nightly-cleanup scan, no new
+    reserve. Only recipients in `email_failed_recipients` are retried;
+    successful recipients are left alone so we never double-send.
+
+    On each call, `delivery_attempts` is incremented and
+    `email_replayed_at` is stamped. The failed-recipients list shrinks
+    to only those that still failed this attempt — repeated replays
+    converge on either success or a persistent-failure shortlist.
+
+    Admin-gated.
+    """
+    await _require_admin(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    alert = await db["alerts_sent"].find_one({"alert_id": alert_id}, {"_id": 0})
+    if alert is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    meta = alert.get("metadata") or {}
+    failed = list(meta.get("email_failed_recipients") or [])
+    if not failed:
+        return {"status": "no_failed_recipients", "alert_id": alert_id}
+
+    payload = meta.get("replay_payload")
+    if not payload:
+        # Legacy rows reserved before replay_payload was added — refuse
+        # rather than send a degraded email.
+        raise HTTPException(
+            status_code=409,
+            detail="Alert pre-dates replay support (no replay_payload stored)",
+        )
+
+    from services.email_service import send_toxic_spikes_email
+
+    still_failed: list[dict[str, str]] = []
+    replayed_ok: list[str] = []
+    for entry in failed:
+        email = entry.get("email", "")
+        if not email or email == "*":
+            # "*" is the catch-all marker used when the whole send
+            # block crashed — can't replay an unknown address.
+            still_failed.append(entry)
+            continue
+        ok = await send_toxic_spikes_email(
+            recipient_email=email,
+            toxic_count=int(payload.get("toxic_count", 0)),
+            obsolete_count=int(payload.get("obsolete_count", 0)),
+            total_before=int(payload.get("total_before", 0)),
+            total_after=int(payload.get("total_after", 0)),
+            spike_details=payload.get("spike_details") or [],
+            persistence_tag=str(payload.get("persistence_tag", "")),
+        )
+        if ok:
+            replayed_ok.append(email)
+        else:
+            still_failed.append({
+                "email": email,
+                "error": "send_failed_or_no_provider",
+            })
+
+    # Merge: successful replays move into email_recipients, failures
+    # stay (or are refreshed) in email_failed_recipients.
+    existing_recipients = list(meta.get("email_recipients") or [])
+    merged_recipients = list({*existing_recipients, *replayed_ok})
+    await db["alerts_sent"].update_one(
+        {"alert_id": alert_id},
+        {
+            "$set": {
+                "metadata.email_recipients": merged_recipients,
+                "metadata.email_failed_recipients": still_failed,
+                "metadata.email_failed": len(still_failed) > 0,
+                "metadata.email_replayed_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "$inc": {"metadata.delivery_attempts": 1},
+        },
+    )
+
+    return {
+        "status": "replayed",
+        "alert_id": alert_id,
+        "replayed": replayed_ok,
+        "still_failed": still_failed,
+        "delivery_attempts": int(meta.get("delivery_attempts", 1)) + 1,
+    }

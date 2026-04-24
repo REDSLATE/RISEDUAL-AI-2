@@ -671,6 +671,19 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     run = await persistence_run_count(_db, "toxic_spike", dedup_key)
 
     # Atomic reserve: unique index on alert_id rejects duplicates.
+    # Store enough context in metadata to replay the email later from
+    # the Audit UI (toxic_count, obsolete_count, totals, spike_details)
+    # without needing to re-run the expensive cleanup scan.
+    replay_payload = {
+        "toxic_count": toxic_count,
+        "obsolete_count": cleanup_results.get("obsolete_removed", 0),
+        "total_before": cleanup_results.get("total_before", 0),
+        "total_after": cleanup_results.get("total_after", 0),
+        "spike_details": toxic_details,
+        "persistence_tag": (
+            f" — Persisting ({run + 1} days in a row)" if run >= 1 else ""
+        ),
+    }
     try:
         await record_alert(
             _db,
@@ -684,6 +697,8 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
                 "persistence_run": run + 1,
                 "run_id": run_id,
                 "reserved": True,
+                "delivery_attempts": 1,
+                "replay_payload": replay_payload,
             },
         )
         logger.info(
@@ -703,14 +718,12 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         )
 
     # One (and only one) process reaches here per day.
-    # Escalate the subject/title when this is a persisting streak.
-    persistence_tag = (
-        f" — Persisting ({run + 1} days in a row)" if run >= 1 else ""
-    )
+    persistence_tag = replay_payload["persistence_tag"]
 
     # ── 1. Email Alert to admins/owner ──
-    # Track per-recipient outcomes so the Alert Audit UI can show exactly
-    # who got the email and who didn't, instead of one blanket "failed" bit.
+    # `send_toxic_spikes_email` swallows its own exceptions and returns
+    # True/False, so we branch on the return value (not try/except) to
+    # detect per-recipient failures correctly.
     email_recipients: list[str] = []
     email_failed_recipients: list[dict[str, str]] = []
     try:
@@ -722,22 +735,24 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         recipients = list({e for e in [admin_email, owner_email] if e})
 
         for email in recipients:
-            try:
-                await send_toxic_spikes_email(
-                    recipient_email=email,
-                    toxic_count=toxic_count,
-                    obsolete_count=cleanup_results.get("obsolete_removed", 0),
-                    total_before=cleanup_results.get("total_before", 0),
-                    total_after=cleanup_results.get("total_after", 0),
-                    spike_details=toxic_details,
-                    persistence_tag=persistence_tag,
-                )
+            ok = await send_toxic_spikes_email(
+                recipient_email=email,
+                toxic_count=toxic_count,
+                obsolete_count=cleanup_results.get("obsolete_removed", 0),
+                total_before=cleanup_results.get("total_before", 0),
+                total_after=cleanup_results.get("total_after", 0),
+                spike_details=toxic_details,
+                persistence_tag=persistence_tag,
+            )
+            if ok:
                 email_recipients.append(email)
-            except Exception as recipient_exc:
-                # Don't let one bad address starve the rest.
+            else:
+                # Provider returned False — either no provider
+                # configured or send failed (details already logged
+                # inside email_service.log_error).
                 email_failed_recipients.append({
                     "email": email,
-                    "error": f"{type(recipient_exc).__name__}: {recipient_exc}",
+                    "error": "send_failed_or_no_provider",
                 })
         logger.info(
             f"Toxic spikes email alerts sent to {len(email_recipients)}/"

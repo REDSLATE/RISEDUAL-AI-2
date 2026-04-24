@@ -1,5 +1,17 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Replay Failed Delivery + delivery_attempts (closes the recovery loop)
+- **`services/market_memory_service._send_toxic_alerts`**:
+  - **Bug fix**: `send_toxic_spikes_email` swallows its own exceptions and returns `bool`; the previous try/except-based detection never fired, so failures silently counted as successes. Now branches on return value.
+  - **Reserve-time stamp** now carries `delivery_attempts: 1` and a complete `replay_payload` (`toxic_count`, `obsolete_count`, `total_before`, `total_after`, full `spike_details`, `persistence_tag`) so replays have full email fidelity without rerunning the cleanup scan.
+- **New endpoint `POST /api/admin/alerts/replay?alert_id=…`** (`routes/admin.py`): reads `replay_payload` off the row, re-sends to `email_failed_recipients` only (never to already-delivered addresses — no double-send). Atomically `$inc`s `delivery_attempts`, stamps `email_replayed_at`, merges successful replays into `email_recipients`, and updates `email_failed` / `email_failed_recipients` to the post-replay state. Returns `{replayed, still_failed, delivery_attempts}`. Admin-gated. Rejects legacy rows without `replay_payload` with 409 rather than sending a degraded email.
+- **`AlertAuditPanel.jsx`**: "Replay Failed" button on rows with failures, cyan "attempt #N" badge when `delivery_attempts > 1`, `email_replayed_at` timestamp in the expanded row, per-call status banner (green on full recovery, amber on partial, rose on error). Disabled with "legacy row — no replay payload stored" hint when the row pre-dates replay support.
+- **Verified end-to-end** via curl:
+  - Reserve + seed failed recipient → `POST /api/admin/alerts/replay` → `replayed=[admin@risedual.ai]`, `still_failed=[]`, `delivery_attempts=1→2`, row flipped to `email_failed=false` ✅
+  - Idempotent re-run → `status: "no_failed_recipients"` ✅
+  - Bogus alert_id → 404 ✅
+  - 11/11 toxic-spike tests still pass, mypy 0, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — Email-Failure Flag + Alert Audit Tile
 - **`services/market_memory_service._send_toxic_alerts`**: per-recipient delivery tracking. Instead of one try/except around the whole recipient loop, each `send_toxic_spikes_email` call is now individually guarded. After the loop, the reserved `alerts_sent` row is updated with `metadata.email_recipients` (succeeded), `metadata.email_failed` (bool), and `metadata.email_failed_recipients` (list of `{email, error}`). Closes the "reserved but nobody got the email" silent-drop failure mode the user flagged.
 - **New endpoint `GET /api/admin/alerts/audit`** (`routes/admin.py`): returns the last N `alerts_sent` rows with `alert_id`, `run_id`, `date_bucket`, `toxic_count`, `affected_tickers[:10]`, `persistence_run`, `email_recipients`, `email_failed`, `email_failed_recipients`. Admin-gated (not owner-only — lower-tier admins also triage alerts). Optional `alert_type` filter, `limit` clamped 1–200.
