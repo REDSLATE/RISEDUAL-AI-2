@@ -28,10 +28,10 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
           </span>
           <span
             className="self-start inline-flex items-center text-[8px] sm:text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded border border-amber-400/40 bg-amber-500/10 text-amber-300 mt-1"
-            title="U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"
+            title="U.S. Provisional Patents — App #64/047,926 (04/23/2026): Adversarial dual-model system · App #64/048,466 (04/24/2026): Quantum enhancement, options gating, visual confirmation, Monte Carlo"
             data-testid="patent-pending-pill"
           >
-            Patent Pending
+            2× Patents Pending
           </span>
         </a>
         <nav className="hidden lg:flex items-center gap-8">
@@ -499,14 +499,18 @@ const Technology = () => (
       }}
     />
     <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
-      <div className="flex items-center justify-center gap-2 mb-4">
+      <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-300">
           <FileCheck className="w-3 h-3" />
           U.S. Patent Pending · App #64/047,926
         </span>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-300">
+          <FileCheck className="w-3 h-3" />
+          U.S. Patent Pending · App #64/048,466
+        </span>
       </div>
       <h2 className="text-3xl sm:text-4xl font-bold text-center text-white mb-4">
-        A protected architecture,
+        Two protected inventions,
         <br className="sm:hidden" />
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-400">
           {' '}not just a wrapper.
@@ -514,9 +518,11 @@ const Technology = () => (
       </h2>
       <p className="text-sm text-slate-400 text-center max-w-2xl mx-auto mb-14 leading-relaxed">
         Most AI trading tools are a single model with a ticker-shaped prompt.
-        RISEDUAL's core invention is an{' '}
+        RISEDUAL's core is an{' '}
         <span className="text-amber-300 font-semibold">adversarial dual-model system</span>{' '}
-        with veto-based confidence filtering — filed as a U.S. Provisional Utility Patent.
+        stacked on a{' '}
+        <span className="text-amber-300 font-semibold">quantum-enhanced options routing engine</span>{' '}
+        with Monte Carlo pre-trade simulation — filed as two separate U.S. Provisional Utility Patents.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-14">
@@ -593,9 +599,9 @@ const Technology = () => (
             className="inline-block bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-4"
             data-testid="tech-patent-card"
           >
-            <FileCheck className="w-10 h-10 text-amber-300 mx-auto lg:mx-0 mb-3" />
+            <FileCheck className="w-8 h-8 text-amber-300 mx-auto lg:mx-0 mb-3" />
             <div className="text-[10px] font-bold tracking-widest text-amber-300 uppercase mb-1">
-              Provisional Utility Patent Filed
+              Patent #1 · Provisional Filed
             </div>
             <div className="text-white font-semibold text-sm leading-snug mb-2">
               Adversarial Dual-Model System for
@@ -608,9 +614,28 @@ const Technology = () => (
               U.S. App #64/047,926 · 04/23/2026
             </div>
           </div>
+          <div
+            className="inline-block bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 mb-4"
+            data-testid="tech-patent-card-2"
+          >
+            <FileCheck className="w-8 h-8 text-amber-300 mx-auto lg:mx-0 mb-3" />
+            <div className="text-[10px] font-bold tracking-widest text-amber-300 uppercase mb-1">
+              Patent #2 · Provisional Filed
+            </div>
+            <div className="text-white font-semibold text-sm leading-snug mb-2">
+              Quantum-Enhanced Options Gating
+              <br />
+              with Visual Confirmation and
+              <br />
+              Monte Carlo Pre-Trade Simulation
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              U.S. App #64/048,466 · 04/24/2026
+            </div>
+          </div>
           <p className="text-xs text-slate-500 max-w-xs mx-auto lg:mx-0 leading-relaxed">
-            A 12-month priority date giving RISEDUAL time to iterate on beta
-            feedback before the non-provisional locks in final claims.
+            12-month priority dates giving RISEDUAL time to iterate on beta
+            feedback before the non-provisionals lock in final claims.
           </p>
         </div>
       </div>
@@ -711,9 +736,9 @@ const LandingFooter = ({ onOpenLegal }) => (
           <span
             className="text-[10px] text-slate-500 border-l border-slate-700/60 pl-3"
             data-testid="footer-patent-pending"
-            title="U.S. Provisional Patent App #64/047,926"
+            title="U.S. Provisional Patents — App #64/047,926 (04/23/2026) & App #64/048,466 (04/24/2026)"
           >
-            Patent Pending · U.S. App #64/047,926
+            Patent Pending · U.S. Apps #64/047,926 & #64/048,466
           </span>
         </div>
         <div className="flex items-center gap-6 text-xs text-slate-400">
