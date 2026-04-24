@@ -438,8 +438,8 @@ async def detect_and_create_adaptations(db: Any) -> list[dict]:
                 continue
             if await _active_count(db) >= MAX_ACTIVE_ADAPTATIONS:
                 logger.info(
-                    f"[adaptation] MAX_ACTIVE_ADAPTATIONS reached, "
-                    f"skipping remaining"
+                    "[adaptation] MAX_ACTIVE_ADAPTATIONS reached, "
+                    "skipping remaining"
                 )
                 break
 
@@ -685,7 +685,7 @@ async def _projected_impact(db: Any, adaptations: list[dict]) -> dict:
             if not col:
                 continue
             if metric == "volume.liquidity":
-                cond = {col: {"$lt": 0.8, "$ne": None}}
+                cond: dict[str, Any] = {col: {"$lt": 0.8, "$ne": None}}
             elif metric == "volume.spike":
                 cond = {col: {"$gt": 2.0}}
             elif metric == "rsi.overbought":
@@ -730,14 +730,18 @@ async def _projected_impact(db: Any, adaptations: list[dict]) -> dict:
                     if isinstance(v, dict):
                         # e.g. {"$lt": 0.8, "$ne": None}
                         if val is None and v.get("$ne") is None:
-                            ok = False; break
+                            ok = False
+                            break
                         if "$lt" in v and not (val is not None and val < v["$lt"]):
-                            ok = False; break
+                            ok = False
+                            break
                         if "$gt" in v and not (val is not None and val > v["$gt"]):
-                            ok = False; break
+                            ok = False
+                            break
                     else:
                         if val != v:
-                            ok = False; break
+                            ok = False
+                            break
                 if ok:
                     matched += 1
                     break

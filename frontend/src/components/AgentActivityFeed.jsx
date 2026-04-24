@@ -377,7 +377,12 @@ const EventRow = ({ event, isNew, onReplay, replayingId }) => {
             )}
           </button>
         )}
-        {canDrill && drillOpen && <SpikeDetailsBlock spikes={spikes} />}
+        {canDrill && drillOpen && (
+          <SpikeDetailsBlock
+            spikes={spikes}
+            alertId={event.metadata?.alert_id}
+          />
+        )}
         <WhyBlock why={why} eventType={event.type} />
       </div>
     </div>
