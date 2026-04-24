@@ -1,5 +1,11 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Toxic-Spike Dedup Bug Fix (repeat emails leaked)
+- **Bug**: Admin received back-to-back toxic-spike emails 35s apart on 2026-04-10 and 2026-04-19. Root cause: dedup key was built from the exact affected-ticker set, so two cleanup runs seconds apart that produced slightly different toxic lists (e.g. `{MSFT, AAPL}` vs `{MSFT, AAPL, TEST_FAIL_61}`) hashed to different `alert_id`s and both passed the 48h suppress gate.
+- **Fix in `services/market_memory_service._send_toxic_alerts`**: dedup key decoupled from the ticker set — now uses stable daily bucket `["toxic_spike_daily"]` so the 48h window collapses any same-day rerun to a single email. Real affected tickers are preserved in `metadata.affected_tickers` for audit. `record_alert` updated to write under the same dedup key so `persistence_run_count` keeps working.
+- **Verified**: `tests/test_iteration59_toxic_spikes_alert.py` (11 passed); live probe showed run-1 sends, run-2 (same day, different ticker set) suppressed. Lint + mypy clean.
+
+
 ## February 2026 — Beta Signup Flow: Pro Access + 30k Credits for First 50
 - **New `routes/beta.py`**: `POST /api/beta/signup`, `GET /api/beta/stats`, `GET /api/beta/recent`, `GET /api/beta/admin/list`. Cohort hard-capped at 50 (`BETA_SEAT_CAP` env). Entitlements per joiner: Pro subscription, 30,000 credits, 30-day trial, founding_member badge.
 - **Dual-path signup**:

@@ -637,13 +637,22 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])
 
-    # Dedup gate — compute BEFORE we do any expensive email prep. The
-    # alert key blends `toxic_spike` + the affected ticker set + the
-    # UTC date bucket so a different set of tickers on the same day
-    # is NOT suppressed (they're a different alert).
+    # Dedup gate — compute BEFORE we do any expensive email prep.
+    #
+    # IMPORTANT: We intentionally bucket by DAY + ALERT TYPE only, NOT
+    # by the exact ticker set. The ticker-set bucket was too granular:
+    # two cleanup runs 35s apart on the same day could report slightly
+    # different toxic sets (e.g. run 1 finds {MSFT, AAPL}, run 2 also
+    # finds TEST_FAIL_61), which produced different alert_ids and
+    # bypassed the 48h suppress window — the user got back-to-back
+    # emails on 2026-04-10 and 2026-04-19.
+    #
+    # The ACTUAL product requirement is "max one toxic-spike email per
+    # day", so the dedup key should reflect that directly.
     from services.alert_dedup import should_send_alert, record_alert
     affected = sorted({d.get("symbol", "?") for d in toxic_details})
-    should, ctx = await should_send_alert(_db, "toxic_spike", affected)
+    dedup_key = ["toxic_spike_daily"]
+    should, ctx = await should_send_alert(_db, "toxic_spike", dedup_key)
     if not should:
         logger.info(
             f"[toxic-alert] suppressed — same ticker set already alerted "
@@ -753,11 +762,15 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     # Intentionally fire-and-forget: recording failures can't block the
     # main cleanup flow.
     try:
+        # Record under the SAME dedup_key we checked with, otherwise
+        # the next run's `already_alerted` / `persistence_run_count`
+        # lookup would never find this row (they key on tickers_sorted).
+        # The real affected tickers are preserved in metadata for audit.
         await record_alert(
             _db,
             alert_id=ctx["alert_id"],
             alert_type="toxic_spike",
-            tickers=affected,
+            tickers=dedup_key,
             date_bucket=ctx["date_bucket"],
             metadata={
                 "toxic_count": toxic_count,
