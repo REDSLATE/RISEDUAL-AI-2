@@ -704,10 +704,29 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         logger.info(
             f"[toxic-alert] reserved alert_id={alert_id[:12]} run_id={run_id}"
         )
+        # Narrate the reservation into the agent activity feed.
+        try:
+            from services.agent_activity_service import log_alert_reserved
+            await log_alert_reserved(
+                alert_id=alert_id,
+                run_id=run_id,
+                alert_type="toxic_spike",
+                toxic_count=toxic_count,
+                tickers=affected,
+            )
+        except Exception:
+            pass
     except DuplicateKeyError:
         logger.info(
             f"[toxic-alert] suppressed — already reserved ({alert_id[:12]})"
         )
+        try:
+            from services.agent_activity_service import log_alert_suppressed
+            await log_alert_suppressed(
+                alert_id=alert_id, alert_type="toxic_spike",
+            )
+        except Exception:
+            pass
         return
     except Exception as e:
         # DB issue on reserve — fail open so we don't silently swallow
@@ -781,6 +800,19 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             )
         except Exception as e:
             logger.warning(f"[toxic-alert] failed to stamp email outcome: {e}")
+
+    # Narrate the delivery outcome into the agent activity feed.
+    try:
+        from services.agent_activity_service import log_alert_delivery
+        await log_alert_delivery(
+            alert_id=alert_id,
+            run_id=run_id,
+            alert_type="toxic_spike",
+            delivered=email_recipients,
+            failed=email_failed_recipients,
+        )
+    except Exception:
+        pass
 
     # ── 2. In-App Notifications for all Pro users ──
     if _db is None:

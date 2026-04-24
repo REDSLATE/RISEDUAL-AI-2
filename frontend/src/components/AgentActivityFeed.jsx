@@ -120,9 +120,13 @@ const WhyBlock = ({ why, eventType }) => {
   );
 };
 
-const EventRow = ({ event, isNew }) => {
+const EventRow = ({ event, isNew, onReplay, replayingId }) => {
   const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.info;
   const why = event.metadata?.why;
+  const isDelivery = event.type === 'alert_delivery';
+  const failedCount = isDelivery ? (event.metadata?.failed?.length || 0) : 0;
+  const canReplay = isDelivery && failedCount > 0 && event.metadata?.alert_id;
+  const isReplaying = replayingId && replayingId === event.metadata?.alert_id;
   return (
     <div
       className={`relative flex items-start gap-3 py-2.5 px-3 border-l-2 ${
@@ -167,6 +171,21 @@ const EventRow = ({ event, isNew }) => {
         >
           {formatRelativeTime(event.timestamp)}
         </p>
+        {canReplay && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onReplay(event.metadata.alert_id); }}
+            disabled={isReplaying}
+            className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid={`agent-activity-replay-${event.metadata.alert_id?.slice(0, 12)}`}
+          >
+            {isReplaying ? (
+              <><Loader2 className="w-3 h-3 animate-spin" /> Replaying…</>
+            ) : (
+              <><RotateCcw className="w-3 h-3" /> Replay failed ({failedCount})</>
+            )}
+          </button>
+        )}
         <WhyBlock why={why} eventType={event.type} />
       </div>
     </div>
@@ -177,6 +196,8 @@ const AgentActivityFeed = () => {
   const [events, setEvents] = useState([]);
   const [connected, setConnected] = useState(true);
   const [newIds, setNewIds] = useState(new Set());
+  const [filterKey, setFilterKey] = useState('all');
+  const [replayingId, setReplayingId] = useState(null);
   // Track last seen timestamp for incremental polling. Using a ref
   // because we don't want fetch() to re-create on every update.
   const lastTsRef = useRef(null);
@@ -232,7 +253,44 @@ const AgentActivityFeed = () => {
     };
   }, [fetchEvents]);
 
-  const hasEvents = events.length > 0;
+  const handleReplay = useCallback(async (alertId) => {
+    if (!alertId) return;
+    setReplayingId(alertId);
+    try {
+      const res = await authFetch(
+        `${REPLAY_API}?alert_id=${encodeURIComponent(alertId)}`,
+        { method: 'POST' },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+      if (data.status === 'no_failed_recipients') {
+        toast.info('Nothing to replay — all recipients already delivered.');
+      } else {
+        const okN = (data.replayed || []).length;
+        const failN = (data.still_failed || []).length;
+        if (failN === 0) {
+          toast.success(`Replay delivered to ${okN} recipient${okN === 1 ? '' : 's'} · attempt #${data.delivery_attempts}`);
+        } else {
+          toast.warning(`Replayed ${okN}; ${failN} still failing · attempt #${data.delivery_attempts}`);
+        }
+      }
+      // Optimistically refetch the feed so the new alert_replay event
+      // appears without waiting for the 10s poll.
+      fetchEvents(true);
+    } catch (e) {
+      logger.warn('agent activity replay failed', e);
+      toast.error(`Replay failed: ${e.message}`);
+    } finally {
+      setReplayingId(null);
+    }
+  }, [fetchEvents]);
+
+  const filter = FILTERS.find((f) => f.key === filterKey) || FILTERS[0];
+  const visibleEvents = useMemo(
+    () => events.filter((e) => filter.test(e.type)),
+    [events, filter],
+  );
+  const hasEvents = visibleEvents.length > 0;
   const headerConnectionDot = useMemo(() => {
     return connected ? (
       <span

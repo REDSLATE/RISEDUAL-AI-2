@@ -1,5 +1,19 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Alerts Wired Into Agent Activity Feed (+ Filter Chips + Inline Replay + Toasts)
+- **`services/agent_activity_service.py`**: added 4 event types to the controlled vocabulary — `alert_reserved` 🚨, `alert_suppressed` ⏭️, `alert_delivery` 📬, `alert_replay` 🔁 — plus matching `log_alert_*` convenience helpers. Severity mapping: reserved=warn, suppressed=info, delivery=error-if-any-failed-else-success, replay=success-if-clean-else-warn. Metadata carries `alert_id`, `run_id`, `delivered`, `failed`, `delivery_attempts` so the feed row can render inline actions.
+- **`services/market_memory_service._send_toxic_alerts`**: emits `alert_reserved` on successful reserve, `alert_suppressed` on `DuplicateKeyError`, `alert_delivery` after per-recipient outcomes are stamped. All three calls are wrapped in `try/except: pass` per the "never break trading flow" contract even though `log_event` is already never-raise.
+- **`routes/admin.alerts_replay`**: emits `alert_replay` after the replay completes. Carries `replayed`, `still_failed`, and the post-increment `delivery_attempts` counter.
+- **`AgentActivityFeed.jsx`**:
+  - **Filter chips** (All / Trades / Alerts / ML) above the list — startsWith-based mapping so new `alert_*` / `paper_trade_*` / `retrain_*` variants fold in with zero wiring.
+  - **Inline "Replay failed (N)" button** on `alert_delivery` rows that have failures. Click → `POST /api/admin/alerts/replay`, optimistically refetches the feed so the new `alert_replay` event shows up without waiting for the 10s poll. Sonner toast on success/partial/error ("Replay delivered to 2 recipients · attempt #2" etc).
+- **`AlertAuditPanel.jsx`**: added sonner toasts to the existing Replay button so every click has audible feedback, not just the inline text banner.
+- **Verified E2E** via Python probe with monkey-patched `send_toxic_spikes_email`:
+  - Fake `_send_toxic_alerts` with 1 OK / 1 FAIL → feed shows `alert_reserved` (warn) + `alert_delivery` (error, "1 sent, 1 failed") ✅
+  - `POST /api/admin/alerts/replay` → feed gains `alert_replay` (success, "1 recovered"), row flips to `email_failed=false`, `delivery_attempts: 1→2` ✅
+  - Two same-day `_send_toxic_alerts` calls → feed shows `alert_reserved` then `alert_suppressed` (duplicate reservation) ✅
+  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — Replay Failed Delivery + delivery_attempts (closes the recovery loop)
 - **`services/market_memory_service._send_toxic_alerts`**:
   - **Bug fix**: `send_toxic_spikes_email` swallows its own exceptions and returns `bool`; the previous try/except-based detection never fired, so failures silently counted as successes. Now branches on return value.

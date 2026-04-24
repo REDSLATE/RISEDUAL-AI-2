@@ -57,6 +57,11 @@ EVENT_TYPES = {
     # Kill switch / safety
     "kill_switch_armed": "🚨",
     "kill_switch_cleared": "🟢",
+    # Alerts lifecycle (dedup + delivery + replay)
+    "alert_reserved": "🚨",
+    "alert_suppressed": "⏭️",
+    "alert_delivery": "📬",
+    "alert_replay": "🔁",
     # Research / market scans
     "research": "📰",
     # Generic
@@ -245,6 +250,100 @@ async def log_kill_switch_cleared(by_user: str) -> None:
         title="Kill switch cleared · trading resumed",
         detail=f"Cleared by {by_user}",
         metadata={"user": by_user},
+    )
+
+
+# ── Alert lifecycle helpers (dedup + delivery + replay) ──
+
+
+async def log_alert_reserved(alert_id: str, run_id: str, alert_type: str,
+                             toxic_count: int, tickers: list[str]) -> None:
+    """Reserve-first pattern just claimed a new alert slot."""
+    preview = ", ".join(tickers[:5]) if tickers else "—"
+    if len(tickers) > 5:
+        preview += f" (+{len(tickers) - 5} more)"
+    await log_event(
+        type="alert_reserved",
+        severity="warn",
+        title=f"Alert reserved · {alert_type} · {toxic_count} toxic",
+        detail=f"Tickers: {preview}",
+        metadata={
+            "alert_id": alert_id,
+            "run_id": run_id,
+            "alert_type": alert_type,
+            "toxic_count": toxic_count,
+            "tickers": tickers[:20],
+        },
+    )
+
+
+async def log_alert_suppressed(alert_id: str, alert_type: str) -> None:
+    """Unique-index gate rejected a duplicate reservation."""
+    await log_event(
+        type="alert_suppressed",
+        severity="info",
+        title=f"Alert suppressed · {alert_type} · duplicate reservation",
+        detail=f"alert_id={alert_id[:12]}",
+        metadata={"alert_id": alert_id, "alert_type": alert_type},
+    )
+
+
+async def log_alert_delivery(alert_id: str, run_id: str, alert_type: str,
+                             delivered: list[str],
+                             failed: list[dict]) -> None:
+    """Post-send delivery outcome. Severity flips to error when any
+    recipient failed so the feed row jumps out visually."""
+    n_ok = len(delivered)
+    n_fail = len(failed)
+    severity: Severity = "error" if n_fail > 0 else "success"
+    title = (
+        f"Alert delivery · {alert_type} · {n_ok} sent"
+        + (f", {n_fail} failed" if n_fail else "")
+    )
+    detail = None
+    if n_fail > 0:
+        # Show the failed addresses up front — that's the action item.
+        emails = ", ".join((f.get("email") or "?") for f in failed[:3])
+        detail = f"Failed: {emails}" + (" …" if len(failed) > 3 else "")
+    await log_event(
+        type="alert_delivery",
+        severity=severity,
+        title=title,
+        detail=detail,
+        metadata={
+            "alert_id": alert_id,
+            "run_id": run_id,
+            "alert_type": alert_type,
+            "delivered": delivered,
+            "failed": failed,
+            "email_failed_count": n_fail,
+        },
+    )
+
+
+async def log_alert_replay(alert_id: str, alert_type: str,
+                           replayed: list[str],
+                           still_failed: list[dict],
+                           delivery_attempts: int) -> None:
+    """Admin clicked Replay on a failed-delivery row. Severity flips
+    to warn if any recipient is still failing after the replay."""
+    severity: Severity = "warn" if still_failed else "success"
+    title = (
+        f"Alert replay · {alert_type} · {len(replayed)} recovered"
+        + (f", {len(still_failed)} still failing" if still_failed else "")
+    )
+    await log_event(
+        type="alert_replay",
+        severity=severity,
+        title=title,
+        detail=f"Attempt #{delivery_attempts}",
+        metadata={
+            "alert_id": alert_id,
+            "alert_type": alert_type,
+            "replayed": replayed,
+            "still_failed": still_failed,
+            "delivery_attempts": delivery_attempts,
+        },
     )
 
 

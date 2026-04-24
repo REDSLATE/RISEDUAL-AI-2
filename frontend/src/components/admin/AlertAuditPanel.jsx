@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, RefreshCw, CheckCircle2, AlertTriangle, MailX, ChevronDown, ChevronRight, RotateCcw, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -61,10 +62,18 @@ const AlertAuditPanel = () => {
           ? `Replayed to ${replayedCount} recipient(s). Attempt #${data.delivery_attempts}.`
           : `Replayed ${replayedCount}; ${stillFailed} still failing. Attempt #${data.delivery_attempts}.`,
       });
+      if (stillFailed === 0 && replayedCount > 0) {
+        toast.success(`Replay delivered to ${replayedCount} recipient${replayedCount === 1 ? '' : 's'} · attempt #${data.delivery_attempts}`);
+      } else if (stillFailed > 0) {
+        toast.warning(`Replayed ${replayedCount}; ${stillFailed} still failing · attempt #${data.delivery_attempts}`);
+      } else {
+        toast.info('Nothing to replay — no failed recipients.');
+      }
       await load();
     } catch (e) {
       logger.error('[alert-audit] replay error', e);
       setReplayResult({ alert_id: alertId, tone: 'error', message: e.message || 'Replay failed' });
+      toast.error(`Replay failed: ${e.message || 'unknown error'}`);
     } finally {
       setReplaying(null);
     }

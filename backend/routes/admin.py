@@ -1037,10 +1037,25 @@ async def alerts_replay(request: Request, alert_id: str):
         },
     )
 
+    new_attempts = int(meta.get("delivery_attempts", 1)) + 1
+    # Narrate the replay into the agent activity feed so admins see
+    # it from the dashboard, not just the Audit panel.
+    try:
+        from services.agent_activity_service import log_alert_replay
+        await log_alert_replay(
+            alert_id=alert_id,
+            alert_type=alert.get("alert_type", "toxic_spike"),
+            replayed=replayed_ok,
+            still_failed=still_failed,
+            delivery_attempts=new_attempts,
+        )
+    except Exception:
+        pass
+
     return {
         "status": "replayed",
         "alert_id": alert_id,
         "replayed": replayed_ok,
         "still_failed": still_failed,
-        "delivery_attempts": int(meta.get("delivery_attempts", 1)) + 1,
+        "delivery_attempts": new_attempts,
     }
