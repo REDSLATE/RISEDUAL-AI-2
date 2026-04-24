@@ -430,6 +430,16 @@ const ReferralsTab = () => {
 };
 
 const DigestPreviewModal = ({ open, onClose, onConfirm, preview, loading, sending, email }) => {
+  // Close on Escape — stateless handler that reads `sending` each
+  // keypress so we don't steal focus while the POST is in flight.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !sending) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose, sending]);
   if (!open) return null;
   const cs = preview?.content_summary || {};
   const pv = preview?.preview || {};

@@ -54,6 +54,52 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### 4-item batch: magnitude retirement eval, admin audit, Terminal polish, digest shine (Feb 24, 2026)
+- **Magnitude-path retirement plan (P2)**: `GET /api/admin/tier3-progress`
+  now returns an `r_adoption` block with a 14-run `history[]` (each
+  with `at`, `r_eligible_frac`, `r_skipped_frac`, `samples`) and a
+  `verdict` object (`threshold`, `required_consecutive`,
+  `consecutive_stable_runs`, `latest_r_eligible_frac`,
+  `magnitude_retirement_ready`, `runs_tracked`). Filter now matches
+  both `status=ok` and `status=success` (legacy rows). Admin UI
+  gets a new `RAdoptionCard` in `MLHealthStrip` (6th column) with
+  percentage, mini sparkline (teal when ≥70%, slate otherwise),
+  and a green "Ready to retire magnitude path" cue once
+  ≥3 consecutive stable runs. Full 3-step rollout memo at
+  `/app/memory/MAGNITUDE_RETIREMENT_PLAN.md`.
+- **Admin duplicate-button audit**: verified. Prior Feb-18
+  refactor already scoped header Refresh to the Users tab, per-tab
+  Refresh buttons each do their own thing. No new duplicates to
+  consolidate.
+- **Terminal Mode polish**: Splitter rewritten from `mousedown`
+  stack to pointer events — trackpad drag, touch, and
+  `setPointerCapture` so dragging off the splitter no longer
+  drops the drag. Handle widened from 1px → 1.5px with hidden
+  grip dots that fade in on hover (doesn't steal resting-state
+  real estate). Double-click resets to default (52/55). Status bar
+  swaps from static "Layout auto-saved" to "Layout modified · Reset"
+  when the split is non-default. `touch-none` blocks mobile
+  scroll-during-drag.
+- **On-demand digest — "make it shine"**: new
+  `GET /api/digest/my-preview` (user-level, not admin-gated) that
+  returns a trimmed `{content_summary, preview:{overview_headline,
+  top_predictions[3], top_smart_money[3], alert_titles[3]},
+  email, generated_at}` payload. Frontend `DigestPreviewModal`
+  renders KPI tiles + overview quote + top predictions/smart-money/
+  alerts + watchlist-intel cue, with "Send to my inbox" confirm +
+  "Cancel". Esc key closes (when not sending). Modal degrades
+  gracefully on preview-fetch failure. `DigestToggle` exported as
+  a named component and lazy-rendered at the top of
+  `WorkspaceHub`'s Agent tab — finally reachable from the SPA
+  (the legacy `UserWorkspace` modal was orphaned).
+- **Testing**: iteration_140 (14 new backend tests + 19 regression
+  all green, 100% backend, 95% frontend — only issue was the
+  orphaned modal, now fixed). iteration_141 verified the fix; only
+  low-priority Esc-key handler missing → added. Lint clean, mypy
+  baseline 0→0, pytest 19/19 regression still green.
+
+
+
 ### Closed-Loop Explainability — Adaptation "Why?" + Activity enrichment (Feb 24, 2026)
 - **New endpoint** `GET /api/admin/adaptations/why/{adaptation_id}`
   (admin-gated) resolves an adaptation into a full explanation
