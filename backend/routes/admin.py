@@ -900,3 +900,52 @@ async def learning_engine_trades(
         "count": 0 if status else None,
         "items": await LearningEngine(db).recent_trades(limit=limit, status=status),
     }
+
+
+
+# ============================================================
+# ALERT AUDIT — dedup + delivery forensics
+# ============================================================
+
+@router.get("/alerts/audit")
+async def alerts_audit(
+    request: Request,
+    alert_type: str | None = None,
+    limit: int = 25,
+):
+    """Last N rows from `alerts_sent` with dedup + delivery metadata.
+
+    Surfaces the reserve-first pipeline's forensic trail: `alert_id`,
+    `run_id`, ticker set, persistence run, and any email delivery
+    failures. Admin-only (not owner-only — lower-tier admins also
+    investigate alert issues).
+    """
+    await _require_admin(request)
+    if db is None:
+        return {"items": [], "total": 0}
+
+    limit = max(1, min(int(limit), 200))
+    query: dict = {}
+    if alert_type:
+        query["alert_type"] = alert_type
+
+    cursor = db["alerts_sent"].find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = []
+    async for row in cursor:
+        meta = row.get("metadata") or {}
+        items.append({
+            "alert_id": row.get("alert_id"),
+            "alert_type": row.get("alert_type"),
+            "created_at": row.get("created_at"),
+            "date_bucket": row.get("date_bucket"),
+            "run_id": meta.get("run_id"),
+            "toxic_count": meta.get("toxic_count"),
+            "affected_tickers": (meta.get("affected_tickers") or [])[:10],
+            "persistence_run": meta.get("persistence_run"),
+            "email_recipients": meta.get("email_recipients") or [],
+            "email_failed": bool(meta.get("email_failed", False)),
+            "email_failed_recipients": meta.get("email_failed_recipients") or [],
+        })
+
+    total = await db["alerts_sent"].count_documents(query)
+    return {"items": items, "total": total, "limit": limit}

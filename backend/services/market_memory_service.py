@@ -709,6 +709,10 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     )
 
     # ── 1. Email Alert to admins/owner ──
+    # Track per-recipient outcomes so the Alert Audit UI can show exactly
+    # who got the email and who didn't, instead of one blanket "failed" bit.
+    email_recipients: list[str] = []
+    email_failed_recipients: list[dict[str, str]] = []
     try:
         from services.email_service import send_toxic_spikes_email
         import os
@@ -718,18 +722,26 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         recipients = list({e for e in [admin_email, owner_email] if e})
 
         for email in recipients:
-            await send_toxic_spikes_email(
-                recipient_email=email,
-                toxic_count=toxic_count,
-                obsolete_count=cleanup_results.get("obsolete_removed", 0),
-                total_before=cleanup_results.get("total_before", 0),
-                total_after=cleanup_results.get("total_after", 0),
-                spike_details=toxic_details,
-                persistence_tag=persistence_tag,
-            )
+            try:
+                await send_toxic_spikes_email(
+                    recipient_email=email,
+                    toxic_count=toxic_count,
+                    obsolete_count=cleanup_results.get("obsolete_removed", 0),
+                    total_before=cleanup_results.get("total_before", 0),
+                    total_after=cleanup_results.get("total_after", 0),
+                    spike_details=toxic_details,
+                    persistence_tag=persistence_tag,
+                )
+                email_recipients.append(email)
+            except Exception as recipient_exc:
+                # Don't let one bad address starve the rest.
+                email_failed_recipients.append({
+                    "email": email,
+                    "error": f"{type(recipient_exc).__name__}: {recipient_exc}",
+                })
         logger.info(
-            f"Toxic spikes email alerts sent to {len(recipients)} admin(s)"
-            f"{persistence_tag}"
+            f"Toxic spikes email alerts sent to {len(email_recipients)}/"
+            f"{len(recipients)} admin(s){persistence_tag}"
         )
     except Exception as e:
         log_error(logger, {
@@ -738,6 +750,22 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             "context": "market_memory",
             "note": "Failed to send toxic spikes email",
         })
+        email_failed_recipients.append({"email": "*", "error": f"{type(e).__name__}: {e}"})
+
+    # Stamp email outcome onto the reserved alert row so the Audit UI
+    # (and any future retry tooling) can see what actually happened.
+    if _db is not None:
+        try:
+            await _db.alerts_sent.update_one(
+                {"alert_id": alert_id},
+                {"$set": {
+                    "metadata.email_recipients": email_recipients,
+                    "metadata.email_failed": len(email_failed_recipients) > 0,
+                    "metadata.email_failed_recipients": email_failed_recipients,
+                }},
+            )
+        except Exception as e:
+            logger.warning(f"[toxic-alert] failed to stamp email outcome: {e}")
 
     # ── 2. In-App Notifications for all Pro users ──
     if _db is None:

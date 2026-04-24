@@ -1,5 +1,11 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Email-Failure Flag + Alert Audit Tile
+- **`services/market_memory_service._send_toxic_alerts`**: per-recipient delivery tracking. Instead of one try/except around the whole recipient loop, each `send_toxic_spikes_email` call is now individually guarded. After the loop, the reserved `alerts_sent` row is updated with `metadata.email_recipients` (succeeded), `metadata.email_failed` (bool), and `metadata.email_failed_recipients` (list of `{email, error}`). Closes the "reserved but nobody got the email" silent-drop failure mode the user flagged.
+- **New endpoint `GET /api/admin/alerts/audit`** (`routes/admin.py`): returns the last N `alerts_sent` rows with `alert_id`, `run_id`, `date_bucket`, `toxic_count`, `affected_tickers[:10]`, `persistence_run`, `email_recipients`, `email_failed`, `email_failed_recipients`. Admin-gated (not owner-only — lower-tier admins also triage alerts). Optional `alert_type` filter, `limit` clamped 1–200.
+- **New component `AlertAuditPanel.jsx`** wired into Admin → Developer Tools. Collapsible rows per alert with expand-on-click to inspect full `alert_id`, `run_id`, affected tickers, delivery outcome per recipient. Failed deliveries highlighted in rose. Refresh button. `data-testid` coverage on all interactive elements.
+- **Verified**: probe script reserved a test alert, stamped a simulated partial-delivery failure (1 success, 1 timeout), and confirmed the endpoint returns the row with correct shape. Duplicate reserve still rejected by unique index. Webpack compiled successfully. 11/11 toxic-spike tests pass. Lint + mypy clean.
+
 ## 2026-04-24 — Toxic-Spike Dedup: Race-Condition Hardened (reserve-first)
 - **Follow-up to same-day fix**: closed the read-then-write race window. Two concurrent cleanup runs could both pass `should_send_alert` before either wrote `record_alert`, producing ghost duplicates.
 - **`services/alert_dedup.py`**: `alert_id` index migrated to `unique=True` (legacy non-unique `alert_id_1` is auto-dropped in `ensure_indexes` before the unique create — safe re-run). `record_alert` now propagates `DuplicateKeyError` while still swallowing other Mongo hiccups.

@@ -7,6 +7,7 @@ import { authFetch } from '../../contexts/AuthContext';
 import logger from '../../utils/logger';
 import { getApiBase } from '../../utils/apiBase';
 import SelfTestPanel from './SelfTestPanel';
+import AlertAuditPanel from './AlertAuditPanel';
 
 const API = `${getApiBase()}/api`;
 
@@ -60,6 +61,8 @@ const AdminTools = () => {
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
 
       <SelfTestPanel />
+
+      <AlertAuditPanel />
 
       <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-5" data-testid="code-quality-card">
         <div className="flex items-start gap-4">
