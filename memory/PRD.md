@@ -54,6 +54,49 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Closed-Loop Explainability — Adaptation "Why?" + Activity enrichment (Feb 24, 2026)
+- **New endpoint** `GET /api/admin/adaptations/why/{adaptation_id}`
+  (admin-gated) resolves an adaptation into a full explanation
+  payload: `metric`, `direction`, `factor`, `weight_reduction_pct`,
+  `lift` (contrast), `bucket_rate`, `global_rate`, `severity`,
+  `evidence_count`, `active`, `expires_at`, `description`,
+  `explanation` (plain-English narrator keyed by metric prefix +
+  direction → "Low-liquidity setups failed 1.52× more often than
+  baseline on the bullish side."), and `projected_effect`
+  ("Reduces influence of matching setups by ~15% in the next
+  retrain").
+- **Enriched activity payload**: `retrain_adaptation_applied`
+  events now carry `metadata.mean_weight_before`,
+  `mean_weight_after`, `mean_weight_delta` and each row inside
+  `metadata.adaptations[]` picks up `lift`, `severity`,
+  `evidence_count`, `description`, `direction`. Computed inside
+  `apply_adaptations_to_weights()` right around `model.fit` —
+  fire-and-forget, never blocks the retrain.
+- **Frontend** `AdaptationBlock` component in
+  `AgentActivityFeed.jsx` renders under every
+  `retrain_adaptation_applied` event. Shows the weight transition
+  line ("Mean weight 1.000 → 0.925 (Δ -0.075)"), amber chips per
+  adaptation with metric/direction/factor/rows/%-down, and a
+  teal "Why?" button that lazy-fetches the explain endpoint the
+  first time it's opened, caches the response, toggles
+  open/closed on repeat click, and inlines the explanation in a
+  left-border callout. Projected-impact coverage line renders at
+  the bottom when available.
+- **Closes the narrative loop**:
+  `alert_reserved → /alerts/why/{id}` (SHAP drivers per miss) →
+  `retrain_adaptation_applied` (weight shift) →
+  `/adaptations/why/{id}` (why the adaptation exists + what it
+  does) → `retrain_complete`. Admins can trace any weight change
+  back to the exact toxic pattern that justified it, without
+  leaving the activity feed.
+- 4 new pytest regression cases in
+  `tests/test_adaptation_why_endpoint.py` (404, 401, full
+  payload shape, end-to-end event enrichment). Full regression
+  19/19 green. Testing agent iteration_139: 14/14 backend green,
+  zero UI bugs, AdaptationBlock verified live.
+
+
+
 ### SHAP + Directional ML Adaptation — unblock + wire-up (Feb 24, 2026)
 - **P0** Fixed 4× `E702` semicolon syntax errors (model_adaptation.py
   lines 733-740) + 2× `F541` f-string cleanups (lines 441-442)
