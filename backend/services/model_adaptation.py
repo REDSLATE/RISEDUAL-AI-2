@@ -195,9 +195,23 @@ def adaptation_enabled() -> bool:
 #   * Grace period — require ≥ MIN_RETRAINS runs at the current
 #     factor before considering. No adaptation gets touched on its
 #     first retrain.
-AUTO_REVERT_CONSECUTIVE_NEGATIVE = 3
-AUTO_REVERT_EPSILON = 0.01  # |ΔR| < 0.01 treated as "no effect"
-AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to act
+# ── Defaults (override via env — see ``_get_auto_revert_config``) ──
+# These are module-level DEFAULTS. Production thresholds are tuned
+# from the shadow-mode distribution via the admin calibration
+# endpoint (`GET /api/admin/adaptations/calibration`) and then
+# applied by setting the matching env var. Leaving the Python
+# constants unchanged keeps backwards-compat for callers that
+# import them directly (tests, docstrings, dashboards).
+DEFAULT_AUTO_REVERT_CONSECUTIVE_NEGATIVE = 3
+DEFAULT_AUTO_REVERT_EPSILON = 0.01  # |ΔR| < 0.01 treated as "no effect"
+DEFAULT_AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to act
+DEFAULT_AUTO_REVERT_EFFECT_SIZE = 0.001
+# Legacy aliases — some tests and the `why` narrator import these
+# directly. Keeping them as aliases means "change the default"
+# still only lives in one place.
+AUTO_REVERT_CONSECUTIVE_NEGATIVE = DEFAULT_AUTO_REVERT_CONSECUTIVE_NEGATIVE
+AUTO_REVERT_EPSILON = DEFAULT_AUTO_REVERT_EPSILON
+AUTO_REVERT_MIN_COVERAGE = DEFAULT_AUTO_REVERT_MIN_COVERAGE
 # ── Composite effect-size gate ──
 # A rule can pass the ΔR and coverage gates independently but still
 # have trivial real-world impact (e.g. ΔR=-0.012 with coverage=0.05
@@ -206,7 +220,7 @@ AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to act
 # the safety rail. Tuned so a ΔR of -0.012 with coverage=0.05
 # (= -0.0006) is treated as noise, but ΔR=-0.03 with coverage=0.05
 # (= -0.0015) is treated as real.
-AUTO_REVERT_EFFECT_SIZE = 0.001
+AUTO_REVERT_EFFECT_SIZE = DEFAULT_AUTO_REVERT_EFFECT_SIZE
 AUTO_SOFTEN_STEP = 0.05  # per-hit increment on adjustment_factor
 AUTO_SOFTEN_MAX_FACTOR = 0.95  # next step above → disable instead
 # ── Cooldown on safety-rail actions ──
@@ -249,10 +263,79 @@ def auto_revert_shadow_mode() -> bool:
     )
 
 
+def _env_float(name: str, default: float) -> float:
+    """Parse a float env var, silently falling back to ``default``
+    on missing/empty/invalid values. Intentionally lenient so a
+    typo in the env var doesn't take the safety rail offline — we
+    log a warning and keep the baseline."""
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"[auto-revert] invalid env {name}={raw!r}, using default {default}"
+        )
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"[auto-revert] invalid env {name}={raw!r}, using default {default}"
+        )
+        return default
+
+
+def get_auto_revert_config() -> dict[str, Any]:
+    """Resolve the live auto-revert thresholds, pulling operator
+    overrides from env vars when present. Called once per scanner
+    pass so updating the env + restarting supervisor is enough to
+    retune — no code deploy required.
+
+    Surfaced via the admin calibration endpoint so operators can
+    see exactly which values the scanner is currently running.
+    Env-var names match the pattern of the other ML flags
+    (``ML_ADAPTATION_*`` namespace).
+    """
+    return {
+        "consecutive_negative": max(
+            2,
+            _env_int(
+                "ML_AUTO_REVERT_CONSECUTIVE_NEGATIVE",
+                DEFAULT_AUTO_REVERT_CONSECUTIVE_NEGATIVE,
+            ),
+        ),
+        "epsilon": max(
+            0.0,
+            _env_float("ML_AUTO_REVERT_EPSILON", DEFAULT_AUTO_REVERT_EPSILON),
+        ),
+        "min_coverage": max(
+            0.0,
+            _env_float(
+                "ML_AUTO_REVERT_MIN_COVERAGE", DEFAULT_AUTO_REVERT_MIN_COVERAGE
+            ),
+        ),
+        "effect_size": max(
+            0.0,
+            _env_float(
+                "ML_AUTO_REVERT_EFFECT_SIZE", DEFAULT_AUTO_REVERT_EFFECT_SIZE
+            ),
+        ),
+    }
+
+
 async def _evaluate_one_adaptation(
     db: Any, ad: dict, cooldown_cutoff: Any, now_iso: str,
     shadow: bool, semaphore: asyncio.Semaphore,
     prefetched_runs: list[dict] | None = None,
+    config: dict[str, Any] | None = None,
 ) -> dict | None:
     """Per-adaptation evaluation extracted so the outer scanner
     can run them concurrently. Returns one action dict (or ``None``
@@ -270,6 +353,11 @@ async def _evaluate_one_adaptation(
         if not aid:
             return None
         current_factor = float(ad.get("adjustment_factor") or 1.0)
+        cfg = config or get_auto_revert_config()
+        cfg_consecutive = int(cfg["consecutive_negative"])
+        cfg_epsilon = float(cfg["epsilon"])
+        cfg_min_coverage = float(cfg["min_coverage"])
+        cfg_effect_size = float(cfg["effect_size"])
 
         # ── Gate 0: cooldown (live actions only) ──
         # Shadow rows don't pause the rail — else shadow mode
@@ -305,16 +393,16 @@ async def _evaluate_one_adaptation(
                      "adaptations_applied": 1, "model_version": 1},
                 )
                 .sort("started_at", -1)
-                .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
+                .limit(cfg_consecutive * 3)
             )
-            runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
+            runs = await cursor.to_list(length=cfg_consecutive * 3)
 
         deltas_r: list[float] = []
         deltas_wr: list[float] = []
         coverages: list[float] = []
         complete = True
         for run in runs:
-            if len(deltas_r) >= AUTO_REVERT_CONSECUTIVE_NEGATIVE:
+            if len(deltas_r) >= cfg_consecutive:
                 break
             match = next(
                 (a for a in (run.get("adaptations_applied") or [])
@@ -340,16 +428,16 @@ async def _evaluate_one_adaptation(
             except (TypeError, ValueError):
                 complete = False
                 break
-        if not complete or len(deltas_r) < AUTO_REVERT_CONSECUTIVE_NEGATIVE:
+        if not complete or len(deltas_r) < cfg_consecutive:
             return None
 
         # Gates 1-4
-        if not all(d < -AUTO_REVERT_EPSILON for d in deltas_r):
+        if not all(d < -cfg_epsilon for d in deltas_r):
             return None
-        if max(coverages) < AUTO_REVERT_MIN_COVERAGE:
+        if max(coverages) < cfg_min_coverage:
             return None
         effect_sizes = [abs(d) * c for d, c in zip(deltas_r, coverages)]
-        if not all(es > AUTO_REVERT_EFFECT_SIZE for es in effect_sizes):
+        if not all(es > cfg_effect_size for es in effect_sizes):
             return None
         if not all(wr <= 0 for wr in deltas_wr):
             return None
@@ -365,8 +453,8 @@ async def _evaluate_one_adaptation(
         # every audit row so shadow-mode observations can be
         # distribution-analysed before flipping live.
         decision_score = sum(effect_sizes) / len(effect_sizes)
-        decision_threshold = AUTO_REVERT_EFFECT_SIZE
-        decision_ratio = decision_score / decision_threshold
+        decision_threshold = cfg_effect_size
+        decision_ratio = decision_score / decision_threshold if decision_threshold > 0 else 0.0
         # ``delta_r_trend`` is the slope of ΔR over the 3-run
         # window (newest last). Positive → worsening (deltas
         # becoming less negative ⇒ improving? careful: our
@@ -420,7 +508,7 @@ async def _evaluate_one_adaptation(
 
         if is_final_step:
             reason = (
-                f"{prefix}delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} "
+                f"{prefix}delta_mean_r negative x{cfg_consecutive} "
                 f"at softened factor ({current_factor:.2f} ≥ "
                 f"MAX {AUTO_SOFTEN_MAX_FACTOR:.2f}); final revert. "
                 f"{base_reason_parts}"
@@ -446,7 +534,7 @@ async def _evaluate_one_adaptation(
             })
         else:
             reason = (
-                f"{prefix}delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} — "
+                f"{prefix}delta_mean_r negative x{cfg_consecutive} — "
                 f"softening {current_factor:.2f} → {next_factor:.2f}. "
                 f"{base_reason_parts}"
             )
@@ -522,11 +610,13 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
     now_iso = now.isoformat()
     cooldown_cutoff = now - timedelta(days=AUTO_ACTION_COOLDOWN_DAYS)
     semaphore = asyncio.Semaphore(AUTO_SCAN_PARALLELISM)
+    cfg = get_auto_revert_config()
 
     results = await asyncio.gather(
         *[
             _evaluate_one_adaptation(db, ad, cooldown_cutoff, now_iso,
-                                      shadow=shadow, semaphore=semaphore)
+                                      shadow=shadow, semaphore=semaphore,
+                                      config=cfg)
             for ad in active
         ],
         return_exceptions=True,
@@ -559,7 +649,7 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                     title=(
                         f"Softened {len(softens)} adaptation"
                         f"{'s' if len(softens) != 1 else ''} · "
-                        f"ΔR negative × {AUTO_REVERT_CONSECUTIVE_NEGATIVE}"
+                        f"ΔR negative × {cfg['consecutive_negative']}"
                     ),
                     detail=f"Metrics: {metrics}",
                     metadata={"softened": softens},

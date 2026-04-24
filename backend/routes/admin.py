@@ -1,6 +1,7 @@
 """Admin-only routes: cache monitoring, system diagnostics, broker OAuth config."""
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timedelta, timezone
+from typing import Any
 import logging
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -1555,6 +1556,188 @@ async def disable_all_adaptations_endpoint(request: Request):
     from services.model_adaptation import disable_all_adaptations
     n = await disable_all_adaptations(db)
     return {"status": "disabled_all", "deactivated": n}
+
+
+@router.get("/adaptations/calibration")
+async def adaptations_calibration(request: Request, window_days: int = 30):
+    """Distribution analysis of shadow-mode safety-rail observations.
+
+    Reads the last ``window_days`` of ``adaptation_audit`` rows
+    tagged ``shadow_soften`` / ``shadow_revert`` and computes
+    per-metric percentile distributions of ``decision_score``,
+    ``decision_ratio`` and ``delta_r_trend``. Pairs that with the
+    CURRENT live thresholds (pulled from
+    ``get_auto_revert_config``) so operators can see at a glance:
+
+      * what the scanner has been seeing in shadow mode,
+      * which threshold each observation cleared,
+      * a recommended tuned threshold (the p25 of observed scores,
+        so flipping live would act on the strongest 75% of
+        observations — the rest land in noise territory).
+
+    The recommendation is advisory, not auto-applied — set
+    ``ML_AUTO_REVERT_EFFECT_SIZE`` (and siblings) in the env and
+    restart supervisor to adopt it.
+
+    Owner-gated. Runs read-only; safe to call repeatedly.
+    """
+    await _require_owner(request)
+    if db is None:
+        return {
+            "window_days": window_days,
+            "observations": 0,
+            "current_config": {},
+            "distribution": {},
+            "recommendation": None,
+            "note": "Database unavailable",
+        }
+    from services.model_adaptation import get_auto_revert_config
+
+    cfg = get_auto_revert_config()
+    since = (datetime.now(timezone.utc) - timedelta(days=max(1, window_days))).isoformat()
+
+    cursor = db["adaptation_audit"].find(
+        {
+            "action": {"$in": ["shadow_soften", "shadow_revert",
+                                "auto_soften", "auto_revert"]},
+            "at": {"$gte": since},
+        },
+        {"_id": 0},
+    ).sort("at", -1).limit(1000)
+
+    scores: list[float] = []
+    ratios: list[float] = []
+    trends: list[float] = []
+    shadow_count = 0
+    live_count = 0
+    by_action: dict[str, int] = {}
+    by_metric: dict[str, dict[str, Any]] = {}
+    async for row in cursor:
+        ds = row.get("decision_score")
+        dr_ratio = row.get("decision_ratio")
+        dtrend = row.get("delta_r_trend")
+        try:
+            if ds is not None:
+                scores.append(float(ds))
+            if dr_ratio is not None:
+                ratios.append(float(dr_ratio))
+            if dtrend is not None:
+                trends.append(float(dtrend))
+        except (TypeError, ValueError):
+            continue
+        if row.get("shadow"):
+            shadow_count += 1
+        else:
+            live_count += 1
+        action = row.get("action") or "unknown"
+        by_action[action] = by_action.get(action, 0) + 1
+        metric = row.get("metric") or "unknown"
+        bucket = by_metric.setdefault(metric, {"n": 0, "scores": []})
+        bucket["n"] += 1
+        if ds is not None:
+            try:
+                bucket["scores"].append(float(ds))
+            except (TypeError, ValueError):
+                pass
+
+    def _percentiles(values: list[float]) -> dict[str, float | None]:
+        if not values:
+            return {"n": 0, "min": None, "p25": None, "p50": None,
+                    "p75": None, "p90": None, "max": None, "mean": None}
+        ordered = sorted(values)
+        n = len(ordered)
+
+        def pick(p: float) -> float:
+            idx = max(0, min(n - 1, int(round((n - 1) * p))))
+            return round(ordered[idx], 6)
+
+        return {
+            "n": n,
+            "min": round(ordered[0], 6),
+            "p25": pick(0.25),
+            "p50": pick(0.50),
+            "p75": pick(0.75),
+            "p90": pick(0.90),
+            "max": round(ordered[-1], 6),
+            "mean": round(sum(ordered) / n, 6),
+        }
+
+    score_dist = _percentiles(scores)
+    ratio_dist = _percentiles(ratios)
+    trend_dist = _percentiles(trends)
+
+    # ── Per-metric roll-up ──
+    # Strip the raw score list from the response so we don't ship
+    # 1000 floats back, but compute a p50 per metric — the single
+    # number that tells admins "this rule is consistently over
+    # the threshold" vs "this rule is borderline".
+    per_metric: list[dict[str, Any]] = []
+    for metric, bucket in by_metric.items():
+        raw = bucket["scores"]
+        if raw:
+            raw_sorted = sorted(raw)
+            median = raw_sorted[len(raw_sorted) // 2]
+        else:
+            median = None
+        per_metric.append({
+            "metric": metric,
+            "observations": bucket["n"],
+            "median_score": round(median, 6) if median is not None else None,
+        })
+    per_metric.sort(key=lambda r: r["observations"], reverse=True)
+
+    # ── Recommendation ──
+    # Use the 25th percentile of observed decision_scores as the
+    # suggested new threshold. Rationale: 75% of the shadow rail's
+    # would-be actions would still fire (the high-signal ones),
+    # the bottom quartile (borderline/noisy) would get filtered.
+    # We cap below at 0.0001 so a degenerate shadow dataset can't
+    # recommend a threshold of zero.
+    MIN_OBS_FOR_RECOMMENDATION = 20
+    recommendation: dict[str, Any] | None = None
+    if score_dist["n"] and score_dist["n"] >= MIN_OBS_FOR_RECOMMENDATION:
+        suggested = max(float(score_dist["p25"] or 0.0), 0.0001)
+        delta = suggested - cfg["effect_size"]
+        pct_change = (delta / cfg["effect_size"] * 100) if cfg["effect_size"] > 0 else None
+        direction = "tighten" if suggested > cfg["effect_size"] else "loosen"
+        recommendation = {
+            "suggested_effect_size": round(suggested, 6),
+            "current_effect_size": cfg["effect_size"],
+            "direction": direction,
+            "delta": round(delta, 6),
+            "pct_change": round(pct_change, 1) if pct_change is not None else None,
+            "rationale": (
+                "Tuned to the 25th percentile of observed shadow "
+                "decision_scores — would act on the strongest 75% "
+                "of signals and filter the noisy tail."
+            ),
+            "apply_via": "Set ML_AUTO_REVERT_EFFECT_SIZE in the env, then restart supervisor.",
+        }
+    elif score_dist["n"]:
+        recommendation = {
+            "suggested_effect_size": None,
+            "current_effect_size": cfg["effect_size"],
+            "note": (
+                f"Need ≥{MIN_OBS_FOR_RECOMMENDATION} observations "
+                f"before recommending; currently have {score_dist['n']}."
+            ),
+        }
+
+    return {
+        "window_days": window_days,
+        "observations": score_dist["n"],
+        "shadow_observations": shadow_count,
+        "live_observations": live_count,
+        "by_action": by_action,
+        "current_config": cfg,
+        "distribution": {
+            "decision_score": score_dist,
+            "decision_ratio": ratio_dist,
+            "delta_r_trend": trend_dist,
+        },
+        "per_metric": per_metric,
+        "recommendation": recommendation,
+    }
 
 
 

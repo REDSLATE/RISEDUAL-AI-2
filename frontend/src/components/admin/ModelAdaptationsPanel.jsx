@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, ShieldAlert } from 'lucide-react';
+import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, ShieldAlert, Sliders } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -141,6 +141,93 @@ const AutoRevertStrip = ({ items }) => {
 
 const API = `${getApiBase()}/api/admin/adaptations`;
 
+// ── Calibration strip — summarises the shadow-mode observation
+//    window and surfaces the tuning recommendation returned by
+//    `GET /api/admin/adaptations/calibration`. Silent when the
+//    endpoint has no data (avoids adding clutter for operators
+//    who haven't flipped shadow mode on).
+const CalibrationStrip = ({ calib }) => {
+  const rec = calib?.recommendation;
+  const dist = calib?.distribution?.decision_score;
+  if (!calib) return null;
+  if (!calib.observations) return null;
+  const current = calib.current_config?.effect_size;
+  const suggested = rec?.suggested_effect_size;
+  const direction = rec?.direction;
+  return (
+    <div
+      className="mb-3 p-3 rounded-lg bg-slate-900/40 border border-slate-700/50"
+      data-testid="adaptations-calibration-strip"
+    >
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <Sliders className="w-3.5 h-3.5 text-cyan-300" />
+        <div className="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">
+          Threshold calibration
+        </div>
+        <Badge className="bg-cyan-500/15 text-cyan-200 border-cyan-500/30 text-[10px]">
+          {calib.observations} obs · {calib.window_days}d
+        </Badge>
+        {calib.shadow_observations > 0 && (
+          <Badge className="bg-indigo-500/15 text-indigo-200 border-indigo-500/30 text-[10px]" title="Shadow rows observed — safety rail ran the full gate in observe-only mode.">
+            {calib.shadow_observations} shadow
+          </Badge>
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="flex flex-col rounded border border-slate-600/40 bg-slate-800/40 px-2.5 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-slate-500">Current ES</span>
+          <span className="text-xs font-mono tabular-nums text-slate-200">
+            {typeof current === 'number' ? current.toFixed(4) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col rounded border border-slate-600/40 bg-slate-800/40 px-2.5 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-slate-500">Suggested ES (p25)</span>
+          <span
+            className="text-xs font-mono tabular-nums text-slate-100"
+            data-testid="adaptations-calibration-suggested"
+          >
+            {typeof suggested === 'number' ? suggested.toFixed(4) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col rounded border border-slate-600/40 bg-slate-800/40 px-2.5 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-slate-500">Score p50</span>
+          <span className="text-xs font-mono tabular-nums text-slate-200">
+            {typeof dist?.p50 === 'number' ? dist.p50.toFixed(4) : '—'}
+          </span>
+        </div>
+        <div className="flex flex-col rounded border border-slate-600/40 bg-slate-800/40 px-2.5 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-slate-500">Score p90</span>
+          <span className="text-xs font-mono tabular-nums text-slate-200">
+            {typeof dist?.p90 === 'number' ? dist.p90.toFixed(4) : '—'}
+          </span>
+        </div>
+      </div>
+      {rec && suggested != null && direction && (
+        <div
+          className={`mt-2 flex items-start gap-2 p-2 rounded text-[11px] leading-snug ${
+            direction === 'tighten'
+              ? 'bg-rose-500/10 border border-rose-500/30 text-rose-100'
+              : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-100'
+          }`}
+          data-testid="adaptations-calibration-recommendation"
+        >
+          <strong className="shrink-0 uppercase text-[10px] tracking-wider">
+            {direction}
+          </strong>
+          <span>
+            {rec.rationale} Set <code className="bg-slate-900/60 px-1 rounded text-[10px] font-mono">ML_AUTO_REVERT_EFFECT_SIZE={suggested.toFixed(4)}</code> in backend env & restart.
+          </span>
+        </div>
+      )}
+      {rec && !suggested && rec.note && (
+        <p className="text-[10px] text-slate-400 italic mt-2" data-testid="adaptations-calibration-note">
+          {rec.note}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ── Sign-aware impact badge. Green for improvements, rose for
 //    regressions, slate for neutral. When ``pct`` is set we render
 //    the raw value × 100 with a `%` suffix (win-rate semantics);
@@ -256,6 +343,7 @@ const ImpactStrip = ({ impact }) => {
  */
 const ModelAdaptationsPanel = () => {
   const [data, setData] = useState(null);
+  const [calib, setCalib] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revertingId, setRevertingId] = useState(null);
@@ -265,9 +353,15 @@ const ModelAdaptationsPanel = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch(API);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const [resMain, resCalib] = await Promise.all([
+        authFetch(API),
+        authFetch(`${API}/calibration?window_days=30`),
+      ]);
+      if (!resMain.ok) throw new Error(`HTTP ${resMain.status}`);
+      setData(await resMain.json());
+      if (resCalib.ok) {
+        setCalib(await resCalib.json());
+      }
     } catch (e) {
       logger.error('[adaptations] fetch', e);
       setError(e.message || 'Failed to load');
@@ -390,6 +484,10 @@ const ModelAdaptationsPanel = () => {
           {Array.isArray(data?.recent_auto_reverts) && data.recent_auto_reverts.length > 0 && (
             <AutoRevertStrip items={data.recent_auto_reverts} />
           )}
+
+          {/* Calibration strip — renders only when the shadow-mode
+              observation window has produced measurable data. */}
+          <CalibrationStrip calib={calib} />
 
           <div className="space-y-2" data-testid="adaptations-list">
             {items.map((a) => {

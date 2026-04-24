@@ -688,3 +688,91 @@ def test_parallel_scanner_handles_multiple_adaptations(
 
     asyncio.get_event_loop().run_until_complete(_run())
 
+
+
+# ── Threshold tuning tests ──
+
+def test_config_defaults_when_env_unset(monkeypatch):
+    """With no env overrides, get_auto_revert_config returns the
+    module-level defaults. Keeps backward compat so existing tests
+    don't change behaviour."""
+    from services.model_adaptation import (
+        get_auto_revert_config,
+        DEFAULT_AUTO_REVERT_CONSECUTIVE_NEGATIVE,
+        DEFAULT_AUTO_REVERT_EPSILON,
+        DEFAULT_AUTO_REVERT_MIN_COVERAGE,
+        DEFAULT_AUTO_REVERT_EFFECT_SIZE,
+    )
+    for var in (
+        "ML_AUTO_REVERT_CONSECUTIVE_NEGATIVE",
+        "ML_AUTO_REVERT_EPSILON",
+        "ML_AUTO_REVERT_MIN_COVERAGE",
+        "ML_AUTO_REVERT_EFFECT_SIZE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    cfg = get_auto_revert_config()
+    assert cfg["consecutive_negative"] == DEFAULT_AUTO_REVERT_CONSECUTIVE_NEGATIVE
+    assert cfg["epsilon"] == DEFAULT_AUTO_REVERT_EPSILON
+    assert cfg["min_coverage"] == DEFAULT_AUTO_REVERT_MIN_COVERAGE
+    assert cfg["effect_size"] == DEFAULT_AUTO_REVERT_EFFECT_SIZE
+
+
+def test_config_env_overrides(monkeypatch):
+    """Env vars override the defaults verbatim (post-clamp)."""
+    from services.model_adaptation import get_auto_revert_config
+    monkeypatch.setenv("ML_AUTO_REVERT_CONSECUTIVE_NEGATIVE", "5")
+    monkeypatch.setenv("ML_AUTO_REVERT_EPSILON", "0.02")
+    monkeypatch.setenv("ML_AUTO_REVERT_MIN_COVERAGE", "0.08")
+    monkeypatch.setenv("ML_AUTO_REVERT_EFFECT_SIZE", "0.0025")
+    cfg = get_auto_revert_config()
+    assert cfg["consecutive_negative"] == 5
+    assert cfg["epsilon"] == 0.02
+    assert cfg["min_coverage"] == 0.08
+    assert cfg["effect_size"] == 0.0025
+
+
+def test_config_invalid_env_falls_back(monkeypatch):
+    """Malformed env values log and fall back — safety rail never
+    goes offline because of a typo."""
+    from services.model_adaptation import (
+        get_auto_revert_config, DEFAULT_AUTO_REVERT_EFFECT_SIZE,
+    )
+    monkeypatch.setenv("ML_AUTO_REVERT_EFFECT_SIZE", "not-a-number")
+    cfg = get_auto_revert_config()
+    assert cfg["effect_size"] == DEFAULT_AUTO_REVERT_EFFECT_SIZE
+
+
+def test_effect_size_env_override_gates_action(patch_auto_revert_enabled, monkeypatch):
+    """Tightening the effect_size threshold via env blocks
+    borderline actions that would've fired at the default."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    # Set threshold well above the test's effect_size
+    # (ΔR=-0.03, coverage=0.15 → es=0.0045). At 0.01 this should
+    # NOT act.
+    monkeypatch.setenv("ML_AUTO_REVERT_EFFECT_SIZE", "0.01")
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-ar-env-{uuid.uuid4().hex[:8]}"
+        await _seed_adaptation(db, aid)
+        await _seed_training_log(
+            db, aid,
+            delta_r_list=[-0.03, -0.03, -0.03],
+            delta_wr_list=[-0.02, -0.02, -0.02],
+            rows_matched_list=[150, 150, 150],
+            samples=1000,
+        )
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []  # raised threshold filtered it out
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0},
+            )
+            assert doc["adjustment_factor"] == 0.85  # unchanged
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())

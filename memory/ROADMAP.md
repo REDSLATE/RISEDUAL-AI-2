@@ -30,6 +30,11 @@ current live deploy queue.
 
 ## P1 — Next sprint
 
+- **Daily Summary Email Digest.** Wire the existing digest
+  generation to a daily cron (08:00 UTC → admin@risedual.ai). Needs
+  to include ML health brief: shadow/soften/revert counts + top
+  metric triggers. Reuses `routes/digest.py` and
+  `services/model_adaptation.get_auto_revert_config`.
 - **30-day paper-trading accumulation → ML Tier 3 unlock.** Currently at
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see
   `AI_PREDICTION_WINS.md`). Need 100/500/1000 labeled predictions for
@@ -42,6 +47,11 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **Flip `ML_ADAPTATION_SHADOW_MODE` to live** after ~2 weeks of
+  shadow data accumulates and the calibration endpoint
+  (`/api/admin/adaptations/calibration`) returns a stable p25
+  recommendation. Apply the suggested `ML_AUTO_REVERT_EFFECT_SIZE`
+  env override first, then flip `ML_ADAPTATION_AUTO_REVERT_ENABLED=true`.
 - **QuantConnect ↔ QuiverQuant bridge** (user's QC algo pending).
   Replaces flaky Quiver REST with QC Cloud pipeline for Lobbying +
   Insider Trading datasets.

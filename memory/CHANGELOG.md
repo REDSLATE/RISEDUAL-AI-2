@@ -1,5 +1,22 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 — Safety-Rail Threshold Calibration (P2)
+- `model_adaptation.get_auto_revert_config()` now reads thresholds
+  from env (`ML_AUTO_REVERT_EFFECT_SIZE`, `..._EPSILON`,
+  `..._MIN_COVERAGE`, `..._CONSECUTIVE_NEGATIVE`); defaults unchanged.
+- New `GET /api/admin/adaptations/calibration` endpoint: analyses
+  last N days of shadow/live audit rows, returns percentile
+  distributions (`decision_score`, `decision_ratio`,
+  `delta_r_trend`), per-metric roll-up, and a p25-based recommended
+  effect_size once ≥20 observations are available.
+- Admin UI `ModelAdaptationsPanel` gains a `CalibrationStrip` that
+  renders the current vs suggested threshold, direction
+  (tighten/loosen), and the exact env-var string to copy into
+  backend `.env`. Silent until real observations exist.
+- Tests: `test_adaptation_calibration.py` (4 tests, live backend)
+  + 4 threshold-override tests in `test_auto_revert_safety_rail.py`.
+  All 47 adaptation/ML tests passing.
+
 ## 2026-04-24 — Adaptation Hook Re-confirmed at the Correct Seam + Before/After Weight Telemetry
 - **Caught a regression**: the `apply_adaptations_to_weights` call between `_severity_weights` output and `model.fit` got stomped by a subsequent search_replace in the same session. Only the `detect_and_create_adaptations` call at the top of the retrain had committed. Restored the one-line hook to where it belongs.
 - **Integration seam** (exactly as prescribed):
