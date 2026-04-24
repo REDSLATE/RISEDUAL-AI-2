@@ -34,19 +34,36 @@ current live deploy queue.
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see
   `AI_PREDICTION_WINS.md`). Need 100/500/1000 labeled predictions for
   Tier 1/2/3 gates. Automated labeler is running hourly.
-- Drop `_CANONICAL_OWNER_PASSWORD` override in `backend/routes/auth.py`
-  once user confirms password rotated via UI post-deploy. *(Held per
-  user — do not touch without explicit confirmation.)*
+
+---
+
+## ⏸ Parked — waiting on user action
+
+- **Drop `_CANONICAL_OWNER_PASSWORD` override** in
+  `backend/routes/auth.py`. *(2026-02-08: user chose to rotate the
+  password via UI first and verify login works before the override
+  is removed. Do not drop until user confirms the new password has
+  been tested post-rotation.)*
+
+- **Flip `ML_ADAPTATION_SHADOW_MODE` → live.** *(2026-02-08: parked
+  for ~2 weeks of shadow observation. Calibration endpoint
+  currently reports 0 observations. Revisit when
+  `/api/admin/adaptations/calibration` returns a stable p25
+  recommendation with ≥20 observations.)*
+
+  Flip procedure when ready:
+  1. `GET /api/admin/adaptations/calibration?window_days=30` → read
+     `recommendation.suggested_effect_size`.
+  2. Set `ML_AUTO_REVERT_EFFECT_SIZE=<p25>` in `backend/.env`.
+  3. Set `ML_ADAPTATION_AUTO_REVERT_ENABLED=true` in `backend/.env`.
+  4. `sudo supervisorctl restart backend`.
+  5. Watch the admin `ModelAdaptationsPanel` for the first live
+     soften row (no longer tagged `shadow_`).
 
 ---
 
 ## P2 — Future
 
-- **Flip `ML_ADAPTATION_SHADOW_MODE` to live** after ~2 weeks of
-  shadow data accumulates and the calibration endpoint
-  (`/api/admin/adaptations/calibration`) returns a stable p25
-  recommendation. Apply the suggested `ML_AUTO_REVERT_EFFECT_SIZE`
-  env override first, then flip `ML_ADAPTATION_AUTO_REVERT_ENABLED=true`.
 - **QuantConnect ↔ QuiverQuant bridge** (user's QC algo pending).
   Replaces flaky Quiver REST with QC Cloud pipeline for Lobbying +
   Insider Trading datasets.
