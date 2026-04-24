@@ -512,6 +512,33 @@ async def run_nightly_retrain(
             f"(positive rate={pos_rate:.3f}, "
             f"mean weight={log_row.get('mean_sample_weight', 1.0):.3f})"
         )
+
+        # ── ADAPTATION HOOK (isolated, reversible, env-gated) ──
+        # Only line that touches sample_weight between _severity_weights
+        # output and model.fit. When ML_ADAPTATION_ENABLED=false the
+        # call runs in dry-run mode: summary computed for telemetry,
+        # weights returned unchanged. Errors never block the fit.
+        try:
+            import numpy as _np
+            w_mean_before = float(_np.asarray(w).mean()) if n > 0 else 0.0
+            w, adaptation_summary = await apply_adaptations_to_weights(db, X, w)
+            if adaptation_summary:
+                w_mean_after = float(_np.asarray(w).mean()) if n > 0 else 0.0
+                log_row["adaptations_applied"] = adaptation_summary
+                log_row["adaptation_mean_weight_before"] = round(w_mean_before, 4)
+                log_row["adaptation_mean_weight_after"] = round(w_mean_after, 4)
+                log_row["adaptation_weight_delta_mean"] = round(
+                    w_mean_after - w_mean_before, 4,
+                )
+                logger.info(
+                    f"ML retrain: adaptation hook — "
+                    f"mean_weight {w_mean_before:.4f} → {w_mean_after:.4f} "
+                    f"({len(adaptation_summary)} active, "
+                    f"{sum(int(s.get('rows_matched', 0)) for s in adaptation_summary)} rows affected)"
+                )
+        except Exception as e:
+            logger.warning(f"[retrain] adaptation apply failed: {e}")
+
         model.fit(X, y, sample_weight=w)
 
         artefact_path = MODELS_DIR / f"{MODEL_ARTIFACT_PREFIX}{version_n}.joblib"

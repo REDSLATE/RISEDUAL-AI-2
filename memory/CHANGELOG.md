@@ -1,5 +1,17 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Adaptation Hook Re-confirmed at the Correct Seam + Before/After Weight Telemetry
+- **Caught a regression**: the `apply_adaptations_to_weights` call between `_severity_weights` output and `model.fit` got stomped by a subsequent search_replace in the same session. Only the `detect_and_create_adaptations` call at the top of the retrain had committed. Restored the one-line hook to where it belongs.
+- **Integration seam** (exactly as prescribed):
+  ```python
+  sample_weight = _severity_weights(df)     # untouched
+  # … regime + R-multiple weighting …       # untouched
+  w, summary = await apply_adaptations_to_weights(db, X, w)  # ← only line that moves weights
+  model.fit(X, y, sample_weight=w)          # untouched
+  ```
+- **Before/after telemetry added** to `log_row` (drift audit) AND to `logger.info` AND stamps onto the `retrain_adaptation_applied` activity event: `adaptation_mean_weight_before`, `adaptation_mean_weight_after`, `adaptation_weight_delta_mean`, full `adaptations_applied` summary.
+- **Verified**: integration smoke test with 1 synthetic adaptation, 10-row synthetic X (5 match condition, 5 don't) → DRY-RUN mean unchanged at 1.0; ENABLED mean = 0.925 = (5×0.85 + 5×1.0) / 10, exactly the expected arithmetic. 11/11 toxic-spike tests pass.
+
 ## 2026-04-24 — Adaptation Engine Upgrade: Contrast Gate + Severity Ladder
 Two statistical guardrails added on top of the existing bounds. Both caught REAL false-positive adaptations on first run against live data — concrete proof the gates were needed.
 
