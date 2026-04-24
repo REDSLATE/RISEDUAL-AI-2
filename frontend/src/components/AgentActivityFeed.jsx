@@ -252,19 +252,14 @@ const SpikeDetailsBlock = ({ spikes, alertId }) => {
               </div>
               <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{desc}</p>
               {s.drivers && s.drivers.length > 0 && (
-                <div
-                  className="mt-1 flex flex-wrap gap-1"
+                <ul
+                  className="mt-1.5 space-y-0.5 text-[10px] text-yellow-300 list-disc pl-4 marker:text-yellow-500/70"
                   data-testid={`agent-activity-spike-drivers-${i}`}
                 >
                   {s.drivers.map((d, j) => (
-                    <span
-                      key={j}
-                      className="text-[9px] font-medium text-yellow-300 bg-yellow-500/10 border border-yellow-500/30 rounded px-1.5 py-0.5"
-                    >
-                      {d}
-                    </span>
+                    <li key={j} className="leading-snug">{d}</li>
                   ))}
-                </div>
+                </ul>
               )}
             </li>
           );

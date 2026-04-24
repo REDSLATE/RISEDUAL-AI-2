@@ -1067,59 +1067,118 @@ async def alerts_replay(request: Request, alert_id: str):
 # ============================================================
 
 
-def _extract_drivers(snap: dict) -> list[str]:
-    """Lightweight heuristic: turn a features_snapshots row into
-    human-readable driver strings.
+def _extract_drivers(snap: dict, failure_code: str | None = None) -> list[str]:
+    """Turn a features_snapshots row into human-readable driver
+    strings, steered by the alert's ``failure_code`` when present.
 
-    This is the MVP sibling of the roadmap SHAP/feature-importance
-    path — no model calls, pure thresholds against columns that
-    actually exist on the snapshot. Each positive condition becomes
-    one bullet in the UI drilldown. Returns the first ~3 hits so
-    the UI stays skimmable.
+    Two layers:
 
-    Pattern flags are boolean fields — `pattern_rsi_divergence: True`
-    directly tells us "that pattern fired on this row".
+    1. **Failure-code specific** (high-signal, explains what actually
+       went wrong). The caller passes `failure_code` from the
+       ChromaDB toxic row. Codes map to the canonical
+       ``services/post_mortem_service.FAILURE_MODES`` vocabulary:
+       ``TECH_FAKEOUT``, ``LIQUIDITY_GAP``, ``REGIME_SHIFT`` (trend
+       exhaustion / overextension), ``MACRO_SHOCK`` (sector/macro
+       mismatch), and ``UNKNOWN``.
+
+    2. **Fallback heuristics** (medium-signal) fill the remaining
+       slots when the failure-code layer didn't produce enough.
+
+    Each driver carries a weight so the UI implicitly ranks "strongest
+    cause" first — failure-code-specific hits weigh more than generic
+    extreme-reading hits.
+
+    Returns the top 3 labels (strings), sorted by weight desc.
+    Safe on empty/null feature values.
     """
-    drivers: list[str] = []
+    if not snap:
+        return []
+
+    drivers: list[dict] = []
+
+    def add(label: str, weight: float, metric: str) -> None:
+        """`metric` is a canonical key (rsi, volume, sector, ...) so
+        we can dedup across the failure-code + fallback layers when
+        both phrasings describe the same underlying signal."""
+        drivers.append({"label": label, "weight": weight, "metric": metric})
 
     rsi = snap.get("rsi_14")
-    if isinstance(rsi, (int, float)):
-        if rsi >= 70:
-            drivers.append(f"overbought RSI ({rsi:.0f})")
-        elif rsi <= 30:
-            drivers.append(f"oversold RSI ({rsi:.0f})")
-
-    vr = snap.get("volume_ratio")
-    if isinstance(vr, (int, float)):
-        if vr < 0.8:
-            drivers.append(f"low volume confirmation ({vr:.2f}x)")
-        elif vr > 2.0:
-            drivers.append(f"volume surge ({vr:.1f}x)")
-
-    sm = snap.get("sector_momentum")
-    if isinstance(sm, (int, float)) and sm < -0.02:
-        drivers.append(f"negative sector momentum ({sm * 100:+.1f}%)")
-
+    vol = snap.get("volume_ratio")
     macd = snap.get("macd")
     macd_sig = snap.get("macd_signal")
-    if isinstance(macd, (int, float)) and isinstance(macd_sig, (int, float)):
-        if macd < macd_sig and macd < 0:
-            drivers.append("MACD bearish crossover")
+    sector = snap.get("sector_momentum")
+    sentiment = snap.get("sentiment_score")
 
-    if snap.get("pattern_rsi_divergence"):
-        drivers.append("RSI divergence")
-    if snap.get("pattern_head_and_shoulders"):
-        drivers.append("head & shoulders pattern")
-    if snap.get("pattern_bearish_engulfing"):
-        drivers.append("bearish engulfing")
-    if snap.get("pattern_double_bottom"):
-        drivers.append("double bottom (failed)")
+    # ── 1. Failure-code specific overrides (HIGH SIGNAL) ──
+    if failure_code == "TECH_FAKEOUT":
+        if snap.get("pattern_bull_flag"):
+            add("bull flag broke down", 0.95, "pattern")
+        if isinstance(macd, (int, float)) and macd < 0:
+            add("bearish momentum reversal", 0.9, "macd")
 
-    sent = snap.get("sentiment_score")
-    if isinstance(sent, (int, float)) and sent < -0.3:
-        drivers.append(f"negative sentiment ({sent:+.2f})")
+    elif failure_code == "LIQUIDITY_GAP":
+        if isinstance(vol, (int, float)) and vol < 0.8:
+            add(f"low liquidity ({vol:.2f}x volume)", 0.95, "volume")
+        add("slippage / spread expansion", 0.85, "liquidity")
 
-    return drivers[:3]
+    elif failure_code == "REGIME_SHIFT":
+        # Overextension / trend exhaustion lives under REGIME_SHIFT
+        # in our FAILURE_MODES vocabulary.
+        if isinstance(rsi, (int, float)) and rsi > 70:
+            add(f"overbought RSI ({int(rsi)})", 0.95, "rsi")
+        add("trend exhaustion", 0.85, "trend")
+
+    elif failure_code == "MACRO_SHOCK":
+        if isinstance(sector, (int, float)) and sector < 0:
+            add(f"negative sector momentum ({sector * 100:+.1f}%)", 0.95, "sector")
+        add("macro regime misalignment", 0.85, "macro")
+
+    # ── 2. Fallback heuristics (MEDIUM SIGNAL) ──
+    # Only fill slots that the failure-code layer didn't already
+    # claim — we dedup below by `metric`, so anything tagged with an
+    # already-seen metric is silently dropped.
+    if len(drivers) < 3:
+        if isinstance(rsi, (int, float)):
+            if rsi > 70:
+                add(f"overbought RSI ({int(rsi)})", 0.6, "rsi")
+            elif rsi < 30:
+                add(f"oversold RSI ({int(rsi)})", 0.6, "rsi")
+
+        if isinstance(vol, (int, float)):
+            if vol < 0.8:
+                add(f"low volume ({vol:.2f}x)", 0.55, "volume")
+            elif vol > 1.5:
+                add(f"volume spike ({vol:.2f}x)", 0.55, "volume")
+
+        if isinstance(macd, (int, float)) and isinstance(macd_sig, (int, float)):
+            if macd < macd_sig and macd < 0:
+                add("MACD bearish crossover", 0.6, "macd")
+
+        if isinstance(sector, (int, float)) and sector < -0.02:
+            add(f"negative sector ({sector * 100:+.1f}%)", 0.55, "sector")
+
+        if isinstance(sentiment, (int, float)) and sentiment < -0.3:
+            add(f"negative sentiment ({sentiment:+.2f})", 0.5, "sentiment")
+
+        if snap.get("pattern_rsi_divergence"):
+            add("RSI divergence", 0.55, "pattern_divergence")
+        if snap.get("pattern_head_and_shoulders"):
+            add("head & shoulders pattern", 0.55, "pattern_hs")
+        if snap.get("pattern_bearish_engulfing"):
+            add("bearish engulfing", 0.55, "pattern_engulf")
+
+    # Rank by weight desc, then dedup by canonical metric so we never
+    # show two phrasings of the same underlying signal. Failure-code
+    # variants always win because their weights are higher.
+    seen_metrics: set[str] = set()
+    unique: list[dict] = []
+    for d in sorted(drivers, key=lambda d: d["weight"], reverse=True):
+        if d["metric"] in seen_metrics:
+            continue
+        seen_metrics.add(d["metric"])
+        unique.append(d)
+
+    return [d["label"] for d in unique[:3]]
 
 
 @router.get("/alerts/why/{alert_id}")
@@ -1170,14 +1229,16 @@ async def alert_why(alert_id: str, request: Request):
              "macd_signal": 1, "sector_momentum": 1, "sentiment_score": 1,
              "regime_label": 1, "timestamp": 1,
              "pattern_rsi_divergence": 1, "pattern_head_and_shoulders": 1,
-             "pattern_bearish_engulfing": 1, "pattern_double_bottom": 1},
+             "pattern_bearish_engulfing": 1, "pattern_double_bottom": 1,
+             "pattern_bull_flag": 1},
             sort=[("timestamp", -1)],
         )
-        drivers = _extract_drivers(snap) if snap else []
+        failure_code = spike.get("failure_code", "UNKNOWN")
+        drivers = _extract_drivers(snap, failure_code) if snap else []
         enriched.append({
             "symbol": ticker,
             "confidence": spike.get("confidence"),
-            "failure_code": spike.get("failure_code", "UNKNOWN"),
+            "failure_code": failure_code,
             "date": spike.get("date"),
             "regime": (snap or {}).get("regime_label"),
             "snapshot_at": (snap or {}).get("timestamp"),

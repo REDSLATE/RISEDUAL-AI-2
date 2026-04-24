@@ -1,5 +1,21 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — Failure-Code-Aware Drivers + Weighted Ranking + Metric Dedup
+- **`routes/admin._extract_drivers`** rewritten as a two-layer engine:
+  1. **Failure-code specific (HIGH signal)** — maps to our canonical `FAILURE_MODES` vocab: `TECH_FAKEOUT` (bull flag broke down, bearish momentum reversal), `LIQUIDITY_GAP` (low liquidity, slippage/spread expansion), `REGIME_SHIFT` (overbought RSI, trend exhaustion — covers "overextension"), `MACRO_SHOCK` (negative sector momentum, macro regime misalignment).
+  2. **Fallback heuristics (MEDIUM signal)** fill remaining slots when the failure-code layer matched fewer than 3 drivers.
+- **Weighted ranking**: each driver carries a weight (0.95 failure-code / 0.55–0.6 fallback). Final output sorted desc, so the strongest cause always shows first — UI implicitly communicates importance.
+- **Metric-key dedup**: each driver tags its underlying metric (`rsi`, `volume`, `macd`, `sector`, `sentiment`, `pattern_*`). When the failure-code layer and fallback both speak to the same metric (e.g. "low liquidity (0.40x volume)" vs "low volume (0.40x)"), the higher-weighted phrasing wins and the redundant one is dropped. No more "overbought RSI (80)" appearing twice.
+- **Frontend** (`AgentActivityFeed.SpikeDetailsBlock`): drivers now render as a `<ul>` with yellow disc markers instead of chip badges — reads like analysis ("· overbought RSI (82) · trend exhaustion · negative sector") rather than metadata tags.
+- **Verified unit suite** across all 5 failure codes + UNKNOWN + clean + empty + dedup edge case:
+  - `TECH_FAKEOUT (bull flag + bearish MACD)` → `['bull flag broke down', 'bearish momentum reversal']`
+  - `LIQUIDITY_GAP (low volume)` → `['low liquidity (0.40x volume)', 'slippage / spread expansion']` (dedup killed "low volume" fallback)
+  - `REGIME_SHIFT (overbought)` → `['overbought RSI (82)', 'trend exhaustion']`
+  - `MACRO_SHOCK` → sector + macro + sentiment (distinct metrics, all kept)
+  - `UNKNOWN (multi-signal)` → fallback produces `['overbought RSI (75)', 'MACD bearish crossover', 'low volume (0.50x)']`
+  - Clean/empty inputs → `[]`
+  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — "Why" Drilldown Endpoint: Feature-Level Drivers from Real Snapshots
 - **Schema reality check**: user's proposed endpoint targeted `learning_engine_trades` with `features_snapshot` + `regime` fields. Actual schema: `learning_engine_trades` uses `asset`/`strategy_id` (not `symbol`/`strategy`), has **no feature fields**, and zero rows with `r_multiple ≤ -1` in current data. Features live in `features_snapshots` (276k rows) which has `rsi_14`, `volume_ratio`, `macd`/`macd_signal`, `sector_momentum`, `sentiment_score`, `regime_label`, and 7 `pattern_*` boolean flags. The endpoint was adapted accordingly.
 - **New endpoint `GET /api/admin/alerts/why/{alert_id}`** (`routes/admin.py`): reads `replay_payload.spike_details` off the alert (falls back to `affected_tickers` for legacy rows), fetches most-recent `features_snapshots` row per ticker (best-effort proxy — only 25/276k snapshots carry `prediction_id`, so exact-snapshot join isn't reliable), runs heuristic driver extraction via the new `_extract_drivers()`. Returns `{symbol, confidence, failure_code, date, regime, snapshot_at, drivers}` per ticker. Admin-gated.
