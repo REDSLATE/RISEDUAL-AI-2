@@ -166,34 +166,39 @@ def adaptation_enabled() -> bool:
     )
 
 
-# ── Auto-revert safety rail (builds on the ΔR attribution layer) ──
-# If an adaptation's per-row ``delta_mean_r`` stays consistently
-# negative across ``AUTO_REVERT_CONSECUTIVE_NEGATIVE`` retrains
-# AND the rule touches a non-trivial fraction of rows AND it isn't
-# simply compressing downside risk, we auto-flip it to inactive.
-# Turns the attribution layer into self-correction without
-# becoming trigger-happy.
+# ── Auto-soften / auto-revert safety rail ──
+# Builds on the ΔR attribution layer. Instead of binary kill, we
+# step the factor UP (toward 1.0 = no effect) in measured
+# increments across consecutive bad retrains — 0.85 → 0.90 → 0.95
+# → inactive. This is "measured self-correction" (gentler than
+# revert, still firm when the evidence stacks).
 #
 # Guardrails (hardened from "ΔR < 0 → revert" naive take):
 #   * Gated by ``ML_ADAPTATION_AUTO_REVERT_ENABLED`` (default off)
 #   * ``AUTO_REVERT_CONSECUTIVE_NEGATIVE`` runs of evidence
 #   * Epsilon floor — ignore "negative but noisy" deltas
-#   * Coverage floor — don't revert adaptations that barely touch
+#   * Coverage floor — don't act on adaptations that barely touch
 #     the training set (small samples can't earn statistical
 #     confidence in ΔR)
 #   * Risk-compression guard — if Δwin_rate > 0 the adaptation may
 #     be trading wins for smaller losses (downside control). We
 #     require BOTH ΔR negative AND Δwin_rate non-positive to act.
+#   * Factor-match — only count retrains that ran at the CURRENT
+#     factor. After softening, the 3-run counter resets so the
+#     rule gets a fresh window at its new strength before the next
+#     step. Prevents rapid-fire 0.85→0.95→off collapse.
 #   * Cooldown — re-creation is already gated by the
 #     ``_has_recent_adaptation(COOLDOWN_DAYS=7)`` check in
 #     detection; auto-reverted rows (created within the window)
 #     count, so a flip-flop loop is structurally impossible.
-#   * Grace period — require ≥ MIN_RETRAINS runs of history before
-#     considering. Combined with the evidence count this means no
-#     adaptation gets killed on its very first retrain.
+#   * Grace period — require ≥ MIN_RETRAINS runs at the current
+#     factor before considering. No adaptation gets touched on its
+#     first retrain.
 AUTO_REVERT_CONSECUTIVE_NEGATIVE = 3
 AUTO_REVERT_EPSILON = 0.01  # |ΔR| < 0.01 treated as "no effect"
-AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to revert
+AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to act
+AUTO_SOFTEN_STEP = 0.05  # per-hit increment on adjustment_factor
+AUTO_SOFTEN_MAX_FACTOR = 0.95  # next step above → disable instead
 
 
 def auto_revert_enabled() -> bool:
@@ -207,14 +212,22 @@ def auto_revert_enabled() -> bool:
 
 
 async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
-    """Scan active adaptations and flip any that meet ALL auto-revert
-    conditions simultaneously (see module docstring above).
+    """Scan active adaptations and for each one whose last
+    `AUTO_REVERT_CONSECUTIVE_NEGATIVE` retrains AT THE CURRENT
+    FACTOR meet every gate (consistent negative ΔR + coverage +
+    no risk-compression), either:
 
-    Returns the list of reverted adaptation records so the caller
-    can narrate them into the activity feed.  Safe to call once
-    per retrain — each candidate is evaluated independently and
-    the update is idempotent (the ``active:True`` gate makes
-    concurrent operator reverts a no-op on our side).
+    * **Soften** the adaptation — raise its ``adjustment_factor``
+      by ``AUTO_SOFTEN_STEP`` (closer to 1.0 = less down-weight),
+      OR
+    * **Revert** it — flip ``active=False`` when the next step
+      would push the factor above ``AUTO_SOFTEN_MAX_FACTOR``.
+
+    Returns the list of actions taken (each record tagged with
+    ``action`` ∈ {"soften", "revert"}) so the caller can narrate.
+    Safe to call once per retrain — every candidate is evaluated
+    independently and the update is idempotent (the ``active:True``
+    gate makes concurrent operator reverts a no-op on our side).
     """
     if not auto_revert_enabled():
         return []
@@ -223,18 +236,21 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
     if not active:
         return []
 
-    reverted: list[dict] = []
+    actions: list[dict] = []
     now_iso = datetime.now(timezone.utc).isoformat()
 
     for ad in active:
         aid = ad.get("adaptation_id")
         if not aid:
             continue
+        current_factor = float(ad.get("adjustment_factor") or 1.0)
+
         # Pull the most recent retrain rows that applied THIS
-        # adaptation. ``adaptations_applied`` is persisted per-run
-        # with per-row delta_mean_r + delta_win_rate, so the
-        # lookup is one query. ``samples`` comes from the same
-        # log row so we can compute per-adaptation coverage.
+        # adaptation AT THE CURRENT FACTOR. We only consider runs
+        # where ``adaptations_applied[i].factor == current_factor``
+        # so softening resets the evidence counter — the rule gets
+        # a fresh 3-run window to prove itself at its new strength
+        # before the next step.
         cursor = (
             db["ml_training_log"]
             .find(
@@ -243,29 +259,31 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
                  "adaptations_applied": 1, "model_version": 1},
             )
             .sort("started_at", -1)
-            .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE)
+            .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)  # headroom
         )
-        runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE)
-        if len(runs) < AUTO_REVERT_CONSECUTIVE_NEGATIVE:
-            continue  # not enough history — grace period holds
+        runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
 
-        # Collect per-run metrics for THIS adaptation. Bail if any
-        # run is missing the attribution fields (older retrain
-        # pre-impact-layer) — defer to next cycle once the history
-        # is complete.
+        # Filter runs whose recorded factor matches the current one
+        # (within a small tolerance — rounding in the log row).
         deltas_r: list[float] = []
         deltas_wr: list[float] = []
         coverages: list[float] = []
         complete = True
         for run in runs:
+            if len(deltas_r) >= AUTO_REVERT_CONSECUTIVE_NEGATIVE:
+                break
             match = next(
                 (a for a in (run.get("adaptations_applied") or [])
                  if a.get("adaptation_id") == aid),
                 None,
             )
             if match is None:
-                complete = False
-                break
+                continue
+            run_factor = match.get("factor")
+            if run_factor is None or abs(float(run_factor) - current_factor) > 0.001:
+                # Run used a different factor (pre-soften) — skip,
+                # not out-of-scope for the current window.
+                continue
             d_r = match.get("delta_mean_r")
             d_wr = match.get("delta_win_rate")
             rows_m = match.get("rows_matched") or 0
@@ -286,98 +304,164 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
         # ── Gate 1: consistently negative ΔR below epsilon ──
         if not all(d < -AUTO_REVERT_EPSILON for d in deltas_r):
             continue
-
-        # ── Gate 2: sufficient coverage ──
-        # At least one run must have touched ≥MIN_COVERAGE of
-        # rows — tiny-sample ΔR estimates are noisy and shouldn't
-        # warrant a revert.
+        # ── Gate 2: sufficient coverage on at least one run ──
         if max(coverages) < AUTO_REVERT_MIN_COVERAGE:
             continue
-
         # ── Gate 3: not just risk compression ──
-        # A rule can legitimately reduce ΔR while IMPROVING
-        # win-rate (fewer small wins, much smaller losses → better
-        # downside control). Require Δwin_rate ≤ 0 on ALL runs to
-        # confirm genuine degradation.
         if not all(wr <= 0 for wr in deltas_wr):
             continue
 
-        # Flip it — audit trail + activity log below.
-        reason = (
-            f"delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} "
-            f"(ΔR={[round(d, 4) for d in deltas_r]}, "
+        # All gates trip — decide between soften and revert.
+        next_factor = round(current_factor + AUTO_SOFTEN_STEP, 4)
+        is_final_step = next_factor > AUTO_SOFTEN_MAX_FACTOR
+
+        base_reason_parts = (
+            f"ΔR={[round(d, 4) for d in deltas_r]}, "
             f"Δwin_rate={[round(w, 4) for w in deltas_wr]}, "
-            f"coverage={[round(c, 3) for c in coverages]})"
+            f"coverage={[round(c, 3) for c in coverages]}, "
+            f"factor={current_factor}"
         )
-        res = await db[_COLLECTION].update_one(
-            {"adaptation_id": aid, "active": True},
-            {"$set": {
-                "active": False,
-                "reverted_at": now_iso,
-                "auto_reverted": True,
-                "auto_reverted_reason": reason,
-                "auto_reverted_deltas_r": [round(d, 4) for d in deltas_r],
-                "auto_reverted_deltas_wr": [round(w, 4) for w in deltas_wr],
-                "auto_reverted_coverages": [round(c, 3) for c in coverages],
-            }},
-        )
-        if res.modified_count:
-            reverted.append({
-                "adaptation_id": aid,
-                "metric": ad.get("metric"),
-                "direction": ad.get("direction"),
-                "factor": ad.get("adjustment_factor"),
-                "deltas_r": [round(d, 4) for d in deltas_r],
-                "deltas_wr": [round(w, 4) for w in deltas_wr],
-                "coverages": [round(c, 3) for c in coverages],
-                "reason": reason,
-            })
-            # Separate audit collection so admins can query the
-            # full history (including reverts for adaptations that
-            # have since rolled off the 14-day TTL).
-            try:
-                await db["adaptation_audit"].insert_one({
+
+        if is_final_step:
+            # Next step would exceed MAX — flip inactive.
+            reason = (
+                f"delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} "
+                f"at softened factor ({current_factor:.2f} ≥ "
+                f"MAX {AUTO_SOFTEN_MAX_FACTOR:.2f}); final revert. "
+                f"{base_reason_parts}"
+            )
+            res = await db[_COLLECTION].update_one(
+                {"adaptation_id": aid, "active": True},
+                {"$set": {
+                    "active": False,
+                    "reverted_at": now_iso,
+                    "auto_reverted": True,
+                    "auto_reverted_reason": reason,
+                    "auto_reverted_deltas_r": [round(d, 4) for d in deltas_r],
+                    "auto_reverted_deltas_wr": [round(w, 4) for w in deltas_wr],
+                    "auto_reverted_coverages": [round(c, 3) for c in coverages],
+                }},
+            )
+            if res.modified_count:
+                actions.append({
+                    "action": "revert",
                     "adaptation_id": aid,
-                    "action": "auto_revert",
-                    "reason": reason,
                     "metric": ad.get("metric"),
                     "direction": ad.get("direction"),
+                    "factor": current_factor,
+                    "next_factor": None,
                     "deltas_r": [round(d, 4) for d in deltas_r],
                     "deltas_wr": [round(w, 4) for w in deltas_wr],
                     "coverages": [round(c, 3) for c in coverages],
-                    "at": now_iso,
+                    "reason": reason,
                 })
-            except Exception as audit_err:
-                # Audit failure must never block the revert itself.
-                logger.warning(
-                    f"[auto-revert] audit insert failed: {audit_err}"
-                )
+                try:
+                    await db["adaptation_audit"].insert_one({
+                        "adaptation_id": aid,
+                        "action": "auto_revert",
+                        "reason": reason,
+                        "metric": ad.get("metric"),
+                        "direction": ad.get("direction"),
+                        "factor_before": current_factor,
+                        "factor_after": None,
+                        "deltas_r": [round(d, 4) for d in deltas_r],
+                        "deltas_wr": [round(w, 4) for w in deltas_wr],
+                        "coverages": [round(c, 3) for c in coverages],
+                        "at": now_iso,
+                    })
+                except Exception as audit_err:
+                    logger.warning(f"[auto-revert] audit insert failed: {audit_err}")
+        else:
+            # Soften — raise factor toward 1.0, leave active.
+            reason = (
+                f"delta_mean_r negative x{AUTO_REVERT_CONSECUTIVE_NEGATIVE} — "
+                f"softening {current_factor:.2f} → {next_factor:.2f}. "
+                f"{base_reason_parts}"
+            )
+            res = await db[_COLLECTION].update_one(
+                {"adaptation_id": aid, "active": True},
+                {"$set": {
+                    "adjustment_factor": next_factor,
+                    "auto_softened": True,
+                    "last_auto_softened_at": now_iso,
+                    "auto_softening_reason": reason,
+                },
+                 "$inc": {"auto_softening_steps": 1}},
+            )
+            if res.modified_count:
+                actions.append({
+                    "action": "soften",
+                    "adaptation_id": aid,
+                    "metric": ad.get("metric"),
+                    "direction": ad.get("direction"),
+                    "factor": current_factor,
+                    "next_factor": next_factor,
+                    "deltas_r": [round(d, 4) for d in deltas_r],
+                    "deltas_wr": [round(w, 4) for w in deltas_wr],
+                    "coverages": [round(c, 3) for c in coverages],
+                    "reason": reason,
+                })
+                try:
+                    await db["adaptation_audit"].insert_one({
+                        "adaptation_id": aid,
+                        "action": "auto_soften",
+                        "reason": reason,
+                        "metric": ad.get("metric"),
+                        "direction": ad.get("direction"),
+                        "factor_before": current_factor,
+                        "factor_after": next_factor,
+                        "deltas_r": [round(d, 4) for d in deltas_r],
+                        "deltas_wr": [round(w, 4) for w in deltas_wr],
+                        "coverages": [round(c, 3) for c in coverages],
+                        "at": now_iso,
+                    })
+                except Exception as audit_err:
+                    logger.warning(f"[auto-soften] audit insert failed: {audit_err}")
 
-    # Narrate into the agent activity feed so ops see the auto-revert
-    # the same way they see manual reverts. Fire-and-forget — a
+    # Narrate into the agent activity feed. Fire-and-forget — a
     # feed failure must never break the retrain.
-    if reverted:
+    if actions:
         try:
             from services.agent_activity_service import log_event
-            metrics = ", ".join(
-                f"{r['metric']}/{r.get('direction') or 'ANY'}"
-                for r in reverted
-            )
-            await log_event(
-                type="adaptation_auto_reverted",
-                severity="warn",
-                title=(
-                    f"Auto-reverted {len(reverted)} adaptation"
-                    f"{'s' if len(reverted) != 1 else ''} · "
-                    f"ΔR negative × {AUTO_REVERT_CONSECUTIVE_NEGATIVE}"
-                ),
-                detail=f"Metrics: {metrics}",
-                metadata={"reverted": reverted},
-            )
+            softens = [a for a in actions if a["action"] == "soften"]
+            reverts = [a for a in actions if a["action"] == "revert"]
+            if softens:
+                metrics = ", ".join(
+                    f"{a['metric']}/{a.get('direction') or 'ANY'} "
+                    f"({a['factor']:.2f}→{a['next_factor']:.2f})"
+                    for a in softens
+                )
+                await log_event(
+                    type="adaptation_auto_softened",
+                    severity="info",
+                    title=(
+                        f"Softened {len(softens)} adaptation"
+                        f"{'s' if len(softens) != 1 else ''} · "
+                        f"ΔR negative × {AUTO_REVERT_CONSECUTIVE_NEGATIVE}"
+                    ),
+                    detail=f"Metrics: {metrics}",
+                    metadata={"softened": softens},
+                )
+            if reverts:
+                metrics = ", ".join(
+                    f"{a['metric']}/{a.get('direction') or 'ANY'}"
+                    for a in reverts
+                )
+                await log_event(
+                    type="adaptation_auto_reverted",
+                    severity="warn",
+                    title=(
+                        f"Auto-reverted {len(reverts)} adaptation"
+                        f"{'s' if len(reverts) != 1 else ''} · "
+                        f"reached softening ceiling"
+                    ),
+                    detail=f"Metrics: {metrics}",
+                    metadata={"reverted": reverts},
+                )
         except Exception as e:
             logger.warning(f"[auto-revert] activity log failed: {e}")
 
-    return reverted
+    return actions
 
 
 

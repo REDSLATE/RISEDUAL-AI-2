@@ -1496,15 +1496,17 @@ async def list_adaptations(request: Request):
     except Exception:
         last_impact = None
 
-    # Recent auto-reverts — surfaces the safety-rail activity in
-    # the same panel so admins see why a metric disappeared from
-    # the active list. Last 10 is plenty; older entries live in
-    # the `adaptation_audit` collection for long-range queries.
+    # Recent auto-revert/auto-soften — surfaces the safety-rail
+    # activity in the same panel so admins see gradient
+    # de-escalation (soften) AND final flips (revert) side-by-side.
+    # Last 10 is plenty; older entries live in the
+    # `adaptation_audit` collection for long-range queries.
     recent_auto_reverts: list[dict] = []
     try:
         cursor = (
             db["adaptation_audit"]
-            .find({"action": "auto_revert"}, {"_id": 0})
+            .find({"action": {"$in": ["auto_revert", "auto_soften"]}},
+                  {"_id": 0})
             .sort("at", -1)
             .limit(10)
         )

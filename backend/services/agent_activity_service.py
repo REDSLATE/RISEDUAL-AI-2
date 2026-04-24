@@ -70,6 +70,7 @@ EVENT_TYPES = {
     # + "what changed?" sides of the self-adapting retrain loop.
     "retrain_adaptation_planned": "🧭",
     "retrain_adaptation_applied": "🛠️",
+    "adaptation_auto_softened": "🪶",
     "adaptation_auto_reverted": "🧯",
     # Research / market scans
     "research": "📰",

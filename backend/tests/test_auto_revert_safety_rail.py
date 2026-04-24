@@ -51,9 +51,11 @@ async def _seed_adaptation(db, aid: str, factor: float = 0.85) -> None:
 async def _seed_training_log(db, aid: str, delta_r_list: list[float],
                              delta_wr_list: list[float],
                              rows_matched_list: list[int],
-                             samples: int = 1000) -> None:
+                             samples: int = 1000,
+                             factor: float = 0.85) -> None:
     """Insert N ml_training_log rows (one per retrain), newest last.
-    Each carries `adaptations_applied` with the given per-run deltas."""
+    Each carries `adaptations_applied` with the given per-run deltas
+    AT THE GIVEN FACTOR (default 0.85 matches default seed)."""
     base = datetime.now(timezone.utc).timestamp()
     for i, (dr, dwr, rm) in enumerate(
         zip(delta_r_list, delta_wr_list, rows_matched_list)
@@ -71,7 +73,7 @@ async def _seed_training_log(db, aid: str, delta_r_list: list[float],
                 "metric": "volume.liquidity",
                 "direction": "LONG",
                 "rows_matched": rm,
-                "factor": 0.85,
+                "factor": factor,
                 "delta_mean_r": dr,
                 "delta_win_rate": dwr,
             }],
@@ -82,7 +84,9 @@ async def _cleanup(db, aid: str) -> None:
     await db.model_adaptations.delete_many({"adaptation_id": aid})
     await db.ml_training_log.delete_many({"model_version": {"$gte": 900}})
     await db.adaptation_audit.delete_many({"adaptation_id": aid})
-    await db.agent_activity.delete_many({"type": "adaptation_auto_reverted"})
+    await db.agent_activity.delete_many(
+        {"type": {"$in": ["adaptation_auto_reverted", "adaptation_auto_softened"]}},
+    )
 
 
 @pytest.fixture()
@@ -107,8 +111,8 @@ def test_auto_revert_disabled_by_default():
             rows_matched_list=[150, 150, 150],
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert reverted == []  # flag is off → no action
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []  # flag is off → no action
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )
@@ -120,7 +124,9 @@ def test_auto_revert_disabled_by_default():
 
 
 def test_auto_revert_reverts_on_3_consecutive_negative(patch_auto_revert_enabled):
-    """Happy path — 3 consecutive negative ΔR with good coverage."""
+    """Happy path — 3 consecutive negative ΔR with good coverage →
+    factor is SOFTENED (first step) instead of binary revert.
+    Seeded at 0.85 → expected 0.90."""
     from services.model_adaptation import evaluate_auto_revert_candidates
 
     async def _run():
@@ -137,28 +143,139 @@ def test_auto_revert_reverts_on_3_consecutive_negative(patch_auto_revert_enabled
             samples=1000,
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert len(reverted) == 1
-            assert reverted[0]["adaptation_id"] == aid
+            actions = await evaluate_auto_revert_candidates(db)
+            assert len(actions) == 1
+            assert actions[0]["action"] == "soften"
+            assert actions[0]["factor"] == 0.85
+            assert actions[0]["next_factor"] == 0.90
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0},
+            )
+            assert doc["active"] is True  # still active — just softer
+            assert doc["adjustment_factor"] == 0.90
+            assert doc["auto_softened"] is True
+            assert doc["auto_softening_steps"] == 1
+            # Audit row tagged as soften, not revert
+            audit = await db.adaptation_audit.find_one(
+                {"adaptation_id": aid}, {"_id": 0},
+            )
+            assert audit is not None
+            assert audit["action"] == "auto_soften"
+            assert audit["factor_before"] == 0.85
+            assert audit["factor_after"] == 0.90
+            # Activity event narrated
+            evt = await db.agent_activity.find_one(
+                {"type": "adaptation_auto_softened"},
+                {"_id": 0},
+                sort=[("timestamp", -1)],
+            )
+            assert evt is not None
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_auto_revert_final_kill_after_ceiling(patch_auto_revert_enabled):
+    """Adaptation already softened to 0.95 → next trip flips to
+    inactive (final revert) because next step (1.00) exceeds
+    AUTO_SOFTEN_MAX_FACTOR."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-ar-final-{uuid.uuid4().hex[:8]}"
+        # Seed already at the ceiling.
+        await _seed_adaptation(db, aid, factor=0.95)
+        # 3 retrains at factor=0.95
+        base = datetime.now(timezone.utc).timestamp()
+        for i, (dr, dwr, rm) in enumerate(zip(
+            [-0.03, -0.02, -0.04],
+            [-0.02, -0.03, -0.02],
+            [150, 150, 150],
+        )):
+            ts = datetime.fromtimestamp(base - (3 - i) * 3600, tz=timezone.utc)
+            await db.ml_training_log.insert_one({
+                "started_at": ts, "finished_at": ts,
+                "status": "success", "samples": 1000,
+                "model_version": 920 + i,
+                "adaptations_applied": [{
+                    "adaptation_id": aid, "metric": "volume.liquidity",
+                    "direction": "LONG", "rows_matched": rm, "factor": 0.95,
+                    "delta_mean_r": dr, "delta_win_rate": dwr,
+                }],
+            })
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert len(actions) == 1
+            assert actions[0]["action"] == "revert"
+            assert actions[0]["factor"] == 0.95
+            assert actions[0]["next_factor"] is None
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0},
             )
             assert doc["active"] is False
             assert doc["auto_reverted"] is True
-            # Audit row written
+            # Audit row tagged as auto_revert
             audit = await db.adaptation_audit.find_one(
                 {"adaptation_id": aid}, {"_id": 0},
             )
-            assert audit is not None
             assert audit["action"] == "auto_revert"
-            assert len(audit["deltas_r"]) == 3
-            # Activity event narrated
+            # Activity event
             evt = await db.agent_activity.find_one(
                 {"type": "adaptation_auto_reverted"},
                 {"_id": 0},
                 sort=[("timestamp", -1)],
             )
             assert evt is not None
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_auto_revert_resets_counter_after_soften(patch_auto_revert_enabled):
+    """After softening 0.85→0.90, retrains logged at factor=0.85
+    should NOT count toward the next trip — only runs at 0.90 do."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-ar-reset-{uuid.uuid4().hex[:8]}"
+        # Adaptation is ALREADY at 0.90 (post-softening).
+        await _seed_adaptation(db, aid, factor=0.90)
+        # History: 3 bad runs at OLD factor 0.85 (pre-soften) + 1 bad at 0.90
+        base = datetime.now(timezone.utc).timestamp()
+        rows = [
+            (0.85, -0.04, -0.02, 150),
+            (0.85, -0.03, -0.02, 150),
+            (0.85, -0.05, -0.03, 150),
+            (0.90, -0.04, -0.02, 150),  # only 1 run at current factor
+        ]
+        for i, (factor, dr, dwr, rm) in enumerate(rows):
+            ts = datetime.fromtimestamp(base - (len(rows) - i) * 3600, tz=timezone.utc)
+            await db.ml_training_log.insert_one({
+                "started_at": ts, "finished_at": ts,
+                "status": "success", "samples": 1000,
+                "model_version": 930 + i,
+                "adaptations_applied": [{
+                    "adaptation_id": aid, "metric": "volume.liquidity",
+                    "direction": "LONG", "rows_matched": rm, "factor": factor,
+                    "delta_mean_r": dr, "delta_win_rate": dwr,
+                }],
+            })
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            # Only 1 run at current factor → grace period holds
+            assert actions == []
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0, "adjustment_factor": 1},
+            )
+            assert doc["adjustment_factor"] == 0.90  # unchanged
         finally:
             await _cleanup(db, aid)
 
@@ -180,8 +297,8 @@ def test_auto_revert_respects_grace_period(patch_auto_revert_enabled):
             rows_matched_list=[150, 150],
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert reverted == []
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )
@@ -207,8 +324,8 @@ def test_auto_revert_respects_epsilon(patch_auto_revert_enabled):
             rows_matched_list=[150, 150, 150],
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert reverted == []
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )
@@ -235,8 +352,8 @@ def test_auto_revert_skips_on_low_coverage(patch_auto_revert_enabled):
             samples=1000,
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert reverted == []
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )
@@ -262,9 +379,9 @@ def test_auto_revert_respects_risk_compression(patch_auto_revert_enabled):
             rows_matched_list=[150, 150, 150],
         )
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
+            actions = await evaluate_auto_revert_candidates(db)
             # Risk compression detected → don't revert
-            assert reverted == []
+            assert actions == []
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )
@@ -316,8 +433,8 @@ def test_auto_revert_skips_on_missing_attribution(patch_auto_revert_enabled):
             },
         ])
         try:
-            reverted = await evaluate_auto_revert_candidates(db)
-            assert reverted == []  # incomplete history → defer
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []  # incomplete history → defer
             doc = await db.model_adaptations.find_one(
                 {"adaptation_id": aid}, {"_id": 0, "active": 1},
             )

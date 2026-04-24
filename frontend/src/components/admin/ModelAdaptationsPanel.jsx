@@ -8,42 +8,71 @@ import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
 
-// ── Auto-revert audit strip. Lists the most recent auto-reverts
-//    surfaced by the safety rail. Each row is expandable (click to
-//    show the ΔR/coverage history that triggered the revert).
+// ── Auto-soften / auto-revert audit strip. Lists the most recent
+//    safety-rail actions. Soften entries (lavender) and revert
+//    entries (rose) are visually distinct so admins can skim
+//    which rules are being gently walked down vs which crossed
+//    the ceiling. Each row is click-to-expand for the full ΔR /
+//    Δwin-rate / coverage / factor-before-after history.
 const AutoRevertStrip = ({ items }) => {
   const [expanded, setExpanded] = useState(null);
+  const softenCount = items.filter((i) => i.action === 'auto_soften').length;
+  const revertCount = items.filter((i) => i.action === 'auto_revert').length;
   return (
     <div
-      className="mb-3 p-3 rounded-lg bg-rose-500/5 border border-rose-500/20"
+      className="mb-3 p-3 rounded-lg bg-slate-900/40 border border-slate-700/50"
       data-testid="adaptations-auto-revert-strip"
     >
-      <div className="flex items-center gap-2 mb-2">
-        <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
-        <div className="text-[10px] uppercase tracking-wider text-rose-300 font-semibold">
-          Auto-revert safety rail · {items.length} recent flip{items.length === 1 ? '' : 's'}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <ShieldAlert className="w-3.5 h-3.5 text-amber-300" />
+        <div className="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">
+          Safety-rail audit
         </div>
+        {softenCount > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-200 border border-purple-500/30">
+            {softenCount} soften{softenCount === 1 ? '' : 's'}
+          </span>
+        )}
+        {revertCount > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-200 border border-rose-500/30">
+            {revertCount} revert{revertCount === 1 ? '' : 's'}
+          </span>
+        )}
       </div>
       <ul className="space-y-1.5">
         {items.map((it, i) => {
           const key = it.adaptation_id || `${it.metric}-${it.at}-${i}`;
           const isOpen = expanded === key;
+          const isSoften = it.action === 'auto_soften';
+          const actionTone = isSoften
+            ? 'bg-purple-500/10 border-purple-500/30'
+            : 'bg-rose-500/10 border-rose-500/30';
+          const actionLabel = isSoften ? 'SOFTEN' : 'REVERT';
+          const actionLabelTone = isSoften ? 'text-purple-200' : 'text-rose-200';
           return (
             <li
               key={key}
-              className="rounded bg-slate-900/50 border border-slate-700/40"
+              className={`rounded border ${actionTone}`}
               data-testid={`adaptations-auto-revert-row-${i}`}
             >
               <button
                 type="button"
                 onClick={() => setExpanded(isOpen ? null : key)}
-                className="w-full flex items-start justify-between gap-2 px-2 py-1.5 text-left hover:bg-slate-800/40 transition-colors"
+                className="w-full flex items-start justify-between gap-2 px-2 py-1.5 text-left hover:bg-slate-800/30 transition-colors"
               >
                 <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className={`text-[9px] font-mono font-bold px-1 rounded ${actionLabelTone}`}>
+                    {actionLabel}
+                  </span>
                   <span className="text-xs font-mono font-bold text-white">{it.metric}</span>
                   {it.direction && it.direction !== 'ANY' && (
                     <span className="text-[9px] font-mono px-1 rounded bg-slate-700/60 text-slate-300">
                       {it.direction}
+                    </span>
+                  )}
+                  {isSoften && typeof it.factor_before === 'number' && typeof it.factor_after === 'number' && (
+                    <span className="text-[10px] text-slate-300 font-mono tabular-nums">
+                      ×{it.factor_before.toFixed(2)} → ×{it.factor_after.toFixed(2)}
                     </span>
                   )}
                   <span className="text-[10px] text-slate-400 tabular-nums">
@@ -375,6 +404,19 @@ const ModelAdaptationsPanel = () => {
                         {typeof a.severity === 'number' && a.severity > 0 && (
                           <Badge className="bg-amber-500/10 text-amber-200 border-amber-500/30 text-[10px]" title="Mean |return_1d| on failing rows in this bucket">
                             {(a.severity * 100).toFixed(1)}% avg miss
+                          </Badge>
+                        )}
+                        {a.auto_softened && (
+                          <Badge
+                            className="bg-purple-500/15 text-purple-200 border-purple-500/30 text-[10px]"
+                            title={
+                              `Auto-softened ${a.auto_softening_steps || 1}× by the safety rail. `
+                              + `Factor walked toward 1.0 as consecutive retrains showed negative ΔR. `
+                              + `Will flip inactive if next step crosses ceiling.`
+                            }
+                            data-testid={`adaptation-softened-${a.metric}`}
+                          >
+                            softened ×{a.auto_softening_steps || 1}
                           </Badge>
                         )}
                       </div>

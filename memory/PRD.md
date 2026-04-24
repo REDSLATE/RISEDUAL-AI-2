@@ -54,6 +54,57 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Adaptive Factor Tuning — graduated soften before revert (Feb 24, 2026)
+Replaces the binary "3 bad retrains → kill" with a walk-down ladder:
+  `0.85 → 0.90 → 0.95 → inactive`. Same safety envelope (epsilon,
+  coverage, risk-compression, grace period), gentler touch at each
+  step so an adaptation gets multiple chances to prove useful at
+  progressively weaker strengths before the final flip.
+
+- **Backend** (`services/model_adaptation.py`):
+  - `evaluate_auto_revert_candidates()` refactored. On each gate-
+    trip: if `adjustment_factor + AUTO_SOFTEN_STEP (0.05)` stays
+    below `AUTO_SOFTEN_MAX_FACTOR (0.95)`, we SOFTEN (update
+    factor, leave active, increment `auto_softening_steps`,
+    stamp `last_auto_softened_at`). Otherwise we REVERT (same
+    path as before).
+  - **Counter reset** — the evidence window is filtered by
+    `adaptations_applied[i].factor == current_factor`, so after
+    softening the rule gets a fresh 3-run window at its new
+    strength before the next step. Prevents rapid 0.85 → 0.95 →
+    off collapse in a single cycle.
+  - Return value is now a list of action records tagged
+    `action ∈ {"soften", "revert"}` with `factor` / `next_factor`
+    so the caller can narrate both separately.
+- **Audit trail**: `adaptation_audit` rows now carry
+  `action: "auto_soften" | "auto_revert"` + `factor_before` +
+  `factor_after`. Adaptation doc grows
+  `auto_softened: true`, `auto_softening_steps` (counter),
+  `last_auto_softened_at`, `auto_softening_reason`.
+- **Activity feed**: new `adaptation_auto_softened` event type
+  (🪶 glyph, severity info) logged alongside the existing
+  `adaptation_auto_reverted` (🧯, severity warn). ML filter chip
+  catches both.
+- **Admin UI**: `AutoRevertStrip` in `ModelAdaptationsPanel`
+  renames to "Safety-rail audit" and colour-codes each row —
+  lavender for softens (with `×0.85 → ×0.90` inline factor
+  transition), rose for reverts. Pill counts in the header
+  (`N softens · M reverts`). Each active adaptation that's been
+  softened gets a purple `softened ×N` badge on its row.
+- **Tests**: 9/9 green in
+  `tests/test_auto_revert_safety_rail.py` (added: happy-path
+  soften asserts factor 0.85→0.90; final-kill after ceiling
+  asserts revert at factor 0.95; counter-reset verifies runs at
+  old factor don't count after softening). Full regression
+  **45/45 green**. Mypy 0→0, ruff + eslint clean.
+- **The loop is now** — detect → adapt → measure → *(soften →
+  soften → soften →)* revert. Four gates AND a graduated
+  correction stage. As close to "self-tuning without being
+  twitchy" as you can get without live ML retraining on the
+  counterfactual itself.
+
+
+
 ### Auto-Revert Safety Rail — measured self-correction (Feb 24, 2026)
 - NEW helper `evaluate_auto_revert_candidates(db)` in
   `services/model_adaptation.py`. Runs AFTER each retrain logs
