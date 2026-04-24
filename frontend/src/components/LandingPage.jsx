@@ -21,13 +21,13 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
   return (
     <header className="sticky top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <a href="#" className="text-lg font-bold text-white tracking-tight flex items-center gap-2" data-testid="landing-logo">
-          <span>
+        <a href="#" className="flex flex-col justify-center leading-none" data-testid="landing-logo">
+          <span className="text-lg font-bold text-white tracking-tight">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">RISEDUAL</span>
             <span className="text-slate-300 text-sm ml-1">AI</span>
           </span>
           <span
-            className="hidden sm:inline-flex items-center text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded border border-amber-400/40 bg-amber-500/10 text-amber-300"
+            className="self-start inline-flex items-center text-[8px] sm:text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded border border-amber-400/40 bg-amber-500/10 text-amber-300 mt-1"
             title="U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"
             data-testid="patent-pending-pill"
           >
