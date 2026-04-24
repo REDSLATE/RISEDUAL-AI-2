@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -7,6 +7,80 @@ import { Button } from '../ui/button';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
+
+// ── Auto-revert audit strip. Lists the most recent auto-reverts
+//    surfaced by the safety rail. Each row is expandable (click to
+//    show the ΔR/coverage history that triggered the revert).
+const AutoRevertStrip = ({ items }) => {
+  const [expanded, setExpanded] = useState(null);
+  return (
+    <div
+      className="mb-3 p-3 rounded-lg bg-rose-500/5 border border-rose-500/20"
+      data-testid="adaptations-auto-revert-strip"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
+        <div className="text-[10px] uppercase tracking-wider text-rose-300 font-semibold">
+          Auto-revert safety rail · {items.length} recent flip{items.length === 1 ? '' : 's'}
+        </div>
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((it, i) => {
+          const key = it.adaptation_id || `${it.metric}-${it.at}-${i}`;
+          const isOpen = expanded === key;
+          return (
+            <li
+              key={key}
+              className="rounded bg-slate-900/50 border border-slate-700/40"
+              data-testid={`adaptations-auto-revert-row-${i}`}
+            >
+              <button
+                type="button"
+                onClick={() => setExpanded(isOpen ? null : key)}
+                className="w-full flex items-start justify-between gap-2 px-2 py-1.5 text-left hover:bg-slate-800/40 transition-colors"
+              >
+                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono font-bold text-white">{it.metric}</span>
+                  {it.direction && it.direction !== 'ANY' && (
+                    <span className="text-[9px] font-mono px-1 rounded bg-slate-700/60 text-slate-300">
+                      {it.direction}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-400 tabular-nums">
+                    ΔR {it.deltas_r?.map((d) => (d >= 0 ? '+' : '') + d.toFixed(3)).join(' · ')}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums shrink-0">
+                  {it.at ? new Date(it.at).toLocaleString() : '—'}
+                </span>
+              </button>
+              {isOpen && (
+                <div
+                  className="px-3 py-2 border-t border-slate-700/40 text-[10px] text-slate-300 leading-snug space-y-0.5"
+                  data-testid={`adaptations-auto-revert-body-${i}`}
+                >
+                  <div>
+                    <span className="text-slate-500 uppercase tracking-wider text-[9px] mr-1">Δwin_rate</span>
+                    <span className="font-mono tabular-nums">
+                      {it.deltas_wr?.map((d) => (d >= 0 ? '+' : '') + (d * 100).toFixed(1) + '%').join(' · ')}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 uppercase tracking-wider text-[9px] mr-1">Coverage</span>
+                    <span className="font-mono tabular-nums">
+                      {it.coverages?.map((c) => (c * 100).toFixed(1) + '%').join(' · ')}
+                    </span>
+                  </div>
+                  <p className="text-slate-500 italic mt-1 break-all">{it.reason}</p>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
 
 const API = `${getApiBase()}/api/admin/adaptations`;
 
@@ -251,6 +325,13 @@ const ModelAdaptationsPanel = () => {
               (re-weighted existing R-multiples, no second fit). */}
           {data?.last_impact?.global && (
             <ImpactStrip impact={data.last_impact} />
+          )}
+
+          {/* Auto-revert audit trail — shown when the safety rail
+              has flipped adaptations recently. Silent when empty
+              so operators who never enable it see no noise. */}
+          {Array.isArray(data?.recent_auto_reverts) && data.recent_auto_reverts.length > 0 && (
+            <AutoRevertStrip items={data.recent_auto_reverts} />
           )}
 
           <div className="space-y-2" data-testid="adaptations-list">

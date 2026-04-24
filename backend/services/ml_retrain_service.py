@@ -702,6 +702,26 @@ async def run_nightly_retrain(
         })
 
     await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
+
+    # ── Auto-revert safety rail ──
+    # Runs AFTER the log row lands so ``evaluate_auto_revert_candidates``
+    # can count this retrain toward the 3-run window. Opt-in via
+    # ``ML_ADAPTATION_AUTO_REVERT_ENABLED``; fire-and-forget so
+    # a revert glitch can never corrupt the training log. See
+    # ``services.model_adaptation`` module docstring for gate
+    # semantics (epsilon, coverage, risk-compression).
+    try:
+        from services.model_adaptation import evaluate_auto_revert_candidates
+        reverted = await evaluate_auto_revert_candidates(db)
+        if reverted:
+            logger.info(
+                f"[auto-revert] disabled {len(reverted)} adaptation"
+                f"{'s' if len(reverted) != 1 else ''} based on negative "
+                f"ΔR history: {[r['metric'] for r in reverted]}"
+            )
+    except Exception as auto_revert_err:
+        logger.warning(f"[auto-revert] scan failed: {auto_revert_err}")
+
     return log_row
 
 

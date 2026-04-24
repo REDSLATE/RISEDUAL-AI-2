@@ -33,7 +33,7 @@ const FILTERS = [
   { key: 'all', label: 'All', test: () => true },
   { key: 'trades', label: 'Trades', test: (t) => t?.startsWith('paper_trade_') || t?.startsWith('prediction_') },
   { key: 'alerts', label: 'Alerts', test: (t) => t?.startsWith('alert_') || t?.startsWith('kill_switch_') },
-  { key: 'ml', label: 'ML', test: (t) => t?.startsWith('retrain_') },
+  { key: 'ml', label: 'ML', test: (t) => t?.startsWith('retrain_') || t === 'adaptation_auto_reverted' },
 ];
 
 // Mirror of backend FAILURE_MODES in services/post_mortem_service.py.

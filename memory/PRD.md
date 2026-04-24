@@ -54,6 +54,57 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Auto-Revert Safety Rail — measured self-correction (Feb 24, 2026)
+- NEW helper `evaluate_auto_revert_candidates(db)` in
+  `services/model_adaptation.py`. Runs AFTER each retrain logs
+  its row (so it can count that retrain toward the window). For
+  every active adaptation it pulls the last 3 retrain records
+  that applied it and flips the rule to inactive when ALL gates
+  pass:
+  - **Consistency** — ΔR < −0.01 across ALL 3 runs (below epsilon)
+  - **Coverage** — max `rows_matched / samples` ≥ 5% (small
+    samples can't earn statistical confidence)
+  - **Not risk-compression** — Δwin_rate ≤ 0 on all 3 runs
+    (ΔR-negative + win-rate-UP is legitimate downside control,
+    never a reason to revert)
+  - **Grace period** — requires ≥ 3 runs of history
+  - **Audit completeness** — if any of the 3 runs lacks
+    `delta_mean_r` (pre-attribution-layer row), defer until
+    history catches up
+- Cooldown on re-creation is already handled by
+  `_has_recent_adaptation(COOLDOWN_DAYS=7)` — auto-reverted rows
+  (created within the 7-day window) block detection from re-adding
+  the same `metric/direction`, so a flip-flop loop is
+  structurally impossible.
+- Env-gated: `ML_ADAPTATION_AUTO_REVERT_ENABLED=true` (default
+  off). Paired with `ML_ADAPTATION_ENABLED` so nothing fires in
+  detection-only mode.
+- **Audit trail**: writes to a new `adaptation_audit` collection
+  with `{action:"auto_revert", reason, deltas_r, deltas_wr,
+  coverages, metric, direction, at}`. Also tags the adaptation
+  row itself with `auto_reverted:true` + `auto_reverted_reason`
+  so operator-revert vs safety-rail-revert is distinguishable.
+  Narrated into the activity feed as a new
+  `adaptation_auto_reverted` event (registered in
+  `EVENT_TYPES` with 🧯 glyph; ML filter chip picks it up).
+- **Admin UI**: `GET /api/admin/adaptations` now surfaces the
+  last 10 auto-reverts as `recent_auto_reverts[]`.
+  `ModelAdaptationsPanel` renders them in a rose-tinted
+  `AutoRevertStrip` above the active list — each row is
+  click-to-expand revealing the ΔR/Δwin-rate/coverage history
+  that triggered the revert. Silent when the list is empty.
+- 7 pytest cases in `tests/test_auto_revert_safety_rail.py` cover
+  every gate (flag off no-op, happy-path revert, grace period,
+  epsilon noise, low coverage, risk compression, missing
+  attribution). Full regression 43/43 green. Ruff clean, mypy
+  baseline 0→0.
+- **The full closed loop** is now: **detect** toxic pattern →
+  **adapt** row weights → **measure** impact (global + per-ad) →
+  **correct** if persistently negative. Four layers of
+  intelligence, each with its own env flag and audit trail.
+
+
+
 ### Counterfactual Impact: ΔR + Δwin-rate — global + per-adaptation (Feb 24, 2026)
 - **Helper** `estimate_adaptation_impact(df, w_base, w_adapt)` in
   `ml_retrain_service.py`: re-weights existing R-multiple outcomes

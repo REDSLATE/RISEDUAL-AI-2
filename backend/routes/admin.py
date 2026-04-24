@@ -1454,7 +1454,8 @@ async def list_adaptations(request: Request):
     moving the expected outcome or just shuffling weights."""
     await _require_owner(request)
     if db is None:
-        return {"items": [], "enabled": False, "total": 0, "last_impact": None}
+        return {"items": [], "enabled": False, "total": 0,
+                "last_impact": None, "recent_auto_reverts": []}
     from services.model_adaptation import (
         adaptation_enabled,
         list_active_adaptations,
@@ -1495,11 +1496,29 @@ async def list_adaptations(request: Request):
     except Exception:
         last_impact = None
 
+    # Recent auto-reverts — surfaces the safety-rail activity in
+    # the same panel so admins see why a metric disappeared from
+    # the active list. Last 10 is plenty; older entries live in
+    # the `adaptation_audit` collection for long-range queries.
+    recent_auto_reverts: list[dict] = []
+    try:
+        cursor = (
+            db["adaptation_audit"]
+            .find({"action": "auto_revert"}, {"_id": 0})
+            .sort("at", -1)
+            .limit(10)
+        )
+        async for row in cursor:
+            recent_auto_reverts.append(row)
+    except Exception:
+        recent_auto_reverts = []
+
     return {
         "items": items,
         "enabled": adaptation_enabled(),
         "total": len(items),
         "last_impact": last_impact,
+        "recent_auto_reverts": recent_auto_reverts,
     }
 
 
