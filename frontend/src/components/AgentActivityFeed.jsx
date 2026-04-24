@@ -149,8 +149,52 @@ const WhyBlock = ({ why, eventType }) => {
 // predictions with their confidence, failure code, and the human
 // description. Turns the feed from "something fired" into
 // "here's what went wrong and why".
-const SpikeDetailsBlock = ({ spikes }) => {
-  if (!spikes || spikes.length === 0) {
+//
+// Two-tier data strategy:
+//   1. Inline (instant)  — `spike_details` already on the event
+//      metadata. Carries symbol/confidence/failure_code/date.
+//   2. Enriched (on open) — fetch `/api/admin/alerts/why/{id}` to
+//      add regime + feature-level drivers pulled from the most
+//      recent features_snapshots row per ticker. Falls back to
+//      inline data cleanly if the fetch fails.
+const SpikeDetailsBlock = ({ spikes, alertId }) => {
+  const [enriched, setEnriched] = useState(null);
+  const [loadingEnriched, setLoadingEnriched] = useState(false);
+
+  useEffect(() => {
+    if (!alertId) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingEnriched(true);
+      try {
+        const res = await authFetch(
+          `${API_BASE}/api/admin/alerts/why/${encodeURIComponent(alertId)}`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setEnriched(data.items || []);
+      } catch (e) {
+        logger.warn('alert why fetch failed', e);
+      } finally {
+        if (!cancelled) setLoadingEnriched(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [alertId]);
+
+  // Merge: enriched rows (if available) win by symbol, else inline.
+  const rows = (() => {
+    if (!enriched) return spikes || [];
+    const bySym = new Map();
+    (spikes || []).forEach((s) => { if (s.symbol) bySym.set(s.symbol, s); });
+    enriched.forEach((e) => {
+      const base = bySym.get(e.symbol) || {};
+      bySym.set(e.symbol, { ...base, ...e });
+    });
+    return Array.from(bySym.values());
+  })();
+
+  if (!rows || rows.length === 0) {
     return (
       <div className="mt-2 pt-2 border-t border-slate-700/40">
         <p className="text-[10px] italic text-slate-500">
@@ -165,10 +209,12 @@ const SpikeDetailsBlock = ({ spikes }) => {
       data-testid="agent-activity-spike-details"
     >
       <p className="text-[10px] italic text-slate-400 leading-snug mb-1.5">
-        Top {spikes.length} highest-confidence miss{spikes.length === 1 ? '' : 'es'} — model was most sure and most wrong here:
+        Top {rows.length} highest-confidence miss{rows.length === 1 ? '' : 'es'}
+        {loadingEnriched ? ' · loading drivers…' : ''}
+        {' — model was most sure and most wrong here:'}
       </p>
       <ul className="space-y-1.5">
-        {spikes.map((s, i) => {
+        {rows.map((s, i) => {
           const confPct =
             typeof s.confidence === 'number'
               ? s.confidence > 1
@@ -195,11 +241,31 @@ const SpikeDetailsBlock = ({ spikes }) => {
                 <span className="text-[9px] font-semibold text-red-300 px-1.5 rounded bg-red-500/10 border border-red-500/30">
                   {code}
                 </span>
+                {s.regime && (
+                  <span className="text-[9px] font-semibold text-cyan-300 px-1.5 rounded bg-cyan-500/10 border border-cyan-500/30">
+                    {s.regime}
+                  </span>
+                )}
                 {s.date && (
                   <span className="text-[9px] text-slate-500 tabular-nums">{s.date}</span>
                 )}
               </div>
               <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{desc}</p>
+              {s.drivers && s.drivers.length > 0 && (
+                <div
+                  className="mt-1 flex flex-wrap gap-1"
+                  data-testid={`agent-activity-spike-drivers-${i}`}
+                >
+                  {s.drivers.map((d, j) => (
+                    <span
+                      key={j}
+                      className="text-[9px] font-medium text-yellow-300 bg-yellow-500/10 border border-yellow-500/30 rounded px-1.5 py-0.5"
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
+              )}
             </li>
           );
         })}

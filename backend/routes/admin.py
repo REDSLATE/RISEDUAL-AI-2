@@ -1059,3 +1059,134 @@ async def alerts_replay(request: Request, alert_id: str):
         "still_failed": still_failed,
         "delivery_attempts": new_attempts,
     }
+
+
+
+# ============================================================
+# "WHY DID THIS ALERT FIRE?" — feature-level drilldown
+# ============================================================
+
+
+def _extract_drivers(snap: dict) -> list[str]:
+    """Lightweight heuristic: turn a features_snapshots row into
+    human-readable driver strings.
+
+    This is the MVP sibling of the roadmap SHAP/feature-importance
+    path — no model calls, pure thresholds against columns that
+    actually exist on the snapshot. Each positive condition becomes
+    one bullet in the UI drilldown. Returns the first ~3 hits so
+    the UI stays skimmable.
+
+    Pattern flags are boolean fields — `pattern_rsi_divergence: True`
+    directly tells us "that pattern fired on this row".
+    """
+    drivers: list[str] = []
+
+    rsi = snap.get("rsi_14")
+    if isinstance(rsi, (int, float)):
+        if rsi >= 70:
+            drivers.append(f"overbought RSI ({rsi:.0f})")
+        elif rsi <= 30:
+            drivers.append(f"oversold RSI ({rsi:.0f})")
+
+    vr = snap.get("volume_ratio")
+    if isinstance(vr, (int, float)):
+        if vr < 0.8:
+            drivers.append(f"low volume confirmation ({vr:.2f}x)")
+        elif vr > 2.0:
+            drivers.append(f"volume surge ({vr:.1f}x)")
+
+    sm = snap.get("sector_momentum")
+    if isinstance(sm, (int, float)) and sm < -0.02:
+        drivers.append(f"negative sector momentum ({sm * 100:+.1f}%)")
+
+    macd = snap.get("macd")
+    macd_sig = snap.get("macd_signal")
+    if isinstance(macd, (int, float)) and isinstance(macd_sig, (int, float)):
+        if macd < macd_sig and macd < 0:
+            drivers.append("MACD bearish crossover")
+
+    if snap.get("pattern_rsi_divergence"):
+        drivers.append("RSI divergence")
+    if snap.get("pattern_head_and_shoulders"):
+        drivers.append("head & shoulders pattern")
+    if snap.get("pattern_bearish_engulfing"):
+        drivers.append("bearish engulfing")
+    if snap.get("pattern_double_bottom"):
+        drivers.append("double bottom (failed)")
+
+    sent = snap.get("sentiment_score")
+    if isinstance(sent, (int, float)) and sent < -0.3:
+        drivers.append(f"negative sentiment ({sent:+.2f})")
+
+    return drivers[:3]
+
+
+@router.get("/alerts/why/{alert_id}")
+async def alert_why(alert_id: str, request: Request):
+    """Feature-level drilldown: for each affected ticker on the
+    alert, pull the most-recent ``features_snapshots`` row and run
+    heuristic driver extraction against real feature columns.
+
+    Best-effort join: ``features_snapshots`` rarely stores
+    ``prediction_id`` in this deployment (only ~25 / 276k rows), so
+    we can't perfectly match the ChromaDB toxic row to its feature
+    snapshot. Instead we grab the most recent snapshot per ticker
+    as a "what was the model seeing around that time?" proxy.
+    When no snapshot exists for a ticker we just omit it from the
+    result — the client already has the ChromaDB-level confidence
+    + failure_code via the ``alert_reserved`` event metadata and
+    can render a degraded row.
+
+    Admin-only.
+    """
+    await _require_admin(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    alert = await db["alerts_sent"].find_one({"alert_id": alert_id}, {"_id": 0})
+    if alert is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    meta = alert.get("metadata") or {}
+    # spike_details lives on replay_payload for current-generation
+    # rows; fall back to affected_tickers for anything older.
+    spikes = ((meta.get("replay_payload") or {}).get("spike_details")
+              or [])
+    if not spikes:
+        spikes = [
+            {"symbol": t, "confidence": None, "failure_code": "UNKNOWN"}
+            for t in (meta.get("affected_tickers") or [])
+        ]
+
+    enriched = []
+    for spike in spikes[:10]:
+        ticker = spike.get("symbol")
+        if not ticker or ticker == "?":
+            continue
+        snap = await db["features_snapshots"].find_one(
+            {"ticker": ticker},
+            {"_id": 0, "rsi_14": 1, "volume_ratio": 1, "macd": 1,
+             "macd_signal": 1, "sector_momentum": 1, "sentiment_score": 1,
+             "regime_label": 1, "timestamp": 1,
+             "pattern_rsi_divergence": 1, "pattern_head_and_shoulders": 1,
+             "pattern_bearish_engulfing": 1, "pattern_double_bottom": 1},
+            sort=[("timestamp", -1)],
+        )
+        drivers = _extract_drivers(snap) if snap else []
+        enriched.append({
+            "symbol": ticker,
+            "confidence": spike.get("confidence"),
+            "failure_code": spike.get("failure_code", "UNKNOWN"),
+            "date": spike.get("date"),
+            "regime": (snap or {}).get("regime_label"),
+            "snapshot_at": (snap or {}).get("timestamp"),
+            "drivers": drivers,
+        })
+
+    return {
+        "alert_id": alert_id,
+        "toxic_count": meta.get("toxic_count", 0),
+        "alert_type": alert.get("alert_type", "toxic_spike"),
+        "items": enriched,
+    }

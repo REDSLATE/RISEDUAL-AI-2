@@ -1,5 +1,17 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-24 — "Why" Drilldown Endpoint: Feature-Level Drivers from Real Snapshots
+- **Schema reality check**: user's proposed endpoint targeted `learning_engine_trades` with `features_snapshot` + `regime` fields. Actual schema: `learning_engine_trades` uses `asset`/`strategy_id` (not `symbol`/`strategy`), has **no feature fields**, and zero rows with `r_multiple ≤ -1` in current data. Features live in `features_snapshots` (276k rows) which has `rsi_14`, `volume_ratio`, `macd`/`macd_signal`, `sector_momentum`, `sentiment_score`, `regime_label`, and 7 `pattern_*` boolean flags. The endpoint was adapted accordingly.
+- **New endpoint `GET /api/admin/alerts/why/{alert_id}`** (`routes/admin.py`): reads `replay_payload.spike_details` off the alert (falls back to `affected_tickers` for legacy rows), fetches most-recent `features_snapshots` row per ticker (best-effort proxy — only 25/276k snapshots carry `prediction_id`, so exact-snapshot join isn't reliable), runs heuristic driver extraction via the new `_extract_drivers()`. Returns `{symbol, confidence, failure_code, date, regime, snapshot_at, drivers}` per ticker. Admin-gated.
+- **`_extract_drivers()` heuristic** — 3 bullets max: overbought/oversold RSI (thresholds 70/30), low/surge volume_ratio (0.8 / 2.0), negative sector momentum (< -2%), MACD bearish crossover (macd<signal and macd<0), pattern flags (`pattern_rsi_divergence`, `pattern_head_and_shoulders`, `pattern_bearish_engulfing`, `pattern_double_bottom`), negative sentiment (< -0.3). Returns `[]` cleanly when no triggers fire or feature values are null.
+- **`AgentActivityFeed.SpikeDetailsBlock`** upgraded to two-tier data: inline `spike_details` renders immediately when the drilldown opens, and an async fetch to `/api/admin/alerts/why/{id}` enriches the rows with drivers + regime by symbol merge. Drivers render as yellow chip badges; regime renders as a cyan badge next to the failure_code. Graceful degradation: fetch failure leaves the inline-only version intact (no broken UI).
+- **Verified E2E** via curl:
+  - Seeded alert with AAPL/NVDA/MSFT spike_details → endpoint returned 3 items with correct merge of spike metadata + latest snapshot timestamps ✅
+  - `_extract_drivers()` unit-tested with toxic-signal scenario → `['overbought RSI (75)', 'low volume confirmation (0.60x)', 'negative sector momentum (-3.5%)']` ✅
+  - Clean/empty inputs → `[]` (safe degrade) ✅
+  - 404 for bogus alert_id (from earlier endpoint wiring) ✅
+  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
+
 ## 2026-04-24 — "Why Did This Alert Fire?" Drilldown + Latent Import Bug Caught
 - **Latent runtime bug fixed**: `AgentActivityFeed.jsx` was using `RotateCcw`, `Loader2`, and `toast` without importing them. Webpack compiled fine (no static checker) but the failed-delivery replay button would have thrown `ReferenceError` at runtime the first time a user saw it. Added the full import set.
 - **`services/agent_activity_service.log_alert_reserved`**: new optional `spike_details` arg — caller passes a pre-trimmed list of top offenders; persisted verbatim in the event metadata.
