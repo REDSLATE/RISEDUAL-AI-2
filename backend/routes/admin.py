@@ -1446,19 +1446,60 @@ async def alert_why(alert_id: str, request: Request):
 async def list_adaptations(request: Request):
     """Active model adaptations — bounded row-weight adjustments
     applied at retrain time based on recent toxic-alert patterns.
-    Owner-gated (touches ML behaviour)."""
+    Owner-gated (touches ML behaviour).
+
+    Also carries the most recent ``adaptation_impact`` block from
+    the ml_training_log — callers surface ΔR / Δwin-rate so admins
+    can tell at a glance whether the adaptation set is actually
+    moving the expected outcome or just shuffling weights."""
     await _require_owner(request)
     if db is None:
-        return {"items": [], "enabled": False, "total": 0}
+        return {"items": [], "enabled": False, "total": 0, "last_impact": None}
     from services.model_adaptation import (
         adaptation_enabled,
         list_active_adaptations,
     )
     items = await list_active_adaptations(db)
+
+    # Most recent retrain row carrying an adaptation_impact block.
+    # Older rows (pre-upgrade) don't have it — we silently skip.
+    last_impact = None
+    try:
+        run = await db["ml_training_log"].find_one(
+            {"adaptation_impact": {"$exists": True}},
+            {"_id": 0, "adaptation_impact": 1, "adaptations_applied": 1,
+             "started_at": 1, "finished_at": 1, "model_version": 1},
+            sort=[("started_at", -1)],
+        )
+        if run:
+            ts = run.get("finished_at") or run.get("started_at")
+            if hasattr(ts, "isoformat"):
+                ts = ts.isoformat()
+            per_ad = []
+            for row in run.get("adaptations_applied") or []:
+                if "delta_mean_r" in row or "delta_win_rate" in row:
+                    per_ad.append({
+                        "adaptation_id": row.get("adaptation_id"),
+                        "metric": row.get("metric"),
+                        "direction": row.get("direction"),
+                        "rows_matched": row.get("rows_matched"),
+                        "delta_mean_r": row.get("delta_mean_r"),
+                        "delta_win_rate": row.get("delta_win_rate"),
+                    })
+            last_impact = {
+                "at": ts,
+                "model_version": run.get("model_version"),
+                "global": run["adaptation_impact"],
+                "per_adaptation": per_ad,
+            }
+    except Exception:
+        last_impact = None
+
     return {
         "items": items,
         "enabled": adaptation_enabled(),
         "total": len(items),
+        "last_impact": last_impact,
     }
 
 

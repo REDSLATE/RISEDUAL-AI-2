@@ -54,6 +54,52 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Counterfactual Impact: ΔR + Δwin-rate — global + per-adaptation (Feb 24, 2026)
+- **Helper** `estimate_adaptation_impact(df, w_base, w_adapt)` in
+  `ml_retrain_service.py`: re-weights existing R-multiple outcomes
+  to produce the counterfactual "if these adaptation weights had
+  been live, how would the expected outcome have shifted?"
+  Returns `baseline_mean_r`, `adapted_mean_r`, `delta_mean_r`,
+  `baseline_win_rate`, `adapted_win_rate`, `delta_win_rate`,
+  `rows_covered_frac`. Empty dict if the training frame lacks
+  `r_multiple` (warm-start).
+- **Hook**: wired into the retrain pipeline right after
+  `apply_adaptations_to_weights()` and before `model.fit`. Logged
+  to `ml_training_log.adaptation_impact` AND mirrored into the
+  per-row `adaptations_applied[]` list with per-adaptation
+  `delta_mean_r` + `delta_win_rate`. Per-adaptation attribution
+  isolates each rule's contribution by counterfactually resetting
+  that rule's rows back to their pre-adaptation weight while
+  keeping other rules' adaptations live.
+- **Supporting changes**: `apply_adaptations_to_weights()` now
+  accepts `return_masks=True` and returns a 3-tuple with aligned
+  per-adaptation boolean masks (used for attribution).
+  `_load_training_dataframe()` returns an extra `outcomes_df`
+  carrying `r_multiple` + `return_1d` + `outcome` so the impact
+  calc doesn't need the full training frame. Typed with
+  `@overload` so mypy sees the right return shape per call site.
+- **Admin UI**: `GET /api/admin/adaptations` now carries a
+  `last_impact` block (latest retrain's impact + per-ad deltas).
+  `ModelAdaptationsPanel` renders a new `ImpactStrip` above the
+  list with 4 KPI tiles (ΔR, Δwin, baseline R/win, rows covered),
+  an italic proxy-caveat line, and an amber "too broad" warning
+  when coverage >80% with near-zero deltas. Each adaptation row
+  gets inline `ΔR +0.040 · Δwin +2.0%` chips when per-ad impact is
+  available.
+- **Tests**: 4 new pytest cases in `tests/test_adaptation_impact.py`
+  (empty frame, sign-aware shift, zero when weights equal, mask
+  alignment with summary). Full regression 36/36. Mypy 0→0, ruff
+  clean. Verified end-to-end with a synthetic ml_training_log row:
+  ΔR=0.06 (+4.8pp), per-ad volume.liquidity/LONG ΔR=0.04 flowed
+  through to the panel payload.
+- **Closes the loop** one more level deep: the "Why did this
+  adaptation exist?" drilldown already shows the toxic-event
+  evidence; the impact strip now shows "and here's what it did to
+  our expected return." Full narrative from failure → evidence →
+  adaptation → quantified effect.
+
+
+
 ### Code-Review Triage (Feb 24, 2026) — 10-item report
 Received a new code-review report with 10 findings. Validated each before acting:
 - **#1 Circular import** → FALSE (`import ai_core` succeeds)

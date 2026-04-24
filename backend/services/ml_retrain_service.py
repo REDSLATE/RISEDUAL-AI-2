@@ -69,17 +69,23 @@ def _next_version_number() -> int:
 
 async def _load_training_dataframe(
     db: Any, max_samples: int
-) -> tuple[Any, Any, Any, Any, int, dict]:
+) -> tuple[Any, Any, Any, Any, int, dict, Any]:
     """Pull labeled snapshots and return
-    ``(X_df, y_series, w_final, w_severity_only, n_rows, r_drift)``.
+    ``(X_df, y_series, w_final, w_severity_only, n_rows, r_drift,
+    outcomes_df)``.
 
     Tuple is ``(pandas.DataFrame, pandas.Series[int],
-    pandas.Series[float], pandas.Series[float], int, dict)`` — the
-    fourth element is the severity-only weights (pre-regime
-    multiply), exposed for drift-logging. The sixth is a dict of
-    R-weighting adoption metrics (``r_eligible_frac``,
-    ``r_skipped_frac``) for the retrain log. Callers that only care
-    about training can ignore them.
+    pandas.Series[float], pandas.Series[float], int, dict,
+    pandas.DataFrame)`` — the fourth element is the severity-only
+    weights (pre-regime multiply), exposed for drift-logging. The
+    sixth is a dict of R-weighting adoption metrics
+    (``r_eligible_frac``, ``r_skipped_frac``) for the retrain log.
+    The seventh is a slim outcomes frame carrying ``r_multiple``
+    (when present) and ``return_1d`` — used by
+    :func:`estimate_adaptation_impact` for counterfactual ΔR
+    without having to re-load the snapshots or expose the full
+    training ``df`` to the caller. Callers that only care about
+    training can ignore elements 6 and 7.
 
     The `w_final` series is a **severity × regime-relevance**
     sample weight:
@@ -114,7 +120,8 @@ async def _load_training_dataframe(
     if not rows:
         empty_w = pd.Series(dtype=float)
         return (pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0,
-                {"r_eligible_frac": 0.0, "r_skipped_frac": 0.0})
+                {"r_eligible_frac": 0.0, "r_skipped_frac": 0.0},
+                pd.DataFrame())
 
     df = pd.DataFrame(rows)
     y = (df["outcome"] == "up").astype(int)
@@ -135,7 +142,12 @@ async def _load_training_dataframe(
         "r_eligible_frac": elig_count / n if n else 0.0,
         "r_skipped_frac": skipped_frac,
     }
-    return X, y, w_final, severity, n, r_drift
+    # Slim outcomes frame for counterfactual impact calc — carries
+    # r_multiple + return_1d only so we don't drag the full rows
+    # payload (raw features, artefacts) around.
+    outcome_cols = [c for c in ("r_multiple", "return_1d", "outcome") if c in df.columns]
+    outcomes_df = df[outcome_cols].copy() if outcome_cols else pd.DataFrame(index=df.index)
+    return X, y, w_final, severity, n, r_drift, outcomes_df
 
 
 async def _resolve_current_regime(db: Any) -> str | None:
@@ -264,6 +276,68 @@ def _r_eligible_mask_and_weights(df: Any) -> tuple[Any, Any]:
                 direction=row["direction"],
             )
     return eligible, weights
+
+
+
+def estimate_adaptation_impact(
+    df: Any,
+    base_weights: Any,
+    adapted_weights: Any,
+    r_col: str = "r_multiple",
+) -> dict:
+    """Estimate how the just-applied adaptations would have shifted
+    the training distribution's expected outcome.
+
+    First-order counterfactual: re-weights the existing R-multiple
+    outcomes (no second model.fit). Returns empty dict if the
+    training frame doesn't carry an R column (warm-start / legacy
+    rows). This is a cheap proxy, not a full backtest — see
+    ``adaptation_impact`` in the retrain log for caveats.
+
+    Returns keys: ``baseline_mean_r``, ``adapted_mean_r``,
+    ``delta_mean_r``, ``baseline_win_rate``, ``adapted_win_rate``,
+    ``delta_win_rate``.
+    """
+    import numpy as np
+
+    r = df.get(r_col) if hasattr(df, "get") else None
+    if r is None or len(r) == 0:
+        return {}
+
+    r_arr = np.asarray(r, dtype=float)
+    w0 = np.asarray(base_weights, dtype=float)
+    w1 = np.asarray(adapted_weights, dtype=float)
+
+    valid = np.isfinite(r_arr) & np.isfinite(w0) & np.isfinite(w1)
+    if not valid.any():
+        return {}
+
+    r_arr = r_arr[valid]
+    w0 = w0[valid]
+    w1 = w1[valid]
+
+    def _wmean(x: Any, w: Any) -> float:
+        s = float(w.sum())
+        return float((x * w).sum() / max(s, 1e-9))
+
+    baseline_r = _wmean(r_arr, w0)
+    adapted_r = _wmean(r_arr, w1)
+    wins = (r_arr > 0).astype(float)
+    baseline_wr = _wmean(wins, w0)
+    adapted_wr = _wmean(wins, w1)
+
+    return {
+        "baseline_mean_r": baseline_r,
+        "adapted_mean_r": adapted_r,
+        "delta_mean_r": adapted_r - baseline_r,
+        "baseline_win_rate": baseline_wr,
+        "adapted_win_rate": adapted_wr,
+        "delta_win_rate": adapted_wr - baseline_wr,
+        # Used to detect "too-broad" adaptations at the UI layer:
+        # if coverage == 1.0 every row got touched → the rule is
+        # not actually selective (see market-leader's note below).
+        "rows_covered_frac": float((w0 != w1).sum() / max(len(w0), 1)),
+    }
 
 
 def _severity_weights(df: Any) -> Any:
@@ -414,7 +488,7 @@ async def run_nightly_retrain(
         except Exception as e:
             logger.warning(f"[retrain] adaptation detection failed: {e}")
 
-        X, y, w, w_severity_only, n, r_drift = await _load_training_dataframe(db, max_samples)
+        X, y, w, w_severity_only, n, r_drift, outcomes_df = await _load_training_dataframe(db, max_samples)
         log_row["samples"] = n
         log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
 
@@ -521,7 +595,10 @@ async def run_nightly_retrain(
         try:
             import numpy as _np
             w_mean_before = float(_np.asarray(w).mean()) if n > 0 else 0.0
-            w, adaptation_summary = await apply_adaptations_to_weights(db, X, w, y=y)
+            w_pre = _np.asarray(w).copy()  # snapshot for impact calc
+            w, adaptation_summary, per_ad_masks = await apply_adaptations_to_weights(
+                db, X, w, y=y, return_masks=True,
+            )
             if adaptation_summary:
                 w_mean_after = float(_np.asarray(w).mean()) if n > 0 else 0.0
                 log_row["adaptations_applied"] = adaptation_summary
@@ -530,6 +607,53 @@ async def run_nightly_retrain(
                 log_row["adaptation_weight_delta_mean"] = round(
                     w_mean_after - w_mean_before, 4,
                 )
+                # ── Counterfactual impact (ΔR, Δwin_rate) ──
+                # First-order proxy: re-weights existing R-multiple
+                # outcomes. Cheap (no second model.fit). Empty dict
+                # when the training frame doesn't carry r_multiple
+                # (warm-start / legacy rows).
+                impact = estimate_adaptation_impact(outcomes_df, w_pre, _np.asarray(w))
+                if impact:
+                    log_row["adaptation_impact"] = {
+                        k: round(v, 4) if isinstance(v, (int, float)) else v
+                        for k, v in impact.items()
+                    }
+                    logger.info(
+                        "[adaptation-impact] ΔR=%+.4f Δwin_rate=%+.3f "
+                        "coverage=%.2f",
+                        impact["delta_mean_r"],
+                        impact["delta_win_rate"],
+                        impact["rows_covered_frac"],
+                    )
+                    # Per-adaptation attribution: which specific rule
+                    # actually moved the needle? Enriches each summary
+                    # row with its own delta_mean_r / delta_win_rate.
+                    # Cost is O(n_adaptations × n_rows) — negligible.
+                    for i_ad, ad_row in enumerate(adaptation_summary):
+                        if i_ad >= len(per_ad_masks):
+                            break
+                        m = per_ad_masks[i_ad]
+                        try:
+                            m_arr = _np.asarray(m).astype(bool)
+                        except Exception:
+                            continue
+                        if not m_arr.any():
+                            continue
+                        # Counterfactual: set THIS adaptation's rows
+                        # back to their pre-adaptation weight while
+                        # keeping others at their adapted value.
+                        w_only = _np.asarray(w).copy()
+                        w_only[m_arr] = w_pre[m_arr]
+                        ad_impact = estimate_adaptation_impact(
+                            outcomes_df, w_only, _np.asarray(w),
+                        )
+                        if ad_impact:
+                            ad_row["delta_mean_r"] = round(
+                                ad_impact["delta_mean_r"], 4,
+                            )
+                            ad_row["delta_win_rate"] = round(
+                                ad_impact["delta_win_rate"], 4,
+                            )
                 logger.info(
                     f"ML retrain: adaptation hook — "
                     f"mean_weight {w_mean_before:.4f} → {w_mean_after:.4f} "

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle } from 'lucide-react';
+import { Brain, RefreshCw, PowerOff, Undo2, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -9,6 +9,109 @@ import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
 
 const API = `${getApiBase()}/api/admin/adaptations`;
+
+// ── Sign-aware impact badge. Green for improvements, rose for
+//    regressions, slate for neutral. When ``pct`` is set we render
+//    the raw value × 100 with a `%` suffix (win-rate semantics);
+//    otherwise as a signed decimal (expectancy/R). When ``compact``
+//    is set we shrink to the inline-row variant for per-adaptation
+//    attribution badges — same math, smaller surface.
+const ImpactBadge = ({ label, value, pct = false, compact = false }) => {
+  if (value === null || value === undefined || !isFinite(value)) return null;
+  const isUp = value > 1e-6;
+  const isDown = value < -1e-6;
+  const Icon = isUp ? TrendingUp : isDown ? TrendingDown : Minus;
+  const tone = isUp
+    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+    : isDown
+      ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+      : 'text-slate-300 bg-slate-700/40 border-slate-600/40';
+  const rendered = pct
+    ? `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`
+    : `${value >= 0 ? '+' : ''}${value.toFixed(3)}`;
+  if (compact) {
+    return (
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono tabular-nums ${tone}`}>
+        <Icon className="w-2.5 h-2.5" />
+        <span className="text-[9px] uppercase tracking-wider opacity-70">{label}</span>
+        {rendered}
+      </span>
+    );
+  }
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 ${tone}`}>
+      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider opacity-70">
+        <Icon className="w-3 h-3" />
+        {label}
+      </div>
+      <div className="text-sm font-mono font-bold tabular-nums">{rendered}</div>
+    </div>
+  );
+};
+
+// ── Global impact strip. Renders above the adaptations list with
+//    the counterfactual "if these weights had been live last
+//    retrain, how would our expected R + win-rate have shifted?"
+//    plus coverage (how much of the training set was touched).
+//    A high coverage with near-zero deltas is a tell that
+//    adaptations are too broad — surfaced with a warning banner.
+const ImpactStrip = ({ impact }) => {
+  const g = impact?.global || {};
+  const ts = impact?.at ? new Date(impact.at).toLocaleString() : null;
+  const modelV = impact?.model_version;
+  const broadRuleWarning = (
+    g.rows_covered_frac != null && g.rows_covered_frac > 0.8
+    && Math.abs(g.delta_mean_r || 0) < 0.005
+    && Math.abs(g.delta_win_rate || 0) < 0.005
+  );
+  return (
+    <div
+      className="mb-3 p-3 rounded-lg bg-slate-900/50 border border-slate-700/40"
+      data-testid="adaptations-impact-strip"
+    >
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+            Last retrain · counterfactual impact
+          </div>
+          {modelV && (
+            <span className="text-[10px] font-mono text-slate-500">v{modelV}</span>
+          )}
+        </div>
+        {ts && <span className="text-[10px] text-slate-500 tabular-nums">{ts}</span>}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <ImpactBadge label="ΔR (expectancy)" value={g.delta_mean_r} />
+        <ImpactBadge label="Δ win-rate" value={g.delta_win_rate} pct />
+        <div className="flex flex-col items-center justify-center rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400">baseline R / win</div>
+          <div className="text-xs font-mono text-slate-200 tabular-nums">
+            {typeof g.baseline_mean_r === 'number' ? g.baseline_mean_r.toFixed(3) : '—'}
+            {' · '}
+            {typeof g.baseline_win_rate === 'number' ? `${(g.baseline_win_rate * 100).toFixed(1)}%` : '—'}
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400">rows covered</div>
+          <div className="text-xs font-mono text-slate-200 tabular-nums">
+            {typeof g.rows_covered_frac === 'number' ? `${(g.rows_covered_frac * 100).toFixed(1)}%` : '—'}
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-500 mt-2 leading-snug italic">
+        First-order proxy: re-weighted existing R-multiple outcomes. No second fit — not a guarantee of live improvement.
+      </p>
+      {broadRuleWarning && (
+        <div
+          className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[10px] leading-snug"
+          data-testid="adaptations-impact-broad-warning"
+        >
+          <strong>Heads up:</strong> adaptation set covers &gt;80% of rows with near-zero Δ. Rules may be too broad — tighten <code className="bg-slate-900/50 px-1 rounded">compute_metric_failure_lift</code> thresholds for more selective down-weighting.
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * ModelAdaptationsPanel — view + revert the bounded row-weight
@@ -142,10 +245,22 @@ const ModelAdaptationsPanel = () => {
             </div>
           )}
 
+          {/* Impact strip — surfaces the last retrain's counterfactual
+              ΔR and Δwin-rate so admins can see whether adaptations
+              are actually moving expected outcome. First-order proxy
+              (re-weighted existing R-multiples, no second fit). */}
+          {data?.last_impact?.global && (
+            <ImpactStrip impact={data.last_impact} />
+          )}
+
           <div className="space-y-2" data-testid="adaptations-list">
             {items.map((a) => {
               const pct = Math.round((1 - a.adjustment_factor) * 100);
               const weightDirection = a.adjustment_factor < 1 ? 'down' : 'up';
+              // Per-adaptation impact from last retrain (if this
+              // adaptation was in that run's adaptations_applied).
+              const perAd = (data?.last_impact?.per_adaptation || [])
+                .find((p) => p.adaptation_id === a.adaptation_id);
               return (
                 <div
                   key={a.adaptation_id}
@@ -183,6 +298,18 @@ const ModelAdaptationsPanel = () => {
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1 leading-snug">{a.description}</p>
+                      {perAd && (
+                        <div
+                          className="mt-1.5 flex items-center gap-2 flex-wrap"
+                          data-testid={`adaptation-impact-${a.metric}`}
+                        >
+                          <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold">
+                            last retrain impact:
+                          </span>
+                          <ImpactBadge label="ΔR" value={perAd.delta_mean_r} compact />
+                          <ImpactBadge label="Δwin" value={perAd.delta_win_rate} compact pct />
+                        </div>
+                      )}
                       <p className="text-[10px] text-slate-500 mt-1 tabular-nums">
                         created {a.created_at?.slice(0, 16).replace('T', ' ')} · expires {String(a.expires_at).slice(0, 10)}
                       </p>

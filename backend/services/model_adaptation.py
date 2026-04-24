@@ -34,7 +34,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal, overload
 
 logger = logging.getLogger(__name__)
 
@@ -547,15 +547,36 @@ async def disable_all_adaptations(db: Any) -> int:
     return int(res.modified_count)
 
 
+@overload
+async def apply_adaptations_to_weights(
+    db: Any, df: Any, w: Any, y: Any | None = ...,
+    *, return_masks: Literal[False] = ...,
+) -> tuple[Any, list[dict]]: ...
+
+
+@overload
+async def apply_adaptations_to_weights(
+    db: Any, df: Any, w: Any, y: Any | None = ...,
+    *, return_masks: Literal[True],
+) -> tuple[Any, list[dict], list[Any]]: ...
+
+
 async def apply_adaptations_to_weights(
     db: Any, df: Any, w: Any, y: Any | None = None,
-) -> tuple[Any, list[dict]]:
+    return_masks: bool = False,
+) -> tuple[Any, list[dict]] | tuple[Any, list[dict], list[Any]]:
     """Multiply per-row sample weights by each active adaptation's
     factor for the rows that match the adaptation's condition AND
     directional proxy.
 
-    Returns ``(adjusted_weights, applied_summary)``. When
-    ``ML_ADAPTATION_ENABLED`` is false this is a dry-run: the
+    Returns ``(adjusted_weights, applied_summary)`` by default.
+    When ``return_masks=True``, returns a 3-tuple with an extra
+    ``per_adaptation_masks`` list aligned with ``applied_summary``
+    — each entry is a boolean pandas Series over ``df.index``
+    marking the rows that particular adaptation touched. Used by
+    the retrain pipeline for per-adaptation impact attribution.
+
+    When ``ML_ADAPTATION_ENABLED`` is false this is a dry-run: the
     summary reflects what WOULD change but ``w`` is returned
     unmodified.
 
@@ -577,6 +598,9 @@ async def apply_adaptations_to_weights(
 
     adaptations = await list_active_adaptations(db)
     if not adaptations:
+        empty_masks: list[Any] = []
+        if return_masks:
+            return w, [], empty_masks
         return w, []
 
     enabled = adaptation_enabled()
@@ -593,6 +617,7 @@ async def apply_adaptations_to_weights(
             y_arr = None  # shape mismatch — skip directional filtering
 
     summary: list[dict] = []
+    masks: list[Any] = []
     for ad in adaptations:
         col = ad.get("column")
         direction = ad.get("direction", "ANY")
@@ -604,9 +629,11 @@ async def apply_adaptations_to_weights(
                 "rows_matched": 0,
                 "skipped_reason": f"column_missing:{col}",
             })
+            masks.append(pd.Series([False] * len(df), index=df.index))
             continue
         rule = ADAPTATION_RULES.get(ad["metric"])
         if rule is None:
+            masks.append(pd.Series([False] * len(df), index=df.index))
             continue
         condition: Callable[[Any], bool] = rule["condition"]
         cond_mask = df[col].apply(condition).astype(bool)
@@ -623,6 +650,7 @@ async def apply_adaptations_to_weights(
         factor = max(min(factor, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
         if n_match > 0:
             cumulative.loc[mask] = cumulative.loc[mask] * factor
+        masks.append(mask)
         summary.append({
             "adaptation_id": ad["adaptation_id"],
             "metric": ad["metric"],
@@ -677,7 +705,7 @@ async def apply_adaptations_to_weights(
     except Exception:
         pass
 
-    return np.asarray(adjusted), summary
+    return (np.asarray(adjusted), summary, masks) if return_masks else (np.asarray(adjusted), summary)
 
 
 async def _projected_impact(db: Any, adaptations: list[dict]) -> dict:
