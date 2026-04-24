@@ -630,6 +630,13 @@ async def apply_adaptations_to_weights(
             "column": col,
             "factor": factor,
             "rows_matched": n_match,
+            # Narrative fields — surfaced in the activity feed and
+            # used by /api/admin/adaptations/why/{id}. Defensively
+            # cast so a malformed DB row never crashes the retrain.
+            "lift": (float(ad["contrast"]) if ad.get("contrast") is not None else None),
+            "severity": (float(ad["severity"]) if ad.get("severity") is not None else None),
+            "evidence_count": int(ad.get("evidence_count") or 0),
+            "description": ad.get("description"),
         })
 
     # Floor the cumulative multiplier so stacking doesn't nuke a
@@ -640,6 +647,15 @@ async def apply_adaptations_to_weights(
         adjusted = w * cumulative
     else:
         adjusted = w  # dry-run: return untouched weights
+
+    # Mean weight before/after — observable evidence of the
+    # adaptation's effect on the training distribution. When
+    # disabled (dry-run) the values are identical by design.
+    try:
+        mean_before = float(pd.Series(w).astype(float).mean())
+        mean_after = float(pd.Series(adjusted).astype(float).mean())
+    except Exception:
+        mean_before = mean_after = 0.0
 
     # Narrate the apply step so admins see exactly what the retrain
     # saw. Fire-and-forget; never blocks. Compute a projected
@@ -655,6 +671,8 @@ async def apply_adaptations_to_weights(
             adaptations=summary,
             total_matched=total_matched,
             projected_impact=projected_impact,
+            mean_weight_before=mean_before,
+            mean_weight_after=mean_after,
         )
     except Exception:
         pass

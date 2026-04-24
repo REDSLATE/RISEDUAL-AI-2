@@ -1489,3 +1489,99 @@ async def disable_all_adaptations_endpoint(request: Request):
     n = await disable_all_adaptations(db)
     return {"status": "disabled_all", "deactivated": n}
 
+
+
+# ── Metric → plain-English narrator. Keeps the "why" payload
+#    self-contained so the UI doesn't need a second hop to make
+#    sense of it. Lift is rendered as N.NNx so non-ML admins can
+#    read it at a glance ("1.52× more often than baseline").
+def _explain_adaptation_metric(metric: str, lift: float | None,
+                               direction: str | None) -> str:
+    suffix = ""
+    if direction and direction not in ("ANY", None):
+        side = "bullish" if direction == "LONG" else "bearish"
+        suffix = f" on the {side} side"
+    lift_s = f"{lift:.2f}×" if lift is not None else "elevated"
+    if metric.startswith("volume.liquidity"):
+        return f"Low-liquidity setups failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("volume.spike"):
+        return f"Panic-volume setups failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("rsi.overbought"):
+        return f"Overbought (RSI > 70) rows failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("rsi.oversold"):
+        return f"Oversold (RSI < 30) rows failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("macd.crossover"):
+        return f"Bearish-MACD rows failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("sector.momentum"):
+        return f"Negative-sector-momentum rows failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("sentiment.negative"):
+        return f"Negative-sentiment rows failed {lift_s} more often than baseline{suffix}."
+    if metric.startswith("pattern."):
+        pretty = metric.replace("pattern.", "").replace("_", " ")
+        return f"The {pretty} pattern failed {lift_s} more often than baseline{suffix}."
+    return f"This metric showed an elevated failure rate ({lift_s} vs baseline){suffix}."
+
+
+@router.get("/adaptations/why/{adaptation_id}")
+async def explain_adaptation(adaptation_id: str, request: Request):
+    """Explain a specific adaptation — what failed, how much more
+    often than baseline, and what the retrain will do about it.
+
+    This is the second half of the "closed-loop explainability"
+    story: ``/alerts/why/{alert_id}`` explains a failure, this
+    endpoint explains the adaptation that was derived from one or
+    more of those failures. Admin-gated."""
+    await _require_admin(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    doc = await db["model_adaptations"].find_one(
+        {"adaptation_id": adaptation_id}, {"_id": 0},
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Adaptation not found")
+
+    metric = doc.get("metric", "")
+    direction = doc.get("direction") or "ANY"
+    factor = float(doc.get("adjustment_factor") or 1.0)
+    lift = doc.get("contrast")
+    try:
+        lift_f: float | None = float(lift) if lift is not None else None
+    except (TypeError, ValueError):
+        lift_f = None
+    bucket_rate = doc.get("bucket_rate")
+    global_rate = doc.get("global_rate")
+    severity = doc.get("severity")
+    evidence = int(doc.get("evidence_count") or 0)
+    active = bool(doc.get("active", False))
+
+    pct_down = max(0, round((1.0 - factor) * 100))
+    projected_effect = (
+        f"Reduces influence of matching setups by ~{pct_down}% in the next retrain"
+        if pct_down > 0 else
+        "No weight reduction (factor at or above 1.0)"
+    )
+
+    explanation = _explain_adaptation_metric(metric, lift_f, direction)
+
+    expires_at = doc.get("expires_at")
+    if hasattr(expires_at, "isoformat"):
+        expires_at = expires_at.isoformat()
+
+    return {
+        "adaptation_id": adaptation_id,
+        "metric": metric,
+        "direction": direction,
+        "factor": round(factor, 3),
+        "weight_reduction_pct": pct_down,
+        "lift": round(lift_f, 3) if lift_f is not None else None,
+        "bucket_rate": round(float(bucket_rate), 4) if bucket_rate is not None else None,
+        "global_rate": round(float(global_rate), 4) if global_rate is not None else None,
+        "severity": round(float(severity), 4) if severity is not None else None,
+        "evidence_count": evidence,
+        "active": active,
+        "expires_at": expires_at,
+        "description": doc.get("description"),
+        "explanation": explanation,
+        "projected_effect": projected_effect,
+    }

@@ -293,12 +293,156 @@ const SpikeDetailsBlock = ({ spikes, alertId }) => {
   );
 };
 
+// ── Adaptation "why" block ─────────────────────────────────────
+// Rendered inline under `retrain_adaptation_applied` events.
+// Each adaptation chip gets a lightweight "Why?" button that
+// lazy-fetches `/api/admin/adaptations/why/{id}` the first time
+// it's opened, caches the response, and toggles the explanation
+// on subsequent clicks. Non-blocking — a fetch failure leaves the
+// chip rendered, just without the narrative underneath.
+const AdaptationBlock = ({ metadata }) => {
+  const [openId, setOpenId] = useState(null);
+  const [cache, setCache] = useState({}); // adaptation_id -> payload
+  const [loadingId, setLoadingId] = useState(null);
+
+  const adaptations = metadata?.adaptations || [];
+  const mwBefore = metadata?.mean_weight_before;
+  const mwAfter = metadata?.mean_weight_after;
+  const mwDelta = metadata?.mean_weight_delta;
+  const pi = metadata?.projected_impact || {};
+
+  const loadWhy = useCallback(async (aid) => {
+    if (!aid) return;
+    if (openId === aid) { setOpenId(null); return; }
+    if (cache[aid]) { setOpenId(aid); return; }
+    setLoadingId(aid);
+    try {
+      const res = await authFetch(
+        `${API_BASE}/api/admin/adaptations/why/${encodeURIComponent(aid)}`,
+      );
+      if (res.ok) {
+        const d = await res.json();
+        setCache((c) => ({ ...c, [aid]: d }));
+        setOpenId(aid);
+      }
+    } catch (e) {
+      logger.warn('adaptation why fetch failed', e);
+    } finally {
+      setLoadingId(null);
+    }
+  }, [cache, openId]);
+
+  if (adaptations.length === 0) return null;
+
+  return (
+    <div
+      className="mt-2 pt-2 border-t border-slate-700/40"
+      data-testid="agent-activity-adaptation-block"
+    >
+      {mwBefore !== null && mwBefore !== undefined && mwAfter !== null && mwAfter !== undefined && (
+        <p
+          className="text-[10px] font-mono text-slate-400 leading-snug mb-1.5 tabular-nums"
+          data-testid="agent-activity-adaptation-weights"
+        >
+          Mean weight <span className="text-slate-200">{mwBefore.toFixed(3)}</span>{' '}
+          <span className="text-slate-500">→</span>{' '}
+          <span className="text-slate-200">{mwAfter.toFixed(3)}</span>
+          {typeof mwDelta === 'number' && (
+            <span className={`ml-1 ${mwDelta < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+              (Δ {mwDelta >= 0 ? '+' : ''}{mwDelta.toFixed(3)})
+            </span>
+          )}
+        </p>
+      )}
+      <ul className="space-y-1.5" data-testid="agent-activity-adaptation-chips">
+        {adaptations.map((a, i) => {
+          const id = a.adaptation_id;
+          const pct = Math.round((1 - (a.factor ?? 1.0)) * 100);
+          const isOpen = openId === id;
+          const explain = cache[id];
+          const loading = loadingId === id;
+          return (
+            <li
+              key={id || i}
+              className="flex flex-col gap-1"
+              data-testid={`agent-activity-adaptation-row-${i}`}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded bg-amber-900/30 border border-amber-600/30 text-amber-200 text-[10px] font-mono tabular-nums">
+                  {a.metric}
+                  {a.direction && a.direction !== 'ANY' ? ` / ${a.direction}` : ''}
+                  {' '}×{(a.factor ?? 1.0).toFixed(2)}
+                  {' '}({a.rows_matched ?? 0} rows)
+                  {pct > 0 ? ` · −${pct}% weight` : ''}
+                </span>
+                {a.lift != null && (
+                  <span className="text-[9px] text-purple-300 font-mono tabular-nums">
+                    {Number(a.lift).toFixed(2)}× baseline
+                  </span>
+                )}
+                {id && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); loadWhy(id); }}
+                    className="text-[10px] font-semibold text-[#3DE8D9] hover:text-[#7AEEE0] disabled:opacity-50 inline-flex items-center gap-1"
+                    disabled={loading}
+                    data-testid={`agent-activity-adaptation-why-${i}`}
+                  >
+                    {loading ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" /> Loading…</>
+                    ) : isOpen ? (
+                      <><ChevronDown className="w-3 h-3" /> Hide</>
+                    ) : (
+                      <><HelpCircle className="w-3 h-3" /> Why?</>
+                    )}
+                  </button>
+                )}
+              </div>
+              {isOpen && explain && (
+                <div
+                  className="ml-1 pl-2 border-l border-slate-600/60 text-[10px] text-slate-300 leading-snug"
+                  data-testid={`agent-activity-adaptation-why-body-${i}`}
+                >
+                  <p className="text-slate-200">{explain.explanation}</p>
+                  <p className="text-slate-500 mt-0.5">
+                    {explain.projected_effect}
+                    {typeof explain.evidence_count === 'number' && (
+                      <>{' · '}{explain.evidence_count} toxic event{explain.evidence_count === 1 ? '' : 's'}</>
+                    )}
+                    {typeof explain.bucket_rate === 'number' && typeof explain.global_rate === 'number' && (
+                      <>{' · '}bucket {(explain.bucket_rate * 100).toFixed(1)}% vs baseline {(explain.global_rate * 100).toFixed(1)}%</>
+                    )}
+                  </p>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {pi?.sample_size ? (
+        <p
+          className="text-[9px] text-slate-500 mt-1.5 leading-snug italic"
+          data-testid="agent-activity-adaptation-projected"
+        >
+          Projected: {pi.matched_predictions ?? 0}/{pi.sample_size} recent predictions fall in an adapted bucket
+          {typeof pi.coverage === 'number' && (
+            <>{' '}({Math.round(pi.coverage * 100)}% coverage)</>
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
+
+
 const EventRow = ({ event, isNew, onReplay, replayingId }) => {
   const [drillOpen, setDrillOpen] = useState(false);
   const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.info;
   const why = event.metadata?.why;
   const isDelivery = event.type === 'alert_delivery';
   const isReserved = event.type === 'alert_reserved';
+  const isAdaptation = event.type === 'retrain_adaptation_applied';
   const failedCount = isDelivery ? (event.metadata?.failed?.length || 0) : 0;
   const canReplay = isDelivery && failedCount > 0 && event.metadata?.alert_id;
   const isReplaying = replayingId && replayingId === event.metadata?.alert_id;
@@ -383,6 +527,7 @@ const EventRow = ({ event, isNew, onReplay, replayingId }) => {
             alertId={event.metadata?.alert_id}
           />
         )}
+        {isAdaptation && <AdaptationBlock metadata={event.metadata} />}
         <WhyBlock why={why} eventType={event.type} />
       </div>
     </div>

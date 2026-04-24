@@ -1,0 +1,81 @@
+{
+  "summary": "Iteration 139: Adaptation Why Endpoint + Agent Activity Feed Enrichment - All 14 backend tests passed. Frontend Agent Activity Feed correctly renders AdaptationBlock with adaptation chips, 'Why?' buttons, and mean weight transitions. The /api/admin/adaptations/why/{id} endpoint returns full explanation payload with metric-specific narratives.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_adaptation_why_endpoint.py",
+    "/app/backend/tests/test_iteration139_adaptation_why_feed.py",
+    "/app/test_reports/pytest/iteration139_adaptation_why_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/admin/adaptations/why/{adaptation_id} correctly returns full payload: adaptation_id, metric, direction, factor, weight_reduction_pct, lift, bucket_rate, global_rate, severity, evidence_count, active, expires_at, description, explanation, projected_effect",
+    "_explain_adaptation_metric() helper correctly generates metric-specific explanations: volume.liquidity → 'Low-liquidity setups', rsi.overbought → 'Overbought', sector.momentum → 'Negative-sector-momentum', pattern.* → pretty-printed pattern name",
+    "Direction suffix correctly applied: LONG → 'bullish side', SHORT → 'bearish side', ANY → no suffix",
+    "apply_adaptations_to_weights() correctly emits mean_weight_before, mean_weight_after, mean_weight_delta (rounded to 4 dp) in activity event metadata",
+    "Each adaptation row in metadata.adaptations[] carries lift, severity, evidence_count, description, direction in addition to metric/factor/rows_matched/adaptation_id",
+    "AgentActivityFeed.jsx AdaptationBlock component correctly renders: mean weight transition, per-adaptation chips with metric/direction/factor/rows, 'Why?' button with lazy-fetch + cache",
+    "404 returned when adaptation_id doesn't exist, 401 when unauthenticated - auth gates working correctly"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration139_adaptation_why_feed.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "Verified - AdaptationBlock rendering correctly with chips, Why? buttons, mean weight display"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "Created synthetic adaptations for testing (volume.liquidity/LONG, rsi.overbought/SHORT, sector.momentum/ANY, pattern.bull_flag) - all cleaned up after tests",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Adaptation Why endpoint and Agent Activity Feed enrichment complete. Backend: GET /api/admin/adaptations/why/{id} returns full explanation with metric-specific narratives. Frontend: AgentActivityFeed renders AdaptationBlock for retrain_adaptation_applied events with mean weight transitions, adaptation chips, and lazy-fetch Why? buttons. All tests passing.",
+  "verified_features": {
+    "adaptation_why_endpoint": {
+      "endpoint": "GET /api/admin/adaptations/why/{adaptation_id}",
+      "verified_fields": [
+        "adaptation_id", "metric", "direction", "factor", "weight_reduction_pct",
+        "lift", "bucket_rate", "global_rate", "severity", "evidence_count",
+        "active", "expires_at", "description", "explanation", "projected_effect"
+      ],
+      "auth_gate": "admin-gated (401 for anon, 403 for non-admin)",
+      "404_handling": "Returns 404 when adaptation_id doesn't exist"
+    },
+    "explanation_variations": {
+      "volume.liquidity": "Low-liquidity setups failed X.XXx more often than baseline",
+      "rsi.overbought": "Overbought (RSI > 70) rows failed X.XXx more often than baseline",
+      "sector.momentum": "Negative-sector-momentum rows failed X.XXx more often than baseline",
+      "pattern.*": "The {pattern_name} pattern failed X.XXx more often than baseline",
+      "direction_suffix": "LONG → 'bullish side', SHORT → 'bearish side', ANY → no suffix"
+    },
+    "activity_payload_enrichment": {
+      "mean_weight_fields": ["mean_weight_before", "mean_weight_after", "mean_weight_delta"],
+      "adaptation_row_fields": ["lift", "severity", "evidence_count", "description", "direction", "metric", "factor", "rows_matched", "adaptation_id"]
+    },
+    "frontend_adaptation_block": {
+      "component": "AdaptationBlock in AgentActivityFeed.jsx",
+      "renders_when": "event.type === 'retrain_adaptation_applied'",
+      "features": [
+        "Mean weight X → Y (Δ ±Z) display",
+        "Per-adaptation chips with metric/direction/factor/rows",
+        "Why? button with lazy-fetch and cache",
+        "Projected impact line when metadata.projected_impact.sample_size > 0"
+      ],
+      "data_testids": [
+        "agent-activity-adaptation-block",
+        "agent-activity-adaptation-weights",
+        "agent-activity-adaptation-chips",
+        "agent-activity-adaptation-row-{i}",
+        "agent-activity-adaptation-why-{i}",
+        "agent-activity-adaptation-why-body-{i}",
+        "agent-activity-adaptation-projected"
+      ]
+    }
+  }
+}

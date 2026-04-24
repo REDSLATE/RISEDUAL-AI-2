@@ -233,7 +233,7 @@ async def log_retrain_gated(reason: str) -> None:
     await log_event(
         type="retrain_gated",
         severity="warn",
-        title=f"Retrain skipped · quality gate failed",
+        title="Retrain skipped · quality gate failed",
         detail=reason,
         metadata={"reason": reason},
     )
@@ -440,7 +440,9 @@ async def log_retrain_adaptation_planned(metric: str, factor: float,
 async def log_retrain_adaptation_applied(enabled: bool,
                                          adaptations: list[dict],
                                          total_matched: int,
-                                         projected_impact: dict | None = None) -> None:
+                                         projected_impact: dict | None = None,
+                                         mean_weight_before: float | None = None,
+                                         mean_weight_after: float | None = None) -> None:
     """Retrain just applied (or dry-ran) the active adaptations.
 
     The ``adaptations`` summary lists each rule, its matched row
@@ -449,6 +451,11 @@ async def log_retrain_adaptation_applied(enabled: bool,
     50 predictions fall into at least one adapted bucket) so
     admins see the reach of the current adaptation set, not just
     training-row counts.
+
+    ``mean_weight_before`` / ``mean_weight_after`` narrate the
+    observable weight mutation for the UI — admins see "1.000 →
+    0.925" at a glance, which is what makes the adaptation legible
+    rather than magic.
     """
     n = len(adaptations)
     if n == 0:
@@ -472,9 +479,20 @@ async def log_retrain_adaptation_applied(enabled: bool,
             f"{pi['sample_size']} recent predictions fall in an adapted bucket"
             + (f" ({int((pi.get('coverage') or 0) * 100)}% coverage)" if pi.get('coverage') is not None else "")
         )
-    detail = f"Metrics: {metrics}"
+    weight_bits = []
+    if mean_weight_before is not None and mean_weight_after is not None:
+        delta = mean_weight_after - mean_weight_before
+        weight_bits.append(
+            f"Mean weight {mean_weight_before:.3f} → {mean_weight_after:.3f} "
+            f"(Δ {'+' if delta >= 0 else ''}{delta:.3f})"
+        )
+    detail_parts = []
+    if weight_bits:
+        detail_parts.extend(weight_bits)
+    detail_parts.append(f"Metrics: {metrics}")
     if pi_bits:
-        detail = detail + " · " + " · ".join(pi_bits)
+        detail_parts.extend(pi_bits)
+    detail = " · ".join(detail_parts)
     await log_event(
         type="retrain_adaptation_applied",
         severity="warn" if enabled else "info",
@@ -485,6 +503,17 @@ async def log_retrain_adaptation_applied(enabled: bool,
             "adaptations": adaptations,
             "total_matched": total_matched,
             "projected_impact": projected_impact or {},
+            "mean_weight_before": (
+                round(mean_weight_before, 4) if mean_weight_before is not None else None
+            ),
+            "mean_weight_after": (
+                round(mean_weight_after, 4) if mean_weight_after is not None else None
+            ),
+            "mean_weight_delta": (
+                round(mean_weight_after - mean_weight_before, 4)
+                if (mean_weight_before is not None and mean_weight_after is not None)
+                else None
+            ),
         },
     )
 
