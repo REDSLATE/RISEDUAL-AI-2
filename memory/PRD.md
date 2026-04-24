@@ -54,6 +54,46 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Safety Rail Hardening — cooldown + effect-size gate (Feb 24, 2026)
+Two additional guards on top of the graduated soften/revert rail
+to handle the edge cases the previous iteration missed:
+- **Gate 0 (cooldown)**: before evaluating any adaptation, query
+  `adaptation_audit` for an `auto_soften` or `auto_revert` row on
+  the same `adaptation_id` within the last 7 days. If found,
+  skip — prevents oscillation (bad→soften→good→bad→soften...) and
+  pauses the rail after manual operator touches too (audit is the
+  single source of truth for both automated and manual actions).
+  New constant: `AUTO_ACTION_COOLDOWN_DAYS = 7`, mirrors the
+  detection-side `_has_recent_adaptation` window so the whole
+  learning loop breathes on the same clock.
+- **Gate 3 (effect size)**: a rule can pass the ΔR and coverage
+  gates independently and still be noise at its scale — e.g.
+  `ΔR=-0.012 × coverage=0.05 = 0.0006`, basically floor variance.
+  New composite gate: require `|ΔR| × coverage > 0.001` on ALL
+  3 runs. Weights decisions by actual training-set influence
+  instead of treating ΔR and coverage as independent switches.
+  Tuned so `ΔR=-0.03 × coverage=0.05 = 0.0015` (genuine signal)
+  passes but `ΔR=-0.015 × coverage=0.05 = 0.00075` (borderline)
+  doesn't.
+- Audit rows + reason string now carry the computed
+  `effect_size` list so the trail shows why the rail decided
+  (or chose not to) act.
+- **Fail-open on audit query failure** — if the cooldown lookup
+  errors, we proceed with the scan. Better to act on a clearly-
+  bad adaptation than freeze the rail waiting for mongo to
+  recover.
+- **Tests**: 2 new pytest cases (`test_auto_revert_respects_effect_size_floor`,
+  `test_auto_revert_cooldown_pauses_scanner`). Total 11/11 in
+  the auto-revert suite, **47/47** across the full regression.
+  Mypy 0, ruff clean.
+
+Net: the ladder is now "3 bad runs AT THIS FACTOR, material
+effect size, no risk compression, cooldown clear" before the rail
+moves. Should be basically impossible to trigger-happy — and if
+it ever does, the audit trail shows the exact math.
+
+
+
 ### Adaptive Factor Tuning — graduated soften before revert (Feb 24, 2026)
 Replaces the binary "3 bad retrains → kill" with a walk-down ladder:
   `0.85 → 0.90 → 0.95 → inactive`. Same safety envelope (epsilon,

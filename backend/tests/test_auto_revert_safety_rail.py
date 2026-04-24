@@ -443,3 +443,92 @@ def test_auto_revert_skips_on_missing_attribution(patch_auto_revert_enabled):
             await _cleanup(db, aid)
 
     asyncio.get_event_loop().run_until_complete(_run())
+
+
+
+def test_auto_revert_respects_effect_size_floor(patch_auto_revert_enabled):
+    """ΔR < -0.01 and coverage ≥ 5% individually, but their product
+    stays below the effect-size floor (0.001). Adaptation should
+    stay alive — it's noise at its scale."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-ar-es-{uuid.uuid4().hex[:8]}"
+        await _seed_adaptation(db, aid)
+        # ΔR just past the epsilon, coverage just past the floor →
+        # effect size ≈ -0.015 × 0.05 = 0.00075 < 0.001 threshold.
+        await _seed_training_log(
+            db, aid,
+            delta_r_list=[-0.015, -0.012, -0.013],
+            delta_wr_list=[-0.01, -0.01, -0.01],
+            rows_matched_list=[50, 50, 50],  # exactly 5% coverage
+            samples=1000,
+        )
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []  # effect too small → no action
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0, "active": 1,
+                                          "adjustment_factor": 1},
+            )
+            assert doc["active"] is True
+            assert doc["adjustment_factor"] == 0.85  # unchanged
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_auto_revert_cooldown_pauses_scanner(patch_auto_revert_enabled):
+    """An auto_soften audit row within the last 7 days blocks a
+    second action on the same adaptation — prevents oscillation."""
+    from services.model_adaptation import evaluate_auto_revert_candidates
+
+    async def _run():
+        db = _mongo_db()
+        from services import agent_activity_service
+        agent_activity_service.set_db(db)
+        aid = f"test-ar-cooldown-{uuid.uuid4().hex[:8]}"
+        await _seed_adaptation(db, aid, factor=0.90)  # already softened once
+        # Seed a fresh audit row from 2 days ago — inside the
+        # 7-day cooldown window.
+        await db.adaptation_audit.insert_one({
+            "adaptation_id": aid,
+            "action": "auto_soften",
+            "reason": "prior soften",
+            "metric": "volume.liquidity",
+            "direction": "LONG",
+            "factor_before": 0.85,
+            "factor_after": 0.90,
+            "deltas_r": [-0.03, -0.03, -0.03],
+            "deltas_wr": [-0.02, -0.02, -0.02],
+            "coverages": [0.15, 0.15, 0.15],
+            "at": (datetime.now(timezone.utc)
+                   - __import__("datetime").timedelta(days=2)).isoformat(),
+        })
+        # Seed 3 bad runs at the current (softened) factor — would
+        # normally trigger another action, but cooldown should
+        # block it.
+        await _seed_training_log(
+            db, aid,
+            delta_r_list=[-0.04, -0.05, -0.03],
+            delta_wr_list=[-0.02, -0.03, -0.02],
+            rows_matched_list=[150, 150, 150],
+            samples=1000,
+            factor=0.90,
+        )
+        try:
+            actions = await evaluate_auto_revert_candidates(db)
+            assert actions == []  # cooldown blocks
+            doc = await db.model_adaptations.find_one(
+                {"adaptation_id": aid}, {"_id": 0, "adjustment_factor": 1},
+            )
+            assert doc["adjustment_factor"] == 0.90  # unchanged
+        finally:
+            await _cleanup(db, aid)
+
+    asyncio.get_event_loop().run_until_complete(_run())
+

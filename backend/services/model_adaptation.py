@@ -197,8 +197,23 @@ def adaptation_enabled() -> bool:
 AUTO_REVERT_CONSECUTIVE_NEGATIVE = 3
 AUTO_REVERT_EPSILON = 0.01  # |ΔR| < 0.01 treated as "no effect"
 AUTO_REVERT_MIN_COVERAGE = 0.05  # need ≥5% row coverage to act
+# ── Composite effect-size gate ──
+# A rule can pass the ΔR and coverage gates independently but still
+# have trivial real-world impact (e.g. ΔR=-0.012 with coverage=0.05
+# → ΔR·coverage=-0.0006, basically noise). Require an effect-size
+# floor on the PRODUCT to prevent low-signal rules from triggering
+# the safety rail. Tuned so a ΔR of -0.012 with coverage=0.05
+# (= -0.0006) is treated as noise, but ΔR=-0.03 with coverage=0.05
+# (= -0.0015) is treated as real.
+AUTO_REVERT_EFFECT_SIZE = 0.001
 AUTO_SOFTEN_STEP = 0.05  # per-hit increment on adjustment_factor
 AUTO_SOFTEN_MAX_FACTOR = 0.95  # next step above → disable instead
+# ── Cooldown on safety-rail actions ──
+# Prevents rapid oscillation (bad → soften → good → bad → soften)
+# during high-frequency retrain windows. 7 days matches the
+# detection cooldown in ``_has_recent_adaptation`` — the whole
+# learning loop breathes on the same clock.
+AUTO_ACTION_COOLDOWN_DAYS = 7
 
 
 def auto_revert_enabled() -> bool:
@@ -237,13 +252,38 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
         return []
 
     actions: list[dict] = []
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    cooldown_cutoff = now - timedelta(days=AUTO_ACTION_COOLDOWN_DAYS)
 
     for ad in active:
         aid = ad.get("adaptation_id")
         if not aid:
             continue
         current_factor = float(ad.get("adjustment_factor") or 1.0)
+
+        # ── Gate 0: cooldown ──
+        # Skip if we've already softened or reverted this
+        # adaptation within the last COOLDOWN_DAYS. The audit
+        # collection is the single source of truth (operator-fired
+        # actions land there too) so manual touches also pause the
+        # rail, which is usually what you want.
+        try:
+            recent = await db["adaptation_audit"].find_one(
+                {
+                    "adaptation_id": aid,
+                    "action": {"$in": ["auto_soften", "auto_revert"]},
+                    "at": {"$gte": cooldown_cutoff.isoformat()},
+                },
+                {"_id": 0, "at": 1, "action": 1},
+            )
+            if recent:
+                continue
+        except Exception:
+            # Audit query failure → proceed (fail open) but log.
+            # We'd rather err on the side of ACTING on clearly-bad
+            # adaptations than freeze the rail.
+            logger.warning(f"[auto-revert] cooldown query failed for {aid}")
 
         # Pull the most recent retrain rows that applied THIS
         # adaptation AT THE CURRENT FACTOR. We only consider runs
@@ -307,7 +347,16 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
         # ── Gate 2: sufficient coverage on at least one run ──
         if max(coverages) < AUTO_REVERT_MIN_COVERAGE:
             continue
-        # ── Gate 3: not just risk compression ──
+        # ── Gate 3: effect size (|ΔR| × coverage) above floor ──
+        # A rule can pass Gates 1+2 independently and still be
+        # noise — e.g. ΔR=-0.012 with coverage=5% → effect-size
+        # 0.0006 ≈ floor variance. Require every run's product of
+        # |ΔR| × coverage to clear AUTO_REVERT_EFFECT_SIZE so only
+        # real, material-impact signals trigger the rail.
+        effect_sizes = [abs(d) * c for d, c in zip(deltas_r, coverages)]
+        if not all(es > AUTO_REVERT_EFFECT_SIZE for es in effect_sizes):
+            continue
+        # ── Gate 4: not just risk compression ──
         if not all(wr <= 0 for wr in deltas_wr):
             continue
 
@@ -319,6 +368,7 @@ async def evaluate_auto_revert_candidates(db: Any) -> list[dict]:
             f"ΔR={[round(d, 4) for d in deltas_r]}, "
             f"Δwin_rate={[round(w, 4) for w in deltas_wr]}, "
             f"coverage={[round(c, 3) for c in coverages]}, "
+            f"effect_size={[round(es, 4) for es in effect_sizes]}, "
             f"factor={current_factor}"
         )
 
