@@ -261,6 +261,30 @@ const SpikeDetailsBlock = ({ spikes, alertId }) => {
                   ))}
                 </ul>
               )}
+              {s.shap_top && s.shap_top.length > 0 && (
+                <div
+                  className="mt-1.5 pt-1.5 border-t border-slate-700/30"
+                  data-testid={`agent-activity-spike-shap-${i}`}
+                >
+                  <p className="text-[9px] uppercase tracking-wider text-slate-500 mb-0.5 font-semibold">
+                    SHAP (model attribution)
+                  </p>
+                  <ul className="space-y-0.5">
+                    {s.shap_top.map((c, j) => {
+                      const pushed = c.contribution >= 0 ? 'up' : 'down';
+                      return (
+                        <li key={j} className="text-[10px] font-mono tabular-nums flex items-center gap-2">
+                          <span className="text-slate-300">{c.feature}</span>
+                          <span className={pushed === 'up' ? 'text-emerald-300' : 'text-rose-300'}>
+                            {c.contribution >= 0 ? '+' : ''}{c.contribution.toFixed(3)}
+                          </span>
+                          <span className="text-slate-500 text-[9px]">pushed {pushed}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </li>
           );
         })}

@@ -315,6 +315,74 @@ class SignalModel:
         proba_matrix: "np.ndarray" = self._model.predict_proba(X_imputed.values)
         return proba_matrix[:, 1]
 
+    def shap_top_features(self, X: "pd.DataFrame", top_n: int = 3) -> "list[list[tuple[str, float]]]":
+        """Return per-row top-N SHAP-like feature contributions.
+
+        Uses XGBoost's native ``pred_contribs=True`` path on each
+        fold's base estimator inside ``CalibratedClassifierCV`` and
+        averages across folds. No external ``shap`` dependency
+        needed. The returned contributions are in log-odds space,
+        sign-preserving: negative values pushed the prediction
+        DOWN, positive pushed it UP. The caller typically ranks by
+        absolute value.
+
+        Returns a list of length ``len(X)`` — each element is a
+        list of ``(feature_name, contribution)`` tuples sorted by
+        ``abs(contribution)`` descending, truncated to ``top_n``.
+        Returns an empty list per row when SHAP can't be computed
+        (e.g. the model isn't a ``CalibratedClassifierCV(XGB)``
+        assembly after load).
+        """
+        if self._model is None:
+            raise RuntimeError("SignalModel has not been trained.")
+        try:
+            import numpy as np  # noqa: PLC0415
+            import xgboost as xgb  # noqa: PLC0415
+        except ImportError:
+            return [[] for _ in range(len(X))]
+
+        feature_cols = [c for c in self._config.feature_columns if c in X.columns]
+        X_feat = X[feature_cols].copy()
+        X_imputed = impute_features(X_feat, medians=self._feature_medians)
+
+        try:
+            calibrated_folds = getattr(
+                self._model, "calibrated_classifiers_", None,
+            )
+            if not calibrated_folds:
+                return [[] for _ in range(len(X))]
+            dmat = xgb.DMatrix(X_imputed.values, feature_names=feature_cols)
+            # Average SHAP across the 5 folds' base estimators. Each
+            # predict(pred_contribs=True) returns an (n, F+1) matrix
+            # where the last column is the bias term — we drop it.
+            agg = None
+            n_folds = 0
+            for fold in calibrated_folds:
+                base = getattr(fold, "estimator", None)
+                if base is None:
+                    continue
+                booster = base.get_booster()
+                contribs = booster.predict(dmat, pred_contribs=True)
+                if agg is None:
+                    agg = np.zeros_like(contribs)
+                agg = agg + contribs
+                n_folds += 1
+            if agg is None or n_folds == 0:
+                return [[] for _ in range(len(X))]
+            mean_contribs = agg / n_folds
+            # Strip bias column.
+            feat_contribs = mean_contribs[:, :-1]
+
+            rows: list[list[tuple[str, float]]] = []
+            for i in range(feat_contribs.shape[0]):
+                pairs = list(zip(feature_cols, feat_contribs[i].tolist(), strict=False))
+                pairs.sort(key=lambda kv: abs(kv[1]), reverse=True)
+                rows.append(pairs[:top_n])
+            return rows
+        except Exception:
+            return [[] for _ in range(len(X))]
+
+
     def predict(self, snapshot: FeaturesSnapshot) -> SignalResult:
         """Score a single :class:`FeaturesSnapshot` and return a :class:`SignalResult`.
 

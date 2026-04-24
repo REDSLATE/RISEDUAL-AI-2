@@ -439,12 +439,16 @@ async def log_retrain_adaptation_planned(metric: str, factor: float,
 
 async def log_retrain_adaptation_applied(enabled: bool,
                                          adaptations: list[dict],
-                                         total_matched: int) -> None:
+                                         total_matched: int,
+                                         projected_impact: dict | None = None) -> None:
     """Retrain just applied (or dry-ran) the active adaptations.
 
     The ``adaptations`` summary lists each rule, its matched row
-    count, and the factor used — so admins can see in one place how
-    the retrain actually behaved.
+    count, and the factor used. Optional ``projected_impact``
+    carries a forward-looking coverage stat (how many of the last
+    50 predictions fall into at least one adapted bucket) so
+    admins see the reach of the current adaptation set, not just
+    training-row counts.
     """
     n = len(adaptations)
     if n == 0:
@@ -454,18 +458,33 @@ async def log_retrain_adaptation_applied(enabled: bool,
         f"{prefix} {n} ML adaptation{'s' if n != 1 else ''} to retrain · "
         f"{total_matched} row{'s' if total_matched != 1 else ''} affected"
     )
-    metrics = ", ".join(a.get("metric", "?") for a in adaptations[:4])
+    metrics = ", ".join(
+        f"{a.get('metric', '?')}" + (f"/{a.get('direction')}" if a.get('direction') not in (None, 'ANY') else '')
+        for a in adaptations[:4]
+    )
     if n > 4:
         metrics += f" (+{n - 4} more)"
+    pi = projected_impact or {}
+    pi_bits = []
+    if pi.get("sample_size"):
+        pi_bits.append(
+            f"Projected: {pi.get('matched_predictions', 0)}/"
+            f"{pi['sample_size']} recent predictions fall in an adapted bucket"
+            + (f" ({int((pi.get('coverage') or 0) * 100)}% coverage)" if pi.get('coverage') is not None else "")
+        )
+    detail = f"Metrics: {metrics}"
+    if pi_bits:
+        detail = detail + " · " + " · ".join(pi_bits)
     await log_event(
         type="retrain_adaptation_applied",
         severity="warn" if enabled else "info",
         title=title,
-        detail=f"Metrics: {metrics}",
+        detail=detail,
         metadata={
             "enabled": enabled,
             "adaptations": adaptations,
             "total_matched": total_matched,
+            "projected_impact": projected_impact or {},
         },
     )
 

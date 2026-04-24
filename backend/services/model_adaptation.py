@@ -210,14 +210,27 @@ async def _count_recent_failures(db: Any, window_days: int = 7) -> dict[str, int
     return counts
 
 
-async def _has_recent_adaptation(db: Any, metric: str) -> bool:
-    """Cooldown check — don't stack the same metric within
-    ``COOLDOWN_DAYS``. Active OR recently-expired both count."""
+async def _has_recent_adaptation(db: Any, metric: str, direction: str = "ANY") -> bool:
+    """Cooldown check — don't stack the same (metric, direction)
+    pair within ``COOLDOWN_DAYS``. Active OR recently-expired both
+    count. Legacy rows without a ``direction`` field are treated
+    as ``ANY`` so the cooldown still fires for them."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=COOLDOWN_DAYS)
-    row = await db[_COLLECTION].find_one({
-        "metric": metric,
-        "created_at": {"$gte": cutoff.isoformat()},
-    }, {"_id": 0, "adaptation_id": 1})
+    dir_filter: dict[str, Any]
+    if direction == "ANY":
+        dir_filter = {"$or": [
+            {"direction": "ANY"}, {"direction": {"$exists": False}},
+        ]}
+    else:
+        dir_filter = {"direction": direction}
+    row = await db[_COLLECTION].find_one(
+        {
+            "metric": metric,
+            "created_at": {"$gte": cutoff.isoformat()},
+            **dir_filter,
+        },
+        {"_id": 0, "adaptation_id": 1},
+    )
     return row is not None
 
 
@@ -226,29 +239,39 @@ async def _active_count(db: Any) -> int:
 
 
 async def _compute_contrast_and_severity(
-    db: Any, metric: str,
+    db: Any, metric: str, direction: str = "ANY",
 ) -> dict | None:
     """Measure how much worse this bucket fails vs. the global
     baseline, plus the mean absolute return of the failing bucket
     for severity-aware factor selection.
 
+    ``direction`` is one of:
+
+    * ``"LONG"``  — failure proxy is ``outcome='down'`` (a long
+      bet would have lost). Baseline is the global LONG-failure rate.
+    * ``"SHORT"`` — failure proxy is ``outcome='up'`` (a short
+      bet would have lost). Baseline is the global SHORT-failure rate.
+    * ``"ANY"``   — failure proxy is ``outcome='down'`` (matches the
+      original non-directional behavior — most of our toxic events
+      are long-side, so this stays the sensible default when we
+      can't infer direction from the alert).
+
     Returns a dict with:
 
     * ``bucket_total`` — rows in window where the rule's condition fires
-    * ``bucket_failures`` — subset of those with ``outcome='down'``
+    * ``bucket_failures`` — subset of those where the directional
+      failure condition fires
     * ``global_total`` — all rows in window
-    * ``global_failures`` — subset of those with ``outcome='down'``
+    * ``global_failures`` — subset of those with the directional
+      failure
     * ``bucket_rate`` / ``global_rate`` — failure ratios
     * ``contrast`` — ``bucket_rate / global_rate`` (None when no baseline)
     * ``severity`` — mean absolute ``return_1d`` on the failing bucket
     * ``bucket_snapshots`` — alias of ``bucket_total`` for readability
 
-    "Failure" is approximated by ``outcome='down'`` (model's
-    typical error mode is a bullish prediction that reverses —
-    we don't store the model's prediction per snapshot directly,
-    but this proxy holds for the overwhelming majority of toxic
-    events). The proxy is documented on the event metadata so
-    drift audits know what's being measured.
+    We don't store the model's prediction per snapshot directly, so
+    the proxy is documented on every adaptation row (``direction``)
+    for drift audit.
 
     Returns None when the bucket is too small to be trustworthy
     (caller skips the contrast gate in that case).
@@ -265,6 +288,11 @@ async def _compute_contrast_and_severity(
     # NOT an ISO string — a string $gte would return zero rows.
     # Pass the datetime object directly so Mongo does the right
     # tz-aware comparison.
+
+    # Directional failure proxy. LONG failure = price went down
+    # (a buy would have lost); SHORT failure = price went up.
+    # ANY keeps legacy behaviour (= LONG).
+    fail_outcome = "up" if direction == "SHORT" else "down"
 
     # Serialize the condition into a Mongo filter. The rule
     # conditions are tiny (single-column threshold / boolean flag)
@@ -304,11 +332,11 @@ async def _compute_contrast_and_severity(
         if global_total == 0:
             return None
         global_failures = await coll.count_documents(
-            {**base_window, "outcome": "down"},
+            {**base_window, "outcome": fail_outcome},
         )
         bucket_total = await coll.count_documents({**base_window, **cond})
         bucket_failures = await coll.count_documents(
-            {**base_window, **cond, "outcome": "down"},
+            {**base_window, **cond, "outcome": fail_outcome},
         )
     except Exception as e:
         logger.warning(f"[adaptation] contrast stats failed for {metric}: {e}")
@@ -394,94 +422,87 @@ async def detect_and_create_adaptations(db: Any) -> list[dict]:
     for metric, count in sorted(counts.items(), key=lambda kv: kv[1], reverse=True):
         if count < MIN_EVIDENCE_COUNT:
             continue
-        if await _has_recent_adaptation(db, metric):
-            continue
-        if await _active_count(db) >= MAX_ACTIVE_ADAPTATIONS:
-            logger.info(
-                f"[adaptation] MAX_ACTIVE_ADAPTATIONS reached, "
-                f"skipping {metric}"
-            )
-            break
-
-        now = datetime.now(timezone.utc)
         rule = ADAPTATION_RULES.get(metric)
         if rule is None:
-            continue  # mapping drift — metric without a rule is a no-op
-
-        # Contrast gate — only adapt when this bucket fails more
-        # than the global baseline. Bypassed when the bucket is
-        # too small for the rate comparison to be trustworthy
-        # (MIN_BUCKET_SNAPSHOTS); the evidence_count threshold
-        # still governs those cases.
-        stats = await _compute_contrast_and_severity(db, metric)
-        if stats is None:
-            logger.info(
-                f"[adaptation] skip {metric}: no contrast stats "
-                f"(rule mapping or DB error)"
-            )
-            continue
-        contrast = stats.get("contrast")
-        if contrast is not None and contrast < CONTRAST_MULTIPLIER:
-            # Bucket fails less than 1.25× the baseline — the metric
-            # isn't systematically bad, just appearing in recent
-            # toxic alerts. Skipping protects useful-but-noisy
-            # signals from being down-weighted.
-            logger.info(
-                f"[adaptation] skip {metric}: contrast={contrast:.3f} "
-                f"< {CONTRAST_MULTIPLIER} (bucket_rate="
-                f"{stats.get('bucket_rate')} vs global="
-                f"{stats.get('global_rate')})"
-            )
             continue
 
-        adaptation_id = str(uuid.uuid4())
-        # Severity-aware factor. Falls through to BASE_DOWN_WEIGHT
-        # when severity couldn't be computed (bucket had no failing
-        # rows with return_1d populated). Belt-and-braces clamp.
-        severity = float(stats.get("severity") or 0.0)
-        if severity > 0:
-            factor = _factor_from_severity(severity)
-        else:
-            factor = max(min(BASE_DOWN_WEIGHT, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
-        row = {
-            "adaptation_id": adaptation_id,
-            "metric": metric,
-            "column": rule["column"],
-            "description": rule["description"],
-            "adjustment_factor": factor,
-            "evidence_count": count,
-            "contrast": contrast,
-            "bucket_rate": stats.get("bucket_rate"),
-            "global_rate": stats.get("global_rate"),
-            "severity": severity,
-            "bucket_snapshots": stats.get("bucket_snapshots"),
-            "created_at": now.isoformat(),
-            "expires_at": now + timedelta(days=ADAPTATION_TTL_DAYS),
-            "active": True,
-            "reverted_at": None,
-        }
-        try:
-            await db[_COLLECTION].insert_one(row.copy())
-            # Strip the datetime for the return payload.
-            row["expires_at"] = row["expires_at"].isoformat()
-            new_rows.append(row)
-            logger.info(
-                f"[adaptation] created {metric} factor={factor:.2f} "
-                f"evidence={count} contrast={contrast} severity={severity:.4f} "
-                f"(enabled={adaptation_enabled()})"
-            )
-            try:
-                await log_retrain_adaptation_planned(
-                    metric=metric,
-                    factor=factor,
-                    evidence_count=count,
-                    description=rule["description"],
-                    enabled=adaptation_enabled(),
+        # Directional split — compute contrast + severity separately
+        # for the LONG side (outcome='down' proxy) and the SHORT
+        # side (outcome='up' proxy). Create one adaptation per
+        # direction that clears the contrast gate, so the engine
+        # learns "low volume is bad for LONG, not SHORT" when the
+        # data actually says that. Subject to MAX_ACTIVE.
+        directions_to_try = ["LONG", "SHORT"]
+        for direction in directions_to_try:
+            if await _has_recent_adaptation(db, metric, direction):
+                continue
+            if await _active_count(db) >= MAX_ACTIVE_ADAPTATIONS:
+                logger.info(
+                    f"[adaptation] MAX_ACTIVE_ADAPTATIONS reached, "
+                    f"skipping remaining"
                 )
-            except Exception:
-                pass
-        except Exception as e:
-            logger.warning(f"[adaptation] failed to persist {metric}: {e}")
+                break
+
+            stats = await _compute_contrast_and_severity(db, metric, direction)
+            if stats is None:
+                continue
+            contrast = stats.get("contrast")
+            if contrast is not None and contrast < CONTRAST_MULTIPLIER:
+                logger.info(
+                    f"[adaptation] skip {metric}/{direction}: contrast="
+                    f"{contrast:.3f} < {CONTRAST_MULTIPLIER}"
+                )
+                continue
+
+            now = datetime.now(timezone.utc)
+            adaptation_id = str(uuid.uuid4())
+            severity = float(stats.get("severity") or 0.0)
+            if severity > 0:
+                factor = _factor_from_severity(severity)
+            else:
+                factor = max(min(BASE_DOWN_WEIGHT, ADJUSTMENT_CEILING), ADJUSTMENT_FLOOR)
+            row = {
+                "adaptation_id": adaptation_id,
+                "metric": metric,
+                "direction": direction,
+                "column": rule["column"],
+                "description": rule["description"],
+                "adjustment_factor": factor,
+                "evidence_count": count,
+                "contrast": contrast,
+                "bucket_rate": stats.get("bucket_rate"),
+                "global_rate": stats.get("global_rate"),
+                "severity": severity,
+                "bucket_snapshots": stats.get("bucket_snapshots"),
+                "created_at": now.isoformat(),
+                "expires_at": now + timedelta(days=ADAPTATION_TTL_DAYS),
+                "active": True,
+                "reverted_at": None,
+            }
+            try:
+                await db[_COLLECTION].insert_one(row.copy())
+                row["expires_at"] = row["expires_at"].isoformat()
+                new_rows.append(row)
+                logger.info(
+                    f"[adaptation] created {metric}/{direction} "
+                    f"factor={factor:.2f} evidence={count} "
+                    f"contrast={contrast} severity={severity:.4f} "
+                    f"(enabled={adaptation_enabled()})"
+                )
+                try:
+                    await log_retrain_adaptation_planned(
+                        metric=f"{metric} ({direction})",
+                        factor=factor,
+                        evidence_count=count,
+                        description=rule["description"],
+                        enabled=adaptation_enabled(),
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(
+                    f"[adaptation] failed to persist {metric}/{direction}: {e}"
+                )
 
     return new_rows
 
@@ -526,21 +547,30 @@ async def disable_all_adaptations(db: Any) -> int:
     return int(res.modified_count)
 
 
-async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, list[dict]]:
+async def apply_adaptations_to_weights(
+    db: Any, df: Any, w: Any, y: Any | None = None,
+) -> tuple[Any, list[dict]]:
     """Multiply per-row sample weights by each active adaptation's
-    factor for the rows that match the adaptation's condition.
+    factor for the rows that match the adaptation's condition AND
+    directional proxy.
 
     Returns ``(adjusted_weights, applied_summary)``. When
     ``ML_ADAPTATION_ENABLED`` is false this is a dry-run: the
     summary reflects what WOULD change but ``w`` is returned
     unmodified.
 
+    Directional filter: each adaptation carries a ``direction``
+    field (``LONG`` / ``SHORT`` / ``ANY``). When ``y`` is provided,
+    ``LONG`` adaptations only match rows where ``y == 0`` (the
+    bearish-outcome label), ``SHORT`` only where ``y == 1``, and
+    ``ANY`` matches all. When ``y`` is not provided we fall back to
+    non-directional filtering so legacy callers keep working.
+
     Safety:
       * Cumulative multiplier per row is clamped to
         ``[MIN_CUMULATIVE_WEIGHT, 1.0]`` — an adaptation can only
         DECREASE a row's contribution; it can never amplify.
-      * Missing column → adaptation is skipped for that row set
-        (can't apply if we don't have the feature).
+      * Missing column → adaptation is skipped for that row set.
     """
     import numpy as np
     import pandas as pd
@@ -551,13 +581,26 @@ async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, l
 
     enabled = adaptation_enabled()
     cumulative = pd.Series([1.0] * len(df), index=df.index, dtype=float)
+    # y is derived from outcome (binarized bullish/bearish). In the
+    # existing retrain pipeline, y==0 corresponds to bearish rows
+    # ("LONG would have lost"), y==1 to bullish ("SHORT would have
+    # lost"). If the label semantics ever invert, this mapping is
+    # the one place to flip.
+    y_arr: Any = None
+    if y is not None:
+        y_arr = np.asarray(y).astype(int)
+        if len(y_arr) != len(df):
+            y_arr = None  # shape mismatch — skip directional filtering
+
     summary: list[dict] = []
     for ad in adaptations:
         col = ad.get("column")
+        direction = ad.get("direction", "ANY")
         if col not in df.columns:
             summary.append({
                 "adaptation_id": ad["adaptation_id"],
                 "metric": ad["metric"],
+                "direction": direction,
                 "rows_matched": 0,
                 "skipped_reason": f"column_missing:{col}",
             })
@@ -566,7 +609,13 @@ async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, l
         if rule is None:
             continue
         condition: Callable[[Any], bool] = rule["condition"]
-        mask = df[col].apply(condition).astype(bool)
+        cond_mask = df[col].apply(condition).astype(bool)
+        if direction == "LONG" and y_arr is not None:
+            mask = cond_mask & (pd.Series(y_arr == 0, index=df.index))
+        elif direction == "SHORT" and y_arr is not None:
+            mask = cond_mask & (pd.Series(y_arr == 1, index=df.index))
+        else:
+            mask = cond_mask
         n_match = int(mask.sum())
         factor = float(ad.get("adjustment_factor", 1.0))
         # Clamp factor into the allowed band as a belt-and-braces
@@ -577,6 +626,7 @@ async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, l
         summary.append({
             "adaptation_id": ad["adaptation_id"],
             "metric": ad["metric"],
+            "direction": direction,
             "column": col,
             "factor": factor,
             "rows_matched": n_match,
@@ -592,7 +642,11 @@ async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, l
         adjusted = w  # dry-run: return untouched weights
 
     # Narrate the apply step so admins see exactly what the retrain
-    # saw. Fire-and-forget; never blocks.
+    # saw. Fire-and-forget; never blocks. Compute a projected
+    # impact stat: "coverage" of the last 50 resolved-or-pending
+    # predictions — how many would fall into at least one adapted
+    # bucket next retrain. Informational (no training effect).
+    projected_impact = await _projected_impact(db, adaptations)
     try:
         from services.agent_activity_service import log_retrain_adaptation_applied
         total_matched = sum(int(s.get("rows_matched", 0)) for s in summary)
@@ -600,8 +654,100 @@ async def apply_adaptations_to_weights(db: Any, df: Any, w: Any) -> tuple[Any, l
             enabled=enabled,
             adaptations=summary,
             total_matched=total_matched,
+            projected_impact=projected_impact,
         )
     except Exception:
         pass
 
     return np.asarray(adjusted), summary
+
+
+async def _projected_impact(db: Any, adaptations: list[dict]) -> dict:
+    """Coverage statistic: of the last ~50 resolved predictions,
+    how many would fall into at least one active adapted bucket?
+
+    This is descriptive, not predictive — we don't simulate the
+    new model, we just measure the relevance of the current
+    adaptation set. Safe to run (read-only aggregate over
+    features_snapshots).
+    """
+    if not adaptations:
+        return {"sample_size": 0, "matched_predictions": 0, "coverage": None}
+
+    try:
+        # Build an $or clause that mirrors the adaptation conditions,
+        # each scoped to the appropriate direction where known.
+        clauses: list[dict] = []
+        for ad in adaptations:
+            metric = ad.get("metric")
+            col = ad.get("column")
+            direction = ad.get("direction", "ANY")
+            if not col:
+                continue
+            if metric == "volume.liquidity":
+                cond = {col: {"$lt": 0.8, "$ne": None}}
+            elif metric == "volume.spike":
+                cond = {col: {"$gt": 2.0}}
+            elif metric == "rsi.overbought":
+                cond = {col: {"$gt": 70}}
+            elif metric == "rsi.oversold":
+                cond = {col: {"$lt": 30, "$ne": None}}
+            elif metric == "macd.crossover":
+                cond = {col: {"$lt": 0, "$ne": None}}
+            elif metric == "sector.momentum":
+                cond = {col: {"$lt": -0.02, "$ne": None}}
+            elif metric == "sentiment.negative":
+                cond = {col: {"$lt": -0.3, "$ne": None}}
+            elif (metric or "").startswith("pattern."):
+                cond = {col: True}
+            else:
+                continue
+            if direction == "LONG":
+                cond = {**cond, "outcome": "down"}
+            elif direction == "SHORT":
+                cond = {**cond, "outcome": "up"}
+            clauses.append(cond)
+
+        if not clauses:
+            return {"sample_size": 0, "matched_predictions": 0, "coverage": None}
+
+        # Grab the last 50 resolved predictions (up/down/flat) and
+        # check how many match ANY of the clauses.
+        coll = db["features_snapshots"]
+        cursor = coll.find(
+            {"outcome": {"$in": ["up", "down", "flat"]}},
+            {"_id": 0, "ticker": 1, "captured_at": 1, **{c: 1 for clause in clauses for c in clause}, "outcome": 1},
+        ).sort("captured_at", -1).limit(50)
+
+        sample_size = 0
+        matched = 0
+        async for row in cursor:
+            sample_size += 1
+            for clause in clauses:
+                ok = True
+                for k, v in clause.items():
+                    val = row.get(k)
+                    if isinstance(v, dict):
+                        # e.g. {"$lt": 0.8, "$ne": None}
+                        if val is None and v.get("$ne") is None:
+                            ok = False; break
+                        if "$lt" in v and not (val is not None and val < v["$lt"]):
+                            ok = False; break
+                        if "$gt" in v and not (val is not None and val > v["$gt"]):
+                            ok = False; break
+                    else:
+                        if val != v:
+                            ok = False; break
+                if ok:
+                    matched += 1
+                    break
+
+        coverage = round(matched / sample_size, 3) if sample_size > 0 else None
+        return {
+            "sample_size": sample_size,
+            "matched_predictions": matched,
+            "coverage": coverage,
+        }
+    except Exception as e:
+        logger.debug(f"[adaptation] projected_impact failed: {e}")
+        return {"sample_size": 0, "matched_predictions": 0, "coverage": None}

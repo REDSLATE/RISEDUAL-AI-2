@@ -145,7 +145,7 @@ const ModelAdaptationsPanel = () => {
           <div className="space-y-2" data-testid="adaptations-list">
             {items.map((a) => {
               const pct = Math.round((1 - a.adjustment_factor) * 100);
-              const direction = a.adjustment_factor < 1 ? 'down' : 'up';
+              const weightDirection = a.adjustment_factor < 1 ? 'down' : 'up';
               return (
                 <div
                   key={a.adaptation_id}
@@ -156,8 +156,17 @@ const ModelAdaptationsPanel = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-mono font-bold text-white">{a.metric}</span>
-                        <Badge className={`text-[10px] ${direction === 'down' ? 'bg-rose-500/15 text-rose-200 border-rose-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'}`}>
-                          {direction === 'down' ? `−${pct}%` : `+${pct}%`} weight
+                        {a.direction && a.direction !== 'ANY' && (
+                          <Badge className={
+                            a.direction === 'LONG'
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 text-[10px]'
+                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30 text-[10px]'
+                          }>
+                            {a.direction}
+                          </Badge>
+                        )}
+                        <Badge className={`text-[10px] ${weightDirection === 'down' ? 'bg-rose-500/15 text-rose-200 border-rose-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'}`}>
+                          {weightDirection === 'down' ? `−${pct}%` : `+${pct}%`} weight
                         </Badge>
                         <Badge className="bg-slate-700/60 text-slate-200 border-slate-600/40 text-[10px]">
                           {a.evidence_count} toxic event{a.evidence_count === 1 ? '' : 's'}

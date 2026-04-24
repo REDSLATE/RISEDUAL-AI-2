@@ -521,7 +521,7 @@ async def run_nightly_retrain(
         try:
             import numpy as _np
             w_mean_before = float(_np.asarray(w).mean()) if n > 0 else 0.0
-            w, adaptation_summary = await apply_adaptations_to_weights(db, X, w)
+            w, adaptation_summary = await apply_adaptations_to_weights(db, X, w, y=y)
             if adaptation_summary:
                 w_mean_after = float(_np.asarray(w).mean()) if n > 0 else 0.0
                 log_row["adaptations_applied"] = adaptation_summary

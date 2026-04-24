@@ -1365,6 +1365,21 @@ async def alert_why(alert_id: str, request: Request):
         ]
 
     enriched = []
+    # Try to load the latest trained model once so we can compute
+    # SHAP-style contributions for every ticker in one pass. Falls
+    # back to the per-snapshot heuristic if the model isn't loadable
+    # (fresh deployment, load error, etc.) — the caller still sees
+    # the drivers, just without SHAP magnitudes.
+    shap_model = None
+    try:
+        from services.ml_retrain_service import get_latest_model_info
+        info = get_latest_model_info()
+        if info and info.get("path"):
+            from risedual_core.ml.signal_model import SignalModel
+            shap_model = SignalModel.load(info["path"])
+    except Exception as e:
+        logger.debug(f"[why-drilldown] SHAP model load skipped: {e}")
+
     for spike in spikes[:10]:
         ticker = spike.get("symbol")
         if not ticker or ticker == "?":
@@ -1381,6 +1396,29 @@ async def alert_why(alert_id: str, request: Request):
         )
         failure_code = spike.get("failure_code", "UNKNOWN")
         drivers = _extract_drivers(snap, failure_code) if snap else []
+        # SHAP enrichment — computed AFTER heuristic so a SHAP
+        # failure never loses us the baseline drivers.
+        shap_top: list[dict] = []
+        if shap_model is not None and snap:
+            try:
+                # Need a richer snapshot with all FEATURE_COLUMNS —
+                # re-fetch with no projection so the DataFrame
+                # reconstructor has everything it needs.
+                full_snap = await db["features_snapshots"].find_one(
+                    {"ticker": ticker}, {"_id": 0},
+                    sort=[("timestamp", -1)],
+                )
+                if full_snap:
+                    import pandas as _pd
+                    df = _pd.DataFrame([full_snap])
+                    tops = shap_model.shap_top_features(df, top_n=3)
+                    if tops and tops[0]:
+                        shap_top = [
+                            {"feature": name, "contribution": round(val, 4)}
+                            for (name, val) in tops[0]
+                        ]
+            except Exception as e:
+                logger.debug(f"[why-drilldown] SHAP for {ticker}: {e}")
         enriched.append({
             "symbol": ticker,
             "confidence": spike.get("confidence"),
@@ -1389,6 +1427,7 @@ async def alert_why(alert_id: str, request: Request):
             "regime": (snap or {}).get("regime_label"),
             "snapshot_at": (snap or {}).get("timestamp"),
             "drivers": drivers,
+            "shap_top": shap_top,
         })
 
     return {
