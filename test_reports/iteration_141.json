@@ -1,0 +1,81 @@
+{
+  "summary": "Iteration 141: DigestToggle / Preview & send flow RETEST after WorkspaceHub fix. The fix successfully exposed DigestToggle as a named export from UserWorkspace and rendered it inline at the top of WorkspaceHub's Agent tab. All core functionality verified working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "DigestPreviewModal",
+        "issue": "ESC key does not close the modal - no keyboard event handler implemented",
+        "selector": "[data-testid=\"digest-preview-modal\"]",
+        "priority": "LOW",
+        "note": "Requirement #10 mentions ESC-key should close modal, but no useEffect with keydown listener exists in DigestPreviewModal component"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_141.json"
+  ],
+  "action_items": [
+    "OPTIONAL: Add ESC key handler to DigestPreviewModal (useEffect with keydown listener for 'Escape' key)"
+  ],
+  "critical_code_review_comments": [
+    "DigestToggle successfully exported as named export from UserWorkspace.jsx (line 789)",
+    "WorkspaceHub.jsx correctly lazy-loads DigestToggle via React.lazy (lines 40-42)",
+    "DigestToggle rendered at top of Agent tab in WorkspaceHub (line 61)",
+    "Backdrop click correctly wired via onClick={onClose} on modal wrapper div",
+    "Modal content correctly populated from GET /api/digest/my-preview with KPIs, predictions, smart_money, alerts, overview"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (not tested per request - already verified in iteration_140)",
+    "frontend": "95% - All core flows working, only ESC key handler missing"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "DigestToggle / Preview & send flow now accessible via WorkspaceHub Agent tab. All functionality verified: (1) DigestToggle card visible with 'Preview & send' button, (2) Modal opens with KPIs (5 Predictions, 6 Smart $, 5 Alerts), overview, top_predictions, top_smart_money, watchlist intel message, (3) Cancel button closes modal, (4) Close (X) button closes modal, (5) Backdrop click closes modal, (6) Send button fires POST /api/digest/send-now, (7) Success toast 'Fresh digest is on its way' + modal closes, (8) 429 rate-limited toast 'Already sent recently' + modal stays open + buttons remain enabled. Only missing: ESC key handler.",
+  "verified_features": {
+    "digest_toggle_accessibility": {
+      "location": "WorkspaceHub Agent tab (top)",
+      "data_testid": "digest-toggle",
+      "button_testid": "digest-send-now-btn",
+      "button_text": "Preview & send"
+    },
+    "digest_preview_modal": {
+      "data_testid": "digest-preview-modal",
+      "kpis_testid": "digest-preview-kpis",
+      "kpi_values_verified": {
+        "predictions": 5,
+        "smart_money": 6,
+        "alerts": 5
+      },
+      "sections_verified": [
+        "Market Overview (overview_headline)",
+        "Top AI Predictions (top_predictions: GOOGL BUY 72%, BTC BULLISH 70%, AMZN BUY 69%)",
+        "Smart-Money Shifts (top_smart_money: TSLA score 70.00, META score 36.00, VOO score 59.00)",
+        "Watchlist intel included message"
+      ],
+      "buttons": {
+        "send": "[data-testid=\"digest-preview-send\"] - 'Send to my inbox'",
+        "cancel": "[data-testid=\"digest-preview-cancel\"] - 'Cancel'",
+        "close": "[data-testid=\"digest-preview-close\"] - X button"
+      }
+    },
+    "modal_close_methods": {
+      "cancel_button": "PASS",
+      "close_x_button": "PASS",
+      "backdrop_click": "PASS",
+      "esc_key": "FAIL - not implemented"
+    },
+    "send_functionality": {
+      "success_case": "Toast 'Fresh digest is on its way' + modal closes",
+      "rate_limited_429": "Toast 'Already sent recently' + modal stays open + buttons remain enabled"
+    }
+  }
+}

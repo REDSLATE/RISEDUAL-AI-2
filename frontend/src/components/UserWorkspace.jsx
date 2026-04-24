@@ -786,4 +786,5 @@ const PushToggle = () => {
   );
 };
 
+export { DigestToggle };
 export default UserWorkspace;

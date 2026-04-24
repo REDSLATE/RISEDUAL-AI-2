@@ -37,6 +37,9 @@ const ReferralLeaderboard = React.lazy(() => import('../ReferralLeaderboard'));
 const FailureLoopDashboard = React.lazy(() => import('../FailureLoopDashboard'));
 const AgentActivityFeed = React.lazy(() => import('../AgentActivityFeed'));
 const FeatureStabilityPanel = React.lazy(() => import('../FeatureStabilityPanel'));
+const DigestToggle = React.lazy(() =>
+  import('../UserWorkspace').then((m) => ({ default: m.DigestToggle })),
+);
 
 export default function WorkspaceHub({ onSubscribe, initialTab }) {
   const { enabled: v2Nav } = useV2Nav();
@@ -54,9 +57,12 @@ export default function WorkspaceHub({ onSubscribe, initialTab }) {
       <React.Suspense fallback={fallback}>
         <div className="animate-enter">
           {tab === 'agent' && (
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
-              <AgentActivityFeed />
-              <FeatureStabilityPanel />
+            <div className="space-y-4">
+              <DigestToggle />
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
+                <AgentActivityFeed />
+                <FeatureStabilityPanel />
+              </div>
             </div>
           )}
           {tab === 'watchlist' && (
