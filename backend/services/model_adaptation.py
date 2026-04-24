@@ -252,12 +252,19 @@ def auto_revert_shadow_mode() -> bool:
 async def _evaluate_one_adaptation(
     db: Any, ad: dict, cooldown_cutoff: Any, now_iso: str,
     shadow: bool, semaphore: asyncio.Semaphore,
+    prefetched_runs: list[dict] | None = None,
 ) -> dict | None:
     """Per-adaptation evaluation extracted so the outer scanner
     can run them concurrently. Returns one action dict (or ``None``
     if no action was taken). When ``shadow=True`` we write a
     ``shadow_soften`` / ``shadow_revert`` audit row but leave the
-    adaptation doc untouched."""
+    adaptation doc untouched.
+
+    When ``prefetched_runs`` is provided the scanner has already
+    fetched the last-N retrain logs in a single roundtrip — we
+    filter in-memory instead of issuing a per-candidate mongo
+    query. Cuts the scanner from ``N × rtt`` to ``1 × rtt`` for
+    the hot path."""
     async with semaphore:
         aid = ad.get("adaptation_id")
         if not aid:
@@ -282,18 +289,25 @@ async def _evaluate_one_adaptation(
             logger.warning(f"[auto-revert] cooldown query failed for {aid}")
             # fail-open
 
-        # Pull last-N retrain rows at the current factor.
-        cursor = (
-            db["ml_training_log"]
-            .find(
-                {"adaptations_applied.adaptation_id": aid},
-                {"_id": 0, "started_at": 1, "samples": 1,
-                 "adaptations_applied": 1, "model_version": 1},
+        # Pull last-N retrain rows at the current factor. Prefer
+        # the prefetched batch when available (1 DB call for the
+        # whole scanner); fall back to a per-candidate query so
+        # the function is still callable standalone (e.g. admin
+        # "run scan now" button or unit tests).
+        if prefetched_runs is not None:
+            runs = prefetched_runs
+        else:
+            cursor = (
+                db["ml_training_log"]
+                .find(
+                    {"adaptations_applied.adaptation_id": aid},
+                    {"_id": 0, "started_at": 1, "samples": 1,
+                     "adaptations_applied": 1, "model_version": 1},
+                )
+                .sort("started_at", -1)
+                .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
             )
-            .sort("started_at", -1)
-            .limit(AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
-        )
-        runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
+            runs = await cursor.to_list(length=AUTO_REVERT_CONSECUTIVE_NEGATIVE * 3)
 
         deltas_r: list[float] = []
         deltas_wr: list[float] = []
@@ -342,11 +356,47 @@ async def _evaluate_one_adaptation(
 
         next_factor = round(current_factor + AUTO_SOFTEN_STEP, 4)
         is_final_step = next_factor > AUTO_SOFTEN_MAX_FACTOR
+
+        # ── Decision calibration (score + trend + threshold) ──
+        # `decision_score` is the composite mean of the per-run
+        # effect sizes — one scalar that tells operators at a
+        # glance whether a decision was borderline (just past the
+        # floor) or catastrophic (10× the floor). Persisted on
+        # every audit row so shadow-mode observations can be
+        # distribution-analysed before flipping live.
+        decision_score = sum(effect_sizes) / len(effect_sizes)
+        decision_threshold = AUTO_REVERT_EFFECT_SIZE
+        decision_ratio = decision_score / decision_threshold
+        # ``delta_r_trend`` is the slope of ΔR over the 3-run
+        # window (newest last). Positive → worsening (deltas
+        # becoming less negative ⇒ improving? careful: our
+        # deltas are negative, so "increasing" = less bad). We
+        # compute it on the ORIGINAL order (oldest → newest) so
+        # a positive slope means "improving" and negative means
+        # "accelerating damage".  Admins can use this to
+        # distinguish rules that are stabilising (don't kill)
+        # from rules that are in free-fall (kill faster in the
+        # next iteration).
+        deltas_chrono = list(reversed(deltas_r))
+        try:
+            n_pts = len(deltas_chrono)
+            mean_x = (n_pts - 1) / 2.0
+            mean_y = sum(deltas_chrono) / n_pts
+            num = sum((i - mean_x) * (d - mean_y)
+                      for i, d in enumerate(deltas_chrono))
+            den = sum((i - mean_x) ** 2 for i in range(n_pts))
+            delta_r_trend = (num / den) if den > 1e-9 else 0.0
+        except Exception:
+            delta_r_trend = 0.0
+
         base_reason_parts = (
             f"ΔR={[round(d, 4) for d in deltas_r]}, "
             f"Δwin_rate={[round(w, 4) for w in deltas_wr]}, "
             f"coverage={[round(c, 3) for c in coverages]}, "
             f"effect_size={[round(es, 4) for es in effect_sizes]}, "
+            f"score={round(decision_score, 4)} "
+            f"(×{round(decision_ratio, 2)} threshold), "
+            f"trend={round(delta_r_trend, 4)}, "
             f"factor={current_factor}"
         )
         # ``prefix`` appears in logs + audit row so admins can grep
@@ -361,6 +411,10 @@ async def _evaluate_one_adaptation(
             "deltas_wr": [round(w, 4) for w in deltas_wr],
             "coverages": [round(c, 3) for c in coverages],
             "effect_sizes": [round(es, 4) for es in effect_sizes],
+            "decision_score": round(decision_score, 4),
+            "decision_threshold": round(decision_threshold, 4),
+            "decision_ratio": round(decision_ratio, 2),
+            "delta_r_trend": round(delta_r_trend, 4),
             "shadow": shadow,
         }
 
