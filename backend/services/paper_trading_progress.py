@@ -202,4 +202,73 @@ async def tier3_progress(db: Any) -> dict:
         logger.warning("[tier3] 7-day activity lookup failed: %s", exc)
         snapshot["last_7_days"] = []
 
+    # R-weighting adoption: tracks the fraction of training rows
+    # carrying the execution-economics block (entry/exit/stop_loss).
+    # When this stabilises ≥70% across consecutive retrains we can
+    # retire the magnitude-severity fallback path in the retrain
+    # pipeline (see /app/memory/MAGNITUDE_RETIREMENT_PLAN.md).
+    try:
+        cursor = (
+            db["ml_training_log"]
+            .find(
+                {"status": {"$in": ["ok", "success"]},
+                 "r_eligible_frac": {"$exists": True}},
+                {"_id": 0, "started_at": 1, "finished_at": 1,
+                 "r_eligible_frac": 1, "r_skipped_frac": 1, "samples": 1},
+            )
+            .sort("started_at", -1)
+            .limit(14)
+        )
+        history = [row async for row in cursor]
+        # Oldest-first for a left-to-right chart.
+        history.reverse()
+        serialised = []
+        for row in history:
+            ts = row.get("finished_at") or row.get("started_at")
+            if isinstance(ts, datetime):
+                ts = ts.isoformat()
+            serialised.append({
+                "at": ts,
+                "r_eligible_frac": float(row.get("r_eligible_frac") or 0.0),
+                "r_skipped_frac": float(row.get("r_skipped_frac") or 0.0),
+                "samples": int(row.get("samples") or 0),
+            })
+
+        # Verdict: how many TRAILING runs are above the stability
+        # threshold, and are we ready to retire the magnitude path?
+        threshold = 0.7
+        required = 3
+        consecutive = 0
+        for row in reversed(serialised):  # newest → oldest
+            if row["r_eligible_frac"] >= threshold:
+                consecutive += 1
+            else:
+                break
+        latest = serialised[-1]["r_eligible_frac"] if serialised else 0.0
+        verdict = {
+            "threshold": threshold,
+            "required_consecutive": required,
+            "consecutive_stable_runs": consecutive,
+            "latest_r_eligible_frac": latest,
+            "magnitude_retirement_ready": consecutive >= required,
+            "runs_tracked": len(serialised),
+        }
+        snapshot["r_adoption"] = {
+            "history": serialised,
+            "verdict": verdict,
+        }
+    except Exception as exc:
+        logger.warning("[tier3] r-adoption history lookup failed: %s", exc)
+        snapshot["r_adoption"] = {
+            "history": [],
+            "verdict": {
+                "threshold": 0.7,
+                "required_consecutive": 3,
+                "consecutive_stable_runs": 0,
+                "latest_r_eligible_frac": 0.0,
+                "magnitude_retirement_ready": False,
+                "runs_tracked": 0,
+            },
+        }
+
     return snapshot

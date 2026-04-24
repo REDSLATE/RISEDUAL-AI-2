@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users, Mail, Bell, BellOff, Send, Loader2 } from 'lucide-react';
+import { Briefcase, Star, Clock, TrendingUp, TrendingDown, Minus, Trash2, RefreshCw, X, Search, Plus, Lock, Gift, Copy, Check, Users, Mail, Bell, BellOff, Send, Loader2, Eye, Sparkles } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -429,11 +429,188 @@ const ReferralsTab = () => {
   );
 };
 
+const DigestPreviewModal = ({ open, onClose, onConfirm, preview, loading, sending, email }) => {
+  if (!open) return null;
+  const cs = preview?.content_summary || {};
+  const pv = preview?.preview || {};
+  const total = (cs.predictions || 0) + (cs.smart_money || 0) + (cs.alerts || 0);
+  return (
+    <div
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[120] flex items-center justify-center p-4"
+      data-testid="digest-preview-modal"
+      onClick={onClose}
+    >
+      <Card
+        className="bg-slate-900 border-slate-400/30 rounded-2xl max-w-md w-full p-5 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#3DE8D9]/20 to-purple-500/10 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-[#3DE8D9]" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-white text-sm font-semibold">Digest preview</h3>
+              <p className="text-slate-400 text-[10px] truncate">
+                We&rsquo;ll send this to{' '}
+                <span className="text-slate-300">{email || 'your inbox'}</span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white rounded p-1 hover:bg-slate-800"
+            data-testid="digest-preview-close"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {loading && (
+          <div className="py-10 flex items-center justify-center gap-2 text-slate-400 text-xs">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Building your preview…
+          </div>
+        )}
+
+        {!loading && preview && (
+          <>
+            {/* KPI row */}
+            <div className="grid grid-cols-3 gap-2 mb-4" data-testid="digest-preview-kpis">
+              <div className="bg-slate-800/60 rounded-lg p-2 border border-slate-700/40 text-center">
+                <div className="text-lg font-bold text-white tabular-nums">{cs.predictions || 0}</div>
+                <div className="text-[9px] uppercase tracking-wider text-slate-400">Predictions</div>
+              </div>
+              <div className="bg-slate-800/60 rounded-lg p-2 border border-slate-700/40 text-center">
+                <div className="text-lg font-bold text-white tabular-nums">{cs.smart_money || 0}</div>
+                <div className="text-[9px] uppercase tracking-wider text-slate-400">Smart $</div>
+              </div>
+              <div className="bg-slate-800/60 rounded-lg p-2 border border-slate-700/40 text-center">
+                <div className="text-lg font-bold text-white tabular-nums">{cs.alerts || 0}</div>
+                <div className="text-[9px] uppercase tracking-wider text-slate-400">Alerts</div>
+              </div>
+            </div>
+
+            {pv.overview_headline && (
+              <div className="mb-3" data-testid="digest-preview-overview">
+                <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Market overview</div>
+                <p className="text-xs text-slate-200 leading-snug italic border-l-2 border-[#3DE8D9]/40 pl-2">
+                  {pv.overview_headline}
+                </p>
+              </div>
+            )}
+
+            {pv.top_predictions?.length > 0 && (
+              <div className="mb-3" data-testid="digest-preview-predictions">
+                <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Top AI predictions</div>
+                <ul className="space-y-1">
+                  {pv.top_predictions.map((p, i) => (
+                    <li key={`${p.ticker || 'x'}-${i}`} className="flex items-center gap-2 text-xs">
+                      <span className="text-white font-bold font-mono">{p.ticker || '?'}</span>
+                      {p.direction && (
+                        <span className={`text-[10px] font-bold uppercase px-1.5 rounded ${
+                          p.direction === 'up' || p.direction === 'UP'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-rose-500/20 text-rose-300'
+                        }`}>
+                          {p.direction}
+                        </span>
+                      )}
+                      {typeof p.confidence === 'number' && (
+                        <span className="text-[10px] text-slate-400 tabular-nums">
+                          {(p.confidence > 1 ? p.confidence : p.confidence * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {p.horizon && <span className="text-[10px] text-slate-500">· {p.horizon}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {pv.top_smart_money?.length > 0 && (
+              <div className="mb-3" data-testid="digest-preview-smart-money">
+                <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Smart-money shifts</div>
+                <ul className="space-y-1">
+                  {pv.top_smart_money.map((s, i) => (
+                    <li key={`${s.ticker || 'x'}-${i}`} className="flex items-center gap-2 text-xs">
+                      <span className="text-white font-bold font-mono">{s.ticker || '?'}</span>
+                      {typeof s.score === 'number' && (
+                        <span className="text-[10px] text-purple-300 tabular-nums">
+                          score {s.score.toFixed(2)}
+                        </span>
+                      )}
+                      {typeof s.shift === 'number' && (
+                        <span className={`text-[10px] tabular-nums ${s.shift >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                          {s.shift >= 0 ? '+' : ''}{s.shift.toFixed(2)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {pv.alert_titles?.length > 0 && (
+              <div className="mb-3" data-testid="digest-preview-alerts">
+                <div className="text-[9px] uppercase tracking-wider text-slate-500 mb-1">Regime alerts</div>
+                <ul className="space-y-1">
+                  {pv.alert_titles.filter(Boolean).map((t, i) => (
+                    <li key={i} className="text-xs text-slate-300 truncate">• {t}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {cs.has_watchlist_intel && (
+              <div className="mb-3 px-2 py-1.5 rounded bg-[#3DE8D9]/5 border border-[#3DE8D9]/20 text-[10px] text-[#3DE8D9]">
+                ✦ Your watchlist intel will be included
+              </div>
+            )}
+
+            {total === 0 && !pv.overview_headline && (
+              <div className="mb-3 px-3 py-3 rounded bg-slate-800/40 border border-slate-700/40 text-[11px] text-slate-400 italic">
+                Quiet market — the digest will ship with overview + watchlist intel only.
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="flex items-center gap-2 justify-end pt-3 border-t border-slate-700/40 mt-2">
+          <button
+            onClick={onClose}
+            disabled={sending}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition"
+            data-testid="digest-preview-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={sending || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#3DE8D9] text-black hover:bg-[#7AEEE0] transition disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="digest-preview-send"
+          >
+            {sending
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</>
+              : <><Send className="w-3.5 h-3.5" /> Send to my inbox</>}
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
 const DigestToggle = () => {
   const [subscribed, setSubscribed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [sending, setSending] = useState(false);
+  // Preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -459,7 +636,31 @@ const DigestToggle = () => {
     finally { setToggling(false); }
   };
 
-  const sendNow = async () => {
+  const openPreview = async () => {
+    setPreviewOpen(true);
+    setPreview(null);
+    setPreviewLoading(true);
+    try {
+      const res = await authFetch(`${API}/digest/my-preview`);
+      if (res.ok) {
+        setPreview(await res.json());
+      } else {
+        toast.error('Could not load preview', {
+          description: 'Falling back to direct send.',
+        });
+        // Degrade: keep the modal open with an empty preview so
+        // the user can still confirm-send.
+        setPreview({ content_summary: {}, preview: {}, email: null });
+      }
+    } catch (e) {
+      logger.error('digest preview error:', e);
+      setPreview({ content_summary: {}, preview: {}, email: null });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const confirmSend = async () => {
     if (sending) return;
     setSending(true);
     try {
@@ -471,6 +672,7 @@ const DigestToggle = () => {
           description: `${cs.predictions || 0} predictions · ${cs.smart_money || 0} smart-money alerts · ${cs.alerts || 0} market alerts${data.has_watchlist_intel ? ' · watchlist intel included' : ''}.`,
           duration: 5000,
         });
+        setPreviewOpen(false);
       } else if (res.status === 429) {
         toast.error('Already sent recently', { description: data.detail || 'Please wait before requesting another digest.' });
       } else {
@@ -487,45 +689,56 @@ const DigestToggle = () => {
   if (loading) return null;
 
   return (
-    <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center shrink-0">
-            <Mail className="w-4 h-4 text-[#3DE8D9]" />
+    <>
+      <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-4" data-testid="digest-toggle">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#3DE8D9]/10 flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4 text-[#3DE8D9]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white text-sm font-medium">Daily Market Digest</p>
+              <p className="text-slate-400 text-[10px]">
+                Morning briefing at 6:00 AM UTC · preview on-demand
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-white text-sm font-medium">Daily Market Digest</p>
-            <p className="text-slate-400 text-[10px]">Morning briefing at 6:00 AM UTC · on-demand preview available</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openPreview}
+              disabled={sending}
+              title="Preview the fresh digest before sending (1 send per hour)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/30 hover:bg-[#3DE8D9]/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              data-testid="digest-send-now-btn"
+            >
+              <Eye className="w-3.5 h-3.5" /> Preview &amp; send
+            </button>
+            <button
+              onClick={toggle}
+              disabled={toggling}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                subscribed
+                  ? 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
+                  : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
+              }`}
+              data-testid="digest-toggle-btn"
+            >
+              {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+              {subscribed ? 'Subscribed' : 'Unsubscribed'}
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={sendNow}
-            disabled={sending}
-            title="Send a fresh digest to your inbox right now (1 per hour)"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/30 hover:bg-[#3DE8D9]/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            data-testid="digest-send-now-btn"
-          >
-            {sending
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending</>
-              : <><Send className="w-3.5 h-3.5" /> Send me one now</>}
-          </button>
-          <button
-            onClick={toggle}
-            disabled={toggling}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              subscribed
-                ? 'bg-lime-700 text-lime-400 border border-emerald-700/50 hover:bg-emerald-800/40'
-                : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
-            }`}
-            data-testid="digest-toggle-btn"
-          >
-            {subscribed ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
-            {subscribed ? 'Subscribed' : 'Unsubscribed'}
-          </button>
-        </div>
-      </div>
-    </Card>
+      </Card>
+      <DigestPreviewModal
+        open={previewOpen}
+        onClose={() => { if (!sending) setPreviewOpen(false); }}
+        onConfirm={confirmSend}
+        preview={preview}
+        loading={previewLoading}
+        sending={sending}
+        email={preview?.email}
+      />
+    </>
   );
 };
 

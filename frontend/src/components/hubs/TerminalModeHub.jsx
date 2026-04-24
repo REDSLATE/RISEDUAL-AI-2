@@ -151,49 +151,86 @@ const Panel = ({ title, icon: Icon, accent = 'text-[#3DE8D9]', children, testId 
   </div>
 );
 
-/** Horizontal/vertical splitter — drag the handle to reapportion. */
-const Splitter = ({ orientation, value, onChange, min = 15, max = 85 }) => {
+/** Horizontal/vertical splitter — drag the handle to reapportion.
+ *  Uses pointer events so trackpad drag and touch work the same
+ *  as mouse. Double-click resets to the provided `defaultValue`.
+ *  The visible handle is wider than the 1px divider so it's
+ *  actually grabbable — a thicker bar would eat real estate, so
+ *  we render a hit-area with a centred grip dot on hover. */
+const Splitter = ({ orientation, value, onChange, defaultValue, min = 15, max = 85 }) => {
   const containerRef = useRef(null);
-  const onMouseDown = useCallback((e) => {
+  const isH = orientation === 'horizontal';
+  const onPointerDown = useCallback((e) => {
     e.preventDefault();
     const parent = containerRef.current?.parentElement;
     if (!parent) return;
     const rect = parent.getBoundingClientRect();
+    const pointerId = e.pointerId;
+    // Capture the pointer on the target so dragging off the
+    // splitter doesn't drop the drag — pointer capture is the
+    // right primitive for drag-handles in 2026.
+    try { e.currentTarget.setPointerCapture(pointerId); } catch {
+      /* older browsers without setPointerCapture — fall through */
+    }
     const move = (ev) => {
-      const pct = orientation === 'horizontal'
+      const pct = isH
         ? ((ev.clientX - rect.left) / rect.width) * 100
         : ((ev.clientY - rect.top) / rect.height) * 100;
       onChange(Math.max(min, Math.min(max, pct)));
     };
     const up = () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      try { e.currentTarget.releasePointerCapture(pointerId); } catch { /* noop */ }
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-  }, [orientation, onChange, min, max]);
-  const isH = orientation === 'horizontal';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }, [isH, onChange, min, max]);
+  const onDoubleClick = useCallback(() => {
+    if (typeof defaultValue === 'number') onChange(defaultValue);
+  }, [onChange, defaultValue]);
   return (
     <div
       ref={containerRef}
-      onMouseDown={onMouseDown}
-      className={`bg-slate-800 hover:bg-[#3DE8D9]/40 transition-colors ${
-        isH ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'
+      onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
+      className={`group relative bg-slate-800/80 hover:bg-[#3DE8D9]/40 transition-colors touch-none ${
+        isH ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'
       }`}
+      title="Drag to resize · double-click to reset"
       data-testid={`terminal-splitter-${orientation}`}
-    />
+    >
+      {/* Grip dots — visible on hover so the handle reads as draggable
+          without stealing space in the resting state. */}
+      <div
+        className={`pointer-events-none absolute opacity-0 group-hover:opacity-100 transition-opacity ${
+          isH
+            ? 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-0.5'
+            : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-row gap-0.5'
+        }`}
+        aria-hidden
+      >
+        <span className="w-0.5 h-0.5 rounded-full bg-[#3DE8D9]" />
+        <span className="w-0.5 h-0.5 rounded-full bg-[#3DE8D9]" />
+        <span className="w-0.5 h-0.5 rounded-full bg-[#3DE8D9]" />
+      </div>
+    </div>
   );
 };
 
 export default function TerminalModeHub({ onSubscribe }) {
   // Split percentages persisted to localStorage.
+  const DEFAULT_H = 52;
+  const DEFAULT_V = 55;
   const [hSplit, setHSplit] = useState(() => {
     const v = parseFloat(localStorage.getItem('risedual:terminal:hSplit'));
-    return isFinite(v) ? v : 52;
+    return isFinite(v) ? v : DEFAULT_H;
   });
   const [vSplit, setVSplit] = useState(() => {
     const v = parseFloat(localStorage.getItem('risedual:terminal:vSplit'));
-    return isFinite(v) ? v : 55;
+    return isFinite(v) ? v : DEFAULT_V;
   });
   useEffect(() => {
     localStorage.setItem('risedual:terminal:hSplit', String(hSplit));
@@ -201,6 +238,13 @@ export default function TerminalModeHub({ onSubscribe }) {
   useEffect(() => {
     localStorage.setItem('risedual:terminal:vSplit', String(vSplit));
   }, [vSplit]);
+  const resetLayout = useCallback(() => {
+    setHSplit(DEFAULT_H);
+    setVSplit(DEFAULT_V);
+  }, []);
+  const layoutDirty = (
+    Math.abs(hSplit - DEFAULT_H) > 0.1 || Math.abs(vSplit - DEFAULT_V) > 0.1
+  );
 
   return (
     <div
@@ -237,7 +281,7 @@ export default function TerminalModeHub({ onSubscribe }) {
               </div>
             </Panel>
           </div>
-          <Splitter orientation="vertical" value={vSplit} onChange={setVSplit} />
+          <Splitter orientation="vertical" value={vSplit} onChange={setVSplit} defaultValue={DEFAULT_V} />
           <div style={{ height: `${100 - vSplit}%` }} className="p-1.5 min-h-0">
             <Panel title="Market Signals" icon={Activity} accent="text-orange-300" testId="terminal-panel-signals">
               <React.Suspense fallback={<div className="text-slate-500 text-xs p-3">Loading signals…</div>}>
@@ -249,7 +293,7 @@ export default function TerminalModeHub({ onSubscribe }) {
           </div>
         </div>
 
-        <Splitter orientation="horizontal" value={hSplit} onChange={setHSplit} />
+        <Splitter orientation="horizontal" value={hSplit} onChange={setHSplit} defaultValue={DEFAULT_H} />
 
         {/* Right column */}
         <div className="flex flex-col flex-1">
@@ -272,7 +316,7 @@ export default function TerminalModeHub({ onSubscribe }) {
               </div>
             </Panel>
           </div>
-          <Splitter orientation="vertical" value={vSplit} onChange={setVSplit} />
+          <Splitter orientation="vertical" value={vSplit} onChange={setVSplit} defaultValue={DEFAULT_V} />
           <div style={{ height: `${100 - vSplit}%` }} className="p-1.5 min-h-0">
             <Panel title="Headlines" icon={Newspaper} accent="text-amber-300" testId="terminal-panel-headlines">
               <HeadlinesStream />
@@ -288,7 +332,20 @@ export default function TerminalModeHub({ onSubscribe }) {
       >
         <span>STATUS <span className="text-lime-400">●</span> CONNECTED</span>
         <span>RISEDUAL TERMINAL v1.0 · Thinkorswim-inspired</span>
-        <span>Layout auto-saved</span>
+        <div className="flex items-center gap-2">
+          <span>{layoutDirty ? 'Layout modified' : 'Layout auto-saved'}</span>
+          {layoutDirty && (
+            <button
+              type="button"
+              onClick={resetLayout}
+              className="text-[10px] font-mono uppercase text-[#3DE8D9] hover:text-white transition-colors underline decoration-dotted"
+              data-testid="terminal-reset-layout"
+              title="Reset to default 52/55 split"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

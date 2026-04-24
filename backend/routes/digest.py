@@ -81,6 +81,64 @@ async def preview_digest(request: Request):
     }}
 
 
+@router.get("/my-preview")
+async def my_digest_preview(request: Request):
+    """Return a preview of the fresh digest for the authed user
+    WITHOUT actually sending. Used by the on-demand confirm-modal:
+    users see what they'd get before pressing "send".
+
+    Not rate-limited (cheap read). Safe for all authed users.
+    """
+    user = await get_current_user(request)
+    from services.digest_service import (
+        collect_digest_data,
+        get_user_watchlist_intel,
+    )
+    data = await collect_digest_data(db)
+    wl_intel = await get_user_watchlist_intel(db, user.get("_id"))
+
+    # Trim to a compact preview payload. We don't ship the full
+    # HTML because the modal renders a native-React summary card
+    # — faster paint, easier styling, no iframe sandbox quirks.
+    predictions = data.get("predictions") or []
+    smart_money = data.get("smart_money") or []
+    alerts = data.get("alerts") or []
+
+    def _pred_row(p: dict) -> dict:
+        return {
+            "ticker": p.get("ticker") or p.get("symbol"),
+            "direction": p.get("direction"),
+            "confidence": p.get("confidence"),
+            "horizon": p.get("horizon") or p.get("time_horizon"),
+        }
+
+    def _sm_row(s: dict) -> dict:
+        return {
+            "ticker": s.get("ticker") or s.get("symbol"),
+            "score": s.get("score") or s.get("smart_money_score"),
+            "shift": s.get("shift") or s.get("score_shift"),
+        }
+
+    return {
+        "content_summary": {
+            "predictions": len(predictions),
+            "smart_money": len(smart_money),
+            "alerts": len(alerts),
+            "has_overview": bool(data.get("overview")),
+            "has_watchlist_intel": wl_intel is not None,
+        },
+        "preview": {
+            "overview_headline": (data.get("overview") or {}).get("summary")
+                or (data.get("overview") or {}).get("headline"),
+            "top_predictions": [_pred_row(p) for p in predictions[:3]],
+            "top_smart_money": [_sm_row(s) for s in smart_money[:3]],
+            "alert_titles": [a.get("title") or a.get("subject") for a in alerts[:3]],
+        },
+        "email": user.get("email"),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/send-now")
 async def send_on_demand_digest(request: Request):
     """Send a fresh market digest to the authenticated user's inbox now.

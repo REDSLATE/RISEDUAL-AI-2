@@ -21,6 +21,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Gauge,
+  Layers,
   Rocket,
   Scale,
   TrendingUp,
@@ -381,6 +382,87 @@ const PaperDaysProgressCard = ({ data }) => {
 };
 
 
+// R-adoption card — tracks `r_eligible_frac` across the last N
+// retrains. When the trailing runs cross the stability gate we
+// flip to an "ok" tone and surface the "ready to retire
+// magnitude" cue (see /app/memory/MAGNITUDE_RETIREMENT_PLAN.md).
+const RAdoptionCard = ({ data }) => {
+  if (!data) {
+    return (
+      <Card icon={Layers} title="R-weighting adoption" testId="ml-health-r-adoption">
+        <div className="text-xs text-slate-400">Loading…</div>
+      </Card>
+    );
+  }
+  const history = data.history || [];
+  const verdict = data.verdict || {};
+  const latest = verdict.latest_r_eligible_frac ?? 0;
+  const consec = verdict.consecutive_stable_runs ?? 0;
+  const required = verdict.required_consecutive ?? 3;
+  const ready = verdict.magnitude_retirement_ready === true;
+  const threshold = verdict.threshold ?? 0.7;
+  const tone = ready ? 'ok' : (latest >= threshold ? 'warn' : 'default');
+
+  return (
+    <Card
+      icon={Layers}
+      title="R-weighting adoption"
+      testId="ml-health-r-adoption"
+      tone={tone}
+    >
+      <div className="flex items-baseline justify-between">
+        <div className="text-xl font-bold text-white tabular-nums">
+          {Math.round(latest * 100)}%
+          <span className="text-[10px] text-slate-400 font-normal ml-1">
+            last retrain
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-400 tabular-nums">
+          {history.length} run{history.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {/* Mini sparkline: one thin bar per run, last 14 */}
+      <div
+        className="mt-2 h-6 flex items-end gap-0.5"
+        data-testid="ml-health-r-adoption-sparkline"
+        title={history.map((h, i) => `run ${i + 1}: ${Math.round(h.r_eligible_frac * 100)}%`).join('\n')}
+      >
+        {history.length === 0 ? (
+          <span className="text-[10px] text-slate-500 italic self-center">
+            no retrains yet
+          </span>
+        ) : history.map((h, i) => {
+          const pct = Math.max(4, Math.round(h.r_eligible_frac * 100));
+          const isStable = h.r_eligible_frac >= threshold;
+          return (
+            <div
+              key={i}
+              className={`flex-1 rounded-sm ${isStable ? 'bg-[#3DE8D9]' : 'bg-slate-600'}`}
+              style={{ height: `${pct}%`, minHeight: '2px' }}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-2 text-[10px] leading-snug">
+        {ready ? (
+          <span className="text-emerald-300">
+            Ready to retire magnitude path · {consec}/{required} stable runs
+          </span>
+        ) : consec > 0 ? (
+          <span className="text-amber-300">
+            {consec}/{required} stable run{consec === 1 ? '' : 's'} · need ≥{Math.round(threshold * 100)}%
+          </span>
+        ) : (
+          <span className="text-slate-400">
+            Accumulating · need ≥{Math.round(threshold * 100)}% for {required} runs
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+
 const MLHealthStrip = () => {
   const [tier3, setTier3] = useState(null);
   const [progress, setProgress] = useState(null);
@@ -413,11 +495,12 @@ const MLHealthStrip = () => {
 
   return (
     <div
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3"
       data-testid="ml-health-strip"
     >
       <Tier3ReadinessCard data={tier3} />
       <PaperDaysProgressCard data={progress} />
+      <RAdoptionCard data={progress?.r_adoption} />
       <RDistributionCard data={leSummary} />
       <ClampCanaryCard data={canary} />
       <ReliabilityCard data={reliability} />
