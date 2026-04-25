@@ -46,7 +46,7 @@ class TestMemoryPinning:
         
         assert response.status_code == 200, f"Pin failed: {response.text}"
         data = response.json()
-        assert data.get("pinned") == True
+        assert data.get("pinned")
         assert "memory_id" in data
         assert data.get("pinned_count") == 1
         assert data.get("max") == 5
@@ -136,7 +136,7 @@ class TestMemoryPinning:
         # Delete the pinned memory
         delete_res = self.session.delete(f"{BASE_URL}/api/chat/memory/{memory_id}")
         assert delete_res.status_code == 200
-        assert delete_res.json().get("deleted") == True
+        assert delete_res.json().get("deleted")
         
         # Verify it's gone
         memories_res = self.session.get(f"{BASE_URL}/api/chat/memory")
@@ -243,7 +243,7 @@ class TestMemoryPinningEdgeCases:
             "content": "TEST_REPIN_NEW: New pin after delete"
         })
         assert response.status_code == 200
-        assert response.json().get("pinned") == True
+        assert response.json().get("pinned")
 
 
 if __name__ == "__main__":

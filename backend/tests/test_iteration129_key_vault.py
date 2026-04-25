@@ -98,7 +98,7 @@ class TestVaultAdminAccess:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
         data = response.json()
-        assert data.get("stored") == True, "Response should have stored: true"
+        assert data.get("stored"), "Response should have stored: true"
         assert data.get("name") == TEST_KEY_NAME, f"Response name should be {TEST_KEY_NAME}"
         assert "message" in data, "Response should contain message"
         
@@ -174,7 +174,7 @@ class TestVaultAdminAccess:
         assert delete_response.status_code == 200, f"Expected 200, got {delete_response.status_code}: {delete_response.text}"
         
         data = delete_response.json()
-        assert data.get("deleted") == True, "Response should have deleted: true"
+        assert data.get("deleted"), "Response should have deleted: true"
         assert data.get("name") == TEST_KEY_NAME, f"Response name should be {TEST_KEY_NAME}"
         
         print(f"PASS: Admin deleted key '{TEST_KEY_NAME}' successfully")
@@ -245,7 +245,7 @@ class TestVaultNonAdminAccess:
         test_password = TEST_USER_PASSWORD
         
         # Try to register
-        register_response = self.session.post(f"{BASE_URL}/api/auth/register", json={
+        self.session.post(f"{BASE_URL}/api/auth/register", json={
             "email": test_email,
             "password": test_password,
             "name": "Test Vault User"

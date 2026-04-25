@@ -106,7 +106,7 @@ class TestPushStatusEndpoint:
         assert "is_pro" in data, "Response should contain 'is_pro'"
         assert isinstance(data["subscribed"], bool), "subscribed should be boolean"
         assert isinstance(data["is_pro"], bool), "is_pro should be boolean"
-        assert data["is_pro"] == True, "Owner should have is_pro=True"
+        assert data["is_pro"], "Owner should have is_pro=True"
         print(f"✓ Owner status: subscribed={data['subscribed']}, is_pro={data['is_pro']}")
     
     def test_status_returns_is_pro_false_for_free_user(self, api_client, free_user_token):
@@ -118,7 +118,7 @@ class TestPushStatusEndpoint:
         data = response.json()
         assert "subscribed" in data, "Response should contain 'subscribed'"
         assert "is_pro" in data, "Response should contain 'is_pro'"
-        assert data["is_pro"] == False, "Free user should have is_pro=False"
+        assert not data["is_pro"], "Free user should have is_pro=False"
         print(f"✓ Free user status: subscribed={data['subscribed']}, is_pro={data['is_pro']}")
 
 
@@ -165,7 +165,7 @@ class TestSubscribeEndpoint:
         status_response = api_client.get(f"{BASE_URL}/api/push/status")
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["subscribed"] == True, "Owner should now be subscribed"
+        assert status_data["subscribed"], "Owner should now be subscribed"
         print("✓ Owner subscription verified via status endpoint")
     
     def test_subscribe_stores_subscription_for_free_user(self, api_client, free_user_token):
@@ -228,7 +228,7 @@ class TestUnsubscribeEndpoint:
         status_response = api_client.get(f"{BASE_URL}/api/push/status")
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["subscribed"] == False, "User should now be unsubscribed"
+        assert not status_data["subscribed"], "User should now be unsubscribed"
         print("✓ Unsubscription verified via status endpoint")
 
 

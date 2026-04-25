@@ -147,7 +147,7 @@ class TestChatAPIWithImage:
         assert len(data["response"]) > 0, "AI should provide analysis"
         
         # The AI should acknowledge it received an image
-        response_lower = data["response"].lower()
+        data["response"].lower()
         # Check if AI mentions anything related to chart/image/analysis
         print(f"✓ Chat with PNG image works. Response length: {len(data['response'])} chars")
         print(f"  AI Response preview: {data['response'][:200]}...")

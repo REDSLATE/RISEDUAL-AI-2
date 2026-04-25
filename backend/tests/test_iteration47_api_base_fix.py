@@ -178,7 +178,7 @@ class TestAIHypothesis:
         assert "thesis" in data
         assert "catalysts" in data
         assert "risks" in data
-        assert data["is_pro"] == True
+        assert data["is_pro"]
         
         print(f"PASS: Hypothesis returned verdict={data['verdict']}, confidence={data['confidence']}%")
 

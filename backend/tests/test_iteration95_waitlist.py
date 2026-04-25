@@ -27,7 +27,7 @@ class TestWaitlistPublicEndpoints:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
         data = response.json()
-        assert data.get("already_joined") == False, "New user should not be already_joined"
+        assert not data.get("already_joined"), "New user should not be already_joined"
         assert "position" in data, "Response should include position"
         assert "referral_code" in data, "Response should include referral_code"
         assert data["referral_code"].startswith("RD"), "Referral code should start with RD"
@@ -58,7 +58,7 @@ class TestWaitlistPublicEndpoints:
         assert response.status_code == 200
         
         data = response.json()
-        assert data.get("already_joined") == True, "Duplicate email should return already_joined=true"
+        assert data.get("already_joined"), "Duplicate email should return already_joined=true"
         assert "referral_code" in data, "Should still return referral_code"
         print("✓ Duplicate join correctly returns already_joined=true")
     

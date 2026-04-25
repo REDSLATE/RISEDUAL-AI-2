@@ -38,7 +38,7 @@ class TestTradingBotsPhase4:
         for bot_id in self.bot_ids:
             try:
                 self.session.delete(f"{BASE_URL}/api/bots/{bot_id}")
-            except:
+            except Exception:
                 pass
     
     # ── Authentication Tests ──
@@ -88,7 +88,7 @@ class TestTradingBotsPhase4:
         data = resp.json()
         
         # CRITICAL: Bot must default to OFF
-        assert data.get("enabled") == False, f"Grid bot should default to enabled=false, got {data.get('enabled')}"
+        assert not data.get("enabled"), f"Grid bot should default to enabled=false, got {data.get('enabled')}"
         assert data.get("type") == "grid"
         assert data.get("name") == "TEST_Grid Bot"
         assert "bot_id" in data
@@ -117,7 +117,7 @@ class TestTradingBotsPhase4:
         data = resp.json()
         
         # CRITICAL: Bot must default to OFF
-        assert data.get("enabled") == False, f"Signal bot should default to enabled=false, got {data.get('enabled')}"
+        assert not data.get("enabled"), f"Signal bot should default to enabled=false, got {data.get('enabled')}"
         assert data.get("type") == "signal"
         assert "bot_id" in data
         assert data.get("config", {}).get("min_confidence") == 70
@@ -142,7 +142,7 @@ class TestTradingBotsPhase4:
         data = resp.json()
         
         # CRITICAL: Bot must default to OFF
-        assert data.get("enabled") == False, f"Webhook bot should default to enabled=false, got {data.get('enabled')}"
+        assert not data.get("enabled"), f"Webhook bot should default to enabled=false, got {data.get('enabled')}"
         assert data.get("type") == "webhook"
         assert "bot_id" in data
         assert "webhook_secret" in data, "Webhook bot should have webhook_secret"
@@ -196,7 +196,7 @@ class TestTradingBotsPhase4:
         })
         assert resp.status_code == 200, f"Toggle on failed: {resp.text}"
         data = resp.json()
-        assert data.get("enabled") == True, f"Bot should be enabled=true after toggle, got {data.get('enabled')}"
+        assert data.get("enabled"), f"Bot should be enabled=true after toggle, got {data.get('enabled')}"
         print(f"PASS: Bot toggled ON, enabled={data.get('enabled')}")
     
     def test_08_toggle_bot_off(self):
@@ -219,7 +219,7 @@ class TestTradingBotsPhase4:
         })
         assert resp.status_code == 200, f"Toggle off failed: {resp.text}"
         data = resp.json()
-        assert data.get("enabled") == False, f"Bot should be enabled=false after toggle, got {data.get('enabled')}"
+        assert not data.get("enabled"), f"Bot should be enabled=false after toggle, got {data.get('enabled')}"
         print(f"PASS: Bot toggled OFF, enabled={data.get('enabled')}")
     
     # ── Delete Bot Test ──

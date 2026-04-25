@@ -69,7 +69,7 @@ class TestHypothesisEndpoint:
         assert "symbol" in data, "Missing symbol"
         assert data["symbol"] == "AAPL"
         assert "is_pro" in data, "Missing is_pro flag"
-        assert data["is_pro"] == True, "Should be pro response"
+        assert data["is_pro"], "Should be pro response"
         
         # Verify hypothesis content
         assert "verdict" in data, "Missing verdict"
@@ -88,7 +88,7 @@ class TestHypothesisEndpoint:
         assert "symbol" in data
         assert data["symbol"] == "AAPL"
         assert "is_pro" in data
-        assert data["is_pro"] == False, "Should be teaser (not pro)"
+        assert not data["is_pro"], "Should be teaser (not pro)"
         assert "teaser" in data, "Missing teaser object"
         
         teaser = data["teaser"]

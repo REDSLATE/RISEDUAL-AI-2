@@ -206,7 +206,7 @@ def test_run_is_idempotent_per_date():
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         await db.ml_health_digest_history.delete_many({"date": today})
         try:
-            first = await run_ml_health_digest(db)
+            await run_ml_health_digest(db)
             # Could be sent OR no_email_provider; either way record exists now.
             second = await run_ml_health_digest(db)
             assert second["reason"] == "already_sent_today"

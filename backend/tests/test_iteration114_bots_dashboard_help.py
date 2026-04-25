@@ -88,7 +88,7 @@ class TestBotsEndpoints:
                 json={"enabled": True}
             )
             assert toggle_on_response.status_code == 200, f"Toggle ON failed: {toggle_on_response.text}"
-            assert toggle_on_response.json()["enabled"] == True
+            assert toggle_on_response.json()["enabled"]
             print("PASS: Toggle ON works")
             
             # Toggle OFF
@@ -97,7 +97,7 @@ class TestBotsEndpoints:
                 json={"enabled": False}
             )
             assert toggle_off_response.status_code == 200, f"Toggle OFF failed: {toggle_off_response.text}"
-            assert toggle_off_response.json()["enabled"] == False
+            assert not toggle_off_response.json()["enabled"]
             print("PASS: Toggle OFF works")
             
         finally:

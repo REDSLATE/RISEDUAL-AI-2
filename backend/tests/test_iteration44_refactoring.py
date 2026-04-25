@@ -230,7 +230,7 @@ class TestAIHypothesisEndpoint:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         assert 'symbol' in data, "Missing symbol"
-        assert data.get('is_pro') == True, "Expected is_pro=True for owner"
+        assert data.get('is_pro'), "Expected is_pro=True for owner"
         print(f"✓ Hypothesis endpoint working for pro user - symbol: {data.get('symbol')}, is_pro: {data.get('is_pro')}")
 
 

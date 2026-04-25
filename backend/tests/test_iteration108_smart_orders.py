@@ -240,7 +240,7 @@ class TestSmartOrdersStopLoss:
         sl = data.get("stop_loss")
         assert sl is not None, "Response should contain stop_loss"
         assert sl.get("price") == 180.0, f"SL price should be 180.0, got {sl.get('price')}"
-        assert sl.get("trailing") == True, "SL trailing should be True"
+        assert sl.get("trailing"), "SL trailing should be True"
         assert sl.get("trailing_pct") == 3.5, f"SL trailing_pct should be 3.5, got {sl.get('trailing_pct')}"
         assert sl.get("emergency_price") == 170.0, "SL emergency_price should be 170.0"
 
@@ -280,7 +280,7 @@ class TestSmartOrdersBreakEven:
         
         be = data.get("break_even")
         assert be is not None, "Response should contain break_even"
-        assert be.get("enabled") == True, "break_even should be enabled"
+        assert be.get("enabled"), "break_even should be enabled"
         assert be.get("trigger_tp_index") == 0, "trigger_tp_index should be 0"
 
 
@@ -323,7 +323,7 @@ class TestSmartOrdersTakeProfits:
         # Verify TP chain structure
         assert tps[0]["price"] == 210.0
         assert tps[0]["pct_of_qty"] == 25
-        assert tps[1]["trailing"] == True
+        assert tps[1]["trailing"]
         assert tps[1]["trailing_pct"] == 1.5
         assert tps[2]["pct_of_qty"] == 50
 

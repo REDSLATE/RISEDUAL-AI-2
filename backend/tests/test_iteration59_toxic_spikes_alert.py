@@ -68,8 +68,8 @@ class TestToxicSpikesAlertSystem:
         before_resp = self.session.get(f"{BASE_URL}/api/accuracy/memory")
         assert before_resp.status_code == 200
         before_data = before_resp.json()
-        total_before = before_data.get("total_episodes", 0)
-        toxic_before = before_data.get("toxic_lessons", 0)
+        before_data.get("total_episodes", 0)
+        before_data.get("toxic_lessons", 0)
         
         # Run cleanup
         cleanup_resp = self.session.post(f"{BASE_URL}/api/accuracy/memory/cleanup")

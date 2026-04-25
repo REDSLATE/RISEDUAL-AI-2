@@ -139,7 +139,7 @@ class TestDigestMyPreview:
     def test_my_preview_available_to_non_admin(self, admin_session):
         """Verify endpoint is available to all authed users (not admin-only)"""
         # Create a regular user session
-        session = requests.Session()
+        requests.Session()
         # First check if we can access with admin (should work)
         resp = admin_session.get(f"{BASE_URL}/api/digest/my-preview")
         assert resp.status_code == 200

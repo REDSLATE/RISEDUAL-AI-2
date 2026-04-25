@@ -80,7 +80,7 @@ class TestModelAccessControl:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == False
+        assert not data.get("is_pro")
         assert "teaser" in data
         assert data["teaser"]["verdict"] == "LOCKED"
         assert "data_sources_count" in data["teaser"]
@@ -103,7 +103,7 @@ class TestProUserModelAccess:
         data = response.json()
         
         # Verify full hypothesis structure
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
         assert data.get("model") == "GPT-5.2"
         assert data.get("model_key") == "gpt-5.2"
         assert data.get("verdict") in ["BUY", "SELL", "HOLD", "NEUTRAL"]
@@ -125,7 +125,7 @@ class TestProUserModelAccess:
         data = response.json()
         
         # Verify model attribution
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
         assert data.get("model") == "Claude Sonnet 4.5"
         assert data.get("model_key") == "claude-sonnet-4.5"
         assert data.get("verdict") in ["BUY", "SELL", "HOLD", "NEUTRAL"]
@@ -143,7 +143,7 @@ class TestProUserModelAccess:
         data = response.json()
         
         # Verify model attribution
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
         assert data.get("model") == "Gemini Pro"
         assert data.get("model_key") == "gemini-pro"
         assert data.get("verdict") in ["BUY", "SELL", "HOLD", "NEUTRAL"]
@@ -165,7 +165,7 @@ class TestConsensusMode:
         data = response.json()
         
         # Verify consensus structure
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
         assert data.get("model") == "Consensus"
         assert data.get("model_key") == "consensus"
         

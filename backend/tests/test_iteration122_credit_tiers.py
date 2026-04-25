@@ -185,13 +185,13 @@ class TestAuthenticatedCreditEndpoints:
         assert "costs" in data
         
         # Chat and war_room should be unlimited for pro_max
-        assert data["costs"]["chat"]["unlimited"] == True
+        assert data["costs"]["chat"]["unlimited"]
         assert data["costs"]["chat"]["cost"] == 0
-        assert data["costs"]["war_room"]["unlimited"] == True
+        assert data["costs"]["war_room"]["unlimited"]
         assert data["costs"]["war_room"]["cost"] == 0
         
         # Other actions should have costs
-        assert data["costs"]["hypothesis"]["unlimited"] == False
+        assert not data["costs"]["hypothesis"]["unlimited"]
         assert data["costs"]["hypothesis"]["cost"] == 3
         assert data["costs"]["prediction"]["cost"] == 3
         assert data["costs"]["intelligence"]["cost"] == 2
@@ -209,7 +209,7 @@ class TestAuthenticatedCreditEndpoints:
         assert response.status_code == 200
         data = response.json()
         
-        assert data["success"] == True
+        assert data["success"]
         assert data["credits_added"] == 500
         assert data["price"] == 2.5  # $5/1K * 0.5K = $2.5 for pro_max
         assert data["new_balance"] == balance_before + 500

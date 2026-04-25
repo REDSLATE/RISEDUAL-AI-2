@@ -275,7 +275,7 @@ class TestProviderRouterIntegration:
         # Get initial health state
         initial_resp = self.session.get(f"{BASE_URL}/api/provider-health")
         assert initial_resp.status_code == 200
-        initial_data = initial_resp.json()
+        initial_resp.json()
         
         # Make a chat request
         session_id = f"test_session_{uuid.uuid4().hex[:8]}"

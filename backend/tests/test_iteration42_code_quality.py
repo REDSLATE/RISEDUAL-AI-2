@@ -160,7 +160,7 @@ class TestAdminCacheEndpoints:
         res = admin_session.post(f"{BASE_URL}/api/admin/cache-clear")
         assert res.status_code == 200
         data = res.json()
-        assert data.get("ok") == True
+        assert data.get("ok")
         print("✓ Cache clear endpoint working for admin")
 
 

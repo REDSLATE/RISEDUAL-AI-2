@@ -48,7 +48,7 @@ class TestPromoActiveEndpoint:
             required_fields = ["id", "title", "message", "referral_target", "reward_months", "start_date", "end_date", "is_active"]
             for field in required_fields:
                 assert field in promo, f"Missing field: {field}"
-            assert promo["is_active"] == True, "Active promo should have is_active=True"
+            assert promo["is_active"], "Active promo should have is_active=True"
             print(f"PASSED: Active promo has all required fields. Title: {promo['title']}")
         else:
             print("INFO: No active promo currently exists")

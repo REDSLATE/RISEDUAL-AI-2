@@ -99,7 +99,7 @@ class TestCacheAdminEndpoints:
         assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
         
         data = res.json()
-        assert data.get("ok") == True, "Response should have ok=True"
+        assert data.get("ok"), "Response should have ok=True"
         assert "message" in data, "Response should have message field"
 
     # ==================== ADMIN ACCESS TESTS ====================
@@ -157,7 +157,7 @@ class TestCacheAdminEndpoints:
             assert invalidate_res.status_code == 200, f"Invalidate failed: {invalidate_res.text}"
             
             inv_data = invalidate_res.json()
-            assert inv_data.get("ok") == True
+            assert inv_data.get("ok")
             assert inv_data.get("invalidated") == key_to_invalidate
             
             # Verify key was removed

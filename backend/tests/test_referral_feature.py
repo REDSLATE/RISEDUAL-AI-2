@@ -88,7 +88,7 @@ class TestReferralValidation:
         assert res.status_code == 200, f"Expected 200, got {res.status_code}"
         
         data = res.json()
-        assert data["valid"] == True, f"Expected valid=True, got {data}"
+        assert data["valid"], f"Expected valid=True, got {data}"
         assert data["code"] == owner_code, f"Expected code={owner_code}, got {data['code']}"
         print(f"PASSED: Valid code {owner_code} returns valid=True")
     
@@ -98,7 +98,7 @@ class TestReferralValidation:
         assert res.status_code == 200, f"Expected 200, got {res.status_code}"
         
         data = res.json()
-        assert data["valid"] == False, f"Expected valid=False, got {data}"
+        assert not data["valid"], f"Expected valid=False, got {data}"
         print("PASSED: Invalid code returns valid=False")
     
     def test_validate_lowercase_code(self):
@@ -121,7 +121,7 @@ class TestReferralValidation:
         assert res.status_code == 200
         
         data = res.json()
-        assert data["valid"] == True, f"Lowercase code should be valid, got {data}"
+        assert data["valid"], f"Lowercase code should be valid, got {data}"
         print(f"PASSED: Lowercase code {owner_code.lower()} normalized and validated")
 
 
@@ -197,7 +197,7 @@ class TestSelfReferralPrevention:
             headers={"Authorization": f"Bearer {token}"}
         )
         assert info_res.status_code == 200
-        user_code = info_res.json()["code"]
+        info_res.json()["code"]
         
         # Try to register another account with their own code
         # (This tests the backend logic - in practice, user would already be registered)
@@ -234,7 +234,7 @@ class TestReferralCompletion:
             headers={"Authorization": f"Bearer {owner_token}"}
         )
         owner_code = info_res.json()["code"]
-        initial_completed = info_res.json()["completed_referrals"]
+        info_res.json()["completed_referrals"]
         
         # Register new user with ref code
         unique_email = f"test_upgrade_{uuid.uuid4().hex[:8]}@test.com"
@@ -274,7 +274,7 @@ class TestReferralCompletion:
         completed_ref = next((r for r in referrals_after if r.get("referred_email") == unique_email), None)
         assert completed_ref is not None, f"Referral for {unique_email} not found after upgrade"
         assert completed_ref["status"] == "completed", f"Expected status='completed', got {completed_ref['status']}"
-        assert completed_ref["reward_granted"] == True, f"Expected reward_granted=True, got {completed_ref['reward_granted']}"
+        assert completed_ref["reward_granted"], f"Expected reward_granted=True, got {completed_ref['reward_granted']}"
         
         print(f"PASSED: Referral for {unique_email} completed on Pro upgrade, reward_granted=True")
 
@@ -308,7 +308,7 @@ class TestDuplicateReferralPrevention:
             f"{BASE_URL}/api/referral/info",
             headers={"Authorization": f"Bearer {admin_token}"}
         )
-        admin_code = admin_info.json()["code"]
+        admin_info.json()["code"]
         
         # Register user with owner's code
         unique_email = f"test_duplicate_{uuid.uuid4().hex[:8]}@test.com"
@@ -405,7 +405,7 @@ class TestIsPro:
         assert signals_res.status_code == 200, f"Trial user should access Pro features, got {signals_res.status_code}"
         
         signals_data = signals_res.json()
-        assert signals_data.get("is_pro") == True, f"Trial user should have is_pro=True, got {signals_data}"
+        assert signals_data.get("is_pro"), f"Trial user should have is_pro=True, got {signals_data}"
         
         print(f"PASSED: Trial user {unique_email} has Pro access (is_pro=True)")
 

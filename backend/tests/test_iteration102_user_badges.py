@@ -31,7 +31,7 @@ class TestUserBadgesBackend:
         
         # Verify admin-specific values
         assert data["role"] == "admin", f"Expected role='admin', got '{data['role']}'"
-        assert data["founding_member"] == False, f"Admin should have founding_member=false, got {data['founding_member']}"
+        assert not data["founding_member"], f"Admin should have founding_member=false, got {data['founding_member']}"
         
         print(f"Admin login response: role={data['role']}, founding_member={data['founding_member']}, beta_access={data['beta_access']}")
     
@@ -52,7 +52,7 @@ class TestUserBadgesBackend:
         
         # Verify owner-specific values
         assert data["role"] == "owner", f"Expected role='owner', got '{data['role']}'"
-        assert data["founding_member"] == False, f"Owner should have founding_member=false, got {data['founding_member']}"
+        assert not data["founding_member"], f"Owner should have founding_member=false, got {data['founding_member']}"
         
         print(f"Owner login response: role={data['role']}, founding_member={data['founding_member']}, beta_access={data['beta_access']}")
     
@@ -127,7 +127,7 @@ class TestBadgePriority:
         assert data["role"] == "admin"
         # Even if founding_member was true, Creator badge takes priority
         # But admin should have founding_member=false
-        assert data["founding_member"] == False
+        assert not data["founding_member"]
         
         print("Admin badge priority verified: Creator (admin role)")
     
@@ -145,7 +145,7 @@ class TestBadgePriority:
         assert data["role"] == "owner"
         # Even if founding_member was true, Creator badge takes priority
         # But owner should have founding_member=false
-        assert data["founding_member"] == False
+        assert not data["founding_member"]
         
         print("Owner badge priority verified: Creator (owner role)")
 

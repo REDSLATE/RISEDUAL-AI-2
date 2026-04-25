@@ -479,7 +479,7 @@ class TestCryptoTrading:
         # Get current portfolio
         portfolio_resp = auth_session.get(f"{BASE_URL}/api/paper/portfolio")
         assert portfolio_resp.status_code == 200
-        initial_cash = portfolio_resp.json()["cash"]
+        portfolio_resp.json()["cash"]
         
         # Buy a small amount of BTC (0.001)
         trade_resp = auth_session.post(f"{BASE_URL}/api/paper/trade", json={

@@ -199,7 +199,7 @@ class TestHypothesisFreeUser:
         
         data = response.json()
         assert data["symbol"] == "AAPL", "Symbol should be AAPL"
-        assert data["is_pro"] == False, "is_pro should be False for free user"
+        assert not data["is_pro"], "is_pro should be False for free user"
         assert "teaser" in data, "Response should contain teaser"
         assert data["teaser"]["verdict"] == "LOCKED", "Verdict should be LOCKED"
         assert "data_sources_count" in data["teaser"], "Teaser should have data_sources_count"
@@ -230,7 +230,7 @@ class TestHypothesisProUser:
         
         data = response.json()
         assert data["symbol"] == "AAPL", "Symbol should be AAPL"
-        assert data["is_pro"] == True, "is_pro should be True for pro user"
+        assert data["is_pro"], "is_pro should be True for pro user"
         assert "verdict" in data, "Response should contain verdict"
         assert data["verdict"] in ["BUY", "SELL", "HOLD", "NEUTRAL"], f"Verdict should be BUY/SELL/HOLD/NEUTRAL, got {data.get('verdict')}"
         assert "confidence" in data, "Response should contain confidence"

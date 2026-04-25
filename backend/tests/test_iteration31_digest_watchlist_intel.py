@@ -101,7 +101,7 @@ class TestDigestWatchlistIntelligence:
         summary = data["data_summary"]
         
         assert "has_watchlist_intel" in summary, f"No has_watchlist_intel in summary: {summary}"
-        assert summary["has_watchlist_intel"] == True, f"has_watchlist_intel should be True: {summary}"
+        assert summary["has_watchlist_intel"], f"has_watchlist_intel should be True: {summary}"
         
         # Also verify other summary fields
         assert "predictions" in summary
@@ -177,7 +177,7 @@ class TestDigestWatchlistIntelligence:
             timeout=30
         )
         status_data = status_response.json()
-        assert status_data.get("subscribed") == False, f"User should be unsubscribed: {status_data}"
+        assert not status_data.get("subscribed"), f"User should be unsubscribed: {status_data}"
         
         print("PASS: Opt-out successful, subscribed=False")
     
@@ -202,7 +202,7 @@ class TestDigestWatchlistIntelligence:
             timeout=30
         )
         status_data = status_response.json()
-        assert status_data.get("subscribed") == True, f"User should be subscribed: {status_data}"
+        assert status_data.get("subscribed"), f"User should be subscribed: {status_data}"
         
         print("PASS: Opt-in successful, subscribed=True")
     

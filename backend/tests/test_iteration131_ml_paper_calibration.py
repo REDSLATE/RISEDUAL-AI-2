@@ -73,7 +73,7 @@ class TestMLPaperTrades:
         
         # No ML autonomous trades yet (Tier 2 locked)
         # trades array should be empty or contain only ML trades (prediction_id exists)
-        trades = data.get("trades", [])
+        data.get("trades", [])
         summary = data.get("summary", {})
         
         # Verify summary reflects empty/zero state

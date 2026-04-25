@@ -42,7 +42,7 @@ class TestEmailServiceModule:
         from services.email_service import _is_configured, RESEND_API_KEY
         
         result = _is_configured()
-        assert result == False, f"Expected False with placeholder key, got {result}"
+        assert not result, f"Expected False with placeholder key, got {result}"
         assert RESEND_API_KEY.startswith('re_YOUR'), f"Expected placeholder key, got {RESEND_API_KEY}"
         print(f"PASS: _is_configured() returns False (API key: {RESEND_API_KEY[:15]}...)")
     
@@ -79,7 +79,7 @@ class TestEmailFunctionsGracefulDegradation:
             referred_email="friend@example.com"
         )
         
-        assert result == False, f"Expected False when not configured, got {result}"
+        assert not result, f"Expected False when not configured, got {result}"
         print("PASS: send_referral_signup_email returns False gracefully")
     
     @pytest.mark.asyncio
@@ -93,7 +93,7 @@ class TestEmailFunctionsGracefulDegradation:
             referred_email="friend@example.com"
         )
         
-        assert result == False, f"Expected False when not configured, got {result}"
+        assert not result, f"Expected False when not configured, got {result}"
         print("PASS: send_reward_earned_email returns False gracefully")
     
     @pytest.mark.asyncio
@@ -107,7 +107,7 @@ class TestEmailFunctionsGracefulDegradation:
             referrer_name="Referrer Name"
         )
         
-        assert result == False, f"Expected False when not configured, got {result}"
+        assert not result, f"Expected False when not configured, got {result}"
         print("PASS: send_welcome_referral_email returns False gracefully")
 
 
@@ -198,7 +198,7 @@ class TestReferralFlowWithPlaceholderEmail:
                 validate_response = requests.get(f"{BASE_URL}/api/referral/validate/{code}")
                 assert validate_response.status_code == 200
                 data = validate_response.json()
-                assert data.get("valid") == True
+                assert data.get("valid")
                 print(f"PASS: Referral code {code} validates correctly")
             else:
                 print("PASS: Referral info endpoint works (no code yet)")

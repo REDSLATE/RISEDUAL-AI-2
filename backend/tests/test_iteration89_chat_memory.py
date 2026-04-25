@@ -108,7 +108,7 @@ class TestChatMemoryEndpoints:
             response = self.session.delete(f"{BASE_URL}/api/chat/memory/{memory_id}")
             assert response.status_code == 200, f"Delete failed: {response.text}"
             data = response.json()
-            assert data["deleted"] == True
+            assert data["deleted"]
             assert data["memory_id"] == memory_id
             print(f"✓ DELETE /api/chat/memory/{memory_id}: Successfully deleted")
     

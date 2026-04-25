@@ -211,7 +211,7 @@ class TestBrokerOAuthCRUD:
         data = response.json()
         
         alpaca_config = data["brokers"].get("alpaca", {})
-        assert alpaca_config.get("configured") == True
+        assert alpaca_config.get("configured")
         assert alpaca_config.get("client_id_preview") != ""
         print(f"PASS: Verified saved credentials appear, configured={alpaca_config.get('configured')}")
     
@@ -228,8 +228,8 @@ class TestBrokerOAuthCRUD:
         assert response.status_code == 200
         data = response.json()
         
-        assert data.get("configured") == True
-        assert data.get("available") == True
+        assert data.get("configured")
+        assert data.get("available")
         print("PASS: OAuth status shows configured=true after save")
     
     def test_delete_broker_oauth_config(self):
@@ -261,7 +261,7 @@ class TestBrokerOAuthCRUD:
         assert response.status_code == 200
         data = response.json()
         
-        assert data.get("configured") == False
+        assert not data.get("configured")
         print("PASS: OAuth status shows configured=false after delete")
     
     def test_save_requires_both_fields(self):

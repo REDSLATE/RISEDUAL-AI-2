@@ -84,7 +84,7 @@ def test_send_toxic_alerts_drops_test_fixtures_at_boundary(monkeypatch):
         # users.find returns an empty async cursor for the in-app path
         async def _empty_cursor():
             return
-            yield  # noqa: pragma: no cover
+            yield  # noqa: F811
         mms._db.users.find = lambda *a, **kw: _empty_cursor()
         mms._db.notifications = AsyncMock()
         mms._db.notifications.insert_many = AsyncMock()
@@ -178,7 +178,7 @@ def test_send_toxic_alerts_passes_through_real_symbols(monkeypatch):
         mms._db.alerts_sent.update_one = AsyncMock()
         async def _empty_cursor():
             return
-            yield  # noqa: pragma: no cover
+            yield  # noqa: F811
         mms._db.users = AsyncMock()
         mms._db.users.find = lambda *a, **kw: _empty_cursor()
         mms._db.notifications = AsyncMock()

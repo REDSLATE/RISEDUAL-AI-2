@@ -216,7 +216,7 @@ class TestFailureLoopEndpoints:
         assert data["pnl"] == -250.50
         assert "late_entry" in data["reason_tags"]
         assert "overconfidence" in data["reason_tags"]
-        assert data["approved_for_learning"] == True
+        assert data["approved_for_learning"]
         assert "reviewed_at" in data
         print("✓ POST /api/failure-loop/review - PASS (reviewed as loss with tags)")
     

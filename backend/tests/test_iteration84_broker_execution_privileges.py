@@ -49,7 +49,7 @@ class TestBrokerExecutionPrivileges:
         response = owner_session.get(f"{BASE_URL}/api/broker/execution-status")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("execution_allowed") == True, f"Owner should have execution_allowed=true, got {data}"
+        assert data.get("execution_allowed"), f"Owner should have execution_allowed=true, got {data}"
         assert data.get("mode") == "live", f"Owner should have mode='live', got {data}"
         print(f"✓ Owner execution status: {data}")
     
@@ -58,7 +58,7 @@ class TestBrokerExecutionPrivileges:
         response = admin_session.get(f"{BASE_URL}/api/broker/execution-status")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("execution_allowed") == False, f"Admin should have execution_allowed=false, got {data}"
+        assert not data.get("execution_allowed"), f"Admin should have execution_allowed=false, got {data}"
         assert data.get("mode") == "read_only", f"Admin should have mode='read_only', got {data}"
         print(f"✓ Admin execution status: {data}")
     
@@ -250,8 +250,8 @@ class TestBrokerExecutionPrivilegesSummary:
         print("="*60)
         
         # Verify
-        assert owner_exec.get("execution_allowed") == True, "Owner should have execution privileges"
-        assert admin_exec.get("execution_allowed") == False, "Admin should NOT have execution privileges"
+        assert owner_exec.get("execution_allowed"), "Owner should have execution privileges"
+        assert not admin_exec.get("execution_allowed"), "Admin should NOT have execution privileges"
         
         # Test order placement
         admin_order = admin_session.post(f"{BASE_URL}/api/broker/order/alpaca", json={

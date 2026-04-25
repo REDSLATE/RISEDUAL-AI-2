@@ -89,7 +89,7 @@ class _FakeCollection:
                 else:
                     rows = [r for r in rows if isinstance(r.get("opened_at"), datetime)]
             elif "$group" in stage:
-                grouping = stage["$group"]["_id"]
+                stage["$group"]["_id"]
                 # We only emit $dateToString-by-day groupings
                 buckets: dict[str, int] = {}
                 for r in rows:

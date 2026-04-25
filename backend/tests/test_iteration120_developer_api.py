@@ -221,14 +221,14 @@ class TestDeveloperAPIKeyManagement:
         revoke_resp = self.session.delete(f"{BASE_URL}/api/developer/keys/{key_id}")
         assert revoke_resp.status_code == 200, f"Key revocation failed: {revoke_resp.text}"
         data = revoke_resp.json()
-        assert data.get("success") == True, "Revocation should return success: true"
+        assert data.get("success"), "Revocation should return success: true"
         
         # Verify key is now inactive
         list_resp = self.session.get(f"{BASE_URL}/api/developer/keys")
         keys = list_resp.json()["keys"]
         revoked_key = next((k for k in keys if k["key_id"] == key_id), None)
         if revoked_key:
-            assert revoked_key["is_active"] == False, "Revoked key should be inactive"
+            assert not revoked_key["is_active"], "Revoked key should be inactive"
         
         print(f"Successfully revoked key: {key_id}")
 

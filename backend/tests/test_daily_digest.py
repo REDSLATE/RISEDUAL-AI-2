@@ -104,7 +104,7 @@ class TestDigestOptOutOptIn:
         status_response = requests.get(f"{BASE_URL}/api/digest/status", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["subscribed"] == False, f"Expected subscribed=False after opt-out, got {status_data['subscribed']}"
+        assert not status_data["subscribed"], f"Expected subscribed=False after opt-out, got {status_data['subscribed']}"
         print("PASSED: After opt-out, subscribed=False")
     
     def test_opt_in_sets_subscribed_to_true(self, owner_token):
@@ -122,7 +122,7 @@ class TestDigestOptOutOptIn:
         status_response = requests.get(f"{BASE_URL}/api/digest/status", headers=headers)
         assert status_response.status_code == 200
         status_data = status_response.json()
-        assert status_data["subscribed"] == True, f"Expected subscribed=True after opt-in, got {status_data['subscribed']}"
+        assert status_data["subscribed"], f"Expected subscribed=True after opt-in, got {status_data['subscribed']}"
         print("PASSED: After opt-in, subscribed=True")
 
 
@@ -462,7 +462,7 @@ class TestDigestFreeUserFlow:
         
         # Verify opted out
         status_response = requests.get(f"{BASE_URL}/api/digest/status", headers=headers)
-        assert status_response.json()["subscribed"] == False
+        assert not status_response.json()["subscribed"]
         
         # Opt back in
         opt_in_response = requests.post(f"{BASE_URL}/api/digest/opt-in", headers=headers)
@@ -470,7 +470,7 @@ class TestDigestFreeUserFlow:
         
         # Verify opted in
         status_response = requests.get(f"{BASE_URL}/api/digest/status", headers=headers)
-        assert status_response.json()["subscribed"] == True
+        assert status_response.json()["subscribed"]
         
         print("PASSED: Free user can opt-out and opt-in to digest")
 

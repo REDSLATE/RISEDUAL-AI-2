@@ -139,7 +139,7 @@ class TestAIHypothesisEndpoints:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
         assert "verdict" in data
         assert data["verdict"] in ["BUY", "SELL", "HOLD", "STRONG_BUY", "STRONG_SELL"]
     
@@ -152,7 +152,7 @@ class TestAIHypothesisEndpoints:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == False
+        assert not data.get("is_pro")
         assert "teaser" in data
         assert data["teaser"]["verdict"] == "LOCKED"
     

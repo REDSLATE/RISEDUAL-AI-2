@@ -77,7 +77,7 @@ class TestWarRoomMultiAgent:
         print(f"Composite keys: {list(composite.keys())}")
         
         # Verify multi-agent fields
-        assert composite.get("multi_agent") == True, "multi_agent should be True"
+        assert composite.get("multi_agent"), "multi_agent should be True"
         assert composite.get("agents_used") == 4, f"Expected 4 agents, got {composite.get('agents_used')}"
         
         # Verify agent_analyses array
@@ -131,7 +131,7 @@ class TestHypothesisMultiAgent:
         print(f"Hypothesis response keys: {list(data.keys())}")
         
         # Verify multi-agent fields
-        assert data.get("multi_agent") == True, "multi_agent should be True"
+        assert data.get("multi_agent"), "multi_agent should be True"
         assert data.get("agents_used") == 4, f"Expected 4 agents, got {data.get('agents_used')}"
         
         # Verify agent_analyses array
@@ -177,7 +177,7 @@ class TestMarketPredictionMultiAgent:
         print(f"Prediction response keys: {list(data.keys())}")
         
         # Verify multi-agent fields
-        assert data.get("multi_agent") == True, "multi_agent should be True"
+        assert data.get("multi_agent"), "multi_agent should be True"
         assert data.get("agents_used") == 4, f"Expected 4 agents, got {data.get('agents_used')}"
         
         # Verify agent_analyses array

@@ -179,7 +179,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("registered") == True, f"Expected registered=True: {data}"
+        assert data.get("registered"), f"Expected registered=True: {data}"
         assert data.get("lane") == TEST_LANE, f"Expected lane={TEST_LANE}: {data}"
         assert data.get("name") == TEST_PROVIDER_NAME, f"Expected name={TEST_PROVIDER_NAME}: {data}"
         print(f"PASS: POST /api/provider-health/register created provider: {data}")
@@ -201,7 +201,7 @@ class TestProviderHealthAdminOperations:
         assert test_provider.get("lane") == TEST_LANE, f"Wrong lane: {test_provider}"
         assert test_provider.get("provider") == "test-provider", f"Wrong provider type: {test_provider}"
         assert test_provider.get("priority") == 50, f"Wrong priority: {test_provider}"
-        assert test_provider.get("has_key") == True, f"Should have API key: {test_provider}"
+        assert test_provider.get("has_key"), f"Should have API key: {test_provider}"
         print("PASS: Registered provider appears in /models list with correct data")
     
     def test_12_heartbeat_ok_status(self):
@@ -215,7 +215,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("accepted") == True, f"Expected accepted=True: {data}"
+        assert data.get("accepted"), f"Expected accepted=True: {data}"
         assert data.get("status") == "ok", f"Expected status=ok: {data}"
         print(f"PASS: Heartbeat with status=ok accepted: {data}")
     
@@ -230,7 +230,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("accepted") == True, f"Expected accepted=True: {data}"
+        assert data.get("accepted"), f"Expected accepted=True: {data}"
         assert data.get("status") == "degraded", f"Expected status=degraded: {data}"
         print(f"PASS: Heartbeat with status=degraded accepted: {data}")
     
@@ -245,7 +245,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("accepted") == True, f"Expected accepted=True: {data}"
+        assert data.get("accepted"), f"Expected accepted=True: {data}"
         assert data.get("status") == "failed", f"Expected status=failed: {data}"
         
         # Verify provider is now disabled in models list
@@ -260,8 +260,8 @@ class TestProviderHealthAdminOperations:
                 break
         
         assert test_provider is not None, "Test provider not found"
-        assert test_provider.get("disabled") == True, f"Provider should be disabled after failed heartbeat: {test_provider}"
-        assert test_provider.get("available") == False, f"Provider should not be available: {test_provider}"
+        assert test_provider.get("disabled"), f"Provider should be disabled after failed heartbeat: {test_provider}"
+        assert not test_provider.get("available"), f"Provider should not be available: {test_provider}"
         print("PASS: Heartbeat with status=failed disables provider")
     
     def test_15_enable_disabled_provider(self):
@@ -272,7 +272,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("enabled") == True, f"Expected enabled=True: {data}"
+        assert data.get("enabled"), f"Expected enabled=True: {data}"
         
         # Verify provider is now enabled in models list
         models_resp = self.session.get(f"{BASE_URL}/api/provider-health/models?lane={TEST_LANE}")
@@ -286,8 +286,8 @@ class TestProviderHealthAdminOperations:
                 break
         
         assert test_provider is not None, "Test provider not found"
-        assert test_provider.get("disabled") == False, f"Provider should be enabled: {test_provider}"
-        assert test_provider.get("available") == True, f"Provider should be available: {test_provider}"
+        assert not test_provider.get("disabled"), f"Provider should be enabled: {test_provider}"
+        assert test_provider.get("available"), f"Provider should be available: {test_provider}"
         print("PASS: POST /api/provider-health/enable re-enables provider")
     
     def test_16_enable_nonexistent_provider_returns_404(self):
@@ -307,7 +307,7 @@ class TestProviderHealthAdminOperations:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("deregistered") == True, f"Expected deregistered=True: {data}"
+        assert data.get("deregistered"), f"Expected deregistered=True: {data}"
         
         # Verify provider is no longer in models list
         models_resp = self.session.get(f"{BASE_URL}/api/provider-health/models?lane={TEST_LANE}")
@@ -373,7 +373,7 @@ class TestProviderPersistence:
         })
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
-        assert data.get("registered") == True
+        assert data.get("registered")
         print("PASS: Registered provider for persistence test")
     
     def test_20_verify_provider_in_models_list(self):

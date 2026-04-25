@@ -102,7 +102,7 @@ class TestBetaKeyRedemption:
                 }
         
         # If not invited, try direct invite endpoint
-        direct_invite_res = admin_session.post(f"{BASE_URL}/api/waitlist/admin/invite", json={
+        admin_session.post(f"{BASE_URL}/api/waitlist/admin/invite", json={
             "count": 10
         })
         
@@ -136,7 +136,7 @@ class TestBetaKeyRedemption:
         data = res.json()
         
         # Verify response contains expected fields
-        assert data.get('beta_activated') == True, "Response should have beta_activated=true"
+        assert data.get('beta_activated'), "Response should have beta_activated=true"
         assert data.get('subscription_status') == 'pro', "User should have pro subscription"
         assert 'trial_ends_at' in data, "Response should include trial_ends_at"
         assert 'id' in data, "Response should include user id"

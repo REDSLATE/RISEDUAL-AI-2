@@ -25,7 +25,7 @@ class TestMediaEndpoints:
         for file_id in self.created_file_ids:
             try:
                 self.session.delete(f"{BASE_URL}/api/media/{file_id}")
-            except:
+            except Exception:
                 pass
     
     def test_list_media_endpoint(self):
@@ -136,11 +136,11 @@ class TestMediaEndpoints:
             
             if i + 1 < total_chunks:
                 # Intermediate chunk
-                assert result.get("complete") == False, f"Chunk {i} should not be complete"
+                assert not result.get("complete"), f"Chunk {i} should not be complete"
                 assert result.get("chunk") == i, "Chunk index mismatch"
             else:
                 # Final chunk - should have file_id
-                assert result.get("complete") == True, "Final chunk should be complete"
+                assert result.get("complete"), "Final chunk should be complete"
                 assert "file_id" in result, "Final chunk should return file_id"
                 self.created_file_ids.append(result["file_id"])
                 print(f"PASS: Chunked upload complete - file_id={result['file_id']}")
@@ -195,7 +195,7 @@ class TestMediaEndpoints:
         assert response.status_code == 200
         
         data = response.json()
-        assert data["has_video"] == True, "has_video should be True after uploading landing video"
+        assert data["has_video"], "has_video should be True after uploading landing video"
         assert data["file_id"] == file_id, f"file_id mismatch: {data['file_id']} != {file_id}"
         assert data["content_type"] == "video/mp4", "content_type should be video/mp4"
         
@@ -261,7 +261,7 @@ class TestMediaEndpoints:
         assert delete_response.status_code == 200, f"Delete failed: {delete_response.status_code}"
         
         result = delete_response.json()
-        assert result["deleted"] == True
+        assert result["deleted"]
         assert result["file_id"] == file_id
         
         # Verify it's no longer accessible
@@ -289,7 +289,7 @@ class TestMediaUploadCategories:
         for file_id in self.created_file_ids:
             try:
                 self.session.delete(f"{BASE_URL}/api/media/{file_id}")
-            except:
+            except Exception:
                 pass
     
     def test_upload_to_landing_category(self):

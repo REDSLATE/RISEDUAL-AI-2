@@ -157,7 +157,7 @@ class TestChatMemoryEndpoints:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["pinned"] == True
+        assert data["pinned"]
         assert "memory_id" in data
         assert "pinned_count" in data
         assert data["max"] == 5

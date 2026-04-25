@@ -90,7 +90,7 @@ class TestMemoryStats:
         
         # Per review request: should show ~2974 episodes
         assert total_episodes >= 2970, f"Expected at least 2970 episodes, got {total_episodes}"
-        assert initialized == True, f"Expected initialized=true, got {initialized}"
+        assert initialized, f"Expected initialized=true, got {initialized}"
         
         print(f"✓ Memory has {total_episodes} episodes, initialized={initialized}")
         print(f"  - Collection: {data.get('collection_name')}")

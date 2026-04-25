@@ -59,7 +59,7 @@ class TestCreditSystemEndpoints:
         assert "pro_free_actions" in data, "Missing 'pro_free_actions' field"
         
         # Admin is Pro
-        assert data["is_pro"] == True, "Admin should be Pro"
+        assert data["is_pro"], "Admin should be Pro"
         assert isinstance(data["pro_free_actions"], list), "pro_free_actions should be a list"
         assert "chat" in data["pro_free_actions"], "Pro should have chat free"
         assert "war_room" in data["pro_free_actions"], "Pro should have war_room free"
@@ -225,7 +225,7 @@ class TestCreditSystemEndpoints:
         assert response.status_code == 200, f"Purchase failed: {response.text}"
         
         data = response.json()
-        assert data["success"] == True, "Purchase should succeed"
+        assert data["success"], "Purchase should succeed"
         assert data["credits_added"] == 100, "Starter pack should add 100 credits"
         assert data["new_balance"] == initial_credits + 100, f"New balance should be {initial_credits + 100}"
         
@@ -308,7 +308,7 @@ class TestCreditDeductionIntegration:
         
         # Admin is Pro, so chat should be free
         # Note: We're just checking the balance endpoint confirms Pro status
-        assert balance_before["is_pro"] == True, "Admin should be Pro"
+        assert balance_before["is_pro"], "Admin should be Pro"
         assert "chat" in balance_before["pro_free_actions"], "Chat should be in pro_free_actions"
         
         print(f"✓ Pro user has chat FREE (balance: {initial_credits} credits)")
@@ -319,7 +319,7 @@ class TestCreditDeductionIntegration:
         assert login_res.status_code == 200
         
         balance = self.session.get(f"{BASE_URL}/api/credits/balance").json()
-        assert balance["is_pro"] == True
+        assert balance["is_pro"]
         assert "war_room" in balance["pro_free_actions"], "War Room should be in pro_free_actions"
         
         print("✓ Pro user has War Room FREE")

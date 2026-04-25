@@ -181,7 +181,7 @@ class TestHypothesisFreeUser:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
         data = response.json()
-        assert data["is_pro"] == False, f"Expected is_pro=false, got {data.get('is_pro')}"
+        assert not data["is_pro"], f"Expected is_pro=false, got {data.get('is_pro')}"
         assert data["symbol"] == "AAPL"
         assert "teaser" in data, "Missing teaser for free user"
         assert data["teaser"]["verdict"] == "LOCKED"
@@ -208,7 +208,7 @@ class TestHypothesisFreeUser:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         
         data = response.json()
-        assert data["is_pro"] == False, "Expected is_pro=false for free user"
+        assert not data["is_pro"], "Expected is_pro=false for free user"
         assert data["teaser"]["verdict"] == "LOCKED"
         print("PASSED: Free user with token gets is_pro=false, verdict=LOCKED")
 
@@ -236,7 +236,7 @@ class TestHypothesisProUser:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
         data = response.json()
-        assert data["is_pro"] == True, f"Expected is_pro=true for Pro user, got {data.get('is_pro')}"
+        assert data["is_pro"], f"Expected is_pro=true for Pro user, got {data.get('is_pro')}"
         assert data["symbol"] == "AAPL"
         
         # Verify full hypothesis fields

@@ -50,9 +50,9 @@ class TestOAuthStatus:
         assert data["broker_id"] == "alpaca"
         
         # Since no ALPACA_OAUTH_CLIENT_ID is configured, available should be False
-        assert data["available"] == False, "OAuth should not be available without client ID"
+        assert not data["available"], "OAuth should not be available without client ID"
         assert "configured" in data, "Response should have 'configured' field"
-        assert data["configured"] == False
+        assert not data["configured"]
         
         print(f"PASS: Alpaca OAuth status: {data}")
     
@@ -63,7 +63,7 @@ class TestOAuthStatus:
         data = response.json()
         
         # Kraken is not in OAUTH_CONFIGS, so should return not supported
-        assert data["available"] == False
+        assert not data["available"]
         assert "reason" in data
         assert "not supported" in data["reason"].lower()
         
@@ -75,7 +75,7 @@ class TestOAuthStatus:
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
         
-        assert data["available"] == False
+        assert not data["available"]
         assert "reason" in data
         
         print(f"PASS: Nonexistent broker OAuth status: {data}")
@@ -86,7 +86,7 @@ class TestOAuthStatus:
         assert response.status_code == 200
         data = response.json()
         
-        assert data["available"] == False
+        assert not data["available"]
         print(f"PASS: Schwab OAuth status: {data}")
 
 

@@ -151,10 +151,10 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"rsi_14": 25.0, "close": 100.0}
-        assert _eval_condition("rsi_14 < 30", ctx) == True
+        assert _eval_condition("rsi_14 < 30", ctx)
         
         ctx = {"rsi_14": 35.0, "close": 100.0}
-        assert _eval_condition("rsi_14 < 30", ctx) == False
+        assert not _eval_condition("rsi_14 < 30", ctx)
         print("Basic comparison (rsi_14 < 30) works")
     
     def test_basic_comparison_rsi_greater_than(self):
@@ -162,10 +162,10 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"rsi_14": 75.0, "close": 100.0}
-        assert _eval_condition("rsi_14 > 70", ctx) == True
+        assert _eval_condition("rsi_14 > 70", ctx)
         
         ctx = {"rsi_14": 65.0, "close": 100.0}
-        assert _eval_condition("rsi_14 > 70", ctx) == False
+        assert not _eval_condition("rsi_14 > 70", ctx)
         print("Basic comparison (rsi_14 > 70) works")
     
     def test_compound_condition_and(self):
@@ -173,10 +173,10 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"rsi_14": 25.0, "close": 100.0, "sma_20": 95.0}
-        assert _eval_condition("rsi_14 < 30 and close > sma_20", ctx) == True
+        assert _eval_condition("rsi_14 < 30 and close > sma_20", ctx)
         
         ctx = {"rsi_14": 35.0, "close": 100.0, "sma_20": 95.0}
-        assert _eval_condition("rsi_14 < 30 and close > sma_20", ctx) == False
+        assert not _eval_condition("rsi_14 < 30 and close > sma_20", ctx)
         print("Compound condition (and) works")
     
     def test_compound_condition_or(self):
@@ -185,11 +185,11 @@ class TestBacktesterSafeEvaluator:
         
         ctx = {"rsi_14": 25.0, "close": 100.0, "sma_20": 105.0}
         # rsi_14 < 30 == True, close > sma_20 == False, so OR should be True
-        assert _eval_condition("rsi_14 < 30 or close > sma_20", ctx) == True
+        assert _eval_condition("rsi_14 < 30 or close > sma_20", ctx)
         
         ctx = {"rsi_14": 35.0, "close": 100.0, "sma_20": 105.0}
         # Both False
-        assert _eval_condition("rsi_14 < 30 or close > sma_20", ctx) == False
+        assert not _eval_condition("rsi_14 < 30 or close > sma_20", ctx)
         print("Compound condition (or) works")
     
     def test_arithmetic_expression(self):
@@ -197,10 +197,10 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"close": 105.0, "sma_20": 100.0}
-        assert _eval_condition("close - sma_20 > 0", ctx) == True
+        assert _eval_condition("close - sma_20 > 0", ctx)
         
         ctx = {"close": 95.0, "sma_20": 100.0}
-        assert _eval_condition("close - sma_20 > 0", ctx) == False
+        assert not _eval_condition("close - sma_20 > 0", ctx)
         print("Arithmetic expression (close - sma_20 > 0) works")
     
     def test_chained_comparison(self):
@@ -208,13 +208,13 @@ class TestBacktesterSafeEvaluator:
         from services.backtester_service import _eval_condition
         
         ctx = {"rsi_14": 50.0}
-        assert _eval_condition("30 < rsi_14 < 70", ctx) == True
+        assert _eval_condition("30 < rsi_14 < 70", ctx)
         
         ctx = {"rsi_14": 25.0}
-        assert _eval_condition("30 < rsi_14 < 70", ctx) == False
+        assert not _eval_condition("30 < rsi_14 < 70", ctx)
         
         ctx = {"rsi_14": 75.0}
-        assert _eval_condition("30 < rsi_14 < 70", ctx) == False
+        assert not _eval_condition("30 < rsi_14 < 70", ctx)
         print("Chained comparison (30 < rsi_14 < 70) works")
     
     def test_rejects_import(self):
@@ -224,7 +224,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": 50.0}
         dangerous = "__imp" + "ort__('os').system('ls')"
         result = _eval_condition(dangerous, ctx)
-        assert result == False, "Should reject dangerous import"
+        assert not result, "Should reject dangerous import"
         print("Rejects dangerous import correctly")
 
     def test_rejects_exec(self):
@@ -234,7 +234,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": 50.0}
         dangerous = "ex" + "ec('print(1)')"
         result = _eval_condition(dangerous, ctx)
-        assert result == False, "Should reject dangerous exec"
+        assert not result, "Should reject dangerous exec"
         print("Rejects dangerous exec correctly")
 
     def test_rejects_open(self):
@@ -244,7 +244,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": 50.0}
         dangerous = "op" + "en('/etc/passwd')"
         result = _eval_condition(dangerous, ctx)
-        assert result == False, "Should reject dangerous open"
+        assert not result, "Should reject dangerous open"
         print("Rejects dangerous open correctly")
 
     def test_rejects_eval(self):
@@ -254,7 +254,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": 50.0}
         dangerous = "ev" + "al('1+1')"
         result = _eval_condition(dangerous, ctx)
-        assert result == False, "Should reject dangerous eval"
+        assert not result, "Should reject dangerous eval"
         print("Rejects dangerous eval correctly")
 
     def test_rejects_lambda(self):
@@ -264,7 +264,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": 50.0}
         dangerous = "(lam" + "bda: 1)()"
         result = _eval_condition(dangerous, ctx)
-        assert result == False, "Should reject lambda"
+        assert not result, "Should reject lambda"
         print("Rejects lambda correctly")
     
     def test_handles_nan_gracefully(self):
@@ -275,7 +275,7 @@ class TestBacktesterSafeEvaluator:
         ctx = {"rsi_14": np.nan, "close": 100.0}
         # Should return False when indicator is NaN, not crash
         result = _eval_condition("rsi_14 < 30", ctx)
-        assert result == False, "Should return False for NaN indicator"
+        assert not result, "Should return False for NaN indicator"
         print("Handles NaN gracefully")
     
     def test_rejects_unknown_indicator(self):
@@ -284,7 +284,7 @@ class TestBacktesterSafeEvaluator:
         
         ctx = {"rsi_14": 50.0}
         result = _eval_condition("unknown_indicator < 30", ctx)
-        assert result == False, "Should reject unknown indicator"
+        assert not result, "Should reject unknown indicator"
         print("Rejects unknown indicator correctly")
 
 

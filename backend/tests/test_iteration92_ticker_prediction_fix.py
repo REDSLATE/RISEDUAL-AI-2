@@ -28,7 +28,7 @@ class TestTickerPredictionFix:
         assert data.get('symbol') == 'NVDA', f"Expected symbol='NVDA', got '{data.get('symbol')}'"
         
         # Verify ticker_focused flag
-        assert data.get('ticker_focused') == True, "Expected ticker_focused=True"
+        assert data.get('ticker_focused'), "Expected ticker_focused=True"
         
         print("✓ NVDA prediction returns correct symbol and ticker_focused flag")
 
@@ -42,7 +42,7 @@ class TestTickerPredictionFix:
         assert data.get('symbol') == 'AAPL', f"Expected symbol='AAPL', got '{data.get('symbol')}'"
         
         # Verify ticker_focused flag
-        assert data.get('ticker_focused') == True, "Expected ticker_focused=True"
+        assert data.get('ticker_focused'), "Expected ticker_focused=True"
         
         print("✓ AAPL prediction returns correct symbol and ticker_focused flag")
 
@@ -56,7 +56,7 @@ class TestTickerPredictionFix:
         assert data.get('symbol') == 'MARKET', f"Expected symbol='MARKET', got '{data.get('symbol')}'"
         
         # ticker_focused should be null/None for general market
-        assert data.get('ticker_focused') is None or data.get('ticker_focused') == False, \
+        assert data.get('ticker_focused') is None or not data.get('ticker_focused'), \
             "Expected ticker_focused=null/false for general market"
         
         print("✓ General market prediction returns symbol='MARKET'")

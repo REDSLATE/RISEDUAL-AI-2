@@ -60,7 +60,7 @@ class TestOwnerLogin:
         assert data["email"] == OWNER_EMAIL
         assert data["role"] == "owner"
         assert data["subscription_status"] == "pro"
-        assert data["is_active"] == True
+        assert data["is_active"]
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
         assert isinstance(data["refresh_token"], str)
@@ -100,7 +100,7 @@ class TestAdminLogin:
         assert data["email"] == ADMIN_EMAIL
         assert data["role"] == "admin"
         assert data["subscription_status"] == "pro"
-        assert data["is_active"] == True
+        assert data["is_active"]
 
 
 class TestInvalidCredentials:

@@ -154,7 +154,7 @@ class TestChipEventTelemetry:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("ok") == True, f"Expected ok:true, got {data}"
+        assert data.get("ok"), f"Expected ok:true, got {data}"
         print("✓ action='shown' accepted")
 
     def test_chip_event_clicked_accepted(self, admin_session):
@@ -167,7 +167,7 @@ class TestChipEventTelemetry:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("ok") == True
+        assert data.get("ok")
         print("✓ action='clicked' accepted")
 
     def test_chip_event_action_shown_accepted(self, admin_session):
@@ -180,7 +180,7 @@ class TestChipEventTelemetry:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("ok") == True
+        assert data.get("ok")
         print("✓ action='action-shown' accepted")
 
     def test_chip_event_action_clicked_accepted(self, admin_session):
@@ -193,7 +193,7 @@ class TestChipEventTelemetry:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("ok") == True
+        assert data.get("ok")
         print("✓ action='action-clicked' accepted")
 
     def test_chip_event_invalid_action_rejected(self, admin_session):
@@ -209,7 +209,7 @@ class TestChipEventTelemetry:
             })
             assert resp.status_code == 200
             data = resp.json()
-            assert data.get("ok") == False, f"Expected ok:false for action='{action}'"
+            assert not data.get("ok"), f"Expected ok:false for action='{action}'"
             assert data.get("reason") == "bad_action", f"Expected reason='bad_action' for action='{action}', got {data}"
         
         print(f"✓ Invalid actions rejected: {invalid_actions}")
@@ -223,7 +223,7 @@ class TestChipEventTelemetry:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("ok") == True
+        assert data.get("ok")
         print("✓ Anonymous chip event accepted")
 
 

@@ -121,7 +121,7 @@ class TestPortfolioAgentToolCalling:
         
         # Should NOT contain personal portfolio data
         personal_indicators = ["your portfolio", "your position", "you own", "you have"]
-        has_personal_data = any(indicator in ai_response for indicator in personal_indicators)
+        any(indicator in ai_response for indicator in personal_indicators)
         # This is a general question, so it shouldn't reference personal portfolio
         print("SUCCESS: Non-portfolio query used standard AI service")
 
@@ -206,7 +206,7 @@ class TestPaperTradingEndpointsStillWork:
     def test_post_paper_trade_buy(self):
         """POST /api/paper/trade should execute a BUY order."""
         # First check current portfolio
-        portfolio_before = self.session.get(f"{BASE_URL}/api/paper/portfolio").json()
+        self.session.get(f"{BASE_URL}/api/paper/portfolio").json()
         
         # Execute a small test trade
         response = self.session.post(f"{BASE_URL}/api/paper/trade", json={
@@ -299,7 +299,7 @@ class TestPortfolioAgentErrorHandling:
         
         assert "response" in data
         # Should gracefully indicate no position or provide helpful response
-        ai_response = data["response"].lower()
+        data["response"].lower()
         # Either says no position, or provides general info
         print("SUCCESS: Agent handled query about non-existent position gracefully")
 

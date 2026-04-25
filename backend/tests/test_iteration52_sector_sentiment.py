@@ -36,7 +36,7 @@ class TestSectorSentimentCrew:
         assert "agent_analyses" in data, "Response missing 'agent_analyses' field"
         
         # Verify multi_agent == True
-        assert data["multi_agent"] == True, f"Expected multi_agent=True, got {data['multi_agent']}"
+        assert data["multi_agent"], f"Expected multi_agent=True, got {data['multi_agent']}"
         
         # Verify agents_used == 4 (3 analysts + 1 strategist)
         assert data["agents_used"] == 4, f"Expected 4 agents, got {data['agents_used']}"

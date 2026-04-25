@@ -174,7 +174,7 @@ class TestAuthenticatedChat:
         data = response.json()
         
         # Pro users should have unlimited (-1) or is_pro=True
-        assert data.get("is_pro") == True or data.get("limit") == -1, "Pro user should have unlimited access"
+        assert data.get("is_pro") or data.get("limit") == -1, "Pro user should have unlimited access"
     
     def test_authenticated_chat_works(self, auth_cookies):
         """Authenticated users can use chat"""

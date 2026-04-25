@@ -52,7 +52,7 @@ class TestChatRateLimit:
         data = response.json()
         assert data.get("limit") == 5, f"Expected limit 5, got {data.get('limit')}"
         assert data.get("remaining") == 5
-        assert data.get("is_pro") == False
+        assert not data.get("is_pro")
     
     def test_chat_limit_pro_user(self):
         """Pro users get unlimited (-1)"""
@@ -70,7 +70,7 @@ class TestChatRateLimit:
         assert response.status_code == 200
         data = response.json()
         assert data.get("limit") == -1, f"Pro user should have unlimited (-1), got {data.get('limit')}"
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
 
 
 class TestWatchlistCap:
@@ -168,7 +168,7 @@ class TestMarketSignals:
         assert response.status_code == 200
         data = response.json()
         assert data.get("signals") == [], "Free user should get empty signals"
-        assert data.get("is_pro") == False
+        assert not data.get("is_pro")
     
     def test_signals_pro_user(self):
         """Pro user should get signals with is_pro=True"""
@@ -184,7 +184,7 @@ class TestMarketSignals:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == True
+        assert data.get("is_pro")
 
 
 class TestPortfolioAnalyzer:
@@ -262,7 +262,7 @@ class TestHypothesisPaywall:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == False, "Free user should have is_pro=False"
+        assert not data.get("is_pro"), "Free user should have is_pro=False"
         assert "teaser" in data, f"Free user should get teaser: {data.keys()}"
         assert data.get("teaser", {}).get("verdict") == "LOCKED"
     
@@ -281,7 +281,7 @@ class TestHypothesisPaywall:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data.get("is_pro") == True, "Pro user should have is_pro=True"
+        assert data.get("is_pro"), "Pro user should have is_pro=True"
         assert "verdict" in data, f"Pro user should get verdict: {data.keys()}"
         assert data.get("verdict") in ["BUY", "SELL", "HOLD"], f"Invalid verdict: {data.get('verdict')}"
 

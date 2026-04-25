@@ -198,7 +198,7 @@ class TestHypothesisEndpoint:
         data = response.json()
         
         # Pro user should get full hypothesis
-        assert data.get("is_pro") == True, f"Expected is_pro=True, got: {data.get('is_pro')}"
+        assert data.get("is_pro"), f"Expected is_pro=True, got: {data.get('is_pro')}"
         assert "symbol" in data, "Missing 'symbol' in response"
         assert data.get("symbol") == "AAPL", f"Expected symbol=AAPL, got: {data.get('symbol')}"
         

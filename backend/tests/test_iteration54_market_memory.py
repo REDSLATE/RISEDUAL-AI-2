@@ -78,7 +78,7 @@ class TestMarketMemoryNew:
         assert "storage_path" in data, "Missing storage_path"
         
         # Validate values
-        assert data["initialized"] == True, "Memory should be initialized"
+        assert data["initialized"], "Memory should be initialized"
         assert "MiniLM" in data["embedding_model"], f"Expected MiniLM model, got {data['embedding_model']}"
         assert data["total_episodes"] >= 0, "total_episodes should be >= 0"
         
@@ -214,7 +214,7 @@ class TestBrokerOAuthRegression:
         
         data = response.json()
         assert "available" in data, "Missing 'available' in response"
-        assert data["available"] == False, f"Expected available:false, got {data['available']}"
+        assert not data["available"], f"Expected available:false, got {data['available']}"
         
         print(f"✓ Alpaca OAuth status: available={data['available']}")
 

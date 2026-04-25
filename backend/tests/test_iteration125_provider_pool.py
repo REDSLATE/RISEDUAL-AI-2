@@ -116,8 +116,8 @@ class TestAIProviderPool:
         
         emergent = next((p for p in providers if p["name"] == "emergent-primary"), None)
         assert emergent is not None, "emergent-primary not found in AI pool"
-        assert emergent["has_key"] == True, "emergent-primary should have API key"
-        assert emergent["healthy"] == True, "emergent-primary should be healthy"
+        assert emergent["has_key"], "emergent-primary should have API key"
+        assert emergent["healthy"], "emergent-primary should be healthy"
         assert emergent["priority"] == 1, "emergent-primary should have priority 1"
         
         print(f"✓ emergent-primary loaded: model={emergent.get('model')}, priority={emergent['priority']}")
@@ -172,8 +172,8 @@ class TestMarketDataPool:
         
         av = next((p for p in providers if p["name"] == "alphavantage-primary"), None)
         assert av is not None, "alphavantage-primary not found in market data pool"
-        assert av["has_key"] == True, "alphavantage-primary should have API key"
-        assert av["healthy"] == True, "alphavantage-primary should be healthy"
+        assert av["has_key"], "alphavantage-primary should have API key"
+        assert av["healthy"], "alphavantage-primary should be healthy"
         assert av["priority"] == 1, "alphavantage-primary should have priority 1"
         
         print(f"✓ alphavantage-primary loaded: priority={av['priority']}")
@@ -187,8 +187,8 @@ class TestMarketDataPool:
         
         finnhub = next((p for p in providers if p["name"] == "finnhub-backup"), None)
         assert finnhub is not None, "finnhub-backup not found in market data pool"
-        assert finnhub["has_key"] == True, "finnhub-backup should have API key"
-        assert finnhub["healthy"] == True, "finnhub-backup should be healthy"
+        assert finnhub["has_key"], "finnhub-backup should have API key"
+        assert finnhub["healthy"], "finnhub-backup should be healthy"
         assert finnhub["priority"] == 2, "finnhub-backup should have priority 2"
         
         print(f"✓ finnhub-backup loaded: priority={finnhub['priority']}")
