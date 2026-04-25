@@ -54,6 +54,59 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Paper-Trading Subsystem (ISOLATED) — Apr 25, 2026
+Crypto paper trading runs on its own service, route, and Mongo
+collection, completely disjoint from the equity/options pipeline.
+The architectural firewall stops stock-side lifecycle services
+(closer, labeler, prediction tracker) from ever touching crypto
+fills, and stops crypto requests from polluting the legacy
+`paper_trades` collection. 24/7 markets get their own line.
+
+- **New service** `services/crypto_paper_trading_service.py` —
+  `execute_crypto_paper_trade()`, `get_crypto_paper_history()`,
+  `get_crypto_paper_position_summary()`, `ensure_indexes()`. Quotes
+  are anchored to `get_crypto_quote()` (the source `/api/crypto/prices`
+  uses); the equity `get_quote()` path is never invoked.
+- **New route** `routes/crypto_paper.py` — `POST /api/crypto/paper-trade`,
+  `GET /api/crypto/paper-trades`, `GET /api/crypto/paper-positions`.
+  Registered FIRST in `ALL_ROUTERS` so the specific GETs match
+  before `market_router`'s `/api/crypto/{symbol}` wildcard.
+- **New collection** `crypto_paper_trades` (schema_version=1) with
+  Mongo unique index on `idempotency_bucket` (composite of
+  user/symbol/side/qty/price-bucket/UTC-minute) so duplicate POSTs
+  within the same minute collapse onto the original `trade_id`
+  instead of creating a second row. Mirrors the P2 idempotency
+  proposal that closed the equity-side AAPL 12-second triple-insert
+  bug.
+- **Wired to yesterday's contamination guards**: every fill runs
+  through `is_test_symbol()` from `market_memory_service` —
+  `TEST_*/MOCK_*/FAKE_*/DUMMY_*/FIXTURE_*/FAKEXYZ` are blocked at
+  the route boundary with a 400 + structured `{blocked, reason,
+  symbol, message}` body. In `ENVIRONMENT=production` the guard
+  raises `ValueError` to trip 500/monitoring.
+- **Architectural firewall**: non-crypto symbols (AAPL, SPY) are
+  refused with `reason=not_crypto_symbol`. The canonical registry
+  (`services/crypto_symbols.py`, 32 tickers) backs the `is_crypto()`
+  check.
+- **No equity-side files were modified.** `price_provider.get_quote()`,
+  `paper_trading_service.py`, `ml_paper_trader.py`, and
+  `paper_trade_closer.py` are byte-for-byte unchanged from the
+  pre-session state.
+- **Tests** (`tests/test_crypto_paper_trading.py`, 18/18 green):
+  symbol registry helpers, test-fixture rejection, AAPL refused,
+  invalid side / zero qty / missing quote rejected, fill writes
+  ONLY to `crypto_paper_trades` and never to `paper_trades`,
+  `get_crypto_quote` is called and `get_quote` is NOT called,
+  idempotent replay collapses to original record, minute-bucket
+  boundary semantics, history filter by user+symbol, position
+  summary mark-to-market math.
+- **End-to-end verified**: 9 curl checks against the deployed
+  preview — login → POST BTC BUY 0.001 (filled at live $77,611.09)
+  → idempotent replay → TEST_BTC blocked → AAPL refused → history
+  → position summary → `/api/crypto/prices` regression all 200.
+
+
+
 ### Shadow Mode + Parallel Scanner (Feb 24, 2026)
 - **Shadow mode** — new env flag `ML_ADAPTATION_SHADOW_MODE`.
   When set (and live mode is off) the rail runs every gate
