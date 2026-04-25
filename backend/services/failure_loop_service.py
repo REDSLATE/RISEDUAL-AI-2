@@ -38,6 +38,18 @@ async def create_trade_idea(user_id: str, symbol: str, direction: str, thesis: s
     if db is None:
         return {}
 
+    # Test-fixture guard — block TEST_*/MOCK_*/FAKE_*/DUMMY_*/
+    # FIXTURE_*/FAKEXYZ symbols. The 2026-04-24 contamination
+    # cascade originated here: integration tests POSTed
+    # `/api/failure-loop/ideas` with TEST_AAPL/GOOG/NVDA/META and
+    # never cleaned up, leaving 12 fixture rows in prod.
+    from services.market_memory_service import _is_real_symbol
+    if not _is_real_symbol(symbol) or symbol.upper() == "FAKEXYZ":
+        logger.warning(
+            f"[failure_loop] BLOCKED test-fixture symbol from trade_ideas: {symbol}"
+        )
+        return {"idea_id": f"blocked-test-symbol-{symbol}", "blocked": True}
+
     idea: dict[str, Any] = {
         "idea_id": str(uuid4()),
         "user_id": user_id,

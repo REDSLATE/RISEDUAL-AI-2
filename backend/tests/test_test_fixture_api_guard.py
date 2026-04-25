@@ -115,3 +115,38 @@ def test_is_real_symbol_canonical():
     assert not _is_real_symbol("FIXTURE_Y")
     assert not _is_real_symbol("")
     assert not _is_real_symbol(None)
+
+
+def test_failure_loop_create_blocks_test_symbols():
+    """`failure_loop_service.create_trade_idea` was the entry point
+    that leaked 12 TEST_AAPL/GOOG/NVDA/META/AMZN rows into the
+    prod `trade_ideas` collection. Confirm it now refuses to
+    insert and returns the sentinel id."""
+    from services import failure_loop_service
+
+    async def _run():
+        db = _mongo_db()
+        failure_loop_service.set_db(db)
+        # Wipe any pre-existing TEST_ rows so we measure ONLY this
+        # test's writes.
+        import re
+        pat = re.compile(r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ)", re.I)
+        await db.trade_ideas.delete_many({"symbol": pat})
+
+        for sym in ("TEST_AAPL", "MOCK_GOOG", "FAKEXYZ", "fixture_x"):
+            res = await failure_loop_service.create_trade_idea(
+                user_id="test-user",
+                symbol=sym,
+                direction="long",
+                thesis="should be blocked",
+                confidence=0.8,
+                source="user",
+            )
+            assert res.get("blocked") is True, (
+                f"Expected blocked=True for {sym!r}, got {res}"
+            )
+
+        leaked = await db.trade_ideas.count_documents({"symbol": pat})
+        assert leaked == 0, f"{leaked} test fixtures slipped past guard"
+
+    asyncio.get_event_loop().run_until_complete(_run())

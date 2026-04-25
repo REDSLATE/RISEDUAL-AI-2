@@ -379,7 +379,17 @@ async def scan_for_signals(request: Request):
     market_svc = MarketDataService()
 
     signals_found = []
+    # Test-fixture guard at the scan entry point. If a watchlist
+    # somehow contains a TEST_*/MOCK_*/FAKE_*/FAKEXYZ ticker (the
+    # 2026-04-24 contamination scrub cleaned 5 such entries), we
+    # skip it here so no test fixture lands in `market_signals`.
+    from services.market_memory_service import _is_real_symbol
     for ticker in tickers[:10]:
+        if not _is_real_symbol(ticker) or str(ticker).upper() == "FAKEXYZ":
+            logging.warning(
+                f"[market-signals] skipped test-fixture ticker in watchlist: {ticker}"
+            )
+            continue
         try:
             signals_found.extend(await _scan_dark_pool(market_svc, user["_id"], ticker))
             signals_found.extend(await _scan_options_flow(market_svc, user["_id"], ticker))
