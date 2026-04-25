@@ -120,15 +120,14 @@ def test_is_real_symbol_canonical():
 def test_failure_loop_create_blocks_test_symbols():
     """`failure_loop_service.create_trade_idea` was the entry point
     that leaked 12 TEST_AAPL/GOOG/NVDA/META/AMZN rows into the
-    prod `trade_ideas` collection. Confirm it now refuses to
-    insert and returns the sentinel id."""
+    prod `trade_ideas` collection. Confirm it now returns a
+    structured `blocked` payload (no fake idea_id) and writes
+    nothing to the collection."""
     from services import failure_loop_service
 
     async def _run():
         db = _mongo_db()
         failure_loop_service.set_db(db)
-        # Wipe any pre-existing TEST_ rows so we measure ONLY this
-        # test's writes.
         import re
         pat = re.compile(r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ)", re.I)
         await db.trade_ideas.delete_many({"symbol": pat})
@@ -145,8 +144,80 @@ def test_failure_loop_create_blocks_test_symbols():
             assert res.get("blocked") is True, (
                 f"Expected blocked=True for {sym!r}, got {res}"
             )
+            assert res.get("reason") == "test_symbol_rejected", (
+                f"Expected reason='test_symbol_rejected' for {sym!r}, got {res}"
+            )
+            # Symbol echoed back uppercase
+            assert res.get("symbol") == sym.upper(), (
+                f"Symbol echo mismatch: {res.get('symbol')!r} vs {sym.upper()!r}"
+            )
+            # Critically: no fake idea_id leaked into the response.
+            # Earlier patch returned `idea_id: 'blocked-test-symbol-X'`;
+            # the cleaner contract removes it entirely so callers
+            # can never accidentally treat a rejection as a success.
+            assert "idea_id" not in res, (
+                f"Unexpected idea_id in blocked response: {res!r}"
+            )
 
         leaked = await db.trade_ideas.count_documents({"symbol": pat})
         assert leaked == 0, f"{leaked} test fixtures slipped past guard"
 
     asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_failure_loop_blocks_TEST_FAIL_61_at_source():
+    """Mirror of the user-supplied regression spec — the exact
+    incident symbol that started the 2026-04-24 cascade. Locks the
+    fix at the `create_trade_idea` source boundary."""
+    from services import failure_loop_service
+
+    async def _run():
+        db = _mongo_db()
+        failure_loop_service.set_db(db)
+        await db.trade_ideas.delete_many({"symbol": "TEST_FAIL_61"})
+
+        result = await failure_loop_service.create_trade_idea(
+            user_id="u1",
+            symbol="TEST_FAIL_61",
+            direction="UP",
+            thesis="fixture",
+            confidence=90,
+        )
+
+        assert result["blocked"] is True
+        assert await db.trade_ideas.count_documents(
+            {"symbol": "TEST_FAIL_61"}
+        ) == 0
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
+def test_failure_loop_route_returns_400_for_test_symbols():
+    """The `/api/failure-loop/ideas` route now returns 400 instead
+    of a 200 with a `blocked` flag. Honest API contract: clients
+    writing test fixtures should see a real error so the bad
+    behaviour is impossible to ignore."""
+    import requests
+    from conftest_creds import BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
+
+    s = requests.Session()
+    r = s.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+    )
+    assert r.status_code == 200, r.text
+
+    r = s.post(
+        f"{BASE_URL}/api/failure-loop/ideas",
+        json={
+            "symbol": "TEST_AAPL",
+            "direction": "long",
+            "thesis": "smoke",
+            "confidence": 0.7,
+            "source": "user",
+        },
+    )
+    assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
+    detail = r.json().get("detail", {})
+    assert detail.get("error") == "test_symbol_rejected"
+    assert detail.get("symbol") == "TEST_AAPL"

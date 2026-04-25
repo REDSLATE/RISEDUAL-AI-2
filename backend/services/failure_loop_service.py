@@ -34,26 +34,38 @@ def set_db(database: Any) -> None:
 
 async def create_trade_idea(user_id: str, symbol: str, direction: str, thesis: str,
                             confidence: float, source: str = "ai", tags: list = None) -> dict:
-    """Store a new trade idea."""
+    """Store a new trade idea.
+
+    Test-fixture symbols (TEST_*/MOCK_*/FAKE_*/DUMMY_*/FIXTURE_*/
+    FAKEXYZ) are rejected at this boundary BEFORE any normalization
+    or insert. Returns a structured `blocked` payload so callers
+    can distinguish "rejected by guard" from "DB unavailable" or
+    a successful insert. The 2026-04-24 contamination cascade
+    originated here — 12 TEST_AAPL/GOOG/NVDA/META/AMZN rows
+    leaked into the prod `trade_ideas` collection from integration
+    tests that didn't clean up after themselves.
+    """
     if db is None:
         return {}
 
-    # Test-fixture guard — block TEST_*/MOCK_*/FAKE_*/DUMMY_*/
-    # FIXTURE_*/FAKEXYZ symbols. The 2026-04-24 contamination
-    # cascade originated here: integration tests POSTed
-    # `/api/failure-loop/ideas` with TEST_AAPL/GOOG/NVDA/META and
-    # never cleaned up, leaving 12 fixture rows in prod.
+    clean_symbol = symbol.upper()
+
     from services.market_memory_service import _is_real_symbol
-    if not _is_real_symbol(symbol) or symbol.upper() == "FAKEXYZ":
+    if not _is_real_symbol(clean_symbol) or clean_symbol == "FAKEXYZ":
         logger.warning(
-            f"[failure_loop] BLOCKED test-fixture symbol from trade_ideas: {symbol}"
+            f"[failure_loop] BLOCKED test-fixture symbol from trade_ideas: "
+            f"{clean_symbol}"
         )
-        return {"idea_id": f"blocked-test-symbol-{symbol}", "blocked": True}
+        return {
+            "blocked": True,
+            "reason": "test_symbol_rejected",
+            "symbol": clean_symbol,
+        }
 
     idea: dict[str, Any] = {
         "idea_id": str(uuid4()),
         "user_id": user_id,
-        "symbol": symbol.upper(),
+        "symbol": clean_symbol,
         "direction": direction,
         "thesis": thesis,
         "confidence": confidence,

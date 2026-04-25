@@ -39,13 +39,32 @@ class TradeOutcomeReview(BaseModel):
 
 @router.post("/ideas")
 async def post_trade_idea(payload: TradeIdeaCreate, request: Request):
-    """Store a new trade idea."""
+    """Store a new trade idea.
+
+    Returns 400 when the symbol is rejected by the test-fixture
+    guard (`blocked: true` shape from the service layer). The
+    error is honest: clients writing TEST_*/MOCK_*/FAKE_*/FAKEXYZ
+    should fix their fixtures, not receive a fake-success response.
+    """
     user = await get_current_user(request)
     user_id = str(user["_id"])
     idea = await failure_loop_service.create_trade_idea(
         user_id, payload.symbol, payload.direction, payload.thesis,
         payload.confidence, payload.source, payload.tags,
     )
+    if idea.get("blocked"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": idea.get("reason", "rejected"),
+                "symbol": idea.get("symbol"),
+                "message": (
+                    "Test-fixture symbols (TEST_*/MOCK_*/FAKE_*/DUMMY_*/"
+                    "FIXTURE_*/FAKEXYZ) are blocked from production "
+                    "collections. Use a real ticker."
+                ),
+            },
+        )
     return idea
 
 
