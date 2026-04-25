@@ -167,10 +167,12 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     # Crypto paper-trading idempotency + query indexes (best-effort).
     try:
         from services.crypto_paper_trading_service import ensure_indexes as _crypto_paper_indexes
+        from services.crypto_signal_audit import ensure_indexes as _crypto_audit_indexes
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
             loop.create_task(_crypto_paper_indexes())
+            loop.create_task(_crypto_audit_indexes(db))
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:

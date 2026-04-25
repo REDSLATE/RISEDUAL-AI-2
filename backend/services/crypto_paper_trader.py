@@ -207,10 +207,18 @@ async def run_crypto_paper_bot(
             continue
 
         from services.crypto_strategist import adversarial_signal
+        from services.crypto_signal_audit import log_adversarial_decision
 
         signal = adversarial_signal(closes)
         direction = signal.get("direction", "HOLD")
         confidence = float(signal.get("confidence", 0.0))
+
+        # Persist the decision BEFORE we branch on direction so the
+        # veto-rate stats include every Auditor verdict, not just
+        # the ones that produced fills.
+        await log_adversarial_decision(
+            db, symbol=clean_symbol, signal=signal, final_direction=direction,
+        )
 
         if direction == "HOLD":
             results.append({
@@ -247,6 +255,16 @@ async def run_crypto_paper_bot(
             "status": "open",
             "opened_at": datetime.now(timezone.utc),
             "source": "crypto_paper_bot",
+            # Why both agents agreed — surfaced at the top level
+            # (not nested in metadata) so admin queries / dashboards
+            # can filter without an embedded-doc lookup.
+            "agent_agreement": {
+                "strategist_direction": signal.get("strategist", {}).get("direction"),
+                "strategist_confidence": signal.get("strategist", {}).get("confidence"),
+                "auditor_verdict": signal.get("auditor", {}).get("verdict"),
+                "auditor_confidence": signal.get("auditor", {}).get("confidence"),
+                "combined_confidence": round(confidence, 3),
+            },
             "metadata": {
                 "lane": "crypto",
                 "bot_version": "crypto_v2",

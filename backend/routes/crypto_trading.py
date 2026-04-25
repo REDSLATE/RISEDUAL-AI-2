@@ -17,13 +17,14 @@ Endpoint
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
 from services.auth_helpers import get_current_user
 from services.crypto_paper_trader import run_crypto_paper_bot
 from services.crypto_quotes import get_crypto_quote, get_crypto_history
+from services.crypto_signal_audit import get_strategist_stats
 
 logger = logging.getLogger(__name__)
 
@@ -85,3 +86,28 @@ async def run_crypto_bot_once(
         "skipped": skipped,
         "results": results,
     }
+
+
+@router.get("/strategist-stats")
+async def strategist_stats(
+    request: Request,
+    hours: int = 24,
+    symbol: Optional[str] = None,
+) -> dict:
+    """Veto-rate calibration tile.
+
+    Use to monitor the Strategist→Auditor agreement rate across
+    rolling windows. Target band: ``veto_rate ∈ [20%, 45%]``. Below
+    that, the Auditor is too lenient (not catching exhaustion);
+    above that (especially >70%) it's too strict and blocking
+    momentum continuation trades that crypto bots make money on.
+
+    Common windows: ``hours=24`` (daily), ``hours=168`` (7d),
+    ``hours=720`` (30d).
+    """
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not initialised")
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await get_strategist_stats(_db, hours=hours, symbol=symbol)

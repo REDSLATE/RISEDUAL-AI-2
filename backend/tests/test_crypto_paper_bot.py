@@ -61,10 +61,19 @@ class _FakeDB:
         self.crypto_paper_trades = AsyncMock()
         self.crypto_paper_trades.insert_one = self._insert
         self.paper_trades = AsyncMock()  # MUST stay untouched
+        self.crypto_signal_audit_log = AsyncMock()  # bot writes audit log too
         self.writes: list[dict] = []
+        self.audit_writes: list[dict] = []
+        self.crypto_signal_audit_log.insert_one = self._audit_insert
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
     async def _insert(self, doc):
         self.writes.append(dict(doc))
+
+    async def _audit_insert(self, doc):
+        self.audit_writes.append(dict(doc))
 
 
 def _moderate_uptrend(n: int = 60, base: float = 70000.0,
@@ -109,11 +118,20 @@ async def test_bot_writes_to_crypto_collection_only():
     assert "strategist" in trade["metadata"]
     assert "auditor" in trade["metadata"]
 
+    # agent_agreement block — explainability for "why both agreed"
+    assert "agent_agreement" in trade
+    aa = trade["agent_agreement"]
+    assert aa["strategist_direction"] == "LONG"
+    assert aa["auditor_verdict"] == "CONFIRM"
+    assert "combined_confidence" in aa
+    assert 0.0 < aa["combined_confidence"] <= 1.0
+
     # The architectural firewall — paper_trades MUST NOT be touched
     db.paper_trades.insert_one.assert_not_called()
     # And the crypto collection MUST have one fill
     assert len(db.writes) == 1
     assert db.writes[0]["asset_class"] == "crypto"
+    assert "agent_agreement" in db.writes[0]
 
 
 @pytest.mark.asyncio
