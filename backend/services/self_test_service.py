@@ -138,6 +138,72 @@ async def _check_datetime_comparisons(db: Any) -> dict:
         return _fail("datetime_comparisons", str(e))
 
 
+# Symbol-prefix probe used by the contamination check. Kept as a
+# raw regex string (not a compiled Pattern) so it can be passed
+# straight into Mongo's `$regex` operator. `^...` anchors to the
+# start so we never false-positive on legitimate tickers that
+# happen to contain "TEST" mid-string.
+_CONTAMINATION_REGEX = "^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ|TEST\\d+$)"
+
+# Collections to probe. (collection_name, field_name, is_array_field).
+# Every collection here is ALSO covered by the write-side guards in
+# `services/market_memory_service.enforce_no_test_symbol`. This
+# probe exists as a tripwire — if any of the 6 write-side guards
+# silently regress, the next 15-min self-test cycle catches it.
+_CONTAMINATION_TARGETS = [
+    ("predictions", "symbol", False),
+    ("trade_ideas", "symbol", False),
+    ("trades", "ticker", False),
+    ("signals", "ticker", False),
+    ("watchlists", "tickers", True),
+    ("alerts_sent", "tickers", True),
+]
+
+
+async def _check_test_contamination(db: Any) -> dict:
+    """Tripwire — fails fast the moment a test fixture lands in any
+    production collection. The 2026-04-24 contamination cascade
+    happened because nobody noticed test rows accumulating for
+    ~2 weeks. Now the self-test cycle (every 15 min) probes for
+    them; the moment one slips past the write-side guards, the
+    next admin self-test email lights up red.
+
+    Probes every (collection, field) pair where the cleanup
+    pipeline previously found leakage. One match anywhere is
+    enough to FAIL — we want the loudest possible signal.
+    """
+    if db is None:
+        return _fail("test_contamination", "db reference is None")
+    try:
+        hits: list[str] = []
+        for cname, field, _is_array in _CONTAMINATION_TARGETS:
+            try:
+                doc = await db[cname].find_one(
+                    {field: {"$regex": _CONTAMINATION_REGEX, "$options": "i"}},
+                    {"_id": 0, field: 1, "user_id": 1, "created_at": 1},
+                )
+                if doc is not None:
+                    val = doc.get(field)
+                    sample = val[0] if isinstance(val, list) and val else val
+                    hits.append(f"{cname}.{field}={sample!r}")
+            except Exception as inner:
+                # A single-collection probe error shouldn't blank
+                # the whole check — keep scanning.
+                hits.append(f"{cname}.{field}=probe_error:{type(inner).__name__}")
+        if hits:
+            return _fail(
+                "test_contamination",
+                f"test fixtures found in prod collections: {'; '.join(hits[:3])}"
+                + (f" (+{len(hits) - 3} more)" if len(hits) > 3 else ""),
+            )
+        return _pass(
+            "test_contamination",
+            f"{len(_CONTAMINATION_TARGETS)} collections clean",
+        )
+    except Exception as e:
+        return _fail("test_contamination", str(e))
+
+
 def _check_env() -> dict:
     missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
     if missing:
@@ -187,6 +253,7 @@ async def run_self_test(db: Any, scheduler: Any = None) -> dict:
         await _check_db_ping(db),
         await _check_collections(db),
         await _check_datetime_comparisons(db),
+        await _check_test_contamination(db),
         _check_env(),
         _check_pricing_consistency(),
         _check_scheduler(scheduler),
