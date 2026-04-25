@@ -67,6 +67,20 @@ class _FakeDB:
         self.writes.append(dict(doc))
 
 
+def _moderate_uptrend(n: int = 60, base: float = 70000.0,
+                      drift: float = 200.0) -> list[float]:
+    """Synthetic uptrend with realistic pullback noise so RSI lands
+    in the 55-65 range (not pegged to 100). Pattern: 2 bars up,
+    1 bar down with equal drift."""
+    series = [base]
+    for i in range(1, n):
+        if i % 3 == 2:
+            series.append(series[-1] - drift)
+        else:
+            series.append(series[-1] + drift)
+    return series
+
+
 @pytest.mark.asyncio
 async def test_bot_writes_to_crypto_collection_only():
     db = _FakeDB()
@@ -74,7 +88,14 @@ async def test_bot_writes_to_crypto_collection_only():
     async def quote(symbol):
         return {"symbol": symbol, "price": 77000.0}
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC"])
+    # Synthetic moderate uptrend → Strategist proposes LONG,
+    # Auditor confirms, trade fires.
+    closes = _moderate_uptrend(60)
+
+    async def history(symbol, lookback):
+        return closes[-lookback:]
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
 
     assert len(results) == 1
     trade = results[0]
@@ -84,6 +105,9 @@ async def test_bot_writes_to_crypto_collection_only():
     assert trade["pair"] == "BTC/USD"
     assert trade["source"] == "crypto_paper_bot"
     assert trade["metadata"]["lane"] == "crypto"
+    assert trade["metadata"]["bot_version"] == "crypto_v2"
+    assert "strategist" in trade["metadata"]
+    assert "auditor" in trade["metadata"]
 
     # The architectural firewall — paper_trades MUST NOT be touched
     db.paper_trades.insert_one.assert_not_called()
@@ -101,7 +125,12 @@ async def test_bot_filters_non_crypto_symbols():
         seen.append(symbol)
         return {"symbol": symbol, "price": 100.0}
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC", "AAPL", "SPY", "ETH"])
+    async def history(symbol, lookback):
+        return _moderate_uptrend(60, base=100.0, drift=0.5)
+
+    results = await run_crypto_paper_bot(
+        db, quote, ["BTC", "AAPL", "SPY", "ETH"], history_provider=history,
+    )
 
     # Equity tickers are skipped BEFORE the quote provider is called
     assert "AAPL" not in seen
@@ -127,7 +156,10 @@ async def test_bot_skips_when_quote_unavailable():
         # Simulate upstream outage
         return {"symbol": symbol, "price": 0.0}
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC"])
+    async def history(symbol, lookback):
+        return [70000 + i * 100 for i in range(60)]
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
 
     assert len(results) == 1
     assert results[0]["skipped"] is True
@@ -143,7 +175,10 @@ async def test_bot_skips_when_quote_provider_raises():
     async def quote(symbol):
         raise RuntimeError("upstream timeout")
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC"])
+    async def history(symbol, lookback):
+        return [70000 + i * 100 for i in range(60)]
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
 
     assert len(results) == 1
     assert results[0]["skipped"] is True
@@ -174,7 +209,12 @@ async def test_bot_continues_after_db_write_failure():
     async def quote(symbol):
         return {"symbol": symbol, "price": 70000.0}
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC", "ETH"])
+    async def history(symbol, lookback):
+        return _moderate_uptrend(60)
+
+    results = await run_crypto_paper_bot(
+        db, quote, ["BTC", "ETH"], history_provider=history,
+    )
 
     assert len(results) == 2
     btc, eth = results
@@ -194,10 +234,67 @@ async def test_bot_default_universe_is_btc_eth_sol():
     async def quote(symbol):
         return {"symbol": symbol, "price": 100.0}
 
-    results = await run_crypto_paper_bot(db, quote)
+    async def history(symbol, lookback):
+        return _moderate_uptrend(60, base=100.0, drift=0.5)
+
+    results = await run_crypto_paper_bot(db, quote, history_provider=history)
 
     symbols_traded = {r.get("symbol") for r in results if r.get("status") == "open"}
     assert symbols_traded == {"BTC", "ETH", "SOL"}
+
+
+@pytest.mark.asyncio
+async def test_bot_skips_when_history_provider_missing():
+    """No history → bot can't run signal layer → safe HOLD."""
+    db = _FakeDB()
+
+    async def quote(symbol):
+        return {"symbol": symbol, "price": 70000.0}
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"])  # no history_provider
+
+    assert len(results) == 1
+    assert results[0]["skipped"] is True
+    assert results[0]["reason"] == "no_history_provider"
+    assert len(db.writes) == 0
+
+
+@pytest.mark.asyncio
+async def test_bot_skips_when_history_unavailable():
+    db = _FakeDB()
+
+    async def quote(symbol):
+        return {"symbol": symbol, "price": 70000.0}
+
+    async def history(symbol, lookback):
+        raise RuntimeError("yfinance offline")
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
+
+    assert len(results) == 1
+    assert results[0]["skipped"] is True
+    assert results[0]["reason"] == "history_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_bot_holds_on_strategist_hold():
+    """When closes are flat (no momentum) the Strategist returns HOLD
+    and the bot doesn't open a trade."""
+    db = _FakeDB()
+
+    async def quote(symbol):
+        return {"symbol": symbol, "price": 70000.0}
+
+    async def history(symbol, lookback):
+        # Flat bars → no trend, no momentum → HOLD
+        return [70000.0] * 60
+
+    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
+
+    assert len(results) == 1
+    assert results[0]["skipped"] is True
+    assert "strategist_hold" in results[0]["reason"]
+    assert len(db.writes) == 0
 
 
 @pytest.mark.asyncio
@@ -207,7 +304,10 @@ async def test_trade_record_shape_matches_spec():
     async def quote(symbol):
         return {"symbol": symbol, "price": 65000.0}
 
-    await run_crypto_paper_bot(db, quote, ["BTC"])
+    async def history(symbol, lookback):
+        return _moderate_uptrend(60, base=60000.0, drift=200.0)
+
+    await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
 
     assert len(db.writes) == 1
     doc = db.writes[0]

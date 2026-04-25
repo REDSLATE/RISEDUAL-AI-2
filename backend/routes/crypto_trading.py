@@ -23,7 +23,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from services.auth_helpers import get_current_user
 from services.crypto_paper_trader import run_crypto_paper_bot
-from services.crypto_quotes import get_crypto_quote
+from services.crypto_quotes import get_crypto_quote, get_crypto_history
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,7 @@ async def run_crypto_bot_once(
     results = await run_crypto_paper_bot(
         db=_db,
         quote_provider=get_crypto_quote,
+        history_provider=get_crypto_history,
         symbols=universe,
     )
 

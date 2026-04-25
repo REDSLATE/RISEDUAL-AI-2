@@ -54,6 +54,51 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Bot v2 — Strategist/Auditor + Closer (Apr 25, 2026)
+The crypto bot now runs a real adversarial signal layer in place of
+the v1 hard-coded `confidence=0.70` placeholder, and aging fills are
+auto-closed by a dedicated 24/7 closer. Every component lives in
+the isolated crypto lane — zero touch on equity files.
+
+- **New** `services/crypto_strategist.py` — deterministic adversarial
+  signal layer. Strategist proposes (RSI + EMA20 + 5-bar momentum),
+  Auditor independently checks for overbought/oversold/parabolic
+  setups and either confirms or vetoes. Combined confidence is the
+  geometric mean of the two; trade fires only above the 0.60 floor.
+  Pure-Python (no numpy, no LLM) so a tick takes milliseconds.
+- **Updated** `services/crypto_paper_trader.py` — accepts an injected
+  `history_provider`, calls `adversarial_signal()` instead of the
+  hard-coded `confidence=0.70`. Persists Strategist+Auditor blocks
+  in `metadata` for explainability. Bot version bumped to `crypto_v2`.
+- **Updated** `services/crypto_quotes.py` — added
+  `get_crypto_history()` using yfinance's `{TICKER}-USD` form
+  directly. Crypto-only; equity `price_provider.get_daily_history`
+  untouched.
+- **New** `services/crypto_paper_trade_closer.py` — hourly closer
+  for `crypto_paper_trades`. Exit priority: SL → TP → max_hold
+  (default 12h, env-tunable via `CRYPTO_PAPER_MAX_HOLD_HOURS`).
+  Direction-aware PnL (LONG profits on rising mark, SHORT on
+  falling). Belt-and-suspenders firewall: skips any non-`crypto`
+  asset_class row that somehow lands here.
+- **Updated** `server.py` — added `_run_crypto_paper_closer` worker
+  + APScheduler entry: `'interval', minutes=60, id='crypto_paper_closer'`.
+  Bot scheduler also now passes `history_provider`.
+- **Updated** `routes/crypto_trading.py` — manual run endpoint
+  `POST /api/crypto/paper-bot/run` now passes history_provider too.
+- **Tests**: 65/65 green across the 4 crypto test files
+  (`test_crypto_paper_bot.py`, `test_crypto_paper_trading.py`,
+  `test_crypto_strategist.py`, `test_crypto_paper_trade_closer.py`).
+  Coverage includes adversarial veto on overbought/oversold/parabolic,
+  Strategist HOLD on flat/short history, geometric-mean floor logic,
+  closer SL/TP/max_hold priority, direction-aware PnL math, quote
+  outage safety, and the architectural firewall (equity
+  `paper_trades` collection cannot be reached from crypto code).
+- **Live verified**: POST run opened 3 LONG positions on real
+  BTC/ETH/SOL bars (RSI 51-63 range, all auditor-confirmed); closer
+  correctly closed an artificially-aged ETH trade at `max_hold` with
+  proper PnL math, left the two fresh trades open. Equity
+  `paper_trades` count stayed at 83 throughout.
+
 ### Crypto Paper-Trading Subsystem (ISOLATED) — Apr 25, 2026
 Crypto paper trading runs on its own service, route, and Mongo
 collection, completely disjoint from the equity/options pipeline.

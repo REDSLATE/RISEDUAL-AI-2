@@ -13,15 +13,10 @@ current live deploy queue.
 
 ## P0 — Imminent
 
-- **Wire the crypto bots to the new isolated paper line.** The
-  service + route + collection went live 2026-04-25 (see PRD §4).
-  Bot dispatcher (`trading_bot_service.py:_execute_bot_trade`) still
-  routes ALL `mode=paper` trades through `paper_trading_service`,
-  which is equity-only by design now. For a `bot.symbol` that
-  `is_crypto()` returns True for, the dispatcher should call
-  `crypto_paper_trading_service.execute_crypto_paper_trade()`
-  instead. Equity bots stay on the existing path. ~30 minutes of
-  work; zero changes to the equity execution logic.
+- **Wire the crypto bots to the new isolated paper line.** ✅ DONE
+  (Apr 25). Service + route + collection + scheduler + Strategist/
+  Auditor signal layer + 12h max-hold closer all live. See
+  PRD §4 "Crypto Bot v2".
 
 - **Alpaca live-key plumbing.** User has Alpaca approval; waiting on key
   from email. All infrastructure is ready:

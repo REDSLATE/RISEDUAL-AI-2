@@ -299,6 +299,9 @@ async def _start_schedulers():
         # ── Crypto bot (24/7 lane, isolated from equity ml_paper_trader) ──
         scheduler.add_job(_run_crypto_paper_bot, 'interval', minutes=15,
                           id='crypto_paper_bot', replace_existing=True)
+        # ── Crypto closer (own service, hourly tick, 12h max hold) ──
+        scheduler.add_job(_run_crypto_paper_closer, 'interval', minutes=60,
+                          id='crypto_paper_closer', replace_existing=True)
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only
@@ -422,10 +425,11 @@ async def _run_crypto_paper_bot():
     the scheduler tick."""
     try:
         from services.crypto_paper_trader import run_crypto_paper_bot
-        from services.crypto_quotes import get_crypto_quote
+        from services.crypto_quotes import get_crypto_quote, get_crypto_history
         results = await run_crypto_paper_bot(
             db=db,
             quote_provider=get_crypto_quote,
+            history_provider=get_crypto_history,
             symbols=["BTC", "ETH", "SOL"],
         )
         opened = sum(1 for r in results if r.get("status") == "open")
@@ -437,6 +441,31 @@ async def _run_crypto_paper_bot():
             )
     except Exception as e:
         logger.debug(f"Crypto paper bot error: {e}")
+
+
+async def _run_crypto_paper_closer():
+    """Background: hourly crypto paper-trade closer. Closes any
+    open crypto fill that has hit SL/TP or aged past the max hold
+    window (default 12h, env-tunable via CRYPTO_PAPER_MAX_HOLD_HOURS).
+
+    Isolated from the equity ``paper_trade_closer`` — touches only
+    ``crypto_paper_trades``."""
+    try:
+        from services.crypto_paper_trade_closer import close_due_crypto_trades
+        summary = await close_due_crypto_trades(db)
+        if summary.get("closed") or summary.get("errors"):
+            logger.info(
+                "Crypto paper closer: scanned=%d closed=%d skipped=%d errors=%d "
+                "reasons=%s max_hold=%.1fh",
+                summary.get("scanned", 0),
+                summary.get("closed", 0),
+                summary.get("skipped", 0),
+                summary.get("errors", 0),
+                summary.get("reasons", {}),
+                summary.get("max_hold_hours", 0.0),
+            )
+    except Exception as e:
+        logger.debug(f"Crypto paper closer error: {e}")
 
 
 async def _run_paper_trade_closer():

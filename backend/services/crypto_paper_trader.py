@@ -57,6 +57,22 @@ def is_crypto_symbol(symbol: str | None) -> bool:
 
 # Type alias for the injected quote provider.
 QuoteProvider = Callable[[str], Awaitable[dict]]
+# Type alias for the injected history provider — returns recent
+# closes the Strategist/Auditor consume. Optional; when unset, the
+# bot falls back to a HOLD on every symbol (equivalent to the
+# legacy "no signal layer" placeholder behaviour).
+HistoryProvider = Callable[[str, int], Awaitable[list[float]]]
+
+
+# Per-symbol confidence boost applied AFTER the adversarial floor.
+# Marquee names (deeper liquidity, smaller spread) get tiny premiums;
+# illiquid alts get small penalties. Leaves the math unchanged for
+# unlisted symbols.
+_LIQUIDITY_TILT: dict[str, float] = {
+    "BTC": 0.02,
+    "ETH": 0.02,
+    "SOL": 0.01,
+}
 
 
 # ── Default position sizing ─────────────────────────────────────────────────
@@ -88,6 +104,7 @@ async def run_crypto_paper_bot(
     db: Any,
     quote_provider: QuoteProvider,
     symbols: Optional[Iterable[str]] = None,
+    history_provider: Optional[HistoryProvider] = None,
 ) -> list[dict]:
     """Run one pass of the crypto paper-trading bot.
 
@@ -103,6 +120,14 @@ async def run_crypto_paper_bot(
     symbols
         Universe to trade this pass. Defaults to ``["BTC", "ETH", "SOL"]``.
         Non-crypto symbols are silently filtered (architectural firewall).
+    history_provider
+        Optional async callable taking ``(symbol, lookback)`` and
+        returning a list of recent close prices. Wired to
+        :func:`services.crypto_quotes.get_crypto_history` in production;
+        tests inject deterministic bars. When ``None``, the bot
+        emits HOLD for every symbol (equivalent to the legacy
+        placeholder behaviour) — a safe degradation rather than a
+        crash.
 
     Returns
     -------
@@ -155,18 +180,58 @@ async def run_crypto_paper_bot(
             })
             continue
 
-        # Starter signal logic — replace later with the
-        # crypto-flavoured Strategist/Auditor loop. For now we open
-        # a small LONG every pass to seed the Tier 3 fill counter
-        # at modest, traceable sizes.
-        direction = "LONG"
-        confidence = 0.70
+        # ── Adversarial signal layer ──────────────────────────────────
+        # Strategist proposes (RSI + EMA20 + 5-bar momentum), Auditor
+        # vetoes parabolic / overbought / oversold setups. Only trades
+        # when both agree above the 0.60 floor.
+        if history_provider is None:
+            results.append({
+                "symbol": clean_symbol,
+                "skipped": True,
+                "reason": "no_history_provider",
+            })
+            continue
+
+        try:
+            closes = await history_provider(clean_symbol, 60)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[crypto_paper_bot] history fetch failed for %s: %s",
+                clean_symbol, exc,
+            )
+            results.append({
+                "symbol": clean_symbol,
+                "skipped": True,
+                "reason": "history_unavailable",
+            })
+            continue
+
+        from services.crypto_strategist import adversarial_signal
+
+        signal = adversarial_signal(closes)
+        direction = signal.get("direction", "HOLD")
+        confidence = float(signal.get("confidence", 0.0))
+
+        if direction == "HOLD":
+            results.append({
+                "symbol": clean_symbol,
+                "skipped": True,
+                "reason": signal.get("reason", "hold"),
+                "signal": signal,
+            })
+            continue
+
+        # Liquidity tilt — tiny adjustment so the marquee names get
+        # a hair more aggression than illiquid alts at the same
+        # signal strength.
+        confidence = min(0.99, confidence + _LIQUIDITY_TILT.get(clean_symbol, 0.0))
 
         if confidence < _MIN_CONFIDENCE:
             results.append({
                 "symbol": clean_symbol,
                 "skipped": True,
                 "reason": "low_confidence",
+                "signal": signal,
             })
             continue
 
@@ -178,13 +243,16 @@ async def run_crypto_paper_bot(
             "direction": direction,
             "entry_price": round(price, 6),
             "quantity": _default_qty(clean_symbol),
-            "confidence": confidence,
+            "confidence": round(confidence, 3),
             "status": "open",
             "opened_at": datetime.now(timezone.utc),
             "source": "crypto_paper_bot",
             "metadata": {
                 "lane": "crypto",
-                "bot_version": "crypto_v1",
+                "bot_version": "crypto_v2",
+                "strategist": signal.get("strategist", {}),
+                "auditor": signal.get("auditor", {}),
+                "signal_reason": signal.get("reason"),
             },
         }
 
