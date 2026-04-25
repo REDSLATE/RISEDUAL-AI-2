@@ -62,12 +62,24 @@ class _FakeDB:
         self.crypto_paper_trades.insert_one = self._insert
         self.paper_trades = AsyncMock()  # MUST stay untouched
         self.crypto_signal_audit_log = AsyncMock()  # bot writes audit log too
+        # No active adaptations by default — empty cursor.
+        self.crypto_model_adaptations = AsyncMock()
+        self.crypto_model_adaptations.find = self._empty_cursor
         self.writes: list[dict] = []
         self.audit_writes: list[dict] = []
         self.crypto_signal_audit_log.insert_one = self._audit_insert
 
     def __getitem__(self, key):
         return getattr(self, key)
+
+    def _empty_cursor(self, _query):
+        class _Cursor:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+        return _Cursor()
 
     async def _insert(self, doc):
         self.writes.append(dict(doc))
@@ -212,9 +224,25 @@ async def test_bot_continues_after_db_write_failure():
         def __init__(self):
             self.crypto_paper_trades = AsyncMock()
             self.paper_trades = AsyncMock()
+            self.crypto_signal_audit_log = AsyncMock()
+            self.crypto_model_adaptations = AsyncMock()
+            self.crypto_model_adaptations.find = self._empty_cursor
+            self.crypto_signal_audit_log.insert_one = AsyncMock()
             self.writes: list[dict] = []
             self._call = 0
             self.crypto_paper_trades.insert_one = self._maybe_fail
+
+        def __getitem__(self, key):
+            return getattr(self, key)
+
+        def _empty_cursor(self, _query):
+            class _C:
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    raise StopAsyncIteration
+            return _C()
 
         async def _maybe_fail(self, doc):
             self._call += 1

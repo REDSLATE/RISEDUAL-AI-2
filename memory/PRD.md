@@ -54,6 +54,46 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Closed-Loop Learning Pipeline (Apr 25, 2026)
+The crypto lane now has a full closed-loop adaptation system:
+trade → memory → failure-pattern detection → factor-down-weight on
+matching future signals. Architecturally separate from the equity
+ML adaptation engine — no shared collections, no shared services.
+
+- **New** `services/crypto_memory_writer.py` — closed-trade router.
+  Classifies regime (parabolic/overbought/oversold/trend_up/
+  trend_down/neutral) and failure code (LIQUIDITY_GAP /
+  PARABOLIC_EXHAUSTION / EXTREME_RSI_FAILURE / TREND_FAKEOUT /
+  None) before upserting to `crypto_trade_memory`.
+- **New** `services/crypto_closer.py` — replaces the older
+  `crypto_paper_trade_closer.py`. Uses `pnl` / `r_multiple` /
+  `close_reason` schema. Runs every 15 min, closes any fill aged
+  past `CRYPTO_PAPER_MAX_HOLD_HOURS` (default 12h), hands the
+  closed doc to `write_crypto_trade_memory`.
+- **New** `services/crypto_adaptation_service.py` — closed-loop
+  learning starter: `detect_crypto_adaptations` scans memory every
+  6h for ≥5 losing trades sharing a `failure_code:regime` key,
+  upserts a 14-day adaptation row with `factor=0.85`. Capped at
+  `MAX_ACTIVE_CRYPTO_ADAPTATIONS=4` and 7-day cooldown per key.
+  `apply_crypto_adaptations_to_signal()` runtime hook called by the
+  bot AFTER `adversarial_signal()`; only forces HOLD when at least
+  one adaptation actually fired AND the result fell under the 0.60
+  floor.
+- **Trade record schema** updated with denormalised top-level
+  fields needed by the closer + memory writer (rsi, momentum_5b,
+  ema20, volume_ratio, strategist_conf, auditor_conf, strategist_reason,
+  auditor_reason, regime, crypto_adaptations_applied[], stop_loss,
+  take_profit) alongside the existing `agent_agreement` block +
+  nested metadata.
+- **Tests**: 96/96 green across 5 crypto test files (15 bot + 18
+  paper-trading + 17 strategist + 12 audit + 34 memory/closer/
+  adaptation).
+- **Live verified end-to-end**: bot opens LONG on real BTC/ETH/SOL,
+  closer ages-out a fill at `hold_window_expired`, memory writer
+  persists `regime=trend_up` / `outcome=loss`, detector correctly
+  returns 0 created on insufficient evidence. Equity `paper_trades`
+  count stayed at 83 throughout.
+
 ### Crypto Bot v2 — Strategist/Auditor + Closer (Apr 25, 2026)
 The crypto bot now runs a real adversarial signal layer in place of
 the v1 hard-coded `confidence=0.70` placeholder, and aging fills are

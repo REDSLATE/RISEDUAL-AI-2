@@ -208,8 +208,31 @@ async def run_crypto_paper_bot(
 
         from services.crypto_strategist import adversarial_signal
         from services.crypto_signal_audit import log_adversarial_decision
+        from services.crypto_adaptation_service import (
+            apply_crypto_adaptations_to_signal,
+        )
+        from services.crypto_memory_writer import classify_crypto_regime
 
         signal = adversarial_signal(closes)
+
+        # Tag regime from the indicator snapshot so the adaptation
+        # layer below can match against ``adaptation.regime`` keys.
+        # Reuses the same classifier the memory writer applies on
+        # close, so an "overbought" entry stays "overbought" if it
+        # later loses and goes through the failure taxonomy.
+        ind = signal.get("strategist", {}).get("indicators", {}) or {}
+        signal["regime"] = classify_crypto_regime({
+            "rsi": ind.get("rsi"),
+            "momentum_5b": ind.get("momentum_5b"),
+        })
+
+        # Adaptive layer — active crypto_model_adaptations rows
+        # multiply confidence by their factor. If the result drops
+        # below 0.60, the signal is forced to HOLD with a tagged
+        # reason. Only matches on regime / failure_code keys; on a
+        # fresh DB with no adaptations this is a no-op.
+        signal = await apply_crypto_adaptations_to_signal(db, signal)
+
         direction = signal.get("direction", "HOLD")
         confidence = float(signal.get("confidence", 0.0))
 
@@ -243,6 +266,16 @@ async def run_crypto_paper_bot(
             })
             continue
 
+        # Denormalised top-level fields needed by the closer +
+        # memory writer (regime classifier reads RSI/momentum,
+        # failure-code classifier reads volume_ratio + r_multiple,
+        # adaptation detector reads strategist_conf/auditor_conf).
+        # Cheaper than nested-doc queries and keeps the memory
+        # writer module schema-agnostic.
+        s_block = signal.get("strategist", {}) or {}
+        a_block = signal.get("auditor", {}) or {}
+        indicators = s_block.get("indicators", {}) or a_block.get("indicators", {}) or {}
+
         trade = {
             "trade_id": str(uuid4()),
             "asset_class": "crypto",
@@ -255,21 +288,37 @@ async def run_crypto_paper_bot(
             "status": "open",
             "opened_at": datetime.now(timezone.utc),
             "source": "crypto_paper_bot",
+            "stop_loss": None,  # placeholder — filled when SL/TP plumbing lands
+            "take_profit": None,
+            # Top-level snapshot (consumed by crypto_memory_writer +
+            # crypto_adaptation_service downstream).
+            "rsi": indicators.get("rsi"),
+            "ema20": indicators.get("ema20"),
+            "momentum_5b": indicators.get("momentum_5b"),
+            "volume_ratio": None,  # placeholder — filled when L2 wiring lands
+            "strategist_conf": s_block.get("confidence"),
+            "auditor_conf": a_block.get("confidence"),
+            "strategist_reason": s_block.get("reason"),
+            "auditor_reason": a_block.get("reason"),
+            "regime": signal.get("regime"),
+            "crypto_adaptations_applied": signal.get(
+                "crypto_adaptations_applied", []
+            ),
             # Why both agents agreed — surfaced at the top level
             # (not nested in metadata) so admin queries / dashboards
             # can filter without an embedded-doc lookup.
             "agent_agreement": {
-                "strategist_direction": signal.get("strategist", {}).get("direction"),
-                "strategist_confidence": signal.get("strategist", {}).get("confidence"),
-                "auditor_verdict": signal.get("auditor", {}).get("verdict"),
-                "auditor_confidence": signal.get("auditor", {}).get("confidence"),
+                "strategist_direction": s_block.get("direction"),
+                "strategist_confidence": s_block.get("confidence"),
+                "auditor_verdict": a_block.get("verdict"),
+                "auditor_confidence": a_block.get("confidence"),
                 "combined_confidence": round(confidence, 3),
             },
             "metadata": {
                 "lane": "crypto",
                 "bot_version": "crypto_v2",
-                "strategist": signal.get("strategist", {}),
-                "auditor": signal.get("auditor", {}),
+                "strategist": s_block,
+                "auditor": a_block,
                 "signal_reason": signal.get("reason"),
             },
         }

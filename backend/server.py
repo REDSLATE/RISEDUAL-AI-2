@@ -299,9 +299,12 @@ async def _start_schedulers():
         # ── Crypto bot (24/7 lane, isolated from equity ml_paper_trader) ──
         scheduler.add_job(_run_crypto_paper_bot, 'interval', minutes=15,
                           id='crypto_paper_bot', replace_existing=True)
-        # ── Crypto closer (own service, hourly tick, 12h max hold) ──
-        scheduler.add_job(_run_crypto_paper_closer, 'interval', minutes=60,
-                          id='crypto_paper_closer', replace_existing=True)
+        # ── Crypto closer (own service, 15-min tick, 12h hold window) ──
+        scheduler.add_job(_run_crypto_paper_closer, 'interval', minutes=15,
+                          id='crypto_paper_trade_closer', replace_existing=True)
+        # ── Crypto adaptation detector (closed-loop learning, 6-hourly) ──
+        scheduler.add_job(_run_crypto_adaptation_detector, 'interval', hours=6,
+                          id='crypto_adaptation_detector', replace_existing=True)
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only
@@ -325,7 +328,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -444,28 +447,49 @@ async def _run_crypto_paper_bot():
 
 
 async def _run_crypto_paper_closer():
-    """Background: hourly crypto paper-trade closer. Closes any
-    open crypto fill that has hit SL/TP or aged past the max hold
-    window (default 12h, env-tunable via CRYPTO_PAPER_MAX_HOLD_HOURS).
+    """Background: 24/7 crypto paper-trade closer. Closes any
+    open crypto fill that has aged past the max hold window
+    (default 12h, env-tunable via CRYPTO_PAPER_MAX_HOLD_HOURS).
 
-    Isolated from the equity ``paper_trade_closer`` — touches only
-    ``crypto_paper_trades``."""
+    On close, hands the trade to ``crypto_memory_writer`` which
+    routes it to the isolated ``crypto_trade_memory`` learning
+    surface — that's the input the adaptation detector consumes."""
     try:
-        from services.crypto_paper_trade_closer import close_due_crypto_trades
-        summary = await close_due_crypto_trades(db)
+        from services.crypto_closer import close_expired_crypto_trades
+        from services.crypto_quotes import get_crypto_quote
+        import os
+        hold_hours = int(os.environ.get("CRYPTO_PAPER_MAX_HOLD_HOURS", "12"))
+        summary = await close_expired_crypto_trades(
+            db=db, quote_provider=get_crypto_quote, hold_hours=hold_hours,
+        )
         if summary.get("closed") or summary.get("errors"):
             logger.info(
-                "Crypto paper closer: scanned=%d closed=%d skipped=%d errors=%d "
-                "reasons=%s max_hold=%.1fh",
-                summary.get("scanned", 0),
+                "Crypto paper closer: closed=%d skipped=%d errors=%d hold=%dh",
                 summary.get("closed", 0),
                 summary.get("skipped", 0),
                 summary.get("errors", 0),
-                summary.get("reasons", {}),
-                summary.get("max_hold_hours", 0.0),
+                summary.get("hold_hours", 0),
             )
     except Exception as e:
         logger.debug(f"Crypto paper closer error: {e}")
+
+
+async def _run_crypto_adaptation_detector():
+    """Background: scan ``crypto_trade_memory`` for repeated failure
+    patterns and emit ``crypto_model_adaptations`` rows that the
+    bot's signal layer applies at decision time. Runs every 6h
+    so a single bad day doesn't whipsaw the live signal."""
+    try:
+        from services.crypto_adaptation_service import detect_crypto_adaptations
+        created = await detect_crypto_adaptations(db)
+        if created:
+            logger.info(
+                "Crypto adaptations: created=%d (keys=%s)",
+                len(created),
+                [f"{a['failure_code']}:{a['regime']}" for a in created],
+            )
+    except Exception as e:
+        logger.debug(f"Crypto adaptation detector error: {e}")
 
 
 async def _run_paper_trade_closer():
