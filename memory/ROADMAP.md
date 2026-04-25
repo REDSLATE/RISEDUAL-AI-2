@@ -64,6 +64,20 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **Paper trader duplicate-insert race** — On 2026-04-16 at
+  19:18:20 and 19:18:32, two `paper_trades` rows for AAPL/`down`
+  were inserted with **identical** entry_price (266.43), shares
+  (38.17), and position_size_usd (10170.35) just 12 seconds apart.
+  The 19:15:33 row (different shares: 46.85) is legit; the two
+  3-min-later twins look like a retry bug or duplicate signal
+  fanout in `services/ml_paper_trader.py`. Needs a real-traffic
+  reproduction before fixing — possibilities: idempotency key on
+  `(prediction_id, opened_at_minute)` or a uniqueness constraint
+  on `(ticker, direction, entry_price, shares, opened_at)` with
+  a 60s window. Context: 2026-04-25 audit, chat thread "is the
+  system taking long positions?". Forensic snapshot of the 5
+  orphan trades preserved via `force_closed: true` flags in
+  `paper_trades`.
 - **Backtest/Live data labeling (Option B)** — add `data_source:
   "backtest" | "live"` derived at API response time based on row
   timestamp vs `PUBLIC_DATA_FLOOR_DATE` (default 2026-04-23,
