@@ -365,6 +365,24 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
     That way we never accidentally delay verification of a long-running
     signal just because it keeps repeating.
     """
+    # ── Test-fixture guard ──
+    # Reject TEST_*/MOCK_*/FAKE_*/DUMMY_*/FIXTURE_*/FAKEXYZ at the
+    # storage boundary. This prevents integration tests that hit
+    # the live backend from leaking predictions into the production
+    # collection — the root cause of the 2026-04-24 toxic-spike
+    # alert cascade. We return a sentinel `prediction_id` so callers
+    # don't 500, but write nothing. See migration_runner._scrub_test_contamination
+    # for the one-shot cleanup of pre-fix pollution.
+    from services.market_memory_service import _is_real_symbol
+    if not _is_real_symbol(symbol) or str(symbol).upper() == "FAKEXYZ":
+        log_warning(logger, {
+            "context": "prediction_tracker",
+            "note": "[prediction] BLOCKED test-fixture symbol from prod store",
+            "symbol": str(symbol),
+            "feature": feature,
+        })
+        return f"blocked-test-symbol-{symbol}"
+
     price = await asyncio.to_thread(_get_current_price, symbol)
     price = price or 0.0
 

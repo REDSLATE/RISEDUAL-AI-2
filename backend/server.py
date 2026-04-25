@@ -240,6 +240,21 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Admin seed failed (non-critical): {e}")
 
+    # One-shot data migrations — runs only un-applied migrations.
+    # Each migration records its success in the `migrations`
+    # collection so subsequent boots are no-ops. Failures don't
+    # crash startup (the product still serves), but the migration
+    # row isn't recorded so the next boot retries.
+    try:
+        from services.migration_runner import run_pending_migrations
+        report = await run_pending_migrations(db)
+        logger.info(
+            f"Migrations: ran={report['ran']} skipped={report['skipped']} "
+            f"errors={report['errors']}"
+        )
+    except Exception as e:
+        logger.warning(f"Migration runner failed (non-critical): {e}")
+
     try:
         _start_cache_warmup()
     except Exception as e:

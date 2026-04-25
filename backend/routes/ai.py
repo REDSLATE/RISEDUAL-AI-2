@@ -628,42 +628,52 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
 
         # ML snapshot capture (non-blocking, failure-safe)
         if db is not None:
-            try:
-                from services.hypothesis_logger import log_hypothesis_snapshot
-                prediction_doc = {
-                    "ticker": symbol.upper(),
-                    "verdict": hypothesis.get("verdict"),
-                    "confidence": hypothesis.get("confidence"),
-                    "model": model,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "outcome": None,
-                }
-                insert_result = await db["predictions"].insert_one(prediction_doc)
-                prediction_id = str(insert_result.inserted_id)
-                # Fetch live market data for the snapshot
-                market_data_for_ml = {}
-                try:
-                    from services.price_provider import get_quote as _ml_quote
-                    quote = await _ml_quote(symbol.upper())
-                    if quote:
-                        market_data_for_ml["price"] = quote.get("price") or quote.get("c")
-                        market_data_for_ml["volume"] = quote.get("volume") or quote.get("v")
-                except Exception:
-                    pass
-                try:
-                    from services.market_data_pool import get_technical_indicators as _ml_ti
-                    ti = await _ml_ti(symbol.upper())
-                    if ti:
-                        market_data_for_ml.update(ti)
-                except Exception:
-                    pass
-                market_data_for_ml["sentiment_score"] = hypothesis.get("sentiment_score")
-                import asyncio as _aio
-                _aio.get_event_loop().create_task(
-                    log_hypothesis_snapshot(symbol.upper(), prediction_id, market_data_for_ml, db)
+            # Test-fixture guard — never persist TEST_*/FAKEXYZ
+            # symbols to the predictions collection. Same reason
+            # as in `prediction_tracker.log_prediction`. Skip the
+            # whole snapshot path for fake tickers.
+            from services.market_memory_service import _is_real_symbol
+            if not _is_real_symbol(symbol) or symbol.upper() == "FAKEXYZ":
+                logging.warning(
+                    f"[ai] BLOCKED test-fixture symbol from ML snapshot: {symbol}"
                 )
-            except Exception as ml_err:
-                logging.warning(f"ML snapshot capture failed: {ml_err}")
+            else:
+                try:
+                    from services.hypothesis_logger import log_hypothesis_snapshot
+                    prediction_doc = {
+                        "ticker": symbol.upper(),
+                        "verdict": hypothesis.get("verdict"),
+                        "confidence": hypothesis.get("confidence"),
+                        "model": model,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "outcome": None,
+                    }
+                    insert_result = await db["predictions"].insert_one(prediction_doc)
+                    prediction_id = str(insert_result.inserted_id)
+                    # Fetch live market data for the snapshot
+                    market_data_for_ml = {}
+                    try:
+                        from services.price_provider import get_quote as _ml_quote
+                        quote = await _ml_quote(symbol.upper())
+                        if quote:
+                            market_data_for_ml["price"] = quote.get("price") or quote.get("c")
+                            market_data_for_ml["volume"] = quote.get("volume") or quote.get("v")
+                    except Exception:
+                        pass
+                    try:
+                        from services.market_data_pool import get_technical_indicators as _ml_ti
+                        ti = await _ml_ti(symbol.upper())
+                        if ti:
+                            market_data_for_ml.update(ti)
+                    except Exception:
+                        pass
+                    market_data_for_ml["sentiment_score"] = hypothesis.get("sentiment_score")
+                    import asyncio as _aio
+                    _aio.get_event_loop().create_task(
+                        log_hypothesis_snapshot(symbol.upper(), prediction_id, market_data_for_ml, db)
+                    )
+                except Exception as ml_err:
+                    logging.warning(f"ML snapshot capture failed: {ml_err}")
 
         await _track_verdict_change(user, symbol, hypothesis)
         return hypothesis

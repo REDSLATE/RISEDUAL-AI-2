@@ -46,6 +46,35 @@ def free_headers(free_user_token):
     return {"Authorization": f"Bearer {free_user_token}", "Content-Type": "application/json"}
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _purge_test_trades_after_module():
+    """Module-scoped cleanup. Runs once after every test in this
+    file completes — purges every `trades` row whose ticker starts
+    with TEST_ to prevent the 2026-04-24 toxic-spike cascade from
+    recurring (test fixtures leaking into prod cleanup pipeline).
+    """
+    yield
+    try:
+        import asyncio
+        import re
+        from motor.motor_asyncio import AsyncIOMotorClient
+        mongo_url = os.environ.get("MONGO_URL")
+        db_name = os.environ.get("DB_NAME")
+        if not (mongo_url and db_name):
+            return
+        async def _purge():
+            client = AsyncIOMotorClient(mongo_url)
+            db = client[db_name]
+            pat = re.compile(r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|TEST\d+$)", re.I)
+            res_t = await db.trades.delete_many({"ticker": pat})
+            if res_t.deleted_count:
+                print(f"  [cleanup] purged {res_t.deleted_count} TEST_* trades")
+            client.close()
+        asyncio.get_event_loop().run_until_complete(_purge())
+    except Exception as exc:
+        print(f"  [cleanup] non-fatal: {exc}")
+
+
 class TestJournalAuthentication:
     """Test that journal endpoints require authentication"""
     

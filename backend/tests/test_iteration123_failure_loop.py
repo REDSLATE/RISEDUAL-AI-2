@@ -17,7 +17,7 @@ class TestFailureLoopEndpoints:
     
     @pytest.fixture(autouse=True)
     def setup(self):
-        """Setup session with auth cookies"""
+        """Setup session with auth cookies, with deterministic cleanup."""
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         
@@ -29,7 +29,31 @@ class TestFailureLoopEndpoints:
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         self.user = login_response.json().get("user", {})
         yield
-        # Cleanup: No explicit cleanup needed as test data is prefixed
+        # ── Cleanup ──
+        # Earlier comment claimed "no explicit cleanup needed as test
+        # data is prefixed" — that turned out to be the root cause of
+        # the 2026-04-24 toxic-spike alert cascade. Test rows leaked
+        # into prod collections, got retagged toxic, and emailed to
+        # users. Now we delete every trade_idea whose symbol starts
+        # with TEST_ before yielding back to pytest.
+        try:
+            import os, re
+            from motor.motor_asyncio import AsyncIOMotorClient
+            import asyncio
+            mongo_url = os.environ.get("MONGO_URL")
+            db_name = os.environ.get("DB_NAME")
+            if mongo_url and db_name:
+                async def _purge():
+                    client = AsyncIOMotorClient(mongo_url)
+                    db = client[db_name]
+                    pat = re.compile(r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_)", re.I)
+                    res = await db.trade_ideas.delete_many({"symbol": pat})
+                    if res.deleted_count:
+                        print(f"  [cleanup] purged {res.deleted_count} TEST_* trade_ideas")
+                    client.close()
+                asyncio.get_event_loop().run_until_complete(_purge())
+        except Exception as exc:
+            print(f"  [cleanup] non-fatal: {exc}")
     
     # ==================== GET /api/failure-loop/reason-tags ====================
     def test_get_reason_tags(self):

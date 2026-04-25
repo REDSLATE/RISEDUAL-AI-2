@@ -9,6 +9,39 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _purge_test_predictions_after_module():
+    """Module-scoped cleanup. The FAKEXYZ test below hits a real
+    prediction endpoint that persists rows to the predictions
+    collection. Without this teardown the test fixtures cascade
+    through the toxic-spike alert pipeline (root cause of the
+    2026-04-24 incident)."""
+    yield
+    try:
+        import asyncio
+        import re
+        from motor.motor_asyncio import AsyncIOMotorClient
+        mongo_url = os.environ.get("MONGO_URL")
+        db_name = os.environ.get("DB_NAME")
+        if not (mongo_url and db_name):
+            return
+        async def _purge():
+            client = AsyncIOMotorClient(mongo_url)
+            db = client[db_name]
+            pat = re.compile(
+                r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ)",
+                re.I,
+            )
+            res = await db.predictions.delete_many({"symbol": pat})
+            if res.deleted_count:
+                print(f"  [cleanup] purged {res.deleted_count} TEST_*/FAKEXYZ predictions")
+            client.close()
+        asyncio.get_event_loop().run_until_complete(_purge())
+    except Exception as exc:
+        print(f"  [cleanup] non-fatal: {exc}")
+
+
 class TestTickerPredictionEndpoint:
     """Tests for GET /api/market/prediction/{symbol} endpoint"""
     
