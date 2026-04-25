@@ -296,6 +296,9 @@ async def _start_schedulers():
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
+        # ── Crypto bot (24/7 lane, isolated from equity ml_paper_trader) ──
+        scheduler.add_job(_run_crypto_paper_bot, 'interval', minutes=15,
+                          id='crypto_paper_bot', replace_existing=True)
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only
@@ -406,6 +409,34 @@ async def _run_ml_health_digest():
             )
     except Exception as e:
         logger.debug(f"ML health digest error: {e}")
+
+
+async def _run_crypto_paper_bot():
+    """Background: 24/7 crypto paper-trading bot. Isolated from the
+    equity ml_paper_trader / paper_trade_closer pipeline — fills land
+    in the ``crypto_paper_trades`` collection only.
+
+    Uses the dedicated ``services.crypto_quotes.get_crypto_quote``
+    wrapper, never the equity ``get_quote`` path. Errors are logged
+    and swallowed so a quote outage on one symbol can't take down
+    the scheduler tick."""
+    try:
+        from services.crypto_paper_trader import run_crypto_paper_bot
+        from services.crypto_quotes import get_crypto_quote
+        results = await run_crypto_paper_bot(
+            db=db,
+            quote_provider=get_crypto_quote,
+            symbols=["BTC", "ETH", "SOL"],
+        )
+        opened = sum(1 for r in results if r.get("status") == "open")
+        skipped = sum(1 for r in results if r.get("skipped"))
+        if opened or skipped:
+            logger.info(
+                "Crypto paper bot: opened=%d skipped=%d",
+                opened, skipped,
+            )
+    except Exception as e:
+        logger.debug(f"Crypto paper bot error: {e}")
 
 
 async def _run_paper_trade_closer():

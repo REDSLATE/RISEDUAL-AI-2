@@ -67,6 +67,7 @@ from routes.options_trading import router as options_trading_router, set_db as s
 from routes.beta import router as beta_router, set_db as set_beta_db
 from routes.agent import router as agent_router
 from routes.crypto_paper import router as crypto_paper_router, set_db as set_crypto_paper_db
+from routes.crypto_trading import router as crypto_trading_router, set_db as set_crypto_trading_db
 from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
@@ -74,11 +75,13 @@ from services.auth_helpers import set_db as set_auth_helpers_db
 from services.usaspending_service import set_db as set_usaspending_db
 
 # Ordered list of all routers to register
-# crypto_paper_router goes FIRST so its specific GETs
-# (/api/crypto/paper-trades, /api/crypto/paper-positions) match
-# before market_router's wildcard /api/crypto/{symbol}.
+# crypto_paper_router + crypto_trading_router go FIRST so their
+# specific GETs (/api/crypto/paper-trades, /api/crypto/paper-positions,
+# /api/crypto/paper-bot/run) match before market_router's wildcard
+# /api/crypto/{symbol}.
 ALL_ROUTERS = [
     crypto_paper_router,
+    crypto_trading_router,
     auth_router, market_router, trading_router, ai_router, workspace_router,
     subscription_router, referral_router, promo_router, digest_router, push_router,
     journal_router, strategy_router, intelligence_router, broker_router,
@@ -153,6 +156,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_beta_db,
         set_agent_activity_db,
         set_crypto_paper_db,
+        set_crypto_trading_db,
     ]
     for setter in _setters:
         try:
