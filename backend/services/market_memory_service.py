@@ -634,6 +634,23 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     "Persisting (N days in a row)" — the real ask from the user who
     was getting the exact same alert 3 nights running.
     """
+    # ── Emergency mute switch ──
+    # Operator escape hatch for runaway cascades. Set
+    # `TOXIC_SPIKE_ALERTS_DISABLED=true` in env + restart backend
+    # to silence all toxic-spike emails AND in-app notifications.
+    # The cleanup itself still runs (we keep retagging toxic
+    # predictions in memory) — only the user-facing fanout is
+    # gated. Flip back to false once root cause is diagnosed.
+    import os as _os
+    if _os.environ.get("TOXIC_SPIKE_ALERTS_DISABLED", "").lower() in (
+        "1", "true", "yes", "on",
+    ):
+        logger.warning(
+            "[toxic-alert] MUTED via TOXIC_SPIKE_ALERTS_DISABLED — "
+            "cleanup ran, alert fanout skipped"
+        )
+        return
+
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])
 
