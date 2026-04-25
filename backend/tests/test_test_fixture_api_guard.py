@@ -117,6 +117,70 @@ def test_is_real_symbol_canonical():
     assert not _is_real_symbol(None)
 
 
+def test_enforce_no_test_symbol_raises_in_production(monkeypatch):
+    """Production hard-stop: raise ValueError on contamination so
+    monitoring picks it up loudly. The error message includes the
+    `context` arg so the stack trace alone identifies the leak
+    site."""
+    from services.market_memory_service import enforce_no_test_symbol
+    import pytest
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+
+    with pytest.raises(ValueError, match="Test fixture symbol attempted"):
+        enforce_no_test_symbol("TEST_FAIL_61", context="unit_test")
+
+    with pytest.raises(ValueError, match="FAKEXYZ"):
+        enforce_no_test_symbol("FAKEXYZ", context="unit_test")
+
+    # Real symbols pass through silently regardless of env
+    enforce_no_test_symbol("NVDA", context="unit_test")  # no raise
+    enforce_no_test_symbol("AAPL", context="unit_test")
+
+
+def test_enforce_no_test_symbol_soft_in_dev(monkeypatch):
+    """Non-prod environments: log + return, no raise. This is what
+    keeps the test suite from crashing on every guard verification."""
+    from services.market_memory_service import enforce_no_test_symbol
+
+    for env in ("", "dev", "preview", "staging", "test"):
+        monkeypatch.setenv("ENVIRONMENT", env)
+        # Should NOT raise
+        enforce_no_test_symbol("TEST_FAIL_61", context="unit_test_dev")
+        enforce_no_test_symbol("FAKEXYZ", context="unit_test_dev")
+
+
+def test_failure_loop_route_raises_500_in_production(monkeypatch):
+    """End-to-end: with ENVIRONMENT=production, posting a TEST_*
+    symbol propagates the ValueError up the route and surfaces as
+    a 500 instead of the soft 400. That's the loud signal we want
+    in prod — error monitoring catches it, dev workflow keeps the
+    cleaner 400."""
+    from services import failure_loop_service
+
+    async def _run():
+        db = _mongo_db()
+        failure_loop_service.set_db(db)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        import pytest
+        with pytest.raises(ValueError, match="Test fixture symbol"):
+            await failure_loop_service.create_trade_idea(
+                user_id="prod-test",
+                symbol="TEST_AAPL",
+                direction="long",
+                thesis="should raise",
+                confidence=0.7,
+                source="user",
+            )
+        # Confirm nothing landed in the DB on the way
+        leaked = await db.trade_ideas.count_documents(
+            {"user_id": "prod-test"}
+        )
+        assert leaked == 0
+
+    asyncio.get_event_loop().run_until_complete(_run())
+
+
 def test_failure_loop_create_blocks_test_symbols():
     """`failure_loop_service.create_trade_idea` was the entry point
     that leaked 12 TEST_AAPL/GOOG/NVDA/META/AMZN rows into the

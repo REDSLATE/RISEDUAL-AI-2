@@ -50,12 +50,14 @@ async def create_trade_idea(user_id: str, symbol: str, direction: str, thesis: s
 
     clean_symbol = symbol.upper()
 
-    from services.market_memory_service import _is_real_symbol
-    if not _is_real_symbol(clean_symbol) or clean_symbol == "FAKEXYZ":
-        logger.warning(
-            f"[failure_loop] BLOCKED test-fixture symbol from trade_ideas: "
-            f"{clean_symbol}"
-        )
+    from services.market_memory_service import (
+        enforce_no_test_symbol, is_test_symbol,
+    )
+    # In production this raises ValueError and the request 500s
+    # loudly. In dev/test it logs and we fall through to the
+    # structured `blocked` response that the API converts to 400.
+    enforce_no_test_symbol(clean_symbol, context="failure_loop.create_trade_idea")
+    if is_test_symbol(clean_symbol):
         return {
             "blocked": True,
             "reason": "test_symbol_rejected",

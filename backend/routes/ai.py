@@ -379,13 +379,15 @@ async def scan_for_signals(request: Request):
     market_svc = MarketDataService()
 
     signals_found = []
-    # Test-fixture guard at the scan entry point. If a watchlist
-    # somehow contains a TEST_*/MOCK_*/FAKE_*/FAKEXYZ ticker (the
-    # 2026-04-24 contamination scrub cleaned 5 such entries), we
-    # skip it here so no test fixture lands in `market_signals`.
-    from services.market_memory_service import _is_real_symbol
+    # Test-fixture guard at the scan entry point. Production: hard
+    # raise on contamination → caller's outer try/except logs it.
+    # Dev/test: warn and skip the ticker.
+    from services.market_memory_service import (
+        enforce_no_test_symbol, is_test_symbol,
+    )
     for ticker in tickers[:10]:
-        if not _is_real_symbol(ticker) or str(ticker).upper() == "FAKEXYZ":
+        enforce_no_test_symbol(ticker, context="ai.market_signals.scan")
+        if is_test_symbol(ticker):
             logging.warning(
                 f"[market-signals] skipped test-fixture ticker in watchlist: {ticker}"
             )
@@ -638,12 +640,14 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
 
         # ML snapshot capture (non-blocking, failure-safe)
         if db is not None:
-            # Test-fixture guard — never persist TEST_*/FAKEXYZ
-            # symbols to the predictions collection. Same reason
-            # as in `prediction_tracker.log_prediction`. Skip the
-            # whole snapshot path for fake tickers.
-            from services.market_memory_service import _is_real_symbol
-            if not _is_real_symbol(symbol) or symbol.upper() == "FAKEXYZ":
+            # Test-fixture guard. In production this raises
+            # ValueError; the outer try/except below catches it
+            # and logs without crashing the hypothesis response.
+            from services.market_memory_service import (
+                enforce_no_test_symbol, is_test_symbol,
+            )
+            enforce_no_test_symbol(symbol, context="ai.hypothesis.ml_snapshot")
+            if is_test_symbol(symbol):
                 logging.warning(
                     f"[ai] BLOCKED test-fixture symbol from ML snapshot: {symbol}"
                 )

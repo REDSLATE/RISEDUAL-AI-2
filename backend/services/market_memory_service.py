@@ -42,6 +42,52 @@ def _is_real_symbol(symbol: Any) -> bool:
     return not str(symbol).upper().startswith(_TEST_SYMBOL_PREFIXES)
 
 
+def is_test_symbol(symbol: Any) -> bool:
+    """Public alias of the negation. Imported by guard sites that
+    want the affirmative reading (`if is_test_symbol(s): block`)."""
+    return not _is_real_symbol(symbol) or str(symbol or "").upper() == "FAKEXYZ"
+
+
+def enforce_no_test_symbol(symbol: Any, *, context: str) -> None:
+    """Production hard-stop. Raises ValueError when ``symbol`` is a
+    test fixture AND the running environment is production. In any
+    other environment (dev, preview, test) it logs a warning and
+    returns silently — the calling layer's existing soft-block
+    (return sentinel / 400 response / continue loop) handles it.
+
+    Why a raise in prod and not everywhere?
+      * Tests need to assert the guard fires WITHOUT crashing the
+        test runner. A ValueError in dev would force every guard
+        test to wrap in pytest.raises(...).
+      * Production violations are bugs we WANT to be loud — they
+        bubble up as 500s in error monitoring, leave a stack trace
+        pointing at the offender, and are impossible to ignore.
+
+    The `context` arg goes into the error message so the stack
+    trace alone identifies which boundary caught the leak.
+
+    Env: set ``ENVIRONMENT=production`` in the prod pod's .env to
+    activate the hard-raise. Defaults to soft-block in any other
+    environment.
+    """
+    if not is_test_symbol(symbol):
+        return
+    env = os.environ.get("ENVIRONMENT", "").lower()
+    if env == "production":
+        msg = (
+            f"[{context}] Test fixture symbol attempted in production: "
+            f"{symbol!r}. Test data must never reach prod collections. "
+            f"This is a hard guard — see services.market_memory_service."
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+    # Non-prod: soft path, caller still needs to short-circuit.
+    logger.warning(
+        f"[{context}] BLOCKED test-fixture symbol (env={env or 'unset'}): "
+        f"{symbol!r}"
+    )
+
+
 _client: Optional[Any] = None
 _collection = None
 _db = None  # MongoDB reference for stats

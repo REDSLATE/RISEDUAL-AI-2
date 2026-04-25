@@ -366,21 +366,15 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
     signal just because it keeps repeating.
     """
     # ── Test-fixture guard ──
-    # Reject TEST_*/MOCK_*/FAKE_*/DUMMY_*/FIXTURE_*/FAKEXYZ at the
-    # storage boundary. This prevents integration tests that hit
-    # the live backend from leaking predictions into the production
-    # collection — the root cause of the 2026-04-24 toxic-spike
-    # alert cascade. We return a sentinel `prediction_id` so callers
-    # don't 500, but write nothing. See migration_runner._scrub_test_contamination
-    # for the one-shot cleanup of pre-fix pollution.
-    from services.market_memory_service import _is_real_symbol
-    if not _is_real_symbol(symbol) or str(symbol).upper() == "FAKEXYZ":
-        log_warning(logger, {
-            "context": "prediction_tracker",
-            "note": "[prediction] BLOCKED test-fixture symbol from prod store",
-            "symbol": str(symbol),
-            "feature": feature,
-        })
+    # In production this raises ValueError → 500 + stack trace,
+    # making the violation impossible to ignore. In dev/test it
+    # falls through to the soft-block sentinel return so test
+    # suites can verify the guard without crashing.
+    from services.market_memory_service import (
+        enforce_no_test_symbol, is_test_symbol,
+    )
+    enforce_no_test_symbol(symbol, context="prediction_tracker.log_prediction")
+    if is_test_symbol(symbol):
         return f"blocked-test-symbol-{symbol}"
 
     price = await asyncio.to_thread(_get_current_price, symbol)
