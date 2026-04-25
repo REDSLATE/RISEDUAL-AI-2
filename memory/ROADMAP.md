@@ -30,6 +30,36 @@ current live deploy queue.
 
 ## P1 — Next sprint
 
+- **Wire Alpaca crypto execution.** The bots already trade crypto
+  symbols on paper (`trading_bot_service.py:512` routes BTC/ETH/SOL/
+  DOGE/ADA/XRP/AVAX/DOT/SHIB/LINK/BNB through `get_crypto_quote()`),
+  but live orders only flow to Alpaca equities. Alpaca DOES support
+  crypto via the same account — just needs the order-submission
+  path wired.
+
+  **Scope** (~2 hours, low-risk, post-deploy):
+  1. Extend `services/alpaca_service.submit_order()` to detect crypto
+     symbols and append `/USD` (e.g. `BTC` → `BTC/USD`) before
+     POSTing to `/v2/orders`. Alpaca's symbol convention is the only
+     real difference vs equities.
+  2. Set `time_in_force = "gtc"` for crypto (Alpaca doesn't accept
+     `"day"` on 24/7 markets).
+  3. Add `asset_class: "crypto"` tag on the resulting `paper_trades`
+     / `trades` row so the auto-closer + ML labeler can distinguish.
+  4. UI: in `BrokerConnect`, add a tooltip noting "Alpaca account
+     trades both equities and crypto from the same key."
+  5. Test: paper-mode order for `BTC` and `ETH`, confirm fills in
+     Alpaca dashboard, confirm `trades` row gets `asset_class:
+     "crypto"`.
+
+  **What this unlocks**: 24/7 bot trading (crypto markets never
+  close), ~25 pairs, one tax statement covering both asset classes.
+  Kraken adapter is already coded in `broker_service.py:986` as a
+  future P2 if a user asks for lower fees / more pairs.
+
+  Context: 2026-04-25 chat thread "can the bots trade crypto?" —
+  user confirmed they want this as the post-deploy follow-up.
+
 - **30-day paper-trading accumulation → ML Tier 3 unlock.** Currently at
   4/4 wins logged (2026-04-20: BTDR, KEY, GROY×2 — see
   `AI_PREDICTION_WINS.md`). Need 100/500/1000 labeled predictions for
