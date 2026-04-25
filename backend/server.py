@@ -295,6 +295,7 @@ async def _start_schedulers():
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
+        scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only
@@ -318,7 +319,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -405,6 +406,27 @@ async def _run_ml_health_digest():
             )
     except Exception as e:
         logger.debug(f"ML health digest error: {e}")
+
+
+async def _run_paper_trade_closer():
+    """Background: Hourly. Close AI-driven `paper_trades` whose
+    open age exceeds the hold window (default 24h). Plugs the
+    gap that left 5 trades stuck for 9 days on 2026-04-25 — the
+    `prediction_labeler` only updates `predictions`, never the
+    paper_trades collection itself."""
+    try:
+        from services.paper_trade_closer import close_due_paper_trades
+        result = await close_due_paper_trades(db)
+        if result.get("closed") or result.get("holds") or result.get("errors"):
+            logger.info(
+                "Paper-trade closer: closed=%d holds=%d errors=%d hold_hours=%s",
+                result.get("closed", 0),
+                result.get("holds", 0),
+                result.get("errors", 0),
+                result.get("hold_hours"),
+            )
+    except Exception as e:
+        logger.debug(f"Paper trade closer error: {e}")
 
 
 

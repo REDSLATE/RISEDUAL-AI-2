@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -160,6 +160,43 @@ _CONTAMINATION_TARGETS = [
 ]
 
 
+async def _check_stuck_paper_trades(db: Any) -> dict:
+    """Tripwire — fail if any AI-driven paper trade has been open
+    longer than 2× the configured hold window. The 2026-04-25
+    audit found 5 trades stuck open for 9 days because there was
+    no auto-close service. `services/paper_trade_closer.py` now
+    runs hourly; this self-test catches the case where the closer
+    itself silently breaks (cron stops firing, quote provider
+    down for a day, etc.) before stuck trades pile up unnoticed.
+
+    Threshold = 2× hold window so a single quote-failure tick
+    doesn't trigger a false alarm — only persistent failures.
+    """
+    if db is None:
+        return _fail("stuck_paper_trades", "db reference is None")
+    try:
+        from services.paper_trade_closer import _hold_hours
+        hold_h = _hold_hours()
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hold_h * 2)
+        stuck = await db.paper_trades.count_documents({
+            "status": "open",
+            "opened_at": {"$type": "date", "$lt": cutoff},
+        })
+        if stuck:
+            return _fail(
+                "stuck_paper_trades",
+                f"{stuck} AI-driven paper trade(s) open longer than "
+                f"{hold_h * 2}h — auto-closer may be broken",
+            )
+        return _pass(
+            "stuck_paper_trades",
+            f"no trades older than {hold_h * 2}h",
+        )
+    except Exception as e:
+        return _fail("stuck_paper_trades", str(e))
+
+
+
 async def _check_test_contamination(db: Any) -> dict:
     """Tripwire — fails fast the moment a test fixture lands in any
     production collection. The 2026-04-24 contamination cascade
@@ -254,6 +291,7 @@ async def run_self_test(db: Any, scheduler: Any = None) -> dict:
         await _check_collections(db),
         await _check_datetime_comparisons(db),
         await _check_test_contamination(db),
+        await _check_stuck_paper_trades(db),
         _check_env(),
         _check_pricing_consistency(),
         _check_scheduler(scheduler),
