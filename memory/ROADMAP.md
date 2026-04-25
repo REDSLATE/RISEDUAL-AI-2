@@ -70,14 +70,24 @@ current live deploy queue.
   (38.17), and position_size_usd (10170.35) just 12 seconds apart.
   The 19:15:33 row (different shares: 46.85) is legit; the two
   3-min-later twins look like a retry bug or duplicate signal
-  fanout in `services/ml_paper_trader.py`. Needs a real-traffic
-  reproduction before fixing — possibilities: idempotency key on
-  `(prediction_id, opened_at_minute)` or a uniqueness constraint
-  on `(ticker, direction, entry_price, shares, opened_at)` with
-  a 60s window. Context: 2026-04-25 audit, chat thread "is the
-  system taking long positions?". Forensic snapshot of the 5
-  orphan trades preserved via `force_closed: true` flags in
-  `paper_trades`.
+  fanout in `services/ml_paper_trader.py`.
+
+  **Proposed fix** (locked in 2026-04-25, chat thread "duplicated
+  AAPL trades"): enforce an idempotency key at insert time on
+  `(symbol, direction, entry_price, strategy_id, time_bucket)`
+  where `time_bucket` is `floor(opened_at / 60s)` — i.e. one trade
+  per symbol+direction+price+strategy per minute, max. Two paths:
+  1. Mongo unique index on the composite key (DB-enforced — best).
+  2. Pre-insert `find_one` lookup with the same shape (app-enforced,
+     racy under concurrency but simpler to deploy).
+
+  Path 1 is the right answer; path 2 is the kill-switch fallback.
+
+  Forensic snapshot preserved: the 5 orphan trades from the
+  2026-04-25 audit are tagged with `force_closed: true` +
+  `force_close_reason: 'manual_recovery_2026-04-25_orphan_no_prediction_id'`
+  — query for those flags to recover the duplicate twins for
+  reproduction.
 - **Backtest/Live data labeling (Option B)** — add `data_source:
   "backtest" | "live"` derived at API response time based on row
   timestamp vs `PUBLIC_DATA_FLOOR_DATE` (default 2026-04-23,
