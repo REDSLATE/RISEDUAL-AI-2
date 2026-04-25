@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 CHROMA_DIR = "/app/backend/data/chromadb"
 COLLECTION_NAME = "market_regimes"
 
+# Symbol prefixes that indicate test / mock / seed fixtures and must
+# never appear in a user-facing alert. Found this hard way on
+# 2026-04-24 when `TEST_FAIL_61` leaked into a toxic-spike email
+# cascade — see `_send_toxic_alerts` for the emergency mute switch
+# (`TOXIC_SPIKE_ALERTS_DISABLED`) and `_is_real_symbol` for the
+# defense-in-depth filter that runs at every boundary.
+_TEST_SYMBOL_PREFIXES = ("TEST_", "MOCK_", "FAKE_", "DUMMY_", "FIXTURE_")
+
+
+def _is_real_symbol(symbol: Any) -> bool:
+    """True iff `symbol` looks like a real market ticker. Filters out
+    test fixtures by prefix. Conservative — empty/None returns False
+    so a malformed row never triggers a real-user alert."""
+    if not symbol:
+        return False
+    return not str(symbol).upper().startswith(_TEST_SYMBOL_PREFIXES)
+
+
 _client: Optional[Any] = None
 _collection = None
 _db = None  # MongoDB reference for stats
@@ -510,16 +528,31 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
         toxic_metas = toxic.get("metadatas", [])
 
         if toxic_ids:
-            # Collect details for alerts before re-tagging
+            # Collect details for alerts before re-tagging.
+            # Source-side filter: drop test/mock/seed fixtures BEFORE
+            # they're added to toxic_details. This stops contamination
+            # at the entry point — if a test row was retagged in the
+            # past it'll still flow through, but no NEW test rows can
+            # enter the toxic pipeline from a fresh cleanup.
+            test_drops: list[str] = []
             for i, tid in enumerate(toxic_ids):
                 meta = toxic_metas[i] if i < len(toxic_metas) else {}
+                sym = meta.get("symbol", "?")
+                if not _is_real_symbol(sym):
+                    test_drops.append(str(sym))
+                    continue
                 results["toxic_details"].append({
                     "id": tid,
-                    "symbol": meta.get("symbol", "?"),
+                    "symbol": sym,
                     "confidence": meta.get("confidence", 0),
                     "date": meta.get("date", "?"),
                     "failure_code": meta.get("failure_code", "UNKNOWN"),
                 })
+            if test_drops:
+                logger.warning(
+                    f"[memory-cleanup] dropped {len(test_drops)} test "
+                    f"fixture(s) from toxic set: {test_drops[:10]}"
+                )
 
             # Re-tag as toxic_lesson instead of deleting. `dict()`
             # mirrors runtime `.copy()`; ChromaDB's metadata stub
@@ -653,6 +686,37 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
 
     toxic_count = cleanup_results.get("toxic_removed", 0)
     toxic_details = cleanup_results.get("toxic_details", [])
+
+    # ── Defense-in-depth: filter test fixtures at the alert
+    # boundary. Source-side filter at the cleanup point already
+    # drops them, but historical toxic rows tagged before that
+    # filter shipped would still be in ChromaDB. This second pass
+    # ensures `TEST_FAIL_61`-style rows never reach a user inbox
+    # even if they're already in the toxic set.
+    pre_filter = len(toxic_details)
+    toxic_details = [
+        d for d in toxic_details
+        if _is_real_symbol(d.get("symbol"))
+    ]
+    dropped = pre_filter - len(toxic_details)
+    if dropped:
+        logger.warning(
+            f"[toxic-alert] boundary-filtered {dropped} test fixture(s) "
+            f"from {pre_filter}-row toxic set — adjusted toxic_count "
+            f"from {toxic_count} to {len(toxic_details)}"
+        )
+        toxic_count = len(toxic_details)
+
+    # If the only toxic rows were test fixtures, suppress the
+    # alert entirely — no email, no in-app notification, no
+    # dedup row burned. Cleanup itself already ran upstream so
+    # the in-memory retagging is preserved (no data lost).
+    if not toxic_details:
+        logger.info(
+            "[toxic-alert] suppressed — toxic set was empty after "
+            "test-fixture filter (real users see nothing)"
+        )
+        return
 
     # Reserve-first dedup pattern.
     #
