@@ -218,7 +218,13 @@ def _section_label(label: str, accent: str = "#0052FF") -> str:
 
 
 def _blurred_row_cols(cols: int = 2) -> str:
-    """Render a teaser blur row for free tier."""
+    """DEPRECATED — kept only for backwards compat with any
+    third-party caller. New code MUST use ``_locked_more_row``
+    instead. The blur-tease relied on CSS ``filter: blur(4px)``
+    which Gmail / Outlook / Apple Mail strip, leaving sterile
+    white rectangles that look like a rendering bug to users
+    (admin reported this 2026-04-25). Don't put new callers here.
+    """
     cells = "".join(
         f'<td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:#CBD5E1;'
         f'font-size:12px;text-align:{"right" if i else "left"};">'
@@ -226,6 +232,36 @@ def _blurred_row_cols(cols: int = 2) -> str:
         for i in range(cols)
     )
     return f"<tr>{cells}</tr>"
+
+
+def _locked_more_row(remaining: int, cols: int = 3,
+                      label: str = "more picks") -> str:
+    """Email-client-safe upsell footer. Replaces the (Gmail-stripped)
+    blur teaser with one clean row that says 'You're missing N more,
+    upgrade to see them' — rendered with a lock symbol + amber
+    background so it reads as 'locked content' on every client.
+
+    Why it works where blur didn't:
+      * No CSS ``filter`` (stripped by every major client).
+      * Plain inline-styled <td> with bgcolor — universal support.
+      * Single row instead of N → no false 'rendering bug' vibe
+        when N is large (12 sterile rectangles screams broken).
+    """
+    if remaining <= 0:
+        return ""
+    return (
+        f'<tr><td colspan="{cols}" bgcolor="#FFFBEB" '
+        f'style="background-color:#FFFBEB;padding:12px 14px;'
+        f'border-top:1px solid #FDE68A;text-align:center;">'
+        f'<span style="display:inline-block;background-color:#F59E0B;'
+        f'color:#FFFFFF;font-size:9px;font-weight:800;letter-spacing:1px;'
+        f'padding:3px 7px;border-radius:4px;margin-right:8px;">PRO</span>'
+        f'<span style="color:#92400E;font-size:12px;font-weight:600;">'
+        f'+ {remaining} {label} hidden — '
+        f'<a href="#" style="color:#B45309;text-decoration:underline;">'
+        f'upgrade to view</a></span>'
+        f'</td></tr>'
+    )
 
 
 def _format_usd(value: float) -> str:
@@ -277,10 +313,8 @@ def _predictions_block(predictions: list[dict], is_pro: bool) -> str:
         )
 
     rows = ""
-    for i, p in enumerate(predictions):
-        if not is_pro and i >= 2:
-            rows += _blurred_row_cols(3)
-            continue
+    visible_cap = 2 if not is_pro else len(predictions)
+    for i, p in enumerate(predictions[:visible_cap]):
         dir_color = _verdict_color(p["direction"])
         price = f' · ${p["price"]:.2f}' if p.get("price") else ""
         rows += f"""<tr>
@@ -288,6 +322,10 @@ def _predictions_block(predictions: list[dict], is_pro: bool) -> str:
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:{dir_color};font-size:12px;font-weight:700;text-align:center;">{p['direction']}</td>
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:#475569;font-size:12px;text-align:right;">{p['confidence']}% conf{price}</td>
 </tr>"""
+    if not is_pro:
+        rows += _locked_more_row(
+            len(predictions) - visible_cap, cols=3, label="predictions",
+        )
 
     return f"""
 {_section_label("Top AI Predictions (48h)")}
@@ -308,10 +346,8 @@ def _smart_money_block(smart_money: list[dict], is_pro: bool) -> str:
         )
 
     rows = ""
-    for i, sm in enumerate(smart_money):
-        if not is_pro and i >= 2:
-            rows += _blurred_row_cols(3)
-            continue
+    visible_cap = 2 if not is_pro else len(smart_money)
+    for i, sm in enumerate(smart_money[:visible_cap]):
         sig_color = _signal_color(sm["signal"])
         score_color = _score_color_light(sm["score"])
         flow_txt = _format_usd(sm["net_flow_usd"]) if sm.get("net_flow_usd") else f'{sm["bullish"]}↑ / {sm["bearish"]}↓'
@@ -322,6 +358,10 @@ def _smart_money_block(smart_money: list[dict], is_pro: bool) -> str:
 </td>
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:{sig_color};font-size:12px;font-weight:600;text-align:right;">{sm['signal'].title()} · {flow_txt}</td>
 </tr>"""
+    if not is_pro:
+        rows += _locked_more_row(
+            len(smart_money) - visible_cap, cols=3, label="signals",
+        )
 
     return f"""
 {_section_label("Smart Money Flow (Institutional)", "#7C3AED")}
@@ -335,10 +375,8 @@ def _alerts_block(alerts: list[dict], is_pro: bool) -> str:
     if not alerts:
         return ""
     rows = ""
-    for i, a in enumerate(alerts):
-        if not is_pro and i >= 1:
-            rows += _blurred_row_cols(3)
-            continue
+    visible_cap = 1 if not is_pro else len(alerts)
+    for i, a in enumerate(alerts[:visible_cap]):
         d = a["delta"]
         color = "#059669" if d > 0 else "#DC2626" if d < 0 else "#64748B"
         sign = "+" if d > 0 else ""
@@ -348,6 +386,10 @@ def _alerts_block(alerts: list[dict], is_pro: bool) -> str:
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:{color};font-size:12px;font-weight:700;text-align:center;">{sign}{d}</td>
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:#475569;font-size:11px;text-align:right;">{shift}</td>
 </tr>"""
+    if not is_pro:
+        rows += _locked_more_row(
+            len(alerts) - visible_cap, cols=3, label="alerts",
+        )
     return f"""
 {_section_label("Market Alerts (7d)", "#EA580C")}
 <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:10px;border:1px solid #FED7AA;margin-bottom:16px;">
@@ -387,11 +429,10 @@ def _wl_health_header(summary: dict) -> str:
 def _wl_ticker_grid(tickers: list[dict], is_pro: bool) -> str:
     if not tickers:
         return ""
+    capped = tickers[:6]
+    visible_cap = 2 if not is_pro else len(capped)
     rows = ""
-    for i, t in enumerate(tickers[:6]):
-        if not is_pro and i >= 2:
-            rows += _blurred_row_cols(2)
-            continue
+    for i, t in enumerate(capped[:visible_cap]):
         score = int(t.get("score", 0) or 0)
         verdict = (t.get("verdict") or "hold").upper()
         one_liner = (t.get("one_liner") or "").strip()
@@ -405,6 +446,10 @@ def _wl_ticker_grid(tickers: list[dict], is_pro: bool) -> str:
 </td>
 <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;color:#475569;font-size:11px;text-align:right;">{one_liner}</td>
 </tr>"""
+    if not is_pro:
+        rows += _locked_more_row(
+            len(capped) - visible_cap, cols=2, label="watchlist scores",
+        )
     return f"""
 {_section_label("Ticker Scores", "#7C3AED")}
 <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:16px;">

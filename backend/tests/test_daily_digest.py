@@ -325,8 +325,12 @@ class TestDigestServiceModule:
         
         print("PASSED: build_digest_html generates valid HTML for Pro user (no upgrade CTA)")
     
-    def test_build_digest_html_generates_blurred_rows_for_free_user(self):
-        """build_digest_html should generate blurred rows and upgrade CTA for free users."""
+    def test_build_digest_html_shows_locked_upsell_for_free_user(self):
+        """Free users see first-N visible rows + a single email-
+        client-safe 'PRO + N more hidden — upgrade to view' footer.
+        Replaces the legacy CSS-blur teaser (Gmail strips ``filter:
+        blur(4px)``, leaving sterile white rectangles that look
+        like a rendering bug — admin reported 2026-04-25)."""
         import sys
         sys.path.insert(0, '/app/backend')
         from services.digest_service import build_digest_html
@@ -353,13 +357,23 @@ class TestDigestServiceModule:
         assert html.startswith("<!DOCTYPE html"), "Should be valid HTML document"
         assert "Good morning, Free User" in html, "Should contain user greeting"
         assert "AAPL" in html, "First item should be visible"
-        # Free tier: rows past index 1 (predictions/smart_money) or 0
-        # (alerts) get replaced with a CSS-blurred placeholder row.
-        assert "filter:blur" in html, "Should have blurred rows for free user"
+        # New email-client-safe upsell — must NOT use CSS filter
+        # (Gmail strips it, leaving sterile white rectangles that
+        # look like a rendering bug to users).
+        assert "filter:blur" not in html, (
+            "filter:blur is stripped by Gmail/Outlook — must use "
+            "the locked-more-row footer instead"
+        )
+        # The locked-more-row footer renders a 'PRO' badge + count
+        assert "hidden" in html and "upgrade to view" in html, (
+            "Should render the locked-more-row upsell footer"
+        )
+        assert "PRO" in html, "Locked-more-row should show PRO badge"
+        # Upgrade CTA panel still present
         assert "Upgrade to Pro" in html, "Free user should see upgrade CTA"
         assert "$55/mo" in html, "Should show pricing in CTA"
         
-        print("PASSED: build_digest_html generates blurred rows and upgrade CTA for free user")
+        print("PASSED: locked-upsell footer renders correctly for free users")
     
     def test_build_digest_html_handles_empty_data_gracefully(self):
         """build_digest_html should handle empty collections gracefully."""
