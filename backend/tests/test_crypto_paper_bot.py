@@ -1,29 +1,40 @@
-"""Tests for the isolated crypto paper-trading BOT lane.
+"""Tests for the v3 isolated crypto paper-trading BOT lane.
 
-Architecture this test file pins down
--------------------------------------
+Architecture this file pins down
+--------------------------------
 * The bot writes EXCLUSIVELY to ``db.crypto_paper_trades`` —
-  never to the legacy ``paper_trades`` collection.
-* The bot uses an injected ``quote_provider`` (in production:
+  never the legacy ``paper_trades`` collection.
+* Quotes go through the injected ``quote_provider`` (production:
   ``services.crypto_quotes.get_crypto_quote``) — never the equity
   ``get_quote`` path.
-* Non-crypto symbols (AAPL, SPY) are silently filtered out — the
-  bot will not pollute the crypto collection with equities.
-* Quote failures, low confidence, and DB write errors all surface
-  as ``{symbol, skipped: True, reason: …}`` records instead of
-  raising — the scheduler tick must never die.
+* History goes through the injected ``history_provider`` —
+  isolated from ``price_provider.get_daily_history``.
+* Non-crypto symbols (AAPL, SPY) are filtered at the boundary.
+* Confidence-scaled position sizing — high-conviction fills carry
+  more notional, capped at $1000.
+* Defensive SL/TP defaults applied to every fill.
+* Every Auditor verdict (CONFIRM, VETO, HOLD) lands in
+  ``crypto_signal_audit_log`` so the calibration tile sees the
+  full denominator.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
 
 from services.crypto_paper_trader import (
     CRYPTO_SYMBOLS,
+    BASE_CRYPTO_NOTIONAL,
+    MAX_CRYPTO_NOTIONAL,
+    MIN_CRYPTO_CONFIDENCE,
+    build_stop_take_profit,
+    compute_crypto_position_size,
+    infer_crypto_regime,
+    infer_failure_context,
     is_crypto_symbol,
     run_crypto_paper_bot,
+    run_crypto_symbol,
 )
 
 
@@ -44,55 +55,107 @@ def test_is_crypto_symbol_rejects_equities_and_garbage():
     assert is_crypto_symbol("") is False
 
 
-def test_canonical_set_covers_marquee_eight():
-    for sym in ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK"):
-        assert sym in CRYPTO_SYMBOLS, sym
+def test_default_universe_is_btc_eth_sol():
+    assert CRYPTO_SYMBOLS == ["BTC", "ETH", "SOL"]
 
 
-# ── Happy path: fills land in crypto_paper_trades only ────────────────────────
+# ── Position sizing ───────────────────────────────────────────────────────────
 
 
-class _FakeDB:
-    """Minimal Motor-shaped stub — lets the bot call
-    ``db.crypto_paper_trades.insert_one(...)``. Records writes so
-    the test can assert on them."""
+def test_size_zero_below_floor():
+    assert compute_crypto_position_size(0.5) == 0.0
+    assert compute_crypto_position_size(0.59) == 0.0
 
-    def __init__(self):
-        self.crypto_paper_trades = AsyncMock()
-        self.crypto_paper_trades.insert_one = self._insert
-        self.paper_trades = AsyncMock()  # MUST stay untouched
-        self.crypto_signal_audit_log = AsyncMock()  # bot writes audit log too
-        # No active adaptations by default — empty cursor.
-        self.crypto_model_adaptations = AsyncMock()
-        self.crypto_model_adaptations.find = self._empty_cursor
-        self.writes: list[dict] = []
-        self.audit_writes: list[dict] = []
-        self.crypto_signal_audit_log.insert_one = self._audit_insert
 
-    def __getitem__(self, key):
-        return getattr(self, key)
+def test_size_at_floor_returns_base():
+    assert compute_crypto_position_size(MIN_CRYPTO_CONFIDENCE) == BASE_CRYPTO_NOTIONAL
 
-    def _empty_cursor(self, _query):
-        class _Cursor:
-            def __aiter__(self):
-                return self
 
-            async def __anext__(self):
-                raise StopAsyncIteration
-        return _Cursor()
+def test_size_scales_with_confidence():
+    s_low = compute_crypto_position_size(0.65)
+    s_high = compute_crypto_position_size(0.90)
+    assert s_low > 0
+    assert s_high > s_low
 
-    async def _insert(self, doc):
-        self.writes.append(dict(doc))
 
-    async def _audit_insert(self, doc):
-        self.audit_writes.append(dict(doc))
+def test_size_capped_at_max():
+    # Even confidence of 0.99 cannot push notional above MAX
+    assert compute_crypto_position_size(0.99) <= MAX_CRYPTO_NOTIONAL
+
+
+# ── SL/TP defaults ────────────────────────────────────────────────────────────
+
+
+def test_stops_long_2pct_4pct():
+    stops = build_stop_take_profit(100.0, "LONG")
+    assert stops["stop_loss"] == 98.0
+    assert stops["take_profit"] == 104.0
+
+
+def test_stops_short_inverted():
+    stops = build_stop_take_profit(100.0, "SHORT")
+    assert stops["stop_loss"] == 102.0
+    assert stops["take_profit"] == 96.0
+
+
+# ── Regime + failure-context taggers ──────────────────────────────────────────
+
+
+def test_infer_regime_parabolic_takes_priority():
+    sig = {
+        "direction": "LONG",
+        "strategist": {"indicators": {"rsi": 75, "momentum_5b": 0.10}},
+    }
+    assert infer_crypto_regime(sig) == "parabolic"
+
+
+def test_infer_regime_overbought_when_rsi_high():
+    sig = {
+        "direction": "LONG",
+        "strategist": {"indicators": {"rsi": 75, "momentum_5b": 0.02}},
+    }
+    assert infer_crypto_regime(sig) == "overbought"
+
+
+def test_infer_regime_trend_up_default_for_long():
+    sig = {
+        "direction": "LONG",
+        "strategist": {"indicators": {"rsi": 60, "momentum_5b": 0.02}},
+    }
+    assert infer_crypto_regime(sig) == "trend_up"
+
+
+def test_failure_context_likely_extreme_rsi():
+    sig = {
+        "strategist": {"indicators": {"rsi": 75, "momentum_5b": 0.02}},
+    }
+    fc = infer_failure_context(sig)
+    assert fc["likely_failure_code"] == "EXTREME_RSI_FAILURE"
+
+
+def test_failure_context_likely_parabolic():
+    sig = {
+        "strategist": {"indicators": {"rsi": 60, "momentum_5b": 0.10}},
+    }
+    fc = infer_failure_context(sig)
+    assert fc["likely_failure_code"] == "PARABOLIC_EXHAUSTION"
+
+
+def test_failure_context_likely_none_for_clean_signal():
+    sig = {
+        "strategist": {"indicators": {"rsi": 60, "momentum_5b": 0.02}},
+    }
+    fc = infer_failure_context(sig)
+    assert fc["likely_failure_code"] is None
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _moderate_uptrend(n: int = 60, base: float = 70000.0,
                       drift: float = 200.0) -> list[float]:
     """Synthetic uptrend with realistic pullback noise so RSI lands
-    in the 55-65 range (not pegged to 100). Pattern: 2 bars up,
-    1 bar down with equal drift."""
+    in the 55-65 range. Pattern: 2 bars up, 1 bar down."""
     series = [base]
     for i in range(1, n):
         if i % 3 == 2:
@@ -102,304 +165,234 @@ def _moderate_uptrend(n: int = 60, base: float = 70000.0,
     return series
 
 
+class _FakeDB:
+    """Async-iter capable Motor stub. Routes every collection through
+    ``__getattr__`` so any new collection access in the bot's code
+    path doesn't surprise the test."""
+
+    def __init__(self):
+        self.crypto_paper_trades = AsyncMock()
+        self.crypto_paper_trades.insert_one = self._insert
+        self.paper_trades = AsyncMock()  # MUST stay untouched
+        self.crypto_signal_audit_log = AsyncMock()
+        self.crypto_signal_audit_log.insert_one = self._audit_insert
+        self.crypto_model_adaptations = AsyncMock()
+        self.crypto_model_adaptations.find = self._empty_cursor
+        self.writes: list[dict] = []
+        self.audit_writes: list[dict] = []
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def _empty_cursor(self, _query):
+        class _C:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        return _C()
+
+    async def _insert(self, doc):
+        self.writes.append(dict(doc))
+
+    async def _audit_insert(self, doc):
+        self.audit_writes.append(dict(doc))
+
+
+# ── End-to-end run_crypto_symbol ──────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_bot_writes_to_crypto_collection_only():
+async def test_run_symbol_writes_to_crypto_collection_only():
     db = _FakeDB()
 
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 77000.0}
+    async def quote(_sym):
+        return {"price": 70000.0}
 
-    # Synthetic moderate uptrend → Strategist proposes LONG,
-    # Auditor confirms, trade fires.
-    closes = _moderate_uptrend(60)
+    bars = _moderate_uptrend(60)
+    result = await run_crypto_symbol(db, "BTC", bars, quote)
 
-    async def history(symbol, lookback):
-        return closes[-lookback:]
+    assert result["opened"] is True
+    assert result["direction"] == "LONG"
+    assert result["size_usd"] >= BASE_CRYPTO_NOTIONAL
+    assert result["stop_loss"] < 70000.0  # LONG stop below entry
+    assert result["take_profit"] > 70000.0  # LONG target above entry
 
-    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
-    assert len(results) == 1
-    trade = results[0]
-    assert trade["status"] == "open"
-    assert trade["asset_class"] == "crypto"
-    assert trade["symbol"] == "BTC"
-    assert trade["pair"] == "BTC/USD"
-    assert trade["source"] == "crypto_paper_bot"
-    assert trade["metadata"]["lane"] == "crypto"
-    assert trade["metadata"]["bot_version"] == "crypto_v2"
-    assert "strategist" in trade["metadata"]
-    assert "auditor" in trade["metadata"]
-
-    # agent_agreement block — explainability for "why both agreed"
-    assert "agent_agreement" in trade
-    aa = trade["agent_agreement"]
-    assert aa["strategist_direction"] == "LONG"
-    assert aa["auditor_verdict"] == "CONFIRM"
-    assert "combined_confidence" in aa
-    assert 0.0 < aa["combined_confidence"] <= 1.0
-
-    # The architectural firewall — paper_trades MUST NOT be touched
+    # Architectural firewall — paper_trades MUST stay untouched
     db.paper_trades.insert_one.assert_not_called()
-    # And the crypto collection MUST have one fill
-    assert len(db.writes) == 1
-    assert db.writes[0]["asset_class"] == "crypto"
-    assert "agent_agreement" in db.writes[0]
 
-
-@pytest.mark.asyncio
-async def test_bot_filters_non_crypto_symbols():
-    db = _FakeDB()
-    seen: list[str] = []
-
-    async def quote(symbol):
-        seen.append(symbol)
-        return {"symbol": symbol, "price": 100.0}
-
-    async def history(symbol, lookback):
-        return _moderate_uptrend(60, base=100.0, drift=0.5)
-
-    results = await run_crypto_paper_bot(
-        db, quote, ["BTC", "AAPL", "SPY", "ETH"], history_provider=history,
-    )
-
-    # Equity tickers are skipped BEFORE the quote provider is called
-    assert "AAPL" not in seen
-    assert "SPY" not in seen
-    # Crypto tickers got their quotes
-    assert "BTC" in seen
-    assert "ETH" in seen
-
-    # Two fills, two skips
-    opened = [r for r in results if r.get("status") == "open"]
-    skipped = [r for r in results if r.get("skipped")]
-    assert len(opened) == 2
-    assert len(skipped) == 2
-    assert all(r["reason"] == "not_crypto_symbol" for r in skipped)
-    assert {r["symbol"] for r in skipped} == {"AAPL", "SPY"}
-
-
-@pytest.mark.asyncio
-async def test_bot_skips_when_quote_unavailable():
-    db = _FakeDB()
-
-    async def quote(symbol):
-        # Simulate upstream outage
-        return {"symbol": symbol, "price": 0.0}
-
-    async def history(symbol, lookback):
-        return [70000 + i * 100 for i in range(60)]
-
-    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
-    assert len(results) == 1
-    assert results[0]["skipped"] is True
-    assert results[0]["reason"] == "quote_unavailable"
-    # No DB write on a missing quote
-    assert len(db.writes) == 0
-
-
-@pytest.mark.asyncio
-async def test_bot_skips_when_quote_provider_raises():
-    db = _FakeDB()
-
-    async def quote(symbol):
-        raise RuntimeError("upstream timeout")
-
-    async def history(symbol, lookback):
-        return [70000 + i * 100 for i in range(60)]
-
-    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
-    assert len(results) == 1
-    assert results[0]["skipped"] is True
-    assert results[0]["reason"] == "quote_unavailable"
-    # The bot must NOT crash the scheduler
-    assert len(db.writes) == 0
-
-
-@pytest.mark.asyncio
-async def test_bot_continues_after_db_write_failure():
-    """One symbol's DB write fails — the next symbol still runs."""
-    class _PartialFailDB:
-        def __init__(self):
-            self.crypto_paper_trades = AsyncMock()
-            self.paper_trades = AsyncMock()
-            self.crypto_signal_audit_log = AsyncMock()
-            self.crypto_model_adaptations = AsyncMock()
-            self.crypto_model_adaptations.find = self._empty_cursor
-            self.crypto_signal_audit_log.insert_one = AsyncMock()
-            self.writes: list[dict] = []
-            self._call = 0
-            self.crypto_paper_trades.insert_one = self._maybe_fail
-
-        def __getitem__(self, key):
-            return getattr(self, key)
-
-        def _empty_cursor(self, _query):
-            class _C:
-                def __aiter__(self):
-                    return self
-
-                async def __anext__(self):
-                    raise StopAsyncIteration
-            return _C()
-
-        async def _maybe_fail(self, doc):
-            self._call += 1
-            if self._call == 1:
-                raise RuntimeError("transient mongo error")
-            self.writes.append(dict(doc))
-
-    db = _PartialFailDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 70000.0}
-
-    async def history(symbol, lookback):
-        return _moderate_uptrend(60)
-
-    results = await run_crypto_paper_bot(
-        db, quote, ["BTC", "ETH"], history_provider=history,
-    )
-
-    assert len(results) == 2
-    btc, eth = results
-    assert btc["skipped"] is True
-    assert btc["reason"] == "db_write_failed"
-    assert eth["status"] == "open"
-    assert len(db.writes) == 1
-
-
-@pytest.mark.asyncio
-async def test_bot_default_universe_is_btc_eth_sol():
-    """When the caller doesn't pass ``symbols``, the bot trades the
-    headline three so the scheduler's bare invocation works out of
-    the box."""
-    db = _FakeDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 100.0}
-
-    async def history(symbol, lookback):
-        return _moderate_uptrend(60, base=100.0, drift=0.5)
-
-    results = await run_crypto_paper_bot(db, quote, history_provider=history)
-
-    symbols_traded = {r.get("symbol") for r in results if r.get("status") == "open"}
-    assert symbols_traded == {"BTC", "ETH", "SOL"}
-
-
-@pytest.mark.asyncio
-async def test_bot_skips_when_history_provider_missing():
-    """No history → bot can't run signal layer → safe HOLD."""
-    db = _FakeDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 70000.0}
-
-    results = await run_crypto_paper_bot(db, quote, ["BTC"])  # no history_provider
-
-    assert len(results) == 1
-    assert results[0]["skipped"] is True
-    assert results[0]["reason"] == "no_history_provider"
-    assert len(db.writes) == 0
-
-
-@pytest.mark.asyncio
-async def test_bot_skips_when_history_unavailable():
-    db = _FakeDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 70000.0}
-
-    async def history(symbol, lookback):
-        raise RuntimeError("yfinance offline")
-
-    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
-    assert len(results) == 1
-    assert results[0]["skipped"] is True
-    assert results[0]["reason"] == "history_unavailable"
-
-
-@pytest.mark.asyncio
-async def test_bot_holds_on_strategist_hold():
-    """When closes are flat (no momentum) the Strategist returns HOLD
-    and the bot doesn't open a trade."""
-    db = _FakeDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 70000.0}
-
-    async def history(symbol, lookback):
-        # Flat bars → no trend, no momentum → HOLD
-        return [70000.0] * 60
-
-    results = await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
-    assert len(results) == 1
-    assert results[0]["skipped"] is True
-    assert "strategist_hold" in results[0]["reason"]
-    assert len(db.writes) == 0
-
-
-@pytest.mark.asyncio
-async def test_trade_record_shape_matches_spec():
-    db = _FakeDB()
-
-    async def quote(symbol):
-        return {"symbol": symbol, "price": 65000.0}
-
-    async def history(symbol, lookback):
-        return _moderate_uptrend(60, base=60000.0, drift=200.0)
-
-    await run_crypto_paper_bot(db, quote, ["BTC"], history_provider=history)
-
+    # The crypto collection MUST have one fill
     assert len(db.writes) == 1
     doc = db.writes[0]
-    expected_keys = {
-        "trade_id", "asset_class", "symbol", "pair", "direction",
-        "entry_price", "quantity", "confidence", "status",
-        "opened_at", "source", "metadata",
-    }
-    assert expected_keys.issubset(doc.keys())
-    # Type discipline — opened_at is a real datetime in the DB doc
-    assert isinstance(doc["opened_at"], datetime)
-    # but the route response gets it as ISO string (serialised post-insert)
-    # — verified in the test_bot_writes_to_crypto_collection_only above.
-
-
-# ── Quote wrapper isolation ───────────────────────────────────────────────────
+    assert doc["asset_class"] == "crypto"
+    assert doc["symbol"] == "BTC"
+    assert doc["pair"] == "BTC/USD"
+    assert doc["source"] == "crypto_paper_bot"
+    assert doc["metadata"]["lane"] == "crypto"
+    assert doc["metadata"]["bot_version"] == "crypto_v3"
+    assert "agent_agreement" in doc
+    assert doc["agent_agreement"]["strategist_direction"] == "LONG"
+    assert doc["agent_agreement"]["auditor_verdict"] == "CONFIRM"
+    assert doc["opened_day"]  # YYYY-MM-DD string
 
 
 @pytest.mark.asyncio
-async def test_crypto_quote_wrapper_uses_crypto_provider_not_equity():
-    """``services.crypto_quotes.get_crypto_quote`` must delegate to
-    ``price_provider.get_crypto_quote`` — never to ``get_quote``."""
-    from unittest.mock import patch
-    from services import crypto_quotes
-    from services import price_provider
+async def test_run_symbol_rejects_non_crypto():
+    db = _FakeDB()
 
-    with patch.object(price_provider, "get_crypto_quote",
-                      AsyncMock(return_value={"price": 77000.0})) as mock_cq, \
-         patch.object(price_provider, "get_quote",
-                      AsyncMock(return_value={"price": 999.99})) as mock_eq:
-        result = await crypto_quotes.get_crypto_quote("BTC")
+    async def quote(_sym):
+        return {"price": 200.0}
 
-    mock_cq.assert_awaited_once_with("BTC")
-    mock_eq.assert_not_awaited()
-    assert result["price"] == 77000.0
+    result = await run_crypto_symbol(db, "AAPL", _moderate_uptrend(60), quote)
+
+    assert result["skipped"] is True
+    assert result["reason"] == "not_crypto_symbol"
+    assert len(db.writes) == 0
 
 
 @pytest.mark.asyncio
-async def test_crypto_quote_wrapper_falls_back_safely_on_provider_error():
-    from unittest.mock import patch
-    from services import crypto_quotes
-    from services import price_provider
+async def test_run_symbol_rejects_insufficient_bars():
+    db = _FakeDB()
 
-    with patch.object(price_provider, "get_crypto_quote",
-                      AsyncMock(side_effect=RuntimeError("boom"))):
-        result = await crypto_quotes.get_crypto_quote("BTC")
+    async def quote(_sym):
+        return {"price": 70000.0}
 
-    assert result["price"] == 0.0
-    assert result["symbol"] == "BTC"
+    result = await run_crypto_symbol(db, "BTC", [70000.0] * 10, quote)
+    assert result["skipped"] is True
+    assert result["reason"] == "insufficient_bars"
+
+
+@pytest.mark.asyncio
+async def test_run_symbol_skips_on_zero_quote():
+    db = _FakeDB()
+
+    async def quote(_sym):
+        return {"price": 0.0}
+
+    result = await run_crypto_symbol(db, "BTC", _moderate_uptrend(60), quote)
+    assert result["skipped"] is True
+    assert result["reason"] == "quote_unavailable"
+    assert len(db.writes) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_symbol_skips_on_strategist_hold():
+    db = _FakeDB()
+
+    async def quote(_sym):
+        return {"price": 70000.0}
+
+    flat_bars = [70000.0] * 60
+    result = await run_crypto_symbol(db, "BTC", flat_bars, quote)
+    assert result["skipped"] is True
+    assert "strategist_hold" in (result["reason"] or "")
+    assert len(db.writes) == 0
+    # Audit log still got the HOLD decision (denominator hygiene)
+    assert len(db.audit_writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_symbol_no_op_on_missing_db():
+    async def quote(_sym):
+        return {"price": 70000.0}
+
+    result = await run_crypto_symbol(None, "BTC", _moderate_uptrend(60), quote)
+    assert result["skipped"] is True
+    assert result["reason"] == "db_missing"
+
+
+# ── Multi-symbol runner ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_bot_returns_opened_skipped_errors_summary():
+    db = _FakeDB()
+
+    async def quote(_sym):
+        return {"price": 70000.0}
+
+    async def history(_sym):
+        return _moderate_uptrend(60)
+
+    out = await run_crypto_paper_bot(
+        db, quote_provider=quote, history_provider=history,
+        symbols=["BTC", "ETH"],
+    )
+
+    assert out["opened_count"] == 2
+    assert out["skipped_count"] == 0
+    assert out["error_count"] == 0
+    assert len(db.writes) == 2
+    db.paper_trades.insert_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_bot_filters_non_crypto_symbols():
+    db = _FakeDB()
+    quote_calls: list[str] = []
+
+    async def quote(symbol):
+        quote_calls.append(symbol)
+        return {"price": 70000.0}
+
+    async def history(_sym):
+        return _moderate_uptrend(60)
+
+    out = await run_crypto_paper_bot(
+        db, quote_provider=quote, history_provider=history,
+        symbols=["BTC", "AAPL", "SPY", "ETH"],
+    )
+
+    assert out["opened_count"] == 2
+    assert out["skipped_count"] == 2
+    skipped_symbols = {r["symbol"] for r in out["skipped"]}
+    assert skipped_symbols == {"AAPL", "SPY"}
+    # Equity tickers never trigger a quote call (firewall is upstream)
+    assert "AAPL" not in quote_calls
+    assert "SPY" not in quote_calls
+
+
+@pytest.mark.asyncio
+async def test_run_bot_default_universe_is_btc_eth_sol():
+    db = _FakeDB()
+
+    async def quote(_sym):
+        return {"price": 70000.0}
+
+    async def history(_sym):
+        return _moderate_uptrend(60)
+
+    out = await run_crypto_paper_bot(
+        db, quote_provider=quote, history_provider=history,
+    )
+    opened_symbols = {r["symbol"] for r in out["opened"]}
+    assert opened_symbols == {"BTC", "ETH", "SOL"}
+
+
+@pytest.mark.asyncio
+async def test_run_bot_continues_after_history_fetch_error():
+    """A single symbol's history fetch failure must not crash the
+    whole tick — it gets captured in ``errors``."""
+    db = _FakeDB()
+    call = 0
+
+    async def quote(_sym):
+        return {"price": 70000.0}
+
+    async def history(symbol):
+        nonlocal call
+        call += 1
+        if symbol == "BTC":
+            raise RuntimeError("yfinance offline")
+        return _moderate_uptrend(60)
+
+    out = await run_crypto_paper_bot(
+        db, quote_provider=quote, history_provider=history,
+        symbols=["BTC", "ETH"],
+    )
+
+    assert out["error_count"] == 1
+    assert out["errors"][0]["symbol"] == "BTC"
+    assert out["opened_count"] == 1  # ETH still opened

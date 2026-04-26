@@ -1,0 +1,246 @@
+import React, { useEffect, useState } from 'react';
+
+const API = process.env.REACT_APP_BACKEND_URL;
+
+/**
+ * Crypto Paper Dashboard
+ *
+ * Live tile for the isolated crypto bot lane:
+ *  - Open / closed trade counts
+ *  - Total $ PnL + avg R-multiple + win rate
+ *  - Active crypto_model_adaptations
+ *  - 10 most recent fills
+ *  - "Run Bot" / "Close Due Trades" admin actions
+ *
+ * Polls /api/crypto/dashboard every 15s. Never imports anything from
+ * the equity dashboard, paper_trades, or stock bot UI.
+ */
+export default function CryptoPaperDashboard() {
+  const [data, setData] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function load() {
+    try {
+      const res = await fetch(`${API}/api/crypto/dashboard`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }
+
+  async function postAction(path) {
+    setRunning(true);
+    try {
+      await fetch(`${API}${path}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      await load();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (error) {
+    return (
+      <div
+        className="p-4 rounded-2xl bg-neutral-950 border border-red-900 text-red-300 text-sm"
+        data-testid="crypto-dashboard-error"
+      >
+        Crypto dashboard error: {error}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div
+        className="p-4 text-sm text-gray-400"
+        data-testid="crypto-dashboard-loading"
+      >
+        Loading crypto paper dashboard…
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800"
+      data-testid="crypto-paper-dashboard"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-lg font-semibold text-white">
+            Crypto Paper Bots
+          </div>
+          <div className="text-xs text-gray-400">
+            Isolated 24/7 crypto lane
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => postAction('/api/crypto/paper-bot/run')}
+            disabled={running}
+            className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs transition"
+            data-testid="crypto-run-bot-btn"
+          >
+            Run Bot
+          </button>
+          <button
+            onClick={() => postAction('/api/crypto/paper-trades/close')}
+            disabled={running}
+            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs transition"
+            data-testid="crypto-close-trades-btn"
+          >
+            Close Due Trades
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <Stat
+          label="Open"
+          value={data.open_trades}
+          testId="crypto-stat-open"
+        />
+        <Stat
+          label="Closed"
+          value={data.closed_trades}
+          testId="crypto-stat-closed"
+        />
+        <Stat
+          label="PnL"
+          value={`$${Number(data.total_pnl).toFixed(2)}`}
+          tone={Number(data.total_pnl) >= 0 ? 'pos' : 'neg'}
+          testId="crypto-stat-pnl"
+        />
+        <Stat
+          label="Win Rate"
+          value={`${(Number(data.win_rate) * 100).toFixed(1)}%`}
+          testId="crypto-stat-winrate"
+        />
+      </div>
+
+      <div className="mb-4">
+        <div className="text-sm text-white mb-2">
+          Active Crypto Adaptations
+        </div>
+        {data.active_adaptations?.length ? (
+          <div
+            className="space-y-2"
+            data-testid="crypto-adaptations-list"
+          >
+            {data.active_adaptations.map((a, i) => (
+              <div
+                key={`${a.failure_code}-${a.regime}-${i}`}
+                className="text-xs p-2 rounded bg-neutral-900 border border-neutral-800"
+              >
+                <span className="text-yellow-300">{a.failure_code}</span>{' '}
+                <span className="text-gray-400">under</span>{' '}
+                <span className="text-cyan-300">{a.regime}</span>{' '}
+                <span className="text-gray-400">×{a.factor}</span>
+                {a.evidence_count != null && (
+                  <span className="text-gray-500 ml-2">
+                    (evidence={a.evidence_count})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            className="text-xs text-gray-500"
+            data-testid="crypto-adaptations-empty"
+          >
+            No active adaptations yet.
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="text-sm text-white mb-2">
+          Recent Crypto Paper Trades
+        </div>
+        <div
+          className="space-y-2"
+          data-testid="crypto-recent-trades-list"
+        >
+          {data.recent_trades?.map((t) => (
+            <div
+              key={t.trade_id}
+              className="text-xs p-2 rounded bg-neutral-900 border border-neutral-800 flex justify-between"
+            >
+              <div>
+                <span className="font-medium text-white">{t.symbol}</span>{' '}
+                <span
+                  className={
+                    t.direction === 'LONG'
+                      ? 'text-emerald-400'
+                      : 'text-red-400'
+                  }
+                >
+                  {t.direction}
+                </span>{' '}
+                <span className="text-gray-500">{t.status}</span>
+                {t.confidence != null && (
+                  <span className="text-gray-500 ml-2">
+                    conf={Number(t.confidence).toFixed(2)}
+                  </span>
+                )}
+              </div>
+              <div
+                className={
+                  Number(t.pnl || 0) >= 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+                }
+              >
+                {t.pnl !== undefined && t.pnl !== null
+                  ? `$${Number(t.pnl).toFixed(2)}`
+                  : 'open'}
+              </div>
+            </div>
+          ))}
+          {!data.recent_trades?.length && (
+            <div className="text-xs text-gray-500">
+              No fills yet. Hit "Run Bot" to seed the first signals.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone, testId }) {
+  const valueClass =
+    tone === 'pos'
+      ? 'text-emerald-400'
+      : tone === 'neg'
+      ? 'text-red-400'
+      : 'text-white';
+  return (
+    <div
+      className="p-3 rounded-xl bg-neutral-900 border border-neutral-800"
+      data-testid={testId}
+    >
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={`text-lg font-semibold ${valueClass}`}>{value}</div>
+    </div>
+  );
+}

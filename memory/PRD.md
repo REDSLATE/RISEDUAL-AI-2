@@ -54,6 +54,46 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Bot v3 — Confidence-Scaled Sizing + Dashboard (Apr 26, 2026)
+Wholesale upgrade per user spec — bot now applies confidence-scaled
+position sizing, defensive SL/TP defaults, and surfaces a full
+React dashboard for live monitoring.
+
+- **Updated** `services/crypto_paper_trader.py` — new pipeline:
+  `adversarial_signal` → `infer_crypto_regime` + `infer_failure_context`
+  → `apply_crypto_adaptations_to_signal` → `compute_crypto_position_size`
+  → `build_stop_take_profit` → insert. Bot version bumped to
+  `crypto_v3`. Adds top-level `size_usd`, `stop_loss`, `take_profit`,
+  `opened_day` fields (latter backs the tier-3 distinct-day count).
+- **Confidence-scaled sizing**: $250 base at 0.60 floor, capped at
+  $1000 max. Scales linearly within [0.60, 0.95] band.
+- **SL/TP defaults**: -2% stop / +4% target on LONG (2:1 R:R);
+  inverted for SHORT.
+- **Multi-symbol runner** returns `{opened, skipped, errors,
+  opened_count, skipped_count, error_count}` — single-symbol
+  failures captured into `errors` so a scheduler tick never crashes
+  on one bad fetch.
+- **5 new endpoints** in `routes/crypto_trading.py`:
+  - `POST /api/crypto/paper-trades/close` (admin manual closer trigger)
+  - `POST /api/crypto/adaptations/detect` (admin manual adaptation pass)
+  - `GET /api/crypto/dashboard` (open/closed/PnL/win-rate/adaptations/recent)
+  - `GET /api/crypto/tier3-contribution` (paper-day count for crypto-only gate)
+  - `GET /api/crypto/paper-trades` (history list with limit + symbol filter)
+- **New** `frontend/src/components/CryptoPaperDashboard.jsx` —
+  live-polling tile (15s) showing all dashboard fields with "Run
+  Bot" and "Close Due Trades" admin actions. Wired into
+  `AdminPanel.jsx` as a new "Crypto Bots" tab under Insights.
+- **Tests**: 106/106 green. Bot test suite rewritten to exercise
+  the new `run_crypto_symbol` per-symbol pipeline, position sizing
+  bands, SL/TP math, regime/failure-context taggers, and runner
+  error-recovery.
+- **Live verified**: BTC LONG @ $77,612 ($300 size, SL $76,060
+  TP $80,717), ETH @ $2,318 ($292), SOL @ $86 ($302). Dashboard
+  endpoint returns full aggregate. Tier3 endpoint returns paper-day
+  count. Equity `paper_trades` count: 83 → 89 (legitimate equity
+  bot fills in the same window — zero crypto rows in equity
+  collection, firewall verified).
+
 ### Crypto Closed-Loop Learning Pipeline (Apr 25, 2026)
 The crypto lane now has a full closed-loop adaptation system:
 trade → memory → failure-pattern detection → factor-down-weight on
