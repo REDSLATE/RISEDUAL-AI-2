@@ -109,6 +109,87 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **Regime-conditional signal/narrative weighting (crypto + equity)** —
+  The eventual "promote shadow web research → live confidence
+  multiplier" path. Captured 2026-04-26 from a user proposal:
+
+  ```python
+  # USER'S PROPOSED SHAPE (saved verbatim — do NOT use these
+  # numbers literally; they need empirical derivation):
+  if regime == "trending":
+      signal_weight, narrative_weight = 0.7, 0.3
+  elif regime == "parabolic":
+      signal_weight, narrative_weight = 0.4, 0.6
+  elif regime == "uncertain":
+      signal_weight, narrative_weight = 0.5, 0.5
+  ```
+
+  **Why deferred (the discipline the user himself set):**
+  Acting now would violate the "100-trade observation baseline"
+  rule. The shadow lane must produce empirical *per-regime* lift
+  numbers BEFORE we pick weights. Otherwise we're fitting a model
+  on intuition, not data.
+
+  **Trigger conditions (all three must hold):**
+  1. `GET /api/crypto/shadow-research-stats` returns `actionable: true`
+     (every bucket ≥ 15 closed trades, MIN_BUCKET_SAMPLES).
+  2. Per-regime breakdown shows meaningful lift differences
+     (the parabolic-regime lift is materially larger than the
+     trending-regime lift — i.e. the regime conditioning is real,
+     not noise).
+  3. At least 100 closed crypto trades total carry a shadow verdict.
+
+  **Execution plan when triggered (4 steps, ~6 hours of work total):**
+
+  *Step A* — Add `?group_by=regime` to the existing pure compute
+  reducer in `services/crypto_shadow_research_stats.py`. Returns
+  per-regime `{agree, disagree, neutral}` buckets + per-regime lift.
+  ~30 lines, ~30 min, all in the pure function we already wrote.
+
+  *Step B* — Derive empirical weights from the regime-conditional
+  lifts (rough sketch, refine with data):
+  ```python
+  narrative_weight = clamp(
+      observed_lift_in_regime / max_observed_lift_across_regimes,
+      0.0, 0.6,                             # cap at 0.6 for safety
+  )
+  signal_weight = 1.0 - narrative_weight
+  ```
+
+  *Step C* — Promote shadow → live multiplier on the **crypto**
+  side first. The plumbing already exists in
+  `crypto_paper_trader.run_crypto_symbol`; just stop ignoring
+  `signal["web_research_shadow_verdict"]` and let it adjust
+  `signal["confidence"]` through the regime-conditional weight.
+  Keep the original ``shadow_only=True`` mode behind a feature flag
+  so it can be reverted instantly if expectancy regresses.
+
+  *Step D* (separate, parallel — only after Step C pays off) —
+  Build the equivalent narrative service for **equities**.
+  Currently `trading_bot_service.py` / `ml_orchestrator.py` /
+  `paper_trading_service.py` have **zero narrative input** (only
+  RSI/MACD/BB/SHAP/regime). The work:
+    1. New service `equity_research_service.py` (Tavily again,
+       or reuse the existing `company_research_service.py`).
+    2. Hook into the equity bot tick as **shadow only** for ~30
+       days, mirroring the crypto pattern.
+    3. Persist verdicts to the equity `paper_trades` row +
+       a new `equity_signal_audit_log`.
+    4. Mirror the `?group_by=regime` analyzer.
+    5. Promote when the regime-conditional lift data warrants it.
+
+  **Reference files (when picked up):**
+  - `services/web_research_service.py` (crypto narrative source)
+  - `services/research_router.py` (gate + cache; reusable)
+  - `services/crypto_shadow_research_stats.py` (pure reducer)
+  - `routes/crypto_trading.py:/shadow-research-stats` (endpoint)
+
+  **Reference research:** the 0.7/0.3, 0.4/0.6, 0.5/0.5 numbers
+  in the user's proposal track common Bayesian-ensemble priors
+  for low/high-uncertainty regimes — they're a sensible *prior*
+  to test the empirical fit against, but not a *substitute* for
+  the data.
+
 - **`/api/crypto/sltp-expectancy` analytics endpoint** — Read-only
   aggregation over `crypto_trade_memory` to answer "are our crypto
   exits optimal or just reasonable?". Do NOT change the current
