@@ -26,6 +26,16 @@ PLAN_PRICE_IDS = {
     "starter": os.environ.get("STRIPE_PRICE_STARTER", "price_starter_monthly"),
     "pro": os.environ.get("STRIPE_PRICE_PRO", "price_pro_monthly"),
     "pro_max": os.environ.get("STRIPE_PRICE_PRO_MAX", "price_pro_max_monthly"),
+    "pro_annual": os.environ.get("STRIPE_PRICE_PRO_ANNUAL", "price_pro_annual"),
+    "pro_max_annual": os.environ.get("STRIPE_PRICE_PRO_MAX_ANNUAL", "price_pro_max_annual"),
+}
+
+# Annual subscriptions resolve to the same entitlement tier as their
+# monthly counterpart — used by the webhook handler to grant the right
+# monthly credit allocation regardless of billing interval.
+PLAN_TIER_ALIAS = {
+    "pro_annual": "pro",
+    "pro_max_annual": "pro_max",
 }
 
 TOPUP_PRICE_IDS = {
@@ -219,8 +229,11 @@ async def _handle_checkout_completed(obj: dict) -> None:
 
     elif kind == "subscription" and user_id:
         plan = meta.get("plan")
-        if plan in MONTHLY_CREDITS:
-            await _activate_subscription(user_id, plan, obj.get("subscription"))
+        # Annual plans alias to their monthly tier for entitlement purposes
+        # (same credit allocation, same feature gates).
+        tier = PLAN_TIER_ALIAS.get(plan, plan)
+        if tier in MONTHLY_CREDITS:
+            await _activate_subscription(user_id, tier, obj.get("subscription"))
 
 
 async def _handle_invoice_paid(obj: dict) -> None:
@@ -237,10 +250,11 @@ async def _handle_invoice_paid(obj: dict) -> None:
     if customer_id and plan:
         user_id = await _find_user_by_customer(customer_id)
         if user_id:
-            await _activate_subscription(user_id, plan, obj.get("subscription"))
+            tier = PLAN_TIER_ALIAS.get(plan, plan)
+            await _activate_subscription(user_id, tier, obj.get("subscription"))
             from services.credit_service import grant_plan_credits
-            await grant_plan_credits(user_id, plan)
-            logger.info(f"Stripe invoice.paid: {plan} credits for {user_id}")
+            await grant_plan_credits(user_id, tier)
+            logger.info(f"Stripe invoice.paid: {tier} credits for {user_id} (price_key={plan})")
 
 
 async def _handle_subscription_update(obj: dict) -> None:
@@ -252,7 +266,8 @@ async def _handle_subscription_update(obj: dict) -> None:
     if customer_id and plan:
         user_id = await _find_user_by_customer(customer_id)
         if user_id:
-            await _set_user_plan(user_id, plan, obj.get("status", "active"), obj.get("id"))
+            tier = PLAN_TIER_ALIAS.get(plan, plan)
+            await _set_user_plan(user_id, tier, obj.get("status", "active"), obj.get("id"))
 
 
 async def _handle_subscription_deleted(obj: dict) -> None:

@@ -24,8 +24,8 @@ async def checkout_subscription(request: Request):
     user = await get_current_user(request)
     body = await request.json()
     plan = body.get("plan")
-    if plan not in ("starter", "pro", "pro_max"):
-        raise HTTPException(status_code=400, detail="Invalid plan. Choose starter, pro, or pro_max.")
+    if plan not in ("starter", "pro", "pro_max", "pro_annual", "pro_max_annual"):
+        raise HTTPException(status_code=400, detail="Invalid plan. Choose starter, pro, pro_max, pro_annual, or pro_max_annual.")
     result = await stripe_billing_service.create_subscription_checkout(
         str(user["_id"]), user["email"], plan
     )
