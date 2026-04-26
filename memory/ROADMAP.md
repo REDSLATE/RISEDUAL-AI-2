@@ -99,6 +99,42 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **`/api/crypto/sltp-expectancy` analytics endpoint** — Read-only
+  aggregation over `crypto_trade_memory` to answer "are our crypto
+  exits optimal or just reasonable?". Do NOT change the current
+  -2% / +4% defaults until the data is in.
+
+  **Trigger:** at least 100+ closed crypto trades accumulated.
+
+  **Buckets to compare:**
+  - -1.5% / +3% (1:2 R:R, tight)
+  - -2.0% / +4% (1:2 R:R, current default)
+  - -2.5% / +5% (1:2 R:R, loose)
+
+  **Ranking metric:**
+  ```
+  expectancy = win_rate × avg_win_R − loss_rate × avg_loss_R
+  ```
+
+  **Also return per bucket:**
+  - total trades
+  - win_rate
+  - avg R-multiple
+  - median R-multiple
+  - max drawdown proxy (worst single-trade R)
+  - close_reason distribution (stop_loss / take_profit / hold_window_expired)
+
+  **Implementation hint:** synthetic SL/TP simulation against the
+  actual entry/exit/peak/trough is the right approach — replay each
+  closed trade against alternative bracket pairs and recompute
+  outcome. Schema is already there (`crypto_trade_memory.r_multiple`
+  + `entry_price` + `exit_price` + `close_reason`).
+
+  Do NOT auto-tune the defaults from this endpoint's output —
+  surface the recommendation in the admin dashboard as a "data
+  suggests…" tile and require manual approval before changing
+  `build_stop_take_profit()`.
+
 - **Paper trader duplicate-insert race** — On 2026-04-16 at
   19:18:20 and 19:18:32, two `paper_trades` rows for AAPL/`down`
   were inserted with **identical** entry_price (266.43), shares
