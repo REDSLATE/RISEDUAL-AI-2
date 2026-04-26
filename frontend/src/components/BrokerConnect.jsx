@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { toast } from './ui/sonner';
+import BrokerTutorialVideo from './BrokerTutorialVideo';
 import { authFetch, useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
@@ -290,6 +291,10 @@ const ConnectForm = ({ broker, onConnect, onCancel }) => {
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /><span>{error}</span>
         </div>
       )}
+
+      {/* Tutorial video — shown only for brokers that have one (Alpaca for now).
+          Collapsed by default so it doesn't push the form below the fold. */}
+      <BrokerTutorialVideo brokerId={broker.id} variant="inline" />
 
       {/* OAuth Connect Button */}
       {oauthAvailable && (

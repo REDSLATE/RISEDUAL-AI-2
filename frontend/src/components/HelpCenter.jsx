@@ -4,6 +4,7 @@ import {
   BarChart3, Zap, Info, BookOpen, ArrowRight, AlertCircle,
 } from 'lucide-react';
 import IconTabBar from './hubs/IconTabBar';
+import BrokerTutorialVideo from './BrokerTutorialVideo';
 import useV2Nav from '../hooks/useV2Nav';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -155,7 +156,8 @@ const SECTIONS = [
       { title: 'How do referral rewards work?',
         content: 'Share your Smart Money Board PNG — the QR encodes your ref code. 5 unique scans/month = +7 days Pro. Monthly leaderboard: #1 wins Pro Max for 30 days, #2 wins Pro for 30 days, #3–5 win 100 credits.' },
       { title: 'How do I connect a real broker?',
-        content: 'Kraken is live for crypto. Alpaca stocks is in OAuth preview (the ?demo=oauth flow). IBKR & Schwab are wired but require your own API credentials. Admin → Broker OAuth.' },
+        content: 'Kraken is live for crypto. Alpaca stocks is in OAuth preview (the ?demo=oauth flow). IBKR & Schwab are wired but require your own API credentials. Admin → Broker OAuth.',
+        media: { type: 'broker-tutorial', brokerId: 'alpaca' } },
       { title: 'Where are my Pro benefits?',
         content: 'Automatically unlocked on subscription. Check badge on your avatar. Pro Max adds unlimited War Room + unlimited AI Chat + 50K monthly credits.' },
       { title: 'Why do some predictions show "NEUTRAL" at high confidence?',
@@ -370,6 +372,9 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
                     </div>
                     <h4 className="text-white text-sm font-semibold mb-1">{r.item.title}</h4>
                     <p className="text-slate-300 text-xs leading-relaxed">{r.item.content}</p>
+                    {r.item.media?.type === 'broker-tutorial' && (
+                      <BrokerTutorialVideo brokerId={r.item.media.brokerId} variant="helpcenter" />
+                    )}
                     {r.item.goto && v2Nav && (
                       <button
                         onClick={() => go(r.item.goto)}
@@ -405,6 +410,9 @@ const HelpCenter = ({ onClose, initialSection, contextHub, onNavigate }) => {
                   >
                     <h4 className="text-white text-sm font-semibold mb-1">{item.title}</h4>
                     <p className="text-slate-300 text-xs leading-relaxed">{item.content}</p>
+                    {item.media?.type === 'broker-tutorial' && (
+                      <BrokerTutorialVideo brokerId={item.media.brokerId} variant="helpcenter" />
+                    )}
                     {item.goto && v2Nav && (
                       <button
                         onClick={() => go(item.goto)}
