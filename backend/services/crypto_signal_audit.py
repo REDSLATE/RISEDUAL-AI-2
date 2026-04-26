@@ -90,6 +90,13 @@ async def log_adversarial_decision(
                 "ema20": indicators.get("ema20"),
                 "momentum_5b": indicators.get("momentum_5b"),
             },
+            # SHADOW ONLY — Tavily + LLM stance verdict captured for later
+            # expectancy analysis. MUST NOT be used to alter trade direction
+            # or confidence in the live path. Populated by
+            # services.research_router + services.web_research_service.
+            "web_research_shadow_verdict": signal.get(
+                "web_research_shadow_verdict"
+            ),
         }
         await db[COLLECTION].insert_one(record)
     except Exception as exc:  # noqa: BLE001

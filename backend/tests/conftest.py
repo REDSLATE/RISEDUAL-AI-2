@@ -57,3 +57,21 @@ def _reset_kill_switch():
         kill_switch.reset()
     except ImportError:
         pass
+
+
+@pytest.fixture(autouse=True)
+def _disable_crypto_shadow_research(monkeypatch):
+    """Block the Tavily + LLM shadow research call across the entire
+    test suite by default.
+
+    The crypto bot's shadow lane (services.research_router.fetch_or_skip)
+    short-circuits when ``CRYPTO_SHADOW_RESEARCH_DISABLED=1`` is set,
+    so this fixture prevents any test that exercises
+    ``run_crypto_symbol`` / ``run_crypto_paper_bot`` from making real
+    Tavily HTTP calls or burning EMERGENT_LLM_KEY budget.
+
+    Tests that need to exercise the shadow path explicitly should
+    delete this env var inside the test (e.g. via
+    ``monkeypatch.delenv("CRYPTO_SHADOW_RESEARCH_DISABLED")``).
+    """
+    monkeypatch.setenv("CRYPTO_SHADOW_RESEARCH_DISABLED", "1")

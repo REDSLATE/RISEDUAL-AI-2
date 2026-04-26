@@ -18,6 +18,19 @@ current live deploy queue.
   Auditor signal layer + 12h max-hold closer all live. See
   PRD §4 "Crypto Bot v2".
 
+- **Shadow-mode Web Research (Tavily + LLM stance).** ✅ DONE
+  (Apr 26). New services: `web_research_service.py` (Tavily HTTP +
+  EMERGENT_LLM_KEY stance classifier with strict JSON parser) and
+  `research_router.py` (cost-aware gate: high-conviction OR narrative
+  regime; 10-min Mongo cache; `CRYPTO_SHADOW_RESEARCH_DISABLED=1`
+  ops kill switch). Hooked into `crypto_paper_trader.run_crypto_symbol`
+  AFTER the strategist/auditor produced a final LONG/SHORT signal —
+  verdict is persisted on both `crypto_signal_audit_log.web_research_shadow_verdict`
+  AND `crypto_paper_trades.web_research_shadow_verdict` for later
+  expectancy correlation. **Verdict is logged only — never alters
+  direction or confidence in the live path.** 41 new pytest cases
+  cover gate / cache / classifier / failure-mode / shadow-isolation.
+
 - **Alpaca live-key plumbing.** User has Alpaca approval; waiting on key
   from email. All infrastructure is ready:
   - `.env` slots present (empty): `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`

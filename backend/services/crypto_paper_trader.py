@@ -43,6 +43,8 @@ from uuid import uuid4
 from services.crypto_strategist import adversarial_signal
 from services.crypto_adaptation_service import apply_crypto_adaptations_to_signal
 from services.crypto_signal_audit import log_adversarial_decision
+from services.research_router import fetch_or_skip as research_fetch_or_skip
+from services.web_research_service import get_shadow_verdict as default_shadow_fetcher
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +216,23 @@ async def run_crypto_symbol(
             "signal": signal,
         }
 
+    # ── Shadow Web Research ───────────────────────────────────────────────
+    # Tavily + LLM narrative classifier. SHADOW ONLY — verdict is attached
+    # to ``signal["web_research_shadow_verdict"]`` for downstream logging
+    # (audit_log + crypto_paper_trades). It MUST NOT alter direction or
+    # confidence. Fully isolated try/except: a Tavily/LLM fault must
+    # never block a live fill.
+    try:
+        shadow_verdict = await research_fetch_or_skip(
+            db, symbol, signal, fetcher=default_shadow_fetcher,
+        )
+        if shadow_verdict is not None:
+            signal["web_research_shadow_verdict"] = shadow_verdict
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[crypto-bot] shadow web research failed for %s: %s", symbol, exc
+        )
+
     # Live quote (crypto-only path — never touches equity get_quote).
     quote = await quote_provider(symbol)
     entry_price = float((quote or {}).get("price") or 0.0)
@@ -277,6 +296,11 @@ async def run_crypto_symbol(
         "crypto_adaptations_applied": signal.get(
             "crypto_adaptations_applied", []
         ),
+
+        # SHADOW ONLY — Tavily + LLM narrative verdict attached at fill
+        # time. Persisted on the trade row so post-hoc analysis can
+        # correlate exit P&L with the LLM's stance/agreement at entry.
+        "web_research_shadow_verdict": signal.get("web_research_shadow_verdict"),
 
         # agent_agreement block — top-level for direct admin queries
         # without nested lookup.

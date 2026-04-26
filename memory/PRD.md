@@ -1305,6 +1305,48 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-04-26 — Shadow-Mode Web Research (Tavily + LLM stance) wired into crypto bot
+* **Why**: The crypto bot had structured "what" data (RSI/EMA/momentum)
+  but no narrative "why" — was a rip ETF inflows or a thin-liquidity
+  weekend pump? A shadow layer can collect that context for later
+  expectancy analysis without contaminating the 100-trade observation
+  baseline.
+* **Implementation**:
+  - `services/web_research_service.py` — Tavily finance-topic search
+    + EMERGENT_LLM_KEY (gpt-4o-mini) stance classifier with strict
+    JSON parser (handles code fences, prose-wrapped JSON, malformed
+    output, all degrade to ``stance="UNKNOWN"``).
+  - `services/research_router.py` — cost-aware gate:
+    * fires only when direction ∈ {LONG, SHORT} AND
+      (confidence ≥ 0.70 OR regime ∈ {parabolic, overbought, oversold})
+    * 10-minute Mongo cache (`web_research_cache`, unique-symbol
+      index) prevents tick-storm spend.
+    * Ops kill switch: `CRYPTO_SHADOW_RESEARCH_DISABLED=1` short-
+      circuits before any spend (used by the test suite via an autouse
+      fixture so existing tests never make real Tavily calls).
+  - Hook in `services/crypto_paper_trader.py:run_crypto_symbol` — fires
+    AFTER the final LONG/SHORT signal is set; verdict attached to
+    `signal["web_research_shadow_verdict"]`. Wrapped in try/except so
+    a Tavily/LLM failure can never block a fill.
+  - `services/crypto_signal_audit.py` — the audit-log row now
+    persists the verdict so post-hoc analysis can correlate
+    stance/agreement with realised R-multiple.
+  - `services/crypto_paper_trader.py` — the trade row also persists
+    `web_research_shadow_verdict` at fill time.
+* **SHADOW INVARIANT**: verdict is logged into both
+  `crypto_signal_audit_log.web_research_shadow_verdict` and
+  `crypto_paper_trades.web_research_shadow_verdict` but MUST NOT alter
+  direction or confidence — pinned by
+  `test_disagreeing_shadow_does_not_alter_direction` (BEARISH verdict
+  on a LONG signal still opens LONG).
+* **Tests**: 41 new cases across 3 files
+  (`test_crypto_research_router.py`, `test_crypto_web_research_service.py`,
+  `test_crypto_web_research_shadow_integration.py`). All 119 pre-existing
+  crypto tests still pass.
+* **Indexes**: confirmed live in production Mongo:
+  `web_research_cache: [_id_, symbol_unique, cached_at_desc]`,
+  `crypto_signal_audit_log: [_id_, ts_desc, symbol_ts_desc]`.
+
 ### 2026-04-22 — Date-rendering fix: 27× `datetime.utcnow()` → `datetime.now(timezone.utc)`
 * User reported emails showing timestamps "all over the place". Root
   cause: 27 calls to `datetime.utcnow().isoformat()` across 4
