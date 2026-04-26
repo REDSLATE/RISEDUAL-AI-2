@@ -1305,6 +1305,34 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-04-26 — `/api/crypto/shadow-research-stats` endpoint (mid-flight expectancy split)
+* **Why**: With the shadow lane now collecting verdicts, we need a way
+  to answer "is the LLM context actually moving the expectancy
+  needle?" mid-flight, instead of waiting for 100 closed trades.
+* **Implementation**:
+  - `services/crypto_shadow_research_stats.py` — pure
+    `compute_shadow_research_stats(rows)` reducer + Mongo glue
+    `fetch_shadow_research_stats(db, hours=None)`.
+  - Returns per-bucket `count`, `avg_r`, `median_r`, `win_rate`
+    for `agree` / `disagree` / `neutral`, plus derived
+    `lift = avg_r(agree) - avg_r(disagree)`.
+  - **Maturity guardrail**: `actionable=False` until every bucket
+    has ≥ `MIN_BUCKET_SAMPLES` (15) closed trades — prevents
+    promoting the shadow lane to live based on noise.
+  - **Operator-readable interpretation** field:
+    `insufficient_data_keep_observing` /
+    `research_useful_consider_promoting` (lift ≥ 0.10) /
+    `research_harmful_keep_shadow_only` (lift ≤ -0.10) /
+    `research_neutral_drop_or_observe_more`.
+  - Route: `GET /api/crypto/shadow-research-stats?hours=N` (admin-
+    gated, optional rolling window).
+* **Tests**: 17 new pytest cases pinning down bucketing, median
+  edge cases, win-rate zero-R handling, the 15-sample guardrail,
+  and Mongo-glue exception swallowing.
+* **Live verification**: endpoint returns the zero-state payload
+  (`actionable=false`, `interpretation=insufficient_data_keep_observing`)
+  on the production preview URL, gated behind `Authorization: Bearer`.
+
 ### 2026-04-26 — Shadow-Mode Web Research (Tavily + LLM stance) wired into crypto bot
 * **Why**: The crypto bot had structured "what" data (RSI/EMA/momentum)
   but no narrative "why" — was a rip ETF inflows or a thin-liquidity

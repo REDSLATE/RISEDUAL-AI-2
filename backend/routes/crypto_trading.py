@@ -24,6 +24,7 @@ from services.crypto_quotes import get_crypto_quote, get_crypto_history
 from services.crypto_closer import close_expired_crypto_trades
 from services.crypto_adaptation_service import detect_crypto_adaptations
 from services.crypto_signal_audit import get_strategist_stats
+from services.crypto_shadow_research_stats import fetch_shadow_research_stats
 
 logger = logging.getLogger(__name__)
 
@@ -250,3 +251,29 @@ async def strategist_stats(
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await get_strategist_stats(_db, hours=hours, symbol=symbol)
+
+
+@router.get("/shadow-research-stats")
+async def shadow_research_stats(
+    request: Request,
+    hours: Optional[int] = None,
+) -> dict:
+    """Mid-flight expectancy split by web-research agreement bucket.
+
+    Returns ``count``, ``avg_r``, ``median_r``, ``win_rate`` per
+    ``agree`` / ``disagree`` / ``neutral`` bucket — plus the derived
+    ``lift = avg_r(agree) - avg_r(disagree)`` and an ``actionable``
+    flag that stays ``False`` until every bucket has ≥ 15 closed trades.
+
+    Use to decide whether the Tavily + LLM shadow lane:
+    A) stays ignored (lift ≈ 0),
+    B) becomes a confidence multiplier (lift ≥ 0.10),
+    C) becomes a hard veto (lift ≤ -0.10 + supporting evidence).
+
+    DO NOT act on the lift value while ``actionable=False``.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_shadow_research_stats(_db, hours=hours)
