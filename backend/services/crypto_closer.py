@@ -77,15 +77,52 @@ def compute_crypto_r_multiple(
     return round(pnl_per_unit / risk, 4)
 
 
+def _check_exit_trigger(
+    direction: str,
+    current_price: float,
+    stop_loss: Optional[float],
+    take_profit: Optional[float],
+) -> Optional[str]:
+    """Return ``"stop_loss"``, ``"take_profit"``, or None.
+
+    Priority is SL → TP. If both are hit on the same bar (gappy
+    crypto markets can do this), SL wins because we should
+    assume the worst-case fill at scan time.
+
+    Returns None when neither is hit (or when the field is unset),
+    leaving the closer to fall back to the max-hold rule.
+    """
+    direction = (direction or "LONG").upper()
+    if direction == "LONG":
+        if stop_loss and current_price <= float(stop_loss):
+            return "stop_loss"
+        if take_profit and current_price >= float(take_profit):
+            return "take_profit"
+        return None
+    if direction == "SHORT":
+        if stop_loss and current_price >= float(stop_loss):
+            return "stop_loss"
+        if take_profit and current_price <= float(take_profit):
+            return "take_profit"
+        return None
+    return None
+
+
 async def close_expired_crypto_trades(
     db: Any,
     quote_provider: Optional[QuoteProvider] = None,
     hold_hours: int = DEFAULT_CRYPTO_HOLD_HOURS,
 ) -> dict[str, Any]:
-    """Close every open crypto fill older than ``hold_hours``.
+    """Close every open crypto fill that has either:
 
-    Each close runs through :func:`write_crypto_trade_memory` so the
-    learning surface stays in sync with the lifecycle table.
+    1. Hit its ``stop_loss`` (priority).
+    2. Hit its ``take_profit``.
+    3. Aged past ``hold_hours``.
+
+    SL/TP are checked on EVERY open trade regardless of age, so a
+    +4% target can fire at hour 3 instead of waiting for the 12h
+    timeout. Each close hands the trade to
+    :func:`write_crypto_trade_memory` for learning ingestion.
     """
     if db is None:
         return {"closed": 0, "skipped": 0, "errors": 0, "reason": "db_missing"}
@@ -100,11 +137,13 @@ async def close_expired_crypto_trades(
     closed = 0
     skipped = 0
     errors = 0
+    reasons: dict[str, int] = {
+        "stop_loss": 0, "take_profit": 0, "hold_window_expired": 0,
+    }
 
-    cursor = db.crypto_paper_trades.find({
-        "status": "open",
-        "opened_at": {"$lte": cutoff},
-    })
+    # Widened from the previous "aged-only" query: every open crypto
+    # trade is a candidate because SL/TP can hit before max_hold.
+    cursor = db.crypto_paper_trades.find({"status": "open"})
 
     async for trade in cursor:
         try:
@@ -135,6 +174,34 @@ async def close_expired_crypto_trades(
             quantity = float(trade.get("quantity", 0))
             direction = trade.get("direction", "LONG")
             stop_loss = trade.get("stop_loss")
+            take_profit = trade.get("take_profit")
+            opened_at = trade.get("opened_at")
+
+            # ── Exit decision (SL → TP → max_hold) ────────────────
+            exit_reason = _check_exit_trigger(
+                direction, exit_price, stop_loss, take_profit,
+            )
+            if exit_reason is None:
+                # Fall back to max-hold expiry. ``opened_at`` lives
+                # in Mongo as either a BSON datetime or ISO string;
+                # tolerate both.
+                if isinstance(opened_at, str):
+                    try:
+                        opened_at = datetime.fromisoformat(
+                            opened_at.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        opened_at = None
+                if not isinstance(opened_at, datetime):
+                    skipped += 1
+                    continue
+                if opened_at.tzinfo is None:
+                    opened_at = opened_at.replace(tzinfo=timezone.utc)
+                if opened_at > cutoff:
+                    # Still in the hold window — leave open
+                    skipped += 1
+                    continue
+                exit_reason = "hold_window_expired"
 
             pnl = compute_crypto_pnl(
                 direction=direction,
@@ -156,7 +223,7 @@ async def close_expired_crypto_trades(
                 "closed_at": now,
                 "pnl": pnl,
                 "r_multiple": r_multiple,
-                "close_reason": "hold_window_expired",
+                "close_reason": exit_reason,
             }
 
             result = await db.crypto_paper_trades.update_one(
@@ -175,12 +242,13 @@ async def close_expired_crypto_trades(
 
             await write_crypto_trade_memory(db, closed_trade)
             closed += 1
+            reasons[exit_reason] = reasons.get(exit_reason, 0) + 1
 
             logger.info(
                 "[crypto-closer] closed %s %s qty=%s entry=%.4f exit=%.4f "
-                "pnl=%.2f r=%.3f reason=hold_window_expired",
+                "pnl=%.2f r=%.3f reason=%s",
                 symbol, direction, quantity, entry_price, exit_price,
-                pnl, r_multiple,
+                pnl, r_multiple, exit_reason,
             )
 
         except Exception as exc:  # noqa: BLE001
@@ -193,4 +261,5 @@ async def close_expired_crypto_trades(
         "skipped": skipped,
         "errors": errors,
         "hold_hours": hold_hours,
+        "reasons": reasons,
     }

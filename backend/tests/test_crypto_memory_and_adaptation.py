@@ -13,6 +13,7 @@ from services.crypto_memory_writer import (
     write_crypto_trade_memory,
 )
 from services.crypto_closer import (
+    _check_exit_trigger,
     close_expired_crypto_trades,
     compute_crypto_pnl,
     compute_crypto_r_multiple,
@@ -208,6 +209,50 @@ def test_r_multiple_loser_negative():
     assert compute_crypto_r_multiple("LONG", 100.0, 92.0, 95.0) < 0
 
 
+# ── Exit-trigger priority (SL → TP → max_hold) ────────────────────────────────
+
+
+def test_exit_trigger_long_stop_loss_hit():
+    """LONG with mark below stop_loss → SL fires."""
+    assert _check_exit_trigger("LONG", 95.0, stop_loss=98.0,
+                               take_profit=104.0) == "stop_loss"
+
+
+def test_exit_trigger_long_take_profit_hit():
+    assert _check_exit_trigger("LONG", 105.0, stop_loss=98.0,
+                               take_profit=104.0) == "take_profit"
+
+
+def test_exit_trigger_long_neither_hit_returns_none():
+    assert _check_exit_trigger("LONG", 100.0, stop_loss=98.0,
+                               take_profit=104.0) is None
+
+
+def test_exit_trigger_long_sl_priority_when_both_hit():
+    """If a gappy bar shows mark below SL AND above TP (impossible
+    in real life but the data can be stale), SL wins on priority."""
+    assert _check_exit_trigger("LONG", 50.0, stop_loss=98.0,
+                               take_profit=40.0) == "stop_loss"
+
+
+def test_exit_trigger_short_stop_loss_hit():
+    """SHORT with mark above stop_loss → SL fires."""
+    assert _check_exit_trigger("SHORT", 105.0, stop_loss=102.0,
+                               take_profit=96.0) == "stop_loss"
+
+
+def test_exit_trigger_short_take_profit_hit():
+    assert _check_exit_trigger("SHORT", 95.0, stop_loss=102.0,
+                               take_profit=96.0) == "take_profit"
+
+
+def test_exit_trigger_returns_none_when_levels_unset():
+    assert _check_exit_trigger("LONG", 100.0, stop_loss=None,
+                               take_profit=None) is None
+    assert _check_exit_trigger("LONG", 100.0, stop_loss=0,
+                               take_profit=0) is None
+
+
 # ── close_expired_crypto_trades end-to-end ────────────────────────────────────
 
 
@@ -341,6 +386,124 @@ async def test_closer_recovers_from_quote_outage():
     summary = await close_expired_crypto_trades(db, quote)
     assert summary["closed"] == 0
     assert summary["errors"] == 1
+
+
+@pytest.mark.asyncio
+async def test_closer_fires_stop_loss_before_max_hold():
+    """A FRESH trade (not aged) whose mark drops below SL must close
+    immediately — not wait the full 12h hold."""
+    fresh = _fresh_trade(
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=2),  # young
+        stop_loss=68000.0, take_profit=73000.0,
+    )
+    db = _FakeDB([fresh])
+
+    async def quote(_sym):
+        return {"price": 67500.0}  # below SL
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+
+    assert summary["closed"] == 1
+    assert summary["reasons"]["stop_loss"] == 1
+    update = db.updates[0]["update"]["$set"]
+    assert update["close_reason"] == "stop_loss"
+    assert update["pnl"] < 0  # LONG losing
+
+
+@pytest.mark.asyncio
+async def test_closer_fires_take_profit_before_max_hold():
+    fresh = _fresh_trade(
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=3),
+        stop_loss=68000.0, take_profit=73000.0,
+    )
+    db = _FakeDB([fresh])
+
+    async def quote(_sym):
+        return {"price": 73500.0}  # above TP
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+
+    assert summary["closed"] == 1
+    assert summary["reasons"]["take_profit"] == 1
+    update = db.updates[0]["update"]["$set"]
+    assert update["close_reason"] == "take_profit"
+    assert update["pnl"] > 0
+
+
+@pytest.mark.asyncio
+async def test_closer_short_sl_above_entry():
+    """SHORT positions: SL is ABOVE entry, TP is BELOW. Verify the
+    exit math doesn't get inverted."""
+    short = _fresh_trade(
+        direction="SHORT", entry_price=70000.0,
+        stop_loss=72000.0, take_profit=66000.0,
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db = _FakeDB([short])
+
+    async def quote(_sym):
+        return {"price": 72500.0}  # above SHORT's SL
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+    assert summary["closed"] == 1
+    assert summary["reasons"]["stop_loss"] == 1
+
+
+@pytest.mark.asyncio
+async def test_closer_short_tp_fires_on_falling_mark():
+    short = _fresh_trade(
+        direction="SHORT", entry_price=70000.0,
+        stop_loss=72000.0, take_profit=66000.0,
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db = _FakeDB([short])
+
+    async def quote(_sym):
+        return {"price": 65500.0}  # below SHORT's TP
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+    assert summary["closed"] == 1
+    assert summary["reasons"]["take_profit"] == 1
+    update = db.updates[0]["update"]["$set"]
+    # SHORT making money on falling mark
+    assert update["pnl"] > 0
+
+
+@pytest.mark.asyncio
+async def test_closer_keeps_fresh_trade_open_when_no_levels_hit():
+    """Fresh trade, mark inside SL/TP band, hold not expired → stay open."""
+    fresh = _fresh_trade(
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        stop_loss=68000.0, take_profit=73000.0,
+    )
+    db = _FakeDB([fresh])
+
+    async def quote(_sym):
+        return {"price": 70200.0}  # between SL and TP
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+    assert summary["closed"] == 0
+    assert summary["skipped"] == 1
+    assert len(db.updates) == 0
+
+
+@pytest.mark.asyncio
+async def test_closer_falls_back_to_max_hold_when_no_levels_hit():
+    """Aged trade, mark inside SL/TP band → max_hold fires."""
+    aged = _fresh_trade(
+        opened_at=datetime.now(timezone.utc) - timedelta(hours=15),
+        stop_loss=68000.0, take_profit=73000.0,
+    )
+    db = _FakeDB([aged])
+
+    async def quote(_sym):
+        return {"price": 70500.0}
+
+    summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
+    assert summary["closed"] == 1
+    assert summary["reasons"]["hold_window_expired"] == 1
+    update = db.updates[0]["update"]["$set"]
+    assert update["close_reason"] == "hold_window_expired"
 
 
 # ── Adaptation detector + applier ─────────────────────────────────────────────

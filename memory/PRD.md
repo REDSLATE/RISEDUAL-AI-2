@@ -54,6 +54,29 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Crypto Closer v2 — SL/TP Exit Logic (Apr 26, 2026)
+The closer now respects the SL/TP fields stamped on every fill
+instead of only firing on max_hold expiry. R-multiple memory will
+be much cleaner: TP hits → +2R wins, SL hits → -1R losses, hold
+expiry → neutral timeouts.
+
+- **Updated** `services/crypto_closer.py` — query widened from
+  aged-only to ALL open trades. New `_check_exit_trigger()` helper
+  returns ``"stop_loss"`` / ``"take_profit"`` / None per the
+  user-spec priority (SL → TP → max_hold). Direction-aware: LONG
+  exits when mark ≤ SL or ≥ TP; SHORT exits when mark ≥ SL or ≤ TP.
+  Returns ``reasons: {stop_loss, take_profit, hold_window_expired}``
+  counter on every run.
+- **Tests**: 13 new tests added (8 trigger-priority, 5 end-to-end:
+  LONG SL fires, LONG TP fires, SHORT inverted SL/TP, fresh trade
+  with mid-band mark stays open, aged trade with mid-band mark
+  fires max_hold). 119/119 total green.
+- **Live verified**: bot opened BTC LONG @ $77,562 with SL $76,010
+  / TP $80,664. Force-edited SL to $85,263 (above current). Next
+  closer pass: 1 closed, `close_reason="stop_loss"`, memory record
+  persisted with `outcome="loss"`. Equity firewall held (zero
+  crypto rows in `paper_trades`).
+
 ### Crypto Bot v3 — Confidence-Scaled Sizing + Dashboard (Apr 26, 2026)
 Wholesale upgrade per user spec — bot now applies confidence-scaled
 position sizing, defensive SL/TP defaults, and surfaces a full
