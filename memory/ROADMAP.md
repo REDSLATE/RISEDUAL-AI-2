@@ -148,84 +148,47 @@ current live deploy queue.
   - `services/crypto_closer.py:run_crypto_closer` (outcome patch)
   - `tests/test_adversarial_core.py` + `tests/test_adversarial_logger.py`
 
-- **`/api/crypto/sltp-expectancy` analytics endpoint** — Read-only
-  aggregation over `crypto_trade_memory` to answer "are our crypto
-  exits optimal or just reasonable?". Do NOT change the current
-  -2% / +4% defaults until the data is in.
+- ~~**`/api/crypto/sltp-expectancy` analytics endpoint**~~
+  ✅ DONE 2026-02-08. Read-only at `GET /api/crypto/sltp-expectancy`
+  (admin only). Surfaces expectancy + close-reason mix +
+  tighter-bracket what-ifs. 17 unit tests. See CHANGELOG (j).
 
-  **Trigger:** at least 100+ closed crypto trades accumulated.
+  **Live finding on first run (98 closed trades):** expectancy
+  = -0.06R, win_rate = 56.1%. Zero `take_profit` close reasons —
+  80/98 trades exit via `hold_window_expired`. Headline:
+  "Tightening SL to 30% of current would lift expectancy from
+  -0.06R to +0.14R." Surfaced for human review; no auto-tune.
 
-  **Buckets to compare:**
-  - -1.5% / +3% (1:2 R:R, tight)
-  - -2.0% / +4% (1:2 R:R, current default)
-  - -2.5% / +5% (1:2 R:R, loose)
+- ~~**Paper trader duplicate-insert race**~~ ✅ DONE 2026-02-08.
+  Mongo unique partial index on
+  `(ticker, direction, prediction_id, time_bucket)` enforced
+  at the DB layer. `time_bucket = floor(opened_at_unix / 60)`.
+  Insert path catches `DuplicateKeyError` and returns the
+  existing trade_id. The 12-second AAPL twin scenario is now
+  physically impossible. 6 unit tests. See CHANGELOG (j).
 
-  **Ranking metric:**
-  ```
-  expectancy = win_rate × avg_win_R − loss_rate × avg_loss_R
-  ```
+- ~~**Backtest/Live data labeling (Option B)**~~ ✅ DONE 2026-02-08.
+  `services/data_source_labeler.py` annotates `data_source:
+  "live" | "backtest"` at API response time based on
+  `PUBLIC_DATA_FLOOR_DATE` (default `2026-04-23`). Wired into
+  `/api/ml/paper-trades` and `/api/accuracy/history`. UI badge
+  in `MLPaperPnL.jsx`. 17 unit tests. See CHANGELOG (j).
 
-  **Also return per bucket:**
-  - total trades
-  - win_rate
-  - avg R-multiple
-  - median R-multiple
-  - max drawdown proxy (worst single-trade R)
-  - close_reason distribution (stop_loss / take_profit / hold_window_expired)
-
-  **Implementation hint:** synthetic SL/TP simulation against the
-  actual entry/exit/peak/trough is the right approach — replay each
-  closed trade against alternative bracket pairs and recompute
-  outcome. Schema is already there (`crypto_trade_memory.r_multiple`
-  + `entry_price` + `exit_price` + `close_reason`).
-
-  Do NOT auto-tune the defaults from this endpoint's output —
-  surface the recommendation in the admin dashboard as a "data
-  suggests…" tile and require manual approval before changing
-  `build_stop_take_profit()`.
-
-- **Paper trader duplicate-insert race** — On 2026-04-16 at
-  19:18:20 and 19:18:32, two `paper_trades` rows for AAPL/`down`
-  were inserted with **identical** entry_price (266.43), shares
-  (38.17), and position_size_usd (10170.35) just 12 seconds apart.
-  The 19:15:33 row (different shares: 46.85) is legit; the two
-  3-min-later twins look like a retry bug or duplicate signal
-  fanout in `services/ml_paper_trader.py`.
-
-  **Proposed fix** (locked in 2026-04-25, chat thread "duplicated
-  AAPL trades"): enforce an idempotency key at insert time on
-  `(symbol, direction, entry_price, strategy_id, time_bucket)`
-  where `time_bucket` is `floor(opened_at / 60s)` — i.e. one trade
-  per symbol+direction+price+strategy per minute, max. Two paths:
-  1. Mongo unique index on the composite key (DB-enforced — best).
-  2. Pre-insert `find_one` lookup with the same shape (app-enforced,
-     racy under concurrency but simpler to deploy).
-
-  Path 1 is the right answer; path 2 is the kill-switch fallback.
-
-  Forensic snapshot preserved: the 5 orphan trades from the
-  2026-04-25 audit are tagged with `force_closed: true` +
-  `force_close_reason: 'manual_recovery_2026-04-25_orphan_no_prediction_id'`
-  — query for those flags to recover the duplicate twins for
-  reproduction.
-- **Backtest/Live data labeling (Option B)** — add `data_source:
-  "backtest" | "live"` derived at API response time based on row
-  timestamp vs `PUBLIC_DATA_FLOOR_DATE` (default 2026-04-23,
-  Patent #1 filing). UI shows a small "Backtest" badge on
-  pre-filing rows so pre-formation dates read as "5-year backtest
-  depth" instead of suspect failures. Read-side only — **no DB
-  writes, no migration, no Tier 3 collection changes**. Feature-
-  flagged for instant rollback. Est. ~1.5 hr. Context: chat
-  thread 2026-04-24 "spike failures dated 1-2 years before IP".
 - **QuantConnect ↔ QuiverQuant bridge** (user's QC algo pending).
   Replaces flaky Quiver REST with QC Cloud pipeline for Lobbying +
   Insider Trading datasets.
-- **Data consolidation:** prototype **Polygon.io** adapter to replace
-  Finnhub (cleaner API, better options coverage). A/B behind a feature
-  flag for a week before switching. Future consolidation candidate:
-  **Financial Modeling Prep** for fundamentals + insider data — could
-  retire the QuiverQuant direct dep if quality acceptable. See chat
-  thread "Which app? This one?" for full analysis.
+
+- ~~**Data consolidation: Polygon.io adapter A/B vs Finnhub**~~
+  ✅ DONE 2026-02-08. Polygon adapter wired into
+  `market_data_pool` with `source: "polygon"` tag. Auto-registers
+  when `POLYGON_API_KEY` is set; default priority 4 (overridable
+  via `MARKET_DATA_POLYGON_PRIORITY`). Set priority=1 to A/B
+  Polygon as primary. 12 unit tests. See CHANGELOG (j).
+
+  *Future consolidation candidate:* **Financial Modeling Prep**
+  for fundamentals + insider data — could retire the QuiverQuant
+  direct dep if quality acceptable.
+
 - ~~**Pro Max tier UI wiring.**~~ ✅ DONE (verified 2026-02-08).
   Backend accepts `pro_max` + `pro_max_annual`, frontend
   `SubscriptionPricing.jsx` posts `selectedTier.key` correctly,

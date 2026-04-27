@@ -1,5 +1,76 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (j) — P1/P2 backlog sweep (items #1, #2, #4, #5)
+
+### #2 — Paper-trader duplicate-insert race fix
+- New `services/ml_paper_trader.ensure_indexes(db)` creates a
+  unique partial index on `(ticker, direction, prediction_id,
+  time_bucket)` where `time_bucket = floor(opened_at_unix / 60)`.
+- `_time_bucket_for(now)` injected into every new doc; insert
+  path catches `pymongo.errors.DuplicateKeyError` and returns
+  the existing trade_id instead of erroring.
+- Wired into `route_registry.py` startup hook.
+- The 12-second AAPL twin scenario from 2026-04-16 is now
+  physically impossible at the DB level.
+- Tests: 6 unit tests in `test_ml_paper_trader_idempotency.py`.
+
+### #4 — Backtest/Live data labeling
+- New `services/data_source_labeler.py` — read-side annotator
+  that attaches a `data_source: "live" | "backtest"` field
+  based on `PUBLIC_DATA_FLOOR_DATE` env (default `2026-04-23`).
+  Priority order: opened_at > predicted_at > created_at > timestamp.
+  Naive datetimes assumed UTC; missing timestamps default to "live".
+- Wired into `GET /api/ml/paper-trades` and `GET /api/accuracy/history`;
+  both endpoints now also return `data_floor_date` at top level.
+- `MLPaperPnL.jsx` renders a "Backtest" badge on pre-floor rows
+  (data-testid `ml-trade-{i}-backtest-badge`, tooltip explains
+  the cutover).
+- Tests: 17 unit tests in `test_data_source_labeler.py`.
+- **Operator dial:** rotate the floor by setting
+  `PUBLIC_DATA_FLOOR_DATE` in `.env` to a different ISO date.
+
+### #1 — `/api/crypto/sltp-expectancy` analytics endpoint
+- New `services/crypto_sltp_expectancy.py` — read-only analytics
+  over `crypto_paper_trades` (status=closed). Returns expectancy,
+  win rate, breakdown by close_reason / direction / regime, plus
+  tighter-bracket what-ifs (we only project tighter, not wider —
+  wider needs OHLC tick data we don't store).
+- 20-sample minimum guard so tiny windows don't surface noise.
+- Live data on the existing 98 closed crypto trades reveals
+  expectancy=-0.06R, 56.1% win rate, with 80/98 trades exiting
+  via `hold_window_expired` (zero `take_profit` fires).
+- Headline picks the strongest signal from the data — current
+  copy reads: "Data suggests tightening SL to 30% of current
+  would lift expectancy from -0.06R to +0.14R."
+- Admin-only at `GET /api/crypto/sltp-expectancy?days=30`.
+- Tests: 17 unit tests in `test_crypto_sltp_expectancy.py`.
+
+### #5 — Polygon.io adapter wired into market_data_pool
+- New `_polygon_quote` (snapshot endpoint) and `_polygon_daily`
+  (aggregates endpoint) in `services/market_data_pool.py`,
+  reshaping Polygon's response to the same common quote/daily
+  schema the other providers (Finnhub, AlphaVantage, TwelveData,
+  Marketstack) emit. `source: "polygon"` tag on every row.
+- `pool_config.get_market_data_provider_pool` auto-registers a
+  `polygon-ab` entry when `POLYGON_API_KEY` is set in `.env`,
+  default priority 4 (overridable via `MARKET_DATA_POLYGON_PRIORITY`).
+- A/B mode: set priority=1 to make Polygon primary, others fail-over.
+  Or leave at 4 to use Polygon only when other providers exhaust.
+- Tests: 12 unit tests in `test_market_data_pool_polygon.py`
+  (including HTTP mock transports for both endpoints).
+
+### Pro Max (item #3)
+- Already wired in a prior pass; verified live. Backend
+  `/api/billing/checkout/subscription` accepts `pro_max` and
+  `pro_max_annual`; Stripe live checkout URLs return for both.
+
+### Regression
+- Updated 2 existing patent_watch_api tests to be env-agnostic
+  about `USPTO_API_KEY` (now a real key is in `.env`).
+- 131/131 unit tests across all touched files pass.
+- Testing agent reports 114/114 backend integration + frontend
+  100% verified.
+
 ## 2026-02-08 (i) — Patent Watch seeded + 404 handling fix
 - Seeded 11 watch queries via API: 7 by-assignee (OpenAI,
   Anthropic, DeepMind, Bridgewater, Renaissance, Two Sigma,
