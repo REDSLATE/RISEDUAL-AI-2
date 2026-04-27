@@ -277,3 +277,185 @@ async def fetch_adversarial_stats(
     if phase:
         summary["filter_phase"] = phase
     return summary
+
+
+# ── Paginated raw-decisions feed ──────────────────────────────────────────────
+
+
+# Hard cap on page size — protects against accidental "limit=100000"
+# DOSing the API while still allowing operators to grab a meaningful
+# slice for spreadsheet analysis.
+DECISIONS_PAGE_LIMIT_MAX = 200
+DECISIONS_PAGE_LIMIT_DEFAULT = 50
+
+
+async def fetch_recent_decisions(
+    db: Any,
+    *,
+    limit: int = DECISIONS_PAGE_LIMIT_DEFAULT,
+    symbol: Optional[str] = None,
+    phase: Optional[str] = None,
+    decision: Optional[str] = None,
+) -> dict[str, Any]:
+    """Paginated raw feed of adversarial decisions, newest first.
+
+    Filters are AND-combined. ``symbol`` / ``decision`` are case-folded
+    to match how the writer stores them. Returns a structured payload
+    with ``items`` + the applied filter echo so the operator UI can
+    show "Showing 50 LONG decisions on BTC in shadow phase" without
+    re-deriving the filter state.
+    """
+    if db is None:
+        return {"items": [], "count": 0, "limit": 0, "filters": {}}
+
+    safe_limit = max(1, min(int(limit or DECISIONS_PAGE_LIMIT_DEFAULT),
+                            DECISIONS_PAGE_LIMIT_MAX))
+
+    query: dict[str, Any] = {}
+    if symbol:
+        query["symbol"] = symbol.upper()
+    if phase:
+        query["phase"] = phase
+    if decision:
+        query["decision"] = decision.upper()
+
+    try:
+        rows = await db[DECISION_COLLECTION].find(
+            query,
+            # Drop _id (ObjectId not JSON-serializable). Everything
+            # else on the row is already JSON-safe by construction
+            # in adversarial_logger.
+            {"_id": 0},
+        ).sort("timestamp", -1).limit(safe_limit).to_list(length=safe_limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[adversarial-decisions] query failed: %s", exc)
+        return {"items": [], "count": 0, "limit": safe_limit,
+                "filters": {}, "error": str(exc)[:120]}
+
+    # Mongo datetime → ISO string for JSON. Idempotent — non-datetime
+    # values are passed through.
+    for row in rows:
+        ts = row.get("timestamp")
+        if hasattr(ts, "isoformat"):
+            row["timestamp"] = ts.isoformat()
+        closed = row.get("closed_at")
+        if hasattr(closed, "isoformat"):
+            row["closed_at"] = closed.isoformat()
+
+    return {
+        "items": rows,
+        "count": len(rows),
+        "limit": safe_limit,
+        "filters": {k: v for k, v in
+                    (("symbol", symbol), ("phase", phase), ("decision", decision))
+                    if v},
+    }
+
+
+# ── Trade ↔ Decision join view ────────────────────────────────────────────────
+
+
+async def fetch_trades_with_decisions(
+    db: Any,
+    *,
+    limit: int = DECISIONS_PAGE_LIMIT_DEFAULT,
+    symbol: Optional[str] = None,
+    only_closed: bool = False,
+) -> dict[str, Any]:
+    """Joined view: every trade that carries an ``adversarial_decision_id``
+    paired with the Bull/Bear/Commander reasoning that produced it.
+
+    Lets operators answer the "did Commander earn its keep?" question
+    in one query — entry signal, Commander's case, and realised P&L
+    side by side. Critical post-Tier-3 review tool.
+
+    Implemented as a Mongo ``$lookup`` aggregation; falls back to an
+    empty payload on any failure (admin tile is non-critical).
+    """
+    if db is None:
+        return {"items": [], "count": 0, "limit": 0, "filters": {}}
+
+    safe_limit = max(1, min(int(limit or DECISIONS_PAGE_LIMIT_DEFAULT),
+                            DECISIONS_PAGE_LIMIT_MAX))
+
+    match: dict[str, Any] = {"adversarial_decision_id": {"$ne": None}}
+    if symbol:
+        match["symbol"] = symbol.upper()
+    if only_closed:
+        match["status"] = "closed"
+
+    pipeline = [
+        {"$match": match},
+        {"$sort": {"created_at": -1}},
+        {"$limit": safe_limit},
+        {"$lookup": {
+            "from": DECISION_COLLECTION,
+            "localField": "adversarial_decision_id",
+            "foreignField": "decision_id",
+            "as": "_decision_doc",
+        }},
+        {"$addFields": {
+            "decision": {"$arrayElemAt": ["$_decision_doc", 0]},
+        }},
+        {"$project": {
+            "_id": 0,
+            "_decision_doc": 0,
+            # Same projection the dashboard would want — keeps payload
+            # tight enough for an admin table without paginating into
+            # 100s of KB.
+            "trade_id": 1,
+            "symbol": 1,
+            "direction": 1,
+            "size_usd": 1,
+            "confidence": 1,
+            "entry_price": 1,
+            "exit_price": 1,
+            "stop_loss": 1,
+            "take_profit": 1,
+            "status": 1,
+            "created_at": 1,
+            "closed_at": 1,
+            "exit_reason": 1,
+            "pnl_usd": 1,
+            "r_multiple": 1,
+            "regime": 1,
+            "adversarial_decision_id": 1,
+            "adversarial_action": 1,
+            "decision": 1,
+        }},
+    ]
+
+    try:
+        rows = await db["crypto_paper_trades"].aggregate(pipeline).to_list(
+            length=safe_limit,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[adversarial-trades] aggregation failed: %s", exc)
+        return {"items": [], "count": 0, "limit": safe_limit,
+                "filters": {}, "error": str(exc)[:120]}
+
+    # Stringify any datetimes inside the row + the nested decision doc
+    # so the whole payload is JSON-safe in one pass.
+    for row in rows:
+        for key in ("created_at", "closed_at"):
+            v = row.get(key)
+            if hasattr(v, "isoformat"):
+                row[key] = v.isoformat()
+        nested = row.get("decision") or {}
+        if isinstance(nested, dict):
+            for key in ("timestamp", "closed_at"):
+                v = nested.get(key)
+                if hasattr(v, "isoformat"):
+                    nested[key] = v.isoformat()
+            # Strip nested _id if Mongo sneaks it through (we already
+            # exclude it in the projection but defence in depth).
+            nested.pop("_id", None)
+
+    return {
+        "items": rows,
+        "count": len(rows),
+        "limit": safe_limit,
+        "filters": {k: v for k, v in
+                    (("symbol", symbol), ("only_closed", only_closed))
+                    if v},
+    }
