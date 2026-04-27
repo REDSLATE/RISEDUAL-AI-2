@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -18,6 +18,7 @@ import ChipAdoptionInsights from './admin/ChipAdoptionInsights';
 import ConvictionCalibration from './admin/ConvictionCalibration';
 import CryptoPaperDashboard from './CryptoPaperDashboard';
 import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
+import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -54,6 +55,7 @@ const TAB_GROUPS = [
       { id: 'conviction',    label: 'Conviction',  icon: TrendingUp },
       { id: 'crypto',        label: 'Crypto Bots', icon: Bitcoin },
       { id: 'adversarial',   label: 'Adversarial', icon: TrendingUp },
+      { id: 'shadow',        label: 'Shadow',      icon: Eye },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
   },
@@ -82,6 +84,7 @@ const TAB_SUBTITLES = {
   conviction:     () => 'ML calibration · win-rate by conviction score',
   crypto:         () => 'Isolated 24/7 crypto paper bots · PnL · adaptations',
   adversarial:    () => 'Bull / Bear / Commander layer · win-rate spread · phase gates',
+  shadow:         () => 'Research shadow — disagreement-conditional accuracy · cost budget',
   tools:          () => 'Codebase export & utilities',
 };
 
@@ -101,6 +104,7 @@ const TAB_COMPONENTS = {
   conviction:     () => <ConvictionCalibration />,
   crypto:         () => <CryptoPaperDashboard />,
   adversarial:    () => <CryptoAdversarialDashboard />,
+  shadow:         () => <ShadowAccuracyPanel />,
   tools:          () => <AdminTools />,
 };
 

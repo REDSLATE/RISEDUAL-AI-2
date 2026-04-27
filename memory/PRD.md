@@ -54,6 +54,49 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Research Shadow UI — Admin Tab + Per-Position Drawer (Feb 26, 2026)
+
+Admin-facing UI for the Research Shadow framework. Two new components,
+both wired into existing surfaces (no new top-level routes).
+
+- **New** `frontend/src/components/admin/ShadowAccuracyPanel.jsx` —
+  registered as the new "Shadow" tab in AdminPanel Insights group
+  (Eye icon). Polls `/api/admin/shadow/stats` + `/api/admin/shadow/cost-budget`
+  every 30s in parallel via `Promise.all`. Renders:
+  - Header banner with cyan/slate dot and an All-time / 24h / 7d /
+    30d window selector.
+  - Bucket grid, one card per `(shadow_engine, asset_type)` pair, with
+    three primary columns: dissent count, disagreement-conditional
+    win rate, total $ delta after fill costs.
+  - "NEED N MORE" pending badge until `scored_dissent_count >= 30`,
+    then a green "ACTIONABLE" pill — the maturity guardrail surfaced
+    as a first-class metric so operators can't act on noise.
+  - Cost-budget strip at the bottom: per-bot 24h cycle count + LLM
+    spend + tier pill (FULL / DEGRADED / PAUSED). Banner colour
+    flips when any bot crosses 80% / 100% of the daily ceiling.
+  - Dormant banner (with copy-paste env var instructions) when no
+    shadow rows exist yet.
+- **New** `frontend/src/components/admin/ShadowDecisionDrawer.jsx` —
+  inline timeline of shadow decisions for a single bot/symbol pair.
+  Polls `/api/admin/shadow/decisions` every 30s. Each row shows
+  timestamp, active vs shadow action pills (with amber ring on
+  dissents), phase, $ delta when scored, and verdict (✓ shadow /
+  ✗ shadow / scoring… / agree). Dissents-only checkbox filter.
+- **Wired into** `CryptoPaperDashboard.jsx` — recent trade rows are
+  now clickable buttons. Click toggles the drawer scoped to that
+  symbol on the `crypto_fleet` bot. Border highlights the selected
+  row in cyan; second click closes.
+- **Live verified** end-to-end via Playwright on the deployed preview:
+  - Logged in as admin, opened Admin → Shadow tab
+  - Panel renders with the live ADVERSARIAL · CRYPTO bucket card:
+    1 dissent / 0 scored / "Need 30 more" pending badge
+  - 3 cycles observed · 1 dissent (33% disagreement rate) footer
+  - Cost budget strip shows green WITHIN BUDGET banner with
+    `crypto_fleet · adversarial · 3 cycles · $0.0000 · FULL` row
+  - All `data-testid`s asserted present (panel=1, buckets=1,
+    budget=1, pending_badges=1)
+- **Lint clean** across all 4 modified frontend files.
+
 ### Research Shadow Layer — champion-challenger framework (Feb 26, 2026)
 
 Tier-3-safe silent-half framework letting an alternate engine ride

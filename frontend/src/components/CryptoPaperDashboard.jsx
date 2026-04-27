@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ShadowDecisionDrawer from './admin/ShadowDecisionDrawer';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,6 +20,7 @@ export default function CryptoPaperDashboard() {
   const [data, setData] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+  const [drawerSymbol, setDrawerSymbol] = useState(null);
 
   async function load() {
     try {
@@ -181,9 +183,12 @@ export default function CryptoPaperDashboard() {
           data-testid="crypto-recent-trades-list"
         >
           {data.recent_trades?.map((t) => (
-            <div
+            <button
               key={t.trade_id}
-              className="text-xs p-2 rounded bg-neutral-900 border border-neutral-800 flex justify-between"
+              type="button"
+              onClick={() => setDrawerSymbol(drawerSymbol === t.symbol ? null : t.symbol)}
+              className={`w-full text-left text-xs p-2 rounded bg-neutral-900 border ${drawerSymbol === t.symbol ? 'border-cyan-500/40' : 'border-neutral-800'} hover:border-cyan-500/40 flex justify-between transition-colors`}
+              data-testid={`crypto-trade-row-${t.symbol}`}
             >
               <div>
                 <span className="font-medium text-white">{t.symbol}</span>{' '}
@@ -214,7 +219,7 @@ export default function CryptoPaperDashboard() {
                   ? `$${Number(t.pnl).toFixed(2)}`
                   : 'open'}
               </div>
-            </div>
+            </button>
           ))}
           {!data.recent_trades?.length && (
             <div className="text-xs text-gray-500">
@@ -222,6 +227,13 @@ export default function CryptoPaperDashboard() {
             </div>
           )}
         </div>
+        {drawerSymbol && (
+          <ShadowDecisionDrawer
+            symbol={drawerSymbol}
+            botId="crypto_fleet"
+            onClose={() => setDrawerSymbol(null)}
+          />
+        )}
       </div>
     </div>
   );
