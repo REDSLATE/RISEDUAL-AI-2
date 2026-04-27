@@ -24,9 +24,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.crypto_adversarial_stats import (
+    DECISIONS_PAGE_LIMIT_MAX,
     MIN_BUCKET_SAMPLES,
     compute_adversarial_stats,
     fetch_adversarial_stats,
+    fetch_recent_decisions,
+    fetch_trades_with_decisions,
 )
 
 
@@ -305,3 +308,163 @@ async def test_fetch_swallows_query_exception():
 
     out = await fetch_adversarial_stats(_DB())
     assert out["total_with_outcome"] == 0
+
+
+
+# ── Paginated raw decisions feed ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_recent_decisions_returns_empty_when_db_missing():
+    out = await fetch_recent_decisions(None)
+    assert out["items"] == []
+    assert out["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_recent_decisions_applies_filters_and_limit():
+    seen_query: dict = {}
+    seen_limit: dict = {}
+
+    sample_rows = [{
+        "decision": "LONG",
+        "symbol": "BTC",
+        "phase": "shadow",
+        "timestamp": __import__("datetime").datetime(2026, 1, 1, 12, 0, 0),
+    }]
+
+    class _Cursor:
+        def sort(self, *_a, **_kw): return self
+        def limit(self, n):
+            seen_limit["n"] = n
+            return self
+        async def to_list(self, length): return list(sample_rows)
+
+    class _Coll:
+        def find(self, query, _proj=None):
+            seen_query.update(query)
+            return _Cursor()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await fetch_recent_decisions(
+        _DB(), limit=25, symbol="btc", phase="shadow", decision="long",
+    )
+    # symbol/decision must be uppercased to match writer's storage.
+    assert seen_query["symbol"] == "BTC"
+    assert seen_query["decision"] == "LONG"
+    assert seen_query["phase"] == "shadow"
+    assert seen_limit["n"] == 25
+    assert out["count"] == 1
+    assert out["limit"] == 25
+    assert out["filters"]["symbol"] == "BTC"
+    # datetime stringified for JSON safety.
+    assert isinstance(out["items"][0]["timestamp"], str)
+
+
+@pytest.mark.asyncio
+async def test_fetch_recent_decisions_caps_limit():
+    seen_limit: dict = {}
+
+    class _Cursor:
+        def sort(self, *_a, **_kw): return self
+        def limit(self, n):
+            seen_limit["n"] = n
+            return self
+        async def to_list(self, length): return []
+
+    class _Coll:
+        def find(self, *_a, **_kw): return _Cursor()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await fetch_recent_decisions(_DB(), limit=10_000)
+    assert seen_limit["n"] == DECISIONS_PAGE_LIMIT_MAX
+    assert out["limit"] == DECISIONS_PAGE_LIMIT_MAX
+
+
+@pytest.mark.asyncio
+async def test_fetch_recent_decisions_swallows_query_exception():
+    class _Coll:
+        def find(self, *_a, **_kw):
+            raise RuntimeError("mongo down")
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await fetch_recent_decisions(_DB())
+    assert out["items"] == []
+    assert out["count"] == 0
+    assert "error" in out
+
+
+# ── Joined trades ↔ decisions view ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_trades_with_decisions_returns_empty_when_db_missing():
+    out = await fetch_trades_with_decisions(None)
+    assert out["items"] == []
+    assert out["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_trades_with_decisions_pipeline_shape_and_filters():
+    seen_pipeline: list = []
+
+    sample_rows = [{
+        "trade_id": "t1",
+        "symbol": "BTC",
+        "status": "closed",
+        "created_at": __import__("datetime").datetime(2026, 1, 1, 12, 0, 0),
+        "decision": {
+            "_id": "should_be_stripped",
+            "decision": "LONG",
+            "timestamp": __import__("datetime").datetime(2026, 1, 1, 11, 59, 0),
+        },
+    }]
+
+    class _Cursor:
+        async def to_list(self, length): return list(sample_rows)
+
+    class _Coll:
+        def aggregate(self, pipeline):
+            seen_pipeline.extend(pipeline)
+            return _Cursor()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await fetch_trades_with_decisions(
+        _DB(), limit=10, symbol="btc", only_closed=True,
+    )
+    # First stage is $match — verify symbol uppercased + status filter +
+    # adversarial_decision_id non-null guard.
+    match_stage = seen_pipeline[0]["$match"]
+    assert match_stage["symbol"] == "BTC"
+    assert match_stage["status"] == "closed"
+    assert match_stage["adversarial_decision_id"] == {"$ne": None}
+    # $lookup against the decision collection is present.
+    assert any("$lookup" in stage for stage in seen_pipeline)
+    # Datetime stringified + nested _id stripped.
+    row = out["items"][0]
+    assert isinstance(row["created_at"], str)
+    assert "_id" not in row["decision"]
+    assert isinstance(row["decision"]["timestamp"], str)
+
+
+@pytest.mark.asyncio
+async def test_fetch_trades_with_decisions_swallows_aggregation_error():
+    class _Coll:
+        def aggregate(self, _pipeline):
+            raise RuntimeError("mongo aggregate down")
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await fetch_trades_with_decisions(_DB())
+    assert out["items"] == []
+    assert out["count"] == 0
+    assert "error" in out

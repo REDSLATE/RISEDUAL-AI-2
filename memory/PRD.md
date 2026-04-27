@@ -54,6 +54,46 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Adversarial Debug Endpoints — Decisions + Joined Trades View (Feb 26, 2026)
+Completed the two debug endpoints requested by the user from their
+"no-barriers" diff. Operators can now inspect Bull/Bear/Commander
+reasoning row-by-row and pair every adversarial trade with its
+decision document for post-Tier-3 review.
+
+- **New route** `GET /api/crypto/adversarial-decisions` (admin-gated)
+  in `routes/crypto_trading.py`. Paginated raw feed of
+  `crypto_adversarial_decision_log`, newest-first. Filters AND-combine:
+  `symbol` / `phase` / `decision` (symbol/decision case-folded
+  server-side to match writer storage). Hard-cap on `limit` at 200.
+- **New route** `GET /api/crypto/adversarial-trades` (admin-gated).
+  `$lookup` aggregation joining every `crypto_paper_trades` row that
+  carries an `adversarial_decision_id` with its decision document.
+  Filters: `symbol`, `only_closed`. Datetimes ISO-stringified, nested
+  `_id` stripped from the embedded decision doc.
+- **Bug caught + fixed during curl verification**: the `$project`
+  stage mixed `_id: 0` (allowed) with `_decision_doc: 0` alongside
+  inclusion fields → Mongo error "Cannot do inclusion on field
+  trade_id in exclusion projection". Removed the explicit
+  `_decision_doc: 0` exclusion (Mongo drops un-included fields
+  automatically when any inclusion is present).
+- **Filter-echo normalisation**: the `filters` block in both response
+  payloads now reflects the actual values queried (uppercased
+  symbol/decision) instead of raw user input — keeps the operator UI
+  showing "Showing 50 LONG decisions on BTC" consistently.
+- **Tests**: 8 new pytest cases in `tests/test_crypto_adversarial_stats.py`
+  (4 per endpoint: empty-DB → empty payload, filters/limit applied
+  + datetime stringified, hard-cap enforced, query/aggregation
+  exception swallowed). 25/25 in this file, 73/73 across all four
+  adversarial test files.
+- **Live verified** end-to-end via curl on the deployed preview:
+  - Login as admin → 200 with cookies set.
+  - `/adversarial-decisions` → empty payload (Tier 3 gate still
+    closed, decision log not yet populated). `?symbol=btc&decision=long&limit=3`
+    echoes normalised `{"symbol": "BTC", "decision": "LONG"}`.
+  - `/adversarial-trades?symbol=btc&only_closed=true` → empty
+    payload, no Mongo error after the `$project` fix.
+  - Auth gate verified: 401 without cookie on both endpoints.
+
 ### Crypto Closer v2 — SL/TP Exit Logic (Apr 26, 2026)
 The closer now respects the SL/TP fields stamped on every fill
 instead of only firing on max_hold expiry. R-multiple memory will

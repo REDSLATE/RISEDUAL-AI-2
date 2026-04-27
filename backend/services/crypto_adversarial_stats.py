@@ -347,7 +347,9 @@ async def fetch_recent_decisions(
         "count": len(rows),
         "limit": safe_limit,
         "filters": {k: v for k, v in
-                    (("symbol", symbol), ("phase", phase), ("decision", decision))
+                    (("symbol", query.get("symbol")),
+                     ("phase", query.get("phase")),
+                     ("decision", query.get("decision")))
                     if v},
     }
 
@@ -399,10 +401,11 @@ async def fetch_trades_with_decisions(
         }},
         {"$project": {
             "_id": 0,
-            "_decision_doc": 0,
             # Same projection the dashboard would want — keeps payload
             # tight enough for an admin table without paginating into
-            # 100s of KB.
+            # 100s of KB. `_decision_doc` is omitted (no inclusion
+            # entry) so Mongo drops it automatically — explicit
+            # exclusion alongside inclusions would error out.
             "trade_id": 1,
             "symbol": 1,
             "direction": 1,
@@ -456,6 +459,7 @@ async def fetch_trades_with_decisions(
         "count": len(rows),
         "limit": safe_limit,
         "filters": {k: v for k, v in
-                    (("symbol", symbol), ("only_closed", only_closed))
+                    (("symbol", match.get("symbol")),
+                     ("only_closed", only_closed))
                     if v},
     }

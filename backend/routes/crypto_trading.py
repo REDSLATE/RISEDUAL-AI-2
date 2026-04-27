@@ -25,7 +25,12 @@ from services.crypto_closer import close_expired_crypto_trades
 from services.crypto_adaptation_service import detect_crypto_adaptations
 from services.crypto_signal_audit import get_strategist_stats
 from services.crypto_shadow_research_stats import fetch_shadow_research_stats
-from services.crypto_adversarial_stats import fetch_adversarial_stats
+from services.crypto_adversarial_stats import (
+    DECISIONS_PAGE_LIMIT_DEFAULT,
+    fetch_adversarial_stats,
+    fetch_recent_decisions,
+    fetch_trades_with_decisions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -316,3 +321,61 @@ async def adversarial_stats(
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await fetch_adversarial_stats(_db, hours=hours, phase=phase)
+
+
+@router.get("/adversarial-decisions")
+async def adversarial_decisions(
+    request: Request,
+    limit: int = DECISIONS_PAGE_LIMIT_DEFAULT,
+    symbol: Optional[str] = None,
+    phase: Optional[str] = None,
+    decision: Optional[str] = None,
+) -> dict:
+    """Paginated raw feed from `crypto_adversarial_decision_log`,
+    newest first. Lets operators eyeball Bull/Bear/Commander
+    reasoning row-by-row instead of only seeing the aggregated
+    `/adversarial-stats` rollup.
+
+    Filters AND-combine. ``symbol`` / ``decision`` are case-folded
+    to match the writer's storage convention. ``limit`` is hard-
+    capped server-side (200) to protect the API.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_recent_decisions(
+        _db,
+        limit=limit,
+        symbol=symbol,
+        phase=phase,
+        decision=decision,
+    )
+
+
+@router.get("/adversarial-trades")
+async def adversarial_trades(
+    request: Request,
+    limit: int = DECISIONS_PAGE_LIMIT_DEFAULT,
+    symbol: Optional[str] = None,
+    only_closed: bool = False,
+) -> dict:
+    """Joined view: every `crypto_paper_trades` row carrying an
+    ``adversarial_decision_id`` paired with its Bull/Bear/Commander
+    decision document. Critical post-Tier-3 review tool — answers
+    "did Commander earn its keep?" by lining up the entry signal,
+    Commander's case, and realised P&L side by side.
+
+    Set ``only_closed=true`` to filter to settled trades (those
+    with realised PnL/r_multiple).
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_trades_with_decisions(
+        _db,
+        limit=limit,
+        symbol=symbol,
+        only_closed=only_closed,
+    )
