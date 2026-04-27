@@ -54,6 +54,58 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Status Pill + Regime Weights Scaffolding (Feb 26, 2026)
+
+**Council Tier Status Pill** (recommended enhancement):
+
+- **New** `frontend/src/components/admin/CouncilTierStatusPill.jsx`
+  — peripheral-vision indicator polling `/api/admin/shadow/tier-readiness`
+  every 30s. Renders one of four states:
+  - **"Council: live"** (cyan) — env flag true AND all gates passed
+  - **"Council: ready to flip"** (emerald) — all gates passed, env flag still false
+  - **"Council: 0/3 gates"** / **"1/3"** / **"2/3"** (slate) — progress chip
+  - hidden on fetch error (silent failure — pill is "nice to know")
+- Wired into AdminPanel header action bar (left of the refresh + close
+  buttons). Click → switches to the Shadow tab. Operator now sees Council
+  progression in their peripheral vision every time they're in admin.
+- **Live verified**: pill renders "COUNCIL: 0/3 GATES" (correct — Tier 3
+  closed, Adversarial in shadow, no council buckets open). Click navigation
+  confirmed.
+
+**Regime-conditional weights scaffolding** (last buildable P2):
+
+- **New** `services/regime_weights.py` — pure-function reducer turning
+  regime-tagged shadow stats into `(asset_type → regime → weight)`
+  multipliers. Default-inert: every regime bucket below
+  `MIN_REGIME_SAMPLES=30` returns `weight=1.0`.
+- **Win-rate envelope** (5 conservative bands):
+  - `≥0.65` → 1.20× | `≥0.55` → 1.10× | `≥0.45` → 1.00×
+  - `≥0.35` → 0.85× | `<0.35` → 0.70×
+- **Hard bounds pinned in code** (not env): MIN=0.50, MAX=1.25.
+  Operator misconfig cannot unlock 0× or 2× sizing.
+- **Double gate** before any deviation from 1.0:
+  - `REGIME_WEIGHTS_ENABLED=true` env flag (default `false`)
+  - Bucket has `scored_dissent_count >= 30` AND `actionable=True`
+- `lookup_weight()` helper for the (eventual) bot scheduler hook —
+  unconditionally safe to call, returns 1.0 unless ALL gates have
+  passed.
+- **Endpoint** `GET /api/admin/shadow/regime-weights?hours=N`
+  (admin-gated). Returns weights dict + `min_samples_required` +
+  `enabled` flag.
+- **Hook NOT wired** into the bot scheduler — deliberate, identical
+  pattern to Council Modulator. ~5-line edit when activating; until
+  then the entire module is logging-only.
+- **Live verified**: `/regime-weights` returns the live `crypto/trend_down`
+  bucket from existing shadow rows with `weight=1.0`, `actionable=false`,
+  `needed_samples=30`, `enabled=false` — exactly the scaffold-and-wait state.
+
+**Tests + lint**: 23 new tests in `test_regime_weights.py` covering
+win-rate envelope, clamp, maturity guardrail, double-gate lookup,
+runaway-payload safety, and bound discipline. **113/113** across
+shadow + council + tier3 + regime weights. Lint clean across all
+modified/new files (5 files: backend service, backend route,
+backend test, frontend pill, frontend AdminPanel wiring).
+
 ### Tier-Readiness Aggregator Endpoint (Feb 26, 2026)
 
 Single-shot "am I clear to flip Council on yet?" answer for the

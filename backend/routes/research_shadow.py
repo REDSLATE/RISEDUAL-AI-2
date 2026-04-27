@@ -202,3 +202,25 @@ async def shadow_tier_readiness(request: Request) -> dict:
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await fetch_tier_readiness(_db)
+
+
+@router.get("/regime-weights")
+async def shadow_regime_weights(
+    request: Request, hours: Optional[int] = None,
+) -> dict:
+    """Regime-conditional sizing weights derived from shadow dissent
+    stats. Default-inert: every (asset_type, regime) bucket without
+    ≥30 scored dissents returns ``weight=1.0`` (no-op multiplier).
+
+    Pairs with ``REGIME_WEIGHTS_ENABLED`` env flag — lookup helper
+    returns 1.0 when the flag is off, even for actionable buckets.
+    Both gates must pass before the multiplier deviates from 1.0.
+
+    P2 scaffolding — bot scheduler hook intentionally NOT wired yet.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    from services.regime_weights import fetch_regime_weights
+    return await fetch_regime_weights(_db, hours=hours)

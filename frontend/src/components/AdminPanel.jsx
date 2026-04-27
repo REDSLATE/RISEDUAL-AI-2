@@ -19,6 +19,7 @@ import ConvictionCalibration from './admin/ConvictionCalibration';
 import CryptoPaperDashboard from './CryptoPaperDashboard';
 import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
 import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
+import CouncilTierStatusPill from './admin/CouncilTierStatusPill';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -169,6 +170,10 @@ const AdminPanel = ({ onClose }) => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <CouncilTierStatusPill
+              apiBase={getApiBase()}
+              onOpenShadowTab={() => setTab('shadow')}
+            />
             {tab === 'users' && (
               <Button
                 variant="outline"
