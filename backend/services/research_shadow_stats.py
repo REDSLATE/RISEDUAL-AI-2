@@ -299,3 +299,324 @@ async def fetch_cost_budget(db: Any) -> dict[str, Any]:
         "degraded_frac": COST_DEGRADED_FRAC,
         "paused_frac": COST_PAUSED_FRAC,
     }
+
+
+# ── Cost trend (sparkline-ready) ──────────────────────────────────────────────
+
+
+async def fetch_cost_history(
+    db: Any, *, days: int = 14,
+) -> dict[str, Any]:
+    """Daily LLM spend history per bot for sparkline rendering.
+
+    Returns up to ``days`` (clamped 1-90) of UTC-day buckets. Days
+    with zero spend are emitted as zeros — sparkline renders a
+    continuous line, not a dotted plot, which makes the daily
+    rhythm easier to read.
+
+    Includes the daily ceiling so the UI can plot it as a reference
+    line. ``tier_today`` mirrors the cost-budget endpoint's tier
+    classification for convenience.
+    """
+    from services.research_shadow import (
+        COST_CEILING_USD_PER_DAY,
+        COST_DEGRADED_FRAC,
+        COST_PAUSED_FRAC,
+    )
+
+    safe_days = max(1, min(int(days or 14), 90))
+
+    if db is None:
+        return {
+            "bots": [],
+            "days": safe_days,
+            "ceiling_usd_per_day": COST_CEILING_USD_PER_DAY,
+        }
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=safe_days)
+    try:
+        cursor = db[SHADOW_COLLECTION].aggregate([
+            {"$match": {"ts": {"$gte": cutoff}}},
+            {"$group": {
+                "_id": {
+                    "bot_id": "$bot_id",
+                    "engine": "$shadow_engine",
+                    "day": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}},
+                },
+                "spend_usd": {"$sum": {"$ifNull": ["$llm_cost_usd", 0]}},
+                "decisions": {"$sum": 1},
+            }},
+            {"$sort": {"_id.day": 1}},
+        ])
+        rows = await cursor.to_list(length=10_000)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[shadow-cost-history] aggregation failed: %s", exc)
+        return {
+            "bots": [],
+            "days": safe_days,
+            "ceiling_usd_per_day": COST_CEILING_USD_PER_DAY,
+            "error": str(exc)[:120],
+        }
+
+    # Build the contiguous day axis so the sparkline doesn't skip
+    # days with no activity.
+    today = datetime.now(timezone.utc).date()
+    day_axis = [
+        (today - timedelta(days=safe_days - 1 - i)).isoformat()
+        for i in range(safe_days)
+    ]
+
+    # Pivot: {(bot_id, engine): {day: {spend, decisions}}}
+    pivot: dict[tuple, dict[str, dict[str, float]]] = {}
+    for r in rows:
+        key = (r["_id"]["bot_id"], r["_id"]["engine"])
+        pivot.setdefault(key, {})
+        pivot[key][r["_id"]["day"]] = {
+            "spend_usd": round(float(r.get("spend_usd") or 0.0), 6),
+            "decisions": int(r.get("decisions") or 0),
+        }
+
+    bots = []
+    for (bot_id, engine), daily in pivot.items():
+        series = [
+            {
+                "day": d,
+                "spend_usd": daily.get(d, {}).get("spend_usd", 0.0),
+                "decisions": daily.get(d, {}).get("decisions", 0),
+            }
+            for d in day_axis
+        ]
+        spend_today = series[-1]["spend_usd"] if series else 0.0
+        frac_today = (
+            spend_today / COST_CEILING_USD_PER_DAY
+            if COST_CEILING_USD_PER_DAY > 0 else 0.0
+        )
+        if frac_today >= COST_PAUSED_FRAC:
+            tier_today = "paused"
+        elif frac_today >= COST_DEGRADED_FRAC:
+            tier_today = "degraded"
+        else:
+            tier_today = "full"
+        bots.append({
+            "bot_id": bot_id,
+            "engine": engine,
+            "series": series,
+            "total_spend_usd": round(sum(p["spend_usd"] for p in series), 4),
+            "tier_today": tier_today,
+        })
+
+    bots.sort(key=lambda b: b["total_spend_usd"], reverse=True)
+    return {
+        "bots": bots,
+        "days": safe_days,
+        "day_axis": day_axis,
+        "ceiling_usd_per_day": COST_CEILING_USD_PER_DAY,
+    }
+
+
+# ── Regime-conditional stats (P2 scaffolding) ─────────────────────────────────
+
+
+def compute_regime_stats(rows: list[dict]) -> dict[str, Any]:
+    """Pure reducer — buckets dissents by ``regime_at_decision`` and
+    produces per-regime win-rate + delta + actionable flag. Same
+    maturity guardrail as the main stats reducer (≥30 dissents per
+    bucket before actionable).
+
+    Why this exists today even though "regime-conditional weights"
+    needs ≥15 buckets: the reducer is a pure function, harmless to
+    ship empty. The moment the data lands, the endpoint returns
+    actionable rows automatically — no code deploy required.
+
+    Output shape per regime bucket::
+
+        {
+            "regime": "trending",
+            "shadow_engine": "council",
+            "asset_type": "crypto",
+            "dissent_count": int,
+            "scored_dissent_count": int,
+            "win_count": int,
+            "win_rate": float | None,
+            "total_delta_usd": float,
+            "actionable": bool,
+        }
+    """
+    by_key: dict[tuple, dict[str, Any]] = {}
+
+    for row in rows:
+        if not row.get("is_dissent"):
+            continue
+        regime = row.get("regime_at_decision")
+        if not regime:
+            # Skip un-tagged rows so legacy dissents don't pollute
+            # the breakdown — they'd all bucket under "?" and
+            # confuse the win-rate math.
+            continue
+        engine = row.get("shadow_engine") or "?"
+        asset_type = row.get("asset_type") or "?"
+        key = (regime, engine, asset_type)
+
+        bucket = by_key.setdefault(key, {
+            "regime": regime,
+            "shadow_engine": engine,
+            "asset_type": asset_type,
+            "dissent_count": 0,
+            "scored_dissent_count": 0,
+            "win_count": 0,
+            "total_delta_usd": 0.0,
+        })
+        bucket["dissent_count"] += 1
+
+        tactical = row.get("tactical_score")
+        if not isinstance(tactical, dict):
+            continue
+        delta = tactical.get("delta_usd")
+        if not isinstance(delta, (int, float)):
+            continue
+        bucket["scored_dissent_count"] += 1
+        bucket["total_delta_usd"] += float(delta)
+        if delta > 0:
+            bucket["win_count"] += 1
+
+    # Finalise.
+    out_buckets = []
+    for bucket in by_key.values():
+        scored = bucket["scored_dissent_count"]
+        bucket["win_rate"] = (
+            round(bucket["win_count"] / scored, 4) if scored > 0 else None
+        )
+        bucket["total_delta_usd"] = round(bucket["total_delta_usd"], 4)
+        bucket["actionable"] = scored >= MIN_DISSENT_SAMPLES
+        out_buckets.append(bucket)
+
+    out_buckets.sort(key=lambda b: (-b["dissent_count"], b["regime"]))
+    return {
+        "buckets": out_buckets,
+        "min_dissent_samples_required": MIN_DISSENT_SAMPLES,
+    }
+
+
+async def fetch_regime_stats(
+    db: Any, *, hours: Optional[int] = None,
+) -> dict[str, Any]:
+    """Mongo glue for :func:`compute_regime_stats`."""
+    if db is None:
+        return compute_regime_stats([])
+
+    query: dict[str, Any] = {}
+    if hours is not None and hours > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        query["ts"] = {"$gte": cutoff}
+
+    try:
+        rows = await db[SHADOW_COLLECTION].find(
+            query,
+            {
+                "_id": 0,
+                "shadow_engine": 1,
+                "asset_type": 1,
+                "is_dissent": 1,
+                "regime_at_decision": 1,
+                "tactical_score": 1,
+            },
+        ).to_list(length=100_000)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[shadow-regime-stats] query failed: %s", exc)
+        return compute_regime_stats([])
+
+    summary = compute_regime_stats(rows)
+    if hours is not None:
+        summary["window_hours"] = hours
+    return summary
+
+
+# ── Adaptation shadow summary (companion to ML_ADAPTATION_SHADOW_MODE) ────────
+
+
+async def fetch_adaptation_shadow_summary(
+    db: Any, *, days: int = 14,
+) -> dict[str, Any]:
+    """Quick rollup of what the auto-revert rail WOULD have done in
+    shadow mode over the last ``days``. Lighter-weight companion to
+    ``GET /api/admin/adaptations/calibration`` — that endpoint
+    computes percentile distributions for threshold tuning; this
+    one returns a counts-only "are we observing anything?" view
+    suitable for a small dashboard tile.
+
+    Returns:
+        {
+            "window_days": int,
+            "observations": int,
+            "shadow_mode_active": bool,
+            "by_action": {"shadow_soften": int, "shadow_revert": int},
+            "by_metric": [{"metric": str, "count": int}, ...],
+            "sample_recent": [{...}, ...],
+        }
+    """
+    from services.model_adaptation import auto_revert_shadow_mode
+
+    safe_days = max(1, min(int(days or 14), 90))
+    out: dict[str, Any] = {
+        "window_days": safe_days,
+        "observations": 0,
+        "shadow_mode_active": auto_revert_shadow_mode(),
+        "by_action": {"shadow_soften": 0, "shadow_revert": 0},
+        "by_metric": [],
+        "sample_recent": [],
+    }
+
+    if db is None:
+        return out
+
+    since_iso = (
+        datetime.now(timezone.utc) - timedelta(days=safe_days)
+    ).isoformat()
+
+    try:
+        # Counts by action.
+        cursor = db["adaptation_audit"].aggregate([
+            {"$match": {
+                "shadow": True,
+                "at": {"$gte": since_iso},
+                "action": {"$in": ["shadow_soften", "shadow_revert"]},
+            }},
+            {"$group": {"_id": "$action", "count": {"$sum": 1}}},
+        ])
+        async for r in cursor:
+            out["by_action"][r["_id"]] = int(r["count"])
+
+        out["observations"] = sum(out["by_action"].values())
+
+        # Counts by metric (top 8).
+        cursor2 = db["adaptation_audit"].aggregate([
+            {"$match": {
+                "shadow": True,
+                "at": {"$gte": since_iso},
+                "action": {"$in": ["shadow_soften", "shadow_revert"]},
+            }},
+            {"$group": {"_id": "$metric", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 8},
+        ])
+        async for r in cursor2:
+            out["by_metric"].append({
+                "metric": r["_id"], "count": int(r["count"]),
+            })
+
+        # Recent sample (5 newest, useful for the operator drawer).
+        sample_rows = await db["adaptation_audit"].find(
+            {
+                "shadow": True,
+                "at": {"$gte": since_iso},
+                "action": {"$in": ["shadow_soften", "shadow_revert"]},
+            },
+            {"_id": 0, "adaptation_id": 1, "action": 1, "reason": 1,
+             "metric": 1, "at": 1},
+        ).sort("at", -1).limit(5).to_list(length=5)
+        out["sample_recent"] = sample_rows
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[adaptation-shadow-summary] query failed: %s", exc)
+        out["error"] = str(exc)[:120]
+
+    return out

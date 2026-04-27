@@ -34,6 +34,7 @@ const API = process.env.REACT_APP_BACKEND_URL;
 export default function ShadowAccuracyPanel() {
   const [stats, setStats] = useState(null);
   const [budget, setBudget] = useState(null);
+  const [costHistory, setCostHistory] = useState(null);
   const [error, setError] = useState(null);
   const [hoursFilter, setHoursFilter] = useState('');
 
@@ -43,17 +44,20 @@ export default function ShadowAccuracyPanel() {
       if (hoursFilter) params.set('hours', hoursFilter);
       const qs = params.toString() ? `?${params}` : '';
 
-      const [statsRes, budgetRes] = await Promise.all([
+      const [statsRes, budgetRes, historyRes] = await Promise.all([
         fetch(`${API}/api/admin/shadow/stats${qs}`, { credentials: 'include' }),
         fetch(`${API}/api/admin/shadow/cost-budget`, { credentials: 'include' }),
+        fetch(`${API}/api/admin/shadow/cost-history?days=14`, { credentials: 'include' }),
       ]);
       if (!statsRes.ok) throw new Error(`stats HTTP ${statsRes.status}`);
       if (!budgetRes.ok) throw new Error(`budget HTTP ${budgetRes.status}`);
-      const [statsJson, budgetJson] = await Promise.all([
-        statsRes.json(), budgetRes.json(),
+      if (!historyRes.ok) throw new Error(`history HTTP ${historyRes.status}`);
+      const [statsJson, budgetJson, historyJson] = await Promise.all([
+        statsRes.json(), budgetRes.json(), historyRes.json(),
       ]);
       setStats(statsJson);
       setBudget(budgetJson);
+      setCostHistory(historyJson);
       setError(null);
     } catch (e) {
       setError(String(e.message || e));
@@ -77,7 +81,7 @@ export default function ShadowAccuracyPanel() {
     );
   }
 
-  if (!stats || !budget) {
+  if (!stats || !budget || !costHistory) {
     return (
       <div
         className="rounded-xl border border-slate-700 bg-slate-900/40 p-6 text-slate-500 text-sm"
@@ -100,6 +104,7 @@ export default function ShadowAccuracyPanel() {
         <BucketGrid buckets={buckets} minSamples={stats.min_dissent_samples_required} />
       )}
       <CostBudgetStrip budget={budget} />
+      <CostTrendSparklineStrip history={costHistory} />
     </div>
   );
 }
@@ -358,5 +363,132 @@ const TierPill = ({ tier }) => {
     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold border ${colors}`}>
       {tier}
     </span>
+  );
+};
+
+
+
+/**
+ * LLM Cost Trend Sparkline Strip
+ *
+ * Shows a 14-day spend history per (bot, engine) pair as a tight
+ * inline SVG sparkline. The reference line at the daily ceiling
+ * makes "are we close to the cap" instantly readable. Daily spend
+ * vs ceiling lets the operator answer "is bumping the cap safe?"
+ * before flipping COUNCIL_SHADOW_MODE=llm for steady-state.
+ *
+ * Hidden when there are no rows (no LLM-backed shadow has fired)
+ * — saves vertical real estate during the rule-mode era.
+ */
+const CostTrendSparklineStrip = ({ history }) => {
+  const bots = history.bots || [];
+  if (bots.length === 0) {
+    return null;
+  }
+  const ceiling = history.ceiling_usd_per_day || 0;
+
+  return (
+    <div
+      className="rounded-xl border border-slate-700 bg-slate-900/40 p-4"
+      data-testid="shadow-cost-trend-strip"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs uppercase tracking-wider font-semibold text-slate-300">
+          LLM Cost Trend · {history.days || 14}d
+        </span>
+        <span className="text-[10px] text-slate-600">
+          dashed = daily ceiling (${ceiling.toFixed(2)})
+        </span>
+      </div>
+      <div className="space-y-2" data-testid="shadow-cost-trend-list">
+        {bots.map((b) => (
+          <CostSparklineRow key={`${b.bot_id}-${b.engine}`} bot={b} ceiling={ceiling} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+const CostSparklineRow = ({ bot, ceiling }) => {
+  const series = bot.series || [];
+  const peakSpend = Math.max(
+    ceiling,
+    ...series.map((p) => p.spend_usd || 0),
+  );
+  // Sparkline geometry. Width is fluid via viewBox; stroke is fixed.
+  const width = 240;
+  const height = 32;
+  const pad = 2;
+  const xStep = series.length > 1 ? (width - pad * 2) / (series.length - 1) : 0;
+  const yScale = peakSpend > 0
+    ? (height - pad * 2) / peakSpend
+    : 0;
+
+  const polyPoints = series
+    .map((p, i) => `${pad + i * xStep},${height - pad - (p.spend_usd || 0) * yScale}`)
+    .join(' ');
+
+  // Ceiling reference line.
+  const ceilingY = height - pad - ceiling * yScale;
+
+  // Color the area+stroke by today's tier.
+  const tone = {
+    paused: 'stroke-rose-400 fill-rose-500/10',
+    degraded: 'stroke-amber-400 fill-amber-500/10',
+    full: 'stroke-emerald-400 fill-emerald-500/10',
+  }[bot.tier_today] || 'stroke-slate-500 fill-slate-700/20';
+
+  return (
+    <div
+      className="grid grid-cols-[160px_1fr_120px] items-center gap-3 text-xs"
+      data-testid={`shadow-cost-spark-${bot.bot_id}`}
+    >
+      <div className="truncate">
+        <div className="text-slate-300 font-mono text-[11px]">{bot.bot_id}</div>
+        <div className="text-slate-600 text-[10px] uppercase">{bot.engine}</div>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="w-full h-8"
+      >
+        {/* Ceiling reference line */}
+        {ceiling > 0 && (
+          <line
+            x1={pad} x2={width - pad}
+            y1={ceilingY} y2={ceilingY}
+            className="stroke-slate-700"
+            strokeWidth="0.5"
+            strokeDasharray="2 2"
+          />
+        )}
+        {/* Filled area below curve */}
+        {series.length > 1 && (
+          <polygon
+            className={tone}
+            strokeWidth="1"
+            points={`${pad},${height - pad} ${polyPoints} ${pad + (series.length - 1) * xStep},${height - pad}`}
+          />
+        )}
+        {/* Curve itself */}
+        {series.length > 1 && (
+          <polyline
+            className={tone}
+            fill="none"
+            strokeWidth="1.5"
+            points={polyPoints}
+          />
+        )}
+      </svg>
+      <div className="text-right">
+        <div className="text-slate-300 font-semibold">
+          ${bot.total_spend_usd.toFixed(4)}
+        </div>
+        <div className="text-slate-600 text-[10px]">
+          tier: {bot.tier_today}
+        </div>
+      </div>
+    </div>
   );
 };

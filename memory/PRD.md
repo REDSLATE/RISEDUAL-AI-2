@@ -54,6 +54,74 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Cost Trend Sparkline + Regime Stats + Adaptation Summary (Feb 26, 2026)
+
+Three additional surfaces on the Research Shadow framework — completing
+the data-gated P2 scaffolding plus the recommended cost-visibility
+enhancement.
+
+**LLM Cost Trend Sparkline** (recommended enhancement):
+
+- **Backend** `services/research_shadow_stats.py::fetch_cost_history` —
+  daily UTC-day-bucketed spend per `(bot_id, engine)` over up to 90
+  days. Contiguous day axis with zero-fills so sparklines render
+  as continuous curves. Includes per-bot `tier_today` classification
+  for color-coded rendering.
+- **Endpoint** `GET /api/admin/shadow/cost-history?days=14` (admin-gated).
+- **Frontend** new `CostTrendSparklineStrip` + `CostSparklineRow`
+  sub-components in `ShadowAccuracyPanel.jsx`. Inline SVG sparklines
+  per bot/engine pair with:
+  - Filled area + curve in tier-conditional colour (full=emerald,
+    degraded=amber, paused=rose)
+  - Dashed reference line at the daily ceiling
+  - Total spend + tier displayed to the right
+  - Hidden when `bots.length === 0` (saves vertical space during
+    the rule-mode era when no LLM-backed shadows have fired)
+- **Live verified** on preview: shows the $0.0110 Council LLM spike
+  from the earlier smoke test against the $5/day ceiling reference
+  line — operator can see at a glance that today's spend is 0.22%
+  of cap and bumping the ceiling is safe.
+
+**Regime-conditional stats** (P2 scaffolding for regime weights):
+
+- **Backend** `compute_regime_stats()` pure reducer + `fetch_regime_stats()`
+  Mongo glue. Buckets dissents by `(regime_at_decision, engine, asset_type)`,
+  emits per-regime win rate + total $ delta + actionable flag (≥30
+  dissents). Skips un-tagged legacy rows so they don't pollute the
+  breakdown.
+- **Endpoint** `GET /api/admin/shadow/regime-stats?hours=N`.
+- **Why this exists today**: the regime instrumentation
+  (`regime_at_decision` field) was already shipped. This endpoint
+  exposes the aggregated view so the moment regime buckets mature,
+  weight tuning becomes data-driven without a code deploy. The
+  reducer is harmless to ship empty — currently returns `buckets: []`
+  on the live preview because dissents accumulating on the new
+  schema will populate it forward from this commit.
+
+**Adaptation shadow summary** (companion to ML_ADAPTATION_SHADOW_MODE):
+
+- **Backend** `fetch_adaptation_shadow_summary()` reads
+  `adaptation_audit` rows tagged `shadow=true` over the last N days,
+  returns counts by action (`shadow_soften` / `shadow_revert`),
+  top metrics by hit count, and 5 most recent observations.
+- **Endpoint** `GET /api/admin/shadow/adaptation-shadow-summary?days=14`.
+- Lighter-weight companion to the existing
+  `/api/admin/adaptations/calibration` (which computes percentile
+  distributions for threshold tuning). This one is the
+  "is shadow mode firing yet?" tile — useful when the auto-revert
+  scanner runs every 6h and the operator wants a quick reality check.
+- **Live verified**: returns `shadow_mode_active: true` (env flip
+  confirmed wired correctly to `auto_revert_shadow_mode()`),
+  `observations: 0` (scanner hasn't completed its first 6h cycle
+  since the flip).
+
+**Tests + lint**: 65/65 in shadow file (was 60, +5 new for regime
+reducer). All modified files lint clean. End-to-end loop verified
+on preview — the scorer backfilled the 2 SOL/BNB entry-phase
+dissents from earlier crypto runs to `+$5.89` total Δ$ at 100%
+win rate, proving the full pipeline (decision → 30min lookahead →
+score → stats reducer → UI) closes correctly.
+
 ### Council v2 LLM + Cycle Skip + Regime Tag + ML Shadow Flip (Feb 26, 2026)
 
 **Cleared 4 of the remaining P2 items in one PR**. Honest pushback was

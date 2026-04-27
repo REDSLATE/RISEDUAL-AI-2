@@ -23,8 +23,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from services.auth_helpers import get_current_user
 from services.research_shadow_stats import (
+    fetch_adaptation_shadow_summary,
     fetch_cost_budget,
+    fetch_cost_history,
     fetch_recent_shadow_decisions,
+    fetch_regime_stats,
     fetch_shadow_stats,
 )
 
@@ -119,3 +122,61 @@ async def shadow_cost_budget(request: Request) -> dict:
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await fetch_cost_budget(_db)
+
+
+@router.get("/cost-history")
+async def shadow_cost_history(request: Request, days: int = 14) -> dict:
+    """Daily LLM spend history per bot for sparkline rendering.
+    Up to 90 days, contiguous day axis (zero-fills inactive days)
+    so the sparkline reads as a continuous curve.
+
+    Backs the "LLM Cost Trend" sparkline strip in the admin Shadow
+    panel — operator can see at a glance whether a daily budget
+    bump is safe before flipping ``COUNCIL_SHADOW_MODE=llm`` for
+    steady-state.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_cost_history(_db, days=days)
+
+
+@router.get("/regime-stats")
+async def shadow_regime_stats(
+    request: Request, hours: Optional[int] = None,
+) -> dict:
+    """Regime-conditional dissent stats — buckets by
+    ``regime_at_decision`` × engine × asset_type, returns per-regime
+    win-rate + delta + actionable flag (≥30 dissents per bucket).
+
+    P2 scaffolding for regime-conditional bot weights — the
+    instrumentation (``regime_at_decision`` capture on every shadow
+    row) is already live; this endpoint exposes the aggregated view
+    so the moment regime buckets mature, weights become tunable
+    from observed data without a code deploy.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_regime_stats(_db, hours=hours)
+
+
+@router.get("/adaptation-shadow-summary")
+async def shadow_adaptation_summary(
+    request: Request, days: int = 14,
+) -> dict:
+    """Quick rollup of what the auto-revert rail WOULD have done in
+    shadow mode. Companion to ``ML_ADAPTATION_SHADOW_MODE=true``.
+
+    Lighter than ``GET /api/admin/adaptations/calibration`` (which
+    computes percentile distributions for threshold tuning); this
+    endpoint returns counts + a recent sample for a small dashboard
+    tile.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_adaptation_shadow_summary(_db, days=days)

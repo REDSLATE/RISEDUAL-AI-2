@@ -777,6 +777,80 @@ async def test_count_recent_agreement_run_ignores_non_cycle_phases():
     assert out == 3
 
 
+# ── Regime-conditional stats reducer (P2 scaffolding) ─────────────────────────
+
+
+def test_regime_stats_skips_untagged_dissents():
+    """Dissents without regime_at_decision shouldn't pollute the
+    breakdown — they'd all bucket together and confuse the math."""
+    from services.research_shadow_stats import compute_regime_stats
+    rows = [
+        {"is_dissent": True, "shadow_engine": "council", "asset_type": "crypto",
+         "regime_at_decision": "trending",
+         "tactical_score": {"delta_usd": 5.0}},
+        {"is_dissent": True, "shadow_engine": "council", "asset_type": "crypto",
+         "regime_at_decision": None,  # legacy row, skipped
+         "tactical_score": {"delta_usd": -100.0}},
+    ]
+    out = compute_regime_stats(rows)
+    assert len(out["buckets"]) == 1
+    assert out["buckets"][0]["regime"] == "trending"
+
+
+def test_regime_stats_buckets_by_regime_x_engine_x_asset_type():
+    from services.research_shadow_stats import compute_regime_stats
+    rows = [
+        # (regime, engine, asset_type) — expect 3 distinct buckets.
+        {"is_dissent": True, "shadow_engine": "council",     "asset_type": "crypto",
+         "regime_at_decision": "trending",
+         "tactical_score": {"delta_usd": 5.0}},
+        {"is_dissent": True, "shadow_engine": "council",     "asset_type": "crypto",
+         "regime_at_decision": "parabolic",
+         "tactical_score": {"delta_usd": -3.0}},
+        {"is_dissent": True, "shadow_engine": "adversarial", "asset_type": "crypto",
+         "regime_at_decision": "trending",
+         "tactical_score": {"delta_usd": 7.0}},
+    ]
+    out = compute_regime_stats(rows)
+    assert len(out["buckets"]) == 3
+
+
+def test_regime_stats_actionable_at_threshold():
+    from services.research_shadow import MIN_DISSENT_SAMPLES
+    from services.research_shadow_stats import compute_regime_stats
+    base = {"is_dissent": True, "shadow_engine": "council",
+            "asset_type": "crypto", "regime_at_decision": "trending",
+            "tactical_score": {"delta_usd": 1.0}}
+    out = compute_regime_stats([dict(base) for _ in range(MIN_DISSENT_SAMPLES - 1)])
+    assert out["buckets"][0]["actionable"] is False
+
+    out = compute_regime_stats([dict(base) for _ in range(MIN_DISSENT_SAMPLES)])
+    assert out["buckets"][0]["actionable"] is True
+
+
+def test_regime_stats_skips_agreement_rows():
+    """Only dissents count toward regime buckets — agreement rows
+    are noise (they don't carry the disagreement-conditional signal)."""
+    from services.research_shadow_stats import compute_regime_stats
+    rows = [
+        {"is_dissent": False, "shadow_engine": "council", "asset_type": "crypto",
+         "regime_at_decision": "trending"},
+        {"is_dissent": True, "shadow_engine": "council", "asset_type": "crypto",
+         "regime_at_decision": "trending",
+         "tactical_score": {"delta_usd": 1.0}},
+    ]
+    out = compute_regime_stats(rows)
+    assert len(out["buckets"]) == 1
+    assert out["buckets"][0]["dissent_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_regime_stats_empty_db_safe():
+    from services.research_shadow_stats import fetch_regime_stats
+    out = await fetch_regime_stats(None)
+    assert out["buckets"] == []
+
+
 # ── Council LLM consensus (v2) ────────────────────────────────────────────────
 
 
