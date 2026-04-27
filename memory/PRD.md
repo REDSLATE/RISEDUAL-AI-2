@@ -1305,6 +1305,57 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-04-27 — `/api/crypto/adversarial-stats` endpoint + NO_TRADE attribution fix
+* **Why**: Once the adversarial layer wakes up post-Tier-3, operators
+  need a real-time read on whether Bull/Bear/Commander is actually
+  learning — same way `shadow-research-stats` lets us watch the
+  Tavily lift in flight. Without this, we'd be blind until manually
+  pulling Mongo at promotion time.
+* **Implementation**:
+  - `services/crypto_adversarial_stats.py` — pure
+    `compute_adversarial_stats(rows)` reducer + Mongo glue
+    `fetch_adversarial_stats(db, hours, phase)`. Returns:
+      * `bull_win_rate`, `bear_win_rate` (from the `winner` field
+        already populated at close time)
+      * `no_trade_avoided.avg_r_avoided` — avg r of the trades
+        Commander said NO_TRADE on (in shadow phase, those trades
+        fire anyway, so we DO have outcome data). Negative =
+        Commander would have correctly avoided losing trades.
+      * `edge_gap` distribution (count/mean/min/max) — sanity
+        check on whether `EDGE_GAP_THRESHOLD` needs tuning.
+      * Per-decision-type breakdown (LONG / SHORT_OR_AVOID /
+        NO_TRADE) with count / avg_r / median_r / win_rate.
+  - **Maturity guardrail**: `actionable=False` until every
+    decision bucket has ≥ 15 closed rows (`MIN_BUCKET_SAMPLES`,
+    same as shadow-research-stats).
+  - **Interpretation strings**:
+    `insufficient_data_keep_observing` /
+    `bull_dominates_check_for_long_bias_overfit` (rate spread ≥ 0.10) /
+    `bear_dominates_strong_signal_to_promote_to_risk_only` (≤ -0.10) /
+    `balanced_keep_observing_or_tune_threshold`.
+  - Route: `GET /api/crypto/adversarial-stats?hours=N&phase=...`
+    (admin-gated, optional filters).
+* **NO_TRADE attribution bug fix** in
+  `services/adversarial_logger.py:derive_winner`. Original
+  docstring claimed *"NO_TRADE → neutral, we never measured the
+  counterfactual"* — but in shadow phase the trade fires regardless
+  of Commander's vote, so we DO have a real `r_multiple`. Fixed:
+  in shadow phase, NO_TRADE rows now correctly attribute Bull (if
+  r > 0, the trade Commander wanted to skip would have won) or
+  Bear (if r ≤ 0, Commander was right to want to skip). In
+  veto/full phases, NO_TRADE blocks the fill so
+  `update_decision_outcome` never runs and the row stays neutral.
+  Zero historical data to migrate (Tier 3 still locked, no
+  decisions logged yet).
+* **Tests**: 19 new pytest cases pinning down bucketing, even/odd
+  median, zero-r-as-loss winrate, NO_TRADE-avoided positive vs
+  negative interpretation, neutral rows excluded from win rates,
+  the 15-sample guardrail, and Mongo-glue exception swallowing.
+  Total crypto regression: **235/235 passing**.
+* **Live verification**: endpoint returns the zero-state payload
+  on production, admin-gated, optional `?hours` and `?phase`
+  filters honoured.
+
 ### 2026-04-27 — Adversarial Decision Core (Bull / Bear / Commander), DOUBLE-GATED
 * **Why**: The existing Strategist + Auditor pipeline is a two-stage
   *consensus* system (both agents share the same indicators + the same

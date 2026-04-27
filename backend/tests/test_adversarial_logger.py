@@ -146,11 +146,13 @@ async def test_log_swallows_insert_failure():
     # If price went DOWN or flat, Bear was right to avoid the long.
     ("SHORT_OR_AVOID", -0.5, ("bear", "bull")),
     ("SHORT_OR_AVOID",  0.0, ("bear", "bull")),
-    # NO_TRADE — we never measured a counterfactual move; mark
-    # neutral so analysis can filter these without inflating either
-    # side's win rate.
-    ("NO_TRADE",  0.5, ("neutral", "neutral")),
-    ("NO_TRADE", -0.5, ("neutral", "neutral")),
+    # NO_TRADE in shadow phase: trade fires anyway, so we
+    # DO have a realised r and can attribute. Only logged
+    # NO_TRADE rows in veto/full phase stay neutral (because
+    # update_decision_outcome never runs on them).
+    ("NO_TRADE",  0.5, ("bull", "bear")),
+    ("NO_TRADE", -0.5, ("bear", "bull")),
+    ("NO_TRADE",  0.0, ("bear", "bull")),
     # Empty / unknown decisions degrade to neutral.
     ("",         1.0, ("neutral", "neutral")),
 ])

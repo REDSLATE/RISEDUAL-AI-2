@@ -121,17 +121,26 @@ def derive_winner(decision: str, final_r: float) -> tuple[str, str]:
       * decision="LONG" + final_r ≤ 0 → bull lost (bear right to disagree)
       * decision="SHORT_OR_AVOID" + final_r > 0 → bear lost (bull was right)
       * decision="SHORT_OR_AVOID" + final_r ≤ 0 → bear won
-      * decision="NO_TRADE" → neutral; we never measured the
-        counterfactual move, so we can't credit either side. Logged
-        as neutral/neutral so post-hoc analysis can filter these out
-        cleanly without inflating either side's win rate. (See
-        adversarial_core docstring on counterfactual handling.)
+      * decision="NO_TRADE" — handled by phase:
+          In ``shadow`` phase (default until promoted), the trade
+          fires regardless of Commander's vote, so we DO have a
+          realised r_multiple and can attribute. r > 0 means Bull
+          was right to want it; r ≤ 0 means Bear was right to skip.
+          In ``veto``/``full`` phases, NO_TRADE blocks the fill
+          entirely and update_decision_outcome never gets called
+          (no decision_id on a non-existent trade row). So this
+          branch only ever runs in shadow phase, where the
+          attribution is well-defined.
+      * Anything unrecognised falls through to neutral so a future
+        decision-type rename can't silently misattribute history.
     """
     d = (decision or "").upper()
     if d == "LONG":
         return ("bull", "bear") if final_r > 0 else ("bear", "bull")
     if d == "SHORT_OR_AVOID":
         return ("bear", "bull") if final_r <= 0 else ("bull", "bear")
+    if d == "NO_TRADE":
+        return ("bull", "bear") if final_r > 0 else ("bear", "bull")
     return ("neutral", "neutral")
 
 

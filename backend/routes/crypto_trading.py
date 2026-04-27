@@ -25,6 +25,7 @@ from services.crypto_closer import close_expired_crypto_trades
 from services.crypto_adaptation_service import detect_crypto_adaptations
 from services.crypto_signal_audit import get_strategist_stats
 from services.crypto_shadow_research_stats import fetch_shadow_research_stats
+from services.crypto_adversarial_stats import fetch_adversarial_stats
 
 logger = logging.getLogger(__name__)
 
@@ -277,3 +278,41 @@ async def shadow_research_stats(
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await fetch_shadow_research_stats(_db, hours=hours)
+
+
+@router.get("/adversarial-stats")
+async def adversarial_stats(
+    request: Request,
+    hours: Optional[int] = None,
+    phase: Optional[str] = None,
+) -> dict:
+    """Real-time read on whether the Bull/Bear/Commander layer is
+    actually learning. Returns:
+
+    * ``bull_win_rate`` / ``bear_win_rate`` — % of decisions where
+      each agent's preferred direction matched the realised move.
+    * ``no_trade_avoided.avg_r_avoided`` — avg r_multiple of the
+      trades Commander said NO_TRADE on (in shadow phase, those
+      trades fired anyway and we measured the outcome). Negative
+      = Commander would have correctly avoided losing trades;
+      positive = Commander would have cost money in veto phase.
+    * ``edge_gap`` distribution — mean / min / max — sanity check
+      on whether ``EDGE_GAP_THRESHOLD`` needs tuning.
+    * Per-decision-type breakdown (LONG / SHORT_OR_AVOID / NO_TRADE)
+      with count / avg_r / median_r / win_rate.
+
+    ``actionable=False`` until every decision bucket has ≥ 15
+    closed decisions. DO NOT promote phase based on numbers below
+    that threshold — same maturity guardrail as
+    ``/api/crypto/shadow-research-stats``.
+
+    Optional filters:
+    * ``hours`` — rolling window
+    * ``phase`` — restrict to ``shadow`` / ``risk_only`` / ``veto`` / ``full``
+      so cross-phase comparisons don't mix apples and oranges.
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_adversarial_stats(_db, hours=hours, phase=phase)
