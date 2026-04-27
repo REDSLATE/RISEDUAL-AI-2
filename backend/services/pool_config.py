@@ -95,6 +95,24 @@ def get_market_data_provider_pool() -> list[dict]:
             "priority": 3,
         })
 
+    # Polygon — optional A/B challenger to Finnhub. Default
+    # priority puts it just below the existing fallbacks (so it
+    # only fires when the others are exhausted), but operators
+    # can override via MARKET_DATA_POLYGON_PRIORITY=1 to make it
+    # the primary. Disabled when POLYGON_API_KEY is unset.
+    polygon = os.environ.get("POLYGON_API_KEY")
+    if polygon:
+        try:
+            poly_priority = int(os.environ.get("MARKET_DATA_POLYGON_PRIORITY", "4"))
+        except ValueError:
+            poly_priority = 4
+        fallback.append({
+            "name": "polygon-ab",
+            "provider": "polygon",
+            "api_key": polygon,
+            "priority": poly_priority,
+        })
+
     return fallback
 
 

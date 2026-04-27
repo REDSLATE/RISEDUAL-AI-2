@@ -306,6 +306,101 @@ async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Opti
 
 
 # ─────────────────────────────────────────────
+#  POLYGON.IO QUOTE & DAILY
+# ─────────────────────────────────────────────
+# Polygon free tier: 5 req/min. The pool dedupes via 5-min cache
+# so this rarely hits the limit on real workloads. Paid tiers
+# (Starter $29/mo) are unlimited. Field mapping mirrors Finnhub
+# so downstream callers don't need to know which provider served.
+POLYGON_BASE = "https://api.polygon.io"
+
+
+async def _polygon_quote(api_key: str, symbol: str) -> Optional[dict]:
+    """Fetch a Polygon ticker snapshot and reshape to the pool's
+    common quote schema. Returns ``None`` if the snapshot has no
+    last-trade price (closed/delisted ticker)."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{POLYGON_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}",
+                params={"apiKey": api_key},
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Polygon HTTP {resp.status_code}")
+            data = resp.json() or {}
+            ticker = data.get("ticker") or {}
+            day = ticker.get("day") or {}
+            prev = ticker.get("prevDay") or {}
+            last = ticker.get("lastTrade") or {}
+            # Prefer last-trade price, then today's close, then prev close.
+            price = float(
+                last.get("p")
+                or day.get("c")
+                or prev.get("c")
+                or 0
+            )
+            if price <= 0:
+                raise RuntimeError("No price data")
+            prev_close = float(prev.get("c", 0))
+            change = round(price - prev_close, 2) if prev_close > 0 else 0
+            change_pct = round((change / prev_close * 100), 2) if prev_close > 0 else 0
+            return {
+                "symbol": symbol.upper(),
+                "price": round(price, 2),
+                "change": change,
+                "change_pct": change_pct,
+                "volume": int(day.get("v", 0)),
+                "open": round(float(day.get("o", 0)), 2),
+                "high": round(float(day.get("h", 0)), 2),
+                "low": round(float(day.get("l", 0)), 2),
+                "prev_close": round(prev_close, 2),
+                "source": "polygon",
+            }
+    except Exception as e:
+        raise RuntimeError(f"Polygon quote failed: {e}")
+
+
+async def _polygon_daily(api_key: str, symbol: str, days: int = 90) -> Optional[list[dict]]:
+    """Daily OHLCV bars from Polygon's aggregates endpoint, sorted
+    newest-first to match the other providers in this module."""
+    try:
+        end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{POLYGON_BASE}/v2/aggs/ticker/{symbol.upper()}/range/1/day/{start}/{end}",
+                params={
+                    "apiKey": api_key,
+                    "adjusted": "true",
+                    "sort": "desc",
+                    "limit": min(days, 500),
+                },
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Polygon HTTP {resp.status_code}")
+            data = resp.json() or {}
+            results = data.get("results") or []
+            if not results:
+                raise RuntimeError("No daily data")
+            rows = []
+            for bar in results:
+                ts = bar.get("t")
+                if ts is None:
+                    continue
+                rows.append({
+                    "date": datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime("%Y-%m-%d"),
+                    "open": round(float(bar.get("o", 0)), 2),
+                    "high": round(float(bar.get("h", 0)), 2),
+                    "low": round(float(bar.get("l", 0)), 2),
+                    "close": round(float(bar.get("c", 0)), 2),
+                    "volume": int(bar.get("v", 0)),
+                })
+            return rows
+    except Exception as e:
+        raise RuntimeError(f"Polygon daily failed: {e}")
+
+
+# ─────────────────────────────────────────────
 #  PROVIDER DISPATCH
 # ─────────────────────────────────────────────
 
@@ -318,6 +413,8 @@ async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> dict:
         result = await _twelvedata_quote(provider.api_key, symbol)
     elif provider.provider == "marketstack":
         result = await _marketstack_quote(provider.api_key, symbol)
+    elif provider.provider == "polygon":
+        result = await _polygon_quote(provider.api_key, symbol)
     else:
         raise RuntimeError(f"Unknown market provider: {provider.provider}")
     if not result:
@@ -338,6 +435,9 @@ async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str)
     elif provider.provider == "marketstack":
         size = 365 if outputsize == "full" else 90
         result = await _marketstack_daily(provider.api_key, symbol, size)
+    elif provider.provider == "polygon":
+        days = 365 if outputsize == "full" else 90
+        result = await _polygon_daily(provider.api_key, symbol, days)
     else:
         raise RuntimeError(f"Unknown market provider: {provider.provider}")
     if not result:

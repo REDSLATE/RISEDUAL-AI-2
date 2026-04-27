@@ -211,6 +211,15 @@ const MLPaperPnL = () => {
                           {(t.confidence * 100).toFixed(0)}%
                         </span>
                       )}
+                      {t.data_source === 'backtest' && (
+                        <Badge
+                          className="ml-1.5 bg-slate-700/60 text-slate-300 border-0 text-[9px] py-0 px-1.5"
+                          title={`Backtest depth (pre-${data?.data_floor_date || '2026-04-23'} historical replay)`}
+                          data-testid={`ml-trade-${i}-backtest-badge`}
+                        >
+                          Backtest
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">

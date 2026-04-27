@@ -176,6 +176,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services.crypto_signal_audit import ensure_indexes as _crypto_audit_indexes
         from services.research_shadow_logger import ensure_indexes as _shadow_indexes
         from services.patent_watch_service import ensure_indexes as _patent_watch_indexes
+        from services.ml_paper_trader import ensure_indexes as _ml_paper_indexes
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
@@ -183,6 +184,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_crypto_audit_indexes(db))
             loop.create_task(_shadow_indexes(db))
             loop.create_task(_patent_watch_indexes())
+            loop.create_task(_ml_paper_indexes(db))
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:

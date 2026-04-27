@@ -226,10 +226,11 @@ current live deploy queue.
   **Financial Modeling Prep** for fundamentals + insider data — could
   retire the QuiverQuant direct dep if quality acceptable. See chat
   thread "Which app? This one?" for full analysis.
-- **Pro Max tier UI wiring.** Backend checkout path is live
-  (`tier=pro_max` → $99). Frontend Pricing card still POSTs
-  `plan=monthly` — need to add the `tier` field to the Pro Max
-  `Subscribe` button handler.
+- ~~**Pro Max tier UI wiring.**~~ ✅ DONE (verified 2026-02-08).
+  Backend accepts `pro_max` + `pro_max_annual`, frontend
+  `SubscriptionPricing.jsx` posts `selectedTier.key` correctly,
+  Stripe live checkout URLs return for both. The earlier
+  `plan=monthly` issue was already resolved in a prior pass.
 
 ---
 

@@ -33,6 +33,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
+from pymongo.errors import DuplicateKeyError
 
 from risedual_core.ml.calibration import half_kelly_position
 from risedual_core.schemas.market import FeaturesSnapshot, SignalResult
@@ -49,6 +50,54 @@ _MIN_PAPER_CONFIDENCE: float = 0.55
 
 # Regimes eligible for paper trades
 _TRADEABLE_REGIMES: frozenset[str] = frozenset({"bull", "bear", "sideways", "trending_up", "trending_down", "unknown", ""})
+
+
+# ── Idempotency: dedupe-on-insert key ─────────────────────────────────────────
+# Forensic context: 2026-04-16 19:18:20 + 19:18:32 produced two
+# `paper_trades` rows for AAPL/down with identical entry_price (266.43),
+# shares (38.17), and position_size_usd (10170.35) twelve seconds apart.
+# That's the same prediction firing twice — a retry / fanout bug. We
+# block the dupes with a Mongo unique partial index on
+#   (ticker, direction, prediction_id, time_bucket)
+# where ``time_bucket = floor(opened_at_unix / 60)`` — i.e. one trade
+# per (symbol, direction, prediction) per minute, max.
+#
+# Partial filter: index applies only when prediction_id exists, so
+# legacy / external rows without one don't error on insert.
+_TIME_BUCKET_SECONDS: int = 60
+
+
+def _time_bucket_for(ts: datetime) -> int:
+    """Floor ``ts`` to a 60-second bucket (UTC) for the dedupe key.
+    A minute is wider than the observed 12-second twin window but
+    tight enough that legitimate same-symbol re-entries (which we
+    already gate at minute-level cadence elsewhere) aren't blocked."""
+    return int(ts.timestamp() // _TIME_BUCKET_SECONDS)
+
+
+async def ensure_indexes(db: Any) -> None:
+    """Best-effort idempotency index. Called once at startup from
+    route_registry; safe to call repeatedly. Partial filter means
+    rows missing prediction_id (legacy, external, manual) bypass
+    the constraint entirely."""
+    if db is None:
+        return
+    try:
+        await db["paper_trades"].create_index(
+            [
+                ("ticker", 1),
+                ("direction", 1),
+                ("prediction_id", 1),
+                ("time_bucket", 1),
+            ],
+            name="paper_trades_idempotency",
+            unique=True,
+            partialFilterExpression={
+                "prediction_id": {"$exists": True, "$type": "string"},
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[ml_paper] idempotency index create failed: %s", exc)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -210,6 +259,10 @@ async def maybe_paper_trade(
         "regime": regime,
         "status": "open",
         "opened_at": now,
+        # Idempotency key — see _time_bucket_for / ensure_indexes.
+        # Same (ticker, direction, prediction_id) within 60s is a
+        # duplicate by construction.
+        "time_bucket": _time_bucket_for(now),
         "closed_at": None,
         "exit_price": None,
         "pnl_usd": None,
@@ -220,6 +273,28 @@ async def maybe_paper_trade(
 
     try:
         await db["paper_trades"].insert_one(trade_doc)
+    except DuplicateKeyError:
+        # Same prediction firing twice in the same minute — return
+        # the existing trade_id so the caller's workflow stays
+        # consistent (no new doc, no second exposure).
+        existing = await db["paper_trades"].find_one(
+            {
+                "ticker": ticker,
+                "direction": direction_val,
+                "prediction_id": signal.prediction_id,
+                "time_bucket": trade_doc["time_bucket"],
+            },
+            {"_id": 0, "trade_id": 1},
+        )
+        existing_id = (existing or {}).get("trade_id")
+        log.info(
+            "[ml_paper] Duplicate paper trade suppressed for %s %s "
+            "(prediction_id=%s, returning existing trade_id=%s)",
+            ticker, direction_val.upper(), signal.prediction_id, existing_id,
+        )
+        return existing_id
+
+    try:
         # Also upsert into positions collection for portfolio tracking
         await db["paper_positions"].update_one(
             {"ticker": ticker, "status": "open"},

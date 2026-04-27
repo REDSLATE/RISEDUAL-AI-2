@@ -334,6 +334,9 @@ async def get_ml_paper_trades(limit: int = 50) -> dict[str, Any]:
             if t.get(key):
                 t[key] = t[key].isoformat() if hasattr(t[key], "isoformat") else str(t[key])
 
+    from services.data_source_labeler import annotate, floor_date_iso
+    annotate(trades)
+
     # Summary stats
     total = await trades_coll.count_documents(ml_filter)
     open_count = await trades_coll.count_documents({**ml_filter, "status": "open"})
@@ -413,6 +416,9 @@ async def get_ml_paper_trades(limit: int = 50) -> dict[str, Any]:
         "summary": summary,
         "cumulative_pnl": cum_series,
         "position_sizing": sizing,
+        # Public-launch cutover date — UI tooltip uses this to
+        # explain when "Live" data starts. Backtest rows are pre-floor.
+        "data_floor_date": floor_date_iso(),
     }
 
 

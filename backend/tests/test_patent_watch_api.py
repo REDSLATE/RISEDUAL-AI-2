@@ -60,18 +60,23 @@ class TestPatentWatchConfig:
     """Test /api/admin/patents/config endpoint."""
 
     def test_config_returns_api_key_status(self, admin_session):
-        """GET /config returns api_key_configured=false since USPTO_API_KEY is not set."""
+        """GET /config exposes api_key_configured + api_base_url +
+        setup_url — never the actual key value. Whether the key is
+        configured depends on env, so we only assert the schema and
+        that the secret never leaks."""
         res = admin_session.get(f"{BASE_URL}/api/admin/patents/config")
         assert res.status_code == 200, f"Expected 200, got {res.status_code}"
         data = res.json()
-        
+
         # Verify expected fields
         assert "api_key_configured" in data, "Missing api_key_configured field"
         assert "api_base_url" in data, "Missing api_base_url field"
         assert "setup_url" in data, "Missing setup_url field"
-        
-        # USPTO_API_KEY is intentionally not set
-        assert data["api_key_configured"] is False, "Expected api_key_configured=false"
+
+        # Type-check the configured flag.
+        assert isinstance(data["api_key_configured"], bool)
+        # Critical: the actual key must never be returned.
+        assert "api_key" not in data, "Endpoint must not leak the key value"
         assert "uspto" in data["api_base_url"].lower(), "api_base_url should contain 'uspto'"
         assert "data.uspto.gov" in data["setup_url"], "setup_url should point to USPTO getting-started"
         
@@ -170,27 +175,42 @@ class TestPatentWatchRefresh:
     """Test /api/admin/patents/refresh/{id} endpoint."""
 
     def test_refresh_returns_missing_api_key_error(self, admin_session):
-        """POST /refresh/{id} returns error='missing_api_key' since USPTO_API_KEY is not set."""
-        # First create a query to refresh
+        """POST /refresh/{id} returns the well-defined response shape.
+
+        Whether the underlying call hits real USPTO depends on
+        whether USPTO_API_KEY is set in env. We accept either:
+          - missing_api_key (key unset, graceful short-circuit)
+          - error=None (key set, USPTO accepted the call)
+        Both prove the endpoint is wired correctly. Crucially we
+        never want a 500 or an HTTP error to leak through.
+        """
         create_res = admin_session.post(
             f"{BASE_URL}/api/admin/patents/queries",
             json={"label": "TEST_Refresh_Query", "assignee": "Microsoft"},
         )
         assert create_res.status_code == 200
         query_id = create_res.json()["query"]["id"]
-        
-        # Now refresh it
+
         refresh_res = admin_session.post(f"{BASE_URL}/api/admin/patents/refresh/{query_id}")
         assert refresh_res.status_code == 200, f"Expected 200, got {refresh_res.status_code}"
         data = refresh_res.json()
-        
-        # Verify graceful error response
+
+        # Schema is always present
         assert "fetched" in data, "Missing 'fetched' field"
         assert "error" in data, "Missing 'error' field"
-        assert data["fetched"] == 0, f"Expected fetched=0, got {data['fetched']}"
-        assert data["error"] == "missing_api_key", f"Expected error='missing_api_key', got {data['error']}"
-        
-        print(f"PASS: POST /refresh/{query_id} returns {{fetched:0, error:'missing_api_key'}}")
+        assert isinstance(data["fetched"], int)
+
+        # Either short-circuit or a real call — both are valid.
+        # 'missing_api_key' is the only acceptable error string here;
+        # any HTTP error (http_403, http_500, etc.) means the
+        # endpoint is misconfigured.
+        if data["error"] is not None:
+            assert data["error"] == "missing_api_key", (
+                f"Refresh returned unexpected error '{data['error']}'. "
+                f"Acceptable: None (key set) or 'missing_api_key' (key unset)."
+            )
+
+        print(f"PASS: POST /refresh/{query_id} returned {{fetched:{data['fetched']}, error:{data['error']!r}}}")
         return query_id
 
     def test_refresh_unknown_query_returns_error(self, admin_session):

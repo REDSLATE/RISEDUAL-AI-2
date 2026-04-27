@@ -25,6 +25,7 @@ from services.crypto_closer import close_expired_crypto_trades
 from services.crypto_adaptation_service import detect_crypto_adaptations
 from services.crypto_signal_audit import get_strategist_stats
 from services.crypto_shadow_research_stats import fetch_shadow_research_stats
+from services.crypto_sltp_expectancy import compute_sltp_expectancy
 from services.crypto_adversarial_stats import (
     DECISIONS_PAGE_LIMIT_DEFAULT,
     fetch_adversarial_stats,
@@ -379,3 +380,27 @@ async def adversarial_trades(
         symbol=symbol,
         only_closed=only_closed,
     )
+
+
+
+@router.get("/sltp-expectancy")
+async def crypto_sltp_expectancy(
+    request: Request,
+    days: int = 30,
+):
+    """Read-only SL/TP expectancy analytics over closed crypto
+    paper trades. Admin-only — surfaces in the AdminPanel as a
+    "data suggests..." tile.
+
+    No replay simulation, no auto-tune — see the service module
+    docstring for why we only project tighter brackets.
+
+    Query params:
+        days: lookback window (default 30, capped at 365).
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    days = max(1, min(int(days or 30), 365))
+    return await compute_sltp_expectancy(_db, window_days=days)

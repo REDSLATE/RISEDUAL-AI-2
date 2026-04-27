@@ -49,10 +49,15 @@ async def prediction_history(request: Request, feature: str = None, limit: int =
     if not is_pro_user(user):
         raise HTTPException(status_code=403, detail="Pro subscription required")
     predictions = await get_recent_predictions(db, feature, min(limit, 50))
+    # Attach derived data_source label (live vs backtest) so the
+    # UI can badge older rows. Read-only annotation; never touches DB.
+    from services.data_source_labeler import annotate, floor_date_iso
+    annotate(predictions)
     return {
         "predictions": predictions,
         "count": len(predictions),
         "pricing_freshness": PRICING_FRESHNESS,
+        "data_floor_date": floor_date_iso(),
     }
 
 
