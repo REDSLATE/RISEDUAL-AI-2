@@ -54,6 +54,52 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Tier-Readiness Aggregator Endpoint (Feb 26, 2026)
+
+Single-shot "am I clear to flip Council on yet?" answer for the
+operator. Aggregates four independent inputs into one payload so
+the operator doesn't have to cross-reference 4 dashboards when the
+moment to flip arrives.
+
+- **Backend** new `services/research_shadow_stats.py::fetch_tier_readiness`
+  pulls from:
+  1. `services.adversarial_core._read_phase()` — same env-driven
+     phase reader the live gating uses
+  2. `services.tier3_readiness.compute_tier3_score` +
+     `check_tier3_unlock` — composite 0-100 score + boolean +
+     human-readable blockers
+  3. `services.council_tier_gate.get_cached_council_stats` +
+     `council_tier_open_for_bucket` — uses the SAME 60s cache the
+     live modulator reads, so dashboard ↔ runtime parity is
+     guaranteed
+  4. `services.council_risk_modulator.COUNCIL_RISK_MODULATOR_ENABLED`
+     — env flag state surfaced for the "did I already flip it?"
+     check
+- **Composite flag** `ready_to_enable_council=true` only when:
+  Tier 3 unlocked AND Adversarial phase = "full" AND ≥1 Council
+  bucket is open.
+- **Per-bucket "reason" strings** — surfaces the MOST blocking
+  unmet threshold per bucket, not all three competing complaints.
+  Examples: "needs 12 more dissents", "win rate 50.0% needs to
+  clear 55%", "total Δ$ -$5.20 needs to clear $0.00".
+- **`next_steps[]` checklist** — operator-readable list of actions
+  pending. Includes the final "All gates green — set
+  COUNCIL_RISK_MODULATOR_ENABLED=true in .env and restart backend"
+  step that fires only when all upstream gates have passed.
+- **Endpoint** `GET /api/admin/shadow/tier-readiness` (admin-gated,
+  read-only — no flip button by design).
+- **Tests**: 5 new pytest cases covering empty-DB defaults, all
+  three blockers reported simultaneously, open-bucket counts +
+  composite ready=true, distinct reason strings per blocker type,
+  and adversarial-bucket exclusion (only council buckets surface).
+- **Live verified**: returns coherent state for the current
+  preview — Tier 3 at 48.5/100 with 5 specific blockers,
+  Adversarial in `shadow` phase, 1 council bucket needing 30 more
+  dissents, 3 actionable next-steps strings.
+
+**Tests + lint**: 90/90 in shadow file (was 88), 166/166 across
+all related suites. Lint clean across modified files.
+
 ### Council Risk Modulator + Tier Gate (Feb 26, 2026)
 
 Post-Tier-3 integration scaffolding. Lets Council influence Adversarial

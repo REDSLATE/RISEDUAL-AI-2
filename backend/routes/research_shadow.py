@@ -29,6 +29,7 @@ from services.research_shadow_stats import (
     fetch_recent_shadow_decisions,
     fetch_regime_stats,
     fetch_shadow_stats,
+    fetch_tier_readiness,
 )
 
 logger = logging.getLogger(__name__)
@@ -180,3 +181,24 @@ async def shadow_adaptation_summary(
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await fetch_adaptation_shadow_summary(_db, days=days)
+
+
+@router.get("/tier-readiness")
+async def shadow_tier_readiness(request: Request) -> dict:
+    """Single-shot "am I clear to flip Council on yet?" answer.
+
+    Aggregates Adversarial phase, Tier 3 progress, Council bucket
+    states, and the env flag into one operator-grade payload.
+    Returns ``ready_to_enable_council=true`` only when ALL three
+    upstream gates are open. Read-only — no flip button. The
+    operator does the flip via .env edit + supervisorctl restart.
+
+    Sees the same Council stats the modulator sees at runtime
+    (shared 60s cache), so there's no drift between "what the
+    dashboard says is ready" and "what the gate would actually do".
+    """
+    _require_db()
+    user = await get_current_user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await fetch_tier_readiness(_db)

@@ -620,3 +620,196 @@ async def fetch_adaptation_shadow_summary(
         out["error"] = str(exc)[:120]
 
     return out
+
+
+# ── Tier-readiness aggregator (operator gate-flip readiness) ──────────────────
+
+
+async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
+    """Single-shot "am I clear to flip Council on yet?" answer.
+
+    Aggregates four independent inputs into one operator-grade
+    readiness payload:
+
+    1. **Adversarial phase** — read from env via the same
+       ``adversarial_core._read_phase()`` helper that drives live
+       gating. Values: ``shadow``, ``risk_only``, ``veto``, ``full``.
+    2. **Tier 3 progress** — composite 0-100 score from
+       ``compute_tier3_score`` plus the boolean ``unlocked`` flag.
+       Tier 3 is the prerequisite that unlocks the Adversarial
+       phase progression in the first place.
+    3. **Council bucket gate state** per ``(engine, asset_type)`` —
+       reuses the same per-bucket gate function the modulator
+       calls at runtime, so this readiness check returns the
+       SAME answer the actual gate would. No drift between
+       "what the dashboard says" and "what the modulator does".
+    4. **Modulator env flag** — reports current value of
+       ``COUNCIL_RISK_MODULATOR_ENABLED`` so an operator can see
+       at a glance whether they've already flipped it (or
+       forgotten to flip it after meeting the readiness gates).
+
+    The composite ``ready_to_enable_council`` boolean is true ONLY
+    when:
+        - Tier 3 unlocked, AND
+        - Adversarial phase == "full", AND
+        - At least one Council bucket is open.
+
+    Read-only — no flip button. The operator does the flip via
+    .env edit + ``supervisorctl restart backend``.
+    """
+    from services.adversarial_core import _read_phase
+    from services.council_risk_modulator import (
+        COUNCIL_RISK_MODULATOR_ENABLED,
+    )
+    from services.council_tier_gate import (
+        MIN_COUNCIL_DISSENTS,
+        MIN_COUNCIL_TOTAL_DELTA,
+        MIN_COUNCIL_WIN_RATE,
+        council_tier_open_for_bucket,
+        get_cached_council_stats,
+    )
+    from services.tier3_readiness import (
+        build_tier3_stats,
+        check_tier3_unlock,
+        compute_tier3_score,
+    )
+
+    # ── 1. Adversarial phase ──────────────────────────────────
+    try:
+        adversarial_phase = _read_phase()
+    except Exception:  # noqa: BLE001
+        adversarial_phase = "shadow"
+
+    # ── 2. Tier 3 stats + unlock flag ─────────────────────────
+    tier3_progress_pct = 0.0
+    tier3_unlocked = False
+    tier3_blockers: list[str] = []
+    try:
+        if db is not None:
+            t3_stats = await build_tier3_stats(db, days=30)
+            tier3_progress_pct = round(compute_tier3_score(t3_stats), 2)
+            unlock_view = check_tier3_unlock(t3_stats)
+            tier3_unlocked = bool(unlock_view.get("unlocked"))
+            tier3_blockers = list(unlock_view.get("reasons") or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[tier-readiness] tier3 stats failed: %s", exc)
+        tier3_blockers = ["tier3_stats_unavailable"]
+
+    # ── 3. Council bucket states ──────────────────────────────
+    # Use the live cache so this endpoint sees the SAME data the
+    # modulator would see at runtime (no drift between dashboard
+    # and gate).
+    try:
+        shadow_stats = await get_cached_council_stats(db) if db is not None else {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[tier-readiness] council stats failed: %s", exc)
+        shadow_stats = {}
+
+    council_buckets: list[dict] = []
+    any_bucket_open = False
+    for bucket in (shadow_stats.get("buckets") or []):
+        engine = bucket.get("shadow_engine")
+        asset_type = bucket.get("asset_type")
+        if engine != "council":
+            # Tier-readiness is council-specific; adversarial-shadow
+            # buckets aren't relevant to the flip decision.
+            continue
+
+        is_open = council_tier_open_for_bucket(
+            shadow_stats, engine=engine, asset_type=asset_type,
+        )
+        if is_open:
+            any_bucket_open = True
+
+        dissent_count = int(bucket.get("dissent_count") or 0)
+        win_rate = bucket.get("win_rate")
+        total_delta = float(bucket.get("total_delta_usd") or 0.0)
+
+        # Build a human-readable "needs N more X" string. Picks the
+        # MOST blocking unmet threshold so the operator sees one
+        # clear next step, not three competing complaints.
+        if is_open:
+            reason = "actionable — gate open"
+            needed_dissents = 0
+        else:
+            needed_dissents = max(0, MIN_COUNCIL_DISSENTS - dissent_count)
+            if needed_dissents > 0:
+                reason = f"needs {needed_dissents} more dissents"
+            elif (win_rate or 0.0) <= MIN_COUNCIL_WIN_RATE:
+                wr_pct = (win_rate or 0.0) * 100
+                target_pct = MIN_COUNCIL_WIN_RATE * 100
+                reason = (
+                    f"win rate {wr_pct:.1f}% needs to clear {target_pct:.0f}%"
+                )
+            elif total_delta <= MIN_COUNCIL_TOTAL_DELTA:
+                reason = (
+                    f"total Δ$ {total_delta:.2f} needs to clear "
+                    f"${MIN_COUNCIL_TOTAL_DELTA:.2f}"
+                )
+            else:
+                reason = "all thresholds met but gate reports closed"
+
+        council_buckets.append({
+            "engine": engine,
+            "asset_type": asset_type,
+            "open": is_open,
+            "dissent_count": dissent_count,
+            "needed_dissents": needed_dissents,
+            "win_rate": (
+                round(float(win_rate), 4) if win_rate is not None else None
+            ),
+            "total_delta_usd": round(total_delta, 4),
+            "reason": reason,
+        })
+
+    # Stable ordering: open buckets first (operator sees them at top),
+    # then by dissent_count desc.
+    council_buckets.sort(
+        key=lambda b: (not b["open"], -b["dissent_count"]),
+    )
+
+    # ── 4. Composite readiness flag ───────────────────────────
+    ready_to_enable_council = (
+        tier3_unlocked
+        and adversarial_phase == "full"
+        and any_bucket_open
+    )
+
+    # Build the operator-readable "what's blocking the flip" list
+    # so the UI can render a clean checklist without reverse-
+    # engineering the boolean.
+    next_steps: list[str] = []
+    if not tier3_unlocked:
+        next_steps.append(
+            f"Tier 3 not yet unlocked ({tier3_progress_pct:.1f}/100). "
+            f"Blockers: {', '.join(tier3_blockers) or 'unknown'}"
+        )
+    if adversarial_phase != "full":
+        next_steps.append(
+            f"Adversarial phase is '{adversarial_phase}', needs to "
+            f"reach 'full' before Council can ride along"
+        )
+    if not any_bucket_open:
+        next_steps.append(
+            "No Council bucket has cleared all 3 thresholds yet "
+            "(see council_buckets[].reason)"
+        )
+    if (
+        ready_to_enable_council
+        and not COUNCIL_RISK_MODULATOR_ENABLED
+    ):
+        next_steps.append(
+            "All gates green — set COUNCIL_RISK_MODULATOR_ENABLED=true "
+            "in .env and restart backend"
+        )
+
+    return {
+        "council_modulator_enabled": COUNCIL_RISK_MODULATOR_ENABLED,
+        "adversarial_phase": adversarial_phase,
+        "tier3_progress_pct": tier3_progress_pct,
+        "tier3_unlocked": tier3_unlocked,
+        "tier3_blockers": tier3_blockers,
+        "ready_to_enable_council": ready_to_enable_council,
+        "council_buckets": council_buckets,
+        "next_steps": next_steps,
+    }

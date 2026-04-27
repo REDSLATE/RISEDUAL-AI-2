@@ -851,6 +851,168 @@ async def test_regime_stats_empty_db_safe():
     assert out["buckets"] == []
 
 
+# ── Tier-readiness aggregator ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tier_readiness_empty_db_returns_default_closed():
+    """No DB → all gates closed, no buckets, ready=False."""
+    from services.research_shadow_stats import fetch_tier_readiness
+    out = await fetch_tier_readiness(None)
+    assert out["ready_to_enable_council"] is False
+    assert out["council_buckets"] == []
+    assert out["tier3_progress_pct"] == 0.0
+    assert out["tier3_unlocked"] is False
+    # Adversarial phase comes from env (defaults to "shadow"); no DB
+    # dependency.
+    assert out["adversarial_phase"] in ("shadow", "risk_only", "veto", "full")
+
+
+@pytest.mark.asyncio
+async def test_tier_readiness_reports_all_three_blockers(monkeypatch):
+    """When tier3 closed, phase != full, and no bucket open, the
+    next_steps list should call out all three blockers separately."""
+    import services.research_shadow_stats as rss
+    from services.research_shadow_stats import fetch_tier_readiness
+
+    async def _fake_t3_stats(*_a, **_kw):
+        return {"days": 5, "total_trades": 20}  # well under thresholds
+
+    async def _fake_council_stats(*_a, **_kw):
+        return {"buckets": []}
+
+    monkeypatch.setattr(
+        "services.tier3_readiness.build_tier3_stats", _fake_t3_stats,
+    )
+    monkeypatch.setattr(
+        "services.council_tier_gate.get_cached_council_stats",
+        _fake_council_stats,
+    )
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "shadow")
+
+    out = await fetch_tier_readiness(object())  # any non-None db
+    assert out["ready_to_enable_council"] is False
+    assert len(out["next_steps"]) >= 3  # tier3 + phase + no buckets
+    # At least one next-step should mention each blocker.
+    joined = " ".join(out["next_steps"]).lower()
+    assert "tier 3" in joined
+    assert "phase" in joined
+    assert "council bucket" in joined
+
+
+@pytest.mark.asyncio
+async def test_tier_readiness_open_bucket_counts(monkeypatch):
+    """Bucket meeting all 3 thresholds should report open=True with
+    needed_dissents=0 and 'actionable' reason."""
+    from services.research_shadow_stats import fetch_tier_readiness
+
+    async def _fake_t3_stats(*_a, **_kw):
+        # Synthetic Tier-3-unlocked stats.
+        return {
+            "days": 35, "total_trades": 150, "high_conf_trades": 60,
+            "high_conf_win_rate": 0.80, "avg_confidence": 70.0,
+            "strong_miss_rate": 0.05, "last_7d_win_rate": 0.65,
+            "overall_win_rate": 0.62, "clamp_total": 0,
+        }
+
+    async def _fake_council_stats(*_a, **_kw):
+        return {"buckets": [{
+            "shadow_engine": "council",
+            "asset_type": "crypto",
+            "dissent_count": 50,
+            "win_rate": 0.65,
+            "total_delta_usd": 25.5,
+            "scored_dissent_count": 50,
+            "actionable": True,
+        }]}
+
+    monkeypatch.setattr(
+        "services.tier3_readiness.build_tier3_stats", _fake_t3_stats,
+    )
+    monkeypatch.setattr(
+        "services.council_tier_gate.get_cached_council_stats",
+        _fake_council_stats,
+    )
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "full")
+
+    out = await fetch_tier_readiness(object())
+    assert out["tier3_unlocked"] is True
+    assert out["adversarial_phase"] == "full"
+    assert len(out["council_buckets"]) == 1
+    bucket = out["council_buckets"][0]
+    assert bucket["open"] is True
+    assert bucket["needed_dissents"] == 0
+    assert "actionable" in bucket["reason"]
+    assert out["ready_to_enable_council"] is True
+
+
+@pytest.mark.asyncio
+async def test_tier_readiness_reason_strings_helpful_for_each_blocker(monkeypatch):
+    """Each unmet threshold should produce a distinct, actionable
+    'reason' string — no generic 'closed' fallback."""
+    from services.research_shadow_stats import fetch_tier_readiness
+
+    async def _fake_t3_stats(*_a, **_kw):
+        return {"days": 5}
+
+    async def _fake_council_stats(*_a, **_kw):
+        return {"buckets": [
+            # Bucket A: just dissent count low.
+            {"shadow_engine": "council", "asset_type": "crypto",
+             "dissent_count": 18, "win_rate": 0.7, "total_delta_usd": 50},
+            # Bucket B: dissents enough, win rate at floor.
+            {"shadow_engine": "council", "asset_type": "stock",
+             "dissent_count": 35, "win_rate": 0.50, "total_delta_usd": 50},
+        ]}
+
+    monkeypatch.setattr(
+        "services.tier3_readiness.build_tier3_stats", _fake_t3_stats,
+    )
+    monkeypatch.setattr(
+        "services.council_tier_gate.get_cached_council_stats",
+        _fake_council_stats,
+    )
+
+    out = await fetch_tier_readiness(object())
+    crypto = next(b for b in out["council_buckets"] if b["asset_type"] == "crypto")
+    stock = next(b for b in out["council_buckets"] if b["asset_type"] == "stock")
+    assert crypto["needed_dissents"] == 12  # 30-18
+    assert "12 more dissents" in crypto["reason"]
+    assert stock["needed_dissents"] == 0
+    assert "win rate" in stock["reason"]
+
+
+@pytest.mark.asyncio
+async def test_tier_readiness_ignores_non_council_buckets(monkeypatch):
+    """Adversarial-shadow buckets (engine=adversarial) shouldn't
+    appear in council_buckets — they're not relevant to the
+    Council flip decision."""
+    from services.research_shadow_stats import fetch_tier_readiness
+
+    async def _fake_t3_stats(*_a, **_kw):
+        return {}
+
+    async def _fake_council_stats(*_a, **_kw):
+        return {"buckets": [
+            {"shadow_engine": "adversarial", "asset_type": "crypto",
+             "dissent_count": 100, "win_rate": 0.9, "total_delta_usd": 500},
+            {"shadow_engine": "council", "asset_type": "crypto",
+             "dissent_count": 5, "win_rate": 0.0, "total_delta_usd": 0},
+        ]}
+
+    monkeypatch.setattr(
+        "services.tier3_readiness.build_tier3_stats", _fake_t3_stats,
+    )
+    monkeypatch.setattr(
+        "services.council_tier_gate.get_cached_council_stats",
+        _fake_council_stats,
+    )
+
+    out = await fetch_tier_readiness(object())
+    engines = [b["engine"] for b in out["council_buckets"]]
+    assert engines == ["council"]  # adversarial filtered out
+
+
 # ── Council LLM consensus (v2) ────────────────────────────────────────────────
 
 
