@@ -1305,6 +1305,58 @@ queue into a timestamped "Shipped" block.
 
 ## 8. Changelog
 
+### 2026-04-27 — Adversarial Decision Core (Bull / Bear / Commander), DOUBLE-GATED
+* **Why**: The existing Strategist + Auditor pipeline is a two-stage
+  *consensus* system (both agents share the same indicators + the same
+  long-bias goal; combined confidence is averaged). True adversarial
+  AI requires agents with **mirror objective functions** so one of
+  them is always wrong — that's the only structure that produces
+  unambiguous ground truth on every closed trade.
+* **Implementation**:
+  - `services/adversarial_core.py` — pure-function Bull/Bear/Commander.
+    Bull profits if price goes UP (momentum + trend); Bear profits if
+    price goes DOWN/sideways from stretched levels (RSI overbought +
+    volatility). Resolver uses
+    `score = confidence × expected_r`; decision is LONG / SHORT_OR_AVOID
+    / NO_TRADE based on `edge_gap = bull_score - bear_score` against
+    a tunable threshold. Inputs are normalised to 0–1 ranges
+    (tanh-squashed momentum, vol-by-regime lookup) so heuristic
+    weights actually move with real data — fixed the silent-zero bug
+    in the user's original scaffold.
+  - `services/adversarial_logger.py` — async Motor writer +
+    outcome updater. New collection `crypto_adversarial_decision_log`
+    with 4 indexes (timestamp, symbol+timestamp, unique decision_id,
+    sparse trade_id). Pure-function `derive_winner` credits Bull/Bear
+    based on (decision, final_r); NO_TRADE is logged neutral so it
+    can't inflate either side's win rate.
+  - Hook in `crypto_paper_trader.run_crypto_symbol` after the
+    strategist/auditor + adaptation + web-research stages, before
+    the fill insert. Runs only if both gates open, persists the
+    `decision_id` on the trade row.
+  - Hook in `crypto_closer.run_crypto_closer` — when a trade
+    closes, look up `adversarial_decision_id` (if any) and patch
+    the decision row with realised `r_multiple` + winner/loser.
+* **Double gate (default-closed, by design)**:
+  1. **`CRYPTO_ADVERSARIAL_ENABLED=1`** — env flag, default off.
+  2. **ML Tier 3 unlocked** — read from
+     `services.tier3_readiness.check_tier3_unlock`. Both currently
+     fail-closed in production.
+* **Phase progression** (read from `CRYPTO_ADVERSARIAL_PHASE` env var):
+  `shadow` (default, log only) → `risk_only` (size multiplier only,
+  direction unchanged) → `veto` (may block fills) → `full` (may
+  override direction). Phase logic is honoured by the caller, not
+  enforced inside `adversarial_core` — so the module stays pure +
+  testable.
+* **Tests**: 39 new pytest cases (`test_adversarial_core.py`,
+  `test_adversarial_logger.py`) covering input normalisation, agent
+  math, resolver thresholds, double-gate enforcement, phase
+  validation, winner attribution, and Mongo failure swallowing.
+  Total: **216/216 crypto tests passing**.
+* **Production state**: collection + indexes live, both gates
+  closed (env flag unset, Tier 3 still locked) → adversarial layer
+  is silent. Will auto-activate (still in shadow mode) the moment
+  Tier 3 unlocks AND someone sets `CRYPTO_ADVERSARIAL_ENABLED=1`.
+
 ### 2026-04-26 — `/api/crypto/shadow-research-stats` endpoint (mid-flight expectancy split)
 * **Why**: With the shadow lane now collecting verdicts, we need a way
   to answer "is the LLM context actually moving the expectancy

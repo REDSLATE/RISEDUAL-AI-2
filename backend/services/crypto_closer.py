@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 from services.crypto_memory_writer import write_crypto_trade_memory
+from services.adversarial_logger import update_decision_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,22 @@ async def close_expired_crypto_trades(
             closed_trade.pop("_id", None)
 
             await write_crypto_trade_memory(db, closed_trade)
+
+            # Adversarial decision outcome attribution. ONLY runs if the
+            # trade actually carries a decision_id (i.e. the
+            # adversarial layer was active when the fill happened —
+            # both gates open). Failure here must NEVER block the
+            # close — wrapped + suppressed.
+            adv_id = closed_trade.get("adversarial_decision_id")
+            if adv_id:
+                try:
+                    await update_decision_outcome(db, adv_id, r_multiple)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[crypto-closer] adversarial outcome update failed "
+                        "for %s: %s", adv_id, exc,
+                    )
+
             closed += 1
             reasons[exit_reason] = reasons.get(exit_reason, 0) + 1
 

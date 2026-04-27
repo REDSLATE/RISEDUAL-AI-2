@@ -45,6 +45,8 @@ from services.crypto_adaptation_service import apply_crypto_adaptations_to_signa
 from services.crypto_signal_audit import log_adversarial_decision
 from services.research_router import fetch_or_skip as research_fetch_or_skip
 from services.web_research_service import get_shadow_verdict as default_shadow_fetcher
+from services.adversarial_core import run_adversarial_decision
+from services.adversarial_logger import log_adversarial_decision as log_adv_decision
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +235,27 @@ async def run_crypto_symbol(
             "[crypto-bot] shadow web research failed for %s: %s", symbol, exc
         )
 
+    # ── Adversarial Decision Layer (Bull / Bear / Commander) ──────────────
+    # Double-gated: (a) CRYPTO_ADVERSARIAL_ENABLED=1 env flag,
+    # (b) ML Tier 3 unlocked. Both default-closed. When either gate is
+    # shut, run_adversarial_decision returns None and we no-op here.
+    #
+    # SHADOW ONLY in the current phase: we LOG the Bull/Bear/Commander
+    # decision and attach decision_id to the trade row for post-close
+    # outcome attribution, but we do NOT use ``decision`` /
+    # ``risk_multiplier`` to alter the live fill. Promotion to
+    # risk_only / veto / full happens via CRYPTO_ADVERSARIAL_PHASE
+    # env var AFTER 50–100 logged decisions show meaningful edge.
+    adversarial_decision_id: Optional[str] = None
+    try:
+        adv_decision = await run_adversarial_decision(db, signal)
+        if adv_decision is not None:
+            adversarial_decision_id = await log_adv_decision(db, adv_decision)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[crypto-bot] adversarial decision failed for %s: %s", symbol, exc,
+        )
+
     # Live quote (crypto-only path — never touches equity get_quote).
     quote = await quote_provider(symbol)
     entry_price = float((quote or {}).get("price") or 0.0)
@@ -301,6 +324,13 @@ async def run_crypto_symbol(
         # time. Persisted on the trade row so post-hoc analysis can
         # correlate exit P&L with the LLM's stance/agreement at entry.
         "web_research_shadow_verdict": signal.get("web_research_shadow_verdict"),
+
+        # SHADOW ONLY — Adversarial (Bull/Bear/Commander) decision_id.
+        # Populated only when both gates open (CRYPTO_ADVERSARIAL_ENABLED=1
+        # AND ML Tier 3 unlocked). The closer reads this on close to
+        # patch ``crypto_adversarial_decision_log`` with final R-multiple
+        # so Bull/Bear winner attribution can be computed.
+        "adversarial_decision_id": adversarial_decision_id,
 
         # agent_agreement block — top-level for direct admin queries
         # without nested lookup.
