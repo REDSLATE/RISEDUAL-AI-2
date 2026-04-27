@@ -241,6 +241,12 @@ async def _fetch_from_uspto(query: Dict[str, Any]) -> Dict[str, Any]:
                 params=params,
                 headers=headers,
             )
+        if resp.status_code == 404:
+            # USPTO ODP returns 404 (not 200 with empty array) when
+            # a query has zero matches. Treat as "no rows, no error"
+            # so the operator UI doesn't flash a false alarm on a
+            # legitimately empty search.
+            return {"rows": [], "error": None}
         if resp.status_code != 200:
             return {
                 "rows": [],

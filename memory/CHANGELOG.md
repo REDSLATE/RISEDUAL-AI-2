@@ -1,5 +1,20 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (i) — Patent Watch seeded + 404 handling fix
+- Seeded 11 watch queries via API: 7 by-assignee (OpenAI,
+  Anthropic, DeepMind, Bridgewater, Renaissance, Two Sigma,
+  Citadel) + 4 by-keyword (`adversarial`, `trading agent`,
+  `options chain`, `multi-agent trading`).
+- 179 USPTO filings cached on initial refresh; daily 4:15 cron
+  will keep them fresh.
+- Fix: `_fetch_from_uspto` now treats HTTP 404 from USPTO ODP
+  as "zero matches" rather than an error condition. ODP
+  returns 404 (instead of 200 + empty array) on no-match
+  searches; the previous code surfaced this as `error="http_404"`
+  in the UI, which would have been a false alarm. New behaviour:
+  `error=null, fetched=0`. Test added (`test_fetch_from_uspto_404_means_zero_results_not_error`).
+- 21/21 unit tests now pass.
+
 ## 2026-02-08 (h) — Patent Watch live activation + USPTO ODP schema fix
 - Operator pasted real `USPTO_API_KEY` into `/app/backend/.env`
   and live USPTO fetches were wired up.

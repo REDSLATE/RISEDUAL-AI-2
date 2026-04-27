@@ -338,6 +338,34 @@ async def test_fetch_from_uspto_empty_query_short_circuits():
 
 
 @pytest.mark.asyncio
+async def test_fetch_from_uspto_404_means_zero_results_not_error(monkeypatch):
+    """USPTO ODP returns HTTP 404 on zero-match queries (instead of
+    200 + empty array). This must not surface as an error, or the
+    UI would flash a red banner on a perfectly legitimate empty
+    search."""
+    import types
+
+    class FakeResp:
+        status_code = 404
+
+        def json(self):
+            return {"code": "404", "message": "Not Found"}
+
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *_a, **_kw): return FakeResp()
+
+    monkeypatch.setattr(pws, "_USPTO_API_KEY", "sk_test")
+    monkeypatch.setattr(
+        pws.httpx, "AsyncClient",
+        lambda *a, **kw: FakeClient(),
+    )
+    out = await pws._fetch_from_uspto({"assignee": "NoSuchOrg12345"})
+    assert out == {"rows": [], "error": None}
+
+
+@pytest.mark.asyncio
 async def test_fetch_from_uspto_missing_key_short_circuits(monkeypatch):
     monkeypatch.setattr(pws, "_USPTO_API_KEY", "")
     out = await pws._fetch_from_uspto({"assignee": "OpenAI"})
