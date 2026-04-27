@@ -1,5 +1,29 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (f) — Patent Watch admin dashboard (P3 ready-to-schedule item C, COMPLETE)
+- New backend service `services/patent_watch_service.py`: USPTO ODP
+  client with X-API-KEY header support, query CRUD on
+  `patent_watch_queries`, results cache on `patent_watch_results`
+  (deduped on `(query_id, patent_number)`), graceful
+  `missing_api_key` short-circuit when `USPTO_API_KEY` env var
+  isn't set, refresh_all entry point for the daily scheduler.
+- New admin routes under `/api/admin/patents/{queries, config,
+  results, refresh/{id}}` (admin/owner only). `/config` reports
+  `api_key_configured` boolean without ever leaking the key.
+- New `PatentWatchPanel.jsx` admin UI tab: amber setup banner
+  when key missing, add-query form, saved-queries list with
+  per-row refresh + delete, results list with Google Patents
+  deep-links. Wired into AdminPanel under the Insights group
+  (`data-testid="admin-tab-patents"`).
+- Daily APScheduler hook `_run_patent_watch_refresh` at 4:15
+  every day; no-op when no queries exist.
+- Tests: 33/33 passing (18 unit + 15 API integration). No
+  regressions in the existing 166-pytest baseline.
+- **Operator action to activate fetches:** set
+  `USPTO_API_KEY=<your-key>` in `/app/backend/.env` (get one at
+  https://data.uspto.gov/apis/getting-started — MyUSPTO account
+  + ID.me linkage required) and restart backend.
+
 ## 2026-02-08 (e) — Backlog re-prioritization
 - **Dropped:** Alpaca crypto LIVE execution wiring — per user
   ("Alpaca can get crossed off as well. Doesn't seem it's

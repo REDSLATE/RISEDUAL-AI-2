@@ -248,9 +248,10 @@ current live deploy queue.
   no individual component > ~250 lines; preserve render output
   byte-for-byte (snapshot test pre/post).
 
-- **Patent Watch admin dashboard (USPTO PatentsView API).**
-  Track filings under owner / target inventors. Daily fetch,
-  Mongo cache, admin-only panel, link to PatentsView record.
+- ~~**Patent Watch admin dashboard (USPTO PatentsView API).**~~
+  ✅ DONE 2026-02-08. Backend service + admin routes + UI panel
+  + daily scheduler + 33 tests live. Activate by setting
+  `USPTO_API_KEY` in `.env`. See CHANGELOG entry (f).
 
 - ~~**Tier 1 Visual Polish.**~~ **DROPPED 2026-02-08 per user.**
   ("Don't worry about polishing anything. Just need this to
