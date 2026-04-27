@@ -177,6 +177,26 @@ async def _run_waitlist_auto_invite():
         logger.warning(f"Waitlist auto-invite failed: {e}")
 
 
+async def _run_research_shadow_scorer():
+    """Deferred counterfactual scorer for research_shadow_decisions.
+
+    Sweeps pending dissents whose asset-typed lookahead window has
+    elapsed and patches their tactical_score. Tier-3 firewall:
+    writes ONLY to research_shadow_decisions.
+    """
+    try:
+        from services.research_shadow_scorer import run_scorer_pass
+        result = await run_scorer_pass(db)
+        if result.get("scored", 0) > 0:
+            logger.info(
+                "[shadow-scorer] tick: scanned=%s scored=%s skipped=%s",
+                result.get("scanned"), result.get("scored"), result.get("skipped"),
+            )
+    except Exception as e:
+        logger.warning(f"Research shadow scorer failed: {e}")
+
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("=== RISEDUAL AI STARTUP BEGIN ===")
@@ -316,6 +336,10 @@ async def _start_schedulers():
         # ── Crypto adaptation detector (closed-loop learning, 6-hourly) ──
         scheduler.add_job(_run_crypto_adaptation_detector, 'interval', hours=6,
                           id='crypto_adaptation_detector', replace_existing=True)
+        # ── Research Shadow scorer (Tier-3 safe; writes only to
+        # research_shadow_decisions; deferred counterfactual scoring) ──
+        scheduler.add_job(_run_research_shadow_scorer, 'interval', seconds=60,
+                          id='research_shadow_scorer', replace_existing=True)
         # ── Autonomous trading agents (all narrate into agent_activity) ──
         # Trading agents — staggered so they don't hammer yfinance
         # simultaneously. Mean-rev runs most often; earnings only

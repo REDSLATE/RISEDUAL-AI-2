@@ -54,6 +54,112 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Research Shadow Layer — champion-challenger framework (Feb 26, 2026)
+
+Tier-3-safe silent-half framework letting an alternate engine ride
+along on every bot cycle, recording what it would have done without
+ever touching active fills, paper-trade collections, or the Tier-3
+gate. Backend complete + live verified. UI tile deferred to a
+follow-up PR.
+
+**Why it matters**: the only way to A/B a new engine (Council vs
+Adversarial) without contaminating the Tier-3 unlock math. Every
+piece of the framework is built around **disagreement-conditional
+accuracy** — when shadow dissents from active, who's right N trades
+later. Raw agreement rate is junk telemetry by construction and the
+framework deliberately doesn't surface it.
+
+- **New module** `services/research_shadow.py` — pure helpers:
+  `ShadowDecision` dataclass, `canonicalise_action()` (4-bucket
+  alphabet), `detect_dissent()`, asset-typed `FILL_COST_BPS` /
+  `TACTICAL_LOOKAHEAD_S` defaults, `should_fire_shadow()` gate
+  (rate-limit + cost-ceiling tiers full→degraded@80%→paused@100%),
+  `hypothetical_pnl_usd()` pure scoring math. `MIN_DISSENT_SAMPLES=30`
+  maturity guardrail mirrors `crypto_adversarial_stats` discipline.
+- **New module** `services/research_shadow_logger.py` — only allowed
+  writer to `research_shadow_decisions`. `ensure_indexes()`,
+  `insert_shadow_decision()`, `patch_scores()`, daily-cost
+  aggregation, last-shadow-ts query. Defensive try/except
+  everywhere — a logging failure must NEVER block a live trade.
+  Stamps `tier3_firewall=true` on every row as a defence-in-depth
+  marker.
+- **New module** `services/research_shadow_engines.py` —
+  `run_adversarial_shadow()` wraps `adversarial_core.run_adversarial_decision`
+  in shadow mode (returns "gates_closed" thesis when Tier-3 hasn't
+  unlocked). `run_council_shadow()` v1: deterministic 3-rule
+  consensus (RSI + 5-bar momentum + volume confirmation). Zero LLM
+  cost in v1; v2 will swap in real multi-LLM consensus once cost
+  monitoring proves stable. `fire_shadow()` is the entrypoint —
+  fire-and-forget via `asyncio.create_task` from bot loops, broad
+  try/except wrapper at the top level.
+- **New module** `services/research_shadow_scorer.py` — APScheduler
+  worker registered every 60s. Two pure scoring helpers:
+  `compute_tactical_score()` (asset-typed lookahead window — 30min
+  for stock/crypto, 4h for options to handle theta), and
+  `compute_strategic_score()` for the mid-trade exit dissent case
+  (shadow said HOLD while active closed, would shadow have ridden
+  the winner longer?). Idempotent: re-running on already-scored
+  rows is a no-op.
+- **New module** `services/research_shadow_stats.py` — pure stats
+  reducer + Mongo glue. Buckets by `(shadow_engine, asset_type)`.
+  Three operator metrics: disagreement-conditional win rate,
+  scored dissent count + actionable boolean, total $ delta.
+- **New routes** in `routes/research_shadow.py`:
+  - `GET /api/admin/shadow/stats` — aggregated buckets + maturity flag
+  - `GET /api/admin/shadow/decisions` — paginated raw feed (newest first)
+  - `GET /api/admin/shadow/cost-budget` — per-bot 24h LLM spend +
+    full/degraded/paused tier classification
+  All admin-gated, hard-cap on `limit` at 200, datetimes ISO-stringified.
+- **Wire-in points**:
+  - Crypto: `crypto_paper_trader.py::run_crypto_symbol` — env-driven
+    via `CRYPTO_RESEARCH_SHADOW_ENGINE` (no per-symbol bot doc on
+    crypto fleet today). Fires for both LONG and HOLD final
+    directions, captures the entry decision.
+  - Equity: `trading_bot_service.py::execute_signal` — per-bot via
+    `bot.shadow_engine` field on `trading_bots` doc. Respects
+    `bot.shadow_paused` for admin-level kill switch.
+- **Scheduler**: `_run_research_shadow_scorer` registered at 60s
+  interval in `server.py:_start_schedulers`.
+- **Tests**:
+  - `tests/test_research_shadow.py` — 34 cases covering pure
+    helpers, dissent detection, gate logic, PnL math, Council v1
+    consensus, stats reducer maturity guardrail, scorer pure
+    helpers, fire_shadow defensive behaviour.
+  - `tests/test_shadow_tier3_isolation.py` — 3 non-negotiable
+    firewall regression tests using a tracking Mongo stub.
+    Verifies 100 synthetic shadow inserts touch ZERO of the
+    seven forbidden Tier-3 collections (`paper_trades`,
+    `crypto_paper_trades`, `prediction_tracker`, `trading_bots`,
+    `crypto_adversarial_decision_log`, `ml_predictions`,
+    `ml_paper_trades`). Verifies the deferred scorer's
+    `patch_scores` only writes back to the shadow collection.
+  - 37/37 green; 110/110 across shadow + adversarial regression.
+- **Live verified end-to-end** on the deployed preview:
+  - Set `CRYPTO_RESEARCH_SHADOW_ENGINE=adversarial`, restarted
+    backend, triggered manual `/api/crypto/paper-bot/run`.
+  - 3 shadow rows persisted in `research_shadow_decisions` for the
+    BTC/ETH/SOL fleet run.
+  - 1 dissent caught: SOL active=SHORT vs shadow=HOLD
+    (`is_dissent=true`, `tier3_firewall=true`).
+  - Active SOL SHORT trade fired normally to `crypto_paper_trades`
+    (105 → 106).
+  - `crypto_adversarial_decision_log` stayed at 0 (Tier-3 gate
+    still closed, as designed — shadow didn't force it open).
+  - `/api/admin/shadow/stats` returns the live bucket with
+    `actionable=false, scored_dissent_count=0` (lookahead window
+    not yet elapsed).
+  - Scorer pass runs cleanly on the live DB
+    (`{'scanned': 0, 'scored': 0, 'skipped': 0}` — expected, dissent
+    is too fresh).
+- **Operator config**:
+  - Crypto: `CRYPTO_RESEARCH_SHADOW_ENGINE=none|adversarial|council`
+    in `.env` (currently set to `adversarial` for the crypto fleet).
+  - Equity: `db.trading_bots.update_one({...}, {$set:
+    {shadow_engine: "adversarial", shadow_paused: false}})`.
+  - Tunables: `SHADOW_FILL_COST_BPS_{STOCK,CRYPTO,OPTIONS}`,
+    `SHADOW_TACTICAL_LOOKAHEAD_*_S`, `SHADOW_MIN_DISSENT_SAMPLES`,
+    `SHADOW_COST_CEILING_USD_PER_DAY`, `SHADOW_LLM_MIN_GAP_S`.
+
 ### Adversarial Debug Endpoints — Decisions + Joined Trades View (Feb 26, 2026)
 Completed the two debug endpoints requested by the user from their
 "no-barriers" diff. Operators can now inspect Bull/Bear/Commander

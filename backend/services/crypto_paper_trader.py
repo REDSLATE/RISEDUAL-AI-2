@@ -300,6 +300,44 @@ async def run_crypto_symbol(
                 final_direction = "HOLD"
                 adversarial_action = "veto_block"
 
+    # ── Research Shadow Layer ─────────────────────────────────────────────
+    # Champion-challenger: an alternate engine rides along on every
+    # cycle and records what it would have done. Fire-and-forget —
+    # NEVER block the active path, NEVER raise out. Env-driven for
+    # the fleet-wide crypto bot (per-symbol bot docs don't exist on
+    # this lane today).
+    #
+    # Tier-3 firewall: shadow code only writes to
+    # ``research_shadow_decisions``. See services/research_shadow.py
+    # for the full firewall ruleset.
+    import os as _os_shadow
+    _shadow_engine = _os_shadow.environ.get("CRYPTO_RESEARCH_SHADOW_ENGINE", "none")
+    if _shadow_engine in ("adversarial", "council"):
+        try:
+            import asyncio as _asyncio_shadow
+            from services.research_shadow_engines import fire_shadow as _fire_shadow
+            # Use the most recent bar as a price proxy — keeps the HOLD
+            # branch from issuing an extra quote call.
+            _mid_price_shadow = float(bars[-1]) if bars else 0.0
+            _asyncio_shadow.create_task(_fire_shadow(
+                db,
+                bot_id="crypto_fleet",
+                user_id="system",
+                symbol=symbol,
+                asset_type="crypto",
+                decision_phase="entry" if final_direction != "HOLD" else "cycle",
+                active_engine="crypto_strategist",
+                active_action=final_direction,
+                shadow_engine=_shadow_engine,
+                signal=signal,
+                mid_price=_mid_price_shadow,
+            ))
+        except Exception as _shadow_exc:  # noqa: BLE001
+            logger.warning(
+                "[crypto-bot] shadow fire-and-forget setup failed for %s: %s",
+                symbol, _shadow_exc,
+            )
+
     # ── Final HOLD short-circuit ──────────────────────────────────────────
     # Either the strategist said HOLD and no `full`-phase override
     # triggered, OR a veto-phase Commander blocked the fill.

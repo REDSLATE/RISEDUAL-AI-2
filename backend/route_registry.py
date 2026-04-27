@@ -68,6 +68,7 @@ from routes.beta import router as beta_router, set_db as set_beta_db
 from routes.agent import router as agent_router
 from routes.crypto_paper import router as crypto_paper_router, set_db as set_crypto_paper_db
 from routes.crypto_trading import router as crypto_trading_router, set_db as set_crypto_trading_db
+from routes.research_shadow import router as research_shadow_router, set_db as set_research_shadow_db
 from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
@@ -116,6 +117,7 @@ ALL_ROUTERS = [
     options_trading_router,
     beta_router,
     agent_router,
+    research_shadow_router,
 ]
 
 
@@ -157,6 +159,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_agent_activity_db,
         set_crypto_paper_db,
         set_crypto_trading_db,
+        set_research_shadow_db,
     ]
     for setter in _setters:
         try:
@@ -168,11 +171,13 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     try:
         from services.crypto_paper_trading_service import ensure_indexes as _crypto_paper_indexes
         from services.crypto_signal_audit import ensure_indexes as _crypto_audit_indexes
+        from services.research_shadow_logger import ensure_indexes as _shadow_indexes
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
             loop.create_task(_crypto_paper_indexes())
             loop.create_task(_crypto_audit_indexes(db))
+            loop.create_task(_shadow_indexes(db))
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:

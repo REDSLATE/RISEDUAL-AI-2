@@ -1,0 +1,493 @@
+"""Tests for the Research Shadow framework.
+
+Coverage:
+
+* :mod:`services.research_shadow` — pure helpers (canonicalisation,
+  dissent detection, gate logic, PnL math).
+* :mod:`services.research_shadow_engines` — engine wrappers + fire
+  helper.
+* :mod:`services.research_shadow_scorer` — pure scoring helpers.
+* :mod:`services.research_shadow_stats` — pure stats reducer.
+
+Mongo-glue tests use minimal stub objects (``_DB``, ``_Coll``,
+``_Cursor``) — no live Mongo handle, no live LLM call. Keeps the
+suite fast and CI-deterministic.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pytest
+
+from services.research_shadow import (
+    ENGINE_ADVERSARIAL,
+    ENGINE_COUNCIL,
+    ENGINE_NONE,
+    FILL_COST_BPS,
+    MIN_DISSENT_SAMPLES,
+    ShadowDecision,
+    canonicalise_action,
+    detect_dissent,
+    hypothetical_pnl_usd,
+    should_fire_shadow,
+)
+
+
+# ── Action canonicalisation ───────────────────────────────────────────────────
+
+
+def test_canonicalise_known_actions():
+    assert canonicalise_action("BUY") == "LONG"
+    assert canonicalise_action("LONG") == "LONG"
+    assert canonicalise_action("SELL") == "SHORT"
+    assert canonicalise_action("SHORT_OR_AVOID") == "SHORT"
+    assert canonicalise_action("HOLD") == "HOLD"
+    assert canonicalise_action("WAIT") == "HOLD"
+    assert canonicalise_action("NO_TRADE") == "HOLD"
+    assert canonicalise_action("CLOSE") == "CLOSE"
+    assert canonicalise_action("EXIT") == "CLOSE"
+
+
+def test_canonicalise_unknown_falls_to_hold():
+    assert canonicalise_action("MOON") == "HOLD"
+    assert canonicalise_action("") == "HOLD"
+    assert canonicalise_action(None) == "HOLD"
+
+
+def test_canonicalise_is_case_insensitive_and_trims():
+    assert canonicalise_action(" long ") == "LONG"
+    assert canonicalise_action("Buy") == "LONG"
+
+
+# ── Dissent detection ─────────────────────────────────────────────────────────
+
+
+def test_dissent_same_action():
+    assert detect_dissent("LONG", "LONG") is False
+    assert detect_dissent("HOLD", "WAIT") is False  # canonicalises same
+
+
+def test_dissent_different_actions():
+    assert detect_dissent("LONG", "HOLD") is True
+    assert detect_dissent("LONG", "SHORT") is True
+    assert detect_dissent("HOLD", "CLOSE") is True
+
+
+def test_dissent_handles_engine_specific_spellings():
+    # adversarial commander emits SHORT_OR_AVOID; council emits SHORT.
+    # They should NOT register as dissents (semantic equivalence).
+    assert detect_dissent("SHORT_OR_AVOID", "SHORT") is False
+    # NO_TRADE vs HOLD — same canonical bucket.
+    assert detect_dissent("NO_TRADE", "HOLD") is False
+
+
+# ── Should-fire gate ──────────────────────────────────────────────────────────
+
+
+def test_gate_rejects_invalid_engine():
+    fire, reason = should_fire_shadow(
+        shadow_engine=ENGINE_NONE,
+        last_shadow_ts=None,
+        daily_cost_usd=0.0,
+        decision_phase="entry",
+    )
+    assert fire is False
+    assert reason == "invalid_engine"
+
+
+def test_gate_adversarial_always_fires():
+    """Adversarial shadow is deterministic (no LLM cost) — gates
+    that exist for cost control don't apply."""
+    fire, reason = should_fire_shadow(
+        shadow_engine=ENGINE_ADVERSARIAL,
+        last_shadow_ts=datetime.now(timezone.utc),
+        daily_cost_usd=999.0,  # would block a council shadow
+        decision_phase="cycle",
+    )
+    assert fire is True
+    assert reason == "ok"
+
+
+def test_gate_council_rate_limited():
+    now = datetime.now(timezone.utc)
+    fire, reason = should_fire_shadow(
+        shadow_engine=ENGINE_COUNCIL,
+        last_shadow_ts=now - timedelta(seconds=5),
+        daily_cost_usd=0.0,
+        decision_phase="entry",
+        now=now,
+    )
+    assert fire is False
+    assert reason == "rate_limited"
+
+
+def test_gate_council_full_under_threshold():
+    now = datetime.now(timezone.utc)
+    fire, reason = should_fire_shadow(
+        shadow_engine=ENGINE_COUNCIL,
+        last_shadow_ts=now - timedelta(minutes=10),
+        daily_cost_usd=1.0,  # well under $5 ceiling
+        decision_phase="entry",
+        now=now,
+    )
+    assert fire is True
+    assert reason == "ok"
+
+
+def test_gate_council_degraded_skips_cycle_keeps_entry():
+    # Set spend in the 80-100% band of the default $5 ceiling = $4-$5.
+    now = datetime.now(timezone.utc)
+    fire_cycle, reason_cycle = should_fire_shadow(
+        shadow_engine=ENGINE_COUNCIL,
+        last_shadow_ts=now - timedelta(minutes=10),
+        daily_cost_usd=4.5,
+        decision_phase="cycle",
+        now=now,
+    )
+    assert fire_cycle is False
+    assert reason_cycle == "cost_ceiling_degraded"
+
+    fire_entry, reason_entry = should_fire_shadow(
+        shadow_engine=ENGINE_COUNCIL,
+        last_shadow_ts=now - timedelta(minutes=10),
+        daily_cost_usd=4.5,
+        decision_phase="entry",
+        now=now,
+    )
+    assert fire_entry is True
+    assert reason_entry == "ok_degraded"
+
+
+def test_gate_council_paused_at_ceiling():
+    now = datetime.now(timezone.utc)
+    fire, reason = should_fire_shadow(
+        shadow_engine=ENGINE_COUNCIL,
+        last_shadow_ts=now - timedelta(minutes=10),
+        daily_cost_usd=10.0,  # well over $5 ceiling
+        decision_phase="entry",
+        now=now,
+    )
+    assert fire is False
+    assert reason == "cost_ceiling_paused"
+
+
+# ── ShadowDecision dataclass ──────────────────────────────────────────────────
+
+
+def test_shadow_decision_canonicalises_inputs_and_flags_dissent():
+    d = ShadowDecision(
+        bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry",
+        active_engine="confluence", active_action="BUY",
+        shadow_engine="adversarial", shadow_action="HOLD",
+        mid_price=77_000.0,
+        sim_fill_bps_round_trip=20,
+    )
+    assert d.active_action == "LONG"  # canonicalised
+    assert d.shadow_action == "HOLD"
+    assert d.is_dissent is True
+
+
+def test_shadow_decision_to_doc_drops_none_optionals_and_marks_firewall():
+    d = ShadowDecision(
+        bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry",
+        active_engine="confluence", active_action="LONG",
+        shadow_engine="adversarial", shadow_action="LONG",
+        mid_price=77_000.0,
+        sim_fill_bps_round_trip=20,
+    )
+    doc = d.to_doc()
+    assert doc["tier3_firewall"] is True
+    # Required fields present.
+    assert doc["decision_id"] == d.decision_id
+    assert doc["is_dissent"] is False
+    # None-valued optionals omitted.
+    assert "trade_id" not in doc
+    assert "tactical_score" not in doc
+
+
+# ── PnL math ──────────────────────────────────────────────────────────────────
+
+
+def test_pnl_long_wins_after_cost():
+    # Up 1% on $1000 notional → +$10 raw. Minus 20bps cost ($2) = $8.
+    pnl = hypothetical_pnl_usd(
+        action="LONG", entry_price=100.0, exit_price=101.0,
+        notional_usd=1000.0, fill_cost_bps=20,
+    )
+    assert pnl == pytest.approx(8.0, abs=0.001)
+
+
+def test_pnl_short_wins_after_cost():
+    pnl = hypothetical_pnl_usd(
+        action="SHORT", entry_price=100.0, exit_price=99.0,
+        notional_usd=1000.0, fill_cost_bps=20,
+    )
+    assert pnl == pytest.approx(8.0, abs=0.001)
+
+
+def test_pnl_hold_close_zero():
+    assert hypothetical_pnl_usd(
+        action="HOLD", entry_price=100.0, exit_price=110.0,
+        notional_usd=1000.0, fill_cost_bps=20,
+    ) == 0.0
+    assert hypothetical_pnl_usd(
+        action="CLOSE", entry_price=100.0, exit_price=110.0,
+        notional_usd=1000.0, fill_cost_bps=20,
+    ) == 0.0
+
+
+def test_pnl_invalid_inputs_zero():
+    assert hypothetical_pnl_usd(
+        action="LONG", entry_price=0.0, exit_price=110.0,
+        notional_usd=1000.0, fill_cost_bps=20,
+    ) == 0.0
+    assert hypothetical_pnl_usd(
+        action="LONG", entry_price=100.0, exit_price=110.0,
+        notional_usd=0.0, fill_cost_bps=20,
+    ) == 0.0
+
+
+# ── Asset-typed defaults ──────────────────────────────────────────────────────
+
+
+def test_fill_cost_bps_asset_typed_defaults():
+    """Pin defaults — these are used by the scorer to compute
+    counterfactual P&L, so changing them silently flips the
+    promotion math."""
+    assert FILL_COST_BPS["stock"] == 8
+    assert FILL_COST_BPS["crypto"] == 20
+    assert FILL_COST_BPS["options"] == 100
+
+
+def test_min_dissent_samples_threshold():
+    """Pin the maturity guardrail — operator UI hardcodes this in
+    its 'need N more dissents' copy."""
+    assert MIN_DISSENT_SAMPLES == 30
+
+
+# ── Council engine v1 (rule-based consensus) ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_council_consensus_long_when_rsi_and_momentum_agree():
+    from services.research_shadow_engines import run_council_shadow
+    out = await run_council_shadow(None, {
+        "rsi": 25, "momentum_5b": 0.01, "volume_ratio": 1.5,
+    })
+    assert out["action"] == "LONG"
+    assert out["confidence"] == 0.7  # volume confirmed
+
+
+@pytest.mark.asyncio
+async def test_council_holds_when_rsi_and_momentum_disagree():
+    from services.research_shadow_engines import run_council_shadow
+    out = await run_council_shadow(None, {
+        "rsi": 25, "momentum_5b": -0.01, "volume_ratio": 1.5,
+    })
+    assert out["action"] == "HOLD"
+    assert out["confidence"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_council_zero_llm_cost_v1():
+    """v1 council is rule-based — no LLM spend on any cycle."""
+    from services.research_shadow_engines import run_council_shadow
+    out = await run_council_shadow(None, {"rsi": 50, "momentum_5b": 0})
+    assert out["llm_cost_usd"] == 0.0
+
+
+# ── Stats reducer ─────────────────────────────────────────────────────────────
+
+
+def test_stats_empty_returns_empty_buckets():
+    from services.research_shadow_stats import compute_shadow_stats
+    out = compute_shadow_stats([])
+    assert out["buckets"] == []
+    assert out["min_dissent_samples_required"] == MIN_DISSENT_SAMPLES
+
+
+def test_stats_buckets_by_engine_and_asset_type():
+    from services.research_shadow_stats import compute_shadow_stats
+    rows = [
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "is_dissent": True, "tactical_score": {"delta_usd": 5.0}},
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "is_dissent": True, "tactical_score": {"delta_usd": -2.0}},
+        {"shadow_engine": "council", "asset_type": "stock",
+         "is_dissent": True, "tactical_score": {"delta_usd": 3.0}},
+        # Agreement row counted in total_decisions, NOT in dissent metrics.
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "is_dissent": False, "tactical_score": {"delta_usd": 100.0}},
+    ]
+    out = compute_shadow_stats(rows)
+    assert len(out["buckets"]) == 2
+    crypto = next(b for b in out["buckets"] if b["asset_type"] == "crypto")
+    assert crypto["total_decisions"] == 3  # 2 dissents + 1 agreement
+    assert crypto["dissent_count"] == 2
+    assert crypto["scored_dissent_count"] == 2
+    assert crypto["win_count"] == 1
+    assert crypto["win_rate"] == 0.5
+    assert crypto["total_delta_usd"] == 3.0
+
+
+def test_stats_skips_pending_dissents():
+    """Dissents without tactical_score are still pending — they
+    count toward dissent_count but not toward scored_dissent_count
+    or the win rate."""
+    from services.research_shadow_stats import compute_shadow_stats
+    rows = [
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "is_dissent": True, "tactical_score": {"delta_usd": 5.0}},
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "is_dissent": True, "tactical_score": None},  # pending
+    ]
+    out = compute_shadow_stats(rows)
+    bucket = out["buckets"][0]
+    assert bucket["dissent_count"] == 2
+    assert bucket["scored_dissent_count"] == 1
+    assert bucket["scored_dissent_pct"] == 0.5
+
+
+def test_stats_actionable_only_at_threshold():
+    from services.research_shadow_stats import compute_shadow_stats
+    base = {"shadow_engine": "council", "asset_type": "crypto",
+            "is_dissent": True, "tactical_score": {"delta_usd": 1.0}}
+    rows_under = [base.copy() for _ in range(MIN_DISSENT_SAMPLES - 1)]
+    out = compute_shadow_stats(rows_under)
+    assert out["buckets"][0]["actionable"] is False
+
+    rows_at = [base.copy() for _ in range(MIN_DISSENT_SAMPLES)]
+    out = compute_shadow_stats(rows_at)
+    assert out["buckets"][0]["actionable"] is True
+
+
+# ── Scorer pure helpers ───────────────────────────────────────────────────────
+
+
+def test_tactical_score_shadow_was_right_when_delta_positive():
+    from services.research_shadow_scorer import compute_tactical_score
+    # Active=HOLD ($0 PnL), Shadow=LONG @ +1% on $1000 = +$8 after cost.
+    out = compute_tactical_score(
+        active_action="HOLD", shadow_action="LONG",
+        entry_price=100.0, later_price=101.0,
+        fill_cost_bps=20, lookahead_used_s=1800,
+    )
+    assert out["shadow_was_right"] is True
+    assert out["delta_usd"] == pytest.approx(8.0, abs=0.001)
+
+
+def test_tactical_score_shadow_was_wrong_when_delta_negative():
+    from services.research_shadow_scorer import compute_tactical_score
+    # Active=LONG won big, shadow=HOLD missed it.
+    out = compute_tactical_score(
+        active_action="LONG", shadow_action="HOLD",
+        entry_price=100.0, later_price=105.0,
+        fill_cost_bps=20, lookahead_used_s=1800,
+    )
+    assert out["shadow_was_right"] is False
+    assert out["delta_usd"] < 0
+
+
+# ── Logger Mongo glue ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_insert_shadow_decision_returns_id_on_success():
+    from services.research_shadow_logger import insert_shadow_decision
+
+    seen_doc = {}
+
+    class _Coll:
+        async def insert_one(self, doc):
+            seen_doc.update(doc)
+            return type("_R", (), {"inserted_id": "x"})()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    decision = ShadowDecision(
+        bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry", active_engine="confluence",
+        active_action="LONG", shadow_engine="adversarial",
+        shadow_action="HOLD", mid_price=77_000.0,
+        sim_fill_bps_round_trip=20,
+    )
+    out = await insert_shadow_decision(_DB(), decision)
+    assert out == decision.decision_id
+    assert seen_doc["tier3_firewall"] is True
+    assert seen_doc["is_dissent"] is True
+
+
+@pytest.mark.asyncio
+async def test_insert_swallows_exception():
+    from services.research_shadow_logger import insert_shadow_decision
+
+    class _Coll:
+        async def insert_one(self, _doc):
+            raise RuntimeError("mongo down")
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    decision = ShadowDecision(
+        bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry", active_engine="confluence",
+        active_action="LONG", shadow_engine="adversarial",
+        shadow_action="HOLD", mid_price=77_000.0,
+        sim_fill_bps_round_trip=20,
+    )
+    out = await insert_shadow_decision(_DB(), decision)
+    assert out is None  # swallowed, never raises
+
+
+# ── fire_shadow defensive behaviour ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fire_shadow_noop_on_engine_none():
+    from services.research_shadow_engines import fire_shadow
+    out = await fire_shadow(
+        None, bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry", active_engine="confluence",
+        active_action="LONG", shadow_engine="none",
+        signal={}, mid_price=77_000.0,
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_fire_shadow_respects_shadow_paused():
+    from services.research_shadow_engines import fire_shadow
+    out = await fire_shadow(
+        None, bot_id="b1", user_id="u1", symbol="BTC", asset_type="crypto",
+        decision_phase="entry", active_engine="confluence",
+        active_action="LONG", shadow_engine="council",
+        signal={"rsi": 25, "momentum_5b": 0.01}, mid_price=77_000.0,
+        shadow_paused=True,
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_fire_shadow_swallows_engine_exception():
+    """If the shadow engine itself throws, fire_shadow must NOT
+    propagate — active trade path must continue."""
+    from services.research_shadow_engines import fire_shadow
+
+    async def _broken_engine(*_a, **_kw):
+        raise RuntimeError("engine boom")
+
+    with patch(
+        "services.research_shadow_engines._run_engine", _broken_engine,
+    ):
+        out = await fire_shadow(
+            None, bot_id="b1", user_id="u1", symbol="BTC",
+            asset_type="crypto", decision_phase="entry",
+            active_engine="confluence", active_action="LONG",
+            shadow_engine="adversarial",
+            signal={}, mid_price=77_000.0,
+        )
+    assert out is None

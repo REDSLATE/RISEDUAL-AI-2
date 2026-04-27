@@ -23,6 +23,12 @@ def set_db(database: Any) -> None:
     _db = database
 
 
+def _resolve_db_for_shadow() -> Any:
+    """Internal accessor for the shadow hook — keeps the call sites
+    one-liner and isolates the module-level _db reference."""
+    return _db
+
+
 # Adaptive-sizing feature flag. Signal-bot qty gets scaled by the
 # Tier 3 readiness snapshot (readiness multiplier × confidence
 # multiplier) when enabled. Defaults OFF so rollout is a one-line
@@ -272,6 +278,38 @@ async def execute_signal(
     symbol = signal["symbol"]
     side = "buy" if str(signal.get("direction", "LONG")).upper() == "LONG" else "sell"
     synthetic_bot = _bot_from_config(config, symbol)
+
+    # ── Research Shadow Layer ─────────────────────────────────────────
+    # Champion-challenger: alternate engine logs what it would have
+    # done. Fire-and-forget — never block, never raise out. Per-bot
+    # config: ``shadow_engine`` + ``shadow_paused`` on the bot doc.
+    # Tier-3 firewall enforced by services.research_shadow_logger
+    # (only writes to research_shadow_decisions).
+    _shadow_engine_eq = synthetic_bot.get("shadow_engine") or "none"
+    if _shadow_engine_eq in ("adversarial", "council"):
+        try:
+            import asyncio as _asyncio_eq_shadow
+            from services.research_shadow_engines import fire_shadow as _fire_shadow_eq
+            _asyncio_eq_shadow.create_task(_fire_shadow_eq(
+                _resolve_db_for_shadow(),
+                bot_id=str(synthetic_bot.get("_id") or synthetic_bot.get("bot_id") or "equity_bot"),
+                user_id=str(synthetic_bot.get("user_id") or "system"),
+                symbol=symbol,
+                asset_type=signal.get("asset_type") or "stock",
+                decision_phase="entry",
+                active_engine="confluence",
+                active_action=signal.get("direction") or "LONG",
+                shadow_engine=_shadow_engine_eq,
+                signal=signal,
+                mid_price=float(price),
+                shadow_paused=bool(synthetic_bot.get("shadow_paused")),
+            ))
+        except Exception as _shadow_eq_exc:  # noqa: BLE001
+            logger.warning(
+                "[equity-bot] shadow fire-and-forget setup failed for %s: %s",
+                symbol, _shadow_eq_exc,
+            )
+
     order = await _execute_bot_trade(
         synthetic_bot,
         symbol,
