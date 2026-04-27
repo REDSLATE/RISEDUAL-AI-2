@@ -17,6 +17,7 @@ import HelpSearchInsights from './admin/HelpSearchInsights';
 import ChipAdoptionInsights from './admin/ChipAdoptionInsights';
 import ConvictionCalibration from './admin/ConvictionCalibration';
 import CryptoPaperDashboard from './CryptoPaperDashboard';
+import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -52,6 +53,7 @@ const TAB_GROUPS = [
       { id: 'chip-adoption', label: 'Chip CTR',    icon: MessageSquare },
       { id: 'conviction',    label: 'Conviction',  icon: TrendingUp },
       { id: 'crypto',        label: 'Crypto Bots', icon: Bitcoin },
+      { id: 'adversarial',   label: 'Adversarial', icon: TrendingUp },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
   },
@@ -79,6 +81,7 @@ const TAB_SUBTITLES = {
   'chip-adoption':() => 'L1/L2 chat-chip click-through rates',
   conviction:     () => 'ML calibration · win-rate by conviction score',
   crypto:         () => 'Isolated 24/7 crypto paper bots · PnL · adaptations',
+  adversarial:    () => 'Bull / Bear / Commander layer · win-rate spread · phase gates',
   tools:          () => 'Codebase export & utilities',
 };
 
@@ -97,6 +100,7 @@ const TAB_COMPONENTS = {
   'chip-adoption':() => <ChipAdoptionInsights />,
   conviction:     () => <ConvictionCalibration />,
   crypto:         () => <CryptoPaperDashboard />,
+  adversarial:    () => <CryptoAdversarialDashboard />,
   tools:          () => <AdminTools />,
 };
 
