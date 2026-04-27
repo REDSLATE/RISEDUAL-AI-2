@@ -117,12 +117,20 @@ def fake_db():
 
 
 def test_build_query_payload_empty():
-    assert pws._build_query_payload({}) == {}
+    assert pws._build_query_payload({}) == ""
 
 
 def test_build_query_payload_single_assignee():
-    out = pws._build_query_payload({"assignee": "OpenAI"})
-    assert out == {"_text_any": {"assignee_organization": "OpenAI"}}
+    # Single-token term passes through bare (no quoting needed).
+    assert pws._build_query_payload({"assignee": "OpenAI"}) == "OpenAI"
+
+
+def test_build_query_payload_phrase_quotes_multiword():
+    # Multi-word terms must be phrase-quoted so Lucene treats them
+    # as a single phrase instead of OR-ing each token.
+    assert pws._build_query_payload(
+        {"assignee": "Acme Industries"},
+    ) == '"Acme Industries"'
 
 
 def test_build_query_payload_multi_or():
@@ -131,17 +139,64 @@ def test_build_query_payload_multi_or():
         "inventor_last": "Sutskever",
         "keyword": "transformer",
     })
-    assert "_or" in out
-    assert len(out["_or"]) == 3
+    assert " OR " in out
+    assert "OpenAI" in out
+    assert "Sutskever" in out
+    assert "transformer" in out
 
 
 # ── _normalise_row ────────────────────────────────────────────────
 
 
-def test_normalise_row_snake_case():
+def test_normalise_row_real_uspto_schema():
+    """Matches the live response shape from api.uspto.gov as of
+    Feb 2026 — the row schema this service was rebuilt against."""
+    row = {
+        "applicationNumberText": "19406512",
+        "applicationMetaData": {
+            "inventionTitle": "SYSTEMS AND METHODS FOR IMAGE GENERATION",
+            "filingDate": "2025-12-02",
+            "firstApplicantName": "OpenAI OpCo, LLC",
+            "firstInventorName": "Aditya RAMESH",
+            "earliestPublicationNumber": "US20260012345A1",
+            "publicationDateBag": ["2026-03-26"],
+        },
+    }
+    out = pws._normalise_row(row)
+    assert out["patent_number"] == "US20260012345A1"
+    assert out["application_number"] == "19406512"
+    assert out["publication_number"] == "US20260012345A1"
+    assert out["title"] == "SYSTEMS AND METHODS FOR IMAGE GENERATION"
+    assert out["assignee"] == "OpenAI OpCo, LLC"
+    assert out["inventor"] == "Aditya RAMESH"
+    assert out["filing_date"] == "2025-12-02"
+    assert out["patent_date"] == "2026-03-26"  # publication date wins
+    assert "patents.google.com/patent/US20260012345A1" in out["url"]
+
+
+def test_normalise_row_falls_back_to_application_number():
+    """Application without a pre-grant pub yet still cacheable."""
+    row = {
+        "applicationNumberText": "19400000",
+        "applicationMetaData": {
+            "inventionTitle": "Pre-pub filing",
+            "filingDate": "2025-11-01",
+            "firstApplicantName": "Anthropic, PBC",
+        },
+    }
+    out = pws._normalise_row(row)
+    assert out["patent_number"] == "19400000"
+    assert out["publication_number"] is None
+    assert out["patent_date"] == "2025-11-01"  # filing date used as fallback
+    assert "19400000" in out["url"]  # search-style URL
+
+
+def test_normalise_row_legacy_snake_case_compat():
+    """Older payload shape — still parseable so cache reads from
+    pre-migration data don't error out."""
     row = {
         "patent_number": "11000001",
-        "patent_title": "Test patent",
+        "patent_title": "Legacy patent",
         "patent_date": "2026-01-15",
         "assignee_organization": "OpenAI",
         "inventor_name_first": "Ilya",
@@ -149,27 +204,13 @@ def test_normalise_row_snake_case():
     }
     out = pws._normalise_row(row)
     assert out["patent_number"] == "11000001"
-    assert out["title"] == "Test patent"
+    assert out["title"] == "Legacy patent"
     assert out["assignee"] == "OpenAI"
     assert out["inventor"] == "Ilya Sutskever"
-    assert "google.com" in out["url"]
-
-
-def test_normalise_row_camel_case_and_list_fields():
-    row = {
-        "patentNumber": "11000002",
-        "patentTitle": "Camel test",
-        "assigneeOrganization": ["Anthropic"],
-        "inventorNameFirst": ["Dario"],
-        "inventorNameLast": ["Amodei"],
-    }
-    out = pws._normalise_row(row)
-    assert out["patent_number"] == "11000002"
-    assert out["assignee"] == "Anthropic"
-    assert out["inventor"] == "Dario Amodei"
 
 
 def test_normalise_row_missing_number_returns_none():
+    assert pws._normalise_row({"applicationMetaData": {"inventionTitle": "no num"}}) is None
     assert pws._normalise_row({"patent_title": "no num"}) is None
 
 
@@ -222,10 +263,22 @@ async def test_refresh_query_unknown(fake_db):
 async def test_refresh_query_happy_path(fake_db):
     rec = await pws.create_query(label="A", assignee="OpenAI")
     rows = [
-        {"patent_number": "100", "patent_title": "First",
-         "patent_date": "2026-01-01"},
-        {"patent_number": "101", "patent_title": "Second",
-         "patent_date": "2026-01-02"},
+        {
+            "applicationNumberText": "19400001",
+            "applicationMetaData": {
+                "inventionTitle": "First",
+                "filingDate": "2025-12-01",
+                "earliestPublicationNumber": "US20260000100A1",
+            },
+        },
+        {
+            "applicationNumberText": "19400002",
+            "applicationMetaData": {
+                "inventionTitle": "Second",
+                "filingDate": "2025-12-02",
+                "earliestPublicationNumber": "US20260000200A1",
+            },
+        },
     ]
     with patch.object(
         pws, "_fetch_from_uspto",
@@ -234,8 +287,9 @@ async def test_refresh_query_happy_path(fake_db):
         out = await pws.refresh_query(rec["id"])
     assert out == {"fetched": 2, "error": None}
     cached = await pws.list_results(query_id=rec["id"])
-    assert {r["patent_number"] for r in cached} == {"100", "101"}
-    # Query metadata was updated.
+    assert {r["patent_number"] for r in cached} == {
+        "US20260000100A1", "US20260000200A1",
+    }
     refreshed = await fake_db.patent_watch_queries.find_one({"id": rec["id"]})
     assert refreshed["last_fetch_count"] == 2
     assert refreshed["last_error"] is None
@@ -244,7 +298,13 @@ async def test_refresh_query_happy_path(fake_db):
 @pytest.mark.asyncio
 async def test_refresh_query_dedupes_on_repeat(fake_db):
     rec = await pws.create_query(label="A", assignee="OpenAI")
-    rows = [{"patent_number": "100", "patent_title": "Same"}]
+    rows = [{
+        "applicationNumberText": "19400001",
+        "applicationMetaData": {
+            "inventionTitle": "Same",
+            "earliestPublicationNumber": "US20260000999A1",
+        },
+    }]
     with patch.object(
         pws, "_fetch_from_uspto",
         new=AsyncMock(return_value={"rows": rows, "error": None}),

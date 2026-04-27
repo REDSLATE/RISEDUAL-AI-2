@@ -1,5 +1,27 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (h) — Patent Watch live activation + USPTO ODP schema fix
+- Operator pasted real `USPTO_API_KEY` into `/app/backend/.env`
+  and live USPTO fetches were wired up.
+- Discovered the actual ODP Patent File Wrapper API uses a
+  Lucene-string `q` parameter (not the JSON `_text_any` filter
+  the legacy docs implied) and returns rows under
+  `patentFileWrapperDataBag` with the title/applicant/inventor
+  living under a nested `applicationMetaData` object.
+- Rewrote `_build_query_payload` → returns Lucene `q` string,
+  multi-word terms phrase-quoted, multi-condition OR'd.
+- Rewrote `_normalise_row` → reads from `applicationMetaData`,
+  prefers `earliestPublicationNumber` (US20260...A1) for the
+  cache key + Google Patents URL, falls back to
+  `applicationNumberText`. Legacy snake_case path kept for
+  forward-compat.
+- Tests refreshed against real ODP shape (20/20 still pass).
+- Live verification: created query `assignee=OpenAI`, refresh
+  returned 25 cached filings including "Systems and Methods for
+  Image Generation with ML Models" (filed 2025-12-02), "Efficient
+  Execution of Database Queries on Streaming Data", "Multi-task
+  ASR System".
+
 ## 2026-02-08 (g) — Tech-debt refactor pass (P3 items A & B, COMPLETE)
 
 ### B. Split `AppContent` (frontend)

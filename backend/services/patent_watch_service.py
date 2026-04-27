@@ -65,13 +65,13 @@ _USER_AGENT = "RisedualAI-PatentWatch/1.0"
 # doesn't bloat with full-text abstracts on every row. Admin can
 # click through to USPTO if they want the body.
 _RESPONSE_FIELDS = [
-    "patent_number",
-    "patent_title",
-    "patent_date",
-    "patent_abstract",
-    "assignee_organization",
-    "inventor_name_first",
-    "inventor_name_last",
+    "applicationNumberText",
+    "applicationMetaData.inventionTitle",
+    "applicationMetaData.filingDate",
+    "applicationMetaData.firstApplicantName",
+    "applicationMetaData.firstInventorName",
+    "applicationMetaData.earliestPublicationNumber",
+    "applicationMetaData.publicationDateBag",
 ]
 
 
@@ -176,36 +176,40 @@ async def list_results(
 # ── USPTO fetch ───────────────────────────────────────────────────
 
 
-def _build_query_payload(query: Dict[str, Any]) -> Dict[str, Any]:
-    """Translate a saved query into the USPTO search payload.
+def _build_query_payload(query: Dict[str, Any]) -> str:
+    """Translate a saved query into a USPTO ODP Lucene `q` string.
 
-    The USPTO ODP search endpoint accepts a JSON ``q`` filter.
-    We OR the user-supplied conditions: any patent matching at
-    least one of (assignee/inventor/keyword) qualifies.
+    The Patent File Wrapper search endpoint accepts a plain Lucene
+    query (NOT a JSON filter object). Multiple user conditions are
+    OR'd together — any application matching at least one of
+    (assignee / inventor / keyword) qualifies.
 
-    Field names follow the post-migration ODP schema. If USPTO
-    renames fields, this is the only function that needs to
-    update.
+    Quoting matters: org names like "Acme Industries" need to be
+    wrapped in double quotes so Lucene treats them as a phrase.
+    Single-token terms can pass through bare.
+
+    Returns an empty string when no conditions are set; the fetch
+    layer short-circuits in that case.
     """
-    conditions: List[Dict[str, Any]] = []
-    if query.get("assignee"):
-        conditions.append(
-            {"_text_any": {"assignee_organization": query["assignee"]}},
-        )
-    if query.get("inventor_last"):
-        conditions.append(
-            {"_text_any": {"inventor_name_last": query["inventor_last"]}},
-        )
-    if query.get("keyword"):
-        conditions.append(
-            {"_text_any": {"patent_title": query["keyword"]}},
-        )
+    def _quote(term: str) -> str:
+        term = term.strip()
+        if not term:
+            return ""
+        # Phrase-quote anything with whitespace so Lucene matches
+        # the full string instead of OR-ing each token.
+        return f'"{term}"' if " " in term else term
 
-    if not conditions:
-        return {}
-    if len(conditions) == 1:
-        return conditions[0]
-    return {"_or": conditions}
+    parts: list[str] = []
+    for key in ("assignee", "inventor_last", "keyword"):
+        v = _quote(query.get(key) or "")
+        if v:
+            parts.append(v)
+
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return " OR ".join(parts)
 
 
 async def _fetch_from_uspto(query: Dict[str, Any]) -> Dict[str, Any]:
@@ -223,9 +227,8 @@ async def _fetch_from_uspto(query: Dict[str, Any]) -> Dict[str, Any]:
         return {"rows": [], "error": "missing_api_key"}
 
     params = {
-        "q": __import__("json").dumps(payload),
+        "q": payload,
         "limit": _DEFAULT_LIMIT,
-        "fields": ",".join(_RESPONSE_FIELDS),
     }
     headers = {
         "User-Agent": _USER_AGENT,
@@ -252,44 +255,111 @@ async def _fetch_from_uspto(query: Dict[str, Any]) -> Dict[str, Any]:
         logger.warning("[patent-watch] uspto fetch unexpected: %s", exc)
         return {"rows": [], "error": f"unexpected:{type(exc).__name__}"}
 
-    # USPTO ODP standard response envelope: {"data": [...], "total": N}
-    rows = body.get("data") or body.get("results") or []
+    # USPTO ODP Patent File Wrapper response envelope:
+    #   {"count": N, "patentFileWrapperDataBag": [...rows...]}
+    # Fall back to other shapes for forward-compat with any future
+    # endpoint variants.
+    rows = (
+        body.get("patentFileWrapperDataBag")
+        or body.get("data")
+        or body.get("results")
+        or []
+    )
     if not isinstance(rows, list):
         return {"rows": [], "error": "malformed_response"}
     return {"rows": rows, "error": None}
 
 
 def _normalise_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Coerce a USPTO row into our compact cache shape. Returns
-    ``None`` if patent_number is missing — that's our dedupe key."""
-    patent_number = row.get("patent_number") or row.get("patentNumber")
-    if not patent_number:
+    """Coerce a USPTO ODP Patent File Wrapper row into our compact
+    cache shape.
+
+    Real-row schema (from `api.uspto.gov`):
+        row.applicationNumberText                 → application id
+        row.applicationMetaData.inventionTitle    → title
+        row.applicationMetaData.filingDate        → filing date
+        row.applicationMetaData.firstApplicantName→ assignee/applicant
+        row.applicationMetaData.firstInventorName → inventor
+        row.applicationMetaData.earliestPublicationNumber → US pre-grant pub#
+
+    Falls back to legacy snake_case / camelCase keys so the
+    function tolerates older response payloads (and keeps the
+    existing unit tests honest).
+
+    Returns ``None`` when the row has no identifying number — that
+    field is the dedupe key in the cache.
+    """
+    md = row.get("applicationMetaData") or {}
+
+    application_number = (
+        row.get("applicationNumberText")
+        or row.get("application_number")
+        or row.get("patent_number")
+        or row.get("patentNumber")
+    )
+    publication_number = md.get("earliestPublicationNumber") or row.get("publicationNumber")
+
+    # Prefer the publication number (pre-grant pub) for the cache
+    # key when present — it's the URL-routable identifier on
+    # patents.google.com. Fall back to the application number.
+    canonical_id = publication_number or application_number
+    if not canonical_id:
         return None
 
-    inv_first = row.get("inventor_name_first") or row.get("inventorNameFirst")
-    inv_last = row.get("inventor_name_last") or row.get("inventorNameLast")
-    if isinstance(inv_first, list):
-        inv_first = inv_first[0] if inv_first else None
-    if isinstance(inv_last, list):
-        inv_last = inv_last[0] if inv_last else None
+    title = (
+        md.get("inventionTitle")
+        or row.get("patent_title")
+        or row.get("patentTitle")
+    )
 
-    inventor = " ".join(s for s in [inv_first, inv_last] if s) or None
+    filing_date = md.get("filingDate") or row.get("patent_date") or row.get("patentDate")
 
-    assignee = row.get("assignee_organization") or row.get("assigneeOrganization")
+    pub_dates = md.get("publicationDateBag") or []
+    pub_date = pub_dates[0] if isinstance(pub_dates, list) and pub_dates else None
+    # Use the publication date when available — that's when the
+    # filing actually became public knowledge. Otherwise show the
+    # filing date so the row is still sortable.
+    sort_date = pub_date or filing_date
+
+    assignee = (
+        md.get("firstApplicantName")
+        or row.get("assignee_organization")
+        or row.get("assigneeOrganization")
+    )
     if isinstance(assignee, list):
         assignee = assignee[0] if assignee else None
 
+    inventor = md.get("firstInventorName")
+    if not inventor:
+        # Legacy snake_case fallback for older payloads.
+        inv_first = row.get("inventor_name_first") or row.get("inventorNameFirst")
+        inv_last = row.get("inventor_name_last") or row.get("inventorNameLast")
+        if isinstance(inv_first, list):
+            inv_first = inv_first[0] if inv_first else None
+        if isinstance(inv_last, list):
+            inv_last = inv_last[0] if inv_last else None
+        inventor = " ".join(s for s in [inv_first, inv_last] if s) or None
+
+    # Build a Google Patents deep-link. Prefer the publication
+    # number (most likely to resolve), fall back to the app number.
+    if publication_number:
+        url = f"https://patents.google.com/patent/{publication_number}"
+    elif application_number:
+        url = f"https://patents.google.com/?q=%22{application_number}%22"
+    else:
+        url = None
+
     return {
-        "patent_number": str(patent_number),
-        "title": row.get("patent_title") or row.get("patentTitle"),
+        "patent_number": str(canonical_id),
+        "application_number": str(application_number) if application_number else None,
+        "publication_number": str(publication_number) if publication_number else None,
+        "title": title,
         "abstract": row.get("patent_abstract") or row.get("patentAbstract"),
-        "patent_date": row.get("patent_date") or row.get("patentDate"),
+        "patent_date": sort_date,
+        "filing_date": filing_date,
         "assignee": assignee,
         "inventor": inventor,
-        "url": (
-            f"https://patents.google.com/patent/US{patent_number}"
-            if patent_number else None
-        ),
+        "url": url,
     }
 
 
