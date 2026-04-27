@@ -286,6 +286,12 @@ async def fire_shadow(
         # research_shadow.FILL_COST_BPS.
         fill_bps = FILL_COST_BPS.get(asset_type, FILL_COST_BPS["stock"])
 
+        # Capture volume_ratio so the scorer can later apply
+        # volume-conditional fill costs without re-querying the tape.
+        # Stays None if the signal didn't carry it (e.g. some equity
+        # signals don't compute it).
+        vol_ratio = signal.get("volume_ratio") if isinstance(signal, dict) else None
+
         decision = ShadowDecision(
             bot_id=bot_id,
             user_id=user_id,
@@ -301,6 +307,9 @@ async def fire_shadow(
             mid_price=float(mid_price or 0.0),
             sim_fill_bps_round_trip=fill_bps,
             llm_cost_usd=float(out.get("llm_cost_usd") or 0.0),
+            volume_ratio_at_decision=(
+                float(vol_ratio) if isinstance(vol_ratio, (int, float)) else None
+            ),
             trade_id=trade_id,
             active_trade_doc_id=active_trade_doc_id,
         )

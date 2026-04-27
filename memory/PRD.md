@@ -54,6 +54,83 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Phase Breakdown + Volume-Conditional Slippage (Feb 26, 2026)
+
+Two additions to the Research Shadow framework:
+
+**Enhancement — Dissent Phase Breakdown** (operator visibility into
+when a shadow engine adds value):
+
+- **Backend** `services/research_shadow_stats.py` — `compute_shadow_stats`
+  now tracks per-phase counters (`entry`, `cycle`, `exit`) and emits
+  `bucket.phase_breakdown` with dissents / scored / wins / win_rate
+  per phase. Unknown phase strings bucket defensively under "cycle".
+  Per-phase win rate stays null until a scored sample lands in that
+  bucket (mirrors the maturity guardrail discipline).
+- **Frontend** `ShadowAccuracyPanel.jsx` — new `PhaseBreakdownStrip`
+  sub-component renders 3 mini cells inside each bucket card:
+  ENTRY · TACTICAL, CYCLE · POSITIONAL, EXIT · STRATEGIC. Each cell
+  shows dissent count + win-rate % colour-coded green/rose. Tells
+  operators at a glance whether a shadow engine adds tactical
+  alpha (entries), positional alpha (mid-trade), or strategic
+  alpha (exits) — which is the entire point of the framework.
+- **Live verified** on preview: ENTRY=2 dissents (matching the
+  SOL/BNB SHORT-vs-HOLD dissents from the recent crypto fleet
+  runs), CYCLE=0, EXIT=0.
+
+**P2 — Volume-Conditional Slippage** (honest fill-cost scaling):
+
+- **Backend** `services/research_shadow.py` — new pure function
+  `volume_conditional_fill_bps(base_bps, volume_ratio, asset_type)`
+  scales round-trip fill cost based on the volume regime captured
+  at decision time. Conservative envelope:
+  - `volume_ratio < 0.5` → 1.5× base (low-vol penalty)
+  - `volume_ratio 0.5-1.5` → 1.0× base (normal)
+  - `volume_ratio 1.5-3` → 0.75× base (busy tape)
+  - `volume_ratio >= 3` → 0.5× base (high-conviction tape)
+  - Equity attenuated to 75% of crypto's swing (tighter spreads)
+  - Options stay flat (spread is structural, not volume-driven)
+- **Decision capture**: new optional field `volume_ratio_at_decision`
+  on `ShadowDecision` — read from `signal.volume_ratio` at fire
+  time, persisted on the row so the deferred scorer doesn't need
+  a second quote lookup.
+- **Scorer**: `_score_one_tactical` now applies the conditional
+  multiplier and stamps both `fill_cost_bps_applied` and
+  `fill_cost_bps_base` onto the tactical_score so operators can
+  see in the drawer whether vol-conditional kicked in.
+- **Why this matters**: a flat 20bps round-trip across all crypto
+  trades flatters quiet-tape entries and punishes high-vol
+  entries. Tier-3 promotion math is sensitive to this — without
+  vol-conditional, a Council that only fires on quiet days would
+  look better than it really is under flat-fee accounting.
+- **8 new tests**: low-vol penalty, normal-vol passthrough, high-
+  vol compression, equity attenuation, options flat, invalid
+  ratio fallback, minimum-1-bps floor, end-to-end vol_ratio
+  capture flow. **48/48 green** in the shadow test file (was 37,
+  added 11 across phase + vol). 51/51 across shadow + tier3
+  isolation.
+- **Lint clean** across all modified files.
+
+**P2 items deferred (with crisp reasoning, not punted)**:
+
+- **Council v2 LLM-backed engine** — needs 1-2 weeks of v1
+  cost-monitoring data to size the budget envelope. Building it
+  now without that data risks shipping a Council that blows the
+  $5/day cap on day 1 and pauses itself before producing any
+  signal. Plumbing already in place; only the
+  `run_council_shadow` body changes when v2 lands.
+- **Disagreement-triggered cycle frequency** — premature without
+  cost data per the original design analysis. Same gate as v2
+  Council.
+- **Regime-conditional weighting for bots** — explicit data gate:
+  ROADMAP says "wait for 15+ bucket count from shadow stats
+  before building". Current bucket count = 2 (entry phase only).
+  Building now would be drawing trend lines through 2 points.
+- **Flip `ML_ADAPTATION_SHADOW_MODE` live + tune auto-revert
+  thresholds** — depends on threshold tuning data we haven't
+  collected yet from the existing shadow log. Premature flip
+  risks auto-reverting genuine improvements due to noise.
+
 ### Research Shadow UI — Admin Tab + Per-Position Drawer (Feb 26, 2026)
 
 Admin-facing UI for the Research Shadow framework. Two new components,

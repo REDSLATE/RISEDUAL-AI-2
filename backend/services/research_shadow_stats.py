@@ -49,6 +49,18 @@ _EMPTY_BUCKET: dict[str, Any] = {
     "min_dissent_samples_required": MIN_DISSENT_SAMPLES,
 }
 
+# Phase-breakdown sub-record. Tells the operator WHEN dissents fire
+# — entry, cycle (mid-trade), or exit — and the win rate within
+# each. The mid-trade exit dissent ("Council says CLOSE while active
+# holds") is the highest-value scenario; phase breakdown surfaces
+# whether a shadow engine adds tactical alpha (entry), positional
+# alpha (cycle), or strategic alpha (exit).
+_PHASE_KEYS = ("entry", "cycle", "exit")
+
+
+def _empty_phase_record() -> dict[str, Any]:
+    return {"dissents": 0, "scored": 0, "wins": 0, "win_rate": None}
+
 
 def _bucket_key(engine: Optional[str], asset_type: Optional[str]) -> str:
     return f"{(engine or '?')}::{(asset_type or '?')}"
@@ -75,6 +87,7 @@ def compute_shadow_stats(rows: list[dict]) -> dict[str, Any]:
             entry = dict(_EMPTY_BUCKET)
             entry["shadow_engine"] = engine
             entry["asset_type"] = asset_type
+            entry["phase_breakdown"] = {p: _empty_phase_record() for p in _PHASE_KEYS}
             by_bucket[key] = entry
         return by_bucket[key]
 
@@ -89,6 +102,13 @@ def compute_shadow_stats(rows: list[dict]) -> dict[str, Any]:
             continue
         bucket["dissent_count"] += 1
 
+        # Phase counter — track which lifecycle stage this dissent
+        # fired at. Unknown phases bucket under "cycle" defensively.
+        phase = row.get("decision_phase") or "cycle"
+        if phase not in _PHASE_KEYS:
+            phase = "cycle"
+        bucket["phase_breakdown"][phase]["dissents"] += 1
+
         tactical = row.get("tactical_score")
         if not isinstance(tactical, dict):
             continue
@@ -98,8 +118,10 @@ def compute_shadow_stats(rows: list[dict]) -> dict[str, Any]:
 
         bucket["scored_dissent_count"] += 1
         bucket["total_delta_usd"] += float(delta)
+        bucket["phase_breakdown"][phase]["scored"] += 1
         if delta > 0:
             bucket["win_count"] += 1
+            bucket["phase_breakdown"][phase]["wins"] += 1
 
     # Finalise per-bucket derived numbers + the actionable flag.
     for bucket in by_bucket.values():
@@ -112,6 +134,13 @@ def compute_shadow_stats(rows: list[dict]) -> dict[str, Any]:
             )
         bucket["total_delta_usd"] = round(bucket["total_delta_usd"], 4)
         bucket["actionable"] = scored >= MIN_DISSENT_SAMPLES
+        # Per-phase win rate. Same maturity logic — null until at
+        # least one scored sample lands in that phase bucket.
+        for phase_rec in bucket["phase_breakdown"].values():
+            if phase_rec["scored"] > 0:
+                phase_rec["win_rate"] = round(
+                    phase_rec["wins"] / phase_rec["scored"], 4,
+                )
 
     return {
         "buckets": list(by_bucket.values()),
@@ -148,6 +177,7 @@ async def fetch_shadow_stats(
                 "_id": 0,
                 "shadow_engine": 1,
                 "asset_type": 1,
+                "decision_phase": 1,
                 "is_dissent": 1,
                 "tactical_score": 1,
             },

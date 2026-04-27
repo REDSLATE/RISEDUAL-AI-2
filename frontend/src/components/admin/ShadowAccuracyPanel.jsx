@@ -203,6 +203,54 @@ const BucketCard = ({ bucket, minSamples }) => {
           : '0'}
         % disagreement rate)
       </div>
+
+      {/* Phase breakdown — entry vs cycle vs exit. The mid-trade exit
+          dissent is the highest-value scenario; this strip surfaces
+          whether the shadow adds tactical (entry), positional (cycle),
+          or strategic (exit) alpha. */}
+      {bucket.phase_breakdown && (
+        <PhaseBreakdownStrip phaseBreakdown={bucket.phase_breakdown} />
+      )}
+    </div>
+  );
+};
+
+
+const PhaseBreakdownStrip = ({ phaseBreakdown }) => {
+  const phases = [
+    { key: 'entry', label: 'Entry', sub: 'tactical' },
+    { key: 'cycle', label: 'Cycle', sub: 'positional' },
+    { key: 'exit',  label: 'Exit',  sub: 'strategic' },
+  ];
+  return (
+    <div
+      className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-slate-800"
+      data-testid="shadow-phase-breakdown"
+    >
+      {phases.map(({ key, label, sub }) => {
+        const rec = phaseBreakdown[key] || { dissents: 0, scored: 0, win_rate: null };
+        const winPct = rec.win_rate !== null && rec.win_rate !== undefined
+          ? `${(rec.win_rate * 100).toFixed(0)}%`
+          : '—';
+        const tone = rec.scored > 0
+          ? (rec.win_rate > 0.5 ? 'text-emerald-400' : 'text-rose-400')
+          : 'text-slate-600';
+        return (
+          <div
+            key={key}
+            className="text-center"
+            data-testid={`shadow-phase-${key}`}
+          >
+            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+              {label} <span className="text-slate-700">· {sub}</span>
+            </div>
+            <div className={`text-sm font-bold ${tone}`}>
+              {rec.dissents} <span className="text-slate-600 font-normal">·</span>{' '}
+              <span className="text-xs">{winPct}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

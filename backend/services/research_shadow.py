@@ -184,6 +184,9 @@ class ShadowDecision:
     shadow_thesis: Optional[str] = None
     shadow_confidence: Optional[float] = None
     llm_cost_usd: float = 0.0
+    # Captured at decision-time so the deferred scorer can compute
+    # volume-conditional fill costs without a second quote lookup.
+    volume_ratio_at_decision: Optional[float] = None
 
     # Deferred-scoring fields. Worker sets these.
     tactical_score: Optional[dict[str, Any]] = None
@@ -241,6 +244,8 @@ class ShadowDecision:
             doc["shadow_thesis"] = self.shadow_thesis
         if self.shadow_confidence is not None:
             doc["shadow_confidence"] = self.shadow_confidence
+        if self.volume_ratio_at_decision is not None:
+            doc["volume_ratio_at_decision"] = self.volume_ratio_at_decision
         if self.tactical_score is not None:
             doc["tactical_score"] = self.tactical_score
         if self.strategic_score is not None:
@@ -309,6 +314,73 @@ def should_fire_shadow(
 
 
 # ── PnL math (pure, used by scorer) ───────────────────────────────────────────
+
+
+def volume_conditional_fill_bps(
+    *,
+    base_bps: int,
+    volume_ratio: Optional[float],
+    asset_type: str,
+) -> int:
+    """Scale the round-trip fill cost based on the volume regime at
+    the time of the decision.
+
+    Why this matters
+    ----------------
+    A flat 20bps round-trip across all crypto trades is a lie that
+    flatters quiet-tape entries and punishes high-vol entries. Real
+    execution sees the opposite shape: thinly traded conditions
+    eat 30-50bps in spread, busy tape compresses to ~10bps. The
+    Tier-3 promotion math is sensitive to this — a Council that
+    only fires on quiet days will look better than it really is
+    under flat-fee accounting.
+
+    Conservative scaling envelope (clamped both ends so the math
+    can't spike absurdly):
+
+    * ``volume_ratio < 0.5``  → 1.5× base (low-vol penalty)
+    * ``volume_ratio 0.5-1.5``→ 1.0× base (normal regime)
+    * ``volume_ratio 1.5-3``  → 0.75× base (busy-tape benefit)
+    * ``volume_ratio >= 3``   → 0.5× base (high-conviction tape)
+
+    Equity stocks are tighter than crypto — same shape but 75% of
+    the swing. Options keep the flat default (spread is structural,
+    not volume-driven at retail scale).
+
+    Returns the asset-typed default unchanged when ``volume_ratio``
+    is missing or non-numeric (the fallback case is the v1 shape,
+    so behaviour matches pre-volume-conditional builds).
+    """
+    if volume_ratio is None:
+        return base_bps
+    try:
+        vr = float(volume_ratio)
+    except (TypeError, ValueError):
+        return base_bps
+    if vr <= 0:
+        return base_bps
+
+    # Options: spread dominates, volume signal is noisy at retail.
+    # Keep flat.
+    if asset_type == "options":
+        return base_bps
+
+    # Pick raw multiplier from the envelope.
+    if vr < 0.5:
+        mult = 1.5
+    elif vr < 1.5:
+        mult = 1.0
+    elif vr < 3.0:
+        mult = 0.75
+    else:
+        mult = 0.5
+
+    # Equity attenuation — tighter spread regime, smaller swings.
+    if asset_type == "stock" and mult != 1.0:
+        # Pull the multiplier 25% closer to 1.0
+        mult = 1.0 + (mult - 1.0) * 0.75
+
+    return max(1, int(round(base_bps * mult)))
 
 
 def hypothetical_pnl_usd(

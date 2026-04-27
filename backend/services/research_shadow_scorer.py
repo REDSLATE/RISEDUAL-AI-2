@@ -51,6 +51,7 @@ from services.research_shadow import (
     TACTICAL_LOOKAHEAD_S,
     canonicalise_action,
     hypothetical_pnl_usd,
+    volume_conditional_fill_bps,
 )
 from services.research_shadow_logger import SHADOW_COLLECTION, patch_scores
 
@@ -242,7 +243,15 @@ async def _score_one_tactical(db: Any, row: dict) -> bool:
     symbol = row.get("symbol") or ""
     asset_type = row.get("asset_type") or "stock"
     entry_price = float(row.get("mid_price") or 0.0)
-    fill_bps = int(row.get("sim_fill_bps_round_trip") or 0)
+    base_bps = int(row.get("sim_fill_bps_round_trip") or 0)
+    # Apply volume-conditional scaling using the volume_ratio captured
+    # at decision time. Falls back to base_bps when volume_ratio is
+    # missing (preserves v1 behaviour for legacy rows).
+    fill_bps = volume_conditional_fill_bps(
+        base_bps=base_bps,
+        volume_ratio=row.get("volume_ratio_at_decision"),
+        asset_type=asset_type,
+    )
     lookahead = TACTICAL_LOOKAHEAD_S.get(
         asset_type, TACTICAL_LOOKAHEAD_S["stock"],
     )
@@ -260,6 +269,10 @@ async def _score_one_tactical(db: Any, row: dict) -> bool:
         fill_cost_bps=fill_bps,
         lookahead_used_s=lookahead,
     )
+    # Annotate the score with fill-bps actually applied so operators
+    # reading the drawer can see whether vol-conditional kicked in.
+    score["fill_cost_bps_applied"] = fill_bps
+    score["fill_cost_bps_base"] = base_bps
     return await patch_scores(db, decision_id, tactical_score=score)
 
 

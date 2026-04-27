@@ -491,3 +491,178 @@ async def test_fire_shadow_swallows_engine_exception():
             signal={}, mid_price=77_000.0,
         )
     assert out is None
+
+
+
+# ── Volume-conditional fill costs (Phase 2 P2) ────────────────────────────────
+
+
+def test_volume_conditional_returns_base_when_ratio_missing():
+    from services.research_shadow import volume_conditional_fill_bps
+    # None / missing → behaves like v1 (no scaling).
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=None, asset_type="crypto",
+    ) == 20
+
+
+def test_volume_conditional_low_vol_penalty_crypto():
+    from services.research_shadow import volume_conditional_fill_bps
+    # Low-vol regime: 1.5× → 30bps.
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=0.3, asset_type="crypto",
+    ) == 30
+
+
+def test_volume_conditional_normal_vol_unchanged():
+    from services.research_shadow import volume_conditional_fill_bps
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=1.0, asset_type="crypto",
+    ) == 20
+
+
+def test_volume_conditional_high_vol_compresses_crypto():
+    from services.research_shadow import volume_conditional_fill_bps
+    # >=3× normal → 0.5× → 10bps.
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=4.0, asset_type="crypto",
+    ) == 10
+
+
+def test_volume_conditional_equity_attenuated():
+    """Equity envelope is 75% of crypto's swing — a low-vol crypto
+    1.5× becomes ~1.375× on stocks (same direction, smaller mag)."""
+    from services.research_shadow import volume_conditional_fill_bps
+    crypto_low = volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=0.3, asset_type="crypto",
+    )
+    stock_low = volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=0.3, asset_type="stock",
+    )
+    # Crypto moves further from base than stock at same regime.
+    assert crypto_low > stock_low > 20
+
+
+def test_volume_conditional_options_flat():
+    """Options spread is structural, not volume-driven at retail.
+    Stays flat regardless of volume_ratio."""
+    from services.research_shadow import volume_conditional_fill_bps
+    for vr in (0.1, 1.0, 10.0):
+        assert volume_conditional_fill_bps(
+            base_bps=100, volume_ratio=vr, asset_type="options",
+        ) == 100
+
+
+def test_volume_conditional_invalid_ratio_falls_back():
+    from services.research_shadow import volume_conditional_fill_bps
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio="not_a_number", asset_type="crypto",
+    ) == 20
+    assert volume_conditional_fill_bps(
+        base_bps=20, volume_ratio=-1.0, asset_type="crypto",
+    ) == 20
+
+
+def test_volume_conditional_minimum_floor():
+    """Multiplier never produces sub-1bps — math floor protects
+    against degenerate input."""
+    from services.research_shadow import volume_conditional_fill_bps
+    out = volume_conditional_fill_bps(
+        base_bps=1, volume_ratio=10.0, asset_type="crypto",
+    )
+    assert out >= 1
+
+
+# ── Phase breakdown (enhancement) ─────────────────────────────────────────────
+
+
+def test_stats_phase_breakdown_tracks_per_phase_dissents():
+    from services.research_shadow_stats import compute_shadow_stats
+    rows = [
+        # Entry phase: 2 dissents, 1 scored win, 1 scored loss.
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "decision_phase": "entry", "is_dissent": True,
+         "tactical_score": {"delta_usd": 5.0}},
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "decision_phase": "entry", "is_dissent": True,
+         "tactical_score": {"delta_usd": -3.0}},
+        # Exit phase: 1 dissent, scored win.
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "decision_phase": "exit", "is_dissent": True,
+         "tactical_score": {"delta_usd": 12.0}},
+    ]
+    out = compute_shadow_stats(rows)
+    bucket = out["buckets"][0]
+    pb = bucket["phase_breakdown"]
+    assert pb["entry"]["dissents"] == 2
+    assert pb["entry"]["scored"] == 2
+    assert pb["entry"]["wins"] == 1
+    assert pb["entry"]["win_rate"] == 0.5
+    assert pb["exit"]["dissents"] == 1
+    assert pb["exit"]["wins"] == 1
+    assert pb["exit"]["win_rate"] == 1.0
+    # Cycle untouched in this fixture.
+    assert pb["cycle"]["dissents"] == 0
+    assert pb["cycle"]["win_rate"] is None
+
+
+def test_stats_phase_unknown_falls_to_cycle():
+    """Defensive — unknown decision_phase strings bucket under 'cycle'."""
+    from services.research_shadow_stats import compute_shadow_stats
+    rows = [
+        {"shadow_engine": "council", "asset_type": "crypto",
+         "decision_phase": "unknown_phase_xyz", "is_dissent": True,
+         "tactical_score": {"delta_usd": 1.0}},
+    ]
+    out = compute_shadow_stats(rows)
+    pb = out["buckets"][0]["phase_breakdown"]
+    assert pb["cycle"]["dissents"] == 1
+
+
+# ── Volume-ratio capture flows through the system ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_volume_ratio_persisted_on_shadow_decision():
+    """Smoke test: signal carrying volume_ratio results in a
+    persisted ShadowDecision with the field populated."""
+    from services.research_shadow_engines import fire_shadow
+
+    seen_doc = {}
+
+    class _Coll:
+        async def insert_one(self, doc):
+            seen_doc.update(doc)
+            return type("_R", (), {})()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+        async def __aiter__(self): return self
+        def aggregate(self, _p):
+            class _C:
+                async def to_list(self, _l): return []
+            return _C()
+
+        def find_one(self, *_a, **_kw):
+            class _Q:
+                def __await__(self): return iter([None])
+            return _Q()
+
+    # Patch the gate-side queries to skip rate-limit / cost checks.
+    with patch(
+        "services.research_shadow_engines.get_last_shadow_ts",
+        return_value=None,
+    ), patch(
+        "services.research_shadow_engines.get_daily_cost_usd",
+        return_value=0.0,
+    ):
+        await fire_shadow(
+            _DB(), bot_id="b1", user_id="u1", symbol="BTC",
+            asset_type="crypto", decision_phase="entry",
+            active_engine="confluence", active_action="LONG",
+            shadow_engine="adversarial",
+            signal={"volume_ratio": 2.5, "rsi": 50},
+            mid_price=77_000.0,
+        )
+
+    assert seen_doc.get("volume_ratio_at_decision") == 2.5
+
