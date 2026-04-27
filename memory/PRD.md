@@ -54,6 +54,67 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Council Risk Modulator + Tier Gate (Feb 26, 2026)
+
+Post-Tier-3 integration scaffolding. Lets Council influence Adversarial
+Commander's emitted `risk_multiplier` once Council proves itself on
+disagreement-conditional outcomes — never direction, never HOLD-to-trade,
+hard-bounded between 0.5× and 1.25×.
+
+**Architecture decision** (Option 3, hierarchical with bounded modulator):
+- Adversarial Commander = direction owner
+- Council = bounded risk tuner only
+- Council never flips direction
+- Council never turns HOLD into trade
+- Hard bounds pinned in code (not env), so an operator misconfiguration
+  can't unlock 0× or 2× scaling
+
+**New files:**
+
+- `services/council_tier_gate.py` — promotion gate. Per-bucket check
+  against `(shadow_engine, asset_type)` — prevents over-promoting
+  Council on equities when only crypto data is mature. Three joint
+  thresholds (env-overridable):
+  - `MIN_COUNCIL_DISSENTS=30` (matches existing maturity guardrail)
+  - `MIN_COUNCIL_WIN_RATE=0.55` (positive expectancy after fill costs)
+  - `MIN_COUNCIL_TOTAL_DELTA_USD=0` (joint-test guard against
+    "lucky-but-net-positive-on-tiny-N" samples)
+  60s TTL cache wraps `fetch_shadow_stats` so the Commander hook
+  doesn't trigger a Mongo aggregation every cycle. Default-closed
+  on any fetch failure.
+- `services/council_risk_modulator.py` — pure-function modulation
+  table:
+  - Modulator off → no change
+  - Tier closed → no change
+  - Commander HOLD → no change (cannot be promoted)
+  - Same direction → ×1.10, capped at 1.25×
+  - Opposite + ≥0.7 conf → ×0.50, floored at 0.50
+  - Anything else → no-op (logs "near-miss" reason for analytics)
+  - Action canonicalisation maps Adversarial's `SHORT_OR_AVOID`,
+    Council's `SHORT`, and equity bot's `SELL` onto a unified
+    `{BUY, SELL, HOLD}` namespace.
+- `tests/test_council_risk_modulator.py` — **23 tests** covering:
+  per-bucket gate matching, joint-threshold discipline, null/empty
+  defaults, cache TTL behaviour, cache failure → closed gate, all
+  6 modulator outcomes, action canonicalisation across engine-
+  specific spellings, and a regression guard verifying hard bounds
+  stay code-pinned (not env-overridable).
+
+**Activation discipline (double-gated, both must pass):**
+1. Env flag: `COUNCIL_RISK_MODULATOR_ENABLED=true` (default `false`)
+2. Data gate: `council_tier_open_for_bucket(stats, engine, asset_type)`
+   returns true (≥30 scored dissents AND win_rate >0.55 AND total_delta_usd >0)
+
+**Hook NOT yet wired into `adversarial_core.py`** — deliberate. The
+modulator docstring documents the call site (after Commander emits
+the decision dict, before `run_adversarial_decision` returns). Zero
+risk of accidental activation pre-Tier-3 because the integration
+point is a code edit, not a config flip.
+
+**Tests + lint**: 23/23 in new file, 161/161 across all related
+suites (shadow + tier3 isolation + council modulator + adversarial
+stats/core/logger/phase). Lint clean across all 3 new files.
+
 ### Cost Trend Sparkline + Regime Stats + Adaptation Summary (Feb 26, 2026)
 
 Three additional surfaces on the Research Shadow framework — completing
