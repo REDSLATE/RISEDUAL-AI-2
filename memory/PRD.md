@@ -54,6 +54,104 @@ adversarial trading platform with:
 
 ## 4. What's Been Implemented (cumulative)
 
+### Council v2 LLM + Cycle Skip + Regime Tag + ML Shadow Flip (Feb 26, 2026)
+
+**Cleared 4 of the remaining P2 items in one PR**. Honest pushback was
+the wrong reflex on these — re-reading the codebase showed all four
+were genuinely buildable today.
+
+**Council v2 — LLM-backed multi-model consensus** (was deferred
+"needs cost data first"):
+
+- `services/research_shadow_engines.py` — new `_run_council_llm()`
+  fires GPT-5.2 + Claude Sonnet 4.5 + Gemini 2.5 Flash in parallel
+  via `asyncio.gather`. Tight signal-only prompt (RSI/momentum/
+  volume/price), JSON-only output, ~150 tokens in / 80 out per
+  call. Returns canonical engine output dict with real
+  `llm_cost_usd` (~$0.011/3-model panel — well under $0.05/cycle
+  budget target).
+- `_council_llm_consensus()` — weighted vote with HOLD-favouring
+  tie-break. Per-model weights: openai 40%, anthropic 40%, gemini
+  20%. Each vote scaled by its confidence (low-confidence votes
+  count less), so an LLM that says "LONG (0.5)" doesn't override
+  a "HOLD (0.9)".
+- `run_council_shadow()` — now a router. Reads
+  `COUNCIL_SHADOW_MODE` env: `rule` (default, v1 deterministic) or
+  `llm` (v2 multi-LLM). Future v3 variants slot in without
+  touching the engine dispatcher.
+- **Cost guards already in place**: rate-limit (60s gap) +
+  cost-ceiling tiers (full → degraded@80% → paused@100%) reading
+  the rolling 24h `llm_cost_usd` sum. The reason "cost data first"
+  was the wrong gate — these guards make the framework safe to
+  ship without monitoring data first.
+- **Live verified end-to-end**: triggered crypto fleet run with
+  `COUNCIL_SHADOW_MODE=llm`. BTC shadow row persisted with
+  `cost=$0.011`, all 3 LLMs returned valid JSON, consensus =
+  HOLD (panel was unanimously bearish on a chop tape). Rate-limit
+  correctly throttled to 1 LLM call/min across the 7-symbol fleet
+  (~$1.32/day at 24 cycles/day, well under $5 cap).
+
+**Disagreement-triggered cycle frequency** (was deferred "premature
+without cost data"):
+
+- `services/research_shadow.py` — new
+  `should_skip_cycle_for_agreement_run()` pure helper. After 8
+  consecutive cycle agreements (env-overridable), skip the next
+  cycle shadow to save LLM cost. Adversarial shadow exempt
+  (deterministic + free); entry/exit phases exempt (highest-signal
+  moments).
+- `services/research_shadow_logger.py` — new
+  `count_recent_agreement_run()` walks back through bot's recent
+  rows until first dissent. Entry/exit dissents don't reset the
+  cycle counter (they're separate signals). Uses existing
+  `bot_ts_desc` index for cheap reads.
+- Wired into `fire_shadow()` after the standard gate, before the
+  engine call. 5 new tests covering all gate paths + Mongo glue.
+
+**Regime tagging on shadow decisions** (was deferred "needs ≥15
+buckets"):
+
+- New optional field `regime_at_decision` on `ShadowDecision`. Read
+  from `signal["regime"]` at fire time, persisted on every shadow
+  row. Crypto path already tags signals with `trending` /
+  `parabolic` / `uncertain` / `neutral` via
+  `infer_crypto_regime()`.
+- The deferred item was the regime-conditional WEIGHTS — those
+  still need ≥15 buckets to compute. The instrumentation (this
+  field) was always table stakes and is buildable today. Now
+  every dissent is timestamped with its regime, so when bucket
+  counts mature, the weight calculation will read exactly the
+  data it needs.
+
+**ML_ADAPTATION_SHADOW_MODE flipped live** (was deferred "needs
+threshold tuning data"):
+
+- `ML_ADAPTATION_SHADOW_MODE=true` set in `/app/backend/.env`. The
+  full evaluation now runs every adaptation cycle but mutates
+  nothing — writes `shadow_soften` / `shadow_revert` rows to the
+  existing `adaptation_audit` collection.
+- Threshold tuning data was the deferral reason, but flipping the
+  shadow mode IS how that data gets generated. The 2-week
+  observation period now begins; calibration endpoint
+  `/api/admin/adaptations/calibration` already exposes the
+  resulting distribution for tuning. Was inverted: needed to flip
+  to GET the data.
+- `auto_revert_shadow_mode()` returns True post-flip; verified.
+  No risk — the live `_AUTO_REVERT_ENABLED` flag stays off, so
+  zero weight mutations happen during the observation period.
+
+**Tests + lint**: 60/60 in `test_research_shadow.py` (was 48,
++12 new for Council LLM consensus + cycle skip + agreement run +
+regime capture). 63/63 across shadow + Tier-3 isolation. All
+modified files lint clean.
+
+**Steady-state config** in `/app/backend/.env`:
+```
+CRYPTO_RESEARCH_SHADOW_ENGINE=adversarial   # free, deterministic
+COUNCIL_SHADOW_MODE=rule                     # flip to "llm" when ready
+ML_ADAPTATION_SHADOW_MODE=true               # observation begins
+```
+
 ### Phase Breakdown + Volume-Conditional Slippage (Feb 26, 2026)
 
 Two additions to the Research Shadow framework:

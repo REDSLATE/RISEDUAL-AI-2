@@ -654,15 +654,209 @@ async def test_volume_ratio_persisted_on_shadow_decision():
     ), patch(
         "services.research_shadow_engines.get_daily_cost_usd",
         return_value=0.0,
+    ), patch(
+        "services.research_shadow_engines.count_recent_agreement_run",
+        return_value=0,
     ):
         await fire_shadow(
             _DB(), bot_id="b1", user_id="u1", symbol="BTC",
             asset_type="crypto", decision_phase="entry",
             active_engine="confluence", active_action="LONG",
             shadow_engine="adversarial",
-            signal={"volume_ratio": 2.5, "rsi": 50},
+            signal={"volume_ratio": 2.5, "rsi": 50, "regime": "trending"},
             mid_price=77_000.0,
         )
 
     assert seen_doc.get("volume_ratio_at_decision") == 2.5
+    # Regime tag also captured for future regime-conditional weighting.
+    assert seen_doc.get("regime_at_decision") == "trending"
+
+
+# ── Disagreement-triggered cycle frequency (P2) ───────────────────────────────
+
+
+def test_cycle_skip_adversarial_never_skipped():
+    """Adversarial is deterministic + free — never skip even on
+    a long agreement run."""
+    from services.research_shadow import should_skip_cycle_for_agreement_run
+    assert should_skip_cycle_for_agreement_run(
+        shadow_engine="adversarial",
+        decision_phase="cycle",
+        recent_agreement_run=999,
+    ) is False
+
+
+def test_cycle_skip_entry_exit_never_skipped():
+    """Entry + exit are highest-signal moments — never skip."""
+    from services.research_shadow import should_skip_cycle_for_agreement_run
+    for phase in ("entry", "exit"):
+        assert should_skip_cycle_for_agreement_run(
+            shadow_engine="council",
+            decision_phase=phase,
+            recent_agreement_run=999,
+        ) is False
+
+
+def test_cycle_skip_below_threshold_fires():
+    from services.research_shadow import should_skip_cycle_for_agreement_run
+    assert should_skip_cycle_for_agreement_run(
+        shadow_engine="council",
+        decision_phase="cycle",
+        recent_agreement_run=3,
+    ) is False
+
+
+def test_cycle_skip_at_threshold_skips():
+    from services.research_shadow import (
+        CYCLE_SKIP_AGREEMENT_RUN, should_skip_cycle_for_agreement_run,
+    )
+    assert should_skip_cycle_for_agreement_run(
+        shadow_engine="council",
+        decision_phase="cycle",
+        recent_agreement_run=CYCLE_SKIP_AGREEMENT_RUN,
+    ) is True
+
+
+# ── count_recent_agreement_run (Mongo glue) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_count_recent_agreement_run_walks_until_first_dissent():
+    from services.research_shadow_logger import count_recent_agreement_run
+
+    rows = [
+        # Newest first. Three cycle agreements, then a dissent, then more.
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": True,  "decision_phase": "cycle"},
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": False, "decision_phase": "cycle"},
+    ]
+
+    class _Cursor:
+        def sort(self, *_a, **_kw): return self
+        def limit(self, _n): return self
+        async def to_list(self, length=None): return list(rows)
+
+    class _Coll:
+        def find(self, *_a, **_kw): return _Cursor()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await count_recent_agreement_run(_DB(), "bot1")
+    assert out == 3  # walks back 3 agreements before hitting the dissent
+
+
+@pytest.mark.asyncio
+async def test_count_recent_agreement_run_ignores_non_cycle_phases():
+    """Entry/exit dissents shouldn't reset the cycle agreement run."""
+    from services.research_shadow_logger import count_recent_agreement_run
+
+    rows = [
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": True,  "decision_phase": "entry"},  # non-cycle, ignored
+        {"is_dissent": False, "decision_phase": "cycle"},
+        {"is_dissent": False, "decision_phase": "cycle"},
+    ]
+
+    class _Cursor:
+        def sort(self, *_a, **_kw): return self
+        def limit(self, _n): return self
+        async def to_list(self, length=None): return list(rows)
+
+    class _Coll:
+        def find(self, *_a, **_kw): return _Cursor()
+
+    class _DB:
+        def __getitem__(self, _key): return _Coll()
+
+    out = await count_recent_agreement_run(_DB(), "bot1")
+    # All 3 cycle rows agreed; entry-dissent skipped.
+    assert out == 3
+
+
+# ── Council LLM consensus (v2) ────────────────────────────────────────────────
+
+
+def test_council_llm_consensus_unanimous_long():
+    from services.research_shadow_engines import _council_llm_consensus
+    out = _council_llm_consensus([
+        {"provider": "openai", "action": "LONG", "confidence": 0.7},
+        {"provider": "anthropic", "action": "LONG", "confidence": 0.6},
+        {"provider": "gemini", "action": "LONG", "confidence": 0.5},
+    ])
+    assert out["action"] == "LONG"
+    assert out["confidence"] > 0.5
+
+
+def test_council_llm_consensus_majority_short_with_dissenter():
+    from services.research_shadow_engines import _council_llm_consensus
+    out = _council_llm_consensus([
+        {"provider": "openai", "action": "SHORT", "confidence": 0.7},
+        {"provider": "anthropic", "action": "SHORT", "confidence": 0.7},
+        {"provider": "gemini", "action": "LONG", "confidence": 0.5},
+    ])
+    assert out["action"] == "SHORT"
+
+
+def test_council_llm_consensus_tie_favours_hold():
+    """Tie-break rule: HOLD wins over LONG/SHORT to avoid coin-flip dissents."""
+    from services.research_shadow_engines import _council_llm_consensus
+    out = _council_llm_consensus([
+        {"provider": "openai", "action": "LONG", "confidence": 0.5},
+        {"provider": "anthropic", "action": "SHORT", "confidence": 0.5},
+        {"provider": "gemini", "action": "HOLD", "confidence": 0.5},
+    ])
+    assert out["action"] == "HOLD"
+
+
+def test_council_llm_consensus_empty_votes_holds():
+    from services.research_shadow_engines import _council_llm_consensus
+    out = _council_llm_consensus([])
+    assert out["action"] == "HOLD"
+    assert out["confidence"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_council_llm_no_api_key_returns_hold():
+    """Missing EMERGENT_LLM_KEY → HOLD with zero cost. No raise."""
+    from services.research_shadow_engines import _run_council_llm
+    import os
+    saved = os.environ.pop("EMERGENT_LLM_KEY", None)
+    try:
+        out = await _run_council_llm({"rsi": 50})
+    finally:
+        if saved is not None:
+            os.environ["EMERGENT_LLM_KEY"] = saved
+    assert out["action"] == "HOLD"
+    assert out["llm_cost_usd"] == 0.0
+    assert "no_api_key" in out["thesis"]
+
+
+@pytest.mark.asyncio
+async def test_council_router_dispatches_on_env_flag():
+    """COUNCIL_SHADOW_MODE=rule routes to v1, =llm routes to v2."""
+    from services.research_shadow_engines import run_council_shadow
+    import os
+
+    saved = os.environ.get("COUNCIL_SHADOW_MODE")
+    try:
+        # Rule mode → produces deterministic output, zero cost.
+        os.environ["COUNCIL_SHADOW_MODE"] = "rule"
+        out_rule = await run_council_shadow(None, {"rsi": 25, "momentum_5b": 0.01})
+        assert out_rule["llm_cost_usd"] == 0.0
+
+        # LLM mode without EMERGENT_LLM_KEY → falls through to no-key HOLD.
+        os.environ["COUNCIL_SHADOW_MODE"] = "llm"
+        os.environ.pop("EMERGENT_LLM_KEY", None)
+        out_llm = await run_council_shadow(None, {"rsi": 25, "momentum_5b": 0.01})
+        assert out_llm["thesis"] == "council_llm_no_api_key"
+    finally:
+        if saved is not None:
+            os.environ["COUNCIL_SHADOW_MODE"] = saved
+        else:
+            os.environ.pop("COUNCIL_SHADOW_MODE", None)
+
 

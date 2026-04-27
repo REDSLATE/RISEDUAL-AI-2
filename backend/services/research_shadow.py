@@ -187,6 +187,10 @@ class ShadowDecision:
     # Captured at decision-time so the deferred scorer can compute
     # volume-conditional fill costs without a second quote lookup.
     volume_ratio_at_decision: Optional[float] = None
+    # Captured for regime-conditional analysis (P2 instrumentation).
+    # Values: "trending", "parabolic", "uncertain", or asset-specific
+    # tags. Future regime-conditional weighting will read this field.
+    regime_at_decision: Optional[str] = None
 
     # Deferred-scoring fields. Worker sets these.
     tactical_score: Optional[dict[str, Any]] = None
@@ -246,6 +250,8 @@ class ShadowDecision:
             doc["shadow_confidence"] = self.shadow_confidence
         if self.volume_ratio_at_decision is not None:
             doc["volume_ratio_at_decision"] = self.volume_ratio_at_decision
+        if self.regime_at_decision is not None:
+            doc["regime_at_decision"] = self.regime_at_decision
         if self.tactical_score is not None:
             doc["tactical_score"] = self.tactical_score
         if self.strategic_score is not None:
@@ -311,6 +317,46 @@ def should_fire_shadow(
         return True, "ok_degraded"
 
     return True, "ok"
+
+
+# Disagreement-triggered cycle skip — when the last N consecutive
+# cycles all AGREED with the active engine, skip the cycle shadow
+# to save LLM cost. The signal value of cycle shadows is at
+# inflection points (first dissent after a long agreement run);
+# the 60th HOLD-vs-HOLD in a row is dead weight.
+#
+# Only applies to ``cycle`` phase shadows (entry + exit always
+# fire — those are the highest-signal moments). Adversarial shadow
+# is exempt because it's free.
+CYCLE_SKIP_AGREEMENT_RUN: int = _env_int("SHADOW_CYCLE_SKIP_AGREEMENT_RUN", 8)
+
+
+def should_skip_cycle_for_agreement_run(
+    *,
+    shadow_engine: str,
+    decision_phase: str,
+    recent_agreement_run: int,
+) -> bool:
+    """Decide whether to skip a cycle shadow because the recent
+    agreement run is long enough that another cycle is unlikely to
+    add signal.
+
+    Pure function for testability. ``recent_agreement_run`` is the
+    number of CONSECUTIVE most-recent shadow rows that were not
+    dissents (i.e., active and shadow agreed). Reset to 0 the
+    moment a dissent fires.
+
+    Rules:
+        - Adversarial shadow: never skipped (deterministic, free).
+        - Entry / exit phases: never skipped (highest-signal moments).
+        - Cycle phase + agreement run >= threshold: skip.
+        - Otherwise: fire.
+    """
+    if shadow_engine == ENGINE_ADVERSARIAL:
+        return False
+    if decision_phase != "cycle":
+        return False
+    return recent_agreement_run >= CYCLE_SKIP_AGREEMENT_RUN
 
 
 # ── PnL math (pure, used by scorer) ───────────────────────────────────────────

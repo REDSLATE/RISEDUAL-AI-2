@@ -197,3 +197,43 @@ async def get_last_shadow_ts(db: Any, bot_id: str) -> Optional[datetime]:
             "[research-shadow] get_last_shadow_ts failed for %s: %s", bot_id, exc,
         )
         return None
+
+
+async def count_recent_agreement_run(
+    db: Any, bot_id: str, max_lookback: int = 50,
+) -> int:
+    """Count the number of consecutive most-recent shadow rows for
+    this bot that were NOT dissents (agreement runs).
+
+    Walks backwards from the newest row, stopping at the first
+    dissent (or after ``max_lookback`` rows — defence against an
+    accidentally-paused dissent never resetting the counter).
+
+    Used by the disagreement-triggered cycle frequency gate. Cheap
+    Mongo query — uses the ``bot_ts_desc`` compound index.
+    """
+    if db is None or not bot_id:
+        return 0
+    try:
+        rows = await db[SHADOW_COLLECTION].find(
+            {"bot_id": bot_id},
+            {"_id": 0, "is_dissent": 1, "decision_phase": 1},
+        ).sort("ts", -1).limit(max_lookback).to_list(length=max_lookback)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[research-shadow] count_recent_agreement_run failed for %s: %s",
+            bot_id, exc,
+        )
+        return 0
+
+    run = 0
+    for row in rows:
+        # Only cycle-phase rows count toward the agreement run —
+        # entry/exit dissents shouldn't reset the counter for cycle
+        # skipping (they're separate signals).
+        if row.get("decision_phase") != "cycle":
+            continue
+        if row.get("is_dissent"):
+            break
+        run += 1
+    return run
