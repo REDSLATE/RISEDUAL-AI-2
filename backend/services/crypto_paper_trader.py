@@ -192,31 +192,20 @@ async def run_crypto_symbol(
         "failure_context": infer_failure_context(raw_signal),
     }
 
-    # Audit log fires on EVERY decision (including HOLDs) so the
-    # veto-rate calibration tile sees the full denominator.
-    if raw_signal["direction"] == "HOLD":
-        await log_adversarial_decision(
-            db, symbol=symbol, signal=signal, final_direction="HOLD",
-        )
-        return {
-            "symbol": symbol,
-            "skipped": True,
-            "reason": raw_signal.get("reason"),
-            "signal": raw_signal,
-        }
+    # ── Early HOLD evaluation ─────────────────────────────────────────────
+    # NOTE: we do NOT short-circuit on HOLD anymore. The adversarial layer
+    # in ``full`` phase can override a HOLD into a trade — that override
+    # path was unreachable before this refactor. We still treat HOLD as the
+    # default (no entry) and only the adversarial layer below can promote
+    # it to a fill.
+    starting_direction = raw_signal["direction"]
 
-    signal = await apply_crypto_adaptations_to_signal(db, signal)
-
-    if signal["direction"] == "HOLD":
-        await log_adversarial_decision(
-            db, symbol=symbol, signal=signal, final_direction="HOLD",
-        )
-        return {
-            "symbol": symbol,
-            "skipped": True,
-            "reason": signal.get("reason"),
-            "signal": signal,
-        }
+    # Apply adaptations BEFORE the adversarial layer so the layer sees the
+    # post-adaptation confidence/direction (closer to what would actually
+    # fire in production).
+    if starting_direction != "HOLD":
+        signal = await apply_crypto_adaptations_to_signal(db, signal)
+        starting_direction = signal["direction"]
 
     # ── Shadow Web Research ───────────────────────────────────────────────
     # Tavily + LLM narrative classifier. SHADOW ONLY — verdict is attached
@@ -224,29 +213,41 @@ async def run_crypto_symbol(
     # (audit_log + crypto_paper_trades). It MUST NOT alter direction or
     # confidence. Fully isolated try/except: a Tavily/LLM fault must
     # never block a live fill.
-    try:
-        shadow_verdict = await research_fetch_or_skip(
-            db, symbol, signal, fetcher=default_shadow_fetcher,
-        )
-        if shadow_verdict is not None:
-            signal["web_research_shadow_verdict"] = shadow_verdict
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "[crypto-bot] shadow web research failed for %s: %s", symbol, exc
-        )
+    #
+    # Skipped on HOLD signals — no narrative value to gather when there's
+    # no proposed trade. This also short-circuits Tavily spend on idle ticks.
+    if starting_direction != "HOLD":
+        try:
+            shadow_verdict = await research_fetch_or_skip(
+                db, symbol, signal, fetcher=default_shadow_fetcher,
+            )
+            if shadow_verdict is not None:
+                signal["web_research_shadow_verdict"] = shadow_verdict
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[crypto-bot] shadow web research failed for %s: %s", symbol, exc,
+            )
 
     # ── Adversarial Decision Layer (Bull / Bear / Commander) ──────────────
     # Double-gated: (a) CRYPTO_ADVERSARIAL_ENABLED=1 env flag,
     # (b) ML Tier 3 unlocked. Both default-closed. When either gate is
     # shut, run_adversarial_decision returns None and we no-op here.
     #
-    # SHADOW ONLY in the current phase: we LOG the Bull/Bear/Commander
-    # decision and attach decision_id to the trade row for post-close
-    # outcome attribution, but we do NOT use ``decision`` /
-    # ``risk_multiplier`` to alter the live fill. Promotion to
-    # risk_only / veto / full happens via CRYPTO_ADVERSARIAL_PHASE
-    # env var AFTER 50–100 logged decisions show meaningful edge.
+    # Phase semantics enforced HERE (not inside adversarial_core, which
+    # stays a pure-function module):
+    #
+    #   shadow    → log only. Trade fires per strategist/auditor.
+    #   risk_only → log + scale size_usd by risk_multiplier. Direction
+    #               unchanged.
+    #   veto      → log + Commander's NO_TRADE blocks the fill.
+    #               Commander's LONG/SHORT_OR_AVOID does not yet
+    #               override direction (that's `full` only).
+    #   full      → log + Commander's decision is authoritative for
+    #               BOTH direction AND fill-or-skip. Can promote a
+    #               strategist HOLD into a LONG (the override-triggers-
+    #               entry case that was unreachable before this refactor).
     adversarial_decision_id: Optional[str] = None
+    adv_decision: Optional[dict] = None
     try:
         adv_decision = await run_adversarial_decision(db, signal)
         if adv_decision is not None:
@@ -254,6 +255,85 @@ async def run_crypto_symbol(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "[crypto-bot] adversarial decision failed for %s: %s", symbol, exc,
+        )
+        adv_decision = None
+
+    # Resolve the final fire-or-skip + direction + size based on phase.
+    final_direction = starting_direction
+    size_multiplier = 1.0
+    adversarial_action: Optional[str] = None  # "veto_block" | "full_override" | "full_trigger"
+
+    if adv_decision is not None:
+        phase = adv_decision.get("phase") or "shadow"
+        commander = (adv_decision.get("decision") or "").upper()
+        risk_mult = float(adv_decision.get("risk_multiplier") or 0.0)
+
+        if phase == "risk_only":
+            # Direction unchanged. Size scaled by Commander's conviction
+            # gap. risk_mult is in [0, 1].
+            size_multiplier = max(0.0, min(risk_mult, 1.0))
+
+        elif phase == "veto":
+            # Commander can BLOCK a strategist-driven entry, but not
+            # override direction. (LONG/SHORT verdicts in veto phase
+            # only refine sizing, like risk_only.)
+            if commander == "NO_TRADE":
+                final_direction = "HOLD"
+                adversarial_action = "veto_block"
+            else:
+                size_multiplier = max(0.0, min(risk_mult, 1.0))
+
+        elif phase == "full":
+            # Commander's decision is authoritative for direction.
+            # The override-triggers-entry case lives here: a strategist
+            # HOLD can be promoted to LONG by Commander conviction.
+            if commander == "LONG":
+                if final_direction != "LONG":
+                    adversarial_action = "full_trigger" if final_direction == "HOLD" else "full_override"
+                final_direction = "LONG"
+            elif commander == "SHORT_OR_AVOID":
+                # SHORT_OR_AVOID is treated as a hard skip (no live
+                # crypto-short path on the paper bot today).
+                final_direction = "HOLD"
+                adversarial_action = "veto_block"
+            else:
+                final_direction = "HOLD"
+                adversarial_action = "veto_block"
+
+    # ── Final HOLD short-circuit ──────────────────────────────────────────
+    # Either the strategist said HOLD and no `full`-phase override
+    # triggered, OR a veto-phase Commander blocked the fill.
+    if final_direction == "HOLD":
+        await log_adversarial_decision(
+            db, symbol=symbol, signal=signal, final_direction="HOLD",
+        )
+        return {
+            "symbol": symbol,
+            "skipped": True,
+            "reason": adversarial_action or signal.get("reason") or "hold",
+            "signal": signal,
+            "adversarial_action": adversarial_action,
+            "adversarial_decision_id": adversarial_decision_id,
+        }
+
+    # Mutate the signal so the trade row + downstream audit reflect the
+    # ACTUAL fired direction (which may differ from strategist's pick
+    # in `full` phase).
+    signal["direction"] = final_direction
+
+    # When `full` phase promotes a strategist HOLD into a LONG (the
+    # override-triggers-entry case), strategist confidence is 0.0 —
+    # which would zero out the position size below. Floor confidence
+    # to MIN_CRYPTO_CONFIDENCE so the sizing math is well-defined.
+    # The actual size is still scaled down by Commander's
+    # ``risk_multiplier`` via ``size_multiplier``, so a low-conviction
+    # full_trigger still produces a smaller position than a confluence
+    # buy. The trade row records ``adversarial_action="full_trigger"``
+    # so post-hoc analysis can attribute these fills correctly.
+    if adversarial_action == "full_trigger":
+        signal["confidence"] = max(
+            float(signal.get("confidence") or 0.0),
+            MIN_CRYPTO_CONFIDENCE,
         )
 
     # Live quote (crypto-only path — never touches equity get_quote).
@@ -266,6 +346,10 @@ async def run_crypto_symbol(
         return {"symbol": symbol, "skipped": True, "reason": "quote_unavailable"}
 
     size_usd = compute_crypto_position_size(float(signal["confidence"]))
+    # Adversarial risk_only / veto-with-confidence phase: scale the
+    # position by Commander's conviction gap. multiplier=1.0 in shadow
+    # phase preserves identical behaviour to the pre-adversarial code.
+    size_usd = round(size_usd * size_multiplier, 2)
     if size_usd <= 0:
         await log_adversarial_decision(
             db, symbol=symbol, signal=signal, final_direction="HOLD",
@@ -332,6 +416,13 @@ async def run_crypto_symbol(
         # so Bull/Bear winner attribution can be computed.
         "adversarial_decision_id": adversarial_decision_id,
 
+        # Adversarial action that produced this fill — None for plain
+        # confluence buys, "full_trigger" for HOLD-promoted-to-LONG
+        # (override-triggers-entry), "full_override" if Commander
+        # flipped a non-LONG direction. Lets post-hoc analysis bucket
+        # full-phase entries separately from confluence entries.
+        "adversarial_action": adversarial_action,
+
         # agent_agreement block — top-level for direct admin queries
         # without nested lookup.
         "agent_agreement": {
@@ -355,6 +446,12 @@ async def run_crypto_symbol(
 
     try:
         await db.crypto_paper_trades.insert_one(trade)
+        # Strip Mongo-injected _id (ObjectId not JSON-serializable).
+        # Defensive — the function returns a hand-built sub-dict so
+        # there's no current leak, but this prevents a future
+        # reuse-of-doc bug in any callers that consume `trade` after
+        # this point.
+        trade.pop("_id", None)
     except Exception as exc:  # noqa: BLE001
         logger.error("[crypto-bot] insert failed for %s: %s", symbol, exc)
         await log_adversarial_decision(
@@ -382,6 +479,8 @@ async def run_crypto_symbol(
         "entry_price": entry_price,
         "stop_loss": stops["stop_loss"],
         "take_profit": stops["take_profit"],
+        "adversarial_action": adversarial_action,
+        "adversarial_decision_id": adversarial_decision_id,
     }
 
 

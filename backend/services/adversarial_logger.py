@@ -106,6 +106,9 @@ async def log_adversarial_decision(
 
     try:
         await db[DECISION_COLLECTION].insert_one(doc)
+        # Strip Mongo's injected ObjectId so `doc` stays JSON-safe
+        # for any caller that consumes it after the await.
+        doc.pop("_id", None)
         return decision_id
     except Exception as exc:  # noqa: BLE001
         logger.warning("[adversarial-log] insert failed: %s", exc)
