@@ -196,6 +196,24 @@ async def _run_research_shadow_scorer():
         logger.warning(f"Research shadow scorer failed: {e}")
 
 
+async def _run_patent_watch_refresh():
+    """Daily USPTO refresh for every saved Patent Watch query.
+
+    No-op when no queries are configured. Errors are absorbed —
+    a flaky USPTO endpoint must never block the scheduler.
+    """
+    try:
+        from services.patent_watch_service import refresh_all_queries
+        result = await refresh_all_queries()
+        if result.get("queries", 0) > 0:
+            logger.info(
+                "[patent-watch] daily: queries=%s fetched=%s errors=%s",
+                result.get("queries"), result.get("fetched"), result.get("errors"),
+            )
+    except Exception as e:
+        logger.warning(f"Patent watch refresh failed: {e}")
+
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -355,6 +373,10 @@ async def _start_schedulers():
                           hour=8, minute=45, id='agent_regime_drift')
         scheduler.add_job(_run_agent_performance_monitor, 'cron',
                           hour=8, minute=50, id='agent_performance_monitor')
+        # ── Patent Watch (USPTO daily fetch) ──
+        scheduler.add_job(_run_patent_watch_refresh, 'cron',
+                          hour=4, minute=15, id='patent_watch_refresh',
+                          replace_existing=True)
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.

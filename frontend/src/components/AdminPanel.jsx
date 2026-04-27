@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -20,6 +20,7 @@ import CryptoPaperDashboard from './CryptoPaperDashboard';
 import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
 import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
 import CouncilTierStatusPill from './admin/CouncilTierStatusPill';
+import PatentWatchPanel from './admin/PatentWatchPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -57,6 +58,7 @@ const TAB_GROUPS = [
       { id: 'crypto',        label: 'Crypto Bots', icon: Bitcoin },
       { id: 'adversarial',   label: 'Adversarial', icon: TrendingUp },
       { id: 'shadow',        label: 'Shadow',      icon: Eye },
+      { id: 'patents',       label: 'Patent Watch', icon: FileText },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
   },
@@ -86,6 +88,7 @@ const TAB_SUBTITLES = {
   crypto:         () => 'Isolated 24/7 crypto paper bots · PnL · adaptations',
   adversarial:    () => 'Bull / Bear / Commander layer · win-rate spread · phase gates',
   shadow:         () => 'Research shadow — disagreement-conditional accuracy · cost budget',
+  patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   tools:          () => 'Codebase export & utilities',
 };
 
@@ -106,6 +109,7 @@ const TAB_COMPONENTS = {
   crypto:         () => <CryptoPaperDashboard />,
   adversarial:    () => <CryptoAdversarialDashboard />,
   shadow:         () => <ShadowAccuracyPanel />,
+  patents:        () => <PatentWatchPanel />,
   tools:          () => <AdminTools />,
 };
 

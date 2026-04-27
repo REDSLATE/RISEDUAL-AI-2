@@ -252,9 +252,10 @@ current live deploy queue.
   Track filings under owner / target inventors. Daily fetch,
   Mongo cache, admin-only panel, link to PatentsView record.
 
-- **Tier 1 Visual Polish.** Targeted UI polish pass on the
-  Tier-1-eligible surfaces (landing, Pricing, Subscription
-  cards, BrokerConnect). Scope to be drafted before kickoff.
+- ~~**Tier 1 Visual Polish.**~~ **DROPPED 2026-02-08 per user.**
+  ("Don't worry about polishing anything. Just need this to
+  function first then we can look at dressing it up.")
+  Revisit only after function-first backlog clears.
 
 ---
 
