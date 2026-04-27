@@ -1,5 +1,16 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (d) — Tier 3 / Council Activation Playbook
+- New ops doc: `/app/memory/TIER3_ACTIVATION_PLAYBOOK.md`.
+- Single source of truth for the Adversarial → Council → Regime
+  weight rollout. Covers env-flag inventory, phase progression
+  (`shadow → risk_only → veto → full`), the `/api/admin/shadow/
+  tier-readiness` payload, Council promotion thresholds, code-pinned
+  bounds, rollback table, incident response, and Tier 3 firewall
+  verification.
+- Updates required whenever flag defaults / thresholds / phase rules
+  change in code (see §3 and §5 of the playbook).
+
 ## 2026-02-08 (c) — Test-hygiene pass on `test_daily_digest.py`
 - Refreshed 6 stale assertions to match the current codebase:
   * Digest data keys: `dark_pool`/`signals` → `smart_money`/`alerts`.
