@@ -237,16 +237,15 @@ current live deploy queue.
 
 ### 🟢 Approved 2026-02-08 — ready to schedule
 
-- **Tech debt: refactor `trading_bot_service.execute_trade()`.**
-  Function is high-complexity (long-living branches, mixed
-  concerns: position sizing, broker call, logging, shadow hooks,
-  outcome bookkeeping). Goal: split into ≤5 cohesive helpers
-  with clear inputs/outputs; preserve every existing test.
+- ~~**Tech debt: refactor `trading_bot_service.execute_trade()`.**~~
+  ✅ DONE 2026-02-08. `execute_signal()` (the actual fill-path
+  function) split into 5 cohesive helpers + slim orchestrator.
+  113/113 trading-bot tests pass. See CHANGELOG entry (g).
 
-- **Tech debt: split `AppContent.jsx`.** Oversized React component;
-  break into route-level + feature-level subcomponents. Goal:
-  no individual component > ~250 lines; preserve render output
-  byte-for-byte (snapshot test pre/post).
+- ~~**Tech debt: split `AppContent.jsx`.**~~
+  ✅ DONE 2026-02-08. App.js 333 → 155 lines; new
+  PreAuthRouter (~115 lines) + AuthenticatedShell (~145 lines).
+  See CHANGELOG entry (g).
 
 - ~~**Patent Watch admin dashboard (USPTO PatentsView API).**~~
   ✅ DONE 2026-02-08. Backend service + admin routes + UI panel

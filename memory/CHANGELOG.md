@@ -1,5 +1,38 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (g) — Tech-debt refactor pass (P3 items A & B, COMPLETE)
+
+### B. Split `AppContent` (frontend)
+- `App.js` slimmed from 333 → 155 lines. AppContent now owns
+  only modal state, view state, and the cross-component
+  navigation bus.
+- New `components/PreAuthRouter.jsx` (~115 lines): handles the
+  three unauthenticated entry surfaces — `?demo=oauth` →
+  AlpacaOAuthDemo, `/compliance/<broker>-oauth` →
+  ComplianceOAuth, otherwise LandingPage + auth/waitlist/reset
+  modals.
+- New `components/AuthenticatedShell.jsx` (~145 lines): pure
+  layout — Navbar + Ticker + AlertsPanel + main hub router +
+  Footer + Chat + MobileNav + ModalManager.
+- No behaviour change; landing page + admin shell render
+  identically pre/post.
+
+### A. Refactor `trading_bot_service.execute_signal()` (backend)
+- 209-line monolith split into 5 cohesive helpers above the
+  slim 95-line orchestrator:
+    - `_check_kill_switch_and_drawdown(equity_curve)` (step 0)
+    - `_compute_adjusted_size(...)` (steps 2 + 3a + 3b + 3c + 4)
+    - `_resolve_qty(adjusted_size, signal, market_data)` (step 5)
+    - `_fire_equity_shadow(synthetic_bot, signal, symbol, price)`
+      (Research Shadow fire-and-forget block)
+    - `_record_kill_switch_outcome(order)` (step 8)
+- Public signature unchanged; every skip-reason string
+  preserved; lazy `ai_core` imports preserved.
+- Tests: 113/113 trading-bot tests pass (18 execute_signal_usd
+  + 35 portfolio_risk_engine + 5 adaptive_sizing + 40
+  drawdown_allocator + 15 kill_switch). 33/33 Patent Watch
+  tests still pass — no cross-leg regressions.
+
 ## 2026-02-08 (f) — Patent Watch admin dashboard (P3 ready-to-schedule item C, COMPLETE)
 - New backend service `services/patent_watch_service.py`: USPTO ODP
   client with X-API-KEY header support, query CRUD on
