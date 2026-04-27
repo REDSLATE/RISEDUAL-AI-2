@@ -1,5 +1,18 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (e) — Backlog re-prioritization
+- **Dropped:** Alpaca crypto LIVE execution wiring — per user
+  ("Alpaca can get crossed off as well. Doesn't seem it's
+  happening.") Removed from the parked section of ROADMAP.
+- **Dropped:** Earlier-flagged manual items (duplicate Stripe
+  webhook + landing-page Adversarial overclaim) per user
+  ("we currently built it"). Stripe configuration left as-is.
+- **Approved & promoted to P3 ready-to-schedule:**
+  - Tech debt: refactor `trading_bot_service.execute_trade()`
+  - Tech debt: split `AppContent.jsx`
+  - Patent Watch admin dashboard (USPTO PatentsView API)
+  - Tier 1 Visual Polish
+
 ## 2026-02-08 (d) — Tier 3 / Council Activation Playbook
 - New ops doc: `/app/memory/TIER3_ACTIVATION_PLAYBOOK.md`.
 - Single source of truth for the Adversarial → Council → Regime

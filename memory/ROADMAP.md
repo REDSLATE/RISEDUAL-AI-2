@@ -57,32 +57,12 @@ current live deploy queue.
 
 ## ⏸ Parked — waiting on user action
 
-- **Wire Alpaca crypto LIVE execution.** Engineering scope is small
-  (`/USD` symbol, `time_in_force="gtc"`, `asset_class="crypto"` tag in
-  `services/alpaca_service.submit_order()`) but the work is **gated
-  on Alpaca OAuth 2 approval** — user has applied, awaiting Alpaca's
-  response. Crypto **paper** trading is already live via the isolated
-  `crypto_paper_trader` + `crypto_quotes` lane (24/7, BTC/ETH/SOL),
-  so this only unlocks live (real-money) crypto fills. Move back to
-  P1 when OAuth approval arrives.
-
-  Original scope when unblocked (~2 hours, low-risk):
-  1. Extend `services/alpaca_service.submit_order()` to detect crypto
-     symbols and append `/USD` (e.g. `BTC` → `BTC/USD`) before
-     POSTing to `/v2/orders`. Alpaca's symbol convention is the only
-     real difference vs equities.
-  2. Set `time_in_force = "gtc"` for crypto (Alpaca doesn't accept
-     `"day"` on 24/7 markets).
-  3. Add `asset_class: "crypto"` tag on the resulting `trades` row
-     so the auto-closer + ML labeler can distinguish.
-  4. UI: in `BrokerConnect`, add a tooltip noting "Alpaca account
-     trades both equities and crypto from the same key."
-  5. Test: paper-mode order for `BTC` and `ETH`, confirm fills in
-     Alpaca dashboard, confirm `trades` row gets `asset_class:
-     "crypto"`.
-
-  Kraken adapter is already coded in `broker_service.py:986` as a
-  future P2 if a user asks for lower fees / more pairs.
+- ~~**Wire Alpaca crypto LIVE execution.**~~ **DROPPED 2026-02-08
+  per user.** ("Alpaca can get crossed off as well. Doesn't seem
+  it's happening.") Crypto **paper** trading remains live via the
+  isolated `crypto_paper_trader` + `crypto_quotes` lane. Kraken
+  adapter still sits coded but dormant in `broker_service.py:986`
+  as a possible future revival vector.
 
 - **Drop `_CANONICAL_OWNER_PASSWORD` override** in
   `backend/routes/auth.py`. *(2026-02-08: user chose to rotate the
@@ -254,6 +234,31 @@ current live deploy queue.
 ---
 
 ## P3 — Vision / strategic projects
+
+### 🟢 Approved 2026-02-08 — ready to schedule
+
+- **Tech debt: refactor `trading_bot_service.execute_trade()`.**
+  Function is high-complexity (long-living branches, mixed
+  concerns: position sizing, broker call, logging, shadow hooks,
+  outcome bookkeeping). Goal: split into ≤5 cohesive helpers
+  with clear inputs/outputs; preserve every existing test.
+
+- **Tech debt: split `AppContent.jsx`.** Oversized React component;
+  break into route-level + feature-level subcomponents. Goal:
+  no individual component > ~250 lines; preserve render output
+  byte-for-byte (snapshot test pre/post).
+
+- **Patent Watch admin dashboard (USPTO PatentsView API).**
+  Track filings under owner / target inventors. Daily fetch,
+  Mongo cache, admin-only panel, link to PatentsView record.
+
+- **Tier 1 Visual Polish.** Targeted UI polish pass on the
+  Tier-1-eligible surfaces (landing, Pricing, Subscription
+  cards, BrokerConnect). Scope to be drafted before kickoff.
+
+---
+
+### Existing P3 — strategic vision
 
 Sourced from user-supplied PDFs (2026-04-20 drop):
 
