@@ -142,6 +142,174 @@ def apply_portfolio_constraints(
     return round(min(float(new_trade_size), remaining), 2)
 
 
+def _check_kill_switch_and_drawdown(
+    equity_curve: list[float] | None,
+) -> dict | None:
+    """Step 0 of execute_signal — fleet-wide circuit breakers.
+
+    Fires before any sizing math so a tripped switch can never
+    leak an order through. The drawdown trip applies even when
+    the per-bot allocator (step 3c) is skipped because
+    ``bot_capital`` is ``None``.
+
+    Returns a ready-to-return ``{"skipped": True, ...}`` dict
+    when either gate trips, or ``None`` to continue.
+    """
+    from ai_core.kill_switch import kill_switch
+    from ai_core import compute_drawdown
+
+    if kill_switch.is_active():
+        ks_status = kill_switch.status()
+        return {
+            "skipped": True,
+            "reason": "kill switch active",
+            "cooldown_remaining_seconds": ks_status["cooldown_remaining_seconds"],
+            "last_reason": ks_status["last_reason"],
+        }
+
+    if equity_curve:
+        dd = compute_drawdown(equity_curve)
+        should_trip, trip_reason = kill_switch.should_trip(drawdown=dd)
+        if should_trip:
+            kill_switch.activate(trip_reason)
+            return {"skipped": True, "reason": f"kill switch tripped: {trip_reason}"}
+
+    return None
+
+
+def _compute_adjusted_size(
+    *,
+    base_size: float,
+    signal: dict,
+    tier3_readiness: dict,
+    open_positions: list[dict] | None,
+    equity_curve: list[float] | None,
+    bot_capital: float | None,
+) -> tuple[float, str | None]:
+    """Steps 2 + 3a + 3b + 3c + 4 of execute_signal — the full
+    sizing chain.
+
+    Pipeline:
+      2.  Tier 3 readiness × confidence sizing.
+      3a. Low-confidence / risk-filter zero check.
+      3b. Portfolio-level constraints (opt-in via open_positions).
+      3c. Drawdown + allocator throttle (opt-in via curve+capital).
+      4.  Hard cap at :data:`MAX_POSITION_USD`.
+
+    Returns ``(adjusted_size, skip_reason)``. ``skip_reason`` is
+    ``None`` on success; otherwise the orchestrator returns
+    ``{"skipped": True, "reason": skip_reason}`` immediately.
+    """
+    from ai_core import apply_per_trade_sizing
+
+    adjusted_size = apply_per_trade_sizing(
+        base_size=base_size,
+        readiness=tier3_readiness,
+        prediction=signal,
+    )
+
+    if adjusted_size <= 0:
+        return 0.0, "low confidence / risk filter"
+
+    if open_positions is not None:
+        adjusted_size = apply_portfolio_constraints(
+            adjusted_size, open_positions, signal_sector=signal.get("sector"),
+        )
+        if adjusted_size <= 0:
+            return 0.0, "portfolio limits reached"
+
+    if equity_curve is not None and bot_capital is not None:
+        from ai_core import apply_global_risk_controls
+
+        adjusted_size = apply_global_risk_controls(
+            adjusted_size, equity_curve, bot_capital,
+        )
+        if adjusted_size <= 0:
+            return 0.0, "risk control"
+
+    adjusted_size = min(adjusted_size, MAX_POSITION_USD)
+    return adjusted_size, None
+
+
+def _resolve_qty(
+    adjusted_size: float, signal: dict, market_data: dict | None,
+) -> tuple[float, float, str | None]:
+    """Step 5 of execute_signal — convert USD notional to share count.
+
+    Returns ``(qty, price, skip_reason)``. ``qty`` and ``price``
+    are 0.0 on a skip. ``skip_reason`` is ``None`` on success.
+    """
+    price = signal.get("entry") or (market_data or {}).get("price")
+    if not price or price <= 0:
+        return 0.0, 0.0, "invalid price"
+
+    qty = round(adjusted_size / price, 6)
+    if qty <= 0:
+        return 0.0, float(price), "size too small"
+
+    return qty, float(price), None
+
+
+def _fire_equity_shadow(
+    *, synthetic_bot: dict, signal: dict, symbol: str, price: float,
+) -> None:
+    """Research Shadow Layer — fire-and-forget alternative-engine
+    logger for equities. Per-bot config: ``shadow_engine`` +
+    ``shadow_paused`` on the bot doc. Tier-3 firewall is enforced
+    inside :mod:`services.research_shadow_logger` (it only writes
+    to ``research_shadow_decisions``).
+
+    Never blocks, never raises out — any setup failure is logged
+    at warning level and swallowed.
+    """
+    shadow_engine = synthetic_bot.get("shadow_engine") or "none"
+    if shadow_engine not in ("adversarial", "council"):
+        return
+
+    try:
+        import asyncio as _asyncio_eq_shadow
+        from services.research_shadow_engines import fire_shadow as _fire_shadow_eq
+        _asyncio_eq_shadow.create_task(_fire_shadow_eq(
+            _resolve_db_for_shadow(),
+            bot_id=str(
+                synthetic_bot.get("_id")
+                or synthetic_bot.get("bot_id")
+                or "equity_bot"
+            ),
+            user_id=str(synthetic_bot.get("user_id") or "system"),
+            symbol=symbol,
+            asset_type=signal.get("asset_type") or "stock",
+            decision_phase="entry",
+            active_engine="confluence",
+            active_action=signal.get("direction") or "LONG",
+            shadow_engine=shadow_engine,
+            signal=signal,
+            mid_price=float(price),
+            shadow_paused=bool(synthetic_bot.get("shadow_paused")),
+        ))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[equity-bot] shadow fire-and-forget setup failed for %s: %s",
+            symbol, exc,
+        )
+
+
+def _record_kill_switch_outcome(order: Any) -> None:
+    """Step 8 of execute_signal — feed broker outcome into the
+    kill-switch error window. ``{"error": ...}`` dicts count as
+    failures alongside raised exceptions, so the error-rate trip
+    fires on 4xx/5xx storms, not just uncaught Python errors.
+    """
+    from ai_core.kill_switch import kill_switch
+
+    is_failure = isinstance(order, dict) and order.get("error") is not None
+    kill_switch.record_result(success=not is_failure)
+    if is_failure:
+        trip, trip_reason = kill_switch.should_trip()
+        if trip:
+            kill_switch.activate(trip_reason)
+
+
 async def execute_signal(
     signal: dict,
     market_data: dict,
@@ -160,155 +328,62 @@ async def execute_signal(
 
     When `open_positions` is supplied, portfolio-level caps
     (:data:`MAX_PORTFOLIO_EXPOSURE`, :data:`MAX_CONCURRENT_TRADES`)
-    are enforced in step 3. Pass `None` or `[]` to skip the
-    portfolio check — useful for unit tests and backtests where the
-    portfolio is tracked elsewhere.
+    are enforced. Pass `None` or `[]` to skip the portfolio check
+    — useful for unit tests and backtests where the portfolio is
+    tracked elsewhere.
 
     When both `equity_curve` and `bot_capital` are supplied, the
     drawdown + allocator layer (:func:`ai_core.apply_global_risk_controls`)
-    runs in step 3c. This taper-throttles the trade as the fleet
-    equity curve drops and caps it at the per-bot capital envelope
-    assigned by :func:`ai_core.allocate_capital`. Either arg `None`
-    → that layer is skipped.
+    runs. This taper-throttles the trade as the fleet equity curve
+    drops and caps it at the per-bot capital envelope assigned by
+    :func:`ai_core.allocate_capital`. Either arg `None` → that
+    layer is skipped.
 
-    Flow:
-      1. Read `base_size` (USD) from config. Accepts either a dict
-         (legacy `{"trade_size": 1000}`) or an object with a
-         `.trade_size` attribute (the shape the user patch uses).
-      2. Scale via `ai_core.apply_per_trade_sizing`
-         (readiness × confidence). Short-circuits to
-         ``{"skipped": True}`` when the signal fails the confidence
-         gate or the risk filters reduce size to zero.
-      3. **Portfolio constraints** — `apply_portfolio_constraints`
-         shrinks the trade to fit remaining headroom (or zeroes it
-         when the concurrency/exposure caps are saturated). Only
-         runs when `open_positions` is provided.
-      3c. **Drawdown + allocator throttle** — only when both
-         `equity_curve` and `bot_capital` are supplied. Taper
-         position during drawdowns and cap at the bot's allocated
-         capital envelope. Skips with ``reason="risk control"``
-         when the combined multiplier zeroes the trade.
-      4. Hard-cap the notional at :data:`MAX_POSITION_USD`.
-      5. Convert USD → share count via `signal.entry` or
-         `market_data.price`. Abort on missing/zero price.
-      6. Route the order through the existing `_execute_bot_trade`
-         helper so paper/live mode, broker selection, and circuit-
-         breaker logic stay DRY.
-      7. Emit a structured log line with before/after sizing for
-         observability.
-      8. Return an enriched dict with `order`, `size_usd`, `qty`,
-         `confidence`, and `readiness_score` for the caller.
+    Orchestrates five private helpers, each owning one concern:
+      0. :func:`_check_kill_switch_and_drawdown` — fleet circuit breaker
+      1. :func:`_extract_trade_size` — base USD size from config
+      2. :func:`_compute_adjusted_size` — Tier3 × confidence × portfolio × allocator × cap
+      3. :func:`_resolve_qty` — USD → share count via signal/market price
+      4. :func:`_fire_equity_shadow` — alt-engine logger (fire-and-forget)
+      5. :func:`_record_kill_switch_outcome` — feed result into circuit breaker
 
     Never raises on execution errors — the broker branch of
     `_execute_bot_trade` returns `{"error": ...}` dicts and we
     surface those to the caller.
     """
-    # ── 0. Global kill switch (fleet-wide circuit breaker) ──
-    # Fires before any sizing math so a tripped switch can never
-    # leak an order through. Also short-circuits if the supplied
-    # equity curve breaches the drawdown threshold — that trip
-    # condition applies here even when the per-bot allocator in
-    # step 3c is skipped because `bot_capital` is None.
-    from ai_core.kill_switch import kill_switch
-    from ai_core import compute_drawdown
+    skip = _check_kill_switch_and_drawdown(equity_curve)
+    if skip is not None:
+        return skip
 
-    if kill_switch.is_active():
-        ks_status = kill_switch.status()
-        return {
-            "skipped": True,
-            "reason": "kill switch active",
-            "cooldown_remaining_seconds": ks_status["cooldown_remaining_seconds"],
-            "last_reason": ks_status["last_reason"],
-        }
-    if equity_curve:
-        dd = compute_drawdown(equity_curve)
-        should_trip, trip_reason = kill_switch.should_trip(drawdown=dd)
-        if should_trip:
-            kill_switch.activate(trip_reason)
-            return {"skipped": True, "reason": f"kill switch tripped: {trip_reason}"}
-
-    # ── 1. Base size ──
     base_size = _extract_trade_size(config)
     if base_size is None or base_size <= 0:
         return {"skipped": True, "reason": "invalid trade_size"}
 
-    # ── 2. Apply Tier 3 + confidence sizing ──
-    from ai_core import apply_per_trade_sizing
-
-    adjusted_size = apply_per_trade_sizing(
+    adjusted_size, skip_reason = _compute_adjusted_size(
         base_size=base_size,
-        readiness=tier3_readiness,
-        prediction=signal,
+        signal=signal,
+        tier3_readiness=tier3_readiness,
+        open_positions=open_positions,
+        equity_curve=equity_curve,
+        bot_capital=bot_capital,
     )
+    if skip_reason is not None:
+        return {"skipped": True, "reason": skip_reason}
 
-    # ── 3a. Low-confidence / risk-filter skip ──
-    if adjusted_size <= 0:
-        return {"skipped": True, "reason": "low confidence / risk filter"}
+    qty, price, qty_skip = _resolve_qty(adjusted_size, signal, market_data)
+    if qty_skip is not None:
+        return {"skipped": True, "reason": qty_skip}
 
-    # ── 3b. Portfolio-level constraints (opt-in via open_positions) ──
-    if open_positions is not None:
-        adjusted_size = apply_portfolio_constraints(
-            adjusted_size, open_positions, signal_sector=signal.get("sector")
-        )
-        if adjusted_size <= 0:
-            return {"skipped": True, "reason": "portfolio limits reached"}
-
-    # ── 3c. Drawdown + allocator throttle (opt-in) ──
-    if equity_curve is not None and bot_capital is not None:
-        from ai_core import apply_global_risk_controls
-
-        adjusted_size = apply_global_risk_controls(
-            adjusted_size, equity_curve, bot_capital
-        )
-        if adjusted_size <= 0:
-            return {"skipped": True, "reason": "risk control"}
-
-    # ── 4. Hard cap ──
-    adjusted_size = min(adjusted_size, MAX_POSITION_USD)
-
-    # ── 5. USD → qty ──
-    price = signal.get("entry") or (market_data or {}).get("price")
-    if not price or price <= 0:
-        return {"skipped": True, "reason": "invalid price"}
-    qty = round(adjusted_size / price, 6)
-    if qty <= 0:
-        return {"skipped": True, "reason": "size too small"}
-
-    # ── 6. Route the order through the existing executor ──
     symbol = signal["symbol"]
     side = "buy" if str(signal.get("direction", "LONG")).upper() == "LONG" else "sell"
     synthetic_bot = _bot_from_config(config, symbol)
 
-    # ── Research Shadow Layer ─────────────────────────────────────────
-    # Champion-challenger: alternate engine logs what it would have
-    # done. Fire-and-forget — never block, never raise out. Per-bot
-    # config: ``shadow_engine`` + ``shadow_paused`` on the bot doc.
-    # Tier-3 firewall enforced by services.research_shadow_logger
-    # (only writes to research_shadow_decisions).
-    _shadow_engine_eq = synthetic_bot.get("shadow_engine") or "none"
-    if _shadow_engine_eq in ("adversarial", "council"):
-        try:
-            import asyncio as _asyncio_eq_shadow
-            from services.research_shadow_engines import fire_shadow as _fire_shadow_eq
-            _asyncio_eq_shadow.create_task(_fire_shadow_eq(
-                _resolve_db_for_shadow(),
-                bot_id=str(synthetic_bot.get("_id") or synthetic_bot.get("bot_id") or "equity_bot"),
-                user_id=str(synthetic_bot.get("user_id") or "system"),
-                symbol=symbol,
-                asset_type=signal.get("asset_type") or "stock",
-                decision_phase="entry",
-                active_engine="confluence",
-                active_action=signal.get("direction") or "LONG",
-                shadow_engine=_shadow_engine_eq,
-                signal=signal,
-                mid_price=float(price),
-                shadow_paused=bool(synthetic_bot.get("shadow_paused")),
-            ))
-        except Exception as _shadow_eq_exc:  # noqa: BLE001
-            logger.warning(
-                "[equity-bot] shadow fire-and-forget setup failed for %s: %s",
-                symbol, _shadow_eq_exc,
-            )
+    _fire_equity_shadow(
+        synthetic_bot=synthetic_bot,
+        signal=signal,
+        symbol=symbol,
+        price=price,
+    )
 
     order = await _execute_bot_trade(
         synthetic_bot,
@@ -320,7 +395,6 @@ async def execute_signal(
         take_profit=signal.get("take_profit") or signal.get("tp"),
     )
 
-    # ── 7. Log before/after for observability ──
     logger.info(
         "[signal-bot/usd] %s %s: base=$%s adjusted=$%s qty=%s "
         "conf=%s readiness=%s open_positions=%s",
@@ -331,17 +405,7 @@ async def execute_signal(
         get_open_trade_count(open_positions) if open_positions is not None else None,
     )
 
-    # ── 8. Enriched result ──
-    # Feed outcome to the kill-switch error window. Broker-layer
-    # `{"error": ...}` dicts count as failures alongside raised
-    # exceptions — that way the error-rate branch fires on 4xx/5xx
-    # storms, not just uncaught Python errors.
-    is_failure = isinstance(order, dict) and order.get("error") is not None
-    kill_switch.record_result(success=not is_failure)
-    if is_failure:
-        trip, trip_reason = kill_switch.should_trip()
-        if trip:
-            kill_switch.activate(trip_reason)
+    _record_kill_switch_outcome(order)
 
     return {
         "order": order,
