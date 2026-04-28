@@ -12,6 +12,7 @@ const API = `${getApiBase()}/api`;
 
 const AlertsPanel = ({ onSubscribe }) => {
   const { user, isPro } = useAuth();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -124,7 +125,7 @@ const AlertsPanel = ({ onSubscribe }) => {
               /* Pro with notifications */
               <div className="divide-y divide-slate-800/60">
                 {notifications.map((n, i) => (
-                  <NotificationItem key={n._id || n.id || `notif-${i}`} notification={n} index={i} />
+                  <NotificationItem key={n._id || n.id || `notif-${i}`} notification={n} index={i} isAdmin={isAdmin} />
                 ))}
               </div>
             )}

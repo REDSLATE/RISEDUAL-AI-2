@@ -56,6 +56,16 @@ const AuthenticatedShell = ({
 
   const sub = () => setShowSubscription(true);
 
+  // Deep-link bridge: the "View Autopsy" button on the toxic-spike
+  // notification dispatches `risedual:open-admin-autopsy`. We open
+  // the admin modal here; AdminPanel itself reads the sessionStorage
+  // hint on mount to jump straight to the correct tab.
+  React.useEffect(() => {
+    const open = () => setShowAdmin(true);
+    window.addEventListener('risedual:open-admin-autopsy', open);
+    return () => window.removeEventListener('risedual:open-admin-autopsy', open);
+  }, [setShowAdmin]);
+
   return (
     <div className="min-h-screen bg-[#060E1F] pb-16 lg:pb-0">
       <PromoBanner onSubscribe={sub} />

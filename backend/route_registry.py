@@ -71,6 +71,7 @@ from routes.crypto_trading import router as crypto_trading_router, set_db as set
 from routes.research_shadow import router as research_shadow_router, set_db as set_research_shadow_db
 from routes.patent_watch import router as patent_watch_router, set_db as set_patent_watch_db
 from routes.ops_snapshot import router as ops_snapshot_router, set_db as set_ops_snapshot_db
+from routes.toxic_autopsy import router as toxic_autopsy_router, set_db as set_toxic_autopsy_db
 from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
@@ -122,6 +123,7 @@ ALL_ROUTERS = [
     research_shadow_router,
     patent_watch_router,
     ops_snapshot_router,
+    toxic_autopsy_router,
 ]
 
 
@@ -166,6 +168,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_research_shadow_db,
         set_patent_watch_db,
         set_ops_snapshot_db,
+        set_toxic_autopsy_db,
     ]
     for setter in _setters:
         try:

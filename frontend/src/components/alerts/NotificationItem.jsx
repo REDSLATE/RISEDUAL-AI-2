@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, Minus, Star, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, AlertTriangle, Microscope } from 'lucide-react';
 
 const verdictIcon = (verdict) => {
   if (verdict === 'BUY') return <TrendingUp className="w-4 h-4 text-lime-400" />;
@@ -18,7 +18,14 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
-const ToxicSpikeNotification = ({ n, index }) => {
+const openAutopsy = () => {
+  // Bridge event — AuthenticatedShell opens AdminPanel; AdminPanel reads
+  // sessionStorage on mount and jumps to the autopsy tab.
+  try { window.sessionStorage.setItem('risedual_admin_initial_tab', 'autopsy'); } catch (_) { /* noop */ }
+  window.dispatchEvent(new CustomEvent('risedual:open-admin-autopsy'));
+};
+
+const ToxicSpikeNotification = ({ n, index, isAdmin }) => {
   const meta = n.metadata || {};
   const tickers = meta.affected_tickers || [];
   return (
@@ -44,7 +51,20 @@ const ToxicSpikeNotification = ({ n, index }) => {
               {tickers.length > 6 && <span className="text-[10px] text-slate-400">+{tickers.length - 6}</span>}
             </div>
           )}
-          <p className="text-slate-400 text-[10px] mt-1">{formatDate(n.created_at)}</p>
+          <div className="flex items-center justify-between mt-1.5">
+            <p className="text-slate-400 text-[10px]">{formatDate(n.created_at)}</p>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openAutopsy}
+                className="inline-flex items-center gap-1 text-[10px] text-[#3DE8D9] hover:text-white border border-[#3DE8D9]/40 hover:border-[#3DE8D9] rounded px-2 py-0.5 transition-colors"
+                data-testid={`notification-toxic-autopsy-${index}`}
+              >
+                <Microscope className="w-3 h-3" />
+                View Autopsy
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -76,9 +96,9 @@ const VerdictNotification = ({ n, index }) => (
   </div>
 );
 
-const NotificationItem = ({ notification: n, index }) => {
+const NotificationItem = ({ notification: n, index, isAdmin }) => {
   if (n.type === 'toxic_spike') {
-    return <ToxicSpikeNotification n={n} index={index} />;
+    return <ToxicSpikeNotification n={n} index={index} isAdmin={isAdmin} />;
   }
   return <VerdictNotification n={n} index={index} />;
 };

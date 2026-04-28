@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -22,6 +22,7 @@ import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
 import CouncilTierStatusPill from './admin/CouncilTierStatusPill';
 import PatentWatchPanel from './admin/PatentWatchPanel';
 import OpsSnapshotPanel from './admin/OpsSnapshotPanel';
+import ToxicSpikeAutopsyPanel from './admin/ToxicSpikeAutopsyPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -60,6 +61,7 @@ const TAB_GROUPS = [
       { id: 'crypto',        label: 'Crypto Bots', icon: Bitcoin },
       { id: 'adversarial',   label: 'Adversarial', icon: TrendingUp },
       { id: 'shadow',        label: 'Shadow',      icon: Eye },
+      { id: 'autopsy',       label: 'Toxic Autopsy', icon: AlertTriangle },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
@@ -91,6 +93,7 @@ const TAB_SUBTITLES = {
   crypto:         () => 'Isolated 24/7 crypto paper bots · PnL · adaptations',
   adversarial:    () => 'Bull / Bear / Commander layer · win-rate spread · phase gates',
   shadow:         () => 'Research shadow — disagreement-conditional accuracy · cost budget',
+  autopsy:        () => 'Toxic spike autopsy — WHY high-confidence predictions failed',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   tools:          () => 'Codebase export & utilities',
 };
@@ -113,12 +116,26 @@ const TAB_COMPONENTS = {
   crypto:         () => <CryptoPaperDashboard />,
   adversarial:    () => <CryptoAdversarialDashboard />,
   shadow:         () => <ShadowAccuracyPanel />,
+  autopsy:        () => <ToxicSpikeAutopsyPanel />,
   patents:        () => <PatentWatchPanel />,
   tools:          () => <AdminTools />,
 };
 
 const AdminPanel = ({ onClose }) => {
-  const [tab, setTab] = useState('users');
+  const [tab, setTab] = useState(() => {
+    // One-shot deep-link: if a component (e.g., the toxic-spike
+    // notification "View Autopsy" button) left a tab hint in
+    // sessionStorage, honour it and clear so subsequent opens of
+    // the admin panel start on Users as before.
+    try {
+      const hint = window.sessionStorage.getItem('risedual_admin_initial_tab');
+      if (hint) {
+        window.sessionStorage.removeItem('risedual_admin_initial_tab');
+        return hint;
+      }
+    } catch (_) { /* noop */ }
+    return 'users';
+  });
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
