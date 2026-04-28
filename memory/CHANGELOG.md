@@ -1,5 +1,63 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-28 — Toxic Spike Autopsy
+
+User shared the "56 Bad Predictions Detected — Persisting (2 days
+in a row)" alert and asked for a drill-down to see **why** the
+high-confidence predictions failed, not just **that** they did.
+
+### Backend
+- New `services/symbol_sector_resolver.py` — Mongo cache (7-day
+  TTL) → curated static map (60+ big-cap tickers) → Finnhub
+  `/stock/profile2` fallback → "Unknown". Bulk variant runs with
+  concurrency-8 semaphore so admin-panel opens don't burst Finnhub.
+- New `services/toxic_autopsy_service.py` — `build_autopsy(db,
+  days, min_confidence_pct)` queries `predictions` for
+  `verified_24h.correct == False` rows in the window, normalises
+  confidence scale (0-1 and 0-100 both handled via
+  `prediction_tracker.normalize_confidence`), and groups by
+  failure_code / feature (agent origin) / confidence-bucket
+  (80-85, 85-90, 90-95, 95-100) / direction family / sector /
+  model version / grade. Returns top-offender symbols ranked by
+  count + avg confidence, plus up to 200 raw samples.
+- New `routes/toxic_autopsy.py` exposing
+  `GET /api/admin/toxic-spike/autopsy?days=2&min_confidence=80`
+  (admin/owner only, 403 for non-admins).
+- Registered `toxic_autopsy_router` + `set_toxic_autopsy_db`
+  in `route_registry.py`.
+
+### Frontend
+- New `components/admin/ToxicSpikeAutopsyPanel.jsx` — summary
+  header (total failures, unique symbols, avg confidence), six
+  breakdown sections rendered as horizontal bars (count + pct +
+  avg-conf per key), Top Offenders table (symbol, sector, fails,
+  avg conf, top failure codes, top agents), and a collapsible
+  Raw Failures table (prediction_id, symbol, sector, agent,
+  direction, confidence, grade, failure_code, entry/verified
+  prices). Days + min-confidence selects re-fetch on change.
+- New `autopsy` tab in `AdminPanel.jsx` Insights group
+  (AlertTriangle icon, data-testid infrastructure on every
+  interactive element).
+- Deep-link from the toxic-spike notification — admin-only
+  "View Autopsy" button on `ToxicSpikeNotification` dispatches
+  a `risedual:open-admin-autopsy` custom event and writes a
+  tab hint into `sessionStorage`. `AuthenticatedShell` listens
+  for the event to open the Admin modal; `AdminPanel`'s
+  initial-tab `useState` reads the one-shot hint on mount and
+  lands on the autopsy tab.
+
+### Tests
+- 12 unit tests (`test_toxic_autopsy.py` + `test_symbol_sector_resolver.py`)
+- 11 API integration tests + 7 sector-resolver tests added by
+  testing subagent (iteration 147). Total 30 tests — 100% pass.
+- Verified: confidence scale normalisation (mixed 0-1 / 0-100
+  writes collapse correctly), NEUTRAL grades excluded, low-conf
+  misses excluded, query params honoured, six breakdown
+  dimensions populated, top offenders sorted, sector fallback
+  chain works, ops-snapshot regression still clean.
+
+
+
 ## 2026-02-08 (k) — CLI prototype port: Ops Snapshot + ECE + Heuristic Notes
 
 User shipped a `risedual` CLI prototype zip (image-classifier
