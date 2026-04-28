@@ -7,6 +7,7 @@ import BrokerConnect from './BrokerConnect';
 import MobileMenu from './MobileMenu';
 import UserBadge from './UserBadge';
 import CreditBadge from './CreditBadge';
+import AlertsPanel from './AlertsPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DropdownMenu,
@@ -204,6 +205,8 @@ const Navbar = ({
             </Button>
           )}
 
+          {user && <AlertsPanel onSubscribe={onSubscribe} />}
+
           {user ? (
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger className="flex items-center gap-2 text-slate-300 hover:text-white outline-none" data-testid="user-menu">
@@ -287,6 +290,7 @@ const Navbar = ({
               Pro
             </Button>
           )}
+          {user && <AlertsPanel onSubscribe={onSubscribe} />}
           {user ? (
             <div className="w-7 h-7 bg-[#3DE8D9] rounded-full flex items-center justify-center text-white text-xs font-bold" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {(user.name || user.email || '?')[0].toUpperCase()}

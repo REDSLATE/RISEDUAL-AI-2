@@ -55,29 +55,30 @@ const AlertsPanel = ({ onSubscribe }) => {
   if (!user) return null;
 
   return (
-    <div className="fixed top-20 right-6 z-40" data-testid="alerts-panel">
-      {/* Bell Icon */}
+    <div className="relative" data-testid="alerts-panel">
+      {/* Bell Icon — sized to sit inline inside the Navbar */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative bg-[#060E1F] border border-slate-400/30 rounded-full p-3 hover:bg-slate-600/30 transition-colors"
+        className="relative bg-slate-800/40 hover:bg-slate-700/60 border border-slate-400/20 rounded-full w-9 h-9 flex items-center justify-center transition-colors"
         data-testid="alerts-bell"
+        aria-label="Notifications"
       >
-        <Bell className="w-5 h-5 text-white" />
+        <Bell className="w-4 h-4 text-white" />
         {isPro && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-[#3DE8D9] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-[#3DE8D9] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold animate-pulse">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
         {!isPro && (
-          <span className="absolute -top-1 -right-1 bg-slate-600 text-slate-300 text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
-            <Lock className="w-2.5 h-2.5" />
+          <span className="absolute -top-1 -right-1 bg-slate-600 text-slate-300 text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center">
+            <Lock className="w-2 h-2" />
           </span>
         )}
       </button>
 
       {/* Panel */}
       {isOpen && (
-        <Card className="absolute top-14 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-400/25 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col" data-testid="alerts-dropdown">
+        <Card className="absolute top-12 right-0 w-[340px] sm:w-96 bg-slate-900 border-slate-400/25 shadow-2xl rounded-xl max-h-[450px] overflow-hidden flex flex-col z-[60]" data-testid="alerts-dropdown">
           <div className="border-b border-slate-400/30 p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-white font-semibold text-sm">AI Alerts</h3>

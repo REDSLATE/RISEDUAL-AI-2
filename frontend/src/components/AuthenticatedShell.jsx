@@ -3,7 +3,6 @@ import { Toaster } from './ui/sonner';
 import Footer from './Footer';
 import Navbar from './Navbar';
 import StockTicker from './StockTicker';
-import AlertsPanel from './AlertsPanel';
 import RiseDualGPTChat from './RiseDualGPTChat';
 import MobileBottomNav from './MobileBottomNav';
 import DashboardView from './DashboardView';
@@ -97,7 +96,6 @@ const AuthenticatedShell = ({
         onOpenBots={() => setShowBots(true)}
         onOpenFailureLoop={() => setShowFailureLoop(true)}
       />
-      <AlertsPanel onSubscribe={sub} />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {activeView === 'dashboard' && (
