@@ -37,17 +37,45 @@ const OpsSnapshotPanel = () => {
   const [snap, setSnap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const [alerter, setAlerter] = useState(null);
+  const [triggering, setTriggering] = useState(false);
 
   const fetchSnap = useCallback(async () => {
     setLoading(true); setErr(null);
     try {
-      const res = await authFetch(`${API}/admin/ops-snapshot`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSnap(await res.json());
+      const [snapRes, alertRes] = await Promise.all([
+        authFetch(`${API}/admin/ops-snapshot`),
+        authFetch(`${API}/admin/ops-alerter/status`),
+      ]);
+      if (!snapRes.ok) throw new Error(`HTTP ${snapRes.status}`);
+      setSnap(await snapRes.json());
+      if (alertRes.ok) setAlerter(await alertRes.json());
     } catch (e) {
       setErr(String(e));
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const triggerAlerter = useCallback(async () => {
+    setTriggering(true);
+    try {
+      const r = await authFetch(`${API}/admin/ops-alerter/run`, { method: 'POST' });
+      if (r.ok) {
+        const out = await r.json();
+        // Refresh status panel after manual run
+        const s = await authFetch(`${API}/admin/ops-alerter/status`);
+        if (s.ok) setAlerter(await s.json());
+        const summary = out.posted_alert
+          ? `Posted ${out.fresh_alerts.length} alert(s)`
+          : out.posted_resolved
+          ? `Posted ${out.resolved_alerts.length} resolved`
+          : 'No transitions to post';
+        // eslint-disable-next-line no-alert
+        window.alert(summary);
+      }
+    } finally {
+      setTriggering(false);
     }
   }, []);
 
@@ -80,6 +108,43 @@ const OpsSnapshotPanel = () => {
           Refresh
         </Button>
       </div>
+
+      {/* Wedge detector banner */}
+      {alerter && (
+        <div
+          className={`rounded-lg p-3 border text-xs flex items-center justify-between gap-3 ${
+            alerter.configured
+              ? 'bg-emerald-500/5 border-emerald-500/30 text-emerald-200'
+              : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
+          }`}
+          data-testid="ops-alerter-banner"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <StatusDot ok={alerter.configured} />
+            <div className="min-w-0">
+              <div className="font-medium">
+                {alerter.configured
+                  ? 'Wedge detector active — webhook configured'
+                  : 'Wedge detector inactive — set OPS_ALERT_WEBHOOK_URL in .env to enable'}
+              </div>
+              <div className="text-[11px] opacity-80">
+                Diffs notes against last run; posts on transitions; dedup window 4h.
+                Last update: {alerter.updated_at ? new Date(alerter.updated_at).toLocaleString() : 'never'}.
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={triggerAlerter}
+            disabled={triggering}
+            className="bg-slate-900 border-slate-600 text-white shrink-0"
+            data-testid="ops-alerter-run-btn"
+          >
+            {triggering ? 'Running…' : 'Run now'}
+          </Button>
+        </div>
+      )}
 
       {/* Heuristic notes — single most useful element on the page */}
       <Section icon={AlertTriangle} title={`Notes (${snap.notes?.length || 0})`}>

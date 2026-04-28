@@ -214,6 +214,26 @@ async def _run_patent_watch_refresh():
         logger.warning(f"Patent watch refresh failed: {e}")
 
 
+async def _run_ops_alerter_tick():
+    """Wedge-detector — diffs the Health snapshot's notes against
+    last run and webhooks on transitions. No-op when
+    OPS_ALERT_WEBHOOK_URL is unset."""
+    try:
+        from services.ops_alerter import run_tick, is_configured
+        if not is_configured():
+            return
+        result = await run_tick(db)
+        if result.get("posted_alert") or result.get("posted_resolved"):
+            logger.info(
+                "[ops-alerter] tick: fresh=%s resolved=%s suppressed=%s",
+                result.get("fresh_alerts"),
+                result.get("resolved_alerts"),
+                result.get("suppressed_dedup"),
+            )
+    except Exception as e:
+        logger.warning(f"Ops alerter tick failed: {e}")
+
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -376,6 +396,12 @@ async def _start_schedulers():
         # ── Patent Watch (USPTO daily fetch) ──
         scheduler.add_job(_run_patent_watch_refresh, 'cron',
                           hour=4, minute=15, id='patent_watch_refresh',
+                          replace_existing=True)
+        # ── Ops alerter (wedge detector — every 15 minutes) ──
+        # No-op unless OPS_ALERT_WEBHOOK_URL is set, so safe to
+        # always schedule.
+        scheduler.add_job(_run_ops_alerter_tick, 'interval',
+                          minutes=15, id='ops_alerter_tick',
                           replace_existing=True)
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
