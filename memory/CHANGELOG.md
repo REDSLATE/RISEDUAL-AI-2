@@ -1,5 +1,64 @@
 # RISEDUAL AI — Changelog
 
+## 2026-02-08 (k) — CLI prototype port: Ops Snapshot + ECE + Heuristic Notes
+
+User shipped a `risedual` CLI prototype zip (image-classifier
+adversarial-training package) and asked which patterns were
+portable. Three pure-function patterns were adapted into the
+production admin surface; the actual ML training code stays in
+the prototype as research-only.
+
+### A — Ops Snapshot
+- New `services/ops_snapshot.py` — adapts the prototype's
+  `env_state.py` pattern: known operator flags (always reported,
+  set or unset), auto-detected prefixed flags (RISEDUAL_/CRYPTO_/
+  COUNCIL_/etc.), real Mongo ping probe, scheduler-heartbeat freshness
+  check, integration-key configured booleans (never the values
+  themselves), and Tier 3 readiness pulled from the existing
+  shadow stats service.
+- New `routes/ops_snapshot.py` exposing `GET /api/admin/ops-snapshot`
+  (admin/owner only).
+- New `OpsSnapshotPanel.jsx` admin tile under the Operations →
+  Health tab (HeartPulse icon, `data-testid="admin-tab-ops"`).
+- Heuristic notes layer auto-generates single-sentence operator
+  guidance: "Mongo ping failed", "Scheduler appears stalled",
+  "USPTO_API_KEY not set", "COUNCIL_RISK_MODULATOR_ENABLED=true
+  but Tier 3 is locked", or "All gauges nominal."
+- 18 unit tests + 17 API integration tests = 35 tests on this
+  path alone.
+
+### B — ECE in calibration
+- Adapted the prototype's `auditor._ece` weighted-bin formula
+  into `routes/admin.py::get_conviction_calibration`. Endpoint
+  now returns top-level `ece: {conviction, confidence}` numeric
+  fields alongside the existing buckets.
+- Heuristic notes added: "Conviction ECE = X.XXX (poor)" / borderline
+  / healthy; non-monotonicity flagged separately so the operator
+  sees structural failure first.
+- **Live finding on real data:** Conviction ECE = 0.534, Confidence
+  ECE = 0.478 — both well above the 0.10 "poor" threshold AND
+  conviction win-rate is non-monotonic. CONVICTION_WEIGHTS are
+  meaningfully miscalibrated; this is exactly the signal the
+  prompt was for.
+- 8 unit tests in `test_calibration_ece.py`.
+
+### C — Heuristic notes on shadow stats
+- New `_shadow_stats_notes` in `services/research_shadow_stats.py`;
+  `compute_shadow_stats` response now includes a `notes: [str]`
+  array.
+- Branches: no decisions yet, no actionable buckets, high-winrate
+  + low samples (lucky early run guard), low-winrate + sufficient
+  samples (engine actively wrong), all healthy.
+- **Live finding:** adversarial+crypto bucket at 92% win-rate
+  over only 12 dissents, correctly flagged "wait for sample size
+  before acting" — guards against premature Tier 3 promotion.
+- 8 unit tests in `test_shadow_stats_notes.py`.
+
+### Testing
+- 266/266 unit tests across all 15 touched suites pass.
+- Testing agent: 100% backend (50/50), 100% frontend (all
+  8 data-testid elements verified). Zero issues, no retests.
+
 ## 2026-02-08 (j) — P1/P2 backlog sweep (items #1, #2, #4, #5)
 
 ### #2 — Paper-trader duplicate-insert race fix
