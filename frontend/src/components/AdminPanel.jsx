@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -21,6 +21,7 @@ import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
 import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
 import CouncilTierStatusPill from './admin/CouncilTierStatusPill';
 import PatentWatchPanel from './admin/PatentWatchPanel';
+import OpsSnapshotPanel from './admin/OpsSnapshotPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -40,6 +41,7 @@ const TAB_GROUPS = [
   {
     label: 'Operations',
     tabs: [
+      { id: 'ops',       label: 'Health',    icon: HeartPulse },
       { id: 'providers', label: 'Providers', icon: Activity },
       { id: 'vault',     label: 'Vault',     icon: Lock },
       { id: 'broker',    label: 'Broker',    icon: Key },
@@ -82,6 +84,7 @@ const TAB_SUBTITLES = {
   media:          () => 'Uploaded assets & CDN state',
   security:       () => 'Auth attempts · password breaches · rate limits',
   promos:         () => 'Coupons & credit grants',
+  ops:            () => 'Env flags · Mongo · scheduler · Tier 3 state · auto notes',
   'help-search':  () => 'Unanswered help-search queries',
   'chip-adoption':() => 'L1/L2 chat-chip click-through rates',
   conviction:     () => 'ML calibration · win-rate by conviction score',
@@ -95,6 +98,7 @@ const TAB_SUBTITLES = {
 // Map of tab id → renderer. Replaces the old nested ternary for clarity.
 const TAB_COMPONENTS = {
   users:          (ctx) => <UsersTab users={ctx.users} filter={ctx.filter} setFilter={ctx.setFilter} actionLoading={ctx.actionLoading} doAction={ctx.doAction} />,
+  ops:            () => <OpsSnapshotPanel />,
   providers:      () => <ProviderHealth />,
   vault:          () => <KeyVault />,
   promos:         () => <PromoManager />,

@@ -365,6 +365,74 @@ async def conviction_calibration(request: Request, days: int = 30):
             return None
         return all(rates[i] <= rates[i + 1] + 1e-9 for i in range(len(rates) - 1))
 
+    def _ece(buckets):
+        """Expected Calibration Error — weighted-mean gap between
+        each bucket's midpoint confidence and its actual accuracy.
+
+        Adapted from the RISEDUAL CLI prototype's auditor.py.
+        Standard formula: ECE = Σ (n_b / N) × |conf_b − acc_b|.
+
+        We use the bucket midpoint as the avg confidence in the
+        bucket — slightly imprecise vs. tracking per-prediction
+        confidences but standard for binned visualisations and
+        directionally identical for monotonicity-style alarms.
+        Returns None when fewer than 2 buckets have data.
+        """
+        observed = [b for b in buckets if b["total"] > 0 and b["win_rate"] is not None]
+        if len(observed) < 2:
+            return None
+        n_total = sum(b["total"] for b in observed)
+        if n_total == 0:
+            return None
+        gap = 0.0
+        for b in observed:
+            lo, hi = b["range"]
+            midpoint = (lo + hi) / 2.0
+            gap += (b["total"] / n_total) * abs(midpoint - b["win_rate"])
+        return round(gap, 4)
+
+    ece_conv = _ece(by_conv_out)
+    ece_conf = _ece(by_conf_out)
+
+    def _calibration_notes():
+        """Auto-generated single-sentence operator guidance.
+        Adapted from the AuditReport.notes pattern in the RISEDUAL
+        CLI prototype."""
+        out = []
+        if total_verified < 30:
+            out.append(
+                f"Only {total_verified} verified predictions in the window — "
+                "calibration numbers are noisy below ~30 samples."
+            )
+        # ECE thresholds borrowed from the prototype: >0.10 = poor,
+        # >0.05 = borderline. Below that = healthy.
+        if ece_conv is not None and ece_conv > 0.10:
+            out.append(
+                f"Conviction ECE = {ece_conv:.3f} (poor); model is overconfident "
+                "or underconfident relative to actual win rate."
+            )
+        elif ece_conv is not None and ece_conv > 0.05:
+            out.append(f"Conviction ECE = {ece_conv:.3f} — borderline calibration.")
+        if ece_conf is not None and ece_conf > 0.10:
+            out.append(
+                f"Confidence ECE = {ece_conf:.3f} (poor); raw confidence scores "
+                "diverge meaningfully from realised win rate."
+            )
+        # Monotonicity flags — these come BEFORE ECE wording in the
+        # UI so the operator sees the structural failure first.
+        mono_conv = _is_monotonic(by_conv_out)
+        mono_conf = _is_monotonic(by_conf_out)
+        if mono_conv is False:
+            out.append(
+                "Conviction win-rate is non-monotonic (Moderate beats Strong, "
+                "or similar) — CONVICTION_WEIGHTS need retraining."
+            )
+        if mono_conf is False:
+            out.append("Confidence win-rate is non-monotonic across buckets.")
+        if not out:
+            out.append("Calibration is healthy across all buckets.")
+        return out
+
     return {
         "window_days": days,
         "total_verified": total_verified,
@@ -375,12 +443,21 @@ async def conviction_calibration(request: Request, days: int = 30):
             "conviction": _is_monotonic(by_conv_out),
             "confidence": _is_monotonic(by_conf_out),
         },
+        # Expected Calibration Error — single-number health metric
+        # (lower = better; ≤0.05 healthy, ≤0.10 borderline, >0.10 poor).
+        "ece": {
+            "conviction": ece_conv,
+            "confidence": ece_conf,
+        },
         "trend": {
             "weeks": trend_weeks,
             "bounds": _week_bounds(),
             "by_conviction": _trend_series(weekly_conviction),
             "by_confidence": _trend_series(weekly_confidence),
         },
+        # Auto-generated operator guidance based on monotonicity +
+        # ECE thresholds + sample-size guard.
+        "notes": _calibration_notes(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 

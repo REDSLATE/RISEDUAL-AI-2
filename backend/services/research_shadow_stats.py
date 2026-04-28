@@ -145,7 +145,54 @@ def compute_shadow_stats(rows: list[dict]) -> dict[str, Any]:
     return {
         "buckets": list(by_bucket.values()),
         "min_dissent_samples_required": MIN_DISSENT_SAMPLES,
+        "notes": _shadow_stats_notes(by_bucket, MIN_DISSENT_SAMPLES),
     }
+
+
+def _shadow_stats_notes(
+    by_bucket: dict[Any, dict[str, Any]],
+    min_samples: int,
+) -> list[str]:
+    """Auto-generated single-sentence operator guidance.
+    Adapted from the AuditReport.notes pattern in the RISEDUAL CLI
+    prototype's auditor.py — instead of robustness/calibration
+    flags, we surface shadow-engine maturity and signal-strength
+    flags."""
+    out: list[str] = []
+    if not by_bucket:
+        out.append("No shadow decisions logged yet — engines are silent or no bots are running.")
+        return out
+
+    actionable_buckets = [b for b in by_bucket.values() if b.get("actionable")]
+    if not actionable_buckets:
+        max_scored = max(
+            (b.get("scored_dissent_count") or 0) for b in by_bucket.values()
+        )
+        out.append(
+            f"No bucket has reached {min_samples} scored dissents yet "
+            f"(best so far: {max_scored}). Promotion gates remain closed."
+        )
+    # Look for buckets where the win-rate is high but the data
+    # volume is too small to act on yet — prevents premature
+    # promotion based on lucky early runs.
+    for b in by_bucket.values():
+        wr = b.get("win_rate")
+        scored = b.get("scored_dissent_count") or 0
+        if wr is not None and wr > 0.65 and scored < min_samples:
+            out.append(
+                f"Bucket ({b.get('shadow_engine')}, {b.get('asset_type')}) "
+                f"shows {wr:.0%} win-rate but only {scored} scored dissents — "
+                "wait for sample size before acting."
+            )
+        elif wr is not None and wr < 0.35 and scored >= min_samples:
+            out.append(
+                f"Bucket ({b.get('shadow_engine')}, {b.get('asset_type')}) "
+                f"win-rate at {wr:.0%} is decisively below 50% — engine is "
+                "actively wrong; consider disabling the shadow run."
+            )
+    if not out:
+        out.append("Shadow signals are healthy across all buckets.")
+    return out
 
 
 # ── Mongo glue ────────────────────────────────────────────────────────────────
