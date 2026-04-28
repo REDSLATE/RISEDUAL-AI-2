@@ -72,6 +72,7 @@ from routes.research_shadow import router as research_shadow_router, set_db as s
 from routes.patent_watch import router as patent_watch_router, set_db as set_patent_watch_db
 from routes.ops_snapshot import router as ops_snapshot_router, set_db as set_ops_snapshot_db
 from routes.toxic_autopsy import router as toxic_autopsy_router, set_db as set_toxic_autopsy_db
+from routes.ai_core_routes import router as ai_core_routes_router, set_db as set_ai_core_routes_db
 from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
@@ -124,6 +125,7 @@ ALL_ROUTERS = [
     patent_watch_router,
     ops_snapshot_router,
     toxic_autopsy_router,
+    ai_core_routes_router,
 ]
 
 
@@ -169,6 +171,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_patent_watch_db,
         set_ops_snapshot_db,
         set_toxic_autopsy_db,
+        set_ai_core_routes_db,
     ]
     for setter in _setters:
         try:
@@ -183,6 +186,8 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services.research_shadow_logger import ensure_indexes as _shadow_indexes
         from services.patent_watch_service import ensure_indexes as _patent_watch_indexes
         from services.ml_paper_trader import ensure_indexes as _ml_paper_indexes
+        from services.ai_core_engine import ensure_indexes as _ai_core_engine_indexes
+        from services.ai_core_alerts import ensure_indexes as _ai_core_alerts_indexes
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
@@ -191,6 +196,8 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_shadow_indexes(db))
             loop.create_task(_patent_watch_indexes())
             loop.create_task(_ml_paper_indexes(db))
+            loop.create_task(_ai_core_engine_indexes(db))
+            loop.create_task(_ai_core_alerts_indexes())
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:

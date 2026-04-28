@@ -234,6 +234,41 @@ async def _run_ops_alerter_tick():
         logger.warning(f"Ops alerter tick failed: {e}")
 
 
+async def _run_ai_core_nightly():
+    """AI Core nightly sweep — pulls newly resolved trades from
+    `paper_trades` + verified `predictions` and emits a dedup-safe
+    daily summary alert. Same-day re-runs are no-ops by design
+    (alert id = ``nightly_sweep:YYYY-MM-DD`` with unique index)."""
+    try:
+        from services.ai_core_engine import learning_engine
+        from services.ai_core_autowire import autowire_sweep
+        from services.ai_core_alerts import emit as emit_alert
+        await learning_engine.hydrate()
+        sweep = await autowire_sweep(db)
+        snap = learning_engine.stats_snapshot()
+        msg_parts = []
+        if snap.get("total_resolved"):
+            msg_parts.append(f"{snap['total_resolved']} resolved")
+        if snap.get("win_rate") is not None:
+            msg_parts.append(f"win-rate {round(snap['win_rate'] * 100, 1)}%")
+        if sweep.get("ingested"):
+            ing = sweep["ingested"]
+            msg_parts.append(
+                f"new: {ing.get('paper_trades', 0)} paper + {ing.get('predictions', 0)} preds"
+            )
+        await emit_alert(
+            "nightly_sweep",
+            title="AI Core Nightly Sweep",
+            message="; ".join(msg_parts) or "no resolved trades yet",
+            metadata={"stats": snap, "sweep": sweep},
+        )
+        logger.info(
+            "[ai-core] nightly sweep: %s", "; ".join(msg_parts) or "empty",
+        )
+    except Exception as e:
+        logger.warning(f"AI Core nightly sweep failed: {e}")
+
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -402,6 +437,14 @@ async def _start_schedulers():
         # always schedule.
         scheduler.add_job(_run_ops_alerter_tick, 'interval',
                           minutes=15, id='ops_alerter_tick',
+                          replace_existing=True)
+        # ── AI Core nightly sweep (02:45 UTC) ──
+        # Runs after memory cleanup (02:00) and ML retrain (02:30) so
+        # any newly-graded predictions / closed paper trades are
+        # already in place. Dedup-safe — re-runs on the same day are
+        # idempotent thanks to the unique alert id.
+        scheduler.add_job(_run_ai_core_nightly, 'cron',
+                          hour=2, minute=45, id='ai_core_nightly',
                           replace_existing=True)
         scheduler.start()
         # Expose the started scheduler to the self-test route so its

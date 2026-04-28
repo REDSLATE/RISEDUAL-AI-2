@@ -1,5 +1,57 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-28 (b) — AI Core Learning Engine
+
+User pasted a patch from a sister project that fixed two test failures
+in an `ai_core` route module. RISEDUAL didn't have that module — but
+the *shape* (in-memory LearningEngine + Mongo persistence + nightly
+sweep + dedup-safe daily alerts) is genuinely useful. Built it as a
+net-new module here.
+
+### Backend
+- New `services/ai_core_engine.py` — singleton `LearningEngine` with
+  `trade_log` (1000-entry deque), aggregate `stats` (total_resolved,
+  wins, losses, flats, pending, rejections), and `condition_stats`
+  bucketed on (regime, agent, confidence_bucket, asset_type).
+  Idempotent ingestion via `trade_key = source:source_id`. Cold-start
+  hydrates from Mongo so a backend restart doesn't lose stats.
+- New `services/ai_core_alerts.py` — date-bucketed dedup writer to
+  `ai_core_alerts` collection. Alert id = `{type}:{YYYY-MM-DD}` with
+  unique index, so same-day re-fires return `deduped: True` instead
+  of duplicating rows.
+- New `services/ai_core_autowire.py` — pulls from existing
+  `paper_trades` (`status=closed`, `outcome` ∈ {win, loss, flat})
+  and verified `predictions` (`verified_24h.correct ∈ {True, False}`)
+  into the engine. Uses the engine's idempotency so repeat sweeps
+  ingest only the genuinely new resolutions.
+- New `routes/ai_core_routes.py` exposing `/api/ai-core/{stats,
+  trades, alerts, trade, reject, cron/nightly, reset}`. `/reset` is
+  open in `ENV=development`, admin-only otherwise. `/cron/nightly`
+  is admin-only.
+- Scheduler hook in `server.py` — daily at 02:45 UTC (after memory
+  cleanup and ML retrain) so newly-graded predictions / closed
+  paper trades are picked up.
+
+### Tests — 22/22 pass
+- `test_ai_core_engine.py` (10) — outcome canonicalisation, confidence
+  bucketing (mixed 0-1 / 0-100), idempotent ingest, condition aggregates,
+  win-rate excludes flats, reset semantics.
+- `test_ai_core_alerts.py` (5) — first emit inserts, same-day re-emit
+  dedups, different date_bucket creates separate row, list ordering,
+  no-db graceful path.
+- `test_ai_core_routes.py` (7) — live API: auth gating, /reset wipe,
+  /trade idempotency, pending rejection, /cron/nightly emit + same-day
+  dedup, /reject log, /trades pagination.
+
+### First live numbers (admin manual trigger)
+First sweep ingested **269 resolved trades** (5 paper + 264 prediction)
+with overall **52.4 % win-rate**. Per-agent breakdown immediately
+revealed `signal_dispatcher` at **0/101 win-rate** vs. `market_prediction`
+at **70 % over 77 trades** — a useful signal that's now visible at a
+single endpoint instead of being scattered across collections.
+
+
+
 ## 2026-04-28 — Toxic Spike Autopsy
 
 User shared the "56 Bad Predictions Detected — Persisting (2 days
