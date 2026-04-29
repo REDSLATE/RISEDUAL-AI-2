@@ -1,5 +1,40 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-29 (c) — What-If Replay + Bridge v1 Activation Analysis
+
+### What-If Replay
+- New `services/whatif_replay_service.py`:
+  - `backfill_outcomes(db)` — idempotent migration that publishes
+    every closed `paper_trades` and verified `predictions` row into
+    the firewall ledger (`prd_resolved_outcomes`). 269 outcomes
+    seeded on first run.
+  - `whatif_projection(...)` — projects each engine's schema against
+    the ledger over a configurable window. **Non-destructive**: uses
+    a transient `LearningEngine` so persistent state isn't touched.
+- New `routes/whatif_replay_routes.py`:
+  - `POST /api/admin/replay/backfill` — admin-only.
+  - `GET /api/admin/replay/whatif?since=&until=&engines=&dimension=`
+    — admin-only.
+- New `frontend/src/components/admin/WhatIfReplayPanel.jsx` —
+  side-by-side engine projection cards with date-range pickers,
+  dimension selector, top/bottom buckets, win-rate-delta badges.
+  New "What-If Replay" tab in Admin → Insights.
+
+### Tests — 54/54 pass
+- New `tests/test_whatif_replay.py` (6): projection aggregation,
+  non-mutation invariant, candidate vs live schema divergence,
+  bucket-lift edge cases (thin corpora, None win-rates).
+
+### Live verification
+- 439 routes (was 437, +2 replay endpoints).
+- Backfill: 5 paper_trades + 264 predictions = 269 outcomes in
+  ledger; re-run dedups all 269.
+- Projection on full corpus: live 52.4% / candidate_v2 52.4% (both
+  on identical 269 outcomes). Bucket-lift differs because schemas
+  differ — that's the whole point.
+
+
+
 ## 2026-04-29 (b) — Engine Admin UI + First Promotion Bridge + Domain Tags
 
 Executed all three Next Action Items in one pass.

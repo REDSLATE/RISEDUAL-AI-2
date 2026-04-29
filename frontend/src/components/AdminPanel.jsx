@@ -24,6 +24,7 @@ import PatentWatchPanel from './admin/PatentWatchPanel';
 import OpsSnapshotPanel from './admin/OpsSnapshotPanel';
 import ToxicSpikeAutopsyPanel from './admin/ToxicSpikeAutopsyPanel';
 import EngineRegistryPanel from './admin/EngineRegistryPanel';
+import WhatIfReplayPanel from './admin/WhatIfReplayPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -64,6 +65,7 @@ const TAB_GROUPS = [
       { id: 'shadow',        label: 'Shadow',      icon: Eye },
       { id: 'autopsy',       label: 'Toxic Autopsy', icon: AlertTriangle },
       { id: 'engines',       label: 'AI Core', icon: Activity },
+      { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
@@ -97,6 +99,7 @@ const TAB_SUBTITLES = {
   shadow:         () => 'Research shadow — disagreement-conditional accuracy · cost budget',
   autopsy:        () => 'Toxic spike autopsy — WHY high-confidence predictions failed',
   engines:        () => 'AI Core engine registry — live + candidate side-by-side · bucket-lift comparison',
+  whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   tools:          () => 'Codebase export & utilities',
 };
@@ -120,6 +123,8 @@ const TAB_COMPONENTS = {
   adversarial:    () => <CryptoAdversarialDashboard />,
   shadow:         () => <ShadowAccuracyPanel />,
   autopsy:        () => <ToxicSpikeAutopsyPanel />,
+  engines:        () => <EngineRegistryPanel />,
+  whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
   tools:          () => <AdminTools />,
 };
