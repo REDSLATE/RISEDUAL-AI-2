@@ -1,5 +1,70 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-29 (d) — Toxic Count Bug Fix (MongoDB as Source of Truth)
+
+User spotted "1 high-confidence failure" in the toxic alert email
+right after the autopsy showed 71 over 7 days. Investigation
+confirmed a **9.5× under-count** caused by ChromaDB's `_make_id`
+hashing on `(symbol, date, price)` — 76 verified misses were
+collapsing into 8 cached rows.
+
+### Architecture decision: MongoDB = truth, ChromaDB = derived index
+- MongoDB has 1853 distinct prediction documents — each immutable
+  with its own `prediction_id`. **The system of record.**
+- ChromaDB is now treated as a derived vector index — owned by
+  `market_memory_service`, reset-able, rebuild-able from MongoDB.
+  Per-episode dedupe stays (it's correct for embedding similarity);
+  it just no longer drives the operator-facing count.
+
+### Code changes
+- `services/market_memory_service.py`:
+  - New `_count_toxic_from_mongo()` helper. Mixed-scale-tolerant
+    Mongo `$or` predicate (counts both 0-1 and 0-100 stored
+    confidence rows) so the autopsy and the cleanup agree
+    regardless of historical scale drift.
+  - `nightly_cleanup()` now records `toxic_count_mongo`,
+    `unique_episodes_retagged`, `toxic_window_since` in the result
+    dict — **headline number is Mongo truth**, ChromaDB count
+    becomes the diversity signal.
+  - Alert gating widened: fires when EITHER ChromaDB retag OR Mongo
+    truth count is non-zero (previously the alert was suppressed on
+    days when every collision-bucket had already been retagged,
+    silently hiding fresh failures).
+  - In-app notification + email now report
+    `"N high-confidence failures across M unique market episodes"`
+    instead of the misleading "1".
+- `services/email_service.py`:
+  - `send_toxic_spikes_email` accepts new `unique_episodes_retagged`
+    parameter.
+  - `_toxic_spikes_html` renders the diversity ratio with a yellow
+    callout when `truth_count >= 2 × episodes_count` ("Diversity
+    signal: 9.5× ratio — the model is failing on a small set of
+    recurring setups, not many independent ones. Drill into the
+    Toxic Autopsy admin tab…").
+- `routes/accuracy.py`:
+  - **NEW** `POST /api/admin/memory/rebuild-from-mongo?days=&limit=`
+    — admin-only. Replays verified predictions through `save_regime`
+    so ChromaDB can be refreshed from the source of truth on demand.
+
+### Tests — 73/73 pass
+- New `tests/test_toxic_count_consistency.py` (3): the headline
+  invariant — `_count_toxic_from_mongo()` MUST agree exactly with
+  `build_autopsy()` over the same window. The test uses synthetic
+  data covering 0-1 and 0-100 confidence scales, NEUTRAL exclusion,
+  window-boundary handling.
+- All prior tests including `test_iteration59_toxic_spikes_alert.py`
+  green — proving no regression in the existing alert pipeline.
+
+### Live verification
+- Trigger `/api/accuracy/memory/cleanup` returned:
+  - `toxic_removed: 0` (ChromaDB — everything already retagged)
+  - `toxic_count_mongo: 76` (NEW headline — actual high-conf failures
+    in last 7 days)
+- The bug is fully visible in the response — no longer silent.
+- 440 routes (was 439, +1 rebuild-from-mongo endpoint).
+
+
+
 ## 2026-04-29 (c) — What-If Replay + Bridge v1 Activation Analysis
 
 ### What-If Replay

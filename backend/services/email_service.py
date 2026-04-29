@@ -285,8 +285,23 @@ async def send_password_reset_email(user_email: str, reset_token: str, origin_ur
     return sent
 
 
-def _toxic_spikes_html(toxic_count: int, obsolete_count: int, total_before: int, total_after: int, spike_details: list) -> str:
-    """Email template for Toxic Spikes Alert — sent when nightly cleanup detects bad predictions."""
+def _toxic_spikes_html(
+    toxic_count: int,
+    obsolete_count: int,
+    total_before: int,
+    total_after: int,
+    spike_details: list,
+    unique_episodes_retagged: int | None = None,
+) -> str:
+    """Email template for Toxic Spikes Alert — sent when nightly cleanup detects bad predictions.
+
+    ``toxic_count`` is the immutable MongoDB-source-of-truth count of
+    high-confidence verified misses in the lookback window.
+    ``unique_episodes_retagged`` is the ChromaDB unique-episode count
+    (different number — same setups recurring at near-identical
+    prices collapse into one episode for vector-search dedup). Both
+    are surfaced so the operator sees the truth + the diversity
+    signal at a glance."""
     detail_rows = ""
     for spike in spike_details[:10]:  # Cap at 10 examples
         detail_rows += f"""<tr>
@@ -307,17 +322,33 @@ def _toxic_spikes_html(toxic_count: int, obsolete_count: int, total_before: int,
 {detail_rows}
 </table>"""
 
+    episodes_phrase = ""
+    diversity_note = ""
+    if unique_episodes_retagged is not None and unique_episodes_retagged > 0:
+        episodes_phrase = (
+            f' across <strong style="color:#0F172A;">{unique_episodes_retagged}</strong> unique market episode'
+            + ("s" if unique_episodes_retagged != 1 else "")
+        )
+        if toxic_count >= 2 * unique_episodes_retagged:
+            ratio = round(toxic_count / unique_episodes_retagged, 1)
+            diversity_note = (
+                f'<p style="color:#92400E;font-size:12px;line-height:1.6;margin:0 0 16px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;">'
+                f'<strong>Diversity signal:</strong> {ratio}× ratio &mdash; the model is failing on a small set of recurring setups, not many independent ones. Drill into the Toxic Autopsy admin tab to see which (agent, confidence-bucket) cells are concentrating the failures.'
+                f'</p>'
+            )
+
     content = f"""
 <h2 style="color:#DC2626;font-size:22px;margin:0 0 8px;font-weight:700;">Toxic Spikes Detected</h2>
 <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 20px;">
-The nightly memory cleanup found <strong style="color:#DC2626;">{toxic_count} high-confidence failures</strong> in the AI prediction engine. These have been re-tagged as negative lessons so the AI avoids repeating these mistakes.
+The nightly memory cleanup found <strong style="color:#DC2626;">{toxic_count} high-confidence failures</strong>{episodes_phrase} in the AI prediction engine. These have been re-tagged as negative lessons so the AI avoids repeating these mistakes.
 </p>
+{diversity_note}
 <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8FAFC" style="background-color:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:20px;">
 <tr><td style="padding:16px 20px;">
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td width="33%" style="text-align:center;">
-<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Toxic Removed</p>
+<p style="color:#64748B;font-size:11px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">High-Conf Failures</p>
 <p style="color:#DC2626;font-size:22px;margin:0;font-weight:800;">{toxic_count}</p>
 </td>
 <td width="33%" style="text-align:center;">
@@ -352,12 +383,21 @@ async def send_toxic_spikes_email(
     total_after: int,
     spike_details: list | None = None,
     persistence_tag: str = "",
+    unique_episodes_retagged: int | None = None,
 ) -> bool:
     """Send toxic spikes alert email after nightly cleanup detects bad
     predictions. `persistence_tag` is appended to the subject when the
     same alert has been recurring on consecutive days (e.g. " —
     Persisting (3 days in a row)"); empty string by default for the
-    first occurrence."""
+    first occurrence.
+
+    ``toxic_count`` is the headline number — predictions verified
+    wrong with confidence above threshold in the last 7 days
+    (MongoDB source-of-truth count).
+    ``unique_episodes_retagged`` is the ChromaDB unique-episode count
+    re-tagged this run; rendered as a parenthetical so the operator
+    can see the diversity of failures (low ratio = repeating setups).
+    """
     if not email_router.providers:
         logger.info(f"Email skipped (no providers configured): toxic spikes alert to {recipient_email}")
         return False
@@ -367,7 +407,8 @@ async def send_toxic_spikes_email(
             "to": [recipient_email],
             "subject": f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected{persistence_tag}",
             "html": _toxic_spikes_html(
-                toxic_count, obsolete_count, total_before, total_after, spike_details or []
+                toxic_count, obsolete_count, total_before, total_after,
+                spike_details or [], unique_episodes_retagged,
             ),
         }
         result = await asyncio.to_thread(

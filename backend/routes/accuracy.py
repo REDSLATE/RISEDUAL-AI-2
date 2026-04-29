@@ -325,3 +325,62 @@ async def cleanup_history(request: Request):
     async for doc in cursor:
         runs.append(doc)
     return {"runs": runs}
+
+
+@router.post("/memory/rebuild-from-mongo")
+async def rebuild_memory_from_mongo(
+    request: Request,
+    days: int = 30,
+    limit: int = 5000,
+):
+    """One-shot ChromaDB rebuild from MongoDB.
+
+    Replays every verified prediction in the last ``days`` days
+    through ``save_regime``. Idempotent because save_regime upserts
+    by ``_make_id`` — re-runs converge to the same state.
+
+    Use case: after the toxic-count bug fix, the operator can
+    rebuild the vector store *if and when* they want to widen
+    ``_make_id``'s key (per-prediction instead of per-episode) so
+    ChromaDB and MongoDB stop disagreeing on counts. Today this
+    endpoint just refreshes the existing per-episode index — no
+    schema change is shipped here. Admin-only.
+    """
+    user = await get_current_user(request)
+    if (user.get("role") or "").lower() not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        return {"ok": False, "reason": "db_unavailable"}
+
+    from datetime import datetime, timezone, timedelta
+    from services.market_memory_service import save_regime
+    from services.prediction_tracker import normalize_confidence
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cursor = db.predictions.find(
+        {
+            "verified_24h.correct": {"$in": [True, False]},
+            "verified_24h.verified_at": {"$gte": since},
+        },
+        {"_id": 0},
+    ).limit(limit)
+
+    rebuilt = 0
+    skipped = 0
+    async for p in cursor:
+        v24 = p.get("verified_24h") or {}
+        try:
+            await save_regime({
+                "symbol": p.get("symbol"),
+                "date": (p.get("timestamp") or "")[:10],
+                "price": p.get("price_at_prediction"),
+                "regime": p.get("regime") or {},
+                "confidence": normalize_confidence(p.get("confidence")),
+                "outcome": "hit" if v24.get("correct") is True else "miss",
+                "prediction_id": p.get("prediction_id"),
+            })
+            rebuilt += 1
+        except Exception:  # noqa: BLE001
+            skipped += 1
+
+    return {"ok": True, "rebuilt": rebuilt, "skipped": skipped, "since": since}

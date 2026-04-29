@@ -527,6 +527,50 @@ async def get_memory_stats() -> dict:
 #  NIGHTLY CLEANUP — Prune toxic outliers & obsolete data
 # ──────────────────────────────────────────────
 
+async def _count_toxic_from_mongo(
+    *,
+    confidence_threshold_pct: float = 80.0,
+    days: int = 7,
+) -> dict:
+    """Source-of-truth toxic count.
+
+    Queries MongoDB's immutable ``predictions`` collection — bypasses
+    ChromaDB's ``(symbol, date, price)`` doc-id collisions which were
+    silently compressing ~10 verified misses into 1 cached row.
+
+    Returns
+    -------
+    {
+      "total": N,            # 0-1 OR 0-100 scale predictions counted
+      "since": iso,          # window start
+      "threshold_pct": 80.0, # 0-100-scale threshold used
+    }
+
+    The tolerated-mixed-scale predicate is the same one
+    ``prediction_tracker.normalize_confidence`` applies in Python; we
+    inline it as Mongo ``$expr`` so the count never has to round-trip
+    documents into the app process.
+    """
+    if _db is None:
+        return {"total": 0, "since": None, "threshold_pct": confidence_threshold_pct}
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    threshold_unit = confidence_threshold_pct / 100.0  # for 0-1-scale rows
+    query = {
+        "verified_24h.correct": False,
+        "verified_24h.verified_at": {"$gte": since},
+        "$or": [
+            {"confidence": {"$gt": confidence_threshold_pct}},   # 0-100 stored
+            {"confidence": {"$gt": threshold_unit, "$lte": 1.0}},  # 0-1 stored
+        ],
+    }
+    try:
+        total = await _db.predictions.count_documents(query)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[toxic-count] mongo count failed: {e}")
+        total = 0
+    return {"total": total, "since": since, "threshold_pct": confidence_threshold_pct}
+
+
 async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: float = 80.0) -> dict:
     """Retrain memory by re-tagging bad patterns and pruning obsolete data.
 
@@ -666,6 +710,27 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
     results["confidence_threshold"] = toxic_confidence_threshold
     results["run_at"] = datetime.now(timezone.utc).isoformat()
 
+    # ── B.5 Source-of-truth toxic count from MongoDB ──
+    # `toxic_removed` (above) is the count of unique ChromaDB
+    # episodes we re-tagged. Because `_make_id` keys on
+    # ``(symbol, date, price)`` it deduplicates ~10 verified misses
+    # into 1 cached row, which made the operator-facing alert under-
+    # count by an order of magnitude. ``toxic_count_mongo`` is the
+    # immutable-ledger truth: how many predictions were actually
+    # verified as wrong with confidence above threshold in the last
+    # 7 days. The alert text below leads with this number; the
+    # ChromaDB count is reported alongside as
+    # ``unique_episodes_retagged`` because it's still useful signal
+    # (low ratio = the model is failing on a small set of repeating
+    # setups, which is its own diagnostic).
+    mongo_toxic = await _count_toxic_from_mongo(
+        confidence_threshold_pct=toxic_confidence_threshold,
+        days=7,
+    )
+    results["toxic_count_mongo"] = mongo_toxic["total"]
+    results["unique_episodes_retagged"] = results["toxic_removed"]
+    results["toxic_window_since"] = mongo_toxic["since"]
+
     # Log cleanup to MongoDB
     if _db is not None:
         try:
@@ -679,13 +744,23 @@ async def nightly_cleanup(days_to_keep: int = 90, toxic_confidence_threshold: fl
             })
 
     logger.info(
-        f"Nightly cleanup complete: {results['toxic_removed']} toxic re-tagged + "
+        f"Nightly cleanup complete: {results['toxic_removed']} toxic re-tagged "
+        f"({results.get('toxic_count_mongo', 0)} predictions in window — Mongo) + "
         f"{results['obsolete_removed']} obsolete removed "
         f"({results['total_before']} -> {results['total_after']} episodes)"
     )
 
     # ── C. Alert System — Email + In-App Notifications + SSE Stream ──
-    if results["toxic_removed"] > 0:
+    # Fire if EITHER the ChromaDB retag count OR the Mongo truth-count
+    # is non-zero. Previously only the ChromaDB count gated the alert,
+    # which meant on days when every collision-bucket had already been
+    # retagged the operator got NO alert despite Mongo showing dozens
+    # of fresh high-confidence misses.
+    has_real_misses = (
+        results["toxic_removed"] > 0
+        or results.get("toxic_count_mongo", 0) > 0
+    )
+    if has_real_misses:
         await _send_toxic_alerts(results)
         # Push to SSE stream
         try:
@@ -731,6 +806,8 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         return
 
     toxic_count = cleanup_results.get("toxic_removed", 0)
+    toxic_count_mongo = cleanup_results.get("toxic_count_mongo", 0)
+    unique_episodes_retagged = cleanup_results.get("unique_episodes_retagged", toxic_count)
     toxic_details = cleanup_results.get("toxic_details", [])
 
     # ── Defense-in-depth: filter test fixtures at the alert
@@ -803,6 +880,8 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
     # without needing to re-run the expensive cleanup scan.
     replay_payload = {
         "toxic_count": toxic_count,
+        "toxic_count_mongo": toxic_count_mongo,
+        "unique_episodes_retagged": unique_episodes_retagged,
         "obsolete_count": cleanup_results.get("obsolete_removed", 0),
         "total_before": cleanup_results.get("total_before", 0),
         "total_after": cleanup_results.get("total_after", 0),
@@ -820,6 +899,8 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             date_bucket=date_bucket,
             metadata={
                 "toxic_count": toxic_count,
+                "toxic_count_mongo": toxic_count_mongo,
+                "unique_episodes_retagged": unique_episodes_retagged,
                 "affected_tickers": affected,
                 "persistence_run": run + 1,
                 "run_id": run_id,
@@ -901,12 +982,13 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         for email in recipients:
             ok = await send_toxic_spikes_email(
                 recipient_email=email,
-                toxic_count=toxic_count,
+                toxic_count=(toxic_count_mongo if toxic_count_mongo > 0 else toxic_count),
                 obsolete_count=cleanup_results.get("obsolete_removed", 0),
                 total_before=cleanup_results.get("total_before", 0),
                 total_after=cleanup_results.get("total_after", 0),
                 spike_details=toxic_details,
                 persistence_tag=persistence_tag,
+                unique_episodes_retagged=unique_episodes_retagged,
             )
             if ok:
                 email_recipients.append(email)
@@ -983,22 +1065,41 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
             logger.info("No Pro users found for toxic spike notifications")
             return
 
+        # Headline number is the Mongo source-of-truth count when
+        # available; the ChromaDB unique-episode count is shown
+        # alongside as a "diversity" signal — low ratio means the
+        # same setups keep recurring.
+        headline_count = toxic_count_mongo if toxic_count_mongo > 0 else toxic_count
+        episodes_phrase = (
+            f"across {unique_episodes_retagged} unique market episode"
+            + ("s" if unique_episodes_retagged != 1 else "")
+            if unique_episodes_retagged > 0 else ""
+        )
+
         # Batch insert notifications for all Pro users
         now = datetime.now(timezone.utc).isoformat()
         title = (
-            f"Toxic Spikes: {toxic_count} Bad Predictions Detected"
+            f"Toxic Spikes: {headline_count} Bad Predictions Detected"
             + persistence_tag
+        )
+        message = (
+            f"Nightly cleanup found {headline_count} high-confidence failures"
+            + (f" {episodes_phrase}" if episodes_phrase else "")
+            + (f" ({ticker_summary})." if ticker_summary else ".")
+            + " Re-tagged as negative lessons in memory."
         )
         notifications = [
             {
                 "user_id": uid,
                 "type": "toxic_spike",
                 "title": title,
-                "message": f"Nightly cleanup found {toxic_count} high-confidence failures ({ticker_summary}). Re-tagged as negative lessons in memory.",
+                "message": message,
                 "read": False,
                 "created_at": now,
                 "metadata": {
-                    "toxic_count": toxic_count,
+                    "toxic_count": headline_count,
+                    "toxic_count_mongo": toxic_count_mongo,
+                    "unique_episodes_retagged": unique_episodes_retagged,
                     "affected_tickers": affected_tickers,
                     "total_before": cleanup_results.get("total_before", 0),
                     "total_after": cleanup_results.get("total_after", 0),
