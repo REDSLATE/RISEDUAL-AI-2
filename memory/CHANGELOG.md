@@ -1,5 +1,67 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-28 (c) — Dual-Stack Hardening (Build Order v1)
+
+User formalised the AI Core / Council separation into a patent-grade
+dual-domain spec. Implemented the enforcement infrastructure end-to-end.
+
+### New canonical document
+- `/app/memory/RISEDUAL_DUAL_STACK_SPEC.md` — frozen v1.0. Codifies
+  DTD vs PRD, the firewall, the promotion bridge, and the autonomous
+  evolution loop. Future changes require version bumps.
+
+### New backend modules (all opt-in; existing code untouched)
+- `services/role_scoped_db.py` — three capability-restricted Mongo
+  handles: `DtdClient`, `PrdReadOnlyClient`, `BridgeCalibrationClient`.
+  Each has explicit `allow_rw`/`allow_ro`/`deny` collection sets;
+  forbidden ops raise `PermissionError` at the call site.
+- `services/firewall.py` — the only DTD → PRD ingress. `publish_resolved()`
+  appends to immutable `prd_resolved_outcomes` (unique index on
+  `outcome_id`); rejects unsettled payloads (configurable settle
+  window); `read_resolved()` is the read-only egress.
+- `services/dtd_replay_channel.py` — append-only `dtd_decision_replay`
+  collection (unique index on `decision_id`). Mirrors every DTD decision
+  for audit, deterministic backtest, candidate benchmarking. `record_decision()`
+  is DTD-side; `read_replay()` is PRD-side.
+- `services/promotion_bridge.py` — the only PRD → DTD path. Bridges are
+  registered in code with `BridgeSpec(name, version, output_target,
+  output_bounds, min_samples, oos_window_days, regression_threshold)`.
+  Defaults to **empty + inactive**. Activation requires
+  `BRIDGE_APPROVAL_TOKEN` env match + evidence above thresholds + value
+  within bounds. Every activation/revocation appended to
+  `bridge_activations` audit log. `get_calibration(name)` returns
+  `None` when inactive (DTD callers default to unmodified parameter).
+
+### Domain tags applied
+- `__domain__ = "PRD"` on `ai_core_engine.py`, `ai_core_alerts.py`,
+  `ai_core_autowire.py`.
+- `__domain__ = "BRIDGE"` on `firewall.py`, `role_scoped_db.py`,
+  `promotion_bridge.py`.
+- `__domain__ = "DTD"` on `dtd_replay_channel.py`.
+- Backfilling remaining legacy modules tracked as a follow-up.
+
+### Tests — 33/33 pass in 0.26s
+- `tests/test_dual_stack_invariants.py` (18) — collection-domain
+  exclusivity, DTD client denies PRD/BRIDGE, PRD client read-only on
+  DTD + denied on BRIDGE, Bridge client capability matrix, firewall
+  settle-window rejection, missing-field rejection, replay
+  missing-field rejection, bridge registry empty-by-default, bridge
+  approval-token enforcement, bridge bounds clamp, bridge evidence
+  thresholds, bridge round-trip activation/revocation, domain-tag
+  presence, **PRD-imports-DTD grep audit** (catches accidental
+  cross-domain imports at CI time).
+- Existing `test_ai_core_engine.py` (10) + `test_ai_core_alerts.py` (5)
+  remain green.
+
+### Result
+Boundary that was a doc convention is now:
+1. role-scoped DB handles → reject cross-domain operations at handle
+2. append-only collections → unique indexes prevent retroactive edits
+3. CI invariant tests → grep audit + capability tests run on every push
+4. explicit bridge registry → only documented PRD→DTD path; off by default
+
+
+
 ## 2026-04-28 (b) — AI Core Learning Engine
 
 User pasted a patch from a sister project that fixed two test failures

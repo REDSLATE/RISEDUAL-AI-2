@@ -16,6 +16,8 @@ which is exactly what we want when the nightly cron runs twice
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional

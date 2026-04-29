@@ -73,6 +73,10 @@ from routes.patent_watch import router as patent_watch_router, set_db as set_pat
 from routes.ops_snapshot import router as ops_snapshot_router, set_db as set_ops_snapshot_db
 from routes.toxic_autopsy import router as toxic_autopsy_router, set_db as set_toxic_autopsy_db
 from routes.ai_core_routes import router as ai_core_routes_router, set_db as set_ai_core_routes_db
+from services.firewall import set_db as set_firewall_db
+from services.dtd_replay_channel import set_db as set_dtd_replay_db
+from services.role_scoped_db import set_db as set_role_scoped_db
+from services.promotion_bridge import set_db as set_promotion_bridge_db
 from services.agent_activity_service import set_db as set_agent_activity_db
 from services.price_provider import set_db as set_price_provider_db
 from services.market_data_pool import set_db as set_market_data_pool_db
@@ -172,6 +176,10 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_ops_snapshot_db,
         set_toxic_autopsy_db,
         set_ai_core_routes_db,
+        set_firewall_db,
+        set_dtd_replay_db,
+        set_role_scoped_db,
+        set_promotion_bridge_db,
     ]
     for setter in _setters:
         try:

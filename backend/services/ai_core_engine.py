@@ -27,6 +27,8 @@ Design rules
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import asyncio
 import logging
 from collections import defaultdict, deque

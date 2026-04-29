@@ -7,6 +7,8 @@ of the sweep ingest only the new resolutions.
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
