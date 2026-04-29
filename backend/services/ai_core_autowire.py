@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from services.ai_core_engine import learning_engine
+from services.ai_core_engine import registry, learning_engine
 from services.prediction_tracker import normalize_confidence
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ async def _ingest_paper_trades(db: Any, since_iso: str) -> int:
         if closed_iso and closed_iso < since_iso:
             continue
         symbol = (t.get("ticker") or "").upper()
-        res = await learning_engine.record_trade({
+        res = await registry.broadcast_trade({
             "source": "paper_trades",
             "source_id": t.get("trade_id") or "",
             "symbol": symbol,
@@ -70,7 +70,8 @@ async def _ingest_paper_trades(db: Any, since_iso: str) -> int:
             "outcome": t.get("outcome"),
             "recorded_at": closed_iso,
         })
-        if res.get("ok") and not res.get("dedup"):
+        live_res = res.get("live_result") or {}
+        if live_res.get("ok") and not live_res.get("dedup"):
             count += 1
     return count
 
@@ -92,7 +93,7 @@ async def _ingest_predictions(db: Any, since_iso: str) -> int:
         correct = v24.get("correct")
         outcome = "win" if correct is True else "loss" if correct is False else "flat"
         symbol = (p.get("symbol") or "").upper()
-        res = await learning_engine.record_trade({
+        res = await registry.broadcast_trade({
             "source": "predictions",
             "source_id": p.get("prediction_id") or "",
             "symbol": symbol,
@@ -106,7 +107,8 @@ async def _ingest_predictions(db: Any, since_iso: str) -> int:
             "outcome": outcome,
             "recorded_at": v24.get("verified_at"),
         })
-        if res.get("ok") and not res.get("dedup"):
+        live_res = res.get("live_result") or {}
+        if live_res.get("ok") and not live_res.get("dedup"):
             count += 1
     return count
 

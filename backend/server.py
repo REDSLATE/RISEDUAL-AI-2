@@ -240,10 +240,14 @@ async def _run_ai_core_nightly():
     daily summary alert. Same-day re-runs are no-ops by design
     (alert id = ``nightly_sweep:YYYY-MM-DD`` with unique index)."""
     try:
-        from services.ai_core_engine import learning_engine
+        from services.ai_core_engine import learning_engine, registry
         from services.ai_core_autowire import autowire_sweep
         from services.ai_core_alerts import emit as emit_alert
-        await learning_engine.hydrate()
+        # Hydrate every engine so bridge-eligible compute below sees
+        # the full Mongo history, not just whatever's been ingested
+        # since boot.
+        for engine in registry.all():
+            await engine.hydrate()
         sweep = await autowire_sweep(db)
         snap = learning_engine.stats_snapshot()
         msg_parts = []
@@ -265,6 +269,48 @@ async def _run_ai_core_nightly():
         logger.info(
             "[ai-core] nightly sweep: %s", "; ".join(msg_parts) or "empty",
         )
+
+        # ── Bridge-eligibility advisory ─────────────────────────────
+        # Compare every candidate against live on bucket-lift in the
+        # 'agent' dimension. Fire a dedup-safe alert per candidate
+        # that beats live by ≥ 0.05 lift over ≥ 100 samples. Operator
+        # remains the only one who can /promote.
+        try:
+            live = registry.live
+            live_cond = live.conditions_snapshot(min_total=30)
+            live_agent_wrs = [r["win_rate"] for r in live_cond.get("agent", []) if r["win_rate"] is not None]
+            live_lift = (max(live_agent_wrs) - min(live_agent_wrs)) if len(live_agent_wrs) >= 2 else 0.0
+            for engine in registry.all():
+                if engine.name == live.name:
+                    continue
+                if engine.stats_snapshot().get("total_resolved", 0) < 100:
+                    continue
+                cond = engine.conditions_snapshot(min_total=30)
+                wrs = [r["win_rate"] for r in cond.get("agent", []) if r["win_rate"] is not None]
+                if len(wrs) < 2:
+                    continue
+                cand_lift = max(wrs) - min(wrs)
+                if cand_lift - live_lift < 0.05:
+                    continue
+                await emit_alert(
+                    f"bridge_eligible_{engine.name}",
+                    title=f"AI Core Candidate Eligible: {engine.name}",
+                    message=(
+                        f"{engine.name} bucket-lift {round(cand_lift, 4)} vs "
+                        f"live {round(live_lift, 4)} (Δ +{round(cand_lift - live_lift, 4)}). "
+                        f"Manual promotion available via /api/ai-core/engines/{engine.name}/promote."
+                    ),
+                    metadata={
+                        "candidate": engine.name,
+                        "live": live.name,
+                        "candidate_lift": cand_lift,
+                        "live_lift": live_lift,
+                        "delta": cand_lift - live_lift,
+                        "candidate_total": engine.stats_snapshot().get("total_resolved"),
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"[ai-core] bridge-eligibility check failed: {e}")
     except Exception as e:
         logger.warning(f"AI Core nightly sweep failed: {e}")
 

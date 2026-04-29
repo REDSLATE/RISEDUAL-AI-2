@@ -1,5 +1,77 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-29 — Candidate AI Core Engine + Registry
+
+User asked for a true parallel candidate engine running side-by-side
+with the live AI Core, observing the same firehose with a different
+schema, with manual promotion + advisory alert (option **c**).
+
+### Backend changes
+- `services/ai_core_engine.py` refactored:
+  - `LearningEngine.__init__` now takes ``name`` + ``schema``;
+    persistence collection derived from name (legacy ``live`` keeps
+    ``ai_core_trades`` for back-compat; others get
+    ``ai_core_engine_{name}_trades`` so engines can never overwrite
+    each other).
+  - New `SchemaConfig` class with ``confidence_buckets`` + ordered
+    ``dimensions`` list; ``extract_conditions()`` is the single
+    extension point for new bucketers.
+  - New `LearningEngineRegistry` with ``register/get/all/names/promote/
+    broadcast_trade/reset_all/set_db_for_all`` and ``.live`` property.
+  - Two engines registered at module load:
+    - **`live`** (5-bin confidence; 4 dimensions: regime, agent,
+      asset_type, confidence_bucket)
+    - **`candidate_v2`** (6-bin confidence with split 80-85/85-90;
+      adds `direction_family` and `confidence_x_agent` cross dim)
+  - `learning_engine` symbol kept as alias for ``registry.live``
+    so existing imports keep working.
+- `services/ai_core_autowire.py` now broadcasts via
+  `registry.broadcast_trade(...)` so every new ingestion lands on
+  every engine.
+- `routes/ai_core_routes.py`:
+  - `POST /api/ai-core/trade` now broadcasts; response carries
+    `engines` map alongside back-compat live result.
+  - `POST /api/ai-core/reset` resets every engine.
+  - **NEW** `GET /api/ai-core/engines` — side-by-side stats for all
+    engines.
+  - **NEW** `GET /api/ai-core/engines/compare?dimension=agent` —
+    bucket-lift comparison (max-min win-rate spread).
+  - **NEW** `GET /api/ai-core/engines/{name}` — single engine.
+  - **NEW** `POST /api/ai-core/engines/{name}/promote` — admin-only
+    label flip; previous live becomes candidate (never retired).
+- `server.py` nightly cron now hydrates every engine and emits a
+  dedup-safe **`bridge_eligible_{name}`** advisory alert when a
+  candidate beats live by ≥ 0.05 lift on the `agent` dimension over
+  ≥ 100 samples. Operator remains the only one who can promote.
+
+### Promotion is registry-level, NOT firewall-crossing
+Per dual-stack spec: promoting a candidate to live changes which
+engine is the official scoreboard, but does NOT make AI Core stats
+flow into DTD components. Council still reads prediction-tracker
+stats. Cross-firewall feedback would require a registered
+Promotion Bridge.
+
+### Tests — 44/44 pass in 0.13s
+- New `tests/test_ai_core_registry.py` (11): registry shape, schema
+  divergence, candidate cross-dim extraction, broadcast fan-out,
+  promotion semantics, isolated reset.
+- All 33 prior tests (engine + alerts + dual-stack invariants) green.
+
+### Live findings (immediate)
+candidate_v2's `confidence_x_agent` cross dimension reveals the toxic
+spike root-cause cleanly:
+- **`signal_dispatcher@90-100` = 0/45 wins (toxic)**
+- `signal_dispatcher@80-85` = 0/31; `@70-80` = 0/25
+- `market_prediction@0-60` = 72%; `@60-70` = 68%
+- `war_room@0-60` = 100% over 48
+- `hypothesis` = 100% across all buckets (34 trades)
+
+This is exactly the per-(agent, confidence) blame-tally the user
+wanted, now visible at `/api/ai-core/engines/candidate_v2` without
+waiting for the candidate to clear a bridge.
+
+
+
 ## 2026-04-28 (c) — Dual-Stack Hardening (Build Order v1)
 
 User formalised the AI Core / Council separation into a patent-grade

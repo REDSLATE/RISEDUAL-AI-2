@@ -41,13 +41,26 @@ logger = logging.getLogger(__name__)
 MAX_LOG = 1000  # In-memory ring buffer; Mongo holds the full history.
 
 # Confidence buckets (lower-inclusive, upper-exclusive); covers 0-100.
-_CONF_BUCKETS: list[tuple[str, float, float]] = [
+_DEFAULT_BUCKETS_5BIN: list[tuple[str, float, float]] = [
     ("0-60", 0.0, 60.0),
     ("60-70", 60.0, 70.0),
     ("70-80", 70.0, 80.0),
     ("80-90", 80.0, 90.0),
     ("90-100", 90.0, 100.01),
 ]
+
+# Candidate v2: finer at the high-confidence end where toxic spikes live.
+_CANDIDATE_V2_BUCKETS_6BIN: list[tuple[str, float, float]] = [
+    ("0-60", 0.0, 60.0),
+    ("60-70", 60.0, 70.0),
+    ("70-80", 70.0, 80.0),
+    ("80-85", 80.0, 85.0),
+    ("85-90", 85.0, 90.0),
+    ("90-100", 90.0, 100.01),
+]
+
+# Backward-compat alias used by helpers + existing tests.
+_CONF_BUCKETS = _DEFAULT_BUCKETS_5BIN
 
 # Outcome canonicalisation — accepts the various shapes upstream
 # services actually emit (paper_trades' "win"/"loss"/"flat";
@@ -57,7 +70,10 @@ _LOSS_TOKENS = {"loss", "miss", False, "false", 0, "0"}
 _FLAT_TOKENS = {"flat", "neutral", "tie", None}
 
 
-def _bucket_confidence(conf_pct: Optional[float]) -> Optional[str]:
+def _bucket_confidence(
+    conf_pct: Optional[float],
+    buckets: Optional[list] = None,
+) -> Optional[str]:
     if conf_pct is None:
         return None
     try:
@@ -68,7 +84,7 @@ def _bucket_confidence(conf_pct: Optional[float]) -> Optional[str]:
     # app normalises elsewhere — collapse silently.
     if 0 <= c <= 1.0:
         c *= 100.0
-    for label, lo, hi in _CONF_BUCKETS:
+    for label, lo, hi in (buckets if buckets is not None else _CONF_BUCKETS):
         if lo <= c < hi:
             return label
     return None
@@ -100,12 +116,31 @@ def _build_trade_key(source: str, source_id: str) -> str:
 
 
 class LearningEngine:
-    """Singleton-style engine. Created once at import; bound to db
-    via :func:`set_db`. All public methods are coroutine-safe; the
-    in-memory dicts are mutated only from the asyncio event loop, so
-    no lock is required."""
+    """Schema-aware learning engine. Each engine tracks its own
+    rolling stats + condition aggregates over the same source firehose.
 
-    def __init__(self) -> None:
+    Constructor args
+    ----------------
+    name : str
+        Identifier (e.g. "live", "candidate_v2"). Determines the
+        Mongo collection used for persistence: legacy "live" maps to
+        ``ai_core_trades`` for back-compat; everything else maps to
+        ``ai_core_engine_{name}_trades``.
+    schema : SchemaConfig | None
+        Bucketing + dimension extraction rules. Default = the v1
+        five-bin live schema.
+
+    All public methods are coroutine-safe; the in-memory dicts are
+    mutated only from the asyncio event loop, so no lock is required.
+    """
+
+    def __init__(
+        self,
+        name: str = "live",
+        schema: Optional["SchemaConfig"] = None,
+    ) -> None:
+        self.name = name
+        self.schema = schema or _LIVE_SCHEMA
         self.trade_log: deque[dict] = deque(maxlen=MAX_LOG)
         self.stats: dict[str, int] = {
             "total_resolved": 0, "wins": 0, "losses": 0, "flats": 0,
@@ -123,6 +158,15 @@ class LearningEngine:
     def set_db(self, db: Any) -> None:
         self._db = db
 
+    @property
+    def trades_collection(self) -> str:
+        """Legacy 'live' uses ai_core_trades for back-compat. Other
+        engines get their own namespaced collection so they can never
+        accidentally overwrite each other."""
+        if self.name == "live":
+            return "ai_core_trades"
+        return f"ai_core_engine_{self.name}_trades"
+
     # ── Cold-start hydration ──
     async def hydrate(self) -> None:
         """Replay the last MAX_LOG resolved trades from Mongo into
@@ -132,7 +176,7 @@ class LearningEngine:
             return
         self._hydrated = True
         try:
-            cursor = self._db["ai_core_trades"].find(
+            cursor = self._db[self.trades_collection].find(
                 {}, {"_id": 0}
             ).sort("recorded_at", -1).limit(MAX_LOG)
             docs = await cursor.to_list(length=MAX_LOG)
@@ -140,11 +184,11 @@ class LearningEngine:
             for doc in reversed(docs):
                 self._apply_in_memory(doc, hydrate=True)
             logger.info(
-                "[ai_core] hydrated %d resolved trades from Mongo",
-                len(docs),
+                "[ai_core:%s] hydrated %d resolved trades from Mongo",
+                self.name, len(docs),
             )
         except Exception as e:  # noqa: BLE001
-            logger.warning("[ai_core] hydrate failed: %s", e)
+            logger.warning("[ai_core:%s] hydrate failed: %s", self.name, e)
 
     # ── Public API ──
     async def record_trade(self, raw: dict) -> dict:
@@ -180,13 +224,13 @@ class LearningEngine:
         # row would never happen.
         if self._db is not None:
             try:
-                await self._db["ai_core_trades"].update_one(
+                await self._db[self.trades_collection].update_one(
                     {"trade_key": key},
                     {"$setOnInsert": normalised},
                     upsert=True,
                 )
             except Exception as e:  # noqa: BLE001
-                logger.warning("[ai_core] trade upsert failed for %s: %s", key, e)
+                logger.warning("[ai_core:%s] trade upsert failed for %s: %s", self.name, key, e)
 
         self._apply_in_memory(normalised, hydrate=False)
         return {"ok": True, "dedup": False, "trade_key": key}
@@ -211,19 +255,26 @@ class LearningEngine:
         return {"ok": True}
 
     async def reset(self) -> dict:
-        """Wipe all in-memory + Mongo state. Dev/demo only."""
+        """Wipe all in-memory + Mongo state. Dev/demo only.
+
+        Per-engine: only this engine's collection is wiped. The
+        ``ai_core_alerts`` collection is shared and only cleared by the
+        live engine to preserve alert history when a candidate is
+        being tinkered with."""
         self.trade_log.clear()
         self._seen_keys.clear()
         for k in list(self.stats.keys()):
             self.stats[k] = 0
         self.condition_stats.clear()
+        self._hydrated = False
         if self._db is not None:
             try:
-                await self._db["ai_core_trades"].delete_many({})
-                await self._db["ai_core_rejections"].delete_many({})
-                await self._db["ai_core_alerts"].delete_many({})
+                await self._db[self.trades_collection].delete_many({})
+                if self.name == "live":
+                    await self._db["ai_core_rejections"].delete_many({})
+                    await self._db["ai_core_alerts"].delete_many({})
             except Exception as e:  # noqa: BLE001
-                logger.warning("[ai_core] reset wipe failed: %s", e)
+                logger.warning("[ai_core:%s] reset wipe failed: %s", self.name, e)
         return {"ok": True, "stats": self.stats_snapshot()}
 
     # ── Read API ──
@@ -286,7 +337,7 @@ class LearningEngine:
             # does, count it without polluting win/loss.
             self.stats["pending"] += 1
 
-        for k, v in _condition_tuples(doc):
+        for k, v in self.schema.extract_conditions(doc):
             bucket = self.condition_stats[(k, v)]
             bucket["total"] += 1
             if outcome == "win":
@@ -295,6 +346,88 @@ class LearningEngine:
                 bucket["losses"] += 1
             elif outcome == "flat":
                 bucket["flats"] += 1
+
+
+def _direction_family(direction: Any) -> Optional[str]:
+    d = (str(direction or "")).upper()
+    if d in {"BUY", "BULLISH", "LONG", "UP", "STRONG_BUY", "WEAK_BUY"}:
+        return "BULLISH"
+    if d in {"SELL", "BEARISH", "SHORT", "DOWN", "STRONG_SELL", "WEAK_SELL"}:
+        return "BEARISH"
+    if d in {"HOLD", "NEUTRAL", "WAIT"}:
+        return "NEUTRAL"
+    return None
+
+
+# ── Schema definitions ───────────────────────────────────────────────
+
+
+class SchemaConfig:
+    """A learning-engine schema. Pure-data: no I/O.
+
+    Two extension points:
+    * ``confidence_buckets`` controls granularity of the confidence
+      dimension.
+    * ``extract_conditions`` controls which (key, value) tuples are
+      emitted per resolved trade — i.e. how the engine slices wins.
+
+    Schemas are intentionally simple to keep candidate engines
+    auditable; complex feature engineering belongs in the live
+    decision-time stack, not in the post-resolution analytics.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        confidence_buckets: list[tuple[str, float, float]],
+        dimensions: list[str],
+    ) -> None:
+        self.name = name
+        self.confidence_buckets = confidence_buckets
+        self.dimensions = dimensions  # ordered, used for grep audits
+
+    def extract_conditions(self, doc: dict) -> Iterable[tuple[str, str]]:
+        """Yield (dim_key, dim_value) pairs for a resolved trade."""
+        if "regime" in self.dimensions and doc.get("regime"):
+            yield ("regime", str(doc["regime"]))
+        if "agent" in self.dimensions and doc.get("agent"):
+            yield ("agent", str(doc["agent"]))
+        if "asset_type" in self.dimensions and doc.get("asset_type"):
+            yield ("asset_type", str(doc["asset_type"]))
+        if "confidence_bucket" in self.dimensions:
+            bucket = _bucket_confidence(
+                doc.get("confidence"), self.confidence_buckets,
+            )
+            if bucket:
+                yield ("confidence_bucket", bucket)
+        # ── candidate-only dimensions ──
+        if "direction_family" in self.dimensions:
+            fam = _direction_family(doc.get("direction"))
+            if fam:
+                yield ("direction_family", fam)
+        if "confidence_x_agent" in self.dimensions:
+            agent = doc.get("agent")
+            bucket = _bucket_confidence(
+                doc.get("confidence"), self.confidence_buckets,
+            )
+            if agent and bucket:
+                yield ("confidence_x_agent", f"{agent}@{bucket}")
+
+
+_LIVE_SCHEMA = SchemaConfig(
+    name="live_v1",
+    confidence_buckets=_DEFAULT_BUCKETS_5BIN,
+    dimensions=["regime", "agent", "asset_type", "confidence_bucket"],
+)
+
+_CANDIDATE_V2_SCHEMA = SchemaConfig(
+    name="candidate_v2",
+    confidence_buckets=_CANDIDATE_V2_BUCKETS_6BIN,
+    dimensions=[
+        "regime", "agent", "asset_type", "confidence_bucket",
+        "direction_family", "confidence_x_agent",
+    ],
+)
 
 
 # ── Pure helpers (testable in isolation) ─────────────────────────────
@@ -345,21 +478,114 @@ def _condition_tuples(doc: dict) -> Iterable[tuple[str, str]]:
         yield ("confidence_bucket", bucket)
 
 
-# ── Module-level singleton ───────────────────────────────────────────
-learning_engine = LearningEngine()
+# ── Module-level singleton + registry ───────────────────────────────
+
+
+class LearningEngineRegistry:
+    """Holds all engines. Every ``record_trade`` call fans out to every
+    registered engine — they observe the same firehose with their own
+    schemas. Exactly one engine is tagged ``live``; promotion swaps
+    that tag.
+
+    Promotion is **purely a label flip in this registry** — it does
+    NOT cross the dual-stack firewall (Council still reads
+    prediction-tracker stats, not AI Core). Promoting a candidate to
+    live affects only which engine the public dashboard reports as
+    "the official scoreboard"."""
+
+    def __init__(self) -> None:
+        self._engines: dict[str, LearningEngine] = {}
+        self._live_name: str = "live"
+
+    def register(self, engine: LearningEngine, *, set_live: bool = False) -> None:
+        self._engines[engine.name] = engine
+        if set_live:
+            self._live_name = engine.name
+
+    def get(self, name: str) -> Optional[LearningEngine]:
+        return self._engines.get(name)
+
+    def all(self) -> list[LearningEngine]:
+        return list(self._engines.values())
+
+    def names(self) -> list[str]:
+        return list(self._engines.keys())
+
+    @property
+    def live_name(self) -> str:
+        return self._live_name
+
+    @property
+    def live(self) -> LearningEngine:
+        return self._engines[self._live_name]
+
+    async def broadcast_trade(self, raw: dict) -> dict:
+        """Fan-out: send the trade to every engine. Returns a dict
+        ``{engine_name: result}``. The live engine's result is
+        bubbled up as the canonical response for back-compat."""
+        results: dict[str, dict] = {}
+        for name, engine in self._engines.items():
+            try:
+                results[name] = await engine.record_trade(raw)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[registry] engine %s record_trade failed: %s", name, e)
+                results[name] = {"ok": False, "reason": str(e)}
+        return {
+            "live_result": results.get(self._live_name, {"ok": False}),
+            "engines": results,
+        }
+
+    async def broadcast_rejection(self, raw: dict) -> dict:
+        return await self.live.record_rejection(raw)
+
+    async def reset_all(self) -> dict:
+        out = {}
+        for name, engine in self._engines.items():
+            out[name] = await engine.reset()
+        return {"ok": True, "engines": out}
+
+    def set_db_for_all(self, db: Any) -> None:
+        for engine in self._engines.values():
+            engine.set_db(db)
+
+    def promote(self, name: str) -> dict:
+        """Flip the ``live`` tag to ``name``. The previous live
+        becomes a candidate — never retired. Idempotent."""
+        if name not in self._engines:
+            return {"ok": False, "reason": "unknown_engine"}
+        prev = self._live_name
+        if prev == name:
+            return {"ok": True, "noop": True, "live": name}
+        self._live_name = name
+        logger.info("[registry] promoted %s → live (was: %s)", name, prev)
+        return {"ok": True, "live": name, "demoted": prev}
+
+
+# Registry + default engines. The legacy ``learning_engine`` symbol
+# is kept as an alias for callers that imported it pre-registry.
+registry = LearningEngineRegistry()
+registry.register(LearningEngine(name="live", schema=_LIVE_SCHEMA), set_live=True)
+registry.register(LearningEngine(name="candidate_v2", schema=_CANDIDATE_V2_SCHEMA))
+
+# Alias so old callers (routes/ai_core_routes.py, ai_core_autowire.py,
+# server.py:_run_ai_core_nightly) keep working with no edits required.
+learning_engine = registry.live
 
 
 def set_db(db: Any) -> None:
-    learning_engine.set_db(db)
+    registry.set_db_for_all(db)
 
 
 async def ensure_indexes(db: Any) -> None:
-    """Mongo indexes — unique on trade_key keeps re-ingest cheap."""
+    """Mongo indexes — unique on trade_key keeps re-ingest cheap.
+    Each engine's collection gets the same index treatment."""
     try:
-        await db["ai_core_trades"].create_index(
-            "trade_key", unique=True, name="ai_core_trade_key_unique",
-        )
-        await db["ai_core_trades"].create_index([("recorded_at", -1)])
+        for engine in registry.all():
+            coll = engine.trades_collection
+            await db[coll].create_index(
+                "trade_key", unique=True, name=f"{coll}_trade_key_unique",
+            )
+            await db[coll].create_index([("recorded_at", -1)])
         await db["ai_core_rejections"].create_index([("recorded_at", -1)])
     except Exception as e:  # noqa: BLE001
         logger.warning("[ai_core] index ensure failed: %s", e)
