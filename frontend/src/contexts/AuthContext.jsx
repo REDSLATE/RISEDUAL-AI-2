@@ -220,6 +220,11 @@ function formatDetail(detail) {
   if (detail == null) return 'Something went wrong. Please try again.';
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) return detail.map(e => e?.msg || JSON.stringify(e)).join(' ');
+  if (detail?.message) return detail.message;
   if (detail?.msg) return detail.msg;
   return String(detail);
 }
+
+// Re-exported so non-Auth components can format the same error shapes
+// (e.g. trading-mode `wrong_mode` payloads) without duplicating the logic.
+export { formatDetail };

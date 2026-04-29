@@ -9,6 +9,7 @@ import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import PanelShell from './PanelShell';
+import TradingModeBanner from './TradingModeBanner';
 
 const API = `${getApiBase()}/api/bots`;
 
@@ -282,6 +283,12 @@ const TradingBotPanel = ({ onClose }) => {
         </div>
 
         <div className="p-5">
+          {/* Bot scheduler reads each user's mode at execution time —
+              this banner is informational so the user knows where
+              their bots will route. */}
+          <div className="mb-4">
+            <TradingModeBanner expectedMode="live" compact />
+          </div>
           {view === 'create' ? (
             <CreateBotForm onCreated={() => { loadBots(); setView('list'); }} />
           ) : (

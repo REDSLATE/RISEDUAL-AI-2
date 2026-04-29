@@ -78,8 +78,13 @@ async def execute_trade(request: Request, trade: TradeRequest):
     Returns the status-tagged dict from the underlying service.
     A `status: "rejected"` result is surfaced as HTTP 400 so the
     client can toast the error verbatim.
+
+    Mode guard: rejects with 403 if the caller is in LIVE mode. Paper
+    trading is a sandbox — submitting paper orders while in LIVE mode
+    is contradictory. Use the navbar pill to switch modes first.
     """
-    user = await get_current_user(request)
+    from services.trading_mode_guards import require_paper_mode
+    user = await require_paper_mode(request)
 
     if trade.option is not None:
         # Options path. `qty` for options = whole contracts; coerce

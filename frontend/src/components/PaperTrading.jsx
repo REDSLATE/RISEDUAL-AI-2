@@ -7,14 +7,14 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { useAuth, authFetch } from '../contexts/AuthContext';
+import { useAuth, authFetch, formatDetail } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
 import { toast } from 'sonner';
+import TradingModeBanner from './TradingModeBanner';
+import PanelShell from './PanelShell';
 
 const API = `${getApiBase()}/api`;
-
-import PanelShell from './PanelShell';
 
 const PaperTrading = ({ onClose }) => {
   const { user } = useAuth();
@@ -55,7 +55,7 @@ const PaperTrading = ({ onClose }) => {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.detail || 'Trade failed');
+        toast.error(formatDetail(data.detail) || 'Trade failed');
         return;
       }
       toast.success(`${side} ${qty} ${symbol.toUpperCase()} @ $${data.price}`);
@@ -110,18 +110,21 @@ const PaperTrading = ({ onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-5 pt-3">
-          {[
-            { key: 'portfolio', label: 'Portfolio', icon: Briefcase },
-            { key: 'trade', label: 'Trade', icon: ArrowUpRight },
-            { key: 'history', label: 'History', icon: History },
-          ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.key ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-600/30/60'}`}
-              data-testid={`paper-tab-${t.key}`}>
-              <t.icon className="w-3.5 h-3.5" /> {t.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between px-5 pt-3">
+          <div className="flex gap-1">
+            {[
+              { key: 'portfolio', label: 'Portfolio', icon: Briefcase },
+              { key: 'trade', label: 'Trade', icon: ArrowUpRight },
+              { key: 'history', label: 'History', icon: History },
+            ].map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.key ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-600/30/60'}`}
+                data-testid={`paper-tab-${t.key}`}>
+                <t.icon className="w-3.5 h-3.5" /> {t.label}
+              </button>
+            ))}
+          </div>
+          <TradingModeBanner expectedMode="paper" />
         </div>
 
         {/* Content */}
@@ -201,6 +204,7 @@ const PaperTrading = ({ onClose }) => {
             </>
           ) : tab === 'trade' ? (
             <div className="space-y-4">
+              <TradingModeBanner expectedMode="paper" compact />
               <Card className="bg-slate-700/60 border-slate-400/30/30 rounded-xl p-5">
                 <h3 className="text-white text-sm font-semibold mb-4">Execute Paper Trade</h3>
                 <div className="space-y-3">

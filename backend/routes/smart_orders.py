@@ -55,13 +55,38 @@ class SmartOrderRequest(BaseModel):
 
 @router.post("")
 async def create_order(request: Request, order: SmartOrderRequest):
-    """Create a smart order with advanced features."""
+    """Create a smart order with advanced features.
+
+    Mode coherence: the payload's ``order.mode`` must match the user's
+    global trading mode (set via the navbar pill). Mismatch → 403
+    ``wrong_mode`` so the UI can prompt the user to flip first.
+    """
     user = await get_current_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
 
     # Live mode restricted to owner
     if order.mode == "live" and user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="Live trading restricted to authorized accounts")
+
+    # Mode coherence — payload ``mode`` must match user's global pill.
+    # ``simulate`` is a developer-only mode that bypasses the gate.
+    if order.mode in ("paper", "live"):
+        from services.trading_mode_service import get_user_trading_mode
+        user_mode = await get_user_trading_mode(user)
+        if user_mode != order.mode:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "wrong_mode",
+                    "required_mode": order.mode,
+                    "current_mode": user_mode,
+                    "message": (
+                        f"This smart order is configured for {order.mode.upper()} "
+                        f"but your account is in {user_mode.upper()} mode. "
+                        f"Switch via the navbar pill to continue."
+                    ),
+                },
+            )
 
     from services.smart_order_service import create_smart_order
     result = await create_smart_order(user_id, order.model_dump())

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ShadowDecisionDrawer from './admin/ShadowDecisionDrawer';
+import TradingModeBanner from './TradingModeBanner';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -94,23 +95,26 @@ export default function CryptoPaperDashboard() {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => postAction('/api/crypto/paper-bot/run')}
-            disabled={running}
-            className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs transition"
-            data-testid="crypto-run-bot-btn"
-          >
-            Run Bot
-          </button>
-          <button
-            onClick={() => postAction('/api/crypto/paper-trades/close')}
-            disabled={running}
-            className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs transition"
-            data-testid="crypto-close-trades-btn"
-          >
-            Close Due Trades
-          </button>
+        <div className="flex items-center gap-3">
+          <TradingModeBanner expectedMode="paper" />
+          <div className="flex gap-2">
+            <button
+              onClick={() => postAction('/api/crypto/paper-bot/run')}
+              disabled={running}
+              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs transition"
+              data-testid="crypto-run-bot-btn"
+            >
+              Run Bot
+            </button>
+            <button
+              onClick={() => postAction('/api/crypto/paper-trades/close')}
+              disabled={running}
+              className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs transition"
+              data-testid="crypto-close-trades-btn"
+            >
+              Close Due Trades
+            </button>
+          </div>
         </div>
       </div>
 

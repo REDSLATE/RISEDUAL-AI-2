@@ -358,8 +358,11 @@ async def place_order(body: OptionOrderRequest, request: Request):
          forwarded to the client as HTTP errors with the raw
          message so the UI can show "your account needs Level 2
          approval" style feedback.
+
+    Mode guard: caller must be in LIVE trading mode.
     """
-    user = await get_current_user(request)
+    from services.trading_mode_guards import require_live_mode
+    user = await require_live_mode(request)
     _ensure_odd_accepted(user)
 
     provider = _user_provider(user)
@@ -722,7 +725,12 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
 
 @router.delete("/order/{order_id}")
 async def cancel_order(order_id: str, request: Request):
-    user = await get_current_user(request)
+    """Cancel a pending live options order.
+
+    Mode guard: caller must be in LIVE trading mode (mirrors POST /order).
+    """
+    from services.trading_mode_guards import require_live_mode
+    user = await require_live_mode(request)
     _ensure_odd_accepted(user)
     provider = _user_provider(user)
     try:

@@ -6,15 +6,18 @@ import { Label } from './ui/label';
 import PanelShell from './PanelShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from './ui/sonner';
-import { useAuth, authFetch } from '../contexts/AuthContext';
+import { useAuth, authFetch, formatDetail } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import SmartOrderPreview from './smart-orders/SmartOrderPreview';
 import SmartOrderList from './smart-orders/SmartOrderList';
+import { useTradingMode } from '../hooks/useTradingMode';
+import TradingModeBanner from './TradingModeBanner';
 
 const API = `${getApiBase()}/api/smart-orders`;
 
 const SmartOrderPanel = ({ onClose }) => {
   const { user, isPro } = useAuth();
+  const tradingMode = useTradingMode();
   const [orders, setOrders] = useState([]);
   const [view, setView] = useState('create');
   const [loading, setLoading] = useState(false);
@@ -25,9 +28,22 @@ const SmartOrderPanel = ({ onClose }) => {
   const [symbol, setSymbol] = useState('');
   const [side, setSide] = useState('buy');
   const [qty, setQty] = useState('');
-  const [mode, setMode] = useState('paper');
+  // Default the order's mode to the user's global trading mode so the
+  // payload matches the navbar pill out of the box. The user can still
+  // override to "simulate" for a dry-run.
+  const [mode, setMode] = useState(tradingMode.mode);
   const [orderType, setOrderType] = useState('market');
   const [entryPrice, setEntryPrice] = useState('');
+
+  // Keep `mode` in lock-step with the global pill — flipping the
+  // navbar should immediately reflect in the form.
+  useEffect(() => {
+    if (mode !== 'simulate') setMode(tradingMode.mode);
+    // We deliberately omit `mode` from deps so the user's manual choice
+    // of "simulate" isn't clobbered every render — the dependency is
+    // strictly the global trading mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradingMode.mode]);
 
   // SL/TP
   const [slEnabled, setSlEnabled] = useState(false);
@@ -90,7 +106,7 @@ const SmartOrderPanel = ({ onClose }) => {
       const res = await authFetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildPayload(true)) });
       const data = await res.json();
       if (res.ok) { setPreview(data); toast.success('Simulation complete'); }
-      else toast.error(data.detail || 'Simulation failed');
+      else toast.error(formatDetail(data.detail) || 'Simulation failed');
     } catch { toast.error('Simulation error'); }
     finally { setLoading(false); }
   };
@@ -103,7 +119,7 @@ const SmartOrderPanel = ({ onClose }) => {
       const res = await authFetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildPayload()) });
       const data = await res.json();
       if (res.ok) { toast.success(`Order placed: ${data.status}`); setPreview(null); loadOrders(); setView('orders'); }
-      else toast.error(data.detail || 'Order failed');
+      else toast.error(formatDetail(data.detail) || 'Order failed');
     } catch { toast.error('Order failed'); }
     finally { setLoading(false); }
   };
@@ -142,6 +158,10 @@ const SmartOrderPanel = ({ onClose }) => {
 
         {view === 'create' ? (
           <div className="p-5 space-y-4">
+            {/* Trading-mode awareness — banner reflects whether the
+                form's `mode` matches the user's global pill. */}
+            <TradingModeBanner expectedMode={mode === 'simulate' ? tradingMode.mode : mode} compact />
+
             {/* Row 1: Symbol, Side, Qty, Mode */}
             <div className="grid grid-cols-4 gap-3">
               <div>

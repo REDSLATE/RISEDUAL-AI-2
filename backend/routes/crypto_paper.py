@@ -67,8 +67,11 @@ async def post_crypto_paper_trade(
 
     Otherwise 200 with the persisted trade record. Idempotent retries
     within the same minute collapse onto the original ``trade_id``.
+
+    Mode guard: caller must be in PAPER trading mode.
     """
-    user = await get_current_user(request)
+    from services.trading_mode_guards import require_paper_mode
+    user = await require_paper_mode(request)
     user_id = str(user.get("_id") or user.get("user_id") or "")
 
     result = await cps.execute_crypto_paper_trade(

@@ -695,7 +695,14 @@ async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, resul
 
 @router.post("/order/{broker_id}")
 async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
-    """Place a trade order through a connected broker. Owner-only."""
+    """Place a trade order through a connected broker. Owner-only.
+
+    Mode guard: caller must be in LIVE trading mode. PAPER users are
+    rejected with 403 + a structured `detail.code = "wrong_mode"` so
+    the frontend can render a "Switch to LIVE" CTA.
+    """
+    from services.trading_mode_guards import require_live_mode
+    await require_live_mode(request)
     if not await _is_execution_allowed(request):
         raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts. Your connection is read-only.")
     user = await _get_user(request)
@@ -751,7 +758,13 @@ async def get_orders(broker_id: str, request: Request, status: str = "all"):
 
 @router.delete("/order/{broker_id}/{order_id}")
 async def cancel_order(broker_id: str, order_id: str, request: Request):
-    """Cancel a pending order. Owner-only."""
+    """Cancel a pending order. Owner-only.
+
+    Mode guard: cancelling LIVE orders requires the caller to be in
+    LIVE mode (mirrors the gate on /order/{broker_id} POST).
+    """
+    from services.trading_mode_guards import require_live_mode
+    await require_live_mode(request)
     if not await _is_execution_allowed(request):
         raise HTTPException(status_code=403, detail="Live trade execution is restricted to authorized accounts.")
     user = await _get_user(request)

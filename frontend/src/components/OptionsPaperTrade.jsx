@@ -30,6 +30,7 @@ import { Label } from './ui/label';
 import { TradeModePill } from './ui/TradeModePill';
 import { getApiBase } from '../utils/apiBase';
 import logger from '../utils/logger';
+import TradingModeBanner from './TradingModeBanner';
 
 const API = `${getApiBase()}/api`;
 
@@ -167,6 +168,12 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
                 onClick={() => setIsOpen(false)}
                 className="text-slate-400 hover:text-white text-2xl leading-none"
               >×</button>
+            </div>
+
+            {/* Mode coherence banner — surfaces if user is in LIVE mode
+                while opening this paper modal. */}
+            <div className="mb-4">
+              <TradingModeBanner expectedMode="paper" compact />
             </div>
 
             <div className="space-y-4">
