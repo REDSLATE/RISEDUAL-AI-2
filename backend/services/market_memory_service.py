@@ -544,7 +544,9 @@ async def get_memory_stats() -> dict:
         "mongodb_log_count": mongo_count,
         "collection_name": COLLECTION_NAME,
         "embedding_model": "all-MiniLM-L6-v2 (local)",
-        "storage_path": CHROMA_DIR,
+        # Sanitised label — never expose the server's absolute filesystem
+        # path to the client. The path is internal infra detail.
+        "storage_path": "embedded",
         "initialized": _collection is not None,
         "last_cleanup": last_cleanup,
     }
