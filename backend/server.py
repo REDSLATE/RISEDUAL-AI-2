@@ -130,6 +130,55 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ── Global exception sanitizer ────────────────────────────────────────
+# Many routes legitimately do `raise HTTPException(status_code=500,
+# detail=str(e))` to surface failures. That leaks internal exception
+# strings (Mongo errors, file paths, library tracebacks) to the client.
+#
+# Policy:
+#   * 4xx — KEEP detail. These are intentional client-facing messages
+#     (validation, auth, "not found"). Devs control them.
+#   * 500 — REPLACE detail with a generic string. Full original detail
+#     is logged server-side for debugging.
+#   * 501/502/503/504 — KEEP detail. These are typically capability /
+#     availability messages devs want users to see ("Tradier not
+#     configured", "rate limited"). Routes opt into raw exposure here.
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(StarletteHTTPException)
+async def sanitize_http_exception(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 500:
+        logger.error(
+            f"[5xx-sanitized] path={request.url.path} "
+            f"status=500 raw_detail={exc.detail!r}"
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+            headers=getattr(exc, "headers", None) or {},
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None) or {},
+    )
+
+
+@app.exception_handler(Exception)
+async def sanitize_unhandled_exception(request: Request, exc: Exception):
+    """Catch-all for unhandled exceptions — never expose internals."""
+    logger.exception(
+        f"[unhandled] path={request.url.path} type={type(exc).__name__}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
 async def _pregen_watchlist_intel(database):
     """Pre-generate watchlist intelligence for all users with watchlists (runs 5:30 AM UTC)."""
     try:
@@ -415,7 +464,88 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Test credentials write failed (non-critical): {e}")
 
+    # ── ChromaDB rehydrate ────────────────────────────────────────────
+    # Mongo is the immutable source of truth. ChromaDB is a deduplicating
+    # vector cache that lives on disk under /app/backend/data/chromadb.
+    # On a fresh container (ephemeral disk), the vector store starts
+    # empty and "similar setup" retrieval is degraded until manually
+    # rebuilt. Spawn a non-blocking task to backfill from MongoDB if
+    # Chroma is empty. Idempotent — early-exits if Chroma already has
+    # episodes. Disable via CHROMA_AUTO_WARMUP=false (e.g. in tests).
+    try:
+        import asyncio
+        asyncio.create_task(_chromadb_warmup())
+    except Exception as e:
+        logger.warning(f"ChromaDB warmup launch failed (non-critical): {e}")
+
     logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
+
+
+async def _chromadb_warmup():
+    """Rehydrate ChromaDB from MongoDB if the vector store is empty.
+
+    Replays the last 60 days of verified predictions (cap 5000) through
+    ``save_regime``. ``save_regime`` upserts by ``_make_id`` so re-runs
+    are idempotent. Only acts when Chroma has 0 episodes AND Mongo has
+    something to backfill — otherwise it's a no-op.
+    """
+    if (os.environ.get("CHROMA_AUTO_WARMUP", "true") or "").lower() == "false":
+        logger.info("[chroma_warmup] disabled via CHROMA_AUTO_WARMUP=false")
+        return
+    try:
+        from services.market_memory_service import get_memory_stats, save_regime
+        from services.prediction_tracker import normalize_confidence
+        from datetime import timedelta
+
+        stats = await get_memory_stats()
+        chroma_count = stats.get("total_episodes", 0)
+        mongo_count = stats.get("mongodb_log_count", 0)
+
+        if chroma_count > 0:
+            logger.info(
+                f"[chroma_warmup] skip — Chroma already has {chroma_count} episodes"
+            )
+            return
+        if mongo_count == 0:
+            logger.info("[chroma_warmup] skip — Mongo log is empty, nothing to rehydrate")
+            return
+
+        logger.info(
+            f"[chroma_warmup] Chroma empty (Mongo={mongo_count}) — rehydrating from predictions"
+        )
+
+        since = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+        cursor = db.predictions.find(
+            {
+                "verified_24h.correct": {"$in": [True, False]},
+                "verified_24h.verified_at": {"$gte": since},
+            },
+            {"_id": 0},
+        ).limit(5000)
+
+        rebuilt = 0
+        skipped = 0
+        async for p in cursor:
+            v24 = p.get("verified_24h") or {}
+            try:
+                await save_regime({
+                    "symbol": p.get("symbol"),
+                    "date": (p.get("timestamp") or "")[:10],
+                    "price": p.get("price_at_prediction"),
+                    "regime": p.get("regime") or {},
+                    "confidence": normalize_confidence(p.get("confidence")),
+                    "outcome": "hit" if v24.get("correct") is True else "miss",
+                    "prediction_id": p.get("prediction_id"),
+                })
+                rebuilt += 1
+            except Exception:
+                skipped += 1
+
+        logger.info(
+            f"[chroma_warmup] rehydrated {rebuilt} episodes (skipped {skipped})"
+        )
+    except Exception as e:
+        logger.warning(f"[chroma_warmup] failed (non-critical): {e}")
 
 
 async def _start_schedulers():
