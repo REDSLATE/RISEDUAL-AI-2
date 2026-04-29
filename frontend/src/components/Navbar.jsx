@@ -8,6 +8,7 @@ import MobileMenu from './MobileMenu';
 import UserBadge from './UserBadge';
 import CreditBadge from './CreditBadge';
 import AlertsPanel from './AlertsPanel';
+import TradingModePill from './TradingModePill';
 import { useAuth } from '../contexts/AuthContext';
 import {
   DropdownMenu,
@@ -204,6 +205,8 @@ const Navbar = ({
               Upgrade Pro
             </Button>
           )}
+
+          {user && <TradingModePill />}
 
           {user && <AlertsPanel onSubscribe={onSubscribe} />}
 

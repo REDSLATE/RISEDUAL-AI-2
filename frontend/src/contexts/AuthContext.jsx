@@ -193,9 +193,21 @@ export const AuthProvider = ({ children }) => {
 
   const isPro = user && (user.subscription_status === 'pro' || user.subscription_status === 'trial');
 
+  // Lightweight re-fetch of /auth/me — used by features that mutate
+  // user-scoped fields (e.g. trading mode pill) and need the user
+  // object to reflect the latest server state without a full reload.
+  const refreshAuth = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API}/auth/me`);
+      if (res.ok) setUser(await res.json());
+    } catch (e) {
+      log.warn('refreshAuth failed:', e.message);
+    }
+  }, []);
+
   const contextValue = useMemo(() => ({
-    user, loading, login, register, logout, isPro, checkAuth, authFetch
-  }), [user, loading, login, register, logout, isPro, checkAuth]);
+    user, loading, login, register, logout, isPro, checkAuth, refreshAuth, authFetch
+  }), [user, loading, login, register, logout, isPro, checkAuth, refreshAuth]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -75,6 +75,7 @@ from routes.toxic_autopsy import router as toxic_autopsy_router, set_db as set_t
 from routes.ai_core_routes import router as ai_core_routes_router, set_db as set_ai_core_routes_db
 from routes.promotion_bridge_routes import router as promotion_bridge_routes_router
 from routes.whatif_replay_routes import router as whatif_replay_routes_router, set_db as set_whatif_replay_db
+from routes.trading_mode import router as trading_mode_router, set_db as set_trading_mode_db
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db
@@ -134,6 +135,7 @@ ALL_ROUTERS = [
     ai_core_routes_router,
     promotion_bridge_routes_router,
     whatif_replay_routes_router,
+    trading_mode_router,
 ]
 
 
@@ -185,6 +187,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_role_scoped_db,
         set_promotion_bridge_db,
         set_whatif_replay_db,
+        set_trading_mode_db,
     ]
     for setter in _setters:
         try:

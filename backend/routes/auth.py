@@ -119,6 +119,7 @@ def user_response(user: dict) -> dict:
         "trial_ends_at": user.get("trial_ends_at"),
         "founding_member": user.get("founding_member", False),
         "beta_access": user.get("beta_access", False),
+        "trading_mode": user.get("trading_mode", "paper"),
     }
 
 # --- Models ---

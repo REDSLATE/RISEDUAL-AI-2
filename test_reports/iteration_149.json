@@ -1,0 +1,62 @@
+{
+  "summary": "Iteration 149: Trading Mode Switch feature (Phase 1) - All tests pass. Backend: 15/15 pytest tests pass, all API endpoints verified. Frontend: Pill visible in navbar, modal works correctly for both PAPER→LIVE (confirm input + hold button) and LIVE→PAPER (quick confirm) flows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_trading_mode.py",
+    "/app/test_reports/pytest/trading_mode_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: Backend pytest - 15/15 tests pass (service + route level)",
+    "VERIFIED: GET /api/trading-mode/current returns 200 with {mode, last_switch_at, cooldown_remaining_s, cooldown_total_s}",
+    "VERIFIED: POST /api/trading-mode/switch with mode:live (no confirm_text) returns 400 with detail.code='confirm_required' when in paper mode",
+    "VERIFIED: POST /api/trading-mode/switch with mode:live + confirm_text:'LIVE' returns 200 with cooldown_remaining_s:30",
+    "VERIFIED: Immediate switch after flip returns 429 with detail.code='cooldown'",
+    "VERIFIED: POST /api/trading-mode/switch with mode:futures returns 400 with detail.code='invalid_mode'",
+    "VERIFIED: GET /api/auth/me includes trading_mode field",
+    "VERIFIED: Frontend - Trading mode pill visible in navbar with data-testid='trading-mode-pill' and data-mode attribute",
+    "VERIFIED: Frontend - Pill shows 'paper' (mint/cyan) or 'live' (orange) styling based on mode",
+    "VERIFIED: Frontend - Modal opens with data-testid='trading-mode-modal'",
+    "VERIFIED: Frontend - PAPER→LIVE modal shows confirm input (data-testid='trading-mode-confirm-input'), hold button (data-testid='trading-mode-hold-confirm'), and real money warning",
+    "VERIFIED: Frontend - Hold button disabled until 'LIVE' typed, then enabled",
+    "VERIFIED: Frontend - LIVE→PAPER modal shows quick-confirm button (data-testid='trading-mode-quick-confirm') with no type-text or hold needed",
+    "VERIFIED: Frontend - Close button (data-testid='trading-mode-modal-close') and backdrop click both close modal",
+    "VERIFIED: Frontend - Cooldown text appears after successful flip"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (15/15 pytest tests + 6 curl API tests)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing admin user",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Trading Mode Switch Phase 1 complete. All 15 backend tests pass. Frontend pill and modal work correctly. Note: There's an onboarding tour overlay that may block interactions - use 'Skip Tour' to dismiss. The 30s cooldown is enforced between mode switches. Phase 2 (order routing per-mode) is NOT in this PR.",
+  "endpoints_verified": {
+    "GET /api/trading-mode/current": {"status": 200, "description": "Returns mode + cooldown state"},
+    "POST /api/trading-mode/switch (live, no confirm)": {"status": 400, "description": "Returns confirm_required when switching to live without confirm_text"},
+    "POST /api/trading-mode/switch (live, with confirm)": {"status": 200, "description": "Switches to live mode with 30s cooldown"},
+    "POST /api/trading-mode/switch (paper)": {"status": 200, "description": "Switches to paper mode (no confirm needed)"},
+    "POST /api/trading-mode/switch (cooldown)": {"status": 429, "description": "Returns cooldown error when switching too quickly"},
+    "POST /api/trading-mode/switch (invalid mode)": {"status": 400, "description": "Returns invalid_mode for futures/other invalid modes"},
+    "GET /api/auth/me": {"status": 200, "description": "Includes trading_mode field"}
+  },
+  "frontend_elements_verified": {
+    "trading-mode-pill": "Visible in navbar, shows mode text and has data-mode attribute",
+    "trading-mode-modal": "Opens on pill click, shows correct content based on current mode",
+    "trading-mode-confirm-input": "Visible for PAPER→LIVE, accepts 'LIVE' text",
+    "trading-mode-hold-confirm": "Visible for PAPER→LIVE, disabled until LIVE typed, shows 5-second hold text",
+    "trading-mode-quick-confirm": "Visible for LIVE→PAPER, single click to switch",
+    "trading-mode-modal-close": "X button closes modal",
+    "trading-mode-modal-backdrop": "Backdrop click closes modal"
+  }
+}
