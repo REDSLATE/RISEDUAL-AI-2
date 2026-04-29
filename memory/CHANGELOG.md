@@ -1,5 +1,67 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-29 (b) — Engine Admin UI + First Promotion Bridge + Domain Tags
+
+Executed all three Next Action Items in one pass.
+
+### (i) Engine Registry admin UI
+- New `frontend/src/components/admin/EngineRegistryPanel.jsx` — side-by-side
+  cards for live + candidate, summary stats, dimension chips,
+  bucket-lift comparison table with a dimension selector
+  (`agent`, `regime`, `asset_type`, `confidence_bucket`,
+  `direction_family`, `confidence_x_agent`), and admin-only
+  **Promote** button on each candidate (browser confirm gate, label
+  flip, refresh).
+- New tab in `AdminPanel.jsx` Insights group: **AI Core**
+  (Activity icon).
+
+### (ii) First Promotion Bridge — `bridge_v1_council_calibration`
+- Registered at module load in `services/promotion_bridge.py`:
+  bounds **[0.90, 1.10]**, min_samples 200, OOS 14d, regression
+  threshold 2.0%. **Ships INACTIVE.**
+- New `services/council_risk_modulator.py` consumer: late-imports
+  `get_calibration("bridge_v1_council_calibration")`, applies as
+  multiplicative nudge AFTER the modulation table; `None` returns
+  the unchanged base (regression-tested). Bridge cannot influence
+  `council_applied` or `reason` fields.
+- New `routes/promotion_bridge_routes.py` exposing
+  `/api/admin/bridges` (list), `/{name}/activate`, `/{name}/revoke`,
+  `/audit`. Activation requires admin role + `BRIDGE_APPROVAL_TOKEN`
+  env match + evidence above thresholds + value within bounds.
+- New playbook: `/app/memory/BRIDGE_v1_COUNCIL_CALIBRATION_PLAYBOOK.md`
+  (full activation/revocation flow, hard rules, version policy).
+
+### (iii) Domain tags backfilled
+- **DTD**: `paper_trade_closer.py`, `ml_paper_trader.py`,
+  `regime_weights.py`, `council_risk_modulator.py`,
+  `dtd_replay_channel.py` (already tagged previously).
+- **PRD**: `toxic_autopsy_service.py`, `ops_snapshot.py`,
+  `ops_alerter.py`, `symbol_sector_resolver.py`,
+  `ai_core_engine.py`, `ai_core_alerts.py`, `ai_core_autowire.py`
+  (last 3 tagged previously).
+- **BRIDGE**: `firewall.py`, `promotion_bridge.py`,
+  `role_scoped_db.py`, `promotion_bridge_routes.py`.
+- `prediction_tracker.py` intentionally left untagged — it's a
+  shared utility (`normalize_confidence`) that PRD modules legitimately
+  import; tagging it as DTD would force a refactor.
+
+### Tests — 48/48 pass
+- New `test_council_bridge_integration.py` (4): no-bridge regression,
+  active bridge applies multiplicatively, `council_applied` unaffected,
+  out-of-range value clamped on read.
+- Updated `test_dual_stack_invariants.py::test_bridge_registry_has_first_bridge`
+  — verifies the first bridge ships and is inactive by default.
+- All prior tests (engine + alerts + registry + invariants) green.
+
+### Live verification
+- 437 routes (was 433, +4 bridge admin endpoints).
+- `/api/admin/bridges` lists `bridge_v1_council_calibration` with
+  `active: false`.
+- Activation refuses without `BRIDGE_APPROVAL_TOKEN` match
+  (returns `invalid_approval_token`).
+
+
+
 ## 2026-04-29 — Candidate AI Core Engine + Registry
 
 User asked for a true parallel candidate engine running side-by-side

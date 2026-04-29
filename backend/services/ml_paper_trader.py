@@ -1,5 +1,7 @@
 """Tier 2 autonomous action: paper trading with Kelly position sizing.
 
+DTD-tagged: writes execution-state to ``paper_trades``.
+
 When the CalibrationGate unlocks Tier 2, this service auto-creates paper
 trades in MongoDB after every qualifying signal.  No real money is involved.
 
@@ -25,6 +27,8 @@ Signal-level requirements
 """
 
 from __future__ import annotations
+
+__domain__ = "DTD"
 
 import logging
 import os

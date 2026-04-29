@@ -226,6 +226,27 @@ def active_state() -> dict:
     }
 
 
-# ── Default registry: empty ──────────────────────────────────────────
-# No bridges ship pre-registered. First real bridge gets added in a
-# follow-up commit with explicit operator review.
+# ── Default registry: pre-registered bridges ────────────────────────
+# Each bridge ships **inactive** — must be activated explicitly with
+# the BRIDGE_APPROVAL_TOKEN env var + evidence above thresholds.
+
+# bridge_v1_council_calibration:
+#   First production-targeted bridge. Lets PRD-derived calibration
+#   nudge the Council's risk-multiplier within a tight clamp.
+#   The Council's existing bounds (0.50, 1.25) remain in effect; the
+#   bridge can additionally scale within [0.90, 1.10] of the Council's
+#   pre-bridge multiplier — i.e. ±10% max influence.
+register(BridgeSpec(
+    name="bridge_v1_council_calibration",
+    version="v1",
+    output_target="council_risk_multiplier_scale",
+    output_bounds=(0.90, 1.10),  # tight first-bridge clamp
+    min_samples=200,             # 2× registry's auto-detect threshold
+    oos_window_days=14,
+    regression_threshold=2.0,    # max 2% regression vs current production
+    description=(
+        "Multiplicative nudge applied to Council's risk_multiplier on top "
+        "of its existing [0.50, 1.25] bounds. PRD-derived calibration only; "
+        "cannot override action direction or veto/ratify logic."
+    ),
+))

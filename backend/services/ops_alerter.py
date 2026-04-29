@@ -41,6 +41,8 @@ firewall: this writes to its own collection only, never to
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import logging
 import os
 from datetime import datetime, timedelta, timezone

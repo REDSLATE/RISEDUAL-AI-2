@@ -18,6 +18,8 @@ Read-only; safe to call from admin endpoints. Never mutates data.
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta

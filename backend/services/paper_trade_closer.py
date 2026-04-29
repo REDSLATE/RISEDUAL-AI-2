@@ -1,8 +1,8 @@
 """Paper-Trade Auto-Closer — APScheduler job that closes paper
 trades opened by the AI paper trader after a fixed holding window.
 
-Why this service exists
------------------------
+DTD-tagged: writes execution-state to ``paper_trades``.
+
 The 2026-04-25 audit found 5 paper_trades (all `direction='down'`,
 all from 2026-04-16) sitting in `status: 'open'` for 9 days because
 NO code path closed them. The `prediction_labeler` only updates
@@ -35,6 +35,8 @@ Operator knobs
 * ``PAPER_TRADE_CLOSER_DISABLED`` (env, default off — kill switch)
 """
 from __future__ import annotations
+
+__domain__ = "DTD"
 
 import logging
 import os

@@ -40,8 +40,12 @@ Pure function. Cannot raise. Worst case Council goes haywire: risk
 caps at 0.5× the Commander's signal, never zero, never opposite
 direction. The hard bounds are pinned in code, not env, so an
 operator-induced misconfiguration can't unlock them.
+
+DTD-tagged: this module is part of the decision-time stack.
 """
 from __future__ import annotations
+
+__domain__ = "DTD"
 
 import os
 from typing import Any, Dict, Optional
@@ -116,22 +120,53 @@ def apply_council_risk_modulation(
 
     The result dict shape is fixed regardless of modulation outcome
     so downstream consumers can rely on key presence.
+
+    Optional bridge calibration: if ``bridge_v1_council_calibration``
+    is active, its value multiplies the post-modulation risk_multiplier
+    within the bridge's hard-clamped [0.90, 1.10] bounds. The bridge
+    contributes a finer nudge ON TOP of the Council's existing
+    [0.50, 1.25] bounds — it never overrides the modulator's
+    fundamental decision (agree/disagree/HOLD logic is untouched).
     """
+    # Late import to avoid circular dependency between Council (DTD)
+    # and the BRIDGE-tagged promotion_bridge module at module-load time.
+    try:
+        from services.promotion_bridge import get_calibration as _bridge_get
+    except ImportError:  # pragma: no cover — defensive
+        _bridge_get = None
+
     base_rm = max(float(commander_risk_multiplier or 0.0), 0.0)
 
+    def _apply_bridge(out: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply the optional bridge nudge AFTER the Council's own
+        modulation. ``None`` from the bridge = no calibration active,
+        return ``out`` unchanged (the safe default per spec §5)."""
+        if _bridge_get is None:
+            return out
+        cal = _bridge_get("bridge_v1_council_calibration")
+        if cal is None:
+            return out
+        rm = float(out.get("risk_multiplier") or 0.0)
+        # Bridge bounds are [0.90, 1.10] — already enforced inside
+        # promotion_bridge.get_calibration() but defence-in-depth.
+        cal_clamped = max(0.90, min(1.10, cal))
+        new_rm = rm * cal_clamped
+        out = {**out, "risk_multiplier": new_rm, "bridge_calibration": cal_clamped}
+        return out
+
     if not COUNCIL_RISK_MODULATOR_ENABLED:
-        return {
+        return _apply_bridge({
             "risk_multiplier": base_rm,
             "council_applied": False,
             "reason": "council_modulator_disabled",
-        }
+        })
 
     if not council_tier_open:
-        return {
+        return _apply_bridge({
             "risk_multiplier": base_rm,
             "council_applied": False,
             "reason": "council_tier_not_open",
-        }
+        })
 
     commander = normalize_action(commander_action)
     council = normalize_action(council_action)
@@ -141,40 +176,40 @@ def apply_council_risk_modulation(
     # firmest of the four hard rules — Commander's HOLD-to-LONG
     # logic is owned exclusively by the Adversarial phase progression.
     if commander == "HOLD":
-        return {
+        return _apply_bridge({
             "risk_multiplier": base_rm,
             "council_applied": False,
             "reason": "commander_hold_not_promoted",
-        }
+        })
 
     # Agreement: small bounded upweight. Capped at 1.25× regardless
     # of how high Commander's base multiplier already was.
     if commander == council:
-        return {
+        return _apply_bridge({
             "risk_multiplier": min(
                 base_rm * AGREEMENT_UPWEIGHT, MAX_COUNCIL_UPWEIGHT,
             ),
             "council_applied": True,
             "reason": "council_agreed_small_upweight",
-        }
+        })
 
     # High-confidence opposite disagreement: bounded downweight.
     # The 0.5× floor protects against runaway modulator behaviour.
     if is_opposite(commander, council) and confidence >= HIGH_CONFIDENCE:
-        return {
+        return _apply_bridge({
             "risk_multiplier": max(
                 base_rm * OPPOSITE_DISAGREE_DOWNWEIGHT,
                 MIN_COUNCIL_DOWNWEIGHT_FLOOR,
             ),
             "council_applied": True,
             "reason": "council_high_confidence_disagreement_downweight",
-        }
+        })
 
     # Everything else: low-confidence disagreement, or HOLD-vs-direction
     # disagreement. Observe-only — log it as a near-miss but don't
     # change the multiplier.
-    return {
+    return _apply_bridge({
         "risk_multiplier": base_rm,
         "council_applied": False,
         "reason": "council_disagreement_low_confidence_no_change",
-    }
+    })

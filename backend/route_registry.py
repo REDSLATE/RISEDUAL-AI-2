@@ -73,6 +73,7 @@ from routes.patent_watch import router as patent_watch_router, set_db as set_pat
 from routes.ops_snapshot import router as ops_snapshot_router, set_db as set_ops_snapshot_db
 from routes.toxic_autopsy import router as toxic_autopsy_router, set_db as set_toxic_autopsy_db
 from routes.ai_core_routes import router as ai_core_routes_router, set_db as set_ai_core_routes_db
+from routes.promotion_bridge_routes import router as promotion_bridge_routes_router
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db
@@ -130,6 +131,7 @@ ALL_ROUTERS = [
     ops_snapshot_router,
     toxic_autopsy_router,
     ai_core_routes_router,
+    promotion_bridge_routes_router,
 ]
 
 

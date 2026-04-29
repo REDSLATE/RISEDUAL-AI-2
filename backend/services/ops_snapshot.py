@@ -20,6 +20,8 @@ Read-only, admin-only, never writes anywhere.
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import logging
 import os
 import time

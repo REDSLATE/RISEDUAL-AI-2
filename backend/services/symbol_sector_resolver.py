@@ -10,6 +10,8 @@ renders the other dimensions. Never raises.
 """
 from __future__ import annotations
 
+__domain__ = "PRD"
+
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta

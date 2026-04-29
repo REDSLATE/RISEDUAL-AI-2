@@ -160,8 +160,16 @@ async def test_dtd_replay_rejects_missing_fields():
 # ── Promotion Bridge invariants ──────────────────────────────────────
 
 
-def test_bridge_registry_empty_by_default():
-    assert promotion_bridge.list_specs() == []
+def test_bridge_registry_has_first_bridge():
+    """First production bridge ships pre-registered. It MUST be
+    inactive by default, however — activation requires the
+    BRIDGE_APPROVAL_TOKEN env var + evidence above thresholds."""
+    specs = promotion_bridge.list_specs()
+    names = [s["name"] for s in specs]
+    assert "bridge_v1_council_calibration" in names
+    # Every shipped bridge must default to inactive.
+    for s in specs:
+        assert s["active"] is False, f"bridge {s['name']} is active by default — spec violation"
 
 
 def test_bridge_get_calibration_returns_none_when_inactive():

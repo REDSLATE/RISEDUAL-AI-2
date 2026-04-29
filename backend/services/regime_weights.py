@@ -39,6 +39,8 @@ Until step 3, this module is logging-only.
 """
 from __future__ import annotations
 
+__domain__ = "DTD"
+
 import logging
 import os
 from typing import Any, Dict, Optional
