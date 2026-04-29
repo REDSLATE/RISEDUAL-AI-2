@@ -693,6 +693,11 @@ async def verify_pending_predictions(db: Any) -> None:
                     "outcome": "hit" if correct else "miss",
                     "failure_code": failure_code if not correct else None,
                     "failure_reason": failure_reason if not correct else None,
+                    # Pass prediction_id so save_regime keys per-
+                    # prediction (v2 schema) instead of collapsing
+                    # multiple intraday predictions for the same
+                    # (symbol, date, price) into a single row.
+                    "prediction_id": pred.get("prediction_id"),
                 }
                 await save_regime(regime)
         except Exception as e:

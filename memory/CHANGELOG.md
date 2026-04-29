@@ -1,5 +1,43 @@
 # RISEDUAL AI — Changelog
 
+## 2026-04-29 (e) — Toxic Count Bug ELIMINATED (Option A)
+
+Followed up the contained-fix with the architectural fix: widened
+ChromaDB doc-id from `(symbol, date, price)` to include
+`prediction_id` when available. ChromaDB and MongoDB now agree
+exactly; vector-search corpus restored to full saturation.
+
+### Changes
+- **`services/market_memory_service.py::_make_id`** — schema v2.
+  When `prediction_id` is present in the regime dict, the doc-id is
+  derived from it (`v2|<prediction_id>`); legacy callers (synthetic
+  training regimes from `memory_training_service`) fall through to
+  v1 episode-level keying. Backward-compatible: pre-rebuild rows
+  remain addressable.
+- **`services/market_memory_service.py::save_regime`** — stamps
+  `prediction_id` + `schema_version: 2` into ChromaDB metadata when
+  present; lets future code filter/group by prediction.
+- **`services/prediction_tracker.py::verify_pending_predictions`**
+  — passes `prediction_id` into the regime dict before calling
+  `save_regime`. This is where the rubber meets the road: from this
+  commit forward every newly-verified prediction lands in its own
+  ChromaDB row.
+
+### Verification
+Ran `POST /api/admin/memory/rebuild-from-mongo?days=30`:
+- 264 predictions rebuilt
+- 0 skipped
+- ChromaDB unique-episodes count for last-7d high-conf misses
+  jumped **8 → 76** — exact match with MongoDB truth count
+- Total ChromaDB rows: 751 → 1015 (+264 per-prediction rows)
+
+### Tests — 73/73 pass (no regressions)
+The architectural change preserves the v1 fallback path so legacy
+training-regime tests continue to pass; per-prediction tests pick
+up the v2 path.
+
+
+
 ## 2026-04-29 (d) — Toxic Count Bug Fix (MongoDB as Source of Truth)
 
 User spotted "1 high-confidence failure" in the toxic alert email
