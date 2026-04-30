@@ -23,6 +23,69 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Patent J Drift Card + Tier 3 Detail Card + Multi-leg Spread Reconciler (Apr 30, 2026)
+
+Three operator-grade visualizations and the deferred spread-close
+work all landed together. Testing-agent verdict: backend 100%,
+frontend 100%, no issues, no action items.
+
+**1. Multi-leg options spread reconciliation**
+
+- `services/position_reconciler.py::_is_spread_closed(legs, option_positions)`
+  — conservative rule: spread is closed only when **every leg's OCC**
+  is absent (or zero-qty) at the broker. One remaining leg = still
+  partially in market = wait. False-positive guard preserved.
+- `_reconcile_options_for_user` now branches on `is_spread`; the
+  new spread path appends `OUTCOME_VERIFIED` with
+  `asset_class="options_spread"`, sums leg qty, and uses the net
+  debit/credit `limit_price` to compute conservative P&L.
+  `outcome_leg_count` persisted on the row for downstream analytics.
+- `routes/options_trading.py` spread route now runs the
+  `manual_order_guard` BEFORE `_log_order_audit` so spread orders
+  get a `proof_chain_entity_id` written into Mongo (was previously
+  guard-less for spreads).
+- 5 new pytest cases in `test_position_reconciler.py` covering open
+  / all-closed / no-OCC / zero-qty / end-to-end spread sweep.
+
+**2. Tier 3 progress detail card**
+
+- `services/tier3_readiness.py::compute_tier3_breakdown(stats)` —
+  returns 6 rows with `key/label/current/target/unit/progress_pct/
+  weight_pct/earned_pts/met/hint`. Pinned property:
+  `sum(earned_pts) == compute_tier3_score(stats)` within ±0.5.
+  Live verified: composite=55.71 vs sum=55.72.
+- Six gates: exposure (20pts), volume (15pts), high_conf_accuracy
+  (25pts), risk_control (20pts), stability (10pts), canary (10pts).
+- High-conf row: bar shows sample-fraction (the binding constraint)
+  but earned_pts mirror composite formula `high_conf_wr * 25` so
+  bars and headline never diverge.
+- Field `tier3_breakdown` added to existing
+  `/api/admin/shadow/tier-readiness` response — no new route.
+- React component `Tier3ProgressDetailCard.jsx`: dark-slate panel
+  matching BlocksPreventedCard, headline composite + 6 progress
+  bars colored by met/threshold, blocker hints inline, next-steps
+  list at bottom, polls every 30s.
+- 15 new pytest cases in `test_tier3_breakdown.py` (gate shapes,
+  weight sum=100, earned↔composite reconciliation, sample-size
+  gating, threshold inversions, defensive missing-keys).
+
+**3. Patent J memory drift card**
+
+- React component `MemoryDriftCard.jsx`: dark-slate panel matching
+  BlocksPreventedCard, displays `mongo_verified_count`,
+  `chroma_episode_count`, `drift_pct` tiles + recommendation badge
+  (ok/investigate/rebuild) + per-date skew table + skip counters
+  + last-rebuild context. 7d/30d/90d window selector. Polls every
+  60s.
+- Mounted at the top of `ProofChainExplorer` (Patent J admin panel)
+  because corrupted memory is the fastest way for downstream
+  analytics to lie.
+
+**Test coverage**: 89 backend tests green (15 reconciler + 15 tier3
+breakdown + 16 drift detector + 28 datetime/sync + 15 other).
+Lint clean across all 4 modified frontend files. Live endpoints
+verified end-to-end via testing agent.
+
 ### Mongo→Chroma Drift Detector + Sync Hardening Tightenings (Apr 30, 2026)
 
 Three operator-grade follow-ups landed against the sync work:
