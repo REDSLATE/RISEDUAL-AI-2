@@ -21,6 +21,41 @@ adversarial trading platform with:
 * DB: MongoDB
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
+## 3. What's Been Implemented (latest first)
+
+### Patent J Proof Chain Explorer — admin UI wired + Mongo-aligned hash (Apr 30, 2026)
+- Wired `frontend/src/components/admin/ProofChainExplorer.jsx` into
+  `AdminPanel.jsx` Insights group as new "Proof Chain" tab
+  (ShieldCheck icon, sits next to Patent Watch). Stats card +
+  searchable entity list + chain detail pane with Verified/Tampered
+  badge.
+- Fixed cross-environment hash drift in `services/proof_chain.py`:
+  Mongo BSON Date strips tzinfo and truncates microseconds to
+  milliseconds on round-trip, so the verifier-side recompute
+  produced different SHA-256s than the insert-side hash. Added
+  `canonical_created_at(dt)` helper that normalises to UTC tz-naive
+  + ms-precision before isoformatting. Both `build_proof_block`
+  (write) and `verify_chain` (read) and `routes/admin_proof_chain.py`
+  use it so insert-time and verify-time hash material is byte-identical.
+- Wiped 81 stale dev blocks (hashed under the pre-fix tz-aware iso
+  form). Fresh bot run repopulated cleanly: 6 blocks across 3
+  entities (BTC/ETH/SOL), `valid=true` on chain detail.
+- **Tests**: 15/15 green across `test_proof_chain.py` (7),
+  `test_proof_chain_e2e.py` (3), `test_decision_pipeline_guard.py`
+  (3), `test_adversarial_enforcer.py` + `test_failure_mode_classifier.py`.
+  Lint clean.
+- **Frontend agent verified**: 7/7 test cases passed
+  (iteration_152.json) — tab renders, stats card, entity list
+  filters, chain detail loads, Verified badge shows, block expansion
+  reveals prev_hash/payload_hash/actor/created_at + payload dropdown.
+
+### Earlier Architecture — Patents I, J, K, M wired into Decision Pipeline Guard
+- Patent I (Authority-Scoped Risk Budgeting), J (Tamper-evident
+  Proof Chain), K (Structured Adversarial Enforcement), M (Failure
+  Mode Intelligence) — all live and guarding crypto bot, broker
+  routes, smart orders, and options trading. 116 backend tests green.
+- `PATENT_GUARD_ENABLED` env flag controls activation.
+
 ## 3. Architecture
 ```
 /app
