@@ -4,6 +4,7 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
+from services.datetime_utils import ensure_utc
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -216,8 +217,12 @@ async def _get_or_refresh_client(user_id: str, broker_id: str, conn: dict):
         expiry_secs = conn.get("oauth_token_expiry_seconds", OAUTH_CONFIGS.get(broker_id, {}).get("token_expiry_seconds", 3600))
 
         if expires_at:
-            if isinstance(expires_at, str):
-                expires_at = datetime.fromisoformat(expires_at)
+            # Mongo strips tzinfo on round-trip; ensure_utc() re-tags
+            # the value so the subtraction below doesn't raise
+            # `TypeError: can't subtract offset-naive and offset-aware
+            # datetimes` and silently disable token refresh.
+            expires_at = ensure_utc(expires_at)
+        if expires_at:
             token_age = (datetime.now(timezone.utc) - expires_at).total_seconds()
             if token_age > expiry_secs * 0.8:  # Refresh at 80% of expiry
                 logger.info(f"OAuth token nearing expiry for {broker_id}, refreshing...")

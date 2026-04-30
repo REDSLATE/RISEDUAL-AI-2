@@ -23,6 +23,47 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Mongo Tz-Aware Datetime Sweep + `ensure_utc()` Helper (Apr 30, 2026)
+
+**Problem**: MongoDB strips `tzinfo` from BSON Dates and truncates
+sub-millisecond precision on round-trip. Doing
+`datetime.now(timezone.utc) - mongo_dt` raises
+`TypeError: can't subtract offset-naive and offset-aware datetimes`
+which has historically been swallowed by broad `except` blocks and
+silently disabled business logic (auto-promotion suggestions, OAuth
+token refresh, trial expiry checks).
+
+**Helper**: New `services/datetime_utils.py::ensure_utc(dt)` —
+canonical guard that accepts a tz-aware datetime, a tz-naive datetime,
+an ISO-8601 string (with or without `Z`), or `None`, and returns a
+tz-aware UTC datetime or `None`. 15 unit tests in
+`tests/test_datetime_utils.py` pin the contract.
+
+**Fixes applied** (3 real bugs found in sweep):
+- `routes/broker.py:215-222` — `oauth_expires_at` from Mongo was
+  fed into `datetime.now(timezone.utc) - expires_at` without
+  re-tagging UTC; OAuth token refresh would silently no-op when the
+  field was a Mongo round-tripped naive datetime.
+- `services/auth_helpers.py:67` — `is_pro_user()` only handled the
+  string shape of `trial_expires_at`; a naive Mongo datetime would
+  raise on `expires > datetime.now(timezone.utc)` and crash any
+  Pro-gated endpoint mid-request.
+- `routes/auth.py:213` — beta-key expiry check used
+  `dateutil.parser.parse()` which can return naive datetimes; a
+  swallowed `TypeError` meant expired beta keys could pass.
+
+**Verified safe (no fix needed)**: `services/firewall.py:127`
+(uses internal `_parse_iso`), `services/providerrouter.py:279/326/334/338`
+(`started` is locally created), `routes/admin_guard_shadow.py:300`
+(explicit guard at lines 297-299), `services/ops_snapshot.py:154`,
+`services/fred_service.py:90/237`, `ai_core/kill_switch.py:206/236`,
+and others — all already handled their tzinfo correctly.
+
+**Test status**: 15/15 new tests pass; full
+`tests/test_forgot_password.py + test_authority_risk_budget.py +
+test_risedual_ip_logic.py` regression suite (54 tests) green. Login
+flow live-verified end-to-end.
+
 ### One-Click Patent Promotion + Manual-Order Outcome Grading + Calibration Polish (Apr 30, 2026)
 
 **Per-patent enforcement promotion as a UI product**:

@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import HTTPException, Request
 from bson import ObjectId
 
+from services.datetime_utils import ensure_utc
+
 JWT_ALGORITHM = "HS256"
 
 # Will be set by server.py
@@ -59,12 +61,12 @@ def is_pro_user(user: dict) -> bool:
     if status == "trial":
         expires = user.get("trial_expires_at")
         if expires:
-            if isinstance(expires, str):
-                try:
-                    expires = datetime.fromisoformat(expires.replace("Z", "+00:00"))
-                except ValueError:
-                    return False
-            return expires > datetime.now(timezone.utc)
+            # Handles both ISO strings *and* tz-naive datetimes round-tripped
+            # through Mongo, which would otherwise raise on the comparison.
+            expires_dt = ensure_utc(expires)
+            if expires_dt is None:
+                return False
+            return expires_dt > datetime.now(timezone.utc)
     return False
 
 

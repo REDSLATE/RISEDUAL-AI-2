@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from bson import ObjectId
 
+from services.datetime_utils import ensure_utc
+
 JWT_ALGORITHM = "HS256"
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -208,12 +210,12 @@ async def _validate_beta_key(beta_key: str, email: str) -> dict:
 
     expires = waitlist_entry.get("beta_key_expires", "")
     if expires:
-        from dateutil.parser import parse as parse_date
-        try:
-            if parse_date(expires) < datetime.now(timezone.utc):
-                raise HTTPException(status_code=400, detail="Beta key has expired. Contact support for a new one.")
-        except (ValueError, TypeError):
-            pass
+        # ``beta_key_expires`` may be stored as ISO string or, after a
+        # Mongo round-trip, as a tz-naive datetime. ensure_utc() handles
+        # both; an unparseable value is treated as "no expiry".
+        expires_dt = ensure_utc(expires)
+        if expires_dt is not None and expires_dt < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Beta key has expired. Contact support for a new one.")
 
     existing = await db.users.find_one({"email": email})
     if existing:
