@@ -161,6 +161,38 @@ async def activate(
         except Exception as e:  # noqa: BLE001
             logger.warning("[bridge] activation log write failed: %s", e)
 
+    # ── Patent I authority minting ───────────────────────────────────
+    # Each bridge activation also mints a Patent-I AuthorityScope so
+    # any trade routed by this engine flows through Patent-I's risk
+    # budget. The bridge's approval token IS the countersignature, so
+    # future loosening requests must echo the same hashed token. We
+    # store it in ``bridge_authorities`` for audit + resumability
+    # across restarts. Failure is non-fatal — the bridge itself is
+    # already active.
+    try:
+        from services.risk_budget_gateway import mint_authority_for_bridge
+        scope = mint_authority_for_bridge(
+            name,
+            bridge_value=value,
+            bridge_version=spec.version,
+            activated_by=actor,
+        )
+        if _db is not None:
+            await _db["bridge_authorities"].insert_one({
+                "authority_id": scope.authority_id,
+                "name": name,
+                "version": spec.version,
+                "tier": scope.tier.value,
+                "max_multiplier": scope.max_multiplier,
+                "max_notional": scope.max_notional,
+                "max_daily_loss": scope.max_daily_loss,
+                "expires_at": scope.expires_at.isoformat(),
+                "signature_hash": scope.signature_hash,
+                "minted_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[bridge] patent-i authority mint failed: %s", e)
+
     logger.info("[bridge] activated %s=%s by %s", name, value, actor)
     return {"ok": True, "active": True, "name": name, "value": value}
 

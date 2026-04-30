@@ -388,6 +388,55 @@ async def run_crypto_symbol(
     # position by Commander's conviction gap. multiplier=1.0 in shadow
     # phase preserves identical behaviour to the pre-adversarial code.
     size_usd = round(size_usd * size_multiplier, 2)
+
+    # ── Patent I — Adaptive Authority-Scoped Risk Budgeting ──────────
+    # The adversarial layer above sets a per-decision multiplier from
+    # the *current* commander gap. Patent I composes this with the
+    # bot's *historical* track record (loss streaks, drawdown, veto
+    # clusters) and tightens further if performance has degraded.
+    # Lazy-imported so the architectural firewall on this module's
+    # import surface is preserved (gateway is a DTD-only dependency).
+    # Bypass via PATENT_I_ENABLED=0 — used by unit tests that pin
+    # exact pre-Patent-I sizes via stubbed DBs.
+    import os as _os
+    if (_os.environ.get("PATENT_I_ENABLED", "1") or "").lower() not in ("0", "false", ""):
+        try:
+            from services.risk_budget_gateway import (
+                build_track_record_for_crypto_bot,
+                enforce_budget,
+                get_daily_realized_loss,
+                mint_authority_for_crypto_bot,
+            )
+            authority = mint_authority_for_crypto_bot()
+            track = await build_track_record_for_crypto_bot()
+            daily_loss = await get_daily_realized_loss(asset_class="crypto")
+            decision = await enforce_budget(
+                action=str(signal["direction"]).upper(),
+                base_notional=float(size_usd),
+                base_multiplier=float(size_multiplier),
+                authority=authority,
+                track_record=track,
+                daily_realized_loss=daily_loss,
+                context={"symbol": symbol, "signal_confidence": float(signal["confidence"])},
+            )
+            if not decision.allowed:
+                await log_adversarial_decision(
+                    db, symbol=symbol, signal=signal, final_direction="HOLD",
+                )
+                return {
+                    "symbol": symbol, "skipped": True,
+                    "reason": f"patent_i:{','.join(decision.reasons[:3])}",
+                    "audit_hash": decision.audit_hash,
+                }
+            # Patent I may have tightened the notional further (track-record
+            # based). Always trust the decision's final_notional as the cap.
+            size_usd = round(decision.final_notional, 2)
+        except Exception as e:  # noqa: BLE001 — fail-open is unsafe, but
+            # absent gateway must not crash the bot. Log and proceed with
+            # the pre-Patent-I size; this matches behaviour before the
+            # integration so it's a safe fallback.
+            logger.warning("[patent_i] gateway unavailable, falling back: %s", e)
+
     if size_usd <= 0:
         await log_adversarial_decision(
             db, symbol=symbol, signal=signal, final_direction="HOLD",

@@ -231,6 +231,22 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     except Exception as e:
         logger.warning(f"Chat memory DB wire failed: {e}")
 
+    # Patent I — risk budget gateway DB + indexes.
+    try:
+        from services.risk_budget_gateway import (
+            set_db as set_risk_budget_db,
+            ensure_indexes as _risk_budget_indexes,
+        )
+        set_risk_budget_db(db)
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_risk_budget_indexes())
+        except RuntimeError:
+            pass
+    except Exception as e:
+        logger.warning(f"Patent-I risk budget gateway wire failed: {e}")
+
     try:
         from services.waitlist_service import set_db as set_waitlist_db
         set_waitlist_db(db)

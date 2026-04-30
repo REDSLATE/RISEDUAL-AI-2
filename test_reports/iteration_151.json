@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 151: Patent I (Adaptive Authority-Scoped Risk Budgeting) Integration Regression. All 134 pytest tests pass (9 core Patent I + 12 gateway + 25 crypto_paper_bot + 4 council_bridge + 8 crypto_adversarial + 15 trading_mode + 5 trading_mode_guards + 18 dual_stack + 10 ai_core + 5 toxic_autopsy + 23 council_risk_modulator). Live curl tests verified: GET /api/ returns 200, POST /api/smart-orders with live order returns 200 (order created), risk_budget_decisions collection has audit row with all required fields.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "N/A", "issue": "BRIDGE_APPROVAL_TOKEN was missing from .env - added for bridge tests"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_authority_risk_budget.py",
+    "/app/backend/tests/test_risk_budget_gateway.py",
+    "/app/backend/tests/test_crypto_paper_bot.py",
+    "/app/backend/tests/test_council_bridge_integration.py",
+    "/app/backend/tests/test_crypto_adversarial_phase_wiring.py",
+    "/app/backend/tests/test_trading_mode.py",
+    "/app/backend/tests/test_trading_mode_guards.py",
+    "/app/backend/tests/test_dual_stack_invariants.py",
+    "/app/backend/tests/test_ai_core_engine.py",
+    "/app/backend/tests/test_toxic_autopsy.py",
+    "/app/backend/tests/test_council_risk_modulator.py",
+    "/app/test_reports/pytest/iteration151_patent_i_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: test_authority_risk_budget.py - 9/9 core Patent I tests pass (HOLD blocking, SHADOW blocking, loss streak tightening, drawdown hard clamp, loosening denied without countersig, loosening allowed with countersig, expired authority blocking, daily loss limit, max notional cap)",
+    "VERIFIED: test_risk_budget_gateway.py - 12/12 gateway tests pass (authority minting for user/crypto_bot/bridge, track record builder, daily loss helper, enforce_budget persistence)",
+    "VERIFIED: mint_authority_for_bridge caps oversized values at 0.35 (test_bridge_authority_caps_oversized_value_at_035)",
+    "VERIFIED: PATENT_I_ENABLED=0 autouse fixture in conftest.py correctly disables Patent I for legacy tests",
+    "VERIFIED: crypto_paper_trader.py:386-440 - Patent I block injected after size_multiplier scaling, bypasses on PATENT_I_ENABLED=0",
+    "VERIFIED: smart_orders.py:91-140 - pre-create denial check for live orders only, returns 403 with code='risk_budget_denied' if denied",
+    "VERIFIED: broker.py:723-770 - post-fill audit pass after place_order succeeds (observation phase)",
+    "VERIFIED: promotion_bridge.py:152-180 - mints AuthorityScope and writes to bridge_authorities on each activate",
+    "VERIFIED: Live curl GET /api/ returns 200 with message 'RISEDUAL AI API - Ready'",
+    "VERIFIED: Live curl POST /api/smart-orders with live order returns 200 (order created successfully)",
+    "VERIFIED: risk_budget_decisions collection has audit row with fields: audit_hash, action, allowed, final_notional, final_multiplier, authority_id, reasons, context, created_at",
+    "VERIFIED: Decision shows 'small_sample_tightening' reason (empty track record) and 'risk_tightened' - Patent I is correctly tightening risk"
+  ],
+  "updated_files": [
+    "/app/backend/.env (added BRIDGE_APPROVAL_TOKEN)"
+  ],
+  "success_rate": {
+    "backend": "100% (134/134 pytest tests + 3 curl API tests)",
+    "frontend": "N/A (backend only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing admin user",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Patent I integration complete and verified. All 134 regression tests pass. The PATENT_I_ENABLED=0 autouse fixture in conftest.py correctly disables Patent I for legacy tests that pin exact pre-Patent-I sizes. Admin user is currently in PAPER mode. The risk_budget_decisions collection is being populated with audit rows when live orders are placed. The gateway correctly tightens risk based on track record (small_sample_tightening for empty history). Bridge authority minting is wired in promotion_bridge.py. No frontend testing was requested for this iteration.",
+  "endpoints_verified": {
+    "GET /api/": {"status": 200, "description": "Server health check - returns 'RISEDUAL AI API - Ready'"},
+    "POST /api/smart-orders (live order)": {"status": 200, "description": "Order created successfully, Patent I gateway fired and allowed (tightened due to small_sample)"},
+    "POST /api/trading-mode/switch": {"status": 200, "description": "Mode switch working correctly with 30s cooldown"}
+  },
+  "patent_i_verification": {
+    "core_tests": "9/9 passed",
+    "gateway_tests": "12/12 passed",
+    "regression_tests": "113/113 passed (crypto_paper_bot, council_bridge, crypto_adversarial, trading_mode, trading_mode_guards, dual_stack, ai_core, toxic_autopsy, council_risk_modulator)",
+    "live_integration": "risk_budget_decisions collection populated with audit row on live order",
+    "env_flag_bypass": "PATENT_I_ENABLED=0 correctly disables gateway in crypto bot path"
+  }
+}

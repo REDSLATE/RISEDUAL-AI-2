@@ -721,6 +721,41 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
 
     await _log_order(user_id, broker_id, req, result)
 
+    # ── Patent I — Adaptive Authority-Scoped Risk Budgeting ──────────
+    # Post-fill audit pass: log a Patent-I decision against the user's
+    # equity authority scope. Phase 1 of the integration is observation
+    # — we don't reject the order based on the decision (the broker
+    # already accepted it). Phase 2 will move this gate *before* the
+    # broker call once we have stable per-user TrackRecord coverage.
+    try:
+        from services.risk_budget_gateway import (
+            build_track_record_for_user,
+            enforce_budget,
+            get_daily_realized_loss,
+            mint_authority_for_user,
+        )
+        _est_notional = float(req.quantity) * float(req.limit_price or 0.0)
+        if _est_notional > 0:
+            authority = mint_authority_for_user(user, "equity")
+            track = await build_track_record_for_user(user_id, "equity")
+            daily_loss = await get_daily_realized_loss(asset_class="equity", user_id=user_id)
+            await enforce_budget(
+                action=req.side.upper(),
+                base_notional=_est_notional,
+                base_multiplier=1.0,
+                authority=authority,
+                track_record=track,
+                daily_realized_loss=daily_loss,
+                context={
+                    "broker_id": broker_id,
+                    "symbol": req.symbol.upper(),
+                    "order_id": result.get("id", ""),
+                    "phase": "post_fill_audit",
+                },
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[patent_i] post-fill audit failed (non-critical): {e}")
+
     return {
         "status": result.get("status", "submitted"),
         "order_id": result.get("id", ""),

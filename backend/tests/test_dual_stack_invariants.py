@@ -126,14 +126,20 @@ def test_bridge_client_capabilities():
 
 @pytest.mark.asyncio
 async def test_firewall_rejects_unsettled_publish(monkeypatch):
+    from datetime import datetime, timezone, timedelta
     db = AsyncMock()
     db.__getitem__ = lambda _self, name: AsyncMock()
     firewall.set_db(db)
+    # ``resolved_at`` 1 hour in the future relative to now — keeps the
+    # test from going stale once wall-clock crosses any hard-coded
+    # timestamp. Combined with ``settle_seconds=86400`` (24h), this is
+    # always inside the not-yet-settled window.
+    not_yet = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     res = await firewall.publish_resolved(
         {
             "outcome_id": "x", "source": "paper_trades", "symbol": "AAA",
             "outcome": "win",
-            "resolved_at": "2026-04-28T23:59:59+00:00",  # in the future
+            "resolved_at": not_yet,
         },
         settle_seconds=86400,  # 24h required
     )

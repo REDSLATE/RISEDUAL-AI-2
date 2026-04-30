@@ -89,6 +89,59 @@ async def create_order(request: Request, order: SmartOrderRequest):
             )
 
     from services.smart_order_service import create_smart_order
+    # ── Patent I — pre-create budget enforcement (live orders only) ──
+    # For live smart orders we run Patent I *before* the order is
+    # created so a denied decision blocks creation. Paper / simulate
+    # are observational — they short-circuit the gateway entirely
+    # since paper trading is sandboxed.
+    if order.mode == "live":
+        try:
+            from services.risk_budget_gateway import (
+                build_track_record_for_user,
+                enforce_budget,
+                get_daily_realized_loss,
+                mint_authority_for_user,
+            )
+            _qty = float(getattr(order, "qty", 0) or 0)
+            _entry = float(getattr(order, "entry_price", 0) or 0)
+            _est_notional = _qty * _entry if _entry > 0 else 0.0
+            if _est_notional > 0:
+                authority = mint_authority_for_user(user, "equity")
+                track = await build_track_record_for_user(user_id, "equity")
+                daily_loss = await get_daily_realized_loss(
+                    asset_class="equity", user_id=user_id,
+                )
+                decision = await enforce_budget(
+                    action=str(order.side).upper(),
+                    base_notional=_est_notional,
+                    base_multiplier=1.0,
+                    authority=authority,
+                    track_record=track,
+                    daily_realized_loss=daily_loss,
+                    context={
+                        "route": "smart_orders",
+                        "order_type": getattr(order, "order_type", None),
+                        "symbol": str(order.symbol).upper(),
+                    },
+                )
+                if not decision.allowed:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "code": "risk_budget_denied",
+                            "reasons": decision.reasons,
+                            "audit_hash": decision.audit_hash,
+                            "message": (
+                                "Patent-I risk budget denied this order: "
+                                + ", ".join(decision.reasons[:3])
+                            ),
+                        },
+                    )
+        except HTTPException:
+            raise
+        except Exception:  # noqa: BLE001 — gateway must not crash route
+            pass
+
     result = await create_smart_order(user_id, order.model_dump())
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])

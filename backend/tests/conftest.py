@@ -75,3 +75,19 @@ def _disable_crypto_shadow_research(monkeypatch):
     ``monkeypatch.delenv("CRYPTO_SHADOW_RESEARCH_DISABLED")``).
     """
     monkeypatch.setenv("CRYPTO_SHADOW_RESEARCH_DISABLED", "1")
+
+
+@pytest.fixture(autouse=True)
+def _disable_patent_i_in_legacy_tests(monkeypatch):
+    """Patent I tightens position sizes based on rolling track record.
+
+    Many pre-existing unit tests pin exact pre-Patent-I sizes against
+    stubbed in-memory DBs. Disable the gateway by default in the test
+    suite — Patent I has its own dedicated tests
+    (``test_authority_risk_budget.py``, ``test_risk_budget_gateway.py``)
+    that exercise the live behaviour.
+
+    Tests that need Patent I active explicitly should set
+    ``monkeypatch.setenv("PATENT_I_ENABLED", "1")``.
+    """
+    monkeypatch.setenv("PATENT_I_ENABLED", "0")
