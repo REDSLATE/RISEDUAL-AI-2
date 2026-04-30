@@ -254,12 +254,23 @@ async def run_and_update_post_mortem(
 
     # Update ChromaDB metadata
     try:
-        from services.market_memory_service import _collection
+        from services.market_memory_service import _collection, _make_id
         if _collection:
-            import hashlib
-            doc_id = hashlib.sha256(
-                f"{prediction['symbol']}|{prediction.get('timestamp', '')[:10]}|{prediction.get('price_at_prediction', '')}".encode()
-            ).hexdigest()
+            # Mirror the v1/v2 id contract from market_memory_service —
+            # don't hand-roll the hash here. Previously this site
+            # built the id from ``prediction.get('timestamp', '')[:10]``
+            # which raised TypeError when ``timestamp`` was a Mongo
+            # BSON ``datetime``, then quietly fell into the
+            # except-block and never updated Chroma. ``_make_id``
+            # takes the same regime dict shape and routes through
+            # ``to_iso_date`` so the id is deterministic regardless
+            # of the timestamp's storage type.
+            doc_id = _make_id({
+                "symbol": prediction.get("symbol"),
+                "date": prediction.get("timestamp"),
+                "price": prediction.get("price_at_prediction"),
+                "prediction_id": prediction.get("prediction_id"),
+            })
             existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
             if existing and existing.get("ids"):
                 # ChromaDB stubs type metadatas entries as Mapping

@@ -495,6 +495,7 @@ async def _chromadb_warmup():
     try:
         from services.market_memory_service import get_memory_stats, save_regime
         from services.prediction_tracker import normalize_confidence
+        from services.datetime_utils import to_iso_date
         from datetime import timedelta
 
         stats = await get_memory_stats()
@@ -530,7 +531,11 @@ async def _chromadb_warmup():
             try:
                 await save_regime({
                     "symbol": p.get("symbol"),
-                    "date": (p.get("timestamp") or "")[:10],
+                    # to_iso_date coerces Mongo datetime / ISO str /
+                    # None into clean YYYY-MM-DD; replaces the
+                    # brittle [:10] slice that silently failed on
+                    # datetime fields.
+                    "date": to_iso_date(p.get("timestamp")),
                     "price": p.get("price_at_prediction"),
                     "regime": p.get("regime") or {},
                     "confidence": normalize_confidence(p.get("confidence")),

@@ -723,10 +723,17 @@ async def verify_pending_predictions(db: Any) -> None:
         # Auto-save verified prediction to vector memory
         try:
             from services.market_memory_service import save_regime, _collection
+            from services.datetime_utils import to_iso_date
             if _collection is not None:
+                # Coerce timestamp through to_iso_date — Mongo can
+                # round-trip this field as either an ISO string or a
+                # tz-naive ``datetime`` (BSON Date), and the old
+                # ``[:10]`` slice silently failed on the datetime
+                # path → save was skipped → ChromaDB drifted from
+                # MongoDB.
                 regime = {
                     "symbol": pred["symbol"],
-                    "date": pred.get("timestamp", "")[:10],
+                    "date": to_iso_date(pred.get("timestamp")),
                     "price": pred["price_at_prediction"],
                     "prediction": pred["direction"],
                     "confidence": pred.get("confidence", 0),

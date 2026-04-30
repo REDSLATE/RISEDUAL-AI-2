@@ -355,6 +355,7 @@ async def rebuild_memory_from_mongo(
     from datetime import datetime, timezone, timedelta
     from services.market_memory_service import save_regime
     from services.prediction_tracker import normalize_confidence
+    from services.datetime_utils import to_iso_date
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     cursor = db.predictions.find(
@@ -372,7 +373,12 @@ async def rebuild_memory_from_mongo(
         try:
             await save_regime({
                 "symbol": p.get("symbol"),
-                "date": (p.get("timestamp") or "")[:10],
+                # to_iso_date coerces datetime (BSON round-trip) /
+                # ISO string / None into a clean YYYY-MM-DD; replaces
+                # the brittle ``[:10]`` slice that silently failed
+                # on datetime fields and produced empty-string dates
+                # on missing fields.
+                "date": to_iso_date(p.get("timestamp")),
                 "price": p.get("price_at_prediction"),
                 "regime": p.get("regime") or {},
                 "confidence": normalize_confidence(p.get("confidence")),

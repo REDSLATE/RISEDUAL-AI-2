@@ -23,6 +23,67 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Mongo→Chroma Sync Re-coercion Fix (Apr 30, 2026)
+
+**The bug the user surfaced**: even after fixing the Mongo
+tz-naive datetime math (`ensure_utc`), the *sync layer* that reads
+from Mongo and pushes into ChromaDB could still re-coerce data
+into broken shapes. Investigation found 4 sites all using the same
+brittle pattern:
+
+```python
+"date": mongo_doc.get("timestamp", "")[:10]
+```
+
+Three failure modes, all silent (swallowed by broad `except`):
+
+1. **Mongo round-trips `timestamp` as tz-naive datetime** → slicing a
+   `datetime` raises `TypeError` → caller's `except` swallows →
+   ChromaDB row never written → vector store silently drifts from
+   MongoDB. (Same root cause as toxic-count under-reporting from
+   2026-04-24.)
+2. **Field missing/None** → `""[:10]` returns `""` → `_make_id`'s v1
+   hash collides every dateless row to one ChromaDB id → newer
+   episodes overwrite older ones, losing data.
+3. **`datetime` value sneaks into ChromaDB metadata** — Chroma only
+   accepts str/int/float/bool; passing a datetime is rejected
+   inconsistently across versions.
+
+**New helper** `services/datetime_utils.to_iso_date(value)`:
+- Accepts `datetime`, `date`, ISO string (with/without `Z`/offset),
+  bare `YYYY-MM-DD` prefix, and returns canonical `YYYY-MM-DD` or
+  `None`.
+- Strict: invalid calendar dates (`2026-13-99`), garbage strings,
+  empty strings, and non-(date|str|None) types all return `None`
+  rather than coercing to today.
+
+**`save_regime` hardening** (`services/market_memory_service.py`):
+- `metadata` build site now coerces `symbol`/`date`/`outcome`/
+  `prediction_id`/`failure_code` to clean strings via `to_iso_date`
+  + `str(...)` so a tz-naive datetime can never reach Chroma.
+- Falls back to today's UTC date if `to_iso_date` returns `None`
+  (was previously `regime.get("date", today)` which didn't fire
+  on empty-string).
+
+**`_make_id` hardening** — same coercion in the v1 fallback path so
+the same logical episode hashes to the same ChromaDB id whether the
+caller passed a datetime or a string. Test:
+`test_save_regime_id_stable_for_str_vs_datetime_date` proves this
+end-to-end.
+
+**Fixed callsites**:
+- `services/prediction_tracker.py:729` (verify_pending_predictions)
+- `routes/accuracy.py:375` (`/memory/rebuild-from-mongo`)
+- `server.py:533` (chroma_warmup at startup)
+- `services/post_mortem_service.py:261` — was hand-rolling the doc
+  id with the same brittle slice; now delegates to `_make_id` so the
+  v1/v2 contract stays unified.
+
+**Test coverage**: 37/37 new tests passing (28 datetime_utils
+including 13 new `to_iso_date` cases + 9 sync hardening tests).
+Critical proof test: `test_save_regime_id_stable_for_str_vs_datetime_date`
+demonstrates same-logical-episode determinism.
+
 ### Position Reconciler — Step 10 OUTCOME_VERIFIED for External Broker Fills (Apr 30, 2026)
 
 **The gap closed**: Crypto + smart orders had OUTCOME_VERIFIED on
