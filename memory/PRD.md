@@ -23,6 +23,60 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Step 10 (Outcome Grading) + Risk Quality KPIs Widget + Toxic Alert Live-Validated (Apr 30, 2026)
+
+**Outcome grading wired (step 10 of the IP lifecycle)**: when a
+crypto trade closes, `crypto_closer.py` now appends an
+`OUTCOME_VERIFIED` proof block to the entry-side IP chain — same
+`entity_id`, so the chain runs `SIGNAL_CREATED → ADVERSARIAL →
+AUDITOR → AUTHORITY → FAILURE_MODE → RISK_BUDGET →
+EXECUTION_ATTEMPTED → OUTCOME_VERIFIED` (8 blocks). Threading: the
+bot now persists `proof_chain_entity_id` on every trade row at
+fill time; the closer reads it back to anchor the outcome event.
+Live verified: forced a backdated SOL close, the chain hash-verifies
+end-to-end with `pnl=0.0, outcome="flat"` in the OUTCOME_VERIFIED
+payload. Failure of the proof append never blocks a close (wrapped
++ logged).
+
+**Risk Quality KPIs widget**:
+- New backend endpoint `GET /api/admin/conviction/quality-kpis?weeks=N`
+  (in `routes/admin.py`) bucketing the cleaned-up predictions
+  collection by ISO week. Returns:
+  - `unique_failure_patterns`: count of distinct
+    `(symbol, failure_code)` tuples per week (post-dedup — the
+    real KPI now that the toxic-spikes spam bug is fixed).
+  - `calibration_gap`: `avg_confidence − empirical_accuracy` per
+    week, with mixed-scale confidence normalisation (0-1 vs 0-100).
+  - `summary.trend`: `improving` / `stable` / `degrading` /
+    `insufficient_data` — head-vs-tail third comparison, robust to
+    single-week outliers (>0.05 absolute gap delta flips the badge).
+- New frontend component `frontend/src/components/admin/QualityKPIsStrip.jsx`
+  mounted in the Conviction admin tab above the existing buckets.
+  Two cards side-by-side:
+  - **Unique Failure Patterns** card: bar chart (red ≥5 patterns,
+    amber 1-4, slate empty) + this-week's-patterns list.
+  - **Calibration Gap** card: signed-value display (color-coded —
+    emerald <0.10, amber <0.18, red ≥0.18) + trend pill with
+    direction icon + SVG line chart with dashed zero reference,
+    cyan polyline, dot per populated week. Degrading-trend warning
+    banner appears below the chart when applicable.
+- Live values: `summary.trend = "improving"`, current_gap =
+  -0.064 (healthy), current unique failures = 0 this week.
+
+**Toxic-spikes alert live-validated** (so we don't have to wait for
+tomorrow's cron): direct call to `nightly_cleanup()` produced 22
+distinct retagged patterns, all unique by `(symbol, date,
+confidence)` — zero duplicates. Email render shows just 1 NVDA
+row, no collapse callout needed (data is clean). The user's
+recurring "76 failures × 3 visible patterns" spam is structurally
+impossible now — `MAX_DEDUP_HITS=5000` prevents the upstream cause,
+the email-render dedup is a defense-in-depth that didn't even need
+to fire.
+
+**Tests**: 9/9 backend tests in `test_iteration155_quality_kpis.py`
++ all regression endpoints green (proof-chain, guard-shadow,
+calibration). Lint clean across all 5 modified files.
+
 ### Guard Shadow Admin UI + Manual-Order IP Contract Unification (Apr 30, 2026)
 
 **Guard Shadow admin panel** — `frontend/src/components/admin/GuardShadowPanel.jsx`,
