@@ -120,6 +120,127 @@ async def test_option_closed_when_occ_absent():
     assert out["close_reason"] == "broker_option_closed_or_expired"
 
 
+# ── _is_spread_closed ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_spread_open_when_any_leg_remains():
+    """The conservative rule: ONE remaining leg means the spread is
+    still partially in the market, so we don't close the chain."""
+    from services.position_reconciler import _is_spread_closed
+    legs = [
+        {"occ_symbol": "AAPL250117C00200000"},
+        {"occ_symbol": "AAPL250117C00210000"},
+    ]
+    out = await _is_spread_closed(
+        legs=legs,
+        option_positions=[
+            {"symbol": "AAPL250117C00210000", "qty": -1},
+        ],
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_spread_closed_when_all_legs_absent():
+    from services.position_reconciler import _is_spread_closed
+    legs = [
+        {"occ_symbol": "AAPL250117C00200000"},
+        {"occ_symbol": "AAPL250117C00210000"},
+    ]
+    out = await _is_spread_closed(legs=legs, option_positions=[])
+    assert out is not None
+    assert out["close_reason"] == "broker_spread_closed_or_expired"
+
+
+@pytest.mark.asyncio
+async def test_spread_returns_none_for_legs_without_occ():
+    """Defensive: leg lacks an OCC → can't verify closed → don't
+    risk a false-positive OUTCOME_VERIFIED block."""
+    from services.position_reconciler import _is_spread_closed
+    out = await _is_spread_closed(
+        legs=[{"occ_symbol": ""}],
+        option_positions=[],
+    )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_spread_zero_qty_position_treated_as_closed():
+    """Brokers sometimes return position rows with qty=0 right after
+    a close fill. That should not block the spread close."""
+    from services.position_reconciler import _is_spread_closed
+    legs = [
+        {"occ_symbol": "AAPL250117C00200000"},
+        {"occ_symbol": "AAPL250117C00210000"},
+    ]
+    out = await _is_spread_closed(
+        legs=legs,
+        option_positions=[
+            {"symbol": "AAPL250117C00200000", "qty": 0},
+            {"symbol": "AAPL250117C00210000", "qty": 0},
+        ],
+    )
+    assert out is not None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_options_appends_outcome_on_spread_close():
+    """End-to-end multi-leg spread: pending row with all legs absent
+    from broker positions → OUTCOME_VERIFIED block + outcome_appended
+    flag set on the spread row, including outcome_leg_count."""
+    from unittest.mock import patch
+    from services.position_reconciler import reconcile_options_positions
+
+    opened_at = datetime.now(timezone.utc) - timedelta(days=1)
+    spread_row = {
+        "_id": "spread1",
+        "user_id": "u1",
+        "provider": "alpaca",
+        "is_spread": True,
+        "occ_symbol": None,
+        "limit_price": 1.5,
+        "order_id": "ord-spread-1",
+        "proof_chain_entity_id": "entity-spread-1",
+        "outcome_appended": False,
+        "created_at": opened_at,
+        "legs": [
+            {"occ_symbol": "AAPL250117C00200000", "qty": 1, "side": "buy_to_open"},
+            {"occ_symbol": "AAPL250117C00210000", "qty": 1, "side": "sell_to_open"},
+        ],
+    }
+
+    db = MagicMock()
+    db.option_orders.find.return_value.sort.return_value.limit.return_value.to_list = AsyncMock(
+        return_value=[spread_row]
+    )
+    db.option_orders.update_one = AsyncMock()
+
+    fake_adapter = MagicMock()
+    fake_adapter.list_option_positions = AsyncMock(return_value=[])
+
+    with patch(
+        "services.brokers.registry.get_options_adapter",
+        return_value=fake_adapter,
+    ), patch(
+        "services.manual_order_guard.record_manual_order_outcome",
+        new=AsyncMock(return_value="block-hash-spread"),
+    ):
+        summary = await reconcile_options_positions(db)
+
+    assert summary["users"] == 1
+    assert summary["closed"] == 1
+    assert summary["errors"] == 0
+
+    db.option_orders.update_one.assert_called_once()
+    set_doc = db.option_orders.update_one.call_args[0][1]["$set"]
+    assert set_doc["outcome_appended"] is True
+    assert set_doc["outcome_block_hash"] == "block-hash-spread"
+    assert set_doc["outcome_leg_count"] == 2
+
+
+
+
 # ── End-to-end sweep ────────────────────────────────────────────────
 
 

@@ -720,6 +720,44 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
     winning_provider = smart_decision.provider if smart_decision else provider
     routing_mode = "smart" if smart_decision else "direct"
 
+    # ── Patent J/K/M/I — post-fill guard audit (spread) ──────────────
+    # Run the manual-order guard on the aggregate notional of all
+    # legs so the spread gets a single proof_chain_entity_id. The
+    # reconciler then watches for ALL leg OCCs to disappear from
+    # broker positions before appending OUTCOME_VERIFIED.
+    proof_chain_entity_id = None
+    try:
+        # Estimate aggregate notional. ``limit_price`` on a spread
+        # is the net debit/credit; use absolute value × multiplier
+        # × leg-1 qty as a representative notional. (Per-leg
+        # notional varies; we just need a non-zero number for
+        # the risk-budget gate.)
+        first_qty = float(legs_response[0].get("qty") or 0) if legs_response else 0
+        net = float(body.limit_price or 0)
+        _est_notional = abs(net) * 100.0 * first_qty
+        if _est_notional > 0:
+            from services.manual_order_guard import run_manual_order_guard
+            from server import db as _server_db
+            _g = await run_manual_order_guard(
+                db=_server_db,
+                user=user,
+                asset_class="options",
+                symbol=str(body.underlying),
+                side="spread",  # composite — direction lives in legs
+                base_notional=_est_notional,
+                context={
+                    "route": "options.place_spread_order",
+                    "leg_count": len(legs_response),
+                    "order_id": order.order_id,
+                    "provider": winning_provider,
+                    "routing_mode": routing_mode,
+                    "phase": "post_fill_audit",
+                },
+            )
+            proof_chain_entity_id = (_g or {}).get("proof_chain_entity_id")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[manual_guard] spread post-fill audit failed: {e}")
+
     await _log_order_audit(
         user=user,
         provider=winning_provider,
@@ -732,6 +770,7 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         status=order.status.value,
         routing_mode=routing_mode,
         is_spread=True,
+        proof_chain_entity_id=proof_chain_entity_id,
     )
 
     response = {

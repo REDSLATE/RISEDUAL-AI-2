@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import Tier3ProgressDetailCard from './Tier3ProgressDetailCard';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -98,6 +99,11 @@ export default function ShadowAccuracyPanel() {
   return (
     <div className="space-y-4" data-testid="shadow-accuracy-panel">
       <Header isDormant={isDormant} hoursFilter={hoursFilter} setHoursFilter={setHoursFilter} />
+      {/* Tier 3 progress detail — six-gate decomposition of the
+          composite readiness score. Sits above the disagreement
+          buckets because the operator's first question on this
+          panel is "are we close to flipping Council on?". */}
+      <Tier3ProgressDetailCard />
       {isDormant ? (
         <DormantBanner />
       ) : (

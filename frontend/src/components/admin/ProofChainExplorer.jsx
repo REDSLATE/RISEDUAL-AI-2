@@ -6,6 +6,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
+import MemoryDriftCard from './MemoryDriftCard';
 
 const API = `${getApiBase()}/api/admin/proof-chain`;
 
@@ -92,6 +93,12 @@ const ProofChainExplorer = () => {
 
   return (
     <div className="space-y-4" data-testid="proof-chain-explorer">
+      {/* Memory drift detector — Mongo→Chroma sync observability.
+          Sits at the top of Patent J because corrupted memory is
+          the single fastest way for the proof chain's downstream
+          analytics (replay, post-mortem) to lie. */}
+      <MemoryDriftCard />
+
       {/* Stats */}
       {stats && (
         <Card className="p-4 bg-slate-800/40 border-slate-700/40">

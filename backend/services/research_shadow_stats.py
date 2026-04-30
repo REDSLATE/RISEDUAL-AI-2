@@ -718,6 +718,7 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
     from services.tier3_readiness import (
         build_tier3_stats,
         check_tier3_unlock,
+        compute_tier3_breakdown,
         compute_tier3_score,
     )
 
@@ -731,6 +732,7 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
     tier3_progress_pct = 0.0
     tier3_unlocked = False
     tier3_blockers: list[str] = []
+    tier3_breakdown: list[dict] = []
     try:
         if db is not None:
             t3_stats = await build_tier3_stats(db, days=30)
@@ -738,6 +740,11 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
             unlock_view = check_tier3_unlock(t3_stats)
             tier3_unlocked = bool(unlock_view.get("unlocked"))
             tier3_blockers = list(unlock_view.get("reasons") or [])
+            # Per-component decomposition for the admin detail card.
+            # Six rows; each one mapped to a progress bar with
+            # current/target/earned-points/hint. Earned points sum
+            # to ``tier3_progress_pct``.
+            tier3_breakdown = compute_tier3_breakdown(t3_stats)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[tier-readiness] tier3 stats failed: %s", exc)
         tier3_blockers = ["tier3_stats_unavailable"]
@@ -856,6 +863,7 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
         "tier3_progress_pct": tier3_progress_pct,
         "tier3_unlocked": tier3_unlocked,
         "tier3_blockers": tier3_blockers,
+        "tier3_breakdown": tier3_breakdown,
         "ready_to_enable_council": ready_to_enable_council,
         "council_buckets": council_buckets,
         "next_steps": next_steps,

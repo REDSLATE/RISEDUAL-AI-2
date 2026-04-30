@@ -331,6 +331,58 @@ async def _is_option_position_closed(
     }
 
 
+async def _is_spread_closed(
+    *, legs: list[dict], option_positions: list[dict],
+) -> Optional[dict]:
+    """Decide whether a multi-leg spread is closed at the broker.
+
+    Conservative rule: a spread is closed only when **every leg's
+    OCC** is absent (or zero-qty) at the broker. A single still-open
+    leg means the spread is partially unwound — we wait. This is the
+    same false-positive guard as single-leg + equity: we'd rather
+    delay the chain close than fire OUTCOME_VERIFIED on an
+    in-flight position.
+
+    Returns ``{"close_reason": ...}`` on close, ``None`` if any leg
+    is still open. We don't compute exit price for spreads — options
+    adapters return inconsistent close data and the spread's exit P&L
+    can't be reconstructed from broker positions alone. The
+    OUTCOME_VERIFIED block is logged with ``exit_price=0.0`` and a
+    ``close_reason="broker_spread_closed_or_expired"`` marker; a
+    future enhancement can wire per-leg close fills if/when adapters
+    expose them uniformly.
+    """
+    if not legs:
+        return None
+
+    open_qty_by_occ: dict[str, float] = {}
+    for p in option_positions or []:
+        occ = (p.get("symbol", "") or p.get("occ_symbol", "") or "").upper()
+        if not occ:
+            continue
+        try:
+            qty = float(p.get("qty", 0) or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty != 0:
+            open_qty_by_occ[occ] = qty
+
+    for leg in legs:
+        occ = (leg.get("occ_symbol") or "").upper()
+        if not occ:
+            # Defensive: a leg without an OCC means we can't verify
+            # it's closed — refuse to fire so we don't false-positive
+            # on data quality issues.
+            return None
+        if occ in open_qty_by_occ:
+            return None  # at least one leg still open
+
+    return {
+        "exit_price": 0.0,
+        "close_reason": "broker_spread_closed_or_expired",
+    }
+
+
 async def _reconcile_options_for_user(
     db: Any, *, user_id: str, rows: list[dict],
 ) -> dict:
@@ -340,6 +392,10 @@ async def _reconcile_options_for_user(
     its core ``get_positions`` endpoint, Tradier through a separate
     API, etc. The adapter layer abstracts this. We use the user's
     configured options provider via ``get_options_adapter``.
+
+    Handles both single-leg and multi-leg spreads. Spreads close
+    only when every leg's OCC has dropped from broker positions —
+    see ``_is_spread_closed``.
     """
     from services.brokers.registry import get_options_adapter
 
@@ -375,11 +431,73 @@ async def _reconcile_options_for_user(
                 opened_at = ensure_utc(row.get("created_at"))
                 if opened_at is None:
                     continue
-                # Single-leg only for now — multi-leg spreads have
-                # multiple OCCs and need a full leg-by-leg close
-                # reconciler (deferred).
+
                 if row.get("is_spread"):
+                    # Multi-leg path — all legs must be closed at
+                    # the broker before we append OUTCOME_VERIFIED.
+                    legs = row.get("legs") or []
+                    decision = await _is_spread_closed(
+                        legs=legs, option_positions=option_positions,
+                    )
+                    if decision is None:
+                        continue
+
+                    # Net debit/credit on entry. Negative = credit
+                    # received; positive = debit paid.
+                    entry_net = float(row.get("limit_price") or 0)
+                    # Sum of absolute leg qty × 100 multiplier — the
+                    # representative size for the trade. We can't
+                    # split P&L per leg without per-leg fill prices.
+                    total_qty = sum(
+                        float(leg.get("qty") or 0) for leg in legs
+                    )
+                    # Conservative P&L: treat the spread as fully
+                    # expired/zeroed at close. For a debit spread
+                    # this records a loss equal to the debit; for a
+                    # credit spread, a profit equal to the credit.
+                    # When the adapter eventually returns close fills
+                    # we can refine this; for now the OUTCOME_VERIFIED
+                    # block is at least appended, breaking the
+                    # "spread chain dead-ends at fill" gap.
+                    pnl = -float(entry_net) * 100.0 * (
+                        total_qty / max(len(legs), 1)
+                    )
+
+                    from services.manual_order_guard import (
+                        record_manual_order_outcome,
+                    )
+                    block_hash = await record_manual_order_outcome(
+                        db,
+                        proof_chain_entity_id=row["proof_chain_entity_id"],
+                        trade_id=str(row.get("order_id", "")),
+                        symbol=str(
+                            (legs[0] or {}).get("occ_symbol", "") or "spread"
+                        ),
+                        direction="SPREAD",
+                        asset_class="options_spread",
+                        entry_price=entry_net,
+                        exit_price=decision["exit_price"],
+                        quantity=total_qty,
+                        pnl=pnl,
+                        close_reason=decision["close_reason"],
+                        actor=f"reconciler:{provider}",
+                    )
+                    if block_hash:
+                        await db.option_orders.update_one(
+                            {"_id": row["_id"]},
+                            {"$set": {
+                                "outcome_appended": True,
+                                "outcome_appended_at": datetime.now(timezone.utc),
+                                "outcome_block_hash": block_hash,
+                                "outcome_exit_price": decision["exit_price"],
+                                "outcome_pnl": pnl,
+                                "outcome_leg_count": len(legs),
+                            }},
+                        )
+                        out["closed"] += 1
                     continue
+
+                # Single-leg path.
                 occ_symbol = row.get("occ_symbol")
                 if not occ_symbol:
                     continue
@@ -447,7 +565,11 @@ async def _reconcile_options_for_user(
 
 
 async def reconcile_options_positions(db: Any) -> dict:
-    """Top-level sweep across all eligible options orders."""
+    """Top-level sweep across all eligible options orders.
+
+    Now includes multi-leg spreads — the ``is_spread:{$ne: true}``
+    filter was the deferred work-item from the first reconciler ship.
+    """
     if db is None:
         return {"users": 0, "processed": 0, "closed": 0, "errors": 0}
 
@@ -456,7 +578,6 @@ async def reconcile_options_positions(db: Any) -> dict:
     query = {
         "proof_chain_entity_id": {"$ne": None, "$exists": True},
         "outcome_appended": {"$ne": True},
-        "is_spread": {"$ne": True},
         "created_at": {"$gte": cutoff_old, "$lte": cutoff_new},
     }
     cursor = db.option_orders.find(query).sort("created_at", 1).limit(RECONCILE_MAX_ROWS_PER_PASS)

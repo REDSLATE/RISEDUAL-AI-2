@@ -136,6 +136,164 @@ def compute_tier3_score(stats: dict) -> float:
     return round(score, 2)
 
 
+def compute_tier3_breakdown(stats: dict) -> list[dict]:
+    """Per-component progress decomposition of the composite score.
+
+    Used by the admin detail card to render six progress bars instead
+    of one flat number. Each entry tells the operator:
+
+      * ``label`` — human name of the gate (e.g. "Exposure (days)")
+      * ``current`` — current value, in the unit displayed
+      * ``target`` — threshold needed to fully clear this gate
+      * ``progress_pct`` — 0-100 share of this gate's contribution
+        currently earned (NOT a fraction of the total score)
+      * ``weight_pct`` — how much of the total 100-point score this
+        gate is worth (so the UI can show "you've earned 18.5/25
+        for high-conf win rate")
+      * ``earned_pts`` — actual points contributed to the composite
+      * ``met`` — boolean shortcut: is this gate fully cleared?
+      * ``hint`` — short operator-readable next-step string for the
+        bars that aren't yet full
+
+    The sum of ``earned_pts`` equals the value returned by
+    :func:`compute_tier3_score`.
+    """
+    days = float(stats.get("days", 0))
+    total_trades = float(stats.get("total_trades", 0))
+    high_conf_trades = int(stats.get("high_conf_trades", 0))
+    high_conf_wr = max(0.0, min(1.0, float(stats.get("high_conf_win_rate", 0.0))))
+    strong_miss_rate = max(0.0, min(1.0, float(stats.get("strong_miss_rate", 1.0))))
+    last_7d_wr = max(0.0, min(1.0, float(stats.get("last_7d_win_rate", 0.0))))
+    clamp_total = int(stats.get("clamp_total", 0))
+
+    def _pct(num: float, denom: float) -> float:
+        return round(min(num / denom, 1.0) * 100, 1) if denom > 0 else 0.0
+
+    exposure_pct = _pct(days, MIN_DAYS)
+    volume_pct = _pct(total_trades, MIN_TOTAL_TRADES)
+    # High-conf bar is gated by sample size — even with 100% wr, we
+    # report 0% if the operator hasn't accumulated enough samples.
+    if high_conf_trades < MIN_HIGH_CONF_SAMPLES:
+        # Sample-size-gated: bar shows fraction of samples accumulated
+        # (the BINDING constraint right now). earned_pts still
+        # mirrors the composite formula ``high_conf_wr * 25`` so the
+        # bar-sum reconciles to the headline score — the composite
+        # treats the win rate as evidence even before the sample
+        # threshold is met; only ``check_tier3_unlock`` blocks the
+        # actual unlock based on samples.
+        hc_pct = round(
+            (high_conf_trades / MIN_HIGH_CONF_SAMPLES) * 100, 1
+        )
+        hc_earned = round(high_conf_wr * 25, 2)
+        hc_hint = (
+            f"{high_conf_trades}/{MIN_HIGH_CONF_SAMPLES} high-conf samples "
+            f"(wr={high_conf_wr * 100:.1f}%)"
+        )
+    else:
+        # Composite formula is ``high_conf_wr * 25`` — match exactly
+        # so earned_pts sums to ``compute_tier3_score``. Visual bar
+        # shows wr-as-pct so 70% reads as 70 with target marked at 75.
+        hc_pct = round(high_conf_wr * 100, 1)
+        hc_earned = round(high_conf_wr * 25, 2)
+        hc_hint = (
+            f"{high_conf_wr * 100:.1f}% / {MIN_HIGH_CONF_WIN_RATE * 100:.0f}% target"
+        )
+    # Risk: progress = how much of the (1 - max_miss_rate) headroom
+    # we've earned. Inverted because lower miss rate = more progress.
+    risk_pct = round(max(0.0, (1.0 - strong_miss_rate)) * 100, 1)
+    last7_pct = round(last_7d_wr * 100, 1)
+    canary_pct = 100.0 if clamp_total == 0 else 0.0
+
+    return [
+        {
+            "key": "exposure",
+            "label": "Live exposure (days)",
+            "current": int(days),
+            "target": MIN_DAYS,
+            "unit": "days",
+            "progress_pct": exposure_pct,
+            "weight_pct": 20,
+            "earned_pts": round(exposure_pct / 100 * 20, 2),
+            "met": days >= MIN_DAYS,
+            "hint": f"{int(days)} / {MIN_DAYS} days"
+            if days < MIN_DAYS else "cleared",
+        },
+        {
+            "key": "volume",
+            "label": "Trade volume",
+            "current": int(total_trades),
+            "target": MIN_TOTAL_TRADES,
+            "unit": "trades",
+            "progress_pct": volume_pct,
+            "weight_pct": 15,
+            "earned_pts": round(volume_pct / 100 * 15, 2),
+            "met": total_trades >= MIN_TOTAL_TRADES,
+            "hint": f"{int(total_trades)} / {MIN_TOTAL_TRADES}"
+            if total_trades < MIN_TOTAL_TRADES else "cleared",
+        },
+        {
+            "key": "high_conf_accuracy",
+            "label": "High-confidence accuracy",
+            # Show the win rate as the "current" value so the
+            # operator can compare against the 75% target directly.
+            "current": round(high_conf_wr * 100, 1),
+            "target": round(MIN_HIGH_CONF_WIN_RATE * 100, 0),
+            "unit": "%",
+            "progress_pct": hc_pct,
+            "weight_pct": 25,
+            "earned_pts": hc_earned,
+            "met": (
+                high_conf_trades >= MIN_HIGH_CONF_SAMPLES
+                and high_conf_wr >= MIN_HIGH_CONF_WIN_RATE
+            ),
+            "hint": hc_hint,
+        },
+        {
+            "key": "risk_control",
+            "label": "Risk control (low strong-miss rate)",
+            "current": round(strong_miss_rate * 100, 1),
+            "target": round(MAX_STRONG_MISS_RATE * 100, 0),
+            "unit": "%",
+            "progress_pct": risk_pct,
+            "weight_pct": 20,
+            "earned_pts": round(risk_pct / 100 * 20, 2),
+            "met": strong_miss_rate <= MAX_STRONG_MISS_RATE,
+            "hint": (
+                f"{strong_miss_rate * 100:.1f}% miss rate "
+                f"(≤ {MAX_STRONG_MISS_RATE * 100:.0f}% required)"
+            ),
+        },
+        {
+            "key": "stability",
+            "label": "Stability (last-7d win rate)",
+            "current": round(last_7d_wr * 100, 1),
+            "target": 100,
+            "unit": "%",
+            "progress_pct": last7_pct,
+            "weight_pct": 10,
+            "earned_pts": round(last7_pct / 100 * 10, 2),
+            "met": True,  # soft gate — only contributes to score
+            "hint": f"{last_7d_wr * 100:.1f}% recent wins",
+        },
+        {
+            "key": "canary",
+            "label": "Conviction canary clean",
+            "current": clamp_total,
+            "target": 0,
+            "unit": "clamp events",
+            "progress_pct": canary_pct,
+            "weight_pct": 10,
+            "earned_pts": canary_pct / 100 * 10,
+            "met": clamp_total == 0,
+            "hint": (
+                "no conviction clamps tripped"
+                if clamp_total == 0
+                else f"{clamp_total} clamp event(s) — Tier 3 blocked"
+            ),
+        },
+    ]
+
+
 # ── Stats builder (only DB-touching piece) ────────────────────────────────────
 
 async def _paper_trades_count(db: Any) -> int:
