@@ -23,6 +23,91 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### ETL Framework for Periodic External-Source Ingestion (Feb 27, 2026)
+
+Generic scaffolding for the "slow-data cache" pattern: pull from
+external APIs on a cron cadence, normalize, upsert to Mongo, let
+Mongo's TTL daemon handle retention. Adding a new source is now
+~30 lines instead of ~150.
+
+**1. Base class** (`services/etl_registry.py::BaseETLJob`)
+
+Subclasses declare four class attributes and implement
+``fetch()``. The framework handles: unique-key upsert (composite
+index), TTL retention (180-day default, per-subclass
+override), concurrent-run guard (in-process `asyncio.Lock` per
+job), per-row fault tolerance (malformed row counts as
+`failed`, rest of batch continues), error capture (no
+exception propagates out of `run()`), and audit logging.
+
+The key retention design choice: `first_seen_at` is pinned via
+`$setOnInsert` and **never updated on re-fetches** — it's the
+TTL anchor so a row always expires 6 months after first ingest,
+regardless of how often it's re-confirmed by the source.
+`last_fetched_at` updates every run for operator visibility
+("when did we last see this row in the source?").
+
+**2. Registry + scheduler wiring**
+
+* `@register_etl_job` class decorator — auto-register subclasses.
+  Uniqueness-checked on `source_name`.
+* `services/etl_registry::all_jobs()` + `get_job(name)` —
+  lookup helpers.
+* `server.py` startup iterates `all_jobs()` and registers each
+  with APScheduler using the subclass's declared `cadence` dict
+  (any APScheduler cron trigger kwargs). Disabled jobs skipped.
+
+**3. Audit log**
+
+* Every `run()` invocation writes one row to `etl_run_log`
+  (`run_id`, `trigger`, `status`, counts, duration, error).
+* TTL index: audit rows expire at 90 days (3 months earlier
+  than the cache rows they describe — losing audit history
+  before the cache itself is gone is fine).
+
+**4. Admin endpoints** (`routes/admin_etl.py`, all owner-gated)
+
+* `GET /api/admin/etl/jobs` — list every registered job + last
+  run summary.
+* `GET /api/admin/etl/jobs/{source_name}` — detail + recent
+  history (up to 20 runs).
+* `POST /api/admin/etl/jobs/{source_name}/run` — manual
+  trigger for incident response. The concurrent-run guard
+  prevents double-fires if a scheduled run is already in
+  flight; returns `status=already_running` cleanly.
+
+**5. Index ensure on startup**
+
+`route_registry.py` adds two batches:
+* `ensure_audit_indexes` for `etl_run_log`.
+* `job.ensure_indexes()` for every registered subclass —
+  creates the composite unique index + the TTL index on
+  `first_seen_at`.
+
+**Tests**: 18 new pytest cases in `test_etl_registry.py`
+covering the full contract: subclass rejection (missing
+source_name / unique_key / cadence / fetch impl), registry
+uniqueness + lookup, `ensure_indexes` (unique + TTL with
+correct `expireAfterSeconds`), happy-path with
+`first_seen_at` immutability + `last_fetched_at` updates,
+dedup via unique key, `transform()` hook, fetch-raising
+becomes `failed`, malformed-row fault tolerance, Mongo
+upsert-raising counted as failed, concurrent-run guard,
+audit-row write, `get_last_run` / `get_run_history` ordering
+and empty-state.
+
+**230/230** sync + framework + tracer + existing-regression
+test suite green (was 212 before this change). Lint clean
+across all 3 new files. Backend boot verified, admin
+endpoint returns `count: 0` as expected (framework ships with
+zero concrete subclasses — operator adds them next).
+
+**No concrete subclasses shipped yet — the framework is the
+deliverable.** First concrete candidate when operator is
+ready: a Quiver congressional-trades weekly ETL, replacing
+the current in-process 6h sliding cache. Estimated ~30
+lines, ~15 min.
+
 ### Deployment Readiness Audit — CLEARED TO SHIP (Feb 27, 2026)
 
 Final pre-deploy health check. Applied 7 security patches earlier

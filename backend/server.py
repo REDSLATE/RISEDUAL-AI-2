@@ -667,6 +667,29 @@ async def _start_schedulers():
         scheduler.add_job(_run_drift_alert_watcher, 'interval',
                           minutes=5, id='drift_alert_watcher',
                           replace_existing=True)
+        # ── ETL framework jobs (one scheduler entry per registered
+        # subclass of BaseETLJob; pulled from the in-process registry).
+        # Each job owns its own unique composite + TTL index; rows
+        # expire at retention_days via Mongo server-side TTL. The
+        # scheduler entry per job uses the job's declared ``cadence``
+        # dict as cron kwargs, so e.g. ``{"day_of_week": "mon",
+        # "hour": 4}`` runs Mondays at 4 UTC. Disabled jobs are
+        # skipped at scheduling time.
+        try:
+            from services.etl_registry import all_jobs as _all_etl_jobs
+            for _etl_job in _all_etl_jobs():
+                if not _etl_job.enabled:
+                    continue
+                scheduler.add_job(
+                    _run_etl_job,
+                    'cron',
+                    args=[_etl_job.source_name],
+                    id=f'etl_{_etl_job.source_name}',
+                    replace_existing=True,
+                    **_etl_job.cadence,
+                )
+        except Exception as _e:  # noqa: BLE001
+            logger.warning(f"ETL scheduler setup failed: {_e}")
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -720,6 +743,33 @@ async def _run_drift_alert_watcher():
             )
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Drift alert watcher tick failed: {e}")
+
+
+async def _run_etl_job(source_name: str):
+    """APScheduler entry point for a single registered ETL job.
+
+    Dispatches into the framework's ``BaseETLJob.run(db)`` method.
+    Non-raising — the framework itself captures all exceptions
+    into the run summary + audit log.
+    """
+    try:
+        from services.etl_registry import get_job
+        job = get_job(source_name)
+        if job is None:
+            logger.warning(
+                "[etl] scheduler fired for '%s' but no job is registered",
+                source_name,
+            )
+            return
+        await job.run(db, trigger="cron")
+    except Exception as exc:  # noqa: BLE001
+        # Defence-in-depth — the framework is supposed to catch
+        # everything itself, but a bug in the framework must not
+        # take down the scheduler.
+        logger.warning(
+            "[etl] scheduler wrapper for '%s' raised: %s",
+            source_name, exc,
+        )
 
 
 async def _run_grid_bots():

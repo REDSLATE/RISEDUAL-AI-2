@@ -81,6 +81,7 @@ from routes.admin_guard_shadow import router as admin_guard_shadow_router, set_d
 from routes.admin_blocks_prevented import router as admin_blocks_prevented_router, set_db as set_admin_blocks_prevented_db
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
+from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db
@@ -146,6 +147,7 @@ ALL_ROUTERS = [
     admin_blocks_prevented_router,
     admin_position_reconciler_router,
     admin_memory_drift_router,
+    admin_etl_router,
 ]
 
 
@@ -203,6 +205,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_blocks_prevented_db,
         set_admin_position_reconciler_db,
         set_admin_memory_drift_db,
+        set_admin_etl_db,
     ]
     # Module-level db handle for the per-patent policy store so the
     # IP contract can read overrides without an explicit db arg.
@@ -229,6 +232,10 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services.mongo_chroma_sync_metrics import (
             ensure_history_indexes as _drift_history_indexes,
         )
+        from services.etl_registry import (
+            ensure_audit_indexes as _etl_audit_indexes,
+            all_jobs as _all_etl_jobs,
+        )
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
@@ -240,6 +247,12 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_ai_core_engine_indexes(db))
             loop.create_task(_ai_core_alerts_indexes())
             loop.create_task(_drift_history_indexes())
+            loop.create_task(_etl_audit_indexes(db))
+            # Each registered ETL job ensures its own (unique + TTL)
+            # indexes — late registration is supported because this
+            # runs at startup AFTER all modules have been imported.
+            for _job in _all_etl_jobs():
+                loop.create_task(_job.ensure_indexes(db))
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:
