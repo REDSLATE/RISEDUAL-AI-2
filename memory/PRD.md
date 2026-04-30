@@ -23,6 +23,54 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### `_make_id` v2 Hardening — Corrupt prediction_id Defence (Feb 27, 2026)
+
+The remaining v2 hardening from the previous session — closes
+the `"v2|"` collision risk surfaced during the VWAP/CI-guard
+review thread.
+
+**The gap closed**: ``_make_id``'s v2 path was
+``f"v2|{prediction_id}"`` after a single ``or ""`` falsy guard.
+That handled ``None`` and empty string but missed:
+
+* whitespace-only strings (``"   "``, ``"\t\n"``) — truthy →
+  produced ``"v2|   "`` etc., which collided across rows by
+  whitespace length
+* ``float('nan')`` / ``float('inf')`` — truthy → produced
+  ``"v2|nan"`` / ``"v2|inf"`` — every NaN-id row collapses to
+  one ChromaDB row, silently overwriting earlier verified
+  predictions
+* sentinel strings ``"nan"`` / ``"none"`` / ``"null"`` /
+  ``"undefined"`` / ``"inf"`` — usually the result of
+  ``str(None)`` or ``str(float('nan'))`` higher up the stack;
+  silently collapsed every "stringified-None" row to a single id
+
+**New helper** `services/market_memory_service._normalize_prediction_id`:
+returns the cleaned string or ``""`` if invalid. Acceptance
+contract pinned by tests:
+
+* ``None`` / ``""`` / whitespace → ``""``
+* NaN / Inf / -Inf → ``""``
+* Sentinel strings (case-insensitive, post-strip) → ``""``
+* Numeric (``12345``) → ``"12345"`` (legacy schema safety)
+* Real ids (``" pred-123 "``) → ``"pred-123"`` (whitespace stripped)
+
+When the helper returns ``""``, ``_make_id`` falls through to
+the v1 ``(symbol, date, price)`` fallback path. v1 is itself
+dedup-keyed on real fields so a corrupt-prediction-id row keeps
+a meaningful id instead of clobbering its neighbours on
+``"v2|"``.
+
+**Test coverage**: 5 new regression tests in
+`test_mongo_to_chroma_sync.py` covering the full corrupt-input
+matrix (16 inputs collapsed into one parametrised loop), the
+happy v2 path still wins over v1, whitespace stripping
+correctness, distinct-id distinctness, and numeric-id
+coercion. **109/109** green across the full sync test suite
+(20 mongo↔chroma + 28 datetime_utils + CI guards + drift
+detector + position reconciler + drift alert watcher +
+prediction_date backfill). Lint clean.
+
 ### Backfill + VWAP Equity Reconciler + CI Slice Guard (Apr 30, 2026)
 
 Three actionable backlog items shipped together. Webhook close

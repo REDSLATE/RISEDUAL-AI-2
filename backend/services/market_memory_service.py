@@ -189,6 +189,49 @@ def _regime_to_text(regime: dict) -> str:
     return " | ".join(lines) if lines else json.dumps(regime)
 
 
+def _normalize_prediction_id(pred_id) -> str:
+    """Return a canonical prediction_id string, or empty if invalid.
+
+    Pre-fix, ``_make_id``'s v2 path used ``f"v2|{prediction_id}"``
+    directly. If a corrupt ``prediction_id`` snuck through from
+    upstream — ``None``, empty string, whitespace-only, NaN, or one
+    of the sentinel strings ``"none"`` / ``"nan"`` / ``"null"`` —
+    every such row would collapse onto a single ChromaDB id (e.g.
+    ``"v2|"`` or ``"v2|nan"``), silently overwriting earlier rows.
+
+    This guard rejects all such cases by returning ``""``, which
+    makes ``_make_id`` fall through to the v1 ``(symbol, date,
+    price)`` fallback path. v1 is itself dedup-keyed on real fields
+    so a corrupt-prediction-id row still gets a meaningful id
+    instead of clobbering its neighbours.
+
+    Acceptance contract:
+    * ``None`` / ``""`` / ``"   "`` → ``""``
+    * ``float('nan')`` / ``float('inf')`` → ``""``
+    * Sentinel strings ``"nan"``, ``"none"``, ``"null"``,
+      ``"undefined"``, ``"inf"``, ``"-inf"`` (case-insensitive,
+      stripped) → ``""``
+    * Any other value → stripped string form
+    """
+    if pred_id is None:
+        return ""
+    # Reject NaN / Inf if a float snuck in (e.g. from a corrupt
+    # upstream coercion — prediction_ids are always strings in our
+    # schema, but defence-in-depth catches type errors at the gate).
+    if isinstance(pred_id, float):
+        if math.isnan(pred_id) or math.isinf(pred_id):
+            return ""
+    s = str(pred_id).strip()
+    if not s:
+        return ""
+    # Sentinel strings — usually the result of ``str(None)`` or
+    # ``str(float('nan'))`` higher up the stack. Treat as missing so
+    # we don't hash on the literal token.
+    if s.lower() in {"nan", "none", "null", "undefined", "inf", "-inf"}:
+        return ""
+    return s
+
+
 def _make_id(regime: dict) -> str:
     """Generate a deterministic doc id for a regime episode.
 
@@ -209,8 +252,15 @@ def _make_id(regime: dict) -> str:
     ``to_iso_date`` so a Mongo BSON ``datetime`` round-trip can't
     produce two different ids for the same logical episode (the
     "stringified-tzinfo collision" bug from 2026-04-30).
+
+    The v2 path runs ``prediction_id`` through
+    ``_normalize_prediction_id`` so a corrupt id (None, empty,
+    whitespace, NaN, sentinel strings) doesn't collapse every
+    bad row onto the literal ``"v2|"`` key. Invalid ids fall
+    through to the v1 fallback instead, where the
+    ``(symbol, date, price)`` tuple gives them a real id.
     """
-    pred_id = regime.get("prediction_id") or ""
+    pred_id = _normalize_prediction_id(regime.get("prediction_id"))
     if pred_id:
         # v2: per-prediction key — stable across re-runs because the
         # prediction_id itself is stable; idempotent on save_regime.

@@ -162,6 +162,87 @@ def test_make_id_v1_negative_zero_collapses_with_zero():
     assert id_pos == id_neg == id_int == id_str
 
 
+# ── v2 prediction_id hardening ─────────────────────────────────────
+
+
+def test_make_id_v2_corrupt_prediction_ids_fall_back_to_v1():
+    """The historic v2 path used ``f"v2|{prediction_id}"`` directly.
+    A corrupt id (None, empty, whitespace-only, NaN, sentinel
+    strings like ``"none"`` / ``"nan"``) would collapse every bad
+    row onto a single ChromaDB id — silently overwriting earlier
+    rows. Hardened path: ``_normalize_prediction_id`` rejects all
+    such values, so ``_make_id`` falls through to the v1
+    ``(symbol, date, price)`` fallback. Each row keeps a real id."""
+    base = {"symbol": "AAPL", "date": "2026-01-15", "price": 180.0}
+
+    # Each of these prediction_ids is "corrupt" and must NOT
+    # collapse to ``"v2|"``. They should all fall through to v1
+    # (and therefore equal the v1-only id).
+    v1_id = _make_id(base)  # no prediction_id at all → v1 path
+    corrupt_inputs = [
+        None,
+        "",
+        "   ",           # whitespace only
+        "\t\n",          # other whitespace
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        "nan",
+        "NaN",
+        "none",
+        "None",
+        "null",
+        "NULL",
+        "undefined",
+        "inf",
+        "-inf",
+    ]
+    for bad in corrupt_inputs:
+        h = _make_id({**base, "prediction_id": bad})
+        assert h == v1_id, (
+            f"Corrupt prediction_id {bad!r} should fall back to v1, "
+            f"not produce a distinct (or collision-prone) v2 hash."
+        )
+
+
+def test_make_id_v2_valid_prediction_id_still_uses_v2_path():
+    """Defensive: hardening must not break the happy v2 path. A
+    real prediction_id continues to take precedence over
+    (symbol, date, price)."""
+    base = {"symbol": "AAPL", "date": "2026-01-15", "price": 180.0}
+    v1_id = _make_id(base)
+    v2_id = _make_id({**base, "prediction_id": "pred-abc-123"})
+    assert v2_id != v1_id
+
+
+def test_make_id_v2_strips_whitespace_around_valid_prediction_id():
+    """``" pred-123 "`` and ``"pred-123"`` are the same logical id;
+    upstream Mongo writers occasionally leave incidental whitespace
+    that would otherwise produce two ChromaDB rows for one
+    prediction."""
+    a = _make_id({"prediction_id": "pred-123"})
+    b = _make_id({"prediction_id": "  pred-123  "})
+    c = _make_id({"prediction_id": "\tpred-123\n"})
+    assert a == b == c
+
+
+def test_make_id_v2_distinct_ids_remain_distinct():
+    """Sanity: two genuinely different prediction_ids must hash
+    to different ChromaDB rows."""
+    a = _make_id({"prediction_id": "pred-aaa"})
+    b = _make_id({"prediction_id": "pred-bbb"})
+    assert a != b
+
+
+def test_make_id_v2_numeric_prediction_id_stringified():
+    """If a numeric prediction_id sneaks through (legacy schema or
+    test fixture), coerce to its string form rather than blowing up
+    or skipping the v2 path entirely."""
+    a = _make_id({"prediction_id": 12345})
+    b = _make_id({"prediction_id": "12345"})
+    assert a == b
+
+
 # ── save_regime metadata coercion ──────────────────────────────────
 
 
