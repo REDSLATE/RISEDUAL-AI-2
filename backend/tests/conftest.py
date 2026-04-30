@@ -91,3 +91,20 @@ def _disable_patent_i_in_legacy_tests(monkeypatch):
     ``monkeypatch.setenv("PATENT_I_ENABLED", "1")``.
     """
     monkeypatch.setenv("PATENT_I_ENABLED", "0")
+
+
+@pytest.fixture(autouse=True)
+def _disable_patent_guard_in_legacy_tests(monkeypatch):
+    """Patent J/K/M/I full guard pipeline tightens / blocks trades and
+    persists proof events to ``decision_proof_chain``.
+
+    Same rationale as ``_disable_patent_i_in_legacy_tests``: pre-guard
+    unit tests pin exact sizes that the guard will (correctly)
+    tighten. The guard has dedicated tests
+    (``test_decision_pipeline_guard.py`` + the patent unit tests) that
+    exercise live behaviour.
+
+    Tests that exercise the guard should
+    ``monkeypatch.setenv("PATENT_GUARD_ENABLED", "1")``.
+    """
+    monkeypatch.setenv("PATENT_GUARD_ENABLED", "0")

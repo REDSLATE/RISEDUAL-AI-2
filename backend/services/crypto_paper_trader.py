@@ -389,17 +389,155 @@ async def run_crypto_symbol(
     # phase preserves identical behaviour to the pre-adversarial code.
     size_usd = round(size_usd * size_multiplier, 2)
 
-    # ── Patent I — Adaptive Authority-Scoped Risk Budgeting ──────────
-    # The adversarial layer above sets a per-decision multiplier from
-    # the *current* commander gap. Patent I composes this with the
-    # bot's *historical* track record (loss streaks, drawdown, veto
-    # clusters) and tightens further if performance has degraded.
-    # Lazy-imported so the architectural firewall on this module's
-    # import surface is preserved (gateway is a DTD-only dependency).
-    # Bypass via PATENT_I_ENABLED=0 — used by unit tests that pin
-    # exact pre-Patent-I sizes via stubbed DBs.
-    import os as _os
-    if (_os.environ.get("PATENT_I_ENABLED", "1") or "").lower() not in ("0", "false", ""):
+    # ── Patent J/K/M/I — Decision Pipeline Guard ─────────────────────
+    # Full guard: Patent K (adversarial enforcement), Patent M
+    # (failure-mode classification), Patent I (authority-scoped risk
+    # budgeting), all proof-chained via Patent J. Behind a feature
+    # flag — defaults ON in prod, off in tests so legacy unit tests
+    # that pin exact pre-guard sizes don't regress.
+    #
+    # Best-effort telemetry:
+    # * bull/bear/commander synthesised from the existing adversarial
+    #   decision (``adv_decision``); fallback to single-signal mapping
+    #   when the adversarial layer is gated off.
+    # * market.atr_pct from strategist indicators; baselines + news
+    #   telemetry default to 0.0 (those failure-mode branches stay
+    #   dormant until baseline trackers ship).
+    # * model loss_streak / drawdown reuse Patent I's track record.
+    import os as _os_guard
+    if (_os_guard.environ.get("PATENT_GUARD_ENABLED", "1") or "").lower() not in ("0", "false", ""):
+        try:
+            from services.adversarial_enforcer import (
+                AgentDecision, CommanderDecision,
+            )
+            from services.failure_mode_classifier import (
+                MarketTelemetry, ModelTelemetry,
+            )
+            from services.proof_chain import MongoProofChainStore
+            from services.decision_pipeline_guard import run_guarded_decision_pipeline
+            from services.risk_budget_gateway import (
+                build_track_record_for_crypto_bot,
+                get_daily_realized_loss,
+                mint_authority_for_crypto_bot,
+            )
+            from services.authority_risk_budget import RiskBudgetRequest
+
+            authority = mint_authority_for_crypto_bot()
+            track = await build_track_record_for_crypto_bot()
+            daily_loss = await get_daily_realized_loss(asset_class="crypto")
+
+            # Synthesize Bull / Bear / Commander.
+            # The adversarial layer (when active) emits structured
+            # bull/bear/commander conviction. When gated off we
+            # synthesise a single-sided agent pair from the strategist
+            # so the guard has SOMETHING to enforce — Patent K's
+            # low-dissent rule will then naturally hold the trade
+            # unless the strategist is highly confident.
+            _signal_dir = str(signal.get("direction", "HOLD")).upper()
+            _signal_conf = float(signal.get("confidence") or 0.0)
+            if adv_decision:
+                _bull_conf = float(adv_decision.get("bull_confidence") or 0.0)
+                _bear_conf = float(adv_decision.get("bear_confidence") or 0.0)
+                _bull_action = "BUY" if _signal_dir in ("LONG", "BUY") else "HOLD"
+                _bear_action = "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
+                _commander_action = "BUY" if _signal_dir in ("LONG", "BUY") else (
+                    "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
+                )
+                bull = AgentDecision(name="bull", action=_bull_action, confidence=_bull_conf or _signal_conf)
+                bear = AgentDecision(name="bear", action=_bear_action, confidence=_bear_conf or (1.0 - _signal_conf))
+                commander = CommanderDecision(
+                    action=_commander_action,
+                    confidence=float(adv_decision.get("commander_confidence") or _signal_conf),
+                    override=bool(adv_decision.get("phase") == "full"),
+                    signature_hash=str(adv_decision.get("decision_id") or ""),
+                    reason=str(adv_decision.get("decision") or ""),
+                )
+            else:
+                # No adversarial layer active: build a one-sided
+                # synthetic so the enforcer can still rule on the trade.
+                _bull_action = "BUY" if _signal_dir in ("LONG", "BUY") else "HOLD"
+                _bear_action = "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
+                bull = AgentDecision(name="bull", action=_bull_action, confidence=_signal_conf)
+                bear = AgentDecision(name="bear", action=_bear_action, confidence=max(0.0, 1.0 - _signal_conf))
+                commander = None
+
+            # Market telemetry — best-effort from strategist indicators.
+            # Missing baselines/news/spread default to safe zeros so
+            # those failure-mode branches stay dormant rather than
+            # firing false positives.
+            _indicators = (signal.get("strategist") or {}).get("indicators", {}) or {}
+            market_tel = MarketTelemetry(
+                symbol=str(symbol),
+                asset_type="crypto",
+                atr_pct=float(_indicators.get("atr_pct") or 0.0),
+                atr_pct_baseline=float(_indicators.get("atr_pct_baseline") or 0.0),
+                volume_zscore=float(_indicators.get("volume_zscore") or 0.0),
+                spread_bps=float(_indicators.get("spread_bps") or 0.0),
+                spread_bps_baseline=float(_indicators.get("spread_bps_baseline") or 0.0),
+                news_sentiment_abs=0.0,
+                news_volume_zscore=0.0,
+                data_missing_ratio=0.0,
+            )
+
+            # Model telemetry — pulled from Patent I's track record
+            # plus strategist confidence. Calibration/disagreement/
+            # entropy default to 0 until real trackers ship.
+            model_tel = ModelTelemetry(
+                calibration_gap=float(track.calibration_gap or 0.0),
+                prediction_entropy=0.0,
+                confidence=_signal_conf,
+                confidence_baseline=0.65,
+                disagreement_score=abs(bull.confidence - bear.confidence),
+                recent_error_rate=max(0.0, 1.0 - (track.win_rate or 0.0)),
+                loss_streak=int(track.loss_streak or 0),
+                max_drawdown=float(track.max_drawdown or 0.0),
+            )
+
+            risk_req = RiskBudgetRequest(
+                action=_signal_dir if _signal_dir in ("BUY", "SELL") else "BUY",
+                base_notional=float(size_usd),
+                base_multiplier=float(size_multiplier),
+                authority=authority,
+                track_record=track,
+                daily_realized_loss=daily_loss,
+            )
+
+            # Persist proof chain only when DB is available (it is, in
+            # production). The store can also be set to None to no-op.
+            proof_store = MongoProofChainStore(db) if db is not None else None
+
+            guard = run_guarded_decision_pipeline(
+                entity_id=f"crypto:{symbol}:{int(datetime.now(timezone.utc).timestamp())}",
+                bull=bull, bear=bear, commander=commander,
+                market=market_tel, model=model_tel,
+                risk_request=risk_req,
+                proof_store=proof_store,
+                actor="crypto_paper_bot",
+            )
+
+            if not guard["allow"]:
+                await log_adversarial_decision(
+                    db, symbol=symbol, signal=signal, final_direction="HOLD",
+                )
+                return {
+                    "symbol": symbol, "skipped": True,
+                    "reason": f"guard:{','.join(guard['reasons'][:3])}",
+                    "proof_hashes": guard["proof_hashes"],
+                }
+            # Guard approved — its final notional supersedes ours.
+            size_usd = round(float(guard["notional"]), 2)
+        except Exception as e:  # noqa: BLE001 — fail-open is unsafe
+            # but we MUST NOT crash the live bot. Log and proceed
+            # with the pre-guard size. The Patent-I-only legacy
+            # path is preserved as a safety net.
+            logger.warning("[patent_guard] pipeline unavailable, falling back: %s", e)
+
+    # ── Patent I — Adaptive Authority-Scoped Risk Budgeting (legacy) ─
+    # Kept as a fallback for the case where PATENT_GUARD_ENABLED=0
+    # but PATENT_I_ENABLED=1 (audit migration window). Once the full
+    # guard is the default everywhere, this block can be deleted.
+    if (_os_guard.environ.get("PATENT_GUARD_ENABLED", "1") or "").lower() in ("0", "false", "") \
+            and (_os_guard.environ.get("PATENT_I_ENABLED", "1") or "").lower() not in ("0", "false", ""):
         try:
             from services.risk_budget_gateway import (
                 build_track_record_for_crypto_bot,
@@ -428,13 +566,8 @@ async def run_crypto_symbol(
                     "reason": f"patent_i:{','.join(decision.reasons[:3])}",
                     "audit_hash": decision.audit_hash,
                 }
-            # Patent I may have tightened the notional further (track-record
-            # based). Always trust the decision's final_notional as the cap.
             size_usd = round(decision.final_notional, 2)
-        except Exception as e:  # noqa: BLE001 — fail-open is unsafe, but
-            # absent gateway must not crash the bot. Log and proceed with
-            # the pre-Patent-I size; this matches behaviour before the
-            # integration so it's a safe fallback.
+        except Exception as e:  # noqa: BLE001
             logger.warning("[patent_i] gateway unavailable, falling back: %s", e)
 
     if size_usd <= 0:
