@@ -649,6 +649,14 @@ async def _start_schedulers():
         scheduler.add_job(_run_position_reconciler, 'interval',
                           minutes=30, id='position_reconciler',
                           replace_existing=True)
+        # ── Mongo→Chroma drift alert watcher (every 5 min) ──
+        # Same compute path as GET /api/admin/memory/drift. Emits
+        # to ``ai_core_alerts`` collection only on threshold
+        # crossings / jumps > 5pts / recovery — dedup-bucketed by
+        # UTC day, so this is *not* a spam source.
+        scheduler.add_job(_run_drift_alert_watcher, 'interval',
+                          minutes=5, id='drift_alert_watcher',
+                          replace_existing=True)
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -657,7 +665,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -684,6 +692,24 @@ async def _run_position_reconciler():
         await run_position_reconciler(db)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Position reconciler tick failed: {e}")
+
+
+async def _run_drift_alert_watcher():
+    """Background: detect Mongo→Chroma sync regressions and emit
+    alerts to the ``ai_core_alerts`` collection on threshold
+    crossings or sudden jumps. The watcher is dedup-bucketed by
+    UTC day so persistent drift fires ONE alert/day, not 288."""
+    try:
+        from services.drift_alert_watcher import check_and_alert
+        result = await check_and_alert()
+        fired = result.get("fired") or []
+        if fired:
+            logger.info(
+                "[drift_alert] tick pct=%s fired=%s",
+                result.get("current_pct"), ",".join(fired),
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Drift alert watcher tick failed: {e}")
 
 
 async def _run_grid_bots():

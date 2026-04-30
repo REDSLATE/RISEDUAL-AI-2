@@ -23,6 +23,51 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Post-Fix Rebuild + Drift Alert Watcher (Apr 30, 2026)
+
+Two operator follow-ups from the Mongo→Chroma sync hardening thread.
+
+**1. Post-fix rebuild executed against production state**
+
+```
+POST /api/accuracy/memory/rebuild-from-mongo?days=30&limit=5000
+→ { "rebuilt": 101, "skipped": 0, "since": "2026-03-31T10:27:29Z" }
+```
+
+101 rows rebuilt, 0 skipped. ``last_rebuild_at`` now stamped;
+drift detector shows ``drift_pct=0.0`` recommendation ``ok`` with
+``drift=-379`` (benign training over-supply). The first post-fix
+rebuild is now in the books.
+
+**2. Drift alert watcher (5-minute cron)**
+
+`services/drift_alert_watcher.py::check_and_alert()` — runs every
+5 minutes through the existing APScheduler. Three firing rules,
+all dedup-bucketed by UTC day via ``ai_core_alerts.emit`` so a
+persistent condition fires ONE alert/day (not 288):
+
+| Rule | Condition | Alert type |
+|-|-|-|
+| Threshold crossing | `drift_pct` crossed into `≥ 10%` band | `memory_drift_rebuild_recommended` |
+| Sudden jump | `delta_pct > 5` between consecutive ticks | `memory_drift_jump` (bucketed per from→to pair) |
+| Recovery | Drift dropped to `< 1%` after same-day rebuild alert | `memory_drift_recovered` |
+
+Quiet path (99% of ticks): zero emits. The watcher wraps the
+whole tick in `try/except` so a bad Mongo response can't crash
+the scheduler thread. Failure returns `{ok: False, reason: "drift_compute_failed"}`.
+
+**Threshold consistency pin**: `test_thresholds_match_drift_endpoint_classifier`
+asserts `REBUILD_PCT == routes.admin_memory_drift.THRESHOLD_INVESTIGATE_PCT`
+and `OK_PCT == THRESHOLD_OK_PCT` so the dashboard and the alert
+channel can never disagree on what "rebuild recommended" means.
+
+**Scheduler banner** now reads "… position reconciler (30m),
+drift alert watcher (5m)" on startup.
+
+**Tests**: 11/11 pass — 4 firing scenarios, 3 non-firing
+scenarios (small jumps, drops, quiet path), dedup behaviour, and
+the 2 constant-consistency pins.
+
 ### Patent J Drift Card + Tier 3 Detail Card + Multi-leg Spread Reconciler (Apr 30, 2026)
 
 Three operator-grade visualizations and the deferred spread-close
