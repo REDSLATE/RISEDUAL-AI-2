@@ -20,6 +20,7 @@ from services.proof_chain import (
     GENESIS_HASH,
     ProofBlock,
     ProofEventType,
+    canonical_created_at,
     stable_hash,
 )
 
@@ -147,9 +148,15 @@ async def get_chain(entity_id: str, request: Request):
         expected_payload_hash = stable_hash(doc.get("payload") or {})
         if doc.get("payload_hash") != expected_payload_hash:
             issues.append(f"payload_hash_mismatch_at_index_{idx}")
-        # Recompute the block hash
+        # Recompute the block hash. Mongo strips tzinfo on datetime
+        # round-trip; ``canonical_created_at`` normalises both the
+        # write-time and read-time timestamps to UTC tz-naive so the
+        # hash material is byte-identical.
         created = doc.get("created_at")
-        created_iso = created.isoformat() if isinstance(created, datetime) else str(created)
+        if isinstance(created, datetime):
+            created_iso = canonical_created_at(created)
+        else:
+            created_iso = str(created)
         expected_block_hash = stable_hash({
             "prev_hash": doc.get("prev_hash"),
             "event_type": doc.get("event_type"),

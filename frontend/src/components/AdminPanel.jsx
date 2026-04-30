@@ -21,6 +21,7 @@ import CryptoAdversarialDashboard from './CryptoAdversarialDashboard';
 import ShadowAccuracyPanel from './admin/ShadowAccuracyPanel';
 import CouncilTierStatusPill from './admin/CouncilTierStatusPill';
 import PatentWatchPanel from './admin/PatentWatchPanel';
+import ProofChainExplorer from './admin/ProofChainExplorer';
 import OpsSnapshotPanel from './admin/OpsSnapshotPanel';
 import ToxicSpikeAutopsyPanel from './admin/ToxicSpikeAutopsyPanel';
 import EngineRegistryPanel from './admin/EngineRegistryPanel';
@@ -67,6 +68,7 @@ const TAB_GROUPS = [
       { id: 'engines',       label: 'AI Core', icon: Activity },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
+      { id: 'proof-chain',   label: 'Proof Chain', icon: ShieldCheck },
       { id: 'tools',         label: 'Tools',       icon: FileCode },
     ],
   },
@@ -101,6 +103,7 @@ const TAB_SUBTITLES = {
   engines:        () => 'AI Core engine registry — live + candidate side-by-side · bucket-lift comparison',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
+  'proof-chain':  () => 'Patent J — immutable hash-linked decision audit trail',
   tools:          () => 'Codebase export & utilities',
 };
 
@@ -126,6 +129,7 @@ const TAB_COMPONENTS = {
   engines:        () => <EngineRegistryPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
+  'proof-chain':  () => <ProofChainExplorer />,
   tools:          () => <AdminTools />,
 };
 

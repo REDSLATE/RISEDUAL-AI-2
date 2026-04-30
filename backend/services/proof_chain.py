@@ -76,6 +76,29 @@ def stable_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_created_at(dt: datetime) -> str:
+    """Canonical ISO form for hash material.
+
+    Two normalisation steps so the hash is reproducible after a Mongo
+    round-trip:
+
+    1. Strip ``tzinfo`` (Mongo's BSON Date returns naive UTC).
+    2. Truncate sub-millisecond precision (BSON Date stores
+       milliseconds; microseconds beyond ms are silently dropped on
+       insert).
+
+    Both ``build_proof_block`` (write) and ``verify_chain`` (read) MUST
+    pipe ``created_at`` through this helper so insert-time and
+    verify-time hash material is byte-identical.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    # Truncate microseconds to milliseconds (3-digit precision).
+    ms = (dt.microsecond // 1000) * 1000
+    dt = dt.replace(microsecond=ms)
+    return dt.isoformat()
+
+
 def build_proof_block(event: ProofEvent, prev_hash: Optional[str]) -> ProofBlock:
     actual_prev_hash = prev_hash or GENESIS_HASH
     payload_hash = stable_hash(event.payload)
@@ -87,7 +110,7 @@ def build_proof_block(event: ProofEvent, prev_hash: Optional[str]) -> ProofBlock
         "payload_hash": payload_hash,
         "actor": event.actor,
         "schema_version": event.schema_version,
-        "created_at": event.created_at.isoformat(),
+        "created_at": canonical_created_at(event.created_at),
     }
 
     block_hash = stable_hash(block_material)
@@ -283,7 +306,7 @@ def verify_chain(blocks: list[ProofBlock]) -> tuple[bool, list[str]]:
                 "payload_hash": block.payload_hash,
                 "actor": block.actor,
                 "schema_version": block.schema_version,
-                "created_at": block.created_at.isoformat(),
+                "created_at": canonical_created_at(block.created_at),
             }
         )
 
