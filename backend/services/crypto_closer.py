@@ -248,6 +248,11 @@ async def close_expired_crypto_trades(
             # adversarial layer was active when the fill happened —
             # both gates open). Failure here must NEVER block the
             # close — wrapped + suppressed.
+            # Adversarial decision outcome attribution. ONLY runs if the
+            # trade actually carries a decision_id (i.e. the
+            # adversarial layer was active when the fill happened —
+            # both gates open). Failure here must NEVER block the
+            # close — wrapped + suppressed.
             adv_id = closed_trade.get("adversarial_decision_id")
             if adv_id:
                 try:
@@ -256,6 +261,50 @@ async def close_expired_crypto_trades(
                     logger.warning(
                         "[crypto-closer] adversarial outcome update failed "
                         "for %s: %s", adv_id, exc,
+                    )
+
+            # ── Step 10: OUTCOME_VERIFIED proof block ────────────────
+            # Closes the IP-contract proof chain for this trade by
+            # linking entry chain (proof_chain_entity_id) to realized
+            # P&L. Only fires when the entry-side guard ran (older
+            # trades pre-IP-contract have no entity_id and are
+            # legitimately skipped). Failure must never block the close.
+            entity_id = closed_trade.get("proof_chain_entity_id")
+            if entity_id:
+                try:
+                    from services.proof_chain import (
+                        AsyncMongoProofChainStore,
+                        ProofEvent,
+                        ProofEventType,
+                        async_append_proof_event,
+                    )
+                    proof_store = AsyncMongoProofChainStore(db)
+                    await async_append_proof_event(
+                        proof_store,
+                        ProofEvent(
+                            event_type=ProofEventType.OUTCOME_VERIFIED,
+                            entity_id=entity_id,
+                            actor="crypto_paper_closer",
+                            payload={
+                                "trade_id": closed_trade.get("trade_id"),
+                                "symbol": symbol,
+                                "direction": direction,
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "quantity": quantity,
+                                "pnl": pnl,
+                                "r_multiple": r_multiple,
+                                "close_reason": exit_reason,
+                                "outcome": "win" if pnl > 0 else (
+                                    "loss" if pnl < 0 else "flat"
+                                ),
+                            },
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[crypto-closer] OUTCOME_VERIFIED proof append "
+                        "failed for %s: %s", entity_id, exc,
                     )
 
             closed += 1

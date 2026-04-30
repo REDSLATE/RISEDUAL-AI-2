@@ -439,6 +439,10 @@ async def run_crypto_symbol(
     #   dormant until baseline trackers ship).
     # * model loss_streak / drawdown reuse Patent I's track record.
     import os as _os_guard
+    # Captured outside the try block so the trade-doc build below can
+    # persist it — closer needs this id to append the
+    # OUTCOME_VERIFIED block to the same proof chain.
+    proof_chain_entity_id: Optional[str] = None
     if (_os_guard.environ.get("PATENT_GUARD_ENABLED", "1") or "").lower() not in ("0", "false", ""):
         try:
             from services.adversarial_enforcer import (
@@ -596,6 +600,10 @@ async def run_crypto_symbol(
             # the rest of the bot's flow expects.
             guard["allow"] = guard["allowed"]
             guard["reasons"] = guard.get("reasons") or [guard.get("reason") or ""]
+            # Capture the contract entity_id so the closer can append a
+            # final OUTCOME_VERIFIED block to the same proof chain.
+            guard["entity_id"] = ip_ctx.request_id
+            proof_chain_entity_id = ip_ctx.request_id
 
             # ── Shadow mode (Step 5 of the rollout plan) ─────────────
             # When ``GUARD_SHADOW_MODE=1`` the guard runs and writes
@@ -744,6 +752,14 @@ async def run_crypto_symbol(
         # patch ``crypto_adversarial_decision_log`` with final R-multiple
         # so Bull/Bear winner attribution can be computed.
         "adversarial_decision_id": adversarial_decision_id,
+
+        # IP contract entity_id — the same hash-chain anchor used by
+        # the entry-side proof events (ADVERSARIAL_DECISION,
+        # AUDITOR_VERDICT, AUTHORITY_VALIDATED, FAILURE_MODE_CLASSIFIED,
+        # RISK_BUDGET_APPLIED, EXECUTION_ATTEMPTED). The closer reads
+        # this on close to append OUTCOME_VERIFIED, completing the
+        # proposal-through-realized-P&L story in one chain.
+        "proof_chain_entity_id": proof_chain_entity_id,
 
         # Adversarial action that produced this fill — None for plain
         # confluence buys, "full_trigger" for HOLD-promoted-to-LONG

@@ -462,6 +462,187 @@ async def conviction_calibration(request: Request, days: int = 30):
     }
 
 
+
+# ============================================================
+# RISK QUALITY KPIs — distinct failure-pattern count + calibration-
+# gap rolling chart. Both are surfaced on the AdminPanel Conviction
+# tab. They turn the cleaned-up predictions collection into actual
+# operator-facing risk metrics: how many genuinely-distinct
+# high-conf misses are we seeing per week (post-dedup), and is the
+# avg-confidence/empirical-accuracy gap closing or widening?
+# ============================================================
+
+
+@router.get("/conviction/quality-kpis")
+async def conviction_quality_kpis(request: Request, weeks: int = 8):
+    """Two operator-facing risk-quality metrics over the last N weeks.
+
+    Returns
+    -------
+    {
+      "weeks": int,
+      "unique_failure_patterns": [
+         {"week_start": "2026-04-08", "count": int, "patterns": [...]},
+         ...  # oldest -> newest
+      ],
+      "calibration_gap": [
+         {"week_start": "2026-04-08", "n": int, "avg_confidence": float,
+          "accuracy": float, "gap": float},
+         ...
+      ],
+      "summary": {
+         "trend": "improving" | "stable" | "degrading" | "insufficient_data",
+         "current_gap": float | None,   # latest non-empty week
+         "current_unique_failures": int | None,
+      },
+    }
+
+    A pattern is `(symbol, failure_code)`. We count DISTINCT patterns
+    per week — the post-cleanup version of the recurring "Toxic
+    Spikes" bug where 15× duplicates of NVDA-100% inflated the alert
+    count. The fix put dedup on write; this widget shows the result.
+
+    A degrading trend (latest |gap| > earliest |gap| by ≥0.05) is
+    the early-warning signal that the ML stack needs retraining.
+    """
+    await _require_owner(request)
+    from datetime import timedelta
+    weeks = max(1, min(int(weeks), 26))
+    now = datetime.now(timezone.utc)
+    # Align to ISO week starts (Mondays UTC). We bucket by the
+    # "Monday-of" date string so all rows in the same calendar week
+    # collapse into one entry — UI sparkline gets a uniform x-axis.
+    def monday_of(dt):
+        return (dt - timedelta(days=dt.weekday())).date()
+    earliest_monday = monday_of(now - timedelta(weeks=weeks - 1))
+    fetch_since = datetime.combine(
+        earliest_monday, datetime.min.time(), tzinfo=timezone.utc,
+    )
+
+    cursor = db.predictions.find(
+        {
+            "verified_24h.correct": {"$in": [True, False]},
+            "timestamp": {"$gte": fetch_since.isoformat()},
+        },
+        {
+            "_id": 0,
+            "symbol": 1,
+            "confidence": 1,
+            "verified_24h.correct": 1,
+            "verified_24h.failure_code": 1,
+            "timestamp": 1,
+        },
+    ).limit(20000)
+
+    # Prepare per-week buckets keyed by Monday date.
+    week_keys = [
+        (earliest_monday + timedelta(weeks=i)).isoformat()
+        for i in range(weeks)
+    ]
+    failure_buckets: dict[str, set] = {k: set() for k in week_keys}
+    cal_buckets: dict[str, dict] = {
+        k: {"n": 0, "sum_conf": 0.0, "n_correct": 0} for k in week_keys
+    }
+
+    async for row in cursor:
+        ts = row.get("timestamp")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        wk = monday_of(dt).isoformat()
+        if wk not in failure_buckets:
+            continue
+        # Confidence is stored mixed 0-1 OR 0-100. Normalise to 0-1 so
+        # the gap math is in a single scale — same predicate used by
+        # `prediction_tracker.normalize_confidence`.
+        conf = float(row.get("confidence") or 0.0)
+        if conf > 1.0:
+            conf = conf / 100.0
+        verified = (row.get("verified_24h") or {})
+        correct = verified.get("correct")
+        # Calibration gap aggregates EVERY verified row regardless of
+        # win/loss — that's the whole point of calibration (compare
+        # predicted prob to empirical hit rate).
+        cb = cal_buckets[wk]
+        cb["n"] += 1
+        cb["sum_conf"] += conf
+        if correct is True:
+            cb["n_correct"] += 1
+        # Distinct-failure-pattern set only counts misses (failure
+        # patterns by definition can't be wins).
+        if correct is False:
+            sym = (row.get("symbol") or "?").upper()
+            fcode = verified.get("failure_code") or "UNKNOWN"
+            failure_buckets[wk].add((sym, fcode))
+
+    unique_failure_patterns = []
+    for wk in week_keys:
+        patterns = sorted(failure_buckets[wk])
+        unique_failure_patterns.append({
+            "week_start": wk,
+            "count": len(patterns),
+            # Truncate sample list — operator only needs a glance at
+            # what's recurring, not the full set.
+            "patterns": [{"symbol": s, "failure_code": f} for s, f in patterns[:8]],
+        })
+
+    calibration_gap = []
+    for wk in week_keys:
+        b = cal_buckets[wk]
+        if b["n"] == 0:
+            calibration_gap.append({
+                "week_start": wk, "n": 0,
+                "avg_confidence": None, "accuracy": None, "gap": None,
+            })
+            continue
+        avg_conf = b["sum_conf"] / b["n"]
+        accuracy = b["n_correct"] / b["n"]
+        calibration_gap.append({
+            "week_start": wk,
+            "n": b["n"],
+            "avg_confidence": round(avg_conf, 4),
+            "accuracy": round(accuracy, 4),
+            "gap": round(avg_conf - accuracy, 4),
+        })
+
+    # Trend over the populated weeks. We compare the AVG of the first
+    # 1/3 of populated weeks to the AVG of the last 1/3 — robust to
+    # single-week outliers. < 0.05 absolute change = stable.
+    populated = [c for c in calibration_gap if c["gap"] is not None]
+    summary_trend = "insufficient_data"
+    if len(populated) >= 3:
+        third = max(1, len(populated) // 3)
+        head_avg = sum(abs(c["gap"]) for c in populated[:third]) / third
+        tail_avg = sum(abs(c["gap"]) for c in populated[-third:]) / third
+        delta = tail_avg - head_avg
+        if delta <= -0.05:
+            summary_trend = "improving"
+        elif delta >= 0.05:
+            summary_trend = "degrading"
+        else:
+            summary_trend = "stable"
+
+    return {
+        "weeks": weeks,
+        "unique_failure_patterns": unique_failure_patterns,
+        "calibration_gap": calibration_gap,
+        "summary": {
+            "trend": summary_trend,
+            "current_gap": populated[-1]["gap"] if populated else None,
+            "current_unique_failures": (
+                unique_failure_patterns[-1]["count"]
+                if unique_failure_patterns else None
+            ),
+        },
+        "generated_at": now.isoformat(),
+    }
+
+
+
+
 # ============================================================
 # ML TIER 3 PROGRESS + CONVICTION CLAMP CANARY (Admin)
 # ============================================================

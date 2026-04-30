@@ -6,6 +6,7 @@ import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
 import MLHealthStrip from './MLHealthStrip';
 import GatherErrorStrip from './GatherErrorStrip';
+import QualityKPIsStrip from './QualityKPIsStrip';
 
 const API = `${getApiBase()}/api`;
 
@@ -222,6 +223,13 @@ const ConvictionCalibration = () => {
           "is any upstream provider flaking?" share the same header
           band of the panel. */}
       <GatherErrorStrip />
+
+      {/* Risk-quality KPIs — distinct failure-pattern count + the
+          calibration-gap rolling chart. Two bite-sized cards giving
+          the operator the answer to "is risk quality improving or
+          degrading week-over-week?" without needing to expand the
+          per-bucket sparklines below. */}
+      <QualityKPIsStrip />
 
       {/* Header + window selector */}
       <div className="flex items-center justify-between flex-wrap gap-3">
