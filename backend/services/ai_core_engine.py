@@ -578,12 +578,41 @@ def set_db(db: Any) -> None:
 
 async def ensure_indexes(db: Any) -> None:
     """Mongo indexes — unique on trade_key keeps re-ingest cheap.
-    Each engine's collection gets the same index treatment."""
+    Each engine's collection gets the same index treatment.
+
+    Self-healing: if a legacy hardcoded-named index is found on the
+    same key (e.g. ``ai_core_trade_key_unique`` from a pre-rename
+    deployment), drop it before re-creating with the f-string name.
+    Avoids the recurring ``IndexOptionsConflict`` (MongoDB error 85)
+    we used to log every restart.
+    """
     try:
         for engine in registry.all():
             coll = engine.trades_collection
+            target_name = f"{coll}_trade_key_unique"
+            try:
+                existing = await db[coll].index_information()
+            except Exception:  # noqa: BLE001
+                existing = {}
+            for name, info in existing.items():
+                if name == target_name:
+                    continue
+                # Same key, different name → legacy. Drop so the
+                # create_index below can install the canonical one.
+                if list(info.get("key", [])) == [("trade_key", 1)]:
+                    try:
+                        await db[coll].drop_index(name)
+                        logger.info(
+                            "[ai_core] dropped legacy index %r on %s — "
+                            "will recreate as %r", name, coll, target_name,
+                        )
+                    except Exception as drop_err:  # noqa: BLE001
+                        logger.warning(
+                            "[ai_core] could not drop legacy index %r on %s: %s",
+                            name, coll, drop_err,
+                        )
             await db[coll].create_index(
-                "trade_key", unique=True, name=f"{coll}_trade_key_unique",
+                "trade_key", unique=True, name=target_name,
             )
             await db[coll].create_index([("recorded_at", -1)])
         await db["ai_core_rejections"].create_index([("recorded_at", -1)])
