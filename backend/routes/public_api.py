@@ -495,7 +495,11 @@ async def api_ml_signal_batch(request: Request):
             result = await get_ai_signal(ticker.upper(), request)
             signals.append(result)
         except Exception as exc:
-            signals.append({"ticker": ticker.upper(), "error": str(exc)})
+            # Log internally; never leak the raw exception string to
+            # API customers (the public sanitizer only catches
+            # uncaught exceptions, not values embedded in 200 bodies).
+            logger.warning(f"[api_v1] batch signal failed for {ticker.upper()}: {type(exc).__name__}: {exc}")
+            signals.append({"ticker": ticker.upper(), "error": "signal_unavailable"})
 
     return {"signals": signals, "count": len(signals)}
 

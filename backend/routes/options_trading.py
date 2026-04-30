@@ -297,7 +297,7 @@ async def options_status(request: Request):
             "error": str(exc),
             "note": f"is_options_enabled failed for provider={provider}",
         })
-        raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+        raise HTTPException(status_code=502, detail="Broker unavailable")
 
 
 @router.get("/buying-power")
@@ -408,7 +408,7 @@ async def place_order(body: OptionOrderRequest, request: Request):
                 "error": str(exc),
                 "note": f"smart-routed order placement failed for user={user['_id']}",
             })
-            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+            raise HTTPException(status_code=502, detail="Broker order placement failed")
 
         await _log_order_audit(
             user=user,
@@ -468,7 +468,7 @@ async def place_order(body: OptionOrderRequest, request: Request):
             "error": str(exc),
             "note": f"order placement failed for user={user['_id']} provider={provider}",
         })
-        raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+        raise HTTPException(status_code=502, detail="Broker order placement failed")
 
     await _log_order_audit(
         user=user,
@@ -666,7 +666,7 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
                 "error": str(exc),
                 "note": f"smart-routed spread failed for user={user['_id']}",
             })
-            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+            raise HTTPException(status_code=502, detail="Broker spread routing failed")
     else:
         try:
             order = await adapter.place_option_order(
@@ -690,7 +690,7 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
                 "error": str(exc),
                 "note": f"spread order failed for user={user['_id']} provider={provider}",
             })
-            raise HTTPException(status_code=502, detail=f"Broker error: {exc}")
+            raise HTTPException(status_code=502, detail="Broker spread order failed")
 
     legs_response = [
         {
