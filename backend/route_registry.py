@@ -76,6 +76,7 @@ from routes.ai_core_routes import router as ai_core_routes_router, set_db as set
 from routes.promotion_bridge_routes import router as promotion_bridge_routes_router
 from routes.whatif_replay_routes import router as whatif_replay_routes_router, set_db as set_whatif_replay_db
 from routes.trading_mode import router as trading_mode_router, set_db as set_trading_mode_db
+from routes.admin_proof_chain import router as admin_proof_chain_router, set_db as set_admin_proof_chain_db
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db
@@ -136,6 +137,7 @@ ALL_ROUTERS = [
     promotion_bridge_routes_router,
     whatif_replay_routes_router,
     trading_mode_router,
+    admin_proof_chain_router,
 ]
 
 
@@ -188,6 +190,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_promotion_bridge_db,
         set_whatif_replay_db,
         set_trading_mode_db,
+        set_admin_proof_chain_db,
     ]
     for setter in _setters:
         try:
@@ -258,6 +261,22 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             pass
     except Exception as e:
         logger.warning(f"Patent-J proof chain indexes wire failed: {e}")
+
+    # Patent M — equity telemetry baselines.
+    try:
+        from services.equity_telemetry import (
+            set_db as set_equity_telemetry_db,
+            ensure_indexes as _equity_telemetry_indexes,
+        )
+        set_equity_telemetry_db(db)
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_equity_telemetry_indexes())
+        except RuntimeError:
+            pass
+    except Exception as e:
+        logger.warning(f"Patent-M equity telemetry wire failed: {e}")
 
     try:
         from services.waitlist_service import set_db as set_waitlist_db

@@ -484,6 +484,32 @@ async def place_order(body: OptionOrderRequest, request: Request):
         is_spread=False,
     )
 
+    # ── Patent J/K/M/I — post-fill guard audit ───────────────────────
+    # Same pattern as broker.py: log the fill into the proof chain
+    # for compliance + audit. Phase 1 = observation.
+    try:
+        _est_notional = float(body.qty) * float(body.limit_price or 0.0) * 100.0
+        if _est_notional > 0:
+            from services.manual_order_guard import run_manual_order_guard
+            from server import db as _server_db
+            await run_manual_order_guard(
+                db=_server_db,
+                user=user,
+                asset_class="options",
+                symbol=str(body.underlying),
+                side=str(leg.side.value),
+                base_notional=_est_notional,
+                context={
+                    "route": "options.place_order",
+                    "occ_symbol": occ,
+                    "order_id": order.order_id,
+                    "provider": provider,
+                    "phase": "post_fill_audit",
+                },
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[manual_guard] options post-fill audit failed: {e}")
+
     return {
         "order_id": order.order_id,
         "status": order.status.value,
@@ -720,6 +746,42 @@ async def place_spread_order(body: SpreadOrderRequest, request: Request):
         }
     else:
         response["routing"] = {"mode": "direct"}
+
+    # ── Patent J/K/M/I — post-fill guard audit (spread) ──────────────
+    # Notional is the sum of |qty * limit_price * 100| across all legs.
+    # The proof chain entity is the order_id so all legs and audit
+    # events get correlated under one chain.
+    try:
+        _spread_notional = sum(
+            abs(float(leg.qty)) * float(body.limit_price or 0.0) * 100.0
+            for leg in body.legs
+        )
+        if _spread_notional > 0:
+            from services.manual_order_guard import run_manual_order_guard
+            from server import db as _server_db
+            # Side at the spread level is the "directional intent" —
+            # if any leg is a buy, treat as BUY; otherwise SELL. Spreads
+            # have no canonical single side, so this is approximation.
+            _has_buy = any("buy" in str(leg.side.value).lower() for leg in body.legs)
+            await run_manual_order_guard(
+                db=_server_db,
+                user=user,
+                asset_class="options",
+                symbol=str(body.underlying),
+                side="BUY" if _has_buy else "SELL",
+                base_notional=_spread_notional,
+                context={
+                    "route": "options.place_spread",
+                    "underlying": str(body.underlying).upper(),
+                    "order_id": order.order_id,
+                    "provider": winning_provider,
+                    "n_legs": len(body.legs),
+                    "phase": "post_fill_audit",
+                },
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[manual_guard] options spread audit failed: {e}")
+
     return response
 
 

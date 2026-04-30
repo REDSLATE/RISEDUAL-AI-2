@@ -96,12 +96,15 @@ async def run_manual_order_guard(
             reasons=["manual_user_intent"],
         )
 
-        # Manual orders don't yet ship live market telemetry through
-        # this seam. Defaults keep the failure-mode branches dormant
-        # except DRAWDOWN_STRESS / loss_streak which come from the
-        # user's TrackRecord — so a user on a 4-loss streak
-        # automatically gets capped at 0.5x.
-        market_tel = MarketTelemetry(
+        # Manual orders try to use real telemetry baselines for the
+        # symbol — Patent M's volatility/liquidity branches activate
+        # only when we have at least 3 historical samples. Falls back
+        # to zeros (dormant branches) when the symbol is new.
+        from services.equity_telemetry import get_telemetry as _get_eq_tel
+        market_tel = await _get_eq_tel(
+            symbol,
+            asset_class=asset_class,
+        ) or MarketTelemetry(
             symbol=symbol.upper(),
             asset_type=asset_class,
             atr_pct=0.0, atr_pct_baseline=0.0,
