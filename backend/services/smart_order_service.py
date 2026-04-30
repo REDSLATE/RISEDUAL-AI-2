@@ -142,6 +142,10 @@ async def create_smart_order(user_id: str, order: dict) -> dict:
         "created_at": now,
         "updated_at": now,
         "fills": [],
+        # IP-contract entity_id from the manual-order guard (if the
+        # caller supplied one). Persisted so the cancel/close path can
+        # append OUTCOME_VERIFIED to the same proof chain.
+        "proof_chain_entity_id": order.get("proof_chain_entity_id"),
     }
 
     # For market orders, execute entry immediately
@@ -295,14 +299,57 @@ async def get_smart_orders(user_id: str, status: Optional[str] = None, limit: in
 
 
 async def cancel_smart_order(user_id: str, order_id: str) -> dict:
-    """Cancel a pending/active smart order."""
+    """Cancel a pending/active smart order.
+
+    On manual cancel of a filled order, append an OUTCOME_VERIFIED
+    proof block to the IP chain (step 10). The cancel is treated as
+    the close event with the current_price as exit. Failure to write
+    the proof block must NEVER block the cancel.
+    """
     from bson import ObjectId
+    oid = ObjectId(order_id)
+    # Capture the order pre-update so we have the entity_id + entry data
+    pre = await _db.smart_orders.find_one({"_id": oid, "user_id": user_id})
     result = await _db.smart_orders.update_one(
-        {"_id": ObjectId(order_id), "user_id": user_id, "status": {"$in": ["pending", "partially_filled", "filled"]}},
+        {"_id": oid, "user_id": user_id, "status": {"$in": ["pending", "partially_filled", "filled"]}},
         {"$set": {"status": "cancelled", "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     if result.matched_count == 0:
         return {"error": "Order not found or already completed"}
+
+    # Step 10 — append OUTCOME_VERIFIED for filled orders only. Pending/
+    # partially_filled never had an entry, so there's no realized P&L to
+    # log. Only fires when the entry-side guard wrote an entity_id.
+    try:
+        entity_id = (pre or {}).get("proof_chain_entity_id")
+        if entity_id and (pre or {}).get("avg_fill_price"):
+            from services.manual_order_guard import record_manual_order_outcome
+            entry_px = float(pre["avg_fill_price"])
+            exit_px = float(pre.get("current_price") or entry_px)
+            qty = float(pre.get("filled_qty") or pre.get("total_qty") or 0)
+            side = (pre.get("side") or "").upper()
+            sign = 1 if side in ("BUY", "LONG") else -1
+            pnl = (exit_px - entry_px) * qty * sign
+            await record_manual_order_outcome(
+                _db,
+                proof_chain_entity_id=entity_id,
+                trade_id=str(order_id),
+                symbol=pre.get("symbol", ""),
+                direction=side,
+                asset_class="equity",
+                entry_price=entry_px,
+                exit_price=exit_px,
+                quantity=qty,
+                pnl=pnl,
+                close_reason="manual_cancel",
+                actor=f"user:{user_id}",
+            )
+    except Exception as e:  # noqa: BLE001 — never block the cancel
+        logger.warning(
+            "[smart_orders] OUTCOME_VERIFIED append failed for %s: %s",
+            order_id, e,
+        )
+
     return {"status": "cancelled", "order_id": order_id}
 
 

@@ -142,17 +142,45 @@ class EnforcementPolicy:
 
     @staticmethod
     def from_env() -> "EnforcementPolicy":
+        """Build the policy from env-var defaults + Mongo runtime
+        overrides (set via the Guard Shadow admin UI's
+        Promote/Demote/Clear actions).
+
+        Env vars are the deploy-time seed; Mongo overrides are the
+        runtime-mutated truth. The store's process-local cache (TTL
+        30s) keeps this hot path cheap — at most one Mongo read per
+        30s per process, regardless of trade frequency.
+        """
         def _flag(name: str, default: bool = True) -> bool:
             raw = os.environ.get(name)
             if raw is None or raw == "":
                 return default
             return raw.lower() not in ("0", "false", "no", "off")
+
+        # Lazy import — keeps this dataclass importable in unit tests
+        # that don't go through service startup.
+        try:
+            from services.guard_policy_store import get_cached_overrides
+            overrides = get_cached_overrides()
+        except Exception:  # noqa: BLE001
+            overrides = {}
+
         return EnforcementPolicy(
-            enforce_adversarial=_flag("PATENT_K_ENFORCE"),
-            enforce_auditor=_flag("AUDITOR_ENFORCE"),
-            enforce_authority=_flag("AUTHORITY_ENFORCE"),
-            enforce_failure_mode=_flag("PATENT_M_ENFORCE"),
-            enforce_risk_budget=_flag("PATENT_I_ENFORCE"),
+            enforce_adversarial=overrides.get(
+                "enforce_adversarial", _flag("PATENT_K_ENFORCE"),
+            ),
+            enforce_auditor=overrides.get(
+                "enforce_auditor", _flag("AUDITOR_ENFORCE"),
+            ),
+            enforce_authority=overrides.get(
+                "enforce_authority", _flag("AUTHORITY_ENFORCE"),
+            ),
+            enforce_failure_mode=overrides.get(
+                "enforce_failure_mode", _flag("PATENT_M_ENFORCE"),
+            ),
+            enforce_risk_budget=overrides.get(
+                "enforce_risk_budget", _flag("PATENT_I_ENFORCE"),
+            ),
         )
 
     def all_enforced(self) -> bool:
@@ -201,6 +229,15 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
     every rejection path. Never raises (a contract failure is a
     rejection, not a crash).
     """
+    # Refresh the per-process policy override cache once per
+    # decision. Costs at most one Mongo read every 30s (TTL); the
+    # admin-UI Promote button writes here, this read picks it up.
+    try:
+        from services.guard_policy_store import refresh_cache_if_stale
+        await refresh_cache_if_stale()
+    except Exception:  # noqa: BLE001
+        pass
+
     proof_hashes: list[str] = []
 
     # Invariant 1: action is always one of the canonical three.

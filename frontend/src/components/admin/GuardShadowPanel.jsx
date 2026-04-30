@@ -1,10 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Eye, RefreshCw, Filter, ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Eye, RefreshCw, Filter, ShieldCheck, ShieldAlert, AlertTriangle, ArrowUpCircle, ArrowDownCircle, RotateCcw } from 'lucide-react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import { Input } from '../ui/input';
+import { toast } from '../ui/sonner';
 
 const API = `${getApiBase()}/api/admin/guard-shadow`;
+
+const FLAG_LABELS = {
+  enforce_adversarial: { name: 'Patent K — Adversarial', short: 'K' },
+  enforce_auditor: { name: 'Auditor — Calibration Veto', short: 'Aud' },
+  enforce_authority: { name: 'Authority — Expiry / Countersign', short: 'Auth' },
+  enforce_failure_mode: { name: 'Patent M — Failure Mode', short: 'M' },
+  enforce_risk_budget: { name: 'Patent I — Risk Budget', short: 'I' },
+};
 
 /**
  * GuardShadowPanel — operator surface for the Decision Pipeline Guard
@@ -21,6 +30,8 @@ const API = `${getApiBase()}/api/admin/guard-shadow`;
 const GuardShadowPanel = () => {
   const [summary, setSummary] = useState(null);
   const [decisions, setDecisions] = useState([]);
+  const [policy, setPolicy] = useState(null);
+  const [policyMutating, setPolicyMutating] = useState(null); // flag id while in-flight
   const [windowHours, setWindowHours] = useState(168); // 7 days default
   const [source, setSource] = useState('');
   const [onlyBlocked, setOnlyBlocked] = useState(false);
@@ -35,6 +46,15 @@ const GuardShadowPanel = () => {
       /* non-critical */
     }
   }, [windowHours]);
+
+  const loadPolicy = useCallback(async () => {
+    try {
+      const r = await authFetch(`${API}/policy`);
+      if (r.ok) setPolicy(await r.json());
+    } catch {
+      /* non-critical */
+    }
+  }, []);
 
   const loadDecisions = useCallback(async () => {
     setLoading(true);
@@ -59,11 +79,58 @@ const GuardShadowPanel = () => {
   useEffect(() => {
     loadSummary();
     loadDecisions();
-  }, [loadSummary, loadDecisions]);
+    loadPolicy();
+  }, [loadSummary, loadDecisions, loadPolicy]);
 
   const handleRefresh = () => {
     loadSummary();
     loadDecisions();
+    loadPolicy();
+  };
+
+  const promoteFlag = async (flag, value, note = '') => {
+    setPolicyMutating(flag);
+    try {
+      const r = await authFetch(`${API}/policy/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag, value, note }),
+      });
+      if (r.ok) {
+        toast.success(
+          `${FLAG_LABELS[flag]?.name || flag} → ${
+            value ? 'enforcing' : 'shadow'
+          }`,
+        );
+        await loadPolicy();
+      } else {
+        const err = await r.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to update policy');
+      }
+    } catch {
+      toast.error('Failed to update policy');
+    } finally {
+      setPolicyMutating(null);
+    }
+  };
+
+  const clearFlag = async (flag) => {
+    setPolicyMutating(flag);
+    try {
+      const r = await authFetch(`${API}/policy/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag }),
+      });
+      if (r.ok) {
+        toast.success(`${FLAG_LABELS[flag]?.name || flag} reverted to env default`);
+        await loadPolicy();
+      }
+    } catch {
+      toast.error('Failed to clear override');
+    } finally {
+      setPolicyMutating(null);
+    }
   };
 
   const blockRatePct =
@@ -237,6 +304,156 @@ const GuardShadowPanel = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Per-patent enforcement policy */}
+      {policy && (
+        <div
+          className="p-3 rounded-lg bg-slate-800/40 border border-slate-700/40"
+          data-testid="guard-shadow-policy"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldCheck className="w-3 h-3 text-[#3DE8D9]" />
+              Per-Patent Enforcement
+            </div>
+            <div className="text-[10px] text-slate-500">
+              {Object.keys(policy.overrides || {}).length > 0
+                ? `${Object.keys(policy.overrides).length} runtime override${
+                    Object.keys(policy.overrides).length === 1 ? '' : 's'
+                  }`
+                : 'all flags at env defaults'}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {Object.entries(FLAG_LABELS).map(([flag, meta]) => {
+              const effective = policy.effective?.[flag];
+              const hasOverride = flag in (policy.overrides || {});
+              const envDefault = policy.env_defaults?.[flag];
+              const inFlight = policyMutating === flag;
+              return (
+                <div
+                  key={flag}
+                  className="flex items-center justify-between p-2 rounded bg-slate-900/40 border border-slate-700/30"
+                  data-testid={`guard-shadow-policy-row-${flag}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                        effective
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {meta.short}
+                    </span>
+                    <span className="text-xs text-slate-200 truncate">
+                      {meta.name}
+                    </span>
+                    {hasOverride && (
+                      <span
+                        className="text-[9px] text-[#3DE8D9] uppercase tracking-wider"
+                        title={`Env default: ${envDefault ? 'enforcing' : 'shadow'}`}
+                      >
+                        override
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider w-16 text-center ${
+                        effective ? 'text-emerald-400' : 'text-amber-300'
+                      }`}
+                      data-testid={`guard-shadow-policy-status-${flag}`}
+                    >
+                      {effective ? 'enforcing' : 'shadow'}
+                    </span>
+                    {effective ? (
+                      <button
+                        onClick={() => promoteFlag(flag, false)}
+                        disabled={inFlight}
+                        className="px-2 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-medium uppercase tracking-wider transition-colors disabled:opacity-40 flex items-center gap-1"
+                        title="Demote to shadow — gate runs but does not block"
+                        data-testid={`guard-shadow-policy-demote-${flag}`}
+                      >
+                        <ArrowDownCircle className="w-3 h-3" />
+                        Demote
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => promoteFlag(flag, true)}
+                        disabled={inFlight}
+                        className="px-2 py-1 rounded bg-[#3DE8D9]/15 hover:bg-[#3DE8D9]/25 border border-[#3DE8D9]/30 text-[#3DE8D9] text-[10px] font-medium uppercase tracking-wider transition-colors disabled:opacity-40 flex items-center gap-1"
+                        title="Promote to enforcement — gate now blocks"
+                        data-testid={`guard-shadow-policy-promote-${flag}`}
+                      >
+                        <ArrowUpCircle className="w-3 h-3" />
+                        Promote
+                      </button>
+                    )}
+                    {hasOverride && (
+                      <button
+                        onClick={() => clearFlag(flag)}
+                        disabled={inFlight}
+                        className="px-2 py-1 rounded bg-slate-700/40 hover:bg-slate-700/60 border border-slate-600/40 text-slate-300 text-[10px] uppercase tracking-wider transition-colors disabled:opacity-40 flex items-center gap-1"
+                        title={`Revert to env default (${
+                          envDefault ? 'enforcing' : 'shadow'
+                        })`}
+                        data-testid={`guard-shadow-policy-clear-${flag}`}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {policy.history && policy.history.length > 0 && (
+            <details className="mt-3 text-[10px] text-slate-500">
+              <summary className="cursor-pointer hover:text-slate-300 uppercase tracking-wider">
+                Recent changes ({policy.history.length})
+              </summary>
+              <div className="mt-2 space-y-1 max-h-40 overflow-auto">
+                {[...policy.history].reverse().map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex items-baseline gap-2 px-2 py-1 rounded bg-slate-950/50"
+                  >
+                    <span className="text-slate-500 text-[9px] flex-shrink-0">
+                      {h.at?.slice(0, 19).replace('T', ' ')}
+                    </span>
+                    <span className="text-slate-300 font-mono">{h.flag}</span>
+                    <span className="text-slate-400">→</span>
+                    <span
+                      className={
+                        h.value === null
+                          ? 'text-slate-400'
+                          : h.value
+                          ? 'text-emerald-400'
+                          : 'text-amber-300'
+                      }
+                    >
+                      {h.value === null
+                        ? 'cleared'
+                        : h.value
+                        ? 'enforcing'
+                        : 'shadow'}
+                    </span>
+                    <span className="text-slate-500 text-[9px] truncate">
+                      {h.actor}
+                    </span>
+                    {h.note && (
+                      <span className="text-slate-500 text-[9px] italic truncate">
+                        — {h.note}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 

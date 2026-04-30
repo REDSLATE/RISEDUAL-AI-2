@@ -17,6 +17,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from routes.auth import get_current_user
+from services.guard_policy_store import (
+    VALID_FLAGS,
+    clear_override,
+    get_state,
+    set_override,
+)
 from services.guard_shadow_log import COLLECTION, is_shadow_mode_enabled
 
 router = APIRouter(prefix="/api/admin/guard-shadow", tags=["admin", "guard-shadow"])
@@ -147,3 +153,109 @@ async def list_decisions(
             "entity_substr": entity_substr,
         },
     }
+
+
+
+# ── Per-patent enforcement policy (Promote/Demote/Clear) ──────────────
+
+
+@router.get("/policy")
+async def get_policy(request: Request):
+    """Current effective policy + history.
+
+    Returns ``effective`` (env-default merged with Mongo overrides as
+    the IP contract sees it), ``overrides`` (just the Mongo deltas),
+    ``env_defaults`` (read-only baseline so the UI can show what
+    reverting to env would do), and a recent ``history`` array.
+    """
+    await _require_owner(request)
+    state = await get_state(_db)
+
+    # Recompute effective from process — same logic as
+    # ``EnforcementPolicy.from_env`` but explicit about what's an
+    # env default vs an override.
+    import os as _os
+
+    def _flag(name: str) -> bool:
+        raw = _os.environ.get(name, "")
+        if raw == "":
+            return True
+        return raw.lower() not in ("0", "false", "no", "off")
+
+    env_defaults = {
+        "enforce_adversarial": _flag("PATENT_K_ENFORCE"),
+        "enforce_auditor": _flag("AUDITOR_ENFORCE"),
+        "enforce_authority": _flag("AUTHORITY_ENFORCE"),
+        "enforce_failure_mode": _flag("PATENT_M_ENFORCE"),
+        "enforce_risk_budget": _flag("PATENT_I_ENFORCE"),
+    }
+    overrides = state.get("overrides") or {}
+    effective = {k: overrides.get(k, env_defaults[k]) for k in env_defaults}
+
+    return {
+        "effective": effective,
+        "overrides": overrides,
+        "env_defaults": env_defaults,
+        "history": state.get("history") or [],
+        "updated_at": state.get("updated_at"),
+        "shadow_mode_enabled": is_shadow_mode_enabled(),
+        "valid_flags": sorted(VALID_FLAGS),
+    }
+
+
+@router.post("/policy/promote")
+async def promote_flag(request: Request):
+    """Set a single flag's override.
+
+    Body: {"flag": "enforce_adversarial", "value": true, "note": "..."}
+
+    Effect: writes the override to Mongo. The next IP-contract
+    evaluation in any worker (<=30s lag from the per-process cache
+    TTL) starts honouring the new value. No restart needed.
+    """
+    user = await _require_owner(request)
+    body = await request.json()
+    flag = (body.get("flag") or "").strip()
+    value = bool(body.get("value"))
+    note = (body.get("note") or "").strip()
+    if flag not in VALID_FLAGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"flag must be one of {sorted(VALID_FLAGS)}",
+        )
+    entry = await set_override(
+        _db, flag=flag, value=value,
+        actor=user.get("email") or user.get("id") or "unknown",
+        note=note,
+    )
+    # Also force a cache refresh so the UI sees the change immediately
+    # rather than waiting up to 30s for the next decision-time refresh.
+    try:
+        from services.guard_policy_store import load_overrides_into_cache
+        await load_overrides_into_cache()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "applied": entry}
+
+
+@router.post("/policy/clear")
+async def clear_flag(request: Request):
+    """Remove a flag's override so the env-default takes over again."""
+    user = await _require_owner(request)
+    body = await request.json()
+    flag = (body.get("flag") or "").strip()
+    if flag not in VALID_FLAGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"flag must be one of {sorted(VALID_FLAGS)}",
+        )
+    await clear_override(
+        _db, flag=flag,
+        actor=user.get("email") or user.get("id") or "unknown",
+    )
+    try:
+        from services.guard_policy_store import load_overrides_into_cache
+        await load_overrides_into_cache()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "cleared": flag}

@@ -123,8 +123,29 @@ async def create_order(request: Request, order: SmartOrderRequest):
                         "message": guard.get("message", "Order blocked by guard"),
                     },
                 )
+            # Persist the IP-contract entity_id on the order payload so
+            # ``smart_order_service`` carries it through to the
+            # smart_orders Mongo row. The position-close path can then
+            # call ``record_manual_order_outcome`` to append
+            # OUTCOME_VERIFIED — closing the IP chain proposal-through
+            # realized-P&L for manual orders.
+            entity_id = guard.get("proof_chain_entity_id")
+            if entity_id:
+                # Stash in a side-channel field consumed by
+                # ``create_smart_order``. Keeping it on the dict (not
+                # the pydantic model) avoids schema-bumping the public
+                # SmartOrderCreate contract.
+                order_dict_extra = {"proof_chain_entity_id": entity_id}
+            else:
+                order_dict_extra = {}
+        else:
+            order_dict_extra = {}
+    else:
+        order_dict_extra = {}
 
-    result = await create_smart_order(user_id, order.model_dump())
+    result = await create_smart_order(
+        user_id, {**order.model_dump(), **order_dict_extra},
+    )
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result

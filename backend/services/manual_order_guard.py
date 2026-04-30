@@ -206,6 +206,7 @@ async def run_manual_order_guard(
                 "would_notional": float(guard.get("notional") or 0.0),
                 "proof_hashes": guard.get("proof_hashes", []),
                 "reasons": guard.get("reasons", []),
+                "proof_chain_entity_id": ip_ctx.request_id,
             }
 
         if not guard["allow"]:
@@ -216,6 +217,7 @@ async def run_manual_order_guard(
                            + ", ".join(guard["reasons"][:3]),
                 "proof_hashes": guard["proof_hashes"],
                 "reasons": guard["reasons"],
+                "proof_chain_entity_id": ip_ctx.request_id,
             }
 
         return {
@@ -224,6 +226,12 @@ async def run_manual_order_guard(
             "risk_multiplier": float(guard["risk_multiplier"]),
             "proof_hashes": guard["proof_hashes"],
             "reasons": guard["reasons"],
+            # Returned so the route can persist on its order/trade
+            # record. ``record_manual_order_outcome`` reads it back at
+            # close time to append OUTCOME_VERIFIED — closing the IP
+            # chain proposal-through-realized-P&L for manual orders
+            # the same way ``crypto_closer`` does for the bot.
+            "proof_chain_entity_id": ip_ctx.request_id,
         }
     except Exception as e:  # noqa: BLE001 — fail-open is intentional
         # for manual orders. The user clicked the button; we don't
@@ -231,3 +239,81 @@ async def run_manual_order_guard(
         # observability catches the issue.
         logger.warning("[manual_guard] pipeline error, falling open: %s", e)
         return {"allow": True, "notional": base_notional, "skipped": True, "error": str(e)}
+
+
+
+async def record_manual_order_outcome(
+    db: Any,
+    *,
+    proof_chain_entity_id: str,
+    trade_id: Optional[str],
+    symbol: str,
+    direction: str,
+    asset_class: str,
+    entry_price: float,
+    exit_price: float,
+    quantity: float,
+    pnl: float,
+    r_multiple: Optional[float] = None,
+    close_reason: str = "manual_close",
+    actor: str = "manual",
+) -> Optional[str]:
+    """Append an ``OUTCOME_VERIFIED`` block to the manual order's IP chain.
+
+    Step 10 of the IP lifecycle for manual orders. Mirrors the
+    crypto_closer flow:
+
+      * Caller (route handler / position-close webhook) supplies the
+        ``proof_chain_entity_id`` it persisted on the order/trade
+        record at fill time (returned by ``run_manual_order_guard``).
+      * We append a single OUTCOME_VERIFIED proof block linking
+        entry chain → realized P&L. The block uses the same
+        ``entity_id`` so verifiers walk one continuous hash chain
+        from proposal through close.
+
+    Returns the new block hash on success, ``None`` if the entity_id
+    is missing or the append fails. Failure NEVER raises — closing a
+    position must not be blocked by an audit-log issue.
+    """
+    if not proof_chain_entity_id:
+        return None
+    if db is None:
+        return None
+    try:
+        from services.proof_chain import (
+            AsyncMongoProofChainStore,
+            ProofEvent,
+            ProofEventType,
+            async_append_proof_event,
+        )
+        outcome = "win" if pnl > 0 else ("loss" if pnl < 0 else "flat")
+        block = await async_append_proof_event(
+            AsyncMongoProofChainStore(db),
+            ProofEvent(
+                event_type=ProofEventType.OUTCOME_VERIFIED,
+                entity_id=proof_chain_entity_id,
+                actor=actor,
+                payload={
+                    "trade_id": trade_id,
+                    "symbol": (symbol or "").upper(),
+                    "direction": (direction or "").upper(),
+                    "asset_class": asset_class,
+                    "entry_price": float(entry_price or 0.0),
+                    "exit_price": float(exit_price or 0.0),
+                    "quantity": float(quantity or 0.0),
+                    "pnl": float(pnl or 0.0),
+                    "r_multiple": (
+                        float(r_multiple) if r_multiple is not None else None
+                    ),
+                    "close_reason": close_reason,
+                    "outcome": outcome,
+                },
+            ),
+        )
+        return block.block_hash
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[manual_guard] OUTCOME_VERIFIED append failed for entity=%s: %s",
+            proof_chain_entity_id, e,
+        )
+        return None

@@ -195,6 +195,13 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_proof_chain_db,
         set_admin_guard_shadow_db,
     ]
+    # Module-level db handle for the per-patent policy store so the
+    # IP contract can read overrides without an explicit db arg.
+    try:
+        from services.guard_policy_store import set_db as _set_policy_db
+        _set_policy_db(db)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"guard_policy_store db wire failed: {e}")
     for setter in _setters:
         try:
             setter(db)

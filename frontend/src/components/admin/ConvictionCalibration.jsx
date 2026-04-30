@@ -240,6 +240,28 @@ const ConvictionCalibration = () => {
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Win-rate bucketed by conviction score. Healthy = monotonically rising.
+            {data && (
+              <span
+                className="text-slate-500 ml-2"
+                data-testid="conviction-counts-line"
+              >
+                ·{' '}
+                <span
+                  className="text-slate-300 tabular-nums"
+                  data-testid="conviction-total-verified"
+                >
+                  {data.total_verified.toLocaleString()}
+                </span>{' '}
+                verified ·{' '}
+                <span
+                  className="text-slate-300 tabular-nums"
+                  data-testid="conviction-total-tagged"
+                >
+                  {data.total_with_conviction.toLocaleString()}
+                </span>{' '}
+                tagged
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -292,43 +314,9 @@ const ConvictionCalibration = () => {
         </div>
       )}
 
-      {/* Summary stats + conviction buckets */}
+      {/* Conviction buckets */}
       {data && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-400/20">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                Verified predictions
-              </div>
-              <div
-                className="text-white text-lg font-semibold tabular-nums"
-                data-testid="conviction-total-verified"
-              >
-                {data.total_verified.toLocaleString()}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-400/20">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                With conviction tag
-              </div>
-              <div
-                className="text-white text-lg font-semibold tabular-nums"
-                data-testid="conviction-total-tagged"
-              >
-                {data.total_with_conviction.toLocaleString()}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-400/20 col-span-2 sm:col-span-1">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                Window
-              </div>
-              <div className="text-white text-lg font-semibold tabular-nums">
-                {data.window_days}d
-              </div>
-            </div>
-          </div>
-
-          {/* Conviction buckets */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
@@ -362,18 +350,28 @@ const ConvictionCalibration = () => {
             )}
           </div>
 
-          {/* Confidence fallback buckets */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
+          {/* Confidence fallback buckets — collapsed when conviction
+              data is populated since it's just a coarser view of the
+              same thing. Operators can expand if they want to compare
+              conviction-tagged vs all-verified accuracy. */}
+          <details
+            className="group"
+            open={!hasConvictionData}
+            data-testid="conviction-fallback-details"
+          >
+            <summary className="cursor-pointer flex items-center justify-between mb-2 hover:text-white transition-colors">
+              <h4 className="text-xs uppercase tracking-wide text-slate-400 font-semibold flex items-center gap-1.5">
                 By raw confidence (fallback)
+                <span className="text-[9px] text-slate-500 normal-case tracking-normal">
+                  {hasConvictionData ? 'click to expand' : ''}
+                </span>
               </h4>
               <MonotonicBadge
                 status={data.monotonic?.confidence}
                 label="confidence"
               />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            </summary>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
               {data.by_confidence.map((b) => (
                 <BucketRow
                   key={b.label}
@@ -382,7 +380,7 @@ const ConvictionCalibration = () => {
                 />
               ))}
             </div>
-          </div>
+          </details>
 
           <p className="text-[10px] text-slate-500">
             Generated {new Date(data.generated_at).toLocaleString()}
