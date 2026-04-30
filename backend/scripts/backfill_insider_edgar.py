@@ -29,7 +29,11 @@ import logging
 import os
 import sys
 import time
-import xml.etree.ElementTree as ET
+# defusedxml hardens stdlib ElementTree against XXE / billion-laughs /
+# external-DTD attacks. SEC EDGAR is reputable but "untrusted XML" is
+# the default classification for any third-party feed; this swap is
+# free and the only change required to satisfy bandit B314.
+import defusedxml.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 from typing import Any

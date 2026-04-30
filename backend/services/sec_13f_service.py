@@ -18,13 +18,17 @@ import asyncio
 import logging
 import os
 import re
-import xml.etree.ElementTree as ET
+# defusedxml hardens stdlib ElementTree against XXE / billion-laughs /
+# external-DTD attacks. The 13F XMLs come from data.sec.gov which we
+# trust as a publisher, but the XML parser is downstream of public
+# HTTP; treating the input as untrusted is the safe default.
+import defusedxml.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
-from services.structured_log import log_error, log_warning
+from services.structured_log import log_warning
 
 logger = logging.getLogger(__name__)
 

@@ -457,7 +457,10 @@ const GuardShadowPanel = () => {
               <div className="mt-2 space-y-1 max-h-40 overflow-auto">
                 {[...policy.history].reverse().map((h, i) => (
                   <div
-                    key={i}
+                    // History rows have a real timestamp + flag pair
+                    // — far more stable than the array index when
+                    // the list grows on each policy change.
+                    key={`${h.at ?? i}-${h.flag ?? ''}`}
                     className="flex items-baseline gap-2 px-2 py-1 rounded bg-slate-950/50"
                   >
                     <span className="text-slate-500 text-[9px] flex-shrink-0">
