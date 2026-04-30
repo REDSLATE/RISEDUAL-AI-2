@@ -672,8 +672,16 @@ async def get_positions(broker_id: str, request: Request):
 # ORDER MANAGEMENT
 # ============================================================
 
-async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, result: dict) -> None:
-    """Log order to MongoDB and send notifications."""
+async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, result: dict, *, proof_chain_entity_id: Optional[str] = None) -> None:
+    """Log order to MongoDB and send notifications.
+
+    ``proof_chain_entity_id`` is persisted alongside the order so the
+    nightly position-reconciler (``services/position_reconciler.py``)
+    can append OUTCOME_VERIFIED to the same proof chain when the
+    broker reports the position has closed externally. Without this
+    field the chain dead-ends at fill and Step-10 of the IP lifecycle
+    can never close.
+    """
     await db.trade_orders.insert_one({
         "user_id": user_id,
         "broker_id": broker_id,
@@ -686,6 +694,8 @@ async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, resul
         "limit_price": req.limit_price,
         "stop_price": req.stop_price,
         "created_at": datetime.now(timezone.utc),
+        "proof_chain_entity_id": proof_chain_entity_id,
+        "outcome_appended": False,
     })
     try:
         from services.push_service import notify_trade_execution
@@ -724,20 +734,12 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
     if not result:
         raise HTTPException(status_code=400, detail="Order rejected by broker")
 
-    await _log_order(user_id, broker_id, req, result)
-
     # ── Patent J/K/M/I — post-fill guard audit ───────────────────────
-    # Phase 1 of the integration is observation — we don't reject the
-    # order based on the decision (the broker already accepted it).
-    # Phase 2 will move this gate *before* the broker call once we
-    # Post-fill audit — log the fill into the IP proof chain for
-    # compliance. Step 10 (OUTCOME_VERIFIED) is NOT appended here:
-    # broker fills are external (Alpaca/Tradier place the order, the
-    # actual close happens days later when the user reduces position),
-    # and there's no local position-reconciliation layer that could
-    # detect those closes. The entity_id flows out in the response so
-    # a future reconciler (broker webhook listener / nightly position
-    # delta) can call ``record_manual_order_outcome`` on close.
+    # Run the manual-order guard *before* we persist the order row so
+    # the entity_id can be written into ``trade_orders`` atomically.
+    # The position reconciler later reads it back to append
+    # OUTCOME_VERIFIED on close. Failure here is non-fatal — we log
+    # and proceed with status=None so the order still records.
     proof_chain_entity_id = None
     try:
         _est_notional = float(req.quantity) * float(req.limit_price or 0.0)
@@ -761,6 +763,8 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
             proof_chain_entity_id = (_g or {}).get("proof_chain_entity_id")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[manual_guard] post-fill audit failed (non-critical): {e}")
+
+    await _log_order(user_id, broker_id, req, result, proof_chain_entity_id=proof_chain_entity_id)
 
     return {
         "status": result.get("status", "submitted"),

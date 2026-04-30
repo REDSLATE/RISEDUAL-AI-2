@@ -71,6 +71,7 @@ async def _log_order_audit(
     status: str,
     routing_mode: str,
     is_spread: bool,
+    proof_chain_entity_id: Optional[str] = None,
 ) -> None:
     """Persist a one-line audit record for every live options order.
 
@@ -80,6 +81,10 @@ async def _log_order_audit(
     so future audits can prove ODD was accepted BEFORE the order
     was placed without having to cross-reference the user document
     (which could be modified later).
+
+    ``proof_chain_entity_id`` (when non-null) anchors the order to
+    its IP proof chain so the position reconciler can append
+    OUTCOME_VERIFIED when the broker reports the contract closed.
 
     Best-effort: a Mongo write failure is logged but never blocks
     the order from completing. The broker already accepted the
@@ -104,6 +109,8 @@ async def _log_order_audit(
             "is_spread": is_spread,
             "odd_accepted_at": odd_at,
             "created_at": datetime.now(timezone.utc),
+            "proof_chain_entity_id": proof_chain_entity_id,
+            "outcome_appended": False,
         })
     except Exception as exc:
         log_error(logger, {
@@ -470,26 +477,11 @@ async def place_order(body: OptionOrderRequest, request: Request):
         })
         raise HTTPException(status_code=502, detail="Broker order placement failed")
 
-    await _log_order_audit(
-        user=user,
-        provider=provider,
-        occ_symbol=occ,
-        legs=[{"occ_symbol": occ, "qty": leg.qty, "side": leg.side.value}],
-        order_type=body.order_type,
-        time_in_force=body.time_in_force,
-        limit_price=body.limit_price,
-        order_id=order.order_id,
-        status=order.status.value,
-        routing_mode="direct",
-        is_spread=False,
-    )
-
     # ── Patent J/K/M/I — post-fill guard audit ───────────────────────
-    # Post-fill audit — log into the IP proof chain. Step 10
-    # (OUTCOME_VERIFIED) is deferred: options fills are external and
-    # no local position-reconciler exists yet. The entity_id flows
-    # out in the response so a future close-detection layer can link
-    # the eventual exit P&L back to the same chain.
+    # Run the manual-order guard BEFORE persisting the audit row so
+    # the entity_id can be written into ``option_orders`` atomically.
+    # The position reconciler later uses it to append OUTCOME_VERIFIED
+    # when the broker reports the contract closed externally.
     proof_chain_entity_id = None
     try:
         _est_notional = float(body.qty) * float(body.limit_price or 0.0) * 100.0
@@ -514,6 +506,21 @@ async def place_order(body: OptionOrderRequest, request: Request):
             proof_chain_entity_id = (_g or {}).get("proof_chain_entity_id")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[manual_guard] options post-fill audit failed: {e}")
+
+    await _log_order_audit(
+        user=user,
+        provider=provider,
+        occ_symbol=occ,
+        legs=[{"occ_symbol": occ, "qty": leg.qty, "side": leg.side.value}],
+        order_type=body.order_type,
+        time_in_force=body.time_in_force,
+        limit_price=body.limit_price,
+        order_id=order.order_id,
+        status=order.status.value,
+        routing_mode="direct",
+        is_spread=False,
+        proof_chain_entity_id=proof_chain_entity_id,
+    )
 
     return {
         "order_id": order.order_id,

@@ -622,6 +622,13 @@ async def _start_schedulers():
         scheduler.add_job(_run_ai_core_nightly, 'cron',
                           hour=2, minute=45, id='ai_core_nightly',
                           replace_existing=True)
+        # ── Position reconciler (Step 10 OUTCOME_VERIFIED for
+        # external broker fills — equity + options, every 30 min) ──
+        # No-op when no rows have proof_chain_entity_id pending; the
+        # initial query is index-friendly and bounded at 200 rows.
+        scheduler.add_job(_run_position_reconciler, 'interval',
+                          minutes=30, id='position_reconciler',
+                          replace_existing=True)
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -630,7 +637,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -642,6 +649,21 @@ async def _check_smart_orders():
         await check_smart_orders()
     except Exception as e:
         logger.debug(f"Smart order check error: {e}")
+
+
+async def _run_position_reconciler():
+    """Background: append OUTCOME_VERIFIED proof blocks for filled live
+    broker / options orders that the broker now reports as closed.
+
+    Wraps the entire sweep in try/except so a single broker outage
+    can't kill the scheduler thread. Logs structured summary (only
+    when ``processed > 0``) so quiet runs don't spam the log.
+    """
+    try:
+        from services.position_reconciler import run_position_reconciler
+        await run_position_reconciler(db)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Position reconciler tick failed: {e}")
 
 
 async def _run_grid_bots():
