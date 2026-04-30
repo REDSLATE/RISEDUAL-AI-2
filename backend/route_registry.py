@@ -82,6 +82,10 @@ from routes.admin_blocks_prevented import router as admin_blocks_prevented_route
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
+# Side-effect import: registers all ``BaseETLJob`` subclasses with
+# the ETL framework registry. Must run before
+# ``services.etl_registry.all_jobs()`` is consulted at startup.
+import services.etl_jobs  # noqa: F401
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db

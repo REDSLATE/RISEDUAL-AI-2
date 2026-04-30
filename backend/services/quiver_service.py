@@ -29,7 +29,7 @@ from typing import Optional
 
 from services.sliding_cache import SlidingCache
 
-from services.structured_log import log_error, log_warning
+from services.structured_log import log_warning
 
 logger = logging.getLogger(__name__)
 
@@ -226,14 +226,45 @@ async def _fetch_with_live_fallback(
 
 
 async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent congressional stock trades from QuiverQuant.
+    """Fetch recent congressional stock trades.
 
-    Ticker-specific calls route through `_fetch_with_live_fallback`
-    because Quiver's `beta/historical/congresstrading/{ticker}` has
-    been 500-ing persistently while `beta/live/congresstrading`
-    (full feed) works. The live feed is cached for 6h, so N per-ticker
-    lookups during that window cost exactly one upstream request.
+    Prefers the Mongo-backed ETL cache
+    (``quiver_congress_trades`` collection, refreshed weekly) for
+    sub-10ms reads. Falls back to the legacy live-feed path when:
+
+    * The ETL cache has not yet been populated (first week after
+      framework deploy)
+    * The cache returns zero rows for the requested ticker (the
+      ETL might not have seen it yet — the live feed has the
+      most recent trades)
+
+    Caller shape unchanged from the pre-ETL implementation, so
+    every existing consumer in ``routes/quiver.py`` /
+    ``services/gov_filings_service.py`` / etc. keeps working
+    without modification.
     """
+    # Prefer the ETL cache when a Mongo handle is available.
+    try:
+        from server import db as _server_db
+        if _server_db is not None:
+            from services.etl_jobs.quiver_congress_trades import (
+                get_congressional_trades_cached,
+            )
+            cached_rows = await get_congressional_trades_cached(
+                _server_db, ticker=ticker, limit=limit,
+            )
+            if cached_rows:
+                return cached_rows
+            # Empty result → fall through to live feed for the
+            # first week post-deploy or when the ticker hasn't
+            # been seen yet.
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            f"ETL cache lookup failed, falling back to live: {exc}"
+        )
+
+    # Legacy live-feed path. Kept identical to the pre-ETL
+    # implementation so the fallback behaviour is unchanged.
     if ticker:
         data = await _fetch_with_live_fallback(
             primary_url=f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker}",
@@ -278,7 +309,7 @@ async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20
             "source": "quiverquant",
         })
 
-    logger.info(f"QuiverQuant congressional: {len(trades)} trades")
+    logger.info(f"QuiverQuant congressional (live fallback): {len(trades)} trades")
     return trades
 
 
