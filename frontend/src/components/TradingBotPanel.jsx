@@ -10,6 +10,7 @@ import { authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
 import PanelShell from './PanelShell';
 import TradingModeBanner from './TradingModeBanner';
+import { useTradingMode } from '../hooks/useTradingMode';
 
 const API = `${getApiBase()}/api/bots`;
 
@@ -110,9 +111,13 @@ const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook }) => {
 };
 
 const CreateBotForm = ({ onCreated }) => {
+  const tradingMode = useTradingMode();
   const [type, setType] = useState('grid');
   const [name, setName] = useState('');
-  const [mode, setMode] = useState('paper');
+  // Bots inherit the user's current global trading mode at creation
+  // time. The Paper/Live switch lives only in the navbar pill — having
+  // a per-bot picker here was a duplicate that confused operators.
+  const mode = tradingMode.mode || 'paper';
   const [creating, setCreating] = useState(false);
 
   // Grid config
@@ -178,10 +183,19 @@ const CreateBotForm = ({ onCreated }) => {
         </div>
         <div>
           <Label className="text-slate-400 text-[10px]">Mode</Label>
-          <Select value={mode} onValueChange={setMode}>
-            <SelectTrigger className="bg-slate-800 border-slate-600 text-white h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="paper">Paper</SelectItem><SelectItem value="live">Live</SelectItem></SelectContent>
-          </Select>
+          <div
+            className={`h-8 px-2 rounded-md border flex items-center justify-between text-[10px] font-bold uppercase tracking-wider ${
+              mode === 'live'
+                ? 'bg-orange-500/10 text-orange-300 border-orange-500/30'
+                : 'bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/30'
+            }`}
+            title="Inherits the global trading mode from the navbar pill"
+            data-testid="create-bot-mode-display"
+            data-mode={mode}
+          >
+            <span>{mode}</span>
+            <span className="text-slate-500 text-[8px] font-normal normal-case tracking-normal">navbar</span>
+          </div>
         </div>
       </div>
 

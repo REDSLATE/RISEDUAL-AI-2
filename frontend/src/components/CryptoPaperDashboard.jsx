@@ -61,7 +61,7 @@ export default function CryptoPaperDashboard() {
   if (error) {
     return (
       <div
-        className="p-4 rounded-2xl bg-neutral-950 border border-red-900 text-red-300 text-sm"
+        className="p-4 rounded-2xl bg-slate-900/40 border border-red-500/30 text-red-300 text-sm"
         data-testid="crypto-dashboard-error"
       >
         Crypto dashboard error: {error}
@@ -72,7 +72,7 @@ export default function CryptoPaperDashboard() {
   if (!data) {
     return (
       <div
-        className="p-4 text-sm text-gray-400"
+        className="p-4 text-sm text-slate-400"
         data-testid="crypto-dashboard-loading"
       >
         Loading crypto paper dashboard…
@@ -82,15 +82,15 @@ export default function CryptoPaperDashboard() {
 
   return (
     <div
-      className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800"
+      className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/40"
       data-testid="crypto-paper-dashboard"
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <div className="text-lg font-semibold text-white">
+          <div className="text-sm font-semibold text-white uppercase tracking-wider">
             Crypto Paper Bots
           </div>
-          <div className="text-xs text-gray-400">
+          <div className="text-[11px] text-slate-400 mt-0.5">
             Isolated 24/7 crypto lane
           </div>
         </div>
@@ -101,7 +101,7 @@ export default function CryptoPaperDashboard() {
             <button
               onClick={() => postAction('/api/crypto/paper-bot/run')}
               disabled={running}
-              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs transition"
+              className="px-3 py-1.5 rounded-md bg-[#3DE8D9] hover:bg-[#7AEEE0] disabled:opacity-40 text-slate-900 text-xs font-semibold transition-colors"
               data-testid="crypto-run-bot-btn"
             >
               Run Bot
@@ -109,7 +109,7 @@ export default function CryptoPaperDashboard() {
             <button
               onClick={() => postAction('/api/crypto/paper-trades/close')}
               disabled={running}
-              className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs transition"
+              className="px-3 py-1.5 rounded-md bg-slate-700/60 hover:bg-slate-600/60 border border-slate-600/40 disabled:opacity-40 text-slate-200 text-xs font-medium transition-colors"
               data-testid="crypto-close-trades-btn"
             >
               Close Due Trades
@@ -131,19 +131,19 @@ export default function CryptoPaperDashboard() {
         />
         <Stat
           label="PnL"
-          value={`$${Number(data.total_pnl).toFixed(2)}`}
-          tone={Number(data.total_pnl) >= 0 ? 'pos' : 'neg'}
+          value={`$${Number(data.total_pnl || 0).toFixed(2)}`}
+          tone={Number(data.total_pnl || 0) >= 0 ? 'pos' : 'neg'}
           testId="crypto-stat-pnl"
         />
         <Stat
           label="Win Rate"
-          value={`${(Number(data.win_rate) * 100).toFixed(1)}%`}
+          value={`${(Number(data.win_rate || 0) * 100).toFixed(1)}%`}
           testId="crypto-stat-winrate"
         />
       </div>
 
       <div className="mb-4">
-        <div className="text-sm text-white mb-2">
+        <div className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">
           Active Crypto Adaptations
         </div>
         {data.active_adaptations?.length ? (
@@ -154,14 +154,14 @@ export default function CryptoPaperDashboard() {
             {data.active_adaptations.map((a, i) => (
               <div
                 key={`${a.failure_code}-${a.regime}-${i}`}
-                className="text-xs p-2 rounded bg-neutral-900 border border-neutral-800"
+                className="text-xs p-2 rounded bg-slate-900/50 border border-slate-700/30"
               >
-                <span className="text-yellow-300">{a.failure_code}</span>{' '}
-                <span className="text-gray-400">under</span>{' '}
-                <span className="text-cyan-300">{a.regime}</span>{' '}
-                <span className="text-gray-400">×{a.factor}</span>
+                <span className="text-amber-300">{a.failure_code}</span>{' '}
+                <span className="text-slate-500">under</span>{' '}
+                <span className="text-[#3DE8D9]">{a.regime}</span>{' '}
+                <span className="text-slate-500">×{a.factor}</span>
                 {a.evidence_count != null && (
-                  <span className="text-gray-500 ml-2">
+                  <span className="text-slate-500 ml-2">
                     (evidence={a.evidence_count})
                   </span>
                 )}
@@ -170,7 +170,7 @@ export default function CryptoPaperDashboard() {
           </div>
         ) : (
           <div
-            className="text-xs text-gray-500"
+            className="text-xs text-slate-500 italic"
             data-testid="crypto-adaptations-empty"
           >
             No active adaptations yet.
@@ -179,11 +179,11 @@ export default function CryptoPaperDashboard() {
       </div>
 
       <div>
-        <div className="text-sm text-white mb-2">
+        <div className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">
           Recent Crypto Paper Trades
         </div>
         <div
-          className="space-y-2"
+          className="space-y-1.5"
           data-testid="crypto-recent-trades-list"
         >
           {data.recent_trades?.map((t) => (
@@ -191,7 +191,7 @@ export default function CryptoPaperDashboard() {
               key={t.trade_id}
               type="button"
               onClick={() => setDrawerSymbol(drawerSymbol === t.symbol ? null : t.symbol)}
-              className={`w-full text-left text-xs p-2 rounded bg-neutral-900 border ${drawerSymbol === t.symbol ? 'border-cyan-500/40' : 'border-neutral-800'} hover:border-cyan-500/40 flex justify-between transition-colors`}
+              className={`w-full text-left text-xs p-2 rounded bg-slate-900/40 border ${drawerSymbol === t.symbol ? 'border-[#3DE8D9]/40' : 'border-slate-700/30'} hover:border-[#3DE8D9]/40 flex justify-between items-center transition-colors`}
               data-testid={`crypto-trade-row-${t.symbol}`}
             >
               <div>
@@ -205,19 +205,19 @@ export default function CryptoPaperDashboard() {
                 >
                   {t.direction}
                 </span>{' '}
-                <span className="text-gray-500">{t.status}</span>
+                <span className="text-slate-500">{t.status}</span>
                 {t.confidence != null && (
-                  <span className="text-gray-500 ml-2">
+                  <span className="text-slate-500 ml-2">
                     conf={Number(t.confidence).toFixed(2)}
                   </span>
                 )}
               </div>
               <div
-                className={
+                className={`font-mono ${
                   Number(t.pnl || 0) >= 0
                     ? 'text-emerald-400'
                     : 'text-red-400'
-                }
+                }`}
               >
                 {t.pnl !== undefined && t.pnl !== null
                   ? `$${Number(t.pnl).toFixed(2)}`
@@ -226,7 +226,7 @@ export default function CryptoPaperDashboard() {
             </button>
           ))}
           {!data.recent_trades?.length && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-slate-500 italic">
               No fills yet. Hit "Run Bot" to seed the first signals.
             </div>
           )}
@@ -252,11 +252,11 @@ function Stat({ label, value, tone, testId }) {
       : 'text-white';
   return (
     <div
-      className="p-3 rounded-xl bg-neutral-900 border border-neutral-800"
+      className="p-3 rounded-lg bg-slate-900/50 border border-slate-700/30"
       data-testid={testId}
     >
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`text-lg font-semibold ${valueClass}`}>{value}</div>
+      <div className="text-[10px] text-slate-400 uppercase tracking-wider">{label}</div>
+      <div className={`text-lg font-semibold font-mono mt-1 ${valueClass}`}>{value}</div>
     </div>
   );
 }

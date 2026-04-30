@@ -181,10 +181,19 @@ const SmartOrderPanel = ({ onClose }) => {
               </div>
               <div>
                 <Label className="text-slate-400 text-[10px] mb-1">Mode</Label>
-                <Select value={mode} onValueChange={setMode}>
-                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white h-9 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="paper">Paper</SelectItem><SelectItem value="live">Live</SelectItem><SelectItem value="simulate">Preview</SelectItem></SelectContent>
-                </Select>
+                <div
+                  className={`h-9 px-2.5 rounded-md border flex items-center justify-between text-[11px] font-bold uppercase tracking-wider ${
+                    tradingMode.mode === 'live'
+                      ? 'bg-orange-500/10 text-orange-300 border-orange-500/30'
+                      : 'bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/30'
+                  }`}
+                  title="Set globally via the navbar Trading Mode pill"
+                  data-testid="smart-order-mode-display"
+                  data-mode={tradingMode.mode}
+                >
+                  <span>{tradingMode.mode}</span>
+                  <span className="text-slate-500 text-[8px] font-normal normal-case tracking-normal">navbar</span>
+                </div>
               </div>
             </div>
 
