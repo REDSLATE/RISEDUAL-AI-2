@@ -15,5 +15,13 @@ from __future__ import annotations
 # Importing for side effect — the ``@register_etl_job`` decorator
 # in each module fires on import.
 from . import quiver_congress_trades  # noqa: F401
+from . import quiver_insiders         # noqa: F401
+from . import quiver_lobbying         # noqa: F401
+from . import quiver_gov_contracts    # noqa: F401
 
-__all__ = ["quiver_congress_trades"]
+__all__ = [
+    "quiver_congress_trades",
+    "quiver_insiders",
+    "quiver_lobbying",
+    "quiver_gov_contracts",
+]

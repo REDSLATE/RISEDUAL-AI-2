@@ -314,14 +314,31 @@ async def get_congressional_trades(ticker: Optional[str] = None, limit: int = 20
 
 
 async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent insider trades (SEC Form 4) from QuiverQuant.
+    """Fetch recent insider trades (SEC Form 4).
 
-    `beta/live/insiders` has been 500-ing upstream for weeks. We keep
-    the call so the circuit breaker + existing Finnhub/OpenInsider
-    fallback chain (in `gov_filings_service`) remains in force, but
-    don't add a live-feed fallback here — when insiders live 500s,
-    there's no per-ticker rescue route on Quiver's side.
+    Prefers the ETL cache; falls back to the live feed when
+    the cache is empty (first-week safety net) or returns no
+    rows for the requested ticker.
+
+    `beta/live/insiders` has been 500-ing upstream for weeks.
+    The cache-first dispatch protects readers from that — last
+    successful pull (up to 180d old) keeps serving until the
+    next weekly cron actually succeeds.
     """
+    try:
+        from server import db as _server_db
+        if _server_db is not None:
+            from services.etl_jobs.quiver_insiders import (
+                get_insider_trades_cached,
+            )
+            cached = await get_insider_trades_cached(
+                _server_db, ticker=ticker, limit=limit,
+            )
+            if cached:
+                return cached
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"insider ETL cache lookup failed, falling back to live: {exc}")
+
     if ticker:
         url = f"https://api.quiverquant.com/beta/live/insiders?ticker={ticker}"
     else:
@@ -355,19 +372,28 @@ async def get_insider_trades(ticker: Optional[str] = None, limit: int = 20) -> l
             "source": "quiverquant",
         })
 
-    logger.info(f"QuiverQuant insiders: {len(trades)} trades")
+    logger.info(f"QuiverQuant insiders (live fallback): {len(trades)} trades")
     return trades
 
 
 async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch recent corporate lobbying data from QuiverQuant.
+    """Fetch recent corporate lobbying data.
 
-    Ticker-specific calls route through `_fetch_with_live_fallback`
-    because Quiver's `beta/historical/lobbying/{ticker}` has been
-    500-ing persistently while `beta/live/lobbying` (full feed)
-    works. See the docstring on `_fetch_with_live_fallback` for the
-    trade-off (partial data, cached, deterministic).
+    Prefers the ETL cache; falls back to the live feed when
+    the cache is empty.
     """
+    try:
+        from server import db as _server_db
+        if _server_db is not None:
+            from services.etl_jobs.quiver_lobbying import get_lobbying_cached
+            cached = await get_lobbying_cached(
+                _server_db, ticker=ticker, limit=limit,
+            )
+            if cached:
+                return cached
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"lobbying ETL cache lookup failed, falling back to live: {exc}")
+
     if ticker:
         data = await _fetch_with_live_fallback(
             primary_url=f"https://api.quiverquant.com/beta/historical/lobbying/{ticker}",
@@ -407,23 +433,30 @@ async def get_lobbying(ticker: Optional[str] = None, limit: int = 20) -> list[di
             "source": "quiverquant",
         })
 
-    logger.info(f"QuiverQuant lobbying: {len(records)} records")
+    logger.info(f"QuiverQuant lobbying (live fallback): {len(records)} records")
     return records
 
 
 async def get_gov_contracts(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Fetch government contract data from QuiverQuant.
+    """Fetch government contract data.
 
-    Two live routes exist: `beta/live/govcontractsall` (detailed:
-    includes agency + description) and `beta/live/govcontracts`
-    (aggregated: ticker + amount + qtr + year only). The `-all`
-    variant has been 500-ing persistently upstream; the aggregated
-    route returns 200 with 12k+ rows. We prefer `-all` when it works
-    (richer data) and transparently fall back to the aggregated route
-    when it doesn't. For per-ticker calls we also filter the live
-    feed client-side so historical-route 500s don't starve
-    downstream consumers.
+    Prefers the ETL cache; falls back to the live (with
+    aggregated-route fallback) when the cache is empty.
     """
+    try:
+        from server import db as _server_db
+        if _server_db is not None:
+            from services.etl_jobs.quiver_gov_contracts import (
+                get_gov_contracts_cached,
+            )
+            cached = await get_gov_contracts_cached(
+                _server_db, ticker=ticker, limit=limit,
+            )
+            if cached:
+                return cached
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"gov_contracts ETL cache lookup failed, falling back to live: {exc}")
+
     if ticker:
         data = await _fetch_with_live_fallback(
             primary_url=f"https://api.quiverquant.com/beta/historical/govcontractsall/{ticker}",
