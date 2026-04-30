@@ -34,6 +34,14 @@ hardening pattern as `mongo_chroma_sync_metrics`, closes a bug
 that was silently forcing Tavily re-fetches 4× per crypto tick
 on ETH/SOL).
 
+**Staging validation (2026-04-30, post-patch)**:
+* Forced stale-cache fetch (cache entry ts > TTL) → `ensure_utc`
+  path executed, no exception, expected refresh fired
+  downstream. Code path proven end-to-end.
+* Watched `backend.err.log` for ≥ 1 full TTL window post-deploy
+  → silent. Was 4× per crypto tick pre-fix; now zero.
+  Production behavior matches intent.
+
 **Final metrics:**
 
 | Check | Result |
