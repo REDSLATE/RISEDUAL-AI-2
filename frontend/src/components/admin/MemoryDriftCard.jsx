@@ -253,6 +253,50 @@ export default function MemoryDriftCard() {
         </span>
         <span className="font-mono">risedual.ai</span>
       </div>
+
+      {/* Why this watcher exists — retroactive case study so an
+          operator scrolling through a quiet dashboard understands
+          what the alert envelope actually catches. The
+          2026-04-21 toxic-spike incident is the canonical
+          motivating bug; documenting it here keeps the
+          institutional memory inside the tool itself. */}
+      <details
+        className="mt-3 pt-3 border-t border-slate-700/40 group"
+        data-testid="memory-drift-retroactive"
+      >
+        <summary className="text-[9px] text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-300 select-none">
+          Why this watcher exists
+          <span className="ml-1 text-slate-600 group-open:hidden">▸</span>
+          <span className="ml-1 text-slate-600 hidden group-open:inline">▾</span>
+        </summary>
+        <div className="mt-2 px-3 py-2 bg-slate-900/40 border border-slate-700/40 rounded-md text-[10px] text-slate-300/90 leading-relaxed">
+          <p className="mb-1.5">
+            <span className="font-semibold text-slate-200">
+              Retroactive case study — 2026-04-21 toxic-spike incident.
+            </span>
+          </p>
+          <p>
+            With the watcher running during that day, the per-date
+            skew table would have shown{' '}
+            <code className="text-amber-300 font-mono">
+              mongo:&nbsp;412
+            </code>{' '}
+            /{' '}
+            <code className="text-amber-300 font-mono">
+              chroma:&nbsp;12
+            </code>{' '}
+            for that date, and the recommendation would have
+            flipped to{' '}
+            <span className="font-semibold text-red-300">
+              rebuild
+            </span>{' '}
+            within 5 minutes of the first bad sync. The
+            corruption that took weeks to surface visibly in
+            downstream toxic-pattern reports would have been
+            actionable on the same shift.
+          </p>
+        </div>
+      </details>
     </Card>
   );
 }
