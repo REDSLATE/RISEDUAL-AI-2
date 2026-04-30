@@ -34,6 +34,7 @@ from __future__ import annotations
 __domain__ = "DTD"
 
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -112,6 +113,56 @@ class ExecutionClient(Protocol):
 # ── Decision context ─────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class EnforcementPolicy:
+    """Per-patent enforcement toggles for a staged rollout.
+
+    The default policy enforces every gate. Each ``enforce_*`` flag,
+    when ``False``, causes the gate to STILL run (so the proof chain
+    captures what would have happened) but its rejection is downgraded
+    to a passthrough — the trade continues. This is the staged
+    rollout mechanic the operator's playbook calls for:
+
+    Stage 1: J on, K/M/I shadow      → only proof chain is mandatory
+    Stage 2: + M (failure-mode hard blocks)
+    Stage 3: + K (adversarial enforcement)
+    Stage 4: + I (full Patent I risk budgeting)
+
+    Read via ``EnforcementPolicy.from_env()``. Env var names are
+    ``PATENT_K_ENFORCE``, ``PATENT_M_ENFORCE``, ``PATENT_I_ENFORCE``,
+    ``AUDITOR_ENFORCE``, ``AUTHORITY_ENFORCE``. ``PATENT_J_ENFORCE``
+    is absent on purpose: J is the proof chain itself and runs
+    unconditionally — it is *what* "log everything" means.
+    """
+    enforce_adversarial: bool = True   # Patent K
+    enforce_auditor: bool = True       # Auditor calibration veto
+    enforce_authority: bool = True     # Patent H/I expiry+countersig
+    enforce_failure_mode: bool = True  # Patent M block_trade
+    enforce_risk_budget: bool = True   # Patent I rejection
+
+    @staticmethod
+    def from_env() -> "EnforcementPolicy":
+        def _flag(name: str, default: bool = True) -> bool:
+            raw = os.environ.get(name)
+            if raw is None or raw == "":
+                return default
+            return raw.lower() not in ("0", "false", "no", "off")
+        return EnforcementPolicy(
+            enforce_adversarial=_flag("PATENT_K_ENFORCE"),
+            enforce_auditor=_flag("AUDITOR_ENFORCE"),
+            enforce_authority=_flag("AUTHORITY_ENFORCE"),
+            enforce_failure_mode=_flag("PATENT_M_ENFORCE"),
+            enforce_risk_budget=_flag("PATENT_I_ENFORCE"),
+        )
+
+    def all_enforced(self) -> bool:
+        return all((
+            self.enforce_adversarial, self.enforce_auditor,
+            self.enforce_authority, self.enforce_failure_mode,
+            self.enforce_risk_budget,
+        ))
+
+
 @dataclass
 class IPDecisionContext:
     """Everything the IP contract needs in one bundle.
@@ -131,6 +182,9 @@ class IPDecisionContext:
     risk_request: RiskBudgetRequest
     proof_store: Any  # AsyncMongoProofChainStore | None
     execution_client: Optional[ExecutionClient] = None
+    # Per-patent staged-rollout policy. Defaults to all-enforce; pass
+    # ``EnforcementPolicy.from_env()`` to read PATENT_*_ENFORCE flags.
+    policy: EnforcementPolicy = field(default_factory=EnforcementPolicy)
     # When True, the contract runs end-to-end but never executes — used
     # for shadow rollouts and replay analysis.
     dry_run: bool = False
@@ -173,19 +227,31 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
             "reason": adversarial.reason.value,
         }),
     )
-    if not adversarial.allowed_to_trade:
+    if adversarial.allowed_to_trade:
+        # Gate accepted — its action becomes operational.
+        effective_action = adversarial.action
+    elif ctx.policy.enforce_adversarial:
         return await _reject(
             ctx, reason="adversarial_rejection",
             detail={"adversarial": _adversarial_to_dict(adversarial)},
             proof_hashes=proof_hashes,
         )
+    else:
+        # Shadow: log the would-block but keep the signal's original
+        # action. Downstream gates inspect what the operator actually
+        # wanted to do, not the gate's safer fallback.
+        logger.info(
+            "[ip_contract] adversarial would-block (shadow): %s",
+            adversarial.reason.value,
+        )
+        effective_action = ctx.signal.action
 
     # ── Step 4 — Auditor calibration veto ────────────────────────────
     audit = review_calibration(
         rolling_accuracy=ctx.signal.rolling_accuracy,
         calibration_gap=ctx.signal.calibration_gap,
         signal_confidence=ctx.signal.bull.confidence
-            if adversarial.action == "BUY"
+            if effective_action == "BUY"
             else ctx.signal.bear.confidence,
     )
     proof_hashes.append(
@@ -196,11 +262,13 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         }),
     )
     if audit.verdict == AuditorVerdict.VETO:
-        return await _reject(
-            ctx, reason="auditor_veto",
-            detail={"audit": audit.to_dict()},
-            proof_hashes=proof_hashes,
-        )
+        if ctx.policy.enforce_auditor:
+            return await _reject(
+                ctx, reason="auditor_veto",
+                detail={"audit": audit.to_dict()},
+                proof_hashes=proof_hashes,
+            )
+        logger.info("[ip_contract] auditor would-veto (shadow)")
 
     # ── Step 5 — Authority validation (Patent H/I) ───────────────────
     from datetime import datetime, timezone
@@ -208,15 +276,17 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
     _expires_at = getattr(ctx.authority, "expires_at", None)
     _expired = _expires_at is None or _expires_at <= _now
     if ctx.authority is None or _expired:
-        return await _reject(
-            ctx, reason="invalid_authority",
-            detail={
-                "authority_tier": getattr(ctx.authority, "tier", None).value
-                    if ctx.authority and getattr(ctx.authority, "tier", None) else None,
-                "expired": _expired,
-            },
-            proof_hashes=proof_hashes,
-        )
+        if ctx.policy.enforce_authority:
+            return await _reject(
+                ctx, reason="invalid_authority",
+                detail={
+                    "authority_tier": getattr(ctx.authority, "tier", None).value
+                        if ctx.authority and getattr(ctx.authority, "tier", None) else None,
+                    "expired": _expired,
+                },
+                proof_hashes=proof_hashes,
+            )
+        logger.info("[ip_contract] invalid authority (shadow)")
     proof_hashes.append(
         await _log_proof(ctx, ProofEventType.AUTHORITY_VALIDATED, {
             "authority_tier": ctx.authority.tier.value,
@@ -237,10 +307,15 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         }),
     )
     if failure.block_trade:
-        return await _reject(
-            ctx, reason="failure_mode_block",
-            detail={"failure_mode": _failure_to_dict(failure)},
-            proof_hashes=proof_hashes,
+        if ctx.policy.enforce_failure_mode:
+            return await _reject(
+                ctx, reason="failure_mode_block",
+                detail={"failure_mode": _failure_to_dict(failure)},
+                proof_hashes=proof_hashes,
+            )
+        logger.info(
+            "[ip_contract] failure_mode would-block (shadow): %s",
+            failure.mode.value,
         )
 
     # ── Step 7 — Adaptive risk budget (Patent I) ─────────────────────
@@ -248,7 +323,7 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         ctx.risk_request.base_multiplier, failure,
     )
     risk_request = RiskBudgetRequest(
-        action=adversarial.action,
+        action=effective_action,
         base_notional=ctx.risk_request.base_notional,
         base_multiplier=adjusted_multiplier,
         authority=ctx.authority,
@@ -276,18 +351,31 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         }),
     )
     if not risk.allowed:
-        return await _reject(
-            ctx, reason="risk_budget_rejection",
-            detail={"risk": _risk_to_dict(risk)},
-            proof_hashes=proof_hashes,
-        )
+        if ctx.policy.enforce_risk_budget:
+            return await _reject(
+                ctx, reason="risk_budget_rejection",
+                detail={"risk": _risk_to_dict(risk)},
+                proof_hashes=proof_hashes,
+            )
+        # Shadow: risk gate would have rejected, but enforcement is off.
+        # Fall back to the operator's pre-guard sizing so downstream
+        # execution behaves as if the gate weren't there. The proof
+        # chain still records the gate's verdict for offline review.
+        logger.info("[ip_contract] risk_budget would-reject (shadow)")
+        effective_notional = float(ctx.signal.base_notional)
+        effective_multiplier = float(ctx.signal.base_multiplier)
+    else:
+        effective_notional = risk.final_notional
+        effective_multiplier = risk.final_multiplier
 
     # ── Invariants — non-negotiable safety net ───────────────────────
     _assert_invariants(
         signal=ctx.signal,
-        risk=risk,
+        action=effective_action,
+        final_notional=effective_notional,
+        final_multiplier=effective_multiplier,
+        loosened=risk.loosened,
         authority=ctx.authority,
-        adversarial=adversarial,
     )
 
     # ── Step 8 — Execution ────────────────────────────────────────────
@@ -302,9 +390,9 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         try:
             execution = await ctx.execution_client.execute(
                 symbol=ctx.symbol,
-                action=adversarial.action,
-                notional=risk.final_notional,
-                risk_multiplier=risk.final_multiplier,
+                action=effective_action,
+                notional=effective_notional,
+                risk_multiplier=effective_multiplier,
                 context={"asset_class": ctx.asset_class, "actor": ctx.actor},
             )
         except Exception as exc:  # noqa: BLE001
@@ -328,9 +416,9 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
     return {
         "allowed": True,
         "trade_id": execution.trade_id,
-        "action": adversarial.action,
-        "notional": risk.final_notional,
-        "risk_multiplier": risk.final_multiplier,
+        "action": effective_action,
+        "notional": effective_notional,
+        "risk_multiplier": effective_multiplier,
         "filled": execution.filled,
         "reasons": list(risk.reasons),
         "proof_hashes": proof_hashes,
@@ -339,6 +427,7 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
         "audit": audit.to_dict(),
         "failure_mode": _failure_to_dict(failure),
         "risk": _risk_to_dict(risk),
+        "policy": _policy_to_dict(ctx.policy),
     }
 
 
@@ -373,9 +462,11 @@ def can_execute(decision: dict) -> bool:
 def _assert_invariants(
     *,
     signal: CandidateSignal,
-    risk: RiskBudgetDecision,
+    action: str,
+    final_notional: float,
+    final_multiplier: float,
+    loosened: bool,
     authority: AuthorityScope,
-    adversarial: AdversarialEnforcementResult,
 ) -> None:
     """Non-negotiable invariants. A violation indicates an internal
     bug — the contract is not allowed to execute past this point with
@@ -388,17 +479,17 @@ def _assert_invariants(
         loudly so the assertion catches the missing test before the
         money moves.
     """
-    assert adversarial.action in {"BUY", "SELL", "HOLD"}, (
-        f"adversarial.action invariant: {adversarial.action!r}"
+    assert action in {"BUY", "SELL", "HOLD"}, (
+        f"action invariant: {action!r}"
     )
-    assert risk.final_multiplier <= authority.max_multiplier + 1e-9, (
-        f"risk.final_multiplier ({risk.final_multiplier}) exceeded "
+    assert final_multiplier <= authority.max_multiplier + 1e-9, (
+        f"final_multiplier ({final_multiplier}) exceeded "
         f"authority.max_multiplier ({authority.max_multiplier})"
     )
-    assert not (adversarial.action == "HOLD" and risk.final_notional > 0), (
+    assert not (action == "HOLD" and final_notional > 0), (
         "HOLD with non-zero notional is forbidden"
     )
-    assert not (risk.loosened and not getattr(authority, "countersignature_hash", None)), (
+    assert not (loosened and not getattr(authority, "countersignature_hash", None)), (
         "risk.loosened requires authority.countersignature_hash"
     )
 
@@ -493,4 +584,14 @@ def _risk_to_dict(r: RiskBudgetDecision) -> dict[str, Any]:
         "loosened": r.loosened,
         "reasons": r.reasons,
         "audit_hash": r.audit_hash,
+    }
+
+
+def _policy_to_dict(p: EnforcementPolicy) -> dict[str, bool]:
+    return {
+        "enforce_adversarial": p.enforce_adversarial,
+        "enforce_auditor": p.enforce_auditor,
+        "enforce_authority": p.enforce_authority,
+        "enforce_failure_mode": p.enforce_failure_mode,
+        "enforce_risk_budget": p.enforce_risk_budget,
     }

@@ -334,3 +334,144 @@ def test_auditor_handles_negative_gap_symmetrically():
         rolling_accuracy=0.65, calibration_gap=-0.20, signal_confidence=0.5,
     )
     assert r.verdict == AuditorVerdict.VETO
+
+
+# ── EnforcementPolicy (staged rollout) ────────────────────────────────
+
+
+def _shadow_all_policy():
+    """All gates observational — Stage 1 of the rollout playbook."""
+    from services.risedual_ip_logic import EnforcementPolicy
+    return EnforcementPolicy(
+        enforce_adversarial=False,
+        enforce_auditor=False,
+        enforce_authority=False,
+        enforce_failure_mode=False,
+        enforce_risk_budget=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_policy_shadow_passes_through_adversarial_rejection():
+    """When PATENT_K_ENFORCE=0 the contract still RUNS the gate (proof
+    chain populates) but does NOT block — the trade flows to the
+    next gate."""
+    weak = CandidateSignal(
+        action="BUY", base_notional=500.0,
+        bull=AgentDecision(name="bull", action="BUY", confidence=0.30),
+        bear=AgentDecision(name="bear", action="HOLD", confidence=0.30),
+    )
+    store = _AsyncInMemoryStore()
+    ctx = _ctx(signal=weak, proof_store=store)
+    ctx.policy = _shadow_all_policy()
+    decision = await run_risedual_ip_decision(ctx)
+
+    # Trade allowed because every gate is shadow — but proof chain
+    # captured the would-block adversarial event.
+    types = [b.event_type.value for b in store.blocks]
+    assert "ADVERSARIAL_DECISION" in types
+    # No EXECUTION_REJECTED — instead an EXECUTION_ATTEMPTED at the end
+    assert "EXECUTION_REJECTED" not in types
+    assert "EXECUTION_ATTEMPTED" in types
+    # Policy reflected in the response so callers can audit
+    assert decision["policy"]["enforce_adversarial"] is False
+
+
+@pytest.mark.asyncio
+async def test_policy_shadow_passes_through_auditor_veto():
+    sig = CandidateSignal(
+        action="BUY", base_notional=500.0,
+        bull=AgentDecision(name="bull", action="BUY", confidence=0.92),
+        bear=AgentDecision(name="bear", action="HOLD", confidence=0.10),
+        rolling_accuracy=0.45,
+        calibration_gap=0.25,
+    )
+    ctx = _ctx(signal=sig)
+    ctx.policy = _shadow_all_policy()
+    decision = await run_risedual_ip_decision(ctx)
+    # Auditor would have vetoed but its flag is off — trade allowed.
+    assert decision["allowed"] is True
+    assert decision["audit"]["verdict"] == "veto"
+
+
+@pytest.mark.asyncio
+async def test_policy_shadow_keeps_original_notional_on_risk_reject():
+    """When risk-budget shadows a rejection, the contract returns the
+    operator's pre-guard sizing rather than 0."""
+    from services.risedual_ip_logic import EnforcementPolicy
+    # Force a risk rejection by setting daily_realized_loss past the
+    # authority's max_daily_loss.
+    auth = _good_authority()
+    risk_req = RiskBudgetRequest(
+        action="BUY", base_notional=500.0, base_multiplier=1.0,
+        authority=auth, track_record=_good_track(),
+        daily_realized_loss=auth.max_daily_loss + 100.0,
+    )
+    ctx = IPDecisionContext(
+        request_id="req-shadow", actor="test", asset_class="crypto", symbol="BTC",
+        signal=_good_signal(),
+        market=_good_market(), model=_good_model(),
+        authority=auth, risk_request=risk_req,
+        proof_store=_AsyncInMemoryStore(),
+        execution_client=None, dry_run=True,
+        policy=EnforcementPolicy(enforce_risk_budget=False),
+    )
+    decision = await run_risedual_ip_decision(ctx)
+    assert decision["allowed"] is True
+    # Falls back to signal.base_notional because the risk gate is shadow
+    assert decision["notional"] == 500.0
+
+
+@pytest.mark.asyncio
+async def test_policy_partial_only_failure_mode_enforced():
+    """Stage 2 of the rollout: M enforced, K and I shadow. A weak
+    adversarial signal should NOT block (K shadow), but a liquidity
+    failure SHOULD block (M enforced)."""
+    from services.risedual_ip_logic import EnforcementPolicy
+    weak = CandidateSignal(
+        action="BUY", base_notional=500.0,
+        bull=AgentDecision(name="bull", action="BUY", confidence=0.30),
+        bear=AgentDecision(name="bear", action="HOLD", confidence=0.30),
+    )
+    bad_market = MarketTelemetry(
+        symbol="BTC", asset_type="crypto",
+        atr_pct=0.012, atr_pct_baseline=0.012,
+        volume_zscore=-3.5, spread_bps=200.0, spread_bps_baseline=8.0,
+    )
+    ctx = _ctx(signal=weak, market=bad_market)
+    ctx.policy = EnforcementPolicy(
+        enforce_adversarial=False,
+        enforce_auditor=False,
+        enforce_authority=False,
+        enforce_failure_mode=True,
+        enforce_risk_budget=False,
+    )
+    decision = await run_risedual_ip_decision(ctx)
+    # If M's classify_failure_mode flagged block_trade=True, this
+    # rejection fires. Otherwise the trade went through (also valid).
+    if not decision["allowed"]:
+        assert decision["reason"] == "failure_mode_block"
+
+
+def test_policy_from_env_defaults_all_enforced(monkeypatch):
+    from services.risedual_ip_logic import EnforcementPolicy
+    for name in ("PATENT_K_ENFORCE", "PATENT_M_ENFORCE", "PATENT_I_ENFORCE",
+                 "AUDITOR_ENFORCE", "AUTHORITY_ENFORCE"):
+        monkeypatch.delenv(name, raising=False)
+    p = EnforcementPolicy.from_env()
+    assert p.all_enforced()
+
+
+def test_policy_from_env_reads_off_flag(monkeypatch):
+    from services.risedual_ip_logic import EnforcementPolicy
+    monkeypatch.setenv("PATENT_K_ENFORCE", "0")
+    monkeypatch.setenv("PATENT_M_ENFORCE", "false")
+    monkeypatch.setenv("PATENT_I_ENFORCE", "off")
+    monkeypatch.setenv("AUDITOR_ENFORCE", "no")
+    monkeypatch.setenv("AUTHORITY_ENFORCE", "1")  # still on
+    p = EnforcementPolicy.from_env()
+    assert not p.enforce_adversarial
+    assert not p.enforce_failure_mode
+    assert not p.enforce_risk_budget
+    assert not p.enforce_auditor
+    assert p.enforce_authority

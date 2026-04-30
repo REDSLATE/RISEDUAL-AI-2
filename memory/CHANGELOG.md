@@ -1,1061 +1,2366 @@
 # RISEDUAL AI — Changelog
 
-## 2026-04-29 (e) — Toxic Count Bug ELIMINATED (Option A)
-
-Followed up the contained-fix with the architectural fix: widened
-ChromaDB doc-id from `(symbol, date, price)` to include
-`prediction_id` when available. ChromaDB and MongoDB now agree
-exactly; vector-search corpus restored to full saturation.
-
-### Changes
-- **`services/market_memory_service.py::_make_id`** — schema v2.
-  When `prediction_id` is present in the regime dict, the doc-id is
-  derived from it (`v2|<prediction_id>`); legacy callers (synthetic
-  training regimes from `memory_training_service`) fall through to
-  v1 episode-level keying. Backward-compatible: pre-rebuild rows
-  remain addressable.
-- **`services/market_memory_service.py::save_regime`** — stamps
-  `prediction_id` + `schema_version: 2` into ChromaDB metadata when
-  present; lets future code filter/group by prediction.
-- **`services/prediction_tracker.py::verify_pending_predictions`**
-  — passes `prediction_id` into the regime dict before calling
-  `save_regime`. This is where the rubber meets the road: from this
-  commit forward every newly-verified prediction lands in its own
-  ChromaDB row.
-
-### Verification
-Ran `POST /api/admin/memory/rebuild-from-mongo?days=30`:
-- 264 predictions rebuilt
-- 0 skipped
-- ChromaDB unique-episodes count for last-7d high-conf misses
-  jumped **8 → 76** — exact match with MongoDB truth count
-- Total ChromaDB rows: 751 → 1015 (+264 per-prediction rows)
-
-### Tests — 73/73 pass (no regressions)
-The architectural change preserves the v1 fallback path so legacy
-training-regime tests continue to pass; per-prediction tests pick
-up the v2 path.
-
-
-
-## 2026-04-29 (d) — Toxic Count Bug Fix (MongoDB as Source of Truth)
-
-User spotted "1 high-confidence failure" in the toxic alert email
-right after the autopsy showed 71 over 7 days. Investigation
-confirmed a **9.5× under-count** caused by ChromaDB's `_make_id`
-hashing on `(symbol, date, price)` — 76 verified misses were
-collapsing into 8 cached rows.
-
-### Architecture decision: MongoDB = truth, ChromaDB = derived index
-- MongoDB has 1853 distinct prediction documents — each immutable
-  with its own `prediction_id`. **The system of record.**
-- ChromaDB is now treated as a derived vector index — owned by
-  `market_memory_service`, reset-able, rebuild-able from MongoDB.
-  Per-episode dedupe stays (it's correct for embedding similarity);
-  it just no longer drives the operator-facing count.
-
-### Code changes
-- `services/market_memory_service.py`:
-  - New `_count_toxic_from_mongo()` helper. Mixed-scale-tolerant
-    Mongo `$or` predicate (counts both 0-1 and 0-100 stored
-    confidence rows) so the autopsy and the cleanup agree
-    regardless of historical scale drift.
-  - `nightly_cleanup()` now records `toxic_count_mongo`,
-    `unique_episodes_retagged`, `toxic_window_since` in the result
-    dict — **headline number is Mongo truth**, ChromaDB count
-    becomes the diversity signal.
-  - Alert gating widened: fires when EITHER ChromaDB retag OR Mongo
-    truth count is non-zero (previously the alert was suppressed on
-    days when every collision-bucket had already been retagged,
-    silently hiding fresh failures).
-  - In-app notification + email now report
-    `"N high-confidence failures across M unique market episodes"`
-    instead of the misleading "1".
-- `services/email_service.py`:
-  - `send_toxic_spikes_email` accepts new `unique_episodes_retagged`
-    parameter.
-  - `_toxic_spikes_html` renders the diversity ratio with a yellow
-    callout when `truth_count >= 2 × episodes_count` ("Diversity
-    signal: 9.5× ratio — the model is failing on a small set of
-    recurring setups, not many independent ones. Drill into the
-    Toxic Autopsy admin tab…").
-- `routes/accuracy.py`:
-  - **NEW** `POST /api/admin/memory/rebuild-from-mongo?days=&limit=`
-    — admin-only. Replays verified predictions through `save_regime`
-    so ChromaDB can be refreshed from the source of truth on demand.
-
-### Tests — 73/73 pass
-- New `tests/test_toxic_count_consistency.py` (3): the headline
-  invariant — `_count_toxic_from_mongo()` MUST agree exactly with
-  `build_autopsy()` over the same window. The test uses synthetic
-  data covering 0-1 and 0-100 confidence scales, NEUTRAL exclusion,
-  window-boundary handling.
-- All prior tests including `test_iteration59_toxic_spikes_alert.py`
-  green — proving no regression in the existing alert pipeline.
-
-### Live verification
-- Trigger `/api/accuracy/memory/cleanup` returned:
-  - `toxic_removed: 0` (ChromaDB — everything already retagged)
-  - `toxic_count_mongo: 76` (NEW headline — actual high-conf failures
-    in last 7 days)
-- The bug is fully visible in the response — no longer silent.
-- 440 routes (was 439, +1 rebuild-from-mongo endpoint).
-
-
-
-## 2026-04-29 (c) — What-If Replay + Bridge v1 Activation Analysis
-
-### What-If Replay
-- New `services/whatif_replay_service.py`:
-  - `backfill_outcomes(db)` — idempotent migration that publishes
-    every closed `paper_trades` and verified `predictions` row into
-    the firewall ledger (`prd_resolved_outcomes`). 269 outcomes
-    seeded on first run.
-  - `whatif_projection(...)` — projects each engine's schema against
-    the ledger over a configurable window. **Non-destructive**: uses
-    a transient `LearningEngine` so persistent state isn't touched.
-- New `routes/whatif_replay_routes.py`:
-  - `POST /api/admin/replay/backfill` — admin-only.
-  - `GET /api/admin/replay/whatif?since=&until=&engines=&dimension=`
-    — admin-only.
-- New `frontend/src/components/admin/WhatIfReplayPanel.jsx` —
-  side-by-side engine projection cards with date-range pickers,
-  dimension selector, top/bottom buckets, win-rate-delta badges.
-  New "What-If Replay" tab in Admin → Insights.
-
-### Tests — 54/54 pass
-- New `tests/test_whatif_replay.py` (6): projection aggregation,
-  non-mutation invariant, candidate vs live schema divergence,
-  bucket-lift edge cases (thin corpora, None win-rates).
-
-### Live verification
-- 439 routes (was 437, +2 replay endpoints).
-- Backfill: 5 paper_trades + 264 predictions = 269 outcomes in
-  ledger; re-run dedups all 269.
-- Projection on full corpus: live 52.4% / candidate_v2 52.4% (both
-  on identical 269 outcomes). Bucket-lift differs because schemas
-  differ — that's the whole point.
-
-
-
-## 2026-04-29 (b) — Engine Admin UI + First Promotion Bridge + Domain Tags
-
-Executed all three Next Action Items in one pass.
-
-### (i) Engine Registry admin UI
-- New `frontend/src/components/admin/EngineRegistryPanel.jsx` — side-by-side
-  cards for live + candidate, summary stats, dimension chips,
-  bucket-lift comparison table with a dimension selector
-  (`agent`, `regime`, `asset_type`, `confidence_bucket`,
-  `direction_family`, `confidence_x_agent`), and admin-only
-  **Promote** button on each candidate (browser confirm gate, label
-  flip, refresh).
-- New tab in `AdminPanel.jsx` Insights group: **AI Core**
-  (Activity icon).
-
-### (ii) First Promotion Bridge — `bridge_v1_council_calibration`
-- Registered at module load in `services/promotion_bridge.py`:
-  bounds **[0.90, 1.10]**, min_samples 200, OOS 14d, regression
-  threshold 2.0%. **Ships INACTIVE.**
-- New `services/council_risk_modulator.py` consumer: late-imports
-  `get_calibration("bridge_v1_council_calibration")`, applies as
-  multiplicative nudge AFTER the modulation table; `None` returns
-  the unchanged base (regression-tested). Bridge cannot influence
-  `council_applied` or `reason` fields.
-- New `routes/promotion_bridge_routes.py` exposing
-  `/api/admin/bridges` (list), `/{name}/activate`, `/{name}/revoke`,
-  `/audit`. Activation requires admin role + `BRIDGE_APPROVAL_TOKEN`
-  env match + evidence above thresholds + value within bounds.
-- New playbook: `/app/memory/BRIDGE_v1_COUNCIL_CALIBRATION_PLAYBOOK.md`
-  (full activation/revocation flow, hard rules, version policy).
-
-### (iii) Domain tags backfilled
-- **DTD**: `paper_trade_closer.py`, `ml_paper_trader.py`,
-  `regime_weights.py`, `council_risk_modulator.py`,
-  `dtd_replay_channel.py` (already tagged previously).
-- **PRD**: `toxic_autopsy_service.py`, `ops_snapshot.py`,
-  `ops_alerter.py`, `symbol_sector_resolver.py`,
-  `ai_core_engine.py`, `ai_core_alerts.py`, `ai_core_autowire.py`
-  (last 3 tagged previously).
-- **BRIDGE**: `firewall.py`, `promotion_bridge.py`,
-  `role_scoped_db.py`, `promotion_bridge_routes.py`.
-- `prediction_tracker.py` intentionally left untagged — it's a
-  shared utility (`normalize_confidence`) that PRD modules legitimately
-  import; tagging it as DTD would force a refactor.
-
-### Tests — 48/48 pass
-- New `test_council_bridge_integration.py` (4): no-bridge regression,
-  active bridge applies multiplicatively, `council_applied` unaffected,
-  out-of-range value clamped on read.
-- Updated `test_dual_stack_invariants.py::test_bridge_registry_has_first_bridge`
-  — verifies the first bridge ships and is inactive by default.
-- All prior tests (engine + alerts + registry + invariants) green.
-
-### Live verification
-- 437 routes (was 433, +4 bridge admin endpoints).
-- `/api/admin/bridges` lists `bridge_v1_council_calibration` with
-  `active: false`.
-- Activation refuses without `BRIDGE_APPROVAL_TOKEN` match
-  (returns `invalid_approval_token`).
-
-
-
-## 2026-04-29 — Candidate AI Core Engine + Registry
-
-User asked for a true parallel candidate engine running side-by-side
-with the live AI Core, observing the same firehose with a different
-schema, with manual promotion + advisory alert (option **c**).
-
-### Backend changes
-- `services/ai_core_engine.py` refactored:
-  - `LearningEngine.__init__` now takes ``name`` + ``schema``;
-    persistence collection derived from name (legacy ``live`` keeps
-    ``ai_core_trades`` for back-compat; others get
-    ``ai_core_engine_{name}_trades`` so engines can never overwrite
-    each other).
-  - New `SchemaConfig` class with ``confidence_buckets`` + ordered
-    ``dimensions`` list; ``extract_conditions()`` is the single
-    extension point for new bucketers.
-  - New `LearningEngineRegistry` with ``register/get/all/names/promote/
-    broadcast_trade/reset_all/set_db_for_all`` and ``.live`` property.
-  - Two engines registered at module load:
-    - **`live`** (5-bin confidence; 4 dimensions: regime, agent,
-      asset_type, confidence_bucket)
-    - **`candidate_v2`** (6-bin confidence with split 80-85/85-90;
-      adds `direction_family` and `confidence_x_agent` cross dim)
-  - `learning_engine` symbol kept as alias for ``registry.live``
-    so existing imports keep working.
-- `services/ai_core_autowire.py` now broadcasts via
-  `registry.broadcast_trade(...)` so every new ingestion lands on
-  every engine.
-- `routes/ai_core_routes.py`:
-  - `POST /api/ai-core/trade` now broadcasts; response carries
-    `engines` map alongside back-compat live result.
-  - `POST /api/ai-core/reset` resets every engine.
-  - **NEW** `GET /api/ai-core/engines` — side-by-side stats for all
-    engines.
-  - **NEW** `GET /api/ai-core/engines/compare?dimension=agent` —
-    bucket-lift comparison (max-min win-rate spread).
-  - **NEW** `GET /api/ai-core/engines/{name}` — single engine.
-  - **NEW** `POST /api/ai-core/engines/{name}/promote` — admin-only
-    label flip; previous live becomes candidate (never retired).
-- `server.py` nightly cron now hydrates every engine and emits a
-  dedup-safe **`bridge_eligible_{name}`** advisory alert when a
-  candidate beats live by ≥ 0.05 lift on the `agent` dimension over
-  ≥ 100 samples. Operator remains the only one who can promote.
-
-### Promotion is registry-level, NOT firewall-crossing
-Per dual-stack spec: promoting a candidate to live changes which
-engine is the official scoreboard, but does NOT make AI Core stats
-flow into DTD components. Council still reads prediction-tracker
-stats. Cross-firewall feedback would require a registered
-Promotion Bridge.
-
-### Tests — 44/44 pass in 0.13s
-- New `tests/test_ai_core_registry.py` (11): registry shape, schema
-  divergence, candidate cross-dim extraction, broadcast fan-out,
-  promotion semantics, isolated reset.
-- All 33 prior tests (engine + alerts + dual-stack invariants) green.
-
-### Live findings (immediate)
-candidate_v2's `confidence_x_agent` cross dimension reveals the toxic
-spike root-cause cleanly:
-- **`signal_dispatcher@90-100` = 0/45 wins (toxic)**
-- `signal_dispatcher@80-85` = 0/31; `@70-80` = 0/25
-- `market_prediction@0-60` = 72%; `@60-70` = 68%
-- `war_room@0-60` = 100% over 48
-- `hypothesis` = 100% across all buckets (34 trades)
-
-This is exactly the per-(agent, confidence) blame-tally the user
-wanted, now visible at `/api/ai-core/engines/candidate_v2` without
-waiting for the candidate to clear a bridge.
-
-
-
-## 2026-04-28 (c) — Dual-Stack Hardening (Build Order v1)
-
-User formalised the AI Core / Council separation into a patent-grade
-dual-domain spec. Implemented the enforcement infrastructure end-to-end.
-
-### New canonical document
-- `/app/memory/RISEDUAL_DUAL_STACK_SPEC.md` — frozen v1.0. Codifies
-  DTD vs PRD, the firewall, the promotion bridge, and the autonomous
-  evolution loop. Future changes require version bumps.
-
-### New backend modules (all opt-in; existing code untouched)
-- `services/role_scoped_db.py` — three capability-restricted Mongo
-  handles: `DtdClient`, `PrdReadOnlyClient`, `BridgeCalibrationClient`.
-  Each has explicit `allow_rw`/`allow_ro`/`deny` collection sets;
-  forbidden ops raise `PermissionError` at the call site.
-- `services/firewall.py` — the only DTD → PRD ingress. `publish_resolved()`
-  appends to immutable `prd_resolved_outcomes` (unique index on
-  `outcome_id`); rejects unsettled payloads (configurable settle
-  window); `read_resolved()` is the read-only egress.
-- `services/dtd_replay_channel.py` — append-only `dtd_decision_replay`
-  collection (unique index on `decision_id`). Mirrors every DTD decision
-  for audit, deterministic backtest, candidate benchmarking. `record_decision()`
-  is DTD-side; `read_replay()` is PRD-side.
-- `services/promotion_bridge.py` — the only PRD → DTD path. Bridges are
-  registered in code with `BridgeSpec(name, version, output_target,
-  output_bounds, min_samples, oos_window_days, regression_threshold)`.
-  Defaults to **empty + inactive**. Activation requires
-  `BRIDGE_APPROVAL_TOKEN` env match + evidence above thresholds + value
-  within bounds. Every activation/revocation appended to
-  `bridge_activations` audit log. `get_calibration(name)` returns
-  `None` when inactive (DTD callers default to unmodified parameter).
-
-### Domain tags applied
-- `__domain__ = "PRD"` on `ai_core_engine.py`, `ai_core_alerts.py`,
-  `ai_core_autowire.py`.
-- `__domain__ = "BRIDGE"` on `firewall.py`, `role_scoped_db.py`,
-  `promotion_bridge.py`.
-- `__domain__ = "DTD"` on `dtd_replay_channel.py`.
-- Backfilling remaining legacy modules tracked as a follow-up.
-
-### Tests — 33/33 pass in 0.26s
-- `tests/test_dual_stack_invariants.py` (18) — collection-domain
-  exclusivity, DTD client denies PRD/BRIDGE, PRD client read-only on
-  DTD + denied on BRIDGE, Bridge client capability matrix, firewall
-  settle-window rejection, missing-field rejection, replay
-  missing-field rejection, bridge registry empty-by-default, bridge
-  approval-token enforcement, bridge bounds clamp, bridge evidence
-  thresholds, bridge round-trip activation/revocation, domain-tag
-  presence, **PRD-imports-DTD grep audit** (catches accidental
-  cross-domain imports at CI time).
-- Existing `test_ai_core_engine.py` (10) + `test_ai_core_alerts.py` (5)
-  remain green.
-
-### Result
-Boundary that was a doc convention is now:
-1. role-scoped DB handles → reject cross-domain operations at handle
-2. append-only collections → unique indexes prevent retroactive edits
-3. CI invariant tests → grep audit + capability tests run on every push
-4. explicit bridge registry → only documented PRD→DTD path; off by default
-
-
-
-## 2026-04-28 (b) — AI Core Learning Engine
-
-User pasted a patch from a sister project that fixed two test failures
-in an `ai_core` route module. RISEDUAL didn't have that module — but
-the *shape* (in-memory LearningEngine + Mongo persistence + nightly
-sweep + dedup-safe daily alerts) is genuinely useful. Built it as a
-net-new module here.
-
-### Backend
-- New `services/ai_core_engine.py` — singleton `LearningEngine` with
-  `trade_log` (1000-entry deque), aggregate `stats` (total_resolved,
-  wins, losses, flats, pending, rejections), and `condition_stats`
-  bucketed on (regime, agent, confidence_bucket, asset_type).
-  Idempotent ingestion via `trade_key = source:source_id`. Cold-start
-  hydrates from Mongo so a backend restart doesn't lose stats.
-- New `services/ai_core_alerts.py` — date-bucketed dedup writer to
-  `ai_core_alerts` collection. Alert id = `{type}:{YYYY-MM-DD}` with
-  unique index, so same-day re-fires return `deduped: True` instead
-  of duplicating rows.
-- New `services/ai_core_autowire.py` — pulls from existing
-  `paper_trades` (`status=closed`, `outcome` ∈ {win, loss, flat})
-  and verified `predictions` (`verified_24h.correct ∈ {True, False}`)
-  into the engine. Uses the engine's idempotency so repeat sweeps
-  ingest only the genuinely new resolutions.
-- New `routes/ai_core_routes.py` exposing `/api/ai-core/{stats,
-  trades, alerts, trade, reject, cron/nightly, reset}`. `/reset` is
-  open in `ENV=development`, admin-only otherwise. `/cron/nightly`
-  is admin-only.
-- Scheduler hook in `server.py` — daily at 02:45 UTC (after memory
-  cleanup and ML retrain) so newly-graded predictions / closed
-  paper trades are picked up.
-
-### Tests — 22/22 pass
-- `test_ai_core_engine.py` (10) — outcome canonicalisation, confidence
-  bucketing (mixed 0-1 / 0-100), idempotent ingest, condition aggregates,
-  win-rate excludes flats, reset semantics.
-- `test_ai_core_alerts.py` (5) — first emit inserts, same-day re-emit
-  dedups, different date_bucket creates separate row, list ordering,
-  no-db graceful path.
-- `test_ai_core_routes.py` (7) — live API: auth gating, /reset wipe,
-  /trade idempotency, pending rejection, /cron/nightly emit + same-day
-  dedup, /reject log, /trades pagination.
-
-### First live numbers (admin manual trigger)
-First sweep ingested **269 resolved trades** (5 paper + 264 prediction)
-with overall **52.4 % win-rate**. Per-agent breakdown immediately
-revealed `signal_dispatcher` at **0/101 win-rate** vs. `market_prediction`
-at **70 % over 77 trades** — a useful signal that's now visible at a
-single endpoint instead of being scattered across collections.
-
-
-
-## 2026-04-28 — Toxic Spike Autopsy
-
-User shared the "56 Bad Predictions Detected — Persisting (2 days
-in a row)" alert and asked for a drill-down to see **why** the
-high-confidence predictions failed, not just **that** they did.
-
-### Backend
-- New `services/symbol_sector_resolver.py` — Mongo cache (7-day
-  TTL) → curated static map (60+ big-cap tickers) → Finnhub
-  `/stock/profile2` fallback → "Unknown". Bulk variant runs with
-  concurrency-8 semaphore so admin-panel opens don't burst Finnhub.
-- New `services/toxic_autopsy_service.py` — `build_autopsy(db,
-  days, min_confidence_pct)` queries `predictions` for
-  `verified_24h.correct == False` rows in the window, normalises
-  confidence scale (0-1 and 0-100 both handled via
-  `prediction_tracker.normalize_confidence`), and groups by
-  failure_code / feature (agent origin) / confidence-bucket
-  (80-85, 85-90, 90-95, 95-100) / direction family / sector /
-  model version / grade. Returns top-offender symbols ranked by
-  count + avg confidence, plus up to 200 raw samples.
-- New `routes/toxic_autopsy.py` exposing
-  `GET /api/admin/toxic-spike/autopsy?days=2&min_confidence=80`
-  (admin/owner only, 403 for non-admins).
-- Registered `toxic_autopsy_router` + `set_toxic_autopsy_db`
-  in `route_registry.py`.
-
-### Frontend
-- New `components/admin/ToxicSpikeAutopsyPanel.jsx` — summary
-  header (total failures, unique symbols, avg confidence), six
-  breakdown sections rendered as horizontal bars (count + pct +
-  avg-conf per key), Top Offenders table (symbol, sector, fails,
-  avg conf, top failure codes, top agents), and a collapsible
-  Raw Failures table (prediction_id, symbol, sector, agent,
-  direction, confidence, grade, failure_code, entry/verified
-  prices). Days + min-confidence selects re-fetch on change.
-- New `autopsy` tab in `AdminPanel.jsx` Insights group
-  (AlertTriangle icon, data-testid infrastructure on every
-  interactive element).
-- Deep-link from the toxic-spike notification — admin-only
-  "View Autopsy" button on `ToxicSpikeNotification` dispatches
-  a `risedual:open-admin-autopsy` custom event and writes a
-  tab hint into `sessionStorage`. `AuthenticatedShell` listens
-  for the event to open the Admin modal; `AdminPanel`'s
-  initial-tab `useState` reads the one-shot hint on mount and
-  lands on the autopsy tab.
-
-### Tests
-- 12 unit tests (`test_toxic_autopsy.py` + `test_symbol_sector_resolver.py`)
-- 11 API integration tests + 7 sector-resolver tests added by
-  testing subagent (iteration 147). Total 30 tests — 100% pass.
-- Verified: confidence scale normalisation (mixed 0-1 / 0-100
-  writes collapse correctly), NEUTRAL grades excluded, low-conf
-  misses excluded, query params honoured, six breakdown
-  dimensions populated, top offenders sorted, sector fallback
-  chain works, ops-snapshot regression still clean.
-
-
-
-## 2026-02-08 (k) — CLI prototype port: Ops Snapshot + ECE + Heuristic Notes
-
-User shipped a `risedual` CLI prototype zip (image-classifier
-adversarial-training package) and asked which patterns were
-portable. Three pure-function patterns were adapted into the
-production admin surface; the actual ML training code stays in
-the prototype as research-only.
-
-### A — Ops Snapshot
-- New `services/ops_snapshot.py` — adapts the prototype's
-  `env_state.py` pattern: known operator flags (always reported,
-  set or unset), auto-detected prefixed flags (RISEDUAL_/CRYPTO_/
-  COUNCIL_/etc.), real Mongo ping probe, scheduler-heartbeat freshness
-  check, integration-key configured booleans (never the values
-  themselves), and Tier 3 readiness pulled from the existing
-  shadow stats service.
-- New `routes/ops_snapshot.py` exposing `GET /api/admin/ops-snapshot`
-  (admin/owner only).
-- New `OpsSnapshotPanel.jsx` admin tile under the Operations →
-  Health tab (HeartPulse icon, `data-testid="admin-tab-ops"`).
-- Heuristic notes layer auto-generates single-sentence operator
-  guidance: "Mongo ping failed", "Scheduler appears stalled",
-  "USPTO_API_KEY not set", "COUNCIL_RISK_MODULATOR_ENABLED=true
-  but Tier 3 is locked", or "All gauges nominal."
-- 18 unit tests + 17 API integration tests = 35 tests on this
-  path alone.
-
-### B — ECE in calibration
-- Adapted the prototype's `auditor._ece` weighted-bin formula
-  into `routes/admin.py::get_conviction_calibration`. Endpoint
-  now returns top-level `ece: {conviction, confidence}` numeric
-  fields alongside the existing buckets.
-- Heuristic notes added: "Conviction ECE = X.XXX (poor)" / borderline
-  / healthy; non-monotonicity flagged separately so the operator
-  sees structural failure first.
-- **Live finding on real data:** Conviction ECE = 0.534, Confidence
-  ECE = 0.478 — both well above the 0.10 "poor" threshold AND
-  conviction win-rate is non-monotonic. CONVICTION_WEIGHTS are
-  meaningfully miscalibrated; this is exactly the signal the
-  prompt was for.
-- 8 unit tests in `test_calibration_ece.py`.
-
-### C — Heuristic notes on shadow stats
-- New `_shadow_stats_notes` in `services/research_shadow_stats.py`;
-  `compute_shadow_stats` response now includes a `notes: [str]`
-  array.
-- Branches: no decisions yet, no actionable buckets, high-winrate
-  + low samples (lucky early run guard), low-winrate + sufficient
-  samples (engine actively wrong), all healthy.
-- **Live finding:** adversarial+crypto bucket at 92% win-rate
-  over only 12 dissents, correctly flagged "wait for sample size
-  before acting" — guards against premature Tier 3 promotion.
-- 8 unit tests in `test_shadow_stats_notes.py`.
-
-### Testing
-- 266/266 unit tests across all 15 touched suites pass.
-- Testing agent: 100% backend (50/50), 100% frontend (all
-  8 data-testid elements verified). Zero issues, no retests.
-
-## 2026-02-08 (j) — P1/P2 backlog sweep (items #1, #2, #4, #5)
-
-### #2 — Paper-trader duplicate-insert race fix
-- New `services/ml_paper_trader.ensure_indexes(db)` creates a
-  unique partial index on `(ticker, direction, prediction_id,
-  time_bucket)` where `time_bucket = floor(opened_at_unix / 60)`.
-- `_time_bucket_for(now)` injected into every new doc; insert
-  path catches `pymongo.errors.DuplicateKeyError` and returns
-  the existing trade_id instead of erroring.
-- Wired into `route_registry.py` startup hook.
-- The 12-second AAPL twin scenario from 2026-04-16 is now
-  physically impossible at the DB level.
-- Tests: 6 unit tests in `test_ml_paper_trader_idempotency.py`.
-
-### #4 — Backtest/Live data labeling
-- New `services/data_source_labeler.py` — read-side annotator
-  that attaches a `data_source: "live" | "backtest"` field
-  based on `PUBLIC_DATA_FLOOR_DATE` env (default `2026-04-23`).
-  Priority order: opened_at > predicted_at > created_at > timestamp.
-  Naive datetimes assumed UTC; missing timestamps default to "live".
-- Wired into `GET /api/ml/paper-trades` and `GET /api/accuracy/history`;
-  both endpoints now also return `data_floor_date` at top level.
-- `MLPaperPnL.jsx` renders a "Backtest" badge on pre-floor rows
-  (data-testid `ml-trade-{i}-backtest-badge`, tooltip explains
-  the cutover).
-- Tests: 17 unit tests in `test_data_source_labeler.py`.
-- **Operator dial:** rotate the floor by setting
-  `PUBLIC_DATA_FLOOR_DATE` in `.env` to a different ISO date.
-
-### #1 — `/api/crypto/sltp-expectancy` analytics endpoint
-- New `services/crypto_sltp_expectancy.py` — read-only analytics
-  over `crypto_paper_trades` (status=closed). Returns expectancy,
-  win rate, breakdown by close_reason / direction / regime, plus
-  tighter-bracket what-ifs (we only project tighter, not wider —
-  wider needs OHLC tick data we don't store).
-- 20-sample minimum guard so tiny windows don't surface noise.
-- Live data on the existing 98 closed crypto trades reveals
-  expectancy=-0.06R, 56.1% win rate, with 80/98 trades exiting
-  via `hold_window_expired` (zero `take_profit` fires).
-- Headline picks the strongest signal from the data — current
-  copy reads: "Data suggests tightening SL to 30% of current
-  would lift expectancy from -0.06R to +0.14R."
-- Admin-only at `GET /api/crypto/sltp-expectancy?days=30`.
-- Tests: 17 unit tests in `test_crypto_sltp_expectancy.py`.
-
-### #5 — Polygon.io adapter wired into market_data_pool
-- New `_polygon_quote` (snapshot endpoint) and `_polygon_daily`
-  (aggregates endpoint) in `services/market_data_pool.py`,
-  reshaping Polygon's response to the same common quote/daily
-  schema the other providers (Finnhub, AlphaVantage, TwelveData,
-  Marketstack) emit. `source: "polygon"` tag on every row.
-- `pool_config.get_market_data_provider_pool` auto-registers a
-  `polygon-ab` entry when `POLYGON_API_KEY` is set in `.env`,
-  default priority 4 (overridable via `MARKET_DATA_POLYGON_PRIORITY`).
-- A/B mode: set priority=1 to make Polygon primary, others fail-over.
-  Or leave at 4 to use Polygon only when other providers exhaust.
-- Tests: 12 unit tests in `test_market_data_pool_polygon.py`
-  (including HTTP mock transports for both endpoints).
-
-### Pro Max (item #3)
-- Already wired in a prior pass; verified live. Backend
-  `/api/billing/checkout/subscription` accepts `pro_max` and
-  `pro_max_annual`; Stripe live checkout URLs return for both.
-
-### Regression
-- Updated 2 existing patent_watch_api tests to be env-agnostic
-  about `USPTO_API_KEY` (now a real key is in `.env`).
-- 131/131 unit tests across all touched files pass.
-- Testing agent reports 114/114 backend integration + frontend
-  100% verified.
-
-## 2026-02-08 (i) — Patent Watch seeded + 404 handling fix
-- Seeded 11 watch queries via API: 7 by-assignee (OpenAI,
-  Anthropic, DeepMind, Bridgewater, Renaissance, Two Sigma,
-  Citadel) + 4 by-keyword (`adversarial`, `trading agent`,
-  `options chain`, `multi-agent trading`).
-- 179 USPTO filings cached on initial refresh; daily 4:15 cron
-  will keep them fresh.
-- Fix: `_fetch_from_uspto` now treats HTTP 404 from USPTO ODP
-  as "zero matches" rather than an error condition. ODP
-  returns 404 (instead of 200 + empty array) on no-match
-  searches; the previous code surfaced this as `error="http_404"`
-  in the UI, which would have been a false alarm. New behaviour:
-  `error=null, fetched=0`. Test added (`test_fetch_from_uspto_404_means_zero_results_not_error`).
-- 21/21 unit tests now pass.
-
-## 2026-02-08 (h) — Patent Watch live activation + USPTO ODP schema fix
-- Operator pasted real `USPTO_API_KEY` into `/app/backend/.env`
-  and live USPTO fetches were wired up.
-- Discovered the actual ODP Patent File Wrapper API uses a
-  Lucene-string `q` parameter (not the JSON `_text_any` filter
-  the legacy docs implied) and returns rows under
-  `patentFileWrapperDataBag` with the title/applicant/inventor
-  living under a nested `applicationMetaData` object.
-- Rewrote `_build_query_payload` → returns Lucene `q` string,
-  multi-word terms phrase-quoted, multi-condition OR'd.
-- Rewrote `_normalise_row` → reads from `applicationMetaData`,
-  prefers `earliestPublicationNumber` (US20260...A1) for the
-  cache key + Google Patents URL, falls back to
-  `applicationNumberText`. Legacy snake_case path kept for
-  forward-compat.
-- Tests refreshed against real ODP shape (20/20 still pass).
-- Live verification: created query `assignee=OpenAI`, refresh
-  returned 25 cached filings including "Systems and Methods for
-  Image Generation with ML Models" (filed 2025-12-02), "Efficient
-  Execution of Database Queries on Streaming Data", "Multi-task
-  ASR System".
-
-## 2026-02-08 (g) — Tech-debt refactor pass (P3 items A & B, COMPLETE)
-
-### B. Split `AppContent` (frontend)
-- `App.js` slimmed from 333 → 155 lines. AppContent now owns
-  only modal state, view state, and the cross-component
-  navigation bus.
-- New `components/PreAuthRouter.jsx` (~115 lines): handles the
-  three unauthenticated entry surfaces — `?demo=oauth` →
-  AlpacaOAuthDemo, `/compliance/<broker>-oauth` →
-  ComplianceOAuth, otherwise LandingPage + auth/waitlist/reset
-  modals.
-- New `components/AuthenticatedShell.jsx` (~145 lines): pure
-  layout — Navbar + Ticker + AlertsPanel + main hub router +
-  Footer + Chat + MobileNav + ModalManager.
-- No behaviour change; landing page + admin shell render
-  identically pre/post.
-
-### A. Refactor `trading_bot_service.execute_signal()` (backend)
-- 209-line monolith split into 5 cohesive helpers above the
-  slim 95-line orchestrator:
-    - `_check_kill_switch_and_drawdown(equity_curve)` (step 0)
-    - `_compute_adjusted_size(...)` (steps 2 + 3a + 3b + 3c + 4)
-    - `_resolve_qty(adjusted_size, signal, market_data)` (step 5)
-    - `_fire_equity_shadow(synthetic_bot, signal, symbol, price)`
-      (Research Shadow fire-and-forget block)
-    - `_record_kill_switch_outcome(order)` (step 8)
-- Public signature unchanged; every skip-reason string
-  preserved; lazy `ai_core` imports preserved.
-- Tests: 113/113 trading-bot tests pass (18 execute_signal_usd
-  + 35 portfolio_risk_engine + 5 adaptive_sizing + 40
-  drawdown_allocator + 15 kill_switch). 33/33 Patent Watch
-  tests still pass — no cross-leg regressions.
-
-## 2026-02-08 (f) — Patent Watch admin dashboard (P3 ready-to-schedule item C, COMPLETE)
-- New backend service `services/patent_watch_service.py`: USPTO ODP
-  client with X-API-KEY header support, query CRUD on
-  `patent_watch_queries`, results cache on `patent_watch_results`
-  (deduped on `(query_id, patent_number)`), graceful
-  `missing_api_key` short-circuit when `USPTO_API_KEY` env var
-  isn't set, refresh_all entry point for the daily scheduler.
-- New admin routes under `/api/admin/patents/{queries, config,
-  results, refresh/{id}}` (admin/owner only). `/config` reports
-  `api_key_configured` boolean without ever leaking the key.
-- New `PatentWatchPanel.jsx` admin UI tab: amber setup banner
-  when key missing, add-query form, saved-queries list with
-  per-row refresh + delete, results list with Google Patents
-  deep-links. Wired into AdminPanel under the Insights group
-  (`data-testid="admin-tab-patents"`).
-- Daily APScheduler hook `_run_patent_watch_refresh` at 4:15
-  every day; no-op when no queries exist.
-- Tests: 33/33 passing (18 unit + 15 API integration). No
-  regressions in the existing 166-pytest baseline.
-- **Operator action to activate fetches:** set
-  `USPTO_API_KEY=<your-key>` in `/app/backend/.env` (get one at
-  https://data.uspto.gov/apis/getting-started — MyUSPTO account
-  + ID.me linkage required) and restart backend.
-
-## 2026-02-08 (e) — Backlog re-prioritization
-- **Dropped:** Alpaca crypto LIVE execution wiring — per user
-  ("Alpaca can get crossed off as well. Doesn't seem it's
-  happening.") Removed from the parked section of ROADMAP.
-- **Dropped:** Earlier-flagged manual items (duplicate Stripe
-  webhook + landing-page Adversarial overclaim) per user
-  ("we currently built it"). Stripe configuration left as-is.
-- **Approved & promoted to P3 ready-to-schedule:**
-  - Tech debt: refactor `trading_bot_service.execute_trade()`
-  - Tech debt: split `AppContent.jsx`
-  - Patent Watch admin dashboard (USPTO PatentsView API)
-  - Tier 1 Visual Polish
-
-## 2026-02-08 (d) — Tier 3 / Council Activation Playbook
-- New ops doc: `/app/memory/TIER3_ACTIVATION_PLAYBOOK.md`.
-- Single source of truth for the Adversarial → Council → Regime
-  weight rollout. Covers env-flag inventory, phase progression
-  (`shadow → risk_only → veto → full`), the `/api/admin/shadow/
-  tier-readiness` payload, Council promotion thresholds, code-pinned
-  bounds, rollback table, incident response, and Tier 3 firewall
-  verification.
-- Updates required whenever flag defaults / thresholds / phase rules
-  change in code (see §3 and §5 of the playbook).
-
-## 2026-02-08 (c) — Test-hygiene pass on `test_daily_digest.py`
-- Refreshed 6 stale assertions to match the current codebase:
-  * Digest data keys: `dark_pool`/`signals` → `smart_money`/`alerts`.
-  * Prediction row keys: `ticker`/`verdict` → `symbol`/`direction`.
-  * Greeting casing: `Good Morning` → `Good morning`.
-  * DOCTYPE match: exact `<!DOCTYPE html>` → prefix `<!DOCTYPE html`.
-  * Empty-state assertion: `"No recent data available"` → per-block
-    hints (`"No high-conviction predictions"`, etc).
-  * Scheduler log probe: old standalone banner → current consolidated
-    `"Schedulers started: ... digest (6:00) ..."` line.
-  * Trigger response: hardcoded `reason="no_api_key"` → shape check
-    that accepts live-send and skip states.
-- 19/19 `test_daily_digest.py` tests now pass. Full ML/digest/
-  adaptation suite: 89/89 green.
-
-## 2026-02-08 (b) — Daily ML-Health Digest Email (P1)
-- New `services/ml_health_digest_service.py`:
-  `collect_ml_health_data()` + `run_ml_health_digest()` orchestrator.
-  Gathers 24h audit activity (auto/shadow soften + revert counts),
-  top toxic-metric triggers, active adaptation roster, current
-  thresholds, and a p25-based tuning hint (≥20 shadow obs).
-- Scheduler wires `_run_ml_health_digest` at 08:00 UTC daily via
-  APScheduler in `server._start_schedulers`.
-- Admin endpoints:
-  - `POST /api/admin/ml-health-digest/trigger` — manual fire
-  - `GET  /api/admin/ml-health-digest/preview`  — render without sending
-- Recipient defaults to `OWNER_EMAIL` (`admin@risedual.ai`);
-  overridable via `ML_HEALTH_DIGEST_RECIPIENT` env.
-- Idempotent per UTC date — second call returns
-  `{sent: False, reason: "already_sent_today"}`.
-- Tests: 5 new unit tests in `test_ml_health_digest.py`. End-to-end
-  trigger verified — real email sent to admin@risedual.ai.
-
-## 2026-02-08 — Safety-Rail Threshold Calibration (P2)
-- `model_adaptation.get_auto_revert_config()` now reads thresholds
-  from env (`ML_AUTO_REVERT_EFFECT_SIZE`, `..._EPSILON`,
-  `..._MIN_COVERAGE`, `..._CONSECUTIVE_NEGATIVE`); defaults unchanged.
-- New `GET /api/admin/adaptations/calibration` endpoint: analyses
-  last N days of shadow/live audit rows, returns percentile
-  distributions (`decision_score`, `decision_ratio`,
-  `delta_r_trend`), per-metric roll-up, and a p25-based recommended
-  effect_size once ≥20 observations are available.
-- Admin UI `ModelAdaptationsPanel` gains a `CalibrationStrip` that
-  renders the current vs suggested threshold, direction
-  (tighten/loosen), and the exact env-var string to copy into
-  backend `.env`. Silent until real observations exist.
-- Tests: `test_adaptation_calibration.py` (4 tests, live backend)
-  + 4 threshold-override tests in `test_auto_revert_safety_rail.py`.
-  All 47 adaptation/ML tests passing.
-
-## 2026-04-24 — Adaptation Hook Re-confirmed at the Correct Seam + Before/After Weight Telemetry
-- **Caught a regression**: the `apply_adaptations_to_weights` call between `_severity_weights` output and `model.fit` got stomped by a subsequent search_replace in the same session. Only the `detect_and_create_adaptations` call at the top of the retrain had committed. Restored the one-line hook to where it belongs.
-- **Integration seam** (exactly as prescribed):
-  ```python
-  sample_weight = _severity_weights(df)     # untouched
-  # … regime + R-multiple weighting …       # untouched
-  w, summary = await apply_adaptations_to_weights(db, X, w)  # ← only line that moves weights
-  model.fit(X, y, sample_weight=w)          # untouched
-  ```
-- **Before/after telemetry added** to `log_row` (drift audit) AND to `logger.info` AND stamps onto the `retrain_adaptation_applied` activity event: `adaptation_mean_weight_before`, `adaptation_mean_weight_after`, `adaptation_weight_delta_mean`, full `adaptations_applied` summary.
-- **Verified**: integration smoke test with 1 synthetic adaptation, 10-row synthetic X (5 match condition, 5 don't) → DRY-RUN mean unchanged at 1.0; ENABLED mean = 0.925 = (5×0.85 + 5×1.0) / 10, exactly the expected arithmetic. 11/11 toxic-spike tests pass.
-
-## 2026-04-24 — Adaptation Engine Upgrade: Contrast Gate + Severity Ladder
-Two statistical guardrails added on top of the existing bounds. Both caught REAL false-positive adaptations on first run against live data — concrete proof the gates were needed.
-
-**1. Contrast gate** (`CONTRAST_MULTIPLIER = 1.25`)
-Before creating an adaptation, compare `failure_rate(bucket) / failure_rate(global)` measured over the last 7 days of `features_snapshots`. Only proceed when the bucket fails at least 25% more often than baseline. Prevents penalizing useful-but-noisy signals.
-
-**Live validation against current data**:
-| Metric | Bucket rate | Global rate | Contrast | Decision |
-|---|---|---|---|---|
-| volume.liquidity | 28.9% | 26.8% | 1.08× | **BLOCKED** (marginal) |
-| sector.momentum | 25.7% | 26.8% | 0.96× | **BLOCKED** (actually better) |
-| macd.crossover | 27.8% | 26.8% | 1.04× | **BLOCKED** (marginal) |
-| rsi.overbought | — | 26.8% | None | bucket=39 < 50 → **bypass**, evidence rules |
-
-Without this gate, we would have blindly down-weighted volume.liquidity rows in retrain despite them failing only 7.8% more often than everything else.
-
-**2. Severity ladder** — scales the adjustment factor by the mean absolute `return_1d` on failing rows in the bucket, matching the `_WEAK_THRESHOLD` / `_STRONG_THRESHOLD` vocabulary already used by severity-weighted retraining:
-| Mean |return_1d| | Factor | Label |
-|---|---|---|
-| < 1% | 0.95 | mild |
-| 1-3% | 0.85 | moderate |
-| ≥ 3% | 0.75 | strong |
-
-Forced-scenario tests verified each tier produces the expected factor.
-
-**Bucket-size safety**: `MIN_BUCKET_SNAPSHOTS = 50`. Below this the rate comparison is too noisy to trust; the contrast gate is bypassed (evidence + cooldown still apply) and severity is best-effort.
-
-**Latent bug fixed on the way**: `captured_at` on `features_snapshots` is stored as BSON `datetime`, not ISO string. Initial ISO-string `$gte` filter silently returned 0 rows — would have made every contrast check return None → silently bypass. Switched to native datetime object so Mongo does the tz-aware comparison correctly.
-
-**UI**: `ModelAdaptationsPanel.jsx` surfaces the new stats — purple "1.08× baseline" contrast badge (with bucket/global rate tooltip) and amber "2.1% avg miss" severity badge. Admins see exactly why each adaptation was greenlit.
-
-**Stored on each adaptation row**: `contrast`, `bucket_rate`, `global_rate`, `severity`, `bucket_snapshots`. Full forensic trail.
-
-**Verified — 4-case gate suite + severity ladder + existing 9-case safety suite**:
-- ✅ Contrast > 1.25 + severity=0.028 → creates with factor=0.85
-- ✅ Contrast = 1.125 → **blocked**
-- ✅ Small bucket (20 < 50) → bypass, creates with severity-derived factor=0.95
-- ✅ Strong severity (0.055) → factor=0.75
-- ✅ Real-data contrast across 5 metrics printed and matched expectations
-- ✅ 11/11 regression tests pass, mypy 0, lint clean, webpack compiled
-
-## 2026-04-24 — Prescriptive ML Adaptation (self-adapting retrain loop)
-**The "what will change?" → "what changed?" loop closed.** Toxic alerts now *actually* reshape the next retrain.
-
-**Design** — XGBoost doesn't take per-feature weights, so "reduce weight on low-volume breakouts by 15%" is faithfully implemented as *row-level* sample-weight down-adjustment on training rows that match the toxic pattern. The model learns less from those failure modes. Every knob is bounded.
-
-**Safety guardrails** (pass this list if audited):
-| Guard | Value | Purpose |
-|---|---|---|
-| `ML_ADAPTATION_ENABLED` env flag | default `false` | Full pipeline runs in dry-run until operator flips on |
-| `MIN_EVIDENCE_COUNT` | 3 | No adapting on a single bad day |
-| Factor bounds | `[0.7, 1.3]` hard clamp | Never more than ±30% per adaptation |
-| `BASE_DOWN_WEIGHT` | 0.85 | Matches "15% reduction" narrative |
-| `ADAPTATION_TTL_DAYS` | 14 | Mongo TTL auto-expires — no stale penalties |
-| `COOLDOWN_DAYS` | 7 | Can't double-stack same metric |
-| `MAX_ACTIVE_ADAPTATIONS` | 4 | Runaway protection |
-| `MIN_CUMULATIVE_WEIGHT` | 0.1× baseline | Stacked multipliers can't nuke a row |
-
-**New module `services/model_adaptation.py`**:
-- `ADAPTATION_RULES` — 11 metric-key → (feature_column, condition, description) rules covering the full dotted namespace (`volume.liquidity`, `volume.spike`, `rsi.overbought`, `rsi.oversold`, `macd.crossover`, `sector.momentum`, `sentiment.negative`, and 4 pattern flags).
-- `_FAILURE_CODE_TO_METRIC` — conservative 1:1 mapping from `FAILURE_MODES` codes to metrics so detection is predictable.
-- `detect_and_create_adaptations()` — scans last 7 days of `alerts_sent`, creates bounded rows when evidence threshold clears, always narrates via `log_retrain_adaptation_planned`.
-- `apply_adaptations_to_weights()` — multiplies `sample_weight` by active adaptation factors where rows match the rule's condition. Gated by env flag; returns summary for drift audit.
-- `revert_adaptation()`, `disable_all_adaptations()` — full audit trail (no deletes).
-
-**Retrain integration** (`services/ml_retrain_service.py`):
-- `run_nightly_retrain` now calls `detect_and_create_adaptations()` at the start (plants "what will change?" narrative) and `apply_adaptations_to_weights()` right before `model.fit(X, y, sample_weight=w)`. Summary stamps into the training log under `adaptations_applied` + `adaptation_weight_delta_mean` for drift audit.
-- Fixed a pre-existing corrupted duplicate `get_latest_model_info` block caught by the `ruff` syntax check while I was there.
-
-**2 new activity events** (`agent_activity_service.py`):
-- `retrain_adaptation_planned` 🧭 (info/warn) — "Next retrain will reduce weight on low-volume rows (volume_ratio < 0.8x) by 15%" (tells admins WHAT will change)
-- `retrain_adaptation_applied` 🛠️ (warn/info) — "Applied 2 ML adaptations to retrain · 127 rows affected" OR "DRY-RUN: Would apply…" (tells them WHAT changed)
-
-**3 new admin endpoints** (owner-gated):
-- `GET /api/admin/adaptations` — list active + `enabled` flag state
-- `POST /api/admin/adaptations/{id}/revert` — audit-preserving single revert
-- `POST /api/admin/adaptations/disable_all` — nuclear switch
-
-**New `ModelAdaptationsPanel.jsx`** in Admin → Developer Tools:
-- APPLYING / DRY-RUN badge driven by backend `enabled` flag
-- Amber "Dry-run mode" banner with exact env-flag instruction when off
-- Per-adaptation card with metric, % change, evidence count, description, created/expires timestamps, one-click Revert
-- "Disable all" kill switch with `window.confirm` gate
-
-**Verified** — comprehensive 9-case safety suite:
-- ✅ Low evidence (2 < 3) → no adaptation created
-- ✅ Threshold met (3) → 1 adaptation created with correct factor 0.85
-- ✅ Cooldown enforced → re-run creates 0
-- ✅ Dry-run mode → weights untouched, summary still computed
-- ✅ Real apply → correct rows down-weighted (0.85× where volume_ratio < 0.8)
-- ✅ Out-of-band factor (0.2) → clamped to 0.7 floor
-- ✅ Stacked multipliers (0.85 × 0.7 = 0.595) → above 0.1 floor, applied correctly
-- ✅ Single revert works (flip to `active=false`, preserves audit)
-- ✅ Kill switch deactivates all at once
-- ✅ 3 HTTP endpoints return correct shapes (`enabled: false` confirms safe default)
-- ✅ 11/11 toxic-spike regression tests pass, mypy 0, lint clean, webpack compiled
-
-**Operator flip-on path**: `echo 'ML_ADAPTATION_ENABLED=true' >> /app/backend/.env && sudo supervisorctl restart backend`. The feed will start showing real-apply narrations (severity=warn instead of info) and the panel badge flips to APPLYING.
-
-## 2026-04-24 — Batch Ship: Patent Pill + Systemic-Failure Escalation + Strategy Leaderboard
-- **`BetaBanner.jsx`**: added the missed "Patent Pending" pill (hidden on `<sm`, tooltip reveals "U.S. Provisional Patent filed 04/23/2026 — App #64/047,926"). Closes the last-session user request for "all of the above" patent placements (Header/Footer/Tech Section/Banner).
-- **Systemic-failure auto-escalation** (`agent_activity_service.py`, `routes/admin.py`):
-  - New event type `alert_systemic_failure` 🆘 with `log_alert_systemic_failure` helper (error severity).
-  - Fires automatically inside `POST /api/admin/alerts/replay` AFTER the regular replay event, *only* when `delivery_attempts >= 3` AND `still_failed` is non-empty.
-  - Endpoint response adds `"systemic_failure": bool` so the frontend can surface a "needs human" banner on the matching audit row.
-  - Verified: Case A (2→3 attempts, persistent failure) → both `alert_replay` (warn) + `alert_systemic_failure` (error) fire ✅. Case B (1→2 attempts, failing) → no escalation ✅. Case C (2→3 attempts, recovered) → no escalation ✅.
-- **Strategy Leaderboard** (`GET /api/admin/strategies/leaderboard?days=…`, `StrategyLeaderboardPanel.jsx`):
-  - Rolls up `learning_engine_trades` by strategy, coalescing the dual-schema `strategy` (newer agents) and `strategy_id` (older rows) into one group key (rows missing both → `(untagged)`).
-  - Per strategy: trades, wins, losses, pending, win_rate, avg_r (resolved only), total_pnl (resolved only), last_trade_at.
-  - Sorted by total_pnl desc; window selector (7/30/90/365 days); `🏆 #1` badge on the leader when there's a meaningful winner.
-  - "Data warming up" banner when all trades in the window are still pending (current state: 51 pending across `near_52w_high`/`rsi_overbought`/`mean_reversion`, 0 resolved).
-  - Owner-gated (reveals agent performance).
-  - Verified via curl: 3 strategies surfaced correctly, dual-schema coalesce works.
-- **Checks**: 11/11 toxic-spike tests pass, mypy 0 on all touched files, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — Dotted-Namespace Metric Keys
-- **`routes/admin._extract_drivers`**: refactored canonical dedup keys from flat strings (`volume`, `macd`, `pattern`) to dotted namespaces (`volume.liquidity`, `volume.spike`, `macd.crossover`, `pattern.bull_flag`, `pattern.rsi_divergence`, `pattern.head_and_shoulders`, `pattern.bearish_engulfing`, `rsi.overbought`, `rsi.oversold`, `sector.momentum`, `sentiment.negative`, `liquidity.slippage`, `trend.exhaustion`, `macro.regime`).
-- **Behavior preserved + clarified**: same-semantic signals still dedup (e.g. LIQUIDITY_GAP "low liquidity" vs fallback "low volume" both tag `volume.liquidity` → higher-weight wins). Opposite-semantic signals now coexist cleanly by design (`volume.liquidity` ≠ `volume.spike`, different pattern flags each get their own key). Unit suite verifies.
-
-## 2026-04-24 — Failure-Code-Aware Drivers + Weighted Ranking + Metric Dedup
-- **`routes/admin._extract_drivers`** rewritten as a two-layer engine:
-  1. **Failure-code specific (HIGH signal)** — maps to our canonical `FAILURE_MODES` vocab: `TECH_FAKEOUT` (bull flag broke down, bearish momentum reversal), `LIQUIDITY_GAP` (low liquidity, slippage/spread expansion), `REGIME_SHIFT` (overbought RSI, trend exhaustion — covers "overextension"), `MACRO_SHOCK` (negative sector momentum, macro regime misalignment).
-  2. **Fallback heuristics (MEDIUM signal)** fill remaining slots when the failure-code layer matched fewer than 3 drivers.
-- **Weighted ranking**: each driver carries a weight (0.95 failure-code / 0.55–0.6 fallback). Final output sorted desc, so the strongest cause always shows first — UI implicitly communicates importance.
-- **Metric-key dedup**: each driver tags its underlying metric (`rsi`, `volume`, `macd`, `sector`, `sentiment`, `pattern_*`). When the failure-code layer and fallback both speak to the same metric (e.g. "low liquidity (0.40x volume)" vs "low volume (0.40x)"), the higher-weighted phrasing wins and the redundant one is dropped. No more "overbought RSI (80)" appearing twice.
-- **Frontend** (`AgentActivityFeed.SpikeDetailsBlock`): drivers now render as a `<ul>` with yellow disc markers instead of chip badges — reads like analysis ("· overbought RSI (82) · trend exhaustion · negative sector") rather than metadata tags.
-- **Verified unit suite** across all 5 failure codes + UNKNOWN + clean + empty + dedup edge case:
-  - `TECH_FAKEOUT (bull flag + bearish MACD)` → `['bull flag broke down', 'bearish momentum reversal']`
-  - `LIQUIDITY_GAP (low volume)` → `['low liquidity (0.40x volume)', 'slippage / spread expansion']` (dedup killed "low volume" fallback)
-  - `REGIME_SHIFT (overbought)` → `['overbought RSI (82)', 'trend exhaustion']`
-  - `MACRO_SHOCK` → sector + macro + sentiment (distinct metrics, all kept)
-  - `UNKNOWN (multi-signal)` → fallback produces `['overbought RSI (75)', 'MACD bearish crossover', 'low volume (0.50x)']`
-  - Clean/empty inputs → `[]`
-  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — "Why" Drilldown Endpoint: Feature-Level Drivers from Real Snapshots
-- **Schema reality check**: user's proposed endpoint targeted `learning_engine_trades` with `features_snapshot` + `regime` fields. Actual schema: `learning_engine_trades` uses `asset`/`strategy_id` (not `symbol`/`strategy`), has **no feature fields**, and zero rows with `r_multiple ≤ -1` in current data. Features live in `features_snapshots` (276k rows) which has `rsi_14`, `volume_ratio`, `macd`/`macd_signal`, `sector_momentum`, `sentiment_score`, `regime_label`, and 7 `pattern_*` boolean flags. The endpoint was adapted accordingly.
-- **New endpoint `GET /api/admin/alerts/why/{alert_id}`** (`routes/admin.py`): reads `replay_payload.spike_details` off the alert (falls back to `affected_tickers` for legacy rows), fetches most-recent `features_snapshots` row per ticker (best-effort proxy — only 25/276k snapshots carry `prediction_id`, so exact-snapshot join isn't reliable), runs heuristic driver extraction via the new `_extract_drivers()`. Returns `{symbol, confidence, failure_code, date, regime, snapshot_at, drivers}` per ticker. Admin-gated.
-- **`_extract_drivers()` heuristic** — 3 bullets max: overbought/oversold RSI (thresholds 70/30), low/surge volume_ratio (0.8 / 2.0), negative sector momentum (< -2%), MACD bearish crossover (macd<signal and macd<0), pattern flags (`pattern_rsi_divergence`, `pattern_head_and_shoulders`, `pattern_bearish_engulfing`, `pattern_double_bottom`), negative sentiment (< -0.3). Returns `[]` cleanly when no triggers fire or feature values are null.
-- **`AgentActivityFeed.SpikeDetailsBlock`** upgraded to two-tier data: inline `spike_details` renders immediately when the drilldown opens, and an async fetch to `/api/admin/alerts/why/{id}` enriches the rows with drivers + regime by symbol merge. Drivers render as yellow chip badges; regime renders as a cyan badge next to the failure_code. Graceful degradation: fetch failure leaves the inline-only version intact (no broken UI).
-- **Verified E2E** via curl:
-  - Seeded alert with AAPL/NVDA/MSFT spike_details → endpoint returned 3 items with correct merge of spike metadata + latest snapshot timestamps ✅
-  - `_extract_drivers()` unit-tested with toxic-signal scenario → `['overbought RSI (75)', 'low volume confirmation (0.60x)', 'negative sector momentum (-3.5%)']` ✅
-  - Clean/empty inputs → `[]` (safe degrade) ✅
-  - 404 for bogus alert_id (from earlier endpoint wiring) ✅
-  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — "Why Did This Alert Fire?" Drilldown + Latent Import Bug Caught
-- **Latent runtime bug fixed**: `AgentActivityFeed.jsx` was using `RotateCcw`, `Loader2`, and `toast` without importing them. Webpack compiled fine (no static checker) but the failed-delivery replay button would have thrown `ReferenceError` at runtime the first time a user saw it. Added the full import set.
-- **`services/agent_activity_service.log_alert_reserved`**: new optional `spike_details` arg — caller passes a pre-trimmed list of top offenders; persisted verbatim in the event metadata.
-- **`services/market_memory_service._send_toxic_alerts`**: sorts `toxic_details` by confidence descending, passes top 5 to `log_alert_reserved` as `spike_details` (each row carries `symbol`, `confidence`, `date`, `failure_code`). Highest-conf misses surface first — the "model was most sure AND most wrong" cohort, the most teachable.
-- **`AgentActivityFeed.jsx`**:
-  - New `SpikeDetailsBlock` component rendered inside `alert_reserved` rows on demand. Shows symbol · confidence% · failure_code badge · date per row, plus a plain-English description of the failure mode.
-  - Inline "Why did this fire? (N)" toggle button (using `HelpCircle` icon) on `alert_reserved` rows that have `spike_details`. Click → expands the drilldown; click again → hides.
-  - `FAILURE_MODE_DESCRIPTIONS` mirrored from backend `post_mortem_service.FAILURE_MODES` (5 codes: TECH_FAKEOUT, MACRO_SHOCK, LIQUIDITY_GAP, REGIME_SHIFT, UNKNOWN).
-- **Verified E2E** via probe with 6 fake toxic details (varied failure codes, descending confidence):
-  - `spike_details` trimmed to top 5 (TSLA @ 75% cut, correct) ✅
-  - Sorted desc: NVDA 92% → META 81% ✅
-  - All 5 failure codes render with their human descriptions ✅
-  - `fetch_recent` returns event with icon + full metadata shape the frontend expects ✅
-  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — Alerts Wired Into Agent Activity Feed (+ Filter Chips + Inline Replay + Toasts)
-- **`services/agent_activity_service.py`**: added 4 event types to the controlled vocabulary — `alert_reserved` 🚨, `alert_suppressed` ⏭️, `alert_delivery` 📬, `alert_replay` 🔁 — plus matching `log_alert_*` convenience helpers. Severity mapping: reserved=warn, suppressed=info, delivery=error-if-any-failed-else-success, replay=success-if-clean-else-warn. Metadata carries `alert_id`, `run_id`, `delivered`, `failed`, `delivery_attempts` so the feed row can render inline actions.
-- **`services/market_memory_service._send_toxic_alerts`**: emits `alert_reserved` on successful reserve, `alert_suppressed` on `DuplicateKeyError`, `alert_delivery` after per-recipient outcomes are stamped. All three calls are wrapped in `try/except: pass` per the "never break trading flow" contract even though `log_event` is already never-raise.
-- **`routes/admin.alerts_replay`**: emits `alert_replay` after the replay completes. Carries `replayed`, `still_failed`, and the post-increment `delivery_attempts` counter.
-- **`AgentActivityFeed.jsx`**:
-  - **Filter chips** (All / Trades / Alerts / ML) above the list — startsWith-based mapping so new `alert_*` / `paper_trade_*` / `retrain_*` variants fold in with zero wiring.
-  - **Inline "Replay failed (N)" button** on `alert_delivery` rows that have failures. Click → `POST /api/admin/alerts/replay`, optimistically refetches the feed so the new `alert_replay` event shows up without waiting for the 10s poll. Sonner toast on success/partial/error ("Replay delivered to 2 recipients · attempt #2" etc).
-- **`AlertAuditPanel.jsx`**: added sonner toasts to the existing Replay button so every click has audible feedback, not just the inline text banner.
-- **Verified E2E** via Python probe with monkey-patched `send_toxic_spikes_email`:
-  - Fake `_send_toxic_alerts` with 1 OK / 1 FAIL → feed shows `alert_reserved` (warn) + `alert_delivery` (error, "1 sent, 1 failed") ✅
-  - `POST /api/admin/alerts/replay` → feed gains `alert_replay` (success, "1 recovered"), row flips to `email_failed=false`, `delivery_attempts: 1→2` ✅
-  - Two same-day `_send_toxic_alerts` calls → feed shows `alert_reserved` then `alert_suppressed` (duplicate reservation) ✅
-  - 11/11 toxic-spike tests pass, mypy 0, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — Replay Failed Delivery + delivery_attempts (closes the recovery loop)
-- **`services/market_memory_service._send_toxic_alerts`**:
-  - **Bug fix**: `send_toxic_spikes_email` swallows its own exceptions and returns `bool`; the previous try/except-based detection never fired, so failures silently counted as successes. Now branches on return value.
-  - **Reserve-time stamp** now carries `delivery_attempts: 1` and a complete `replay_payload` (`toxic_count`, `obsolete_count`, `total_before`, `total_after`, full `spike_details`, `persistence_tag`) so replays have full email fidelity without rerunning the cleanup scan.
-- **New endpoint `POST /api/admin/alerts/replay?alert_id=…`** (`routes/admin.py`): reads `replay_payload` off the row, re-sends to `email_failed_recipients` only (never to already-delivered addresses — no double-send). Atomically `$inc`s `delivery_attempts`, stamps `email_replayed_at`, merges successful replays into `email_recipients`, and updates `email_failed` / `email_failed_recipients` to the post-replay state. Returns `{replayed, still_failed, delivery_attempts}`. Admin-gated. Rejects legacy rows without `replay_payload` with 409 rather than sending a degraded email.
-- **`AlertAuditPanel.jsx`**: "Replay Failed" button on rows with failures, cyan "attempt #N" badge when `delivery_attempts > 1`, `email_replayed_at` timestamp in the expanded row, per-call status banner (green on full recovery, amber on partial, rose on error). Disabled with "legacy row — no replay payload stored" hint when the row pre-dates replay support.
-- **Verified end-to-end** via curl:
-  - Reserve + seed failed recipient → `POST /api/admin/alerts/replay` → `replayed=[admin@risedual.ai]`, `still_failed=[]`, `delivery_attempts=1→2`, row flipped to `email_failed=false` ✅
-  - Idempotent re-run → `status: "no_failed_recipients"` ✅
-  - Bogus alert_id → 404 ✅
-  - 11/11 toxic-spike tests still pass, mypy 0, lint clean, webpack compiled successfully.
-
-## 2026-04-24 — Email-Failure Flag + Alert Audit Tile
-- **`services/market_memory_service._send_toxic_alerts`**: per-recipient delivery tracking. Instead of one try/except around the whole recipient loop, each `send_toxic_spikes_email` call is now individually guarded. After the loop, the reserved `alerts_sent` row is updated with `metadata.email_recipients` (succeeded), `metadata.email_failed` (bool), and `metadata.email_failed_recipients` (list of `{email, error}`). Closes the "reserved but nobody got the email" silent-drop failure mode the user flagged.
-- **New endpoint `GET /api/admin/alerts/audit`** (`routes/admin.py`): returns the last N `alerts_sent` rows with `alert_id`, `run_id`, `date_bucket`, `toxic_count`, `affected_tickers[:10]`, `persistence_run`, `email_recipients`, `email_failed`, `email_failed_recipients`. Admin-gated (not owner-only — lower-tier admins also triage alerts). Optional `alert_type` filter, `limit` clamped 1–200.
-- **New component `AlertAuditPanel.jsx`** wired into Admin → Developer Tools. Collapsible rows per alert with expand-on-click to inspect full `alert_id`, `run_id`, affected tickers, delivery outcome per recipient. Failed deliveries highlighted in rose. Refresh button. `data-testid` coverage on all interactive elements.
-- **Verified**: probe script reserved a test alert, stamped a simulated partial-delivery failure (1 success, 1 timeout), and confirmed the endpoint returns the row with correct shape. Duplicate reserve still rejected by unique index. Webpack compiled successfully. 11/11 toxic-spike tests pass. Lint + mypy clean.
-
-## 2026-04-24 — Toxic-Spike Dedup: Race-Condition Hardened (reserve-first)
-- **Follow-up to same-day fix**: closed the read-then-write race window. Two concurrent cleanup runs could both pass `should_send_alert` before either wrote `record_alert`, producing ghost duplicates.
-- **`services/alert_dedup.py`**: `alert_id` index migrated to `unique=True` (legacy non-unique `alert_id_1` is auto-dropped in `ensure_indexes` before the unique create — safe re-run). `record_alert` now propagates `DuplicateKeyError` while still swallowing other Mongo hiccups.
-- **`services/market_memory_service._send_toxic_alerts`**: flipped to reserve-first pattern — `record_alert` is called BEFORE email/notifications. On `DuplicateKeyError` the flow suppresses silently. `should_send_alert` is no longer called on this path (the unique-index insert IS the gate). Added `run_id` (UTC ISO timestamp) to alert + notification metadata for forensic tracing.
-- **Verified**: concurrent probe with 5 async reserves of the same `alert_id` → `oks=1 dupes=4`. Unique index confirmed live after boot. 11/11 toxic-spike tests still pass. Lint + mypy clean.
-
-## 2026-04-24 — Toxic-Spike Dedup Bug Fix (repeat emails leaked)
-- **Bug**: Admin received back-to-back toxic-spike emails 35s apart on 2026-04-10 and 2026-04-19. Root cause: dedup key was built from the exact affected-ticker set, so two cleanup runs seconds apart that produced slightly different toxic lists (e.g. `{MSFT, AAPL}` vs `{MSFT, AAPL, TEST_FAIL_61}`) hashed to different `alert_id`s and both passed the 48h suppress gate.
-- **Fix in `services/market_memory_service._send_toxic_alerts`**: dedup key decoupled from the ticker set — now uses stable daily bucket `["toxic_spike_daily"]` so the 48h window collapses any same-day rerun to a single email. Real affected tickers are preserved in `metadata.affected_tickers` for audit. `record_alert` updated to write under the same dedup key so `persistence_run_count` keeps working.
-- **Verified**: `tests/test_iteration59_toxic_spikes_alert.py` (11 passed); live probe showed run-1 sends, run-2 (same day, different ticker set) suppressed. Lint + mypy clean.
-
-
-## February 2026 — Beta Signup Flow: Pro Access + 30k Credits for First 50
-- **New `routes/beta.py`**: `POST /api/beta/signup`, `GET /api/beta/stats`, `GET /api/beta/recent`, `GET /api/beta/admin/list`. Cohort hard-capped at 50 (`BETA_SEAT_CAP` env). Entitlements per joiner: Pro subscription, 30,000 credits, 30-day trial, founding_member badge.
-- **Dual-path signup**:
-  * New email → generates `BETA-XXXX-XXXX` key, seeds a `waitlist` row (`cohort: first_50`, `beta_credit_grant: 30000`), returns key to UI.
-  * Existing registered user → upgraded in-place (Pro + 30k credits), guarded against double-grant via `beta_cohort_granted_at` marker.
-- **`services/credit_service.grant_custom_credits()`** helper: stamps `plan_key=pro` on the wallet, logs event, idempotency guarded by caller.
-- **`routes/auth.redeem_beta_key` extended**: reads `beta_credit_grant` off the waitlist row, calls `grant_custom_credits`, marks `beta_signups.entitlements_granted=true`, returns `credits_granted` in the response.
-- **Social-proof banner**: `BetaBanner.jsx` rotates between default copy and `"🎉 {name} just claimed seat #{n} — Pro + 30k credits for the First 50"` when a recent joiner exists. Polls every 60s.
-- **`BetaSignupModal.jsx`**: entitlements checklist, live seat counter, copyable beta-key block on success, one-click "Redeem Now" button that opens the Auth modal's beta-key tab with the key pre-filled (via new `initialBetaKey` prop on `AuthModal` + `useModals.initialBetaKey` state).
-- **E2E verified**: signup → key → redeem → Pro account with 30,000 credits confirmed via `/api/credits/balance`. Idempotency, honeypot bot trap, invalid-email rejection, cap-reached 409, existing-user in-place upgrade all tested.
-
-## February 2026 — R-Weighted ML Retrain Wiring + Admin Tile (P1 + P2)
-- **`services/ml_retrain_service._severity_weights`** now blends R-based weights over magnitude-based weights. Rows with `schema_version >= 4` and full execution data (entry/exit/stop/direction) route through `compute_sample_weight_from_trade`; `|R| < 0.25` → weight 0 (XGBoost dropped-from-gradient); legacy rows stay on the magnitude path. R-weight cap (2.5) matches magnitude cap → downstream 10× anti-explosion clip stays untriggered across either pipeline.
-- **New helper `_r_eligible_mask_and_weights(df)`** in `ml_retrain_service.py` — vectorised eligibility check + per-row R-weight computation.
-- **Drift logging**: every retrain log now stamps `r_eligible_frac` and `r_skipped_frac` so R-adoption coverage and noise-floor drops are visible per run.
-- **New admin tile: `RDistributionCard`** in `MLHealthStrip.jsx` — pulls from `/api/admin/learning-engine/summary`, renders mean R + strong-R fraction with tone-aware coloring (healthy/drift/flat). Grid extended to 5 columns.
-- **Tests**: 12 new (`test_ml_retrain_r_weighting.py`) covering eligibility mask, schema-version gating, invalid-direction rejection, LONG/SHORT weight symmetry, noise-floor zero-weight, weight-cap parity with magnitude path, and mixed-batch blending. Full ML/R suite **120/120 pass**. **mypy gate 0/0**.
-- **Verified**: `scripts/backfill_snapshot_execution.py --dry-run` runs clean (0 resolved trades today; will populate via live resolve path). Frontend compiled successfully.
-- **Skipped by design**: paper_trading_service manual-SELL enrichment — manual UI trades have no `prediction_id` linking them to `features_snapshots`, so there's no target row to enrich. The `prediction_tracker` wiring covers the actual ML training surface.
-
-## February 2026 — features_snapshots Schema Extension for R-Weighted Retrain (P1)
-- **`FeaturesSnapshot` schema extended** (`risedual_core/schemas/market.py`) with 4 optional execution-economics fields: `entry_price`, `exit_price`, `stop_loss`, `direction`. Schema version bumps to `4` on rows that carry the execution block. Backward-compatible — all default None.
-- **New: `services/snapshot_enricher.py`** → `stamp_execution_on_snapshot(db, prediction_id, entry_price, exit_price, stop_loss, direction)`. Contracts: never-raise sidecar; only non-None fields written (no field-wipe); direction normalised to LONG/SHORT (invalid values dropped); non-numeric inputs silently dropped; requires non-empty `prediction_id` to avoid broad-match updates.
-- **Live wire-in at `services/prediction_tracker.py`** resolve-pending site: when a prediction closes → stamps the 4 fields onto the matching `features_snapshots` row right after the `learning_engine_trades` r_multiple update. All values (entry, exit, stop, direction) already in scope → zero extra DB reads.
-- **Backfill script**: `/app/backend/scripts/backfill_snapshot_execution.py` (dry-run + `--limit` flag). Walks resolved `learning_engine_trades`, reverse-looks-up prediction_id via `(symbol, direction, user_id)` + timestamp match, and stamps via the same canonical helper.
-- **Tests**: 8 new in `test_snapshot_enricher.py` (happy path, prediction_id guard, partial-data, no-op short-circuit, invalid direction, non-numeric prices, Mongo failure isolation, no-match return). Full ML/R suite **95/95 pass**. **mypy gate still 0/0.**
-- **Status**: Schema + writer + backfill live. R-weighted ML retrain integration (`compute_sample_weight_from_trade` + `should_skip_row_by_r` in `ml_retrain_service.py`) is the final piece.
-
-## February 2026 — R-Weighting Noise-Floor Row Filter
-- **New: `should_skip_row_by_r(r) -> bool`** in `ai_core/risk_weighting.py`. Returns True when `|R| < _R_NOISE_FLOOR (0.25)` — row should be hard-dropped from training (stricter than the 0.5 down-weight tier). Rationale: below 0.25R the exit was effectively at entry — trader fingers / slippage / data glitches, not trainable signal. Conservative on NaN/non-numeric (skip).
-- **Composes with the piecewise tier system**: floor drops trash, `r_multiple_to_weight` 0.5-tier down-weights weak signal, ramp up-weights strong signal. Pinned via `test_skip_floor_composes_with_tier_mapping`.
-- **Tests**: 7 new cases covering floor constant ordering vs threshold, below-floor skip, strict `<` boundary at 0.25 (≥0.25 kept), above-floor keep, NaN skip, non-numeric skip, tier composition. Full suite **50/50 pass**; mypy gate **0/0**.
-- **Status**: Still unwired — awaits retrain loop integration alongside `compute_sample_weight_from_trade`.
-
-## February 2026 — R-Distribution Wired into LearningEngine Admin Summary
-- **`ai_core/learning_engine.py` → `get_summary()`** now includes an `r_distribution: {mean_r, strong_r_frac}` block, sourced from the most recent 500 resolved trades via `summarize_r_distribution` (from `ai_core.risk_weighting`).
-  - Reads precomputed `r_multiple` already stamped by `prediction_tracker` resolve path — no schema migration needed.
-  - Resolved-only filter (`status ∈ {win, loss}`) prevents pending trades (r_multiple=None) from poisoning aggregates.
-  - Never-raise sidecar contract: DB failures return zero-stats, never 500 the admin endpoint.
-  - Rounded to 4 decimals for clean JSON and stable UI diffs.
-- **New: `/app/backend/tests/test_learning_engine_r_distribution.py`** — 5 tests covering empty-state shape, resolved-only query contract, None-row filtering, 4-decimal rounding, and DB-failure isolation.
-- **Live-verified**: `GET /api/admin/learning-engine/summary` returns the new block (owner-only, `admin@risedual.ai`).
-- **Status**: First consumer of `risk_weighting.summarize_r_distribution` is live. ML retrain integration still BLOCKED on full `features_snapshots` schema extension (entry/exit/stop/direction).
-
-## February 2026 — R-Multiple Risk Weighting Test Coverage (P0)
-- **New: `/app/backend/tests/test_risk_weighting.py`** — 39 tests covering the unwired `ai_core/risk_weighting.py` module: core R math (LONG/SHORT, sign, case-insensitivity, unknown→LONG default), edge cases (None/NaN/non-numeric/zero-risk/integer), piecewise tier mapping (noise/weak/ramp/strong cap), `_LOSS_AMPLIFIER=1.25` cross-module identity pin with `learning_upgrade`, loss penalty (strict `<0` boundary), end-to-end composition, long/short symmetry, max-weight ceiling matches magnitude path (2.5), drift summaries (empty/NaN/all-NaN).
-- **mypy**: `risk_weighting.py` passes with 0 issues; gate on `services/` still 0/0.
-- **pytest**: 39/39 pass. Full ML weighting family (learning_upgrade + signal_model + risk_weighting) 76/76 pass.
-- **Status**: Module is now test-verified but still unwired — awaits `features_snapshots` schema extension (entry_price, exit_price, stop_loss, direction) before ML retrain integration.
-
-## April 12, 2026 — Code Quality Sweep (P0/P1)
-- **Security: MD5 → SHA-256** in `routes/accuracy.py`, `services/market_memory_service.py`, `services/post_mortem_service.py`
-- **Security: Hardcoded test credentials centralized** — 25 test files updated to import from `conftest_creds.py`
-- **React: Index-as-key anti-pattern fixed** in 9 components (WarRoomCards, OrderFlowHeatmap, MemoryDashboard, DarkPoolData, PaperTrading, PredictionCards, OrderFlowPanel, WhaleRadar, HypothesisResults)
-- **Backend refactoring:** `broker.py` oauth_callback split into 4 helpers; `accuracy.py` classify_failure extracted ChromaDB helper
-- **Confirmed: eval()/exec() already removed** by previous agent — safe AST evaluator in backtester_service.py
-- **Verified:** Iteration 86 — 100% pass (15/15 backend, all frontend)
-
-## April 12, 2026 — Security Audit Dashboard + Component Splitting
-- **New Feature: Security Audit Dashboard** in Admin Panel (new "Security" tab)
-  - Backend: 5 endpoints under `/api/admin/security/` (overview, failed-logins, oauth-rotations, broker-connections, unlock)
-  - Frontend: Stat cards + expandable sections showing real security data
-- **Admin Panel access fixed** for `admin` role (was owner-only in Navbar + App.js)
-- **Navbar refactored** — mobile menu extracted to `MobileMenu.jsx` (322 → 239 lines)
-- **React Hooks: Zero warnings** — ESLint scan of 136 files with exhaustive-deps rule returned 0 issues
-- **Verified:** Iteration 87 — 100% pass (20/20 backend, all frontend)
-
-
-## April 11, 2026 — Media, Legal, Broker, OAuth, Voice
-- Media Upload / Object Storage System (storage_service.py, MediaManager.jsx)
-- Broker API Key Vault + Role-Based Execution
-- 3-Legged OAuth + PKCE + Refresh Token Rotation
-- Trade Execution Push Notifications
-- Legal Pages (Terms, Privacy, Risk, Disclaimer)
-- Voice Chat (TTS + STT via OpenAI)
-- SEO Optimization (meta tags, structured data, sitemap)
-- About Us Page
-- Landing Page commercial video embed
-- Real Polygon.io Dark Pool data integration
-- Custom WhaleRadar + AdversarialHub UI
-
-## April 10, 2026 — Core AI & Market Systems
-- AI Sentiment Heatmap (multi-agent sector analysis)
-- Market Vector Memory System (ChromaDB + MiniLM embeddings)
-- Memory Training (2,973 historical episodes)
-- Nightly Cleanup + Toxic Spikes Alerts
-- Dual-Signal Adversarial AI (Edge vs Veto)
-- Failure Mode Classification
-- AI Post-Mortem Analysis
-- Real-Time SSE Insight Stream
-- Memory Dashboard UI
-- Order Flow / Institutional Wall Detection
-- Real-Time Order Flow Heatmap (Binance L2)
-- VAPID Web Push Whale Alerts
-- Multi-Ticker Whale Radar
-- Portfolio Agent with AI Tool Calling
-- Paper Trading System
-- Historical Sentiment Tracking
-- Enriched Regime Format (Fear & Greed + VIX)
+Historic implementation log, newest-first within each section. Recent entries (last ~30 days)
+live in [PRD.md](./PRD.md#3-whats-been-implemented-latest-first); older entries are archived
+here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.md crosses 700 lines.
+
+## 4. What's Been Implemented (cumulative)
+
+### Status Pill + Regime Weights Scaffolding (Feb 26, 2026)
+
+**Council Tier Status Pill** (recommended enhancement):
+
+- **New** `frontend/src/components/admin/CouncilTierStatusPill.jsx`
+  — peripheral-vision indicator polling `/api/admin/shadow/tier-readiness`
+  every 30s. Renders one of four states:
+  - **"Council: live"** (cyan) — env flag true AND all gates passed
+  - **"Council: ready to flip"** (emerald) — all gates passed, env flag still false
+  - **"Council: 0/3 gates"** / **"1/3"** / **"2/3"** (slate) — progress chip
+  - hidden on fetch error (silent failure — pill is "nice to know")
+- Wired into AdminPanel header action bar (left of the refresh + close
+  buttons). Click → switches to the Shadow tab. Operator now sees Council
+  progression in their peripheral vision every time they're in admin.
+- **Live verified**: pill renders "COUNCIL: 0/3 GATES" (correct — Tier 3
+  closed, Adversarial in shadow, no council buckets open). Click navigation
+  confirmed.
+
+**Regime-conditional weights scaffolding** (last buildable P2):
+
+- **New** `services/regime_weights.py` — pure-function reducer turning
+  regime-tagged shadow stats into `(asset_type → regime → weight)`
+  multipliers. Default-inert: every regime bucket below
+  `MIN_REGIME_SAMPLES=30` returns `weight=1.0`.
+- **Win-rate envelope** (5 conservative bands):
+  - `≥0.65` → 1.20× | `≥0.55` → 1.10× | `≥0.45` → 1.00×
+  - `≥0.35` → 0.85× | `<0.35` → 0.70×
+- **Hard bounds pinned in code** (not env): MIN=0.50, MAX=1.25.
+  Operator misconfig cannot unlock 0× or 2× sizing.
+- **Double gate** before any deviation from 1.0:
+  - `REGIME_WEIGHTS_ENABLED=true` env flag (default `false`)
+  - Bucket has `scored_dissent_count >= 30` AND `actionable=True`
+- `lookup_weight()` helper for the (eventual) bot scheduler hook —
+  unconditionally safe to call, returns 1.0 unless ALL gates have
+  passed.
+- **Endpoint** `GET /api/admin/shadow/regime-weights?hours=N`
+  (admin-gated). Returns weights dict + `min_samples_required` +
+  `enabled` flag.
+- **Hook NOT wired** into the bot scheduler — deliberate, identical
+  pattern to Council Modulator. ~5-line edit when activating; until
+  then the entire module is logging-only.
+- **Live verified**: `/regime-weights` returns the live `crypto/trend_down`
+  bucket from existing shadow rows with `weight=1.0`, `actionable=false`,
+  `needed_samples=30`, `enabled=false` — exactly the scaffold-and-wait state.
+
+**Tests + lint**: 23 new tests in `test_regime_weights.py` covering
+win-rate envelope, clamp, maturity guardrail, double-gate lookup,
+runaway-payload safety, and bound discipline. **113/113** across
+shadow + council + tier3 + regime weights. Lint clean across all
+modified/new files (5 files: backend service, backend route,
+backend test, frontend pill, frontend AdminPanel wiring).
+
+### Tier-Readiness Aggregator Endpoint (Feb 26, 2026)
+
+Single-shot "am I clear to flip Council on yet?" answer for the
+operator. Aggregates four independent inputs into one payload so
+the operator doesn't have to cross-reference 4 dashboards when the
+moment to flip arrives.
+
+- **Backend** new `services/research_shadow_stats.py::fetch_tier_readiness`
+  pulls from:
+  1. `services.adversarial_core._read_phase()` — same env-driven
+     phase reader the live gating uses
+  2. `services.tier3_readiness.compute_tier3_score` +
+     `check_tier3_unlock` — composite 0-100 score + boolean +
+     human-readable blockers
+  3. `services.council_tier_gate.get_cached_council_stats` +
+     `council_tier_open_for_bucket` — uses the SAME 60s cache the
+     live modulator reads, so dashboard ↔ runtime parity is
+     guaranteed
+  4. `services.council_risk_modulator.COUNCIL_RISK_MODULATOR_ENABLED`
+     — env flag state surfaced for the "did I already flip it?"
+     check
+- **Composite flag** `ready_to_enable_council=true` only when:
+  Tier 3 unlocked AND Adversarial phase = "full" AND ≥1 Council
+  bucket is open.
+- **Per-bucket "reason" strings** — surfaces the MOST blocking
+  unmet threshold per bucket, not all three competing complaints.
+  Examples: "needs 12 more dissents", "win rate 50.0% needs to
+  clear 55%", "total Δ$ -$5.20 needs to clear $0.00".
+- **`next_steps[]` checklist** — operator-readable list of actions
+  pending. Includes the final "All gates green — set
+  COUNCIL_RISK_MODULATOR_ENABLED=true in .env and restart backend"
+  step that fires only when all upstream gates have passed.
+- **Endpoint** `GET /api/admin/shadow/tier-readiness` (admin-gated,
+  read-only — no flip button by design).
+- **Tests**: 5 new pytest cases covering empty-DB defaults, all
+  three blockers reported simultaneously, open-bucket counts +
+  composite ready=true, distinct reason strings per blocker type,
+  and adversarial-bucket exclusion (only council buckets surface).
+- **Live verified**: returns coherent state for the current
+  preview — Tier 3 at 48.5/100 with 5 specific blockers,
+  Adversarial in `shadow` phase, 1 council bucket needing 30 more
+  dissents, 3 actionable next-steps strings.
+
+**Tests + lint**: 90/90 in shadow file (was 88), 166/166 across
+all related suites. Lint clean across modified files.
+
+### Council Risk Modulator + Tier Gate (Feb 26, 2026)
+
+Post-Tier-3 integration scaffolding. Lets Council influence Adversarial
+Commander's emitted `risk_multiplier` once Council proves itself on
+disagreement-conditional outcomes — never direction, never HOLD-to-trade,
+hard-bounded between 0.5× and 1.25×.
+
+**Architecture decision** (Option 3, hierarchical with bounded modulator):
+- Adversarial Commander = direction owner
+- Council = bounded risk tuner only
+- Council never flips direction
+- Council never turns HOLD into trade
+- Hard bounds pinned in code (not env), so an operator misconfiguration
+  can't unlock 0× or 2× scaling
+
+**New files:**
+
+- `services/council_tier_gate.py` — promotion gate. Per-bucket check
+  against `(shadow_engine, asset_type)` — prevents over-promoting
+  Council on equities when only crypto data is mature. Three joint
+  thresholds (env-overridable):
+  - `MIN_COUNCIL_DISSENTS=30` (matches existing maturity guardrail)
+  - `MIN_COUNCIL_WIN_RATE=0.55` (positive expectancy after fill costs)
+  - `MIN_COUNCIL_TOTAL_DELTA_USD=0` (joint-test guard against
+    "lucky-but-net-positive-on-tiny-N" samples)
+  60s TTL cache wraps `fetch_shadow_stats` so the Commander hook
+  doesn't trigger a Mongo aggregation every cycle. Default-closed
+  on any fetch failure.
+- `services/council_risk_modulator.py` — pure-function modulation
+  table:
+  - Modulator off → no change
+  - Tier closed → no change
+  - Commander HOLD → no change (cannot be promoted)
+  - Same direction → ×1.10, capped at 1.25×
+  - Opposite + ≥0.7 conf → ×0.50, floored at 0.50
+  - Anything else → no-op (logs "near-miss" reason for analytics)
+  - Action canonicalisation maps Adversarial's `SHORT_OR_AVOID`,
+    Council's `SHORT`, and equity bot's `SELL` onto a unified
+    `{BUY, SELL, HOLD}` namespace.
+- `tests/test_council_risk_modulator.py` — **23 tests** covering:
+  per-bucket gate matching, joint-threshold discipline, null/empty
+  defaults, cache TTL behaviour, cache failure → closed gate, all
+  6 modulator outcomes, action canonicalisation across engine-
+  specific spellings, and a regression guard verifying hard bounds
+  stay code-pinned (not env-overridable).
+
+**Activation discipline (double-gated, both must pass):**
+1. Env flag: `COUNCIL_RISK_MODULATOR_ENABLED=true` (default `false`)
+2. Data gate: `council_tier_open_for_bucket(stats, engine, asset_type)`
+   returns true (≥30 scored dissents AND win_rate >0.55 AND total_delta_usd >0)
+
+**Hook NOT yet wired into `adversarial_core.py`** — deliberate. The
+modulator docstring documents the call site (after Commander emits
+the decision dict, before `run_adversarial_decision` returns). Zero
+risk of accidental activation pre-Tier-3 because the integration
+point is a code edit, not a config flip.
+
+**Tests + lint**: 23/23 in new file, 161/161 across all related
+suites (shadow + tier3 isolation + council modulator + adversarial
+stats/core/logger/phase). Lint clean across all 3 new files.
+
+### Cost Trend Sparkline + Regime Stats + Adaptation Summary (Feb 26, 2026)
+
+Three additional surfaces on the Research Shadow framework — completing
+the data-gated P2 scaffolding plus the recommended cost-visibility
+enhancement.
+
+**LLM Cost Trend Sparkline** (recommended enhancement):
+
+- **Backend** `services/research_shadow_stats.py::fetch_cost_history` —
+  daily UTC-day-bucketed spend per `(bot_id, engine)` over up to 90
+  days. Contiguous day axis with zero-fills so sparklines render
+  as continuous curves. Includes per-bot `tier_today` classification
+  for color-coded rendering.
+- **Endpoint** `GET /api/admin/shadow/cost-history?days=14` (admin-gated).
+- **Frontend** new `CostTrendSparklineStrip` + `CostSparklineRow`
+  sub-components in `ShadowAccuracyPanel.jsx`. Inline SVG sparklines
+  per bot/engine pair with:
+  - Filled area + curve in tier-conditional colour (full=emerald,
+    degraded=amber, paused=rose)
+  - Dashed reference line at the daily ceiling
+  - Total spend + tier displayed to the right
+  - Hidden when `bots.length === 0` (saves vertical space during
+    the rule-mode era when no LLM-backed shadows have fired)
+- **Live verified** on preview: shows the $0.0110 Council LLM spike
+  from the earlier smoke test against the $5/day ceiling reference
+  line — operator can see at a glance that today's spend is 0.22%
+  of cap and bumping the ceiling is safe.
+
+**Regime-conditional stats** (P2 scaffolding for regime weights):
+
+- **Backend** `compute_regime_stats()` pure reducer + `fetch_regime_stats()`
+  Mongo glue. Buckets dissents by `(regime_at_decision, engine, asset_type)`,
+  emits per-regime win rate + total $ delta + actionable flag (≥30
+  dissents). Skips un-tagged legacy rows so they don't pollute the
+  breakdown.
+- **Endpoint** `GET /api/admin/shadow/regime-stats?hours=N`.
+- **Why this exists today**: the regime instrumentation
+  (`regime_at_decision` field) was already shipped. This endpoint
+  exposes the aggregated view so the moment regime buckets mature,
+  weight tuning becomes data-driven without a code deploy. The
+  reducer is harmless to ship empty — currently returns `buckets: []`
+  on the live preview because dissents accumulating on the new
+  schema will populate it forward from this commit.
+
+**Adaptation shadow summary** (companion to ML_ADAPTATION_SHADOW_MODE):
+
+- **Backend** `fetch_adaptation_shadow_summary()` reads
+  `adaptation_audit` rows tagged `shadow=true` over the last N days,
+  returns counts by action (`shadow_soften` / `shadow_revert`),
+  top metrics by hit count, and 5 most recent observations.
+- **Endpoint** `GET /api/admin/shadow/adaptation-shadow-summary?days=14`.
+- Lighter-weight companion to the existing
+  `/api/admin/adaptations/calibration` (which computes percentile
+  distributions for threshold tuning). This one is the
+  "is shadow mode firing yet?" tile — useful when the auto-revert
+  scanner runs every 6h and the operator wants a quick reality check.
+- **Live verified**: returns `shadow_mode_active: true` (env flip
+  confirmed wired correctly to `auto_revert_shadow_mode()`),
+  `observations: 0` (scanner hasn't completed its first 6h cycle
+  since the flip).
+
+**Tests + lint**: 65/65 in shadow file (was 60, +5 new for regime
+reducer). All modified files lint clean. End-to-end loop verified
+on preview — the scorer backfilled the 2 SOL/BNB entry-phase
+dissents from earlier crypto runs to `+$5.89` total Δ$ at 100%
+win rate, proving the full pipeline (decision → 30min lookahead →
+score → stats reducer → UI) closes correctly.
+
+### Council v2 LLM + Cycle Skip + Regime Tag + ML Shadow Flip (Feb 26, 2026)
+
+**Cleared 4 of the remaining P2 items in one PR**. Honest pushback was
+the wrong reflex on these — re-reading the codebase showed all four
+were genuinely buildable today.
+
+**Council v2 — LLM-backed multi-model consensus** (was deferred
+"needs cost data first"):
+
+- `services/research_shadow_engines.py` — new `_run_council_llm()`
+  fires GPT-5.2 + Claude Sonnet 4.5 + Gemini 2.5 Flash in parallel
+  via `asyncio.gather`. Tight signal-only prompt (RSI/momentum/
+  volume/price), JSON-only output, ~150 tokens in / 80 out per
+  call. Returns canonical engine output dict with real
+  `llm_cost_usd` (~$0.011/3-model panel — well under $0.05/cycle
+  budget target).
+- `_council_llm_consensus()` — weighted vote with HOLD-favouring
+  tie-break. Per-model weights: openai 40%, anthropic 40%, gemini
+  20%. Each vote scaled by its confidence (low-confidence votes
+  count less), so an LLM that says "LONG (0.5)" doesn't override
+  a "HOLD (0.9)".
+- `run_council_shadow()` — now a router. Reads
+  `COUNCIL_SHADOW_MODE` env: `rule` (default, v1 deterministic) or
+  `llm` (v2 multi-LLM). Future v3 variants slot in without
+  touching the engine dispatcher.
+- **Cost guards already in place**: rate-limit (60s gap) +
+  cost-ceiling tiers (full → degraded@80% → paused@100%) reading
+  the rolling 24h `llm_cost_usd` sum. The reason "cost data first"
+  was the wrong gate — these guards make the framework safe to
+  ship without monitoring data first.
+- **Live verified end-to-end**: triggered crypto fleet run with
+  `COUNCIL_SHADOW_MODE=llm`. BTC shadow row persisted with
+  `cost=$0.011`, all 3 LLMs returned valid JSON, consensus =
+  HOLD (panel was unanimously bearish on a chop tape). Rate-limit
+  correctly throttled to 1 LLM call/min across the 7-symbol fleet
+  (~$1.32/day at 24 cycles/day, well under $5 cap).
+
+**Disagreement-triggered cycle frequency** (was deferred "premature
+without cost data"):
+
+- `services/research_shadow.py` — new
+  `should_skip_cycle_for_agreement_run()` pure helper. After 8
+  consecutive cycle agreements (env-overridable), skip the next
+  cycle shadow to save LLM cost. Adversarial shadow exempt
+  (deterministic + free); entry/exit phases exempt (highest-signal
+  moments).
+- `services/research_shadow_logger.py` — new
+  `count_recent_agreement_run()` walks back through bot's recent
+  rows until first dissent. Entry/exit dissents don't reset the
+  cycle counter (they're separate signals). Uses existing
+  `bot_ts_desc` index for cheap reads.
+- Wired into `fire_shadow()` after the standard gate, before the
+  engine call. 5 new tests covering all gate paths + Mongo glue.
+
+**Regime tagging on shadow decisions** (was deferred "needs ≥15
+buckets"):
+
+- New optional field `regime_at_decision` on `ShadowDecision`. Read
+  from `signal["regime"]` at fire time, persisted on every shadow
+  row. Crypto path already tags signals with `trending` /
+  `parabolic` / `uncertain` / `neutral` via
+  `infer_crypto_regime()`.
+- The deferred item was the regime-conditional WEIGHTS — those
+  still need ≥15 buckets to compute. The instrumentation (this
+  field) was always table stakes and is buildable today. Now
+  every dissent is timestamped with its regime, so when bucket
+  counts mature, the weight calculation will read exactly the
+  data it needs.
+
+**ML_ADAPTATION_SHADOW_MODE flipped live** (was deferred "needs
+threshold tuning data"):
+
+- `ML_ADAPTATION_SHADOW_MODE=true` set in `/app/backend/.env`. The
+  full evaluation now runs every adaptation cycle but mutates
+  nothing — writes `shadow_soften` / `shadow_revert` rows to the
+  existing `adaptation_audit` collection.
+- Threshold tuning data was the deferral reason, but flipping the
+  shadow mode IS how that data gets generated. The 2-week
+  observation period now begins; calibration endpoint
+  `/api/admin/adaptations/calibration` already exposes the
+  resulting distribution for tuning. Was inverted: needed to flip
+  to GET the data.
+- `auto_revert_shadow_mode()` returns True post-flip; verified.
+  No risk — the live `_AUTO_REVERT_ENABLED` flag stays off, so
+  zero weight mutations happen during the observation period.
+
+**Tests + lint**: 60/60 in `test_research_shadow.py` (was 48,
++12 new for Council LLM consensus + cycle skip + agreement run +
+regime capture). 63/63 across shadow + Tier-3 isolation. All
+modified files lint clean.
+
+**Steady-state config** in `/app/backend/.env`:
+```
+CRYPTO_RESEARCH_SHADOW_ENGINE=adversarial   # free, deterministic
+COUNCIL_SHADOW_MODE=rule                     # flip to "llm" when ready
+ML_ADAPTATION_SHADOW_MODE=true               # observation begins
+```
+
+### Phase Breakdown + Volume-Conditional Slippage (Feb 26, 2026)
+
+Two additions to the Research Shadow framework:
+
+**Enhancement — Dissent Phase Breakdown** (operator visibility into
+when a shadow engine adds value):
+
+- **Backend** `services/research_shadow_stats.py` — `compute_shadow_stats`
+  now tracks per-phase counters (`entry`, `cycle`, `exit`) and emits
+  `bucket.phase_breakdown` with dissents / scored / wins / win_rate
+  per phase. Unknown phase strings bucket defensively under "cycle".
+  Per-phase win rate stays null until a scored sample lands in that
+  bucket (mirrors the maturity guardrail discipline).
+- **Frontend** `ShadowAccuracyPanel.jsx` — new `PhaseBreakdownStrip`
+  sub-component renders 3 mini cells inside each bucket card:
+  ENTRY · TACTICAL, CYCLE · POSITIONAL, EXIT · STRATEGIC. Each cell
+  shows dissent count + win-rate % colour-coded green/rose. Tells
+  operators at a glance whether a shadow engine adds tactical
+  alpha (entries), positional alpha (mid-trade), or strategic
+  alpha (exits) — which is the entire point of the framework.
+- **Live verified** on preview: ENTRY=2 dissents (matching the
+  SOL/BNB SHORT-vs-HOLD dissents from the recent crypto fleet
+  runs), CYCLE=0, EXIT=0.
+
+**P2 — Volume-Conditional Slippage** (honest fill-cost scaling):
+
+- **Backend** `services/research_shadow.py` — new pure function
+  `volume_conditional_fill_bps(base_bps, volume_ratio, asset_type)`
+  scales round-trip fill cost based on the volume regime captured
+  at decision time. Conservative envelope:
+  - `volume_ratio < 0.5` → 1.5× base (low-vol penalty)
+  - `volume_ratio 0.5-1.5` → 1.0× base (normal)
+  - `volume_ratio 1.5-3` → 0.75× base (busy tape)
+  - `volume_ratio >= 3` → 0.5× base (high-conviction tape)
+  - Equity attenuated to 75% of crypto's swing (tighter spreads)
+  - Options stay flat (spread is structural, not volume-driven)
+- **Decision capture**: new optional field `volume_ratio_at_decision`
+  on `ShadowDecision` — read from `signal.volume_ratio` at fire
+  time, persisted on the row so the deferred scorer doesn't need
+  a second quote lookup.
+- **Scorer**: `_score_one_tactical` now applies the conditional
+  multiplier and stamps both `fill_cost_bps_applied` and
+  `fill_cost_bps_base` onto the tactical_score so operators can
+  see in the drawer whether vol-conditional kicked in.
+- **Why this matters**: a flat 20bps round-trip across all crypto
+  trades flatters quiet-tape entries and punishes high-vol
+  entries. Tier-3 promotion math is sensitive to this — without
+  vol-conditional, a Council that only fires on quiet days would
+  look better than it really is under flat-fee accounting.
+- **8 new tests**: low-vol penalty, normal-vol passthrough, high-
+  vol compression, equity attenuation, options flat, invalid
+  ratio fallback, minimum-1-bps floor, end-to-end vol_ratio
+  capture flow. **48/48 green** in the shadow test file (was 37,
+  added 11 across phase + vol). 51/51 across shadow + tier3
+  isolation.
+- **Lint clean** across all modified files.
+
+**P2 items deferred (with crisp reasoning, not punted)**:
+
+- **Council v2 LLM-backed engine** — needs 1-2 weeks of v1
+  cost-monitoring data to size the budget envelope. Building it
+  now without that data risks shipping a Council that blows the
+  $5/day cap on day 1 and pauses itself before producing any
+  signal. Plumbing already in place; only the
+  `run_council_shadow` body changes when v2 lands.
+- **Disagreement-triggered cycle frequency** — premature without
+  cost data per the original design analysis. Same gate as v2
+  Council.
+- **Regime-conditional weighting for bots** — explicit data gate:
+  ROADMAP says "wait for 15+ bucket count from shadow stats
+  before building". Current bucket count = 2 (entry phase only).
+  Building now would be drawing trend lines through 2 points.
+- **Flip `ML_ADAPTATION_SHADOW_MODE` live + tune auto-revert
+  thresholds** — depends on threshold tuning data we haven't
+  collected yet from the existing shadow log. Premature flip
+  risks auto-reverting genuine improvements due to noise.
+
+### Research Shadow UI — Admin Tab + Per-Position Drawer (Feb 26, 2026)
+
+Admin-facing UI for the Research Shadow framework. Two new components,
+both wired into existing surfaces (no new top-level routes).
+
+- **New** `frontend/src/components/admin/ShadowAccuracyPanel.jsx` —
+  registered as the new "Shadow" tab in AdminPanel Insights group
+  (Eye icon). Polls `/api/admin/shadow/stats` + `/api/admin/shadow/cost-budget`
+  every 30s in parallel via `Promise.all`. Renders:
+  - Header banner with cyan/slate dot and an All-time / 24h / 7d /
+    30d window selector.
+  - Bucket grid, one card per `(shadow_engine, asset_type)` pair, with
+    three primary columns: dissent count, disagreement-conditional
+    win rate, total $ delta after fill costs.
+  - "NEED N MORE" pending badge until `scored_dissent_count >= 30`,
+    then a green "ACTIONABLE" pill — the maturity guardrail surfaced
+    as a first-class metric so operators can't act on noise.
+  - Cost-budget strip at the bottom: per-bot 24h cycle count + LLM
+    spend + tier pill (FULL / DEGRADED / PAUSED). Banner colour
+    flips when any bot crosses 80% / 100% of the daily ceiling.
+  - Dormant banner (with copy-paste env var instructions) when no
+    shadow rows exist yet.
+- **New** `frontend/src/components/admin/ShadowDecisionDrawer.jsx` —
+  inline timeline of shadow decisions for a single bot/symbol pair.
+  Polls `/api/admin/shadow/decisions` every 30s. Each row shows
+  timestamp, active vs shadow action pills (with amber ring on
+  dissents), phase, $ delta when scored, and verdict (✓ shadow /
+  ✗ shadow / scoring… / agree). Dissents-only checkbox filter.
+- **Wired into** `CryptoPaperDashboard.jsx` — recent trade rows are
+  now clickable buttons. Click toggles the drawer scoped to that
+  symbol on the `crypto_fleet` bot. Border highlights the selected
+  row in cyan; second click closes.
+- **Live verified** end-to-end via Playwright on the deployed preview:
+  - Logged in as admin, opened Admin → Shadow tab
+  - Panel renders with the live ADVERSARIAL · CRYPTO bucket card:
+    1 dissent / 0 scored / "Need 30 more" pending badge
+  - 3 cycles observed · 1 dissent (33% disagreement rate) footer
+  - Cost budget strip shows green WITHIN BUDGET banner with
+    `crypto_fleet · adversarial · 3 cycles · $0.0000 · FULL` row
+  - All `data-testid`s asserted present (panel=1, buckets=1,
+    budget=1, pending_badges=1)
+- **Lint clean** across all 4 modified frontend files.
+
+### Research Shadow Layer — champion-challenger framework (Feb 26, 2026)
+
+Tier-3-safe silent-half framework letting an alternate engine ride
+along on every bot cycle, recording what it would have done without
+ever touching active fills, paper-trade collections, or the Tier-3
+gate. Backend complete + live verified. UI tile deferred to a
+follow-up PR.
+
+**Why it matters**: the only way to A/B a new engine (Council vs
+Adversarial) without contaminating the Tier-3 unlock math. Every
+piece of the framework is built around **disagreement-conditional
+accuracy** — when shadow dissents from active, who's right N trades
+later. Raw agreement rate is junk telemetry by construction and the
+framework deliberately doesn't surface it.
+
+- **New module** `services/research_shadow.py` — pure helpers:
+  `ShadowDecision` dataclass, `canonicalise_action()` (4-bucket
+  alphabet), `detect_dissent()`, asset-typed `FILL_COST_BPS` /
+  `TACTICAL_LOOKAHEAD_S` defaults, `should_fire_shadow()` gate
+  (rate-limit + cost-ceiling tiers full→degraded@80%→paused@100%),
+  `hypothetical_pnl_usd()` pure scoring math. `MIN_DISSENT_SAMPLES=30`
+  maturity guardrail mirrors `crypto_adversarial_stats` discipline.
+- **New module** `services/research_shadow_logger.py` — only allowed
+  writer to `research_shadow_decisions`. `ensure_indexes()`,
+  `insert_shadow_decision()`, `patch_scores()`, daily-cost
+  aggregation, last-shadow-ts query. Defensive try/except
+  everywhere — a logging failure must NEVER block a live trade.
+  Stamps `tier3_firewall=true` on every row as a defence-in-depth
+  marker.
+- **New module** `services/research_shadow_engines.py` —
+  `run_adversarial_shadow()` wraps `adversarial_core.run_adversarial_decision`
+  in shadow mode (returns "gates_closed" thesis when Tier-3 hasn't
+  unlocked). `run_council_shadow()` v1: deterministic 3-rule
+  consensus (RSI + 5-bar momentum + volume confirmation). Zero LLM
+  cost in v1; v2 will swap in real multi-LLM consensus once cost
+  monitoring proves stable. `fire_shadow()` is the entrypoint —
+  fire-and-forget via `asyncio.create_task` from bot loops, broad
+  try/except wrapper at the top level.
+- **New module** `services/research_shadow_scorer.py` — APScheduler
+  worker registered every 60s. Two pure scoring helpers:
+  `compute_tactical_score()` (asset-typed lookahead window — 30min
+  for stock/crypto, 4h for options to handle theta), and
+  `compute_strategic_score()` for the mid-trade exit dissent case
+  (shadow said HOLD while active closed, would shadow have ridden
+  the winner longer?). Idempotent: re-running on already-scored
+  rows is a no-op.
+- **New module** `services/research_shadow_stats.py` — pure stats
+  reducer + Mongo glue. Buckets by `(shadow_engine, asset_type)`.
+  Three operator metrics: disagreement-conditional win rate,
+  scored dissent count + actionable boolean, total $ delta.
+- **New routes** in `routes/research_shadow.py`:
+  - `GET /api/admin/shadow/stats` — aggregated buckets + maturity flag
+  - `GET /api/admin/shadow/decisions` — paginated raw feed (newest first)
+  - `GET /api/admin/shadow/cost-budget` — per-bot 24h LLM spend +
+    full/degraded/paused tier classification
+  All admin-gated, hard-cap on `limit` at 200, datetimes ISO-stringified.
+- **Wire-in points**:
+  - Crypto: `crypto_paper_trader.py::run_crypto_symbol` — env-driven
+    via `CRYPTO_RESEARCH_SHADOW_ENGINE` (no per-symbol bot doc on
+    crypto fleet today). Fires for both LONG and HOLD final
+    directions, captures the entry decision.
+  - Equity: `trading_bot_service.py::execute_signal` — per-bot via
+    `bot.shadow_engine` field on `trading_bots` doc. Respects
+    `bot.shadow_paused` for admin-level kill switch.
+- **Scheduler**: `_run_research_shadow_scorer` registered at 60s
+  interval in `server.py:_start_schedulers`.
+- **Tests**:
+  - `tests/test_research_shadow.py` — 34 cases covering pure
+    helpers, dissent detection, gate logic, PnL math, Council v1
+    consensus, stats reducer maturity guardrail, scorer pure
+    helpers, fire_shadow defensive behaviour.
+  - `tests/test_shadow_tier3_isolation.py` — 3 non-negotiable
+    firewall regression tests using a tracking Mongo stub.
+    Verifies 100 synthetic shadow inserts touch ZERO of the
+    seven forbidden Tier-3 collections (`paper_trades`,
+    `crypto_paper_trades`, `prediction_tracker`, `trading_bots`,
+    `crypto_adversarial_decision_log`, `ml_predictions`,
+    `ml_paper_trades`). Verifies the deferred scorer's
+    `patch_scores` only writes back to the shadow collection.
+  - 37/37 green; 110/110 across shadow + adversarial regression.
+- **Live verified end-to-end** on the deployed preview:
+  - Set `CRYPTO_RESEARCH_SHADOW_ENGINE=adversarial`, restarted
+    backend, triggered manual `/api/crypto/paper-bot/run`.
+  - 3 shadow rows persisted in `research_shadow_decisions` for the
+    BTC/ETH/SOL fleet run.
+  - 1 dissent caught: SOL active=SHORT vs shadow=HOLD
+    (`is_dissent=true`, `tier3_firewall=true`).
+  - Active SOL SHORT trade fired normally to `crypto_paper_trades`
+    (105 → 106).
+  - `crypto_adversarial_decision_log` stayed at 0 (Tier-3 gate
+    still closed, as designed — shadow didn't force it open).
+  - `/api/admin/shadow/stats` returns the live bucket with
+    `actionable=false, scored_dissent_count=0` (lookahead window
+    not yet elapsed).
+  - Scorer pass runs cleanly on the live DB
+    (`{'scanned': 0, 'scored': 0, 'skipped': 0}` — expected, dissent
+    is too fresh).
+- **Operator config**:
+  - Crypto: `CRYPTO_RESEARCH_SHADOW_ENGINE=none|adversarial|council`
+    in `.env` (currently set to `adversarial` for the crypto fleet).
+  - Equity: `db.trading_bots.update_one({...}, {$set:
+    {shadow_engine: "adversarial", shadow_paused: false}})`.
+  - Tunables: `SHADOW_FILL_COST_BPS_{STOCK,CRYPTO,OPTIONS}`,
+    `SHADOW_TACTICAL_LOOKAHEAD_*_S`, `SHADOW_MIN_DISSENT_SAMPLES`,
+    `SHADOW_COST_CEILING_USD_PER_DAY`, `SHADOW_LLM_MIN_GAP_S`.
+
+### Adversarial Debug Endpoints — Decisions + Joined Trades View (Feb 26, 2026)
+Completed the two debug endpoints requested by the user from their
+"no-barriers" diff. Operators can now inspect Bull/Bear/Commander
+reasoning row-by-row and pair every adversarial trade with its
+decision document for post-Tier-3 review.
+
+- **New route** `GET /api/crypto/adversarial-decisions` (admin-gated)
+  in `routes/crypto_trading.py`. Paginated raw feed of
+  `crypto_adversarial_decision_log`, newest-first. Filters AND-combine:
+  `symbol` / `phase` / `decision` (symbol/decision case-folded
+  server-side to match writer storage). Hard-cap on `limit` at 200.
+- **New route** `GET /api/crypto/adversarial-trades` (admin-gated).
+  `$lookup` aggregation joining every `crypto_paper_trades` row that
+  carries an `adversarial_decision_id` with its decision document.
+  Filters: `symbol`, `only_closed`. Datetimes ISO-stringified, nested
+  `_id` stripped from the embedded decision doc.
+- **Bug caught + fixed during curl verification**: the `$project`
+  stage mixed `_id: 0` (allowed) with `_decision_doc: 0` alongside
+  inclusion fields → Mongo error "Cannot do inclusion on field
+  trade_id in exclusion projection". Removed the explicit
+  `_decision_doc: 0` exclusion (Mongo drops un-included fields
+  automatically when any inclusion is present).
+- **Filter-echo normalisation**: the `filters` block in both response
+  payloads now reflects the actual values queried (uppercased
+  symbol/decision) instead of raw user input — keeps the operator UI
+  showing "Showing 50 LONG decisions on BTC" consistently.
+- **Tests**: 8 new pytest cases in `tests/test_crypto_adversarial_stats.py`
+  (4 per endpoint: empty-DB → empty payload, filters/limit applied
+  + datetime stringified, hard-cap enforced, query/aggregation
+  exception swallowed). 25/25 in this file, 73/73 across all four
+  adversarial test files.
+- **Live verified** end-to-end via curl on the deployed preview:
+  - Login as admin → 200 with cookies set.
+  - `/adversarial-decisions` → empty payload (Tier 3 gate still
+    closed, decision log not yet populated). `?symbol=btc&decision=long&limit=3`
+    echoes normalised `{"symbol": "BTC", "decision": "LONG"}`.
+  - `/adversarial-trades?symbol=btc&only_closed=true` → empty
+    payload, no Mongo error after the `$project` fix.
+  - Auth gate verified: 401 without cookie on both endpoints.
+
+### Crypto Closer v2 — SL/TP Exit Logic (Apr 26, 2026)
+The closer now respects the SL/TP fields stamped on every fill
+instead of only firing on max_hold expiry. R-multiple memory will
+be much cleaner: TP hits → +2R wins, SL hits → -1R losses, hold
+expiry → neutral timeouts.
+
+- **Updated** `services/crypto_closer.py` — query widened from
+  aged-only to ALL open trades. New `_check_exit_trigger()` helper
+  returns ``"stop_loss"`` / ``"take_profit"`` / None per the
+  user-spec priority (SL → TP → max_hold). Direction-aware: LONG
+  exits when mark ≤ SL or ≥ TP; SHORT exits when mark ≥ SL or ≤ TP.
+  Returns ``reasons: {stop_loss, take_profit, hold_window_expired}``
+  counter on every run.
+- **Tests**: 13 new tests added (8 trigger-priority, 5 end-to-end:
+  LONG SL fires, LONG TP fires, SHORT inverted SL/TP, fresh trade
+  with mid-band mark stays open, aged trade with mid-band mark
+  fires max_hold). 119/119 total green.
+- **Live verified**: bot opened BTC LONG @ $77,562 with SL $76,010
+  / TP $80,664. Force-edited SL to $85,263 (above current). Next
+  closer pass: 1 closed, `close_reason="stop_loss"`, memory record
+  persisted with `outcome="loss"`. Equity firewall held (zero
+  crypto rows in `paper_trades`).
+
+### Crypto Bot v3 — Confidence-Scaled Sizing + Dashboard (Apr 26, 2026)
+Wholesale upgrade per user spec — bot now applies confidence-scaled
+position sizing, defensive SL/TP defaults, and surfaces a full
+React dashboard for live monitoring.
+
+- **Updated** `services/crypto_paper_trader.py` — new pipeline:
+  `adversarial_signal` → `infer_crypto_regime` + `infer_failure_context`
+  → `apply_crypto_adaptations_to_signal` → `compute_crypto_position_size`
+  → `build_stop_take_profit` → insert. Bot version bumped to
+  `crypto_v3`. Adds top-level `size_usd`, `stop_loss`, `take_profit`,
+  `opened_day` fields (latter backs the tier-3 distinct-day count).
+- **Confidence-scaled sizing**: $250 base at 0.60 floor, capped at
+  $1000 max. Scales linearly within [0.60, 0.95] band.
+- **SL/TP defaults**: -2% stop / +4% target on LONG (2:1 R:R);
+  inverted for SHORT.
+- **Multi-symbol runner** returns `{opened, skipped, errors,
+  opened_count, skipped_count, error_count}` — single-symbol
+  failures captured into `errors` so a scheduler tick never crashes
+  on one bad fetch.
+- **5 new endpoints** in `routes/crypto_trading.py`:
+  - `POST /api/crypto/paper-trades/close` (admin manual closer trigger)
+  - `POST /api/crypto/adaptations/detect` (admin manual adaptation pass)
+  - `GET /api/crypto/dashboard` (open/closed/PnL/win-rate/adaptations/recent)
+  - `GET /api/crypto/tier3-contribution` (paper-day count for crypto-only gate)
+  - `GET /api/crypto/paper-trades` (history list with limit + symbol filter)
+- **New** `frontend/src/components/CryptoPaperDashboard.jsx` —
+  live-polling tile (15s) showing all dashboard fields with "Run
+  Bot" and "Close Due Trades" admin actions. Wired into
+  `AdminPanel.jsx` as a new "Crypto Bots" tab under Insights.
+- **Tests**: 106/106 green. Bot test suite rewritten to exercise
+  the new `run_crypto_symbol` per-symbol pipeline, position sizing
+  bands, SL/TP math, regime/failure-context taggers, and runner
+  error-recovery.
+- **Live verified**: BTC LONG @ $77,612 ($300 size, SL $76,060
+  TP $80,717), ETH @ $2,318 ($292), SOL @ $86 ($302). Dashboard
+  endpoint returns full aggregate. Tier3 endpoint returns paper-day
+  count. Equity `paper_trades` count: 83 → 89 (legitimate equity
+  bot fills in the same window — zero crypto rows in equity
+  collection, firewall verified).
+
+### Crypto Closed-Loop Learning Pipeline (Apr 25, 2026)
+The crypto lane now has a full closed-loop adaptation system:
+trade → memory → failure-pattern detection → factor-down-weight on
+matching future signals. Architecturally separate from the equity
+ML adaptation engine — no shared collections, no shared services.
+
+- **New** `services/crypto_memory_writer.py` — closed-trade router.
+  Classifies regime (parabolic/overbought/oversold/trend_up/
+  trend_down/neutral) and failure code (LIQUIDITY_GAP /
+  PARABOLIC_EXHAUSTION / EXTREME_RSI_FAILURE / TREND_FAKEOUT /
+  None) before upserting to `crypto_trade_memory`.
+- **New** `services/crypto_closer.py` — replaces the older
+  `crypto_paper_trade_closer.py`. Uses `pnl` / `r_multiple` /
+  `close_reason` schema. Runs every 15 min, closes any fill aged
+  past `CRYPTO_PAPER_MAX_HOLD_HOURS` (default 12h), hands the
+  closed doc to `write_crypto_trade_memory`.
+- **New** `services/crypto_adaptation_service.py` — closed-loop
+  learning starter: `detect_crypto_adaptations` scans memory every
+  6h for ≥5 losing trades sharing a `failure_code:regime` key,
+  upserts a 14-day adaptation row with `factor=0.85`. Capped at
+  `MAX_ACTIVE_CRYPTO_ADAPTATIONS=4` and 7-day cooldown per key.
+  `apply_crypto_adaptations_to_signal()` runtime hook called by the
+  bot AFTER `adversarial_signal()`; only forces HOLD when at least
+  one adaptation actually fired AND the result fell under the 0.60
+  floor.
+- **Trade record schema** updated with denormalised top-level
+  fields needed by the closer + memory writer (rsi, momentum_5b,
+  ema20, volume_ratio, strategist_conf, auditor_conf, strategist_reason,
+  auditor_reason, regime, crypto_adaptations_applied[], stop_loss,
+  take_profit) alongside the existing `agent_agreement` block +
+  nested metadata.
+- **Tests**: 96/96 green across 5 crypto test files (15 bot + 18
+  paper-trading + 17 strategist + 12 audit + 34 memory/closer/
+  adaptation).
+- **Live verified end-to-end**: bot opens LONG on real BTC/ETH/SOL,
+  closer ages-out a fill at `hold_window_expired`, memory writer
+  persists `regime=trend_up` / `outcome=loss`, detector correctly
+  returns 0 created on insufficient evidence. Equity `paper_trades`
+  count stayed at 83 throughout.
+
+### Crypto Bot v2 — Strategist/Auditor + Closer (Apr 25, 2026)
+The crypto bot now runs a real adversarial signal layer in place of
+the v1 hard-coded `confidence=0.70` placeholder, and aging fills are
+auto-closed by a dedicated 24/7 closer. Every component lives in
+the isolated crypto lane — zero touch on equity files.
+
+- **New** `services/crypto_strategist.py` — deterministic adversarial
+  signal layer. Strategist proposes (RSI + EMA20 + 5-bar momentum),
+  Auditor independently checks for overbought/oversold/parabolic
+  setups and either confirms or vetoes. Combined confidence is the
+  geometric mean of the two; trade fires only above the 0.60 floor.
+  Pure-Python (no numpy, no LLM) so a tick takes milliseconds.
+- **Updated** `services/crypto_paper_trader.py` — accepts an injected
+  `history_provider`, calls `adversarial_signal()` instead of the
+  hard-coded `confidence=0.70`. Persists Strategist+Auditor blocks
+  in `metadata` for explainability. Bot version bumped to `crypto_v2`.
+- **Updated** `services/crypto_quotes.py` — added
+  `get_crypto_history()` using yfinance's `{TICKER}-USD` form
+  directly. Crypto-only; equity `price_provider.get_daily_history`
+  untouched.
+- **New** `services/crypto_paper_trade_closer.py` — hourly closer
+  for `crypto_paper_trades`. Exit priority: SL → TP → max_hold
+  (default 12h, env-tunable via `CRYPTO_PAPER_MAX_HOLD_HOURS`).
+  Direction-aware PnL (LONG profits on rising mark, SHORT on
+  falling). Belt-and-suspenders firewall: skips any non-`crypto`
+  asset_class row that somehow lands here.
+- **Updated** `server.py` — added `_run_crypto_paper_closer` worker
+  + APScheduler entry: `'interval', minutes=60, id='crypto_paper_closer'`.
+  Bot scheduler also now passes `history_provider`.
+- **Updated** `routes/crypto_trading.py` — manual run endpoint
+  `POST /api/crypto/paper-bot/run` now passes history_provider too.
+- **Tests**: 65/65 green across the 4 crypto test files
+  (`test_crypto_paper_bot.py`, `test_crypto_paper_trading.py`,
+  `test_crypto_strategist.py`, `test_crypto_paper_trade_closer.py`).
+  Coverage includes adversarial veto on overbought/oversold/parabolic,
+  Strategist HOLD on flat/short history, geometric-mean floor logic,
+  closer SL/TP/max_hold priority, direction-aware PnL math, quote
+  outage safety, and the architectural firewall (equity
+  `paper_trades` collection cannot be reached from crypto code).
+- **Live verified**: POST run opened 3 LONG positions on real
+  BTC/ETH/SOL bars (RSI 51-63 range, all auditor-confirmed); closer
+  correctly closed an artificially-aged ETH trade at `max_hold` with
+  proper PnL math, left the two fresh trades open. Equity
+  `paper_trades` count stayed at 83 throughout.
+
+### Crypto Paper-Trading Subsystem (ISOLATED) — Apr 25, 2026
+Crypto paper trading runs on its own service, route, and Mongo
+collection, completely disjoint from the equity/options pipeline.
+The architectural firewall stops stock-side lifecycle services
+(closer, labeler, prediction tracker) from ever touching crypto
+fills, and stops crypto requests from polluting the legacy
+`paper_trades` collection. 24/7 markets get their own line.
+
+- **New service** `services/crypto_paper_trading_service.py` —
+  `execute_crypto_paper_trade()`, `get_crypto_paper_history()`,
+  `get_crypto_paper_position_summary()`, `ensure_indexes()`. Quotes
+  are anchored to `get_crypto_quote()` (the source `/api/crypto/prices`
+  uses); the equity `get_quote()` path is never invoked.
+- **New route** `routes/crypto_paper.py` — `POST /api/crypto/paper-trade`,
+  `GET /api/crypto/paper-trades`, `GET /api/crypto/paper-positions`.
+  Registered FIRST in `ALL_ROUTERS` so the specific GETs match
+  before `market_router`'s `/api/crypto/{symbol}` wildcard.
+- **New collection** `crypto_paper_trades` (schema_version=1) with
+  Mongo unique index on `idempotency_bucket` (composite of
+  user/symbol/side/qty/price-bucket/UTC-minute) so duplicate POSTs
+  within the same minute collapse onto the original `trade_id`
+  instead of creating a second row. Mirrors the P2 idempotency
+  proposal that closed the equity-side AAPL 12-second triple-insert
+  bug.
+- **Wired to yesterday's contamination guards**: every fill runs
+  through `is_test_symbol()` from `market_memory_service` —
+  `TEST_*/MOCK_*/FAKE_*/DUMMY_*/FIXTURE_*/FAKEXYZ` are blocked at
+  the route boundary with a 400 + structured `{blocked, reason,
+  symbol, message}` body. In `ENVIRONMENT=production` the guard
+  raises `ValueError` to trip 500/monitoring.
+- **Architectural firewall**: non-crypto symbols (AAPL, SPY) are
+  refused with `reason=not_crypto_symbol`. The canonical registry
+  (`services/crypto_symbols.py`, 32 tickers) backs the `is_crypto()`
+  check.
+- **No equity-side files were modified.** `price_provider.get_quote()`,
+  `paper_trading_service.py`, `ml_paper_trader.py`, and
+  `paper_trade_closer.py` are byte-for-byte unchanged from the
+  pre-session state.
+- **Tests** (`tests/test_crypto_paper_trading.py`, 18/18 green):
+  symbol registry helpers, test-fixture rejection, AAPL refused,
+  invalid side / zero qty / missing quote rejected, fill writes
+  ONLY to `crypto_paper_trades` and never to `paper_trades`,
+  `get_crypto_quote` is called and `get_quote` is NOT called,
+  idempotent replay collapses to original record, minute-bucket
+  boundary semantics, history filter by user+symbol, position
+  summary mark-to-market math.
+- **End-to-end verified**: 9 curl checks against the deployed
+  preview — login → POST BTC BUY 0.001 (filled at live $77,611.09)
+  → idempotent replay → TEST_BTC blocked → AAPL refused → history
+  → position summary → `/api/crypto/prices` regression all 200.
+
+
+
+### Shadow Mode + Parallel Scanner (Feb 24, 2026)
+- **Shadow mode** — new env flag `ML_ADAPTATION_SHADOW_MODE`.
+  When set (and live mode is off) the rail runs every gate
+  exactly like live but:
+  * writes `shadow_soften` / `shadow_revert` audit rows instead of
+    `auto_soften` / `auto_revert`
+  * leaves the adaptation doc untouched (no factor/active mutation)
+  * emits no agent-activity-feed events (audit is the only signal
+    so operators aren't spammed with non-actions)
+  * **doesn't self-block** via cooldown — the cooldown filter only
+    counts `auto_*` actions, so shadow observations emit every
+    retrain even on the same rule.
+  Precedence: `live && shadow` → live wins; `!live && shadow` →
+  observation-only; neither → no-op. Two weeks of shadow-mode
+  observation before flipping the live flag is the recommended
+  validation flow.
+- **Parallel scanner** — extracted per-adaptation logic into
+  `_evaluate_one_adaptation()`. Main scanner now runs every
+  candidate concurrently via `asyncio.gather` under a semaphore
+  of 4. Cuts latency on retrains with 20+ active rules from
+  O(N × mongo_rtt) → O(⌈N/4⌉ × mongo_rtt). Each eval is
+  independent (distinct `adaptation_id`, idempotent `active:True`
+  guard on the update) so no locking concerns. Exceptions from
+  individual candidates are logged as warnings and don't kill
+  the batch.
+- **Admin UI**: `ModelAdaptationsPanel`'s audit strip now
+  surfaces shadow rows with distinct styling — dashed borders,
+  grey tone, "WOULD SOFTEN" / "WOULD REVERT" labels, and a
+  separate pill count in the header. Click-to-expand body shows
+  the computed `|ΔR|·Coverage` effect-size array so operators
+  can audit why the rail picked this run.
+- **Tests**: 3 new pytest cases — shadow observes without
+  acting + writes shadow audit only, shadow doesn't self-block
+  via cooldown, parallel scanner handles 5 adaptations at once.
+  14/14 in `test_auto_revert_safety_rail.py`, **50/50** full
+  regression. Mypy 0, ruff + eslint clean.
+
+
+
+### Safety Rail Hardening — cooldown + effect-size gate (Feb 24, 2026)
+Two additional guards on top of the graduated soften/revert rail
+to handle the edge cases the previous iteration missed:
+- **Gate 0 (cooldown)**: before evaluating any adaptation, query
+  `adaptation_audit` for an `auto_soften` or `auto_revert` row on
+  the same `adaptation_id` within the last 7 days. If found,
+  skip — prevents oscillation (bad→soften→good→bad→soften...) and
+  pauses the rail after manual operator touches too (audit is the
+  single source of truth for both automated and manual actions).
+  New constant: `AUTO_ACTION_COOLDOWN_DAYS = 7`, mirrors the
+  detection-side `_has_recent_adaptation` window so the whole
+  learning loop breathes on the same clock.
+- **Gate 3 (effect size)**: a rule can pass the ΔR and coverage
+  gates independently and still be noise at its scale — e.g.
+  `ΔR=-0.012 × coverage=0.05 = 0.0006`, basically floor variance.
+  New composite gate: require `|ΔR| × coverage > 0.001` on ALL
+  3 runs. Weights decisions by actual training-set influence
+  instead of treating ΔR and coverage as independent switches.
+  Tuned so `ΔR=-0.03 × coverage=0.05 = 0.0015` (genuine signal)
+  passes but `ΔR=-0.015 × coverage=0.05 = 0.00075` (borderline)
+  doesn't.
+- Audit rows + reason string now carry the computed
+  `effect_size` list so the trail shows why the rail decided
+  (or chose not to) act.
+- **Fail-open on audit query failure** — if the cooldown lookup
+  errors, we proceed with the scan. Better to act on a clearly-
+  bad adaptation than freeze the rail waiting for mongo to
+  recover.
+- **Tests**: 2 new pytest cases (`test_auto_revert_respects_effect_size_floor`,
+  `test_auto_revert_cooldown_pauses_scanner`). Total 11/11 in
+  the auto-revert suite, **47/47** across the full regression.
+  Mypy 0, ruff clean.
+
+Net: the ladder is now "3 bad runs AT THIS FACTOR, material
+effect size, no risk compression, cooldown clear" before the rail
+moves. Should be basically impossible to trigger-happy — and if
+it ever does, the audit trail shows the exact math.
+
+
+
+### Adaptive Factor Tuning — graduated soften before revert (Feb 24, 2026)
+Replaces the binary "3 bad retrains → kill" with a walk-down ladder:
+  `0.85 → 0.90 → 0.95 → inactive`. Same safety envelope (epsilon,
+  coverage, risk-compression, grace period), gentler touch at each
+  step so an adaptation gets multiple chances to prove useful at
+  progressively weaker strengths before the final flip.
+
+- **Backend** (`services/model_adaptation.py`):
+  - `evaluate_auto_revert_candidates()` refactored. On each gate-
+    trip: if `adjustment_factor + AUTO_SOFTEN_STEP (0.05)` stays
+    below `AUTO_SOFTEN_MAX_FACTOR (0.95)`, we SOFTEN (update
+    factor, leave active, increment `auto_softening_steps`,
+    stamp `last_auto_softened_at`). Otherwise we REVERT (same
+    path as before).
+  - **Counter reset** — the evidence window is filtered by
+    `adaptations_applied[i].factor == current_factor`, so after
+    softening the rule gets a fresh 3-run window at its new
+    strength before the next step. Prevents rapid 0.85 → 0.95 →
+    off collapse in a single cycle.
+  - Return value is now a list of action records tagged
+    `action ∈ {"soften", "revert"}` with `factor` / `next_factor`
+    so the caller can narrate both separately.
+- **Audit trail**: `adaptation_audit` rows now carry
+  `action: "auto_soften" | "auto_revert"` + `factor_before` +
+  `factor_after`. Adaptation doc grows
+  `auto_softened: true`, `auto_softening_steps` (counter),
+  `last_auto_softened_at`, `auto_softening_reason`.
+- **Activity feed**: new `adaptation_auto_softened` event type
+  (🪶 glyph, severity info) logged alongside the existing
+  `adaptation_auto_reverted` (🧯, severity warn). ML filter chip
+  catches both.
+- **Admin UI**: `AutoRevertStrip` in `ModelAdaptationsPanel`
+  renames to "Safety-rail audit" and colour-codes each row —
+  lavender for softens (with `×0.85 → ×0.90` inline factor
+  transition), rose for reverts. Pill counts in the header
+  (`N softens · M reverts`). Each active adaptation that's been
+  softened gets a purple `softened ×N` badge on its row.
+- **Tests**: 9/9 green in
+  `tests/test_auto_revert_safety_rail.py` (added: happy-path
+  soften asserts factor 0.85→0.90; final-kill after ceiling
+  asserts revert at factor 0.95; counter-reset verifies runs at
+  old factor don't count after softening). Full regression
+  **45/45 green**. Mypy 0→0, ruff + eslint clean.
+- **The loop is now** — detect → adapt → measure → *(soften →
+  soften → soften →)* revert. Four gates AND a graduated
+  correction stage. As close to "self-tuning without being
+  twitchy" as you can get without live ML retraining on the
+  counterfactual itself.
+
+
+
+### Auto-Revert Safety Rail — measured self-correction (Feb 24, 2026)
+- NEW helper `evaluate_auto_revert_candidates(db)` in
+  `services/model_adaptation.py`. Runs AFTER each retrain logs
+  its row (so it can count that retrain toward the window). For
+  every active adaptation it pulls the last 3 retrain records
+  that applied it and flips the rule to inactive when ALL gates
+  pass:
+  - **Consistency** — ΔR < −0.01 across ALL 3 runs (below epsilon)
+  - **Coverage** — max `rows_matched / samples` ≥ 5% (small
+    samples can't earn statistical confidence)
+  - **Not risk-compression** — Δwin_rate ≤ 0 on all 3 runs
+    (ΔR-negative + win-rate-UP is legitimate downside control,
+    never a reason to revert)
+  - **Grace period** — requires ≥ 3 runs of history
+  - **Audit completeness** — if any of the 3 runs lacks
+    `delta_mean_r` (pre-attribution-layer row), defer until
+    history catches up
+- Cooldown on re-creation is already handled by
+  `_has_recent_adaptation(COOLDOWN_DAYS=7)` — auto-reverted rows
+  (created within the 7-day window) block detection from re-adding
+  the same `metric/direction`, so a flip-flop loop is
+  structurally impossible.
+- Env-gated: `ML_ADAPTATION_AUTO_REVERT_ENABLED=true` (default
+  off). Paired with `ML_ADAPTATION_ENABLED` so nothing fires in
+  detection-only mode.
+- **Audit trail**: writes to a new `adaptation_audit` collection
+  with `{action:"auto_revert", reason, deltas_r, deltas_wr,
+  coverages, metric, direction, at}`. Also tags the adaptation
+  row itself with `auto_reverted:true` + `auto_reverted_reason`
+  so operator-revert vs safety-rail-revert is distinguishable.
+  Narrated into the activity feed as a new
+  `adaptation_auto_reverted` event (registered in
+  `EVENT_TYPES` with 🧯 glyph; ML filter chip picks it up).
+- **Admin UI**: `GET /api/admin/adaptations` now surfaces the
+  last 10 auto-reverts as `recent_auto_reverts[]`.
+  `ModelAdaptationsPanel` renders them in a rose-tinted
+  `AutoRevertStrip` above the active list — each row is
+  click-to-expand revealing the ΔR/Δwin-rate/coverage history
+  that triggered the revert. Silent when the list is empty.
+- 7 pytest cases in `tests/test_auto_revert_safety_rail.py` cover
+  every gate (flag off no-op, happy-path revert, grace period,
+  epsilon noise, low coverage, risk compression, missing
+  attribution). Full regression 43/43 green. Ruff clean, mypy
+  baseline 0→0.
+- **The full closed loop** is now: **detect** toxic pattern →
+  **adapt** row weights → **measure** impact (global + per-ad) →
+  **correct** if persistently negative. Four layers of
+  intelligence, each with its own env flag and audit trail.
+
+
+
+### Counterfactual Impact: ΔR + Δwin-rate — global + per-adaptation (Feb 24, 2026)
+- **Helper** `estimate_adaptation_impact(df, w_base, w_adapt)` in
+  `ml_retrain_service.py`: re-weights existing R-multiple outcomes
+  to produce the counterfactual "if these adaptation weights had
+  been live, how would the expected outcome have shifted?"
+  Returns `baseline_mean_r`, `adapted_mean_r`, `delta_mean_r`,
+  `baseline_win_rate`, `adapted_win_rate`, `delta_win_rate`,
+  `rows_covered_frac`. Empty dict if the training frame lacks
+  `r_multiple` (warm-start).
+- **Hook**: wired into the retrain pipeline right after
+  `apply_adaptations_to_weights()` and before `model.fit`. Logged
+  to `ml_training_log.adaptation_impact` AND mirrored into the
+  per-row `adaptations_applied[]` list with per-adaptation
+  `delta_mean_r` + `delta_win_rate`. Per-adaptation attribution
+  isolates each rule's contribution by counterfactually resetting
+  that rule's rows back to their pre-adaptation weight while
+  keeping other rules' adaptations live.
+- **Supporting changes**: `apply_adaptations_to_weights()` now
+  accepts `return_masks=True` and returns a 3-tuple with aligned
+  per-adaptation boolean masks (used for attribution).
+  `_load_training_dataframe()` returns an extra `outcomes_df`
+  carrying `r_multiple` + `return_1d` + `outcome` so the impact
+  calc doesn't need the full training frame. Typed with
+  `@overload` so mypy sees the right return shape per call site.
+- **Admin UI**: `GET /api/admin/adaptations` now carries a
+  `last_impact` block (latest retrain's impact + per-ad deltas).
+  `ModelAdaptationsPanel` renders a new `ImpactStrip` above the
+  list with 4 KPI tiles (ΔR, Δwin, baseline R/win, rows covered),
+  an italic proxy-caveat line, and an amber "too broad" warning
+  when coverage >80% with near-zero deltas. Each adaptation row
+  gets inline `ΔR +0.040 · Δwin +2.0%` chips when per-ad impact is
+  available.
+- **Tests**: 4 new pytest cases in `tests/test_adaptation_impact.py`
+  (empty frame, sign-aware shift, zero when weights equal, mask
+  alignment with summary). Full regression 36/36. Mypy 0→0, ruff
+  clean. Verified end-to-end with a synthetic ml_training_log row:
+  ΔR=0.06 (+4.8pp), per-ad volume.liquidity/LONG ΔR=0.04 flowed
+  through to the panel payload.
+- **Closes the loop** one more level deep: the "Why did this
+  adaptation exist?" drilldown already shows the toxic-event
+  evidence; the impact strip now shows "and here's what it did to
+  our expected return." Full narrative from failure → evidence →
+  adaptation → quantified effect.
+
+
+
+### Code-Review Triage (Feb 24, 2026) — 10-item report
+Received a new code-review report with 10 findings. Validated each before acting:
+- **#1 Circular import** → FALSE (`import ai_core` succeeds)
+- **#2 exec/eval RCE** → FALSE (scanner flagged variable name
+  `_pt_exec` and a comment `# ── Safe Expression Evaluator
+  (replaces eval()) ──` above an AST-based safe evaluator)
+- **#3 Hardcoded secrets in tests** → FALSE (placeholders like
+  `token="test-token"`, `api_key="test-key"`, `token="x"`)
+- **#4 47 undefined variables** → FALSE (pyflakes reports 0 in
+  `routes/`, `services/`, `server.py`)
+- **#5 240 missing hook deps** → FALSE (eslint
+  `react-hooks/exhaustive-deps` reports 0 on flagged hooks)
+- **#6 High complexity** → deferred (production-critical paths,
+  per Feb-19 policy)
+- **#7 localStorage "security"** → FALSE (UI preferences only;
+  auth uses httpOnly cookies)
+- **#8 Index-as-key** → **REAL**. Fixed in `AgentActivityFeed.jsx`
+  (spike drivers + SHAP rows → composite keys), `MLHealthStrip.jsx`
+  (RAdoptionCard sparkline bars → `r-${h.at}`),
+  `UserWorkspace.jsx` (digest alert titles → composite),
+  `ConvictionCalibration.jsx` (polyline/circle segments → composite).
+- **#9 Empty catch blocks** → **REAL** in my own recent code
+  (`TerminalModeHub.jsx` splitter pointer-capture). Replaced with
+  `logger.debug()` calls that surface browser-compat fallbacks.
+- **#10 `is` vs `==`** → mostly valid pytest patterns
+  (`is True/False/None`); non-issue.
+
+Net: 2 real findings, 8 false positives. Report appears generated
+by a static-analysis tool that lacks comment/AST awareness — it
+flagged "exec" in `_pt_exec`, the word "eval" inside a comment
+explaining a safe evaluator, and placeholder test tokens. Saved
+in this log so future reviewers can point at the same diff when
+the same tool flags the same lines again.
+
+
+
+### 4-item batch: magnitude retirement eval, admin audit, Terminal polish, digest shine (Feb 24, 2026)
+- **Magnitude-path retirement plan (P2)**: `GET /api/admin/tier3-progress`
+  now returns an `r_adoption` block with a 14-run `history[]` (each
+  with `at`, `r_eligible_frac`, `r_skipped_frac`, `samples`) and a
+  `verdict` object (`threshold`, `required_consecutive`,
+  `consecutive_stable_runs`, `latest_r_eligible_frac`,
+  `magnitude_retirement_ready`, `runs_tracked`). Filter now matches
+  both `status=ok` and `status=success` (legacy rows). Admin UI
+  gets a new `RAdoptionCard` in `MLHealthStrip` (6th column) with
+  percentage, mini sparkline (teal when ≥70%, slate otherwise),
+  and a green "Ready to retire magnitude path" cue once
+  ≥3 consecutive stable runs. Full 3-step rollout memo at
+  `/app/memory/MAGNITUDE_RETIREMENT_PLAN.md`.
+- **Admin duplicate-button audit**: verified. Prior Feb-18
+  refactor already scoped header Refresh to the Users tab, per-tab
+  Refresh buttons each do their own thing. No new duplicates to
+  consolidate.
+- **Terminal Mode polish**: Splitter rewritten from `mousedown`
+  stack to pointer events — trackpad drag, touch, and
+  `setPointerCapture` so dragging off the splitter no longer
+  drops the drag. Handle widened from 1px → 1.5px with hidden
+  grip dots that fade in on hover (doesn't steal resting-state
+  real estate). Double-click resets to default (52/55). Status bar
+  swaps from static "Layout auto-saved" to "Layout modified · Reset"
+  when the split is non-default. `touch-none` blocks mobile
+  scroll-during-drag.
+- **On-demand digest — "make it shine"**: new
+  `GET /api/digest/my-preview` (user-level, not admin-gated) that
+  returns a trimmed `{content_summary, preview:{overview_headline,
+  top_predictions[3], top_smart_money[3], alert_titles[3]},
+  email, generated_at}` payload. Frontend `DigestPreviewModal`
+  renders KPI tiles + overview quote + top predictions/smart-money/
+  alerts + watchlist-intel cue, with "Send to my inbox" confirm +
+  "Cancel". Esc key closes (when not sending). Modal degrades
+  gracefully on preview-fetch failure. `DigestToggle` exported as
+  a named component and lazy-rendered at the top of
+  `WorkspaceHub`'s Agent tab — finally reachable from the SPA
+  (the legacy `UserWorkspace` modal was orphaned).
+- **Testing**: iteration_140 (14 new backend tests + 19 regression
+  all green, 100% backend, 95% frontend — only issue was the
+  orphaned modal, now fixed). iteration_141 verified the fix; only
+  low-priority Esc-key handler missing → added. Lint clean, mypy
+  baseline 0→0, pytest 19/19 regression still green.
+
+
+
+### Closed-Loop Explainability — Adaptation "Why?" + Activity enrichment (Feb 24, 2026)
+- **New endpoint** `GET /api/admin/adaptations/why/{adaptation_id}`
+  (admin-gated) resolves an adaptation into a full explanation
+  payload: `metric`, `direction`, `factor`, `weight_reduction_pct`,
+  `lift` (contrast), `bucket_rate`, `global_rate`, `severity`,
+  `evidence_count`, `active`, `expires_at`, `description`,
+  `explanation` (plain-English narrator keyed by metric prefix +
+  direction → "Low-liquidity setups failed 1.52× more often than
+  baseline on the bullish side."), and `projected_effect`
+  ("Reduces influence of matching setups by ~15% in the next
+  retrain").
+- **Enriched activity payload**: `retrain_adaptation_applied`
+  events now carry `metadata.mean_weight_before`,
+  `mean_weight_after`, `mean_weight_delta` and each row inside
+  `metadata.adaptations[]` picks up `lift`, `severity`,
+  `evidence_count`, `description`, `direction`. Computed inside
+  `apply_adaptations_to_weights()` right around `model.fit` —
+  fire-and-forget, never blocks the retrain.
+- **Frontend** `AdaptationBlock` component in
+  `AgentActivityFeed.jsx` renders under every
+  `retrain_adaptation_applied` event. Shows the weight transition
+  line ("Mean weight 1.000 → 0.925 (Δ -0.075)"), amber chips per
+  adaptation with metric/direction/factor/rows/%-down, and a
+  teal "Why?" button that lazy-fetches the explain endpoint the
+  first time it's opened, caches the response, toggles
+  open/closed on repeat click, and inlines the explanation in a
+  left-border callout. Projected-impact coverage line renders at
+  the bottom when available.
+- **Closes the narrative loop**:
+  `alert_reserved → /alerts/why/{id}` (SHAP drivers per miss) →
+  `retrain_adaptation_applied` (weight shift) →
+  `/adaptations/why/{id}` (why the adaptation exists + what it
+  does) → `retrain_complete`. Admins can trace any weight change
+  back to the exact toxic pattern that justified it, without
+  leaving the activity feed.
+- 4 new pytest regression cases in
+  `tests/test_adaptation_why_endpoint.py` (404, 401, full
+  payload shape, end-to-end event enrichment). Full regression
+  19/19 green. Testing agent iteration_139: 14/14 backend green,
+  zero UI bugs, AdaptationBlock verified live.
+
+
+
+### SHAP + Directional ML Adaptation — unblock + wire-up (Feb 24, 2026)
+- **P0** Fixed 4× `E702` semicolon syntax errors (model_adaptation.py
+  lines 733-740) + 2× `F541` f-string cleanups (lines 441-442)
+  left from prior session. Added explicit `dict[str, Any]` annotation
+  at line 688 so `cond` can accept bool/str values under strict mypy
+  (resolves 3 `[dict-item]` gate failures). `/app/scripts/typecheck.sh`
+  baseline back at 0.
+- **P1** Fixed real UI bug in `AgentActivityFeed.jsx` — the
+  `SpikeDetailsBlock` was rendered without its `alertId` prop so the
+  `/api/admin/alerts/why/{id}` enrichment fetch never fired and the
+  SHAP bullets stayed empty. Now passes `alertId={event.metadata?.alert_id}`.
+- **Verified end-to-end**: synthesised a toxic-spike alert → GET
+  `/api/admin/alerts/why/{id}` returns `shap_top` with signed XGBoost
+  `pred_contribs` values per ticker (AAPL: macd=+0.0721, NVDA:
+  rsi_14=-0.1493), averaged across CalibratedClassifierCV folds.
+  Admin panel `ModelAdaptationsPanel` shows direction + contrast +
+  severity + evidence badges.
+- Pytest 15/15 green (test_iteration59_toxic_spikes_alert +
+  test_signal_model_sample_weight). Testing agent iteration_138:
+  zero critical backend/frontend issues.
+- Side cleanup: dropped the unused in-function `from datetime import …`
+  re-import in `signal_model.py::predict()`; added explanatory
+  `# noqa: F401` on the numpy guard that powers the `"np.ndarray"`
+  forward-ref annotation.
+
+
+
+### mypy baseline 47 → 0 (clean slate) (Feb 22, 2026)
+- Eliminated all remaining type errors in `backend/services/`.
+  Categorised into 5 patterns: mixed-value dicts needing
+  `dict[str, Any]` annotations (12 files), BeautifulSoup
+  `.get('href')` union-attr guards (scraper hardening), ChromaDB
+  stub strictness (targeted `# type: ignore[arg-type]`), SDK
+  TypedDict strictness (scoped ignores), and one **real runtime
+  bug** — `referral_rewards.py` imported a non-existent
+  `send_to_user` from `push_service.py` (silent-fail try/except
+  was masking it). Added a proper user-scoped push helper —
+  referral reward notifications now work.
+- Fixed `typecheck.sh` pipefail bug where `grep` returning empty
+  caused the whole gate to exit non-zero.
+- Baseline locked at 0. Any new mypy error from now on is a real
+  signal. 239/239 tests green.
+
+### Smart-routed spreads + mypy 69→47 + Tier 3 paper-days tile (Feb 22, 2026)
+- **P2**: `SmartOrderRouter.route_spread()` — new
+  `supports_multileg` capability flag on the adapter interface
+  filters out quote-only brokers before scoring. `POST
+  /api/options/spread` now accepts `best_execution=true`.
+  Live-verified on Alpaca paper: 2-leg AAPL 190/195 call debit
+  vertical, order accepted + cancelled.
+- **P3**: mypy baseline reduced 69→47 (32%). Seven services had
+  `set_db(database: object)` + `db = None` making the module-level
+  `db` resolve to `object`; swapped to `Any`. Added targeted
+  `dict[str, Any]` / `list[str]` annotations where mypy had
+  real signal. Two BS scraper `.get('href')` sites hardened
+  against malformed HTML. No runtime behaviour change.
+- **P1**: New `PaperDaysProgressCard` in `MLHealthStrip.jsx` —
+  4th card in the admin Conviction strip, backed by
+  `/api/admin/tier3-progress`. Shows `days/30`, progress bar,
+  remaining-days + env override. Grid widens to
+  `sm:grid-cols-2 lg:grid-cols-4`.
+- Tests: 5 new router tests + testing-agent 14/14 backend pass.
+  Testing agent code-reviewed the frontend tile. 239/239
+  regression tests green.
+
+### Options Phase 2: Greeks, Tradier quotes, multi-leg spreads, ODD audit (Feb 22, 2026)
+- `compute_greeks()` + `compute_greeks_for_contract()` in
+  `ai_core/options_pricing.py` — delta/gamma/theta/vega/rho using
+  retail conventions (theta per calendar day, vega/rho per 1%).
+  Matches Hull reference within 1% at ATM.
+- `services/brokers/tradier_options.py` — concrete quote-only
+  adapter. `fetch_tradier_option_quote` handles Tradier's nested
+  `{quotes: {quote: {...}|[...]}}` envelope + the `"null"`
+  literal-string quirk. Never raises.
+- `SmartOrderRouter._estimate_spread` now resolves in 3 tiers:
+  adapter's own `try_get_spread()` → Tradier proxy-spread (NBBO
+  is routing-agnostic) → sentinel. Keeps single-broker case
+  working without regression.
+- Alpaca multi-leg `mleg` envelope — up to 4 legs, ratio math
+  with common-multiplier enforcement. `position_intent` dropped
+  the same way single-leg required.
+- `GET /api/options/greeks` (auth-gated preview) + `POST
+  /api/options/spread` (ODD-gated, 2-4 legs, opening-leg
+  required). Non-Alpaca providers still return 501 on spreads.
+- `_log_order_audit()` writes every live single-leg AND spread
+  order to a new `option_orders` collection with `odd_accepted_at`
+  stamped on the record itself — closes P2 regulatory audit.
+- Tests: 26 new (10 Greeks + 12 Tradier + 4 multi-leg + stub
+  registry fix). Testing-agent validated **20/20** Phase 2
+  features against live API. mypy gate 69. Ruff clean.
+
+### Structured-Log Migration (156 sites) + 2 CancelledError Fixes (Feb 20, 2026)
+- Migrated **156 logger.warning/error sites across 21 services** to
+  `log_warning(logger, {...})` / `log_error(...)`. Every operational
+  event in prod is now queryable by `context` and `type` fields.
+- Built `/app/scripts/migrate_logs.py` — parses f-string bodies,
+  extracts exception vars + interpolations, inserts imports. Left
+  117 rarer-pattern sites for manual review (safer than mechanical).
+- Fleet-wide audit for the `isinstance(x, Exception)` anti-pattern
+  after `asyncio.gather(return_exceptions=True)` — found **2 more
+  real CancelledError crash paths** (war_room_service + crew_engine)
+  on top of the FRED one from earlier. All three now use the
+  three-tier guard with structured logging.
+- mypy baseline: 85 → **77** (8 more errors resolved as a knock-on
+  from properly narrowing exception handling).
+
+### [union-attr] Crash-Path Sweep (COMPLETED Feb 20, 2026)
+- Audited and fixed all 13 mypy `[union-attr]` errors. **Found one
+  real reachable runtime bug**: FRED service's
+  `asyncio.gather(return_exceptions=True)` result-handling used
+  `isinstance(result, Exception)` as the skip-guard, but
+  `asyncio.CancelledError` is a `BaseException` subclass (not
+  `Exception`) since Python 3.8. Cancelled tasks slipped past the
+  guard and crashed at `result.get("observations", [])` with
+  `AttributeError`. Widened to `BaseException`.
+- 2 defensive hardening fixes: BeautifulSoup `href` attribute
+  isinstance guards (scraping resilience), Anthropic content-block
+  `isinstance(TextBlock)` narrowing (annotation clarity).
+- 3 regression tests (`tests/test_fred_baseexception_guard.py`)
+  reproduce the `CancelledError` crash and verify the fix. Confirmed
+  to FAIL on the old code before the widening.
+- mypy baseline 98 → **85** (`[union-attr]` category: 13 → 0).
+
+### P1 RESOLVED: Alpaca Cover-Order Verification (Feb 20, 2026)
+- Verified live against the paper account: **0 open shorts**,
+  **0 open positions**, **0 orphaned pending orders**, equity
+  $102,027.38 (net positive). Covers appear to have filled cleanly
+  at market open.
+- Built `GET /api/admin/alpaca-health` — reusable admin endpoint
+  that reports account/position/order state + a boolean verdict
+  (`covers_clean`, `no_orphan_orders`, `trading_enabled`) so any
+  future cover workflow can be re-verified with one click.
+- 7 auth-matrix + shape-invariant tests; the live broker path is
+  smoke-tested per session (documented in DEPLOYMENT_NOTES.md).
+
+### mypy Baseline 136 → 98 (COMPLETED Feb 20, 2026)
+- Reduced the mypy baseline by 28% (38 errors) via three safe
+  sweeps: `types-requests` stubs install, 16 var-annotated fixes,
+  5 `[valid-type]` SDK-annotation-to-`Any` swaps, 4 real annotation
+  bugs (2 `chat()` / `fetch_earnings_surprises` return-type lies,
+  2 numpy `floating[Any]` → `float` casts).
+- 98 errors remain in the baseline. Top categories still require
+  case-by-case judgment: `[attr-defined]` 21, `[arg-type]` 16,
+  `[union-attr]` 13 (**each a potential `None` dereference**),
+  `[assignment]` 12, `[operator]` 10.
+- Gate locked at 98. Any new error fails the pre-deploy check.
+
+### Admin Allocation-Preview Endpoint (COMPLETED Feb 20, 2026)
+- `GET /api/admin/allocation-preview?total_capital=<USD>` — wraps
+  the new Drawdown Allocator in an admin-only preview. Returns the
+  allocation split, per-bot scores, and the source stats for each
+  enabled bot in the `trading_bots` Mongo collection.
+- Auth: `_require_admin` — 401 anon, 403 non-admin, 200 owner/admin.
+- `total_capital ≤ 0` rejected with 400. Empty fleet returns
+  `{allocations: {}, bot_count: 0, note: "no enabled bots"}`.
+- Derives `win_rate` from `stats.winning_trades / stats.trades` when
+  the dedicated field is absent; `None` is passed to `compute_bot_score`
+  (which defaults to 0.5) so brand-new bots get a fair share.
+- **12 new integration tests** (`tests/test_admin_allocation_preview.py`)
+  covering the auth matrix, query-param validation, response shape,
+  allocation math (sum ≈ total_capital), and score-floor invariants.
+
+### Drawdown Control + Multi-Bot Capital Allocator (COMPLETED Feb 20, 2026)
+- New pure-function module `ai_core/drawdown_allocator.py` with
+  five primitives: `compute_drawdown`, `compute_drawdown_multiplier`,
+  `compute_bot_score`, `allocate_capital`, and
+  `apply_global_risk_controls`.
+- Thresholds: `SOFT_DRAWDOWN=10%`, `MAX_DRAWDOWN=20%`,
+  `MIN_RISK_MULTIPLIER=0.3` (floor — never cut risk below 30% so
+  Tier 3 accuracy stats keep accumulating). Linear taper between
+  soft and max.
+- Bot score: `0.7 × win_rate + (0.3 if pnl > 0 else 0)`, floored
+  at 0.1 so losing bots rehabilitate instead of getting starved.
+- `execute_signal` gained two opt-in kwargs (`equity_curve`,
+  `bot_capital`). When both supplied, a new step 3c applies the
+  global risk controls between the portfolio gate and the hard
+  cap; skips with `reason="risk control"` when the combined
+  multiplier zeroes the trade.
+- Caught a real bug during test-writing: original
+  `compute_bot_score` used `X or 0.5` as the fallback, which
+  clobbered legitimate `0.0` values (Python treats 0.0 as falsy).
+  Switched to explicit `None` check.
+- **39 new tests** in `tests/test_drawdown_allocator.py`; full
+  regression green at **248/248** across the trading-engine test
+  surface; lint + mypy baseline-diff both pass.
+
+### mypy Pre-Deploy Gate (COMPLETED Feb 20, 2026)
+- Wired a baseline-diff mypy gate at `/app/scripts/typecheck.sh`
+  with config at `/app/backend/mypy.ini` and a snapshot of the
+  current 136 error signatures at `/app/scripts/typecheck_baseline.txt`.
+- Three modes: default (run & diff, exit 1 on new errors),
+  `--update` (lock in fixes as new baseline), `--list` (print).
+- Normalises mypy output (drops line/col numbers, sorts) so unrelated
+  refactors don't flap the gate. Focuses on file + error-code + message.
+- Lenient config (`ignore_missing_imports`, `no_strict_optional`,
+  `follow_imports = silent`) — catches the categories that break
+  prod (`[return-value]`, `[attr-defined]`, `[syntax]`, `[arg-type]`)
+  without forcing cleanup of ~2k third-party-sdk noise.
+- **Verified** catches: return-type mismatches (exit 1), syntax
+  errors like the orphan-lines issue that lazy-loaded silently
+  past ruff (exit 1). Clean state exits 0.
+
+### Type-hint Coverage 100% in `/backend/services/` (COMPLETED Feb 20, 2026)
+- Pushed Python type-hint coverage across **866 functions** in the
+  services directory from **88.4% → 100%**. Every parameter + return
+  type now explicit. Closes the long-standing P3 code-quality item.
+- Standard patterns applied: `set_db(database: Any) -> None`,
+  `-> EngineResult` on all 10 `/search_war_room/adapters/*.run(...)`
+  entries, `np.ndarray` / `tuple[float, float, float]` on technical
+  indicator helpers, `Any` on schema-agnostic crew/agent signatures.
+- Added `from typing import Any` to ~15 files that previously didn't
+  need it.
+- Side catch: `services/ai_intelligence_service.py` had 3 orphan
+  tail lines (dangling `datetime.now(timezone.utc).isoformat()`
+  fragment from a pre-existing bad merge) — removed during the
+  sweep. Python's lazy import had masked it.
+- Ruff lint clean on the entire directory. **209/209** regression
+  tests green.
+- Also dropped "Adversitao Everywhere" from the P3 roadmap per user
+  request (see `/app/memory/ROADMAP.md`).
+
+### Portfolio Risk Engine + NewsAPI.ai Metadata Flags (COMPLETED Feb 20, 2026)
+- **Portfolio Risk Engine** (`services/trading_bot_service.py`): three
+  global caps on top of the existing per-trade `MAX_POSITION_USD=$2000`
+  limit.
+  - `MAX_PORTFOLIO_EXPOSURE=$3000` (aggregate notional across open
+    positions).
+  - `MAX_CONCURRENT_TRADES=5` (concurrency).
+  - `MAX_SECTOR_EXPOSURE_PCT=0.50` (no single sector > 50% of total
+    exposure — prevents stacking a 3rd tech long at the top).
+  Helpers: `get_total_exposure`, `get_open_trade_count`,
+  `get_sector_exposure`, and `apply_portfolio_constraints`
+  (concurrency-first → total-exposure headroom → sector gate →
+  shrink-to-remaining). `execute_signal(..., open_positions=...)`
+  takes the opt-in kwarg and passes `signal.get("sector")` through;
+  trades that saturate any cap skip with
+  `reason="portfolio limits reached"` (no broker order fires).
+  Untagged signals / omitted kwarg preserve backwards-compatible
+  behaviour.
+- **NewsAPI.ai metadata flags**
+  (`services/search_war_room/adapters/newsapi.py`): opt-in fields
+  from the NewsAPI onboarding email — `includeArticleImage`,
+  `includeArticleConcepts`, `includeArticleCategories`,
+  `includeSourceRanking`, `includeSourceImage`. Response parser now
+  surfaces `image`, `source_image`, `source_ranking` (Alexa rank),
+  top-3 `concepts` (label/type/score), and top-2 `categories` on
+  each item — used by the War Room UI for richer cards.
+- **Tests**: 39 new tests — `test_portfolio_risk_engine.py` (35,
+  incl. sector gate) and `test_newsapi_metadata_flags.py` (4).
+  Full regression green: **92/92 passing** across portfolio,
+  USD-notional, adaptive-sizing, Tier 3, and NewsAPI surfaces.
+
+### risedual_core Refactor Overlay (COMPLETED Feb 19, 2026)
+- User uploaded a pre-tested refactored zip of `risedual_core`. I did NOT
+  apply blindly — verified:
+  - Current hypothesis_logger.py had a **silent bug**: importing
+    `risedual_core.ml.patterns` (doesn't exist locally), caught by a broad
+    `except` — so chart-pattern enrichment was silently failing in prod.
+    The upload ships `ml/patterns.py` (708 lines) and FIXES this.
+  - The upload supersedes my prior `_parse_response` extractions in
+    anthropic.py/openai.py with a cleaner module-level pure function
+    version. Both approaches achieve the same goal; the module-level one
+    is better (pure function, no self dependency).
+  - Added `_handle_retry` helper in `clients/base.py`.
+  - `pyproject.toml` adds optional `keyvault = ["cryptography>=42.0.0"]`
+    extras — non-breaking.
+  - Upload deletes `ml/calibration_gate.py`; preserved our existing compat
+    shim because `scripts/backtest.py` still imports from it.
+- **Safety process**: backup to `/tmp/risedual_core.backup.*`, overlay
+  files, clear `__pycache__`, restart backend.
+- **Verified post-overlay**:
+  - All 8 changed modules import cleanly.
+  - Backend restarts with no errors.
+  - `/api/crypto/prices`, `/api/fear-greed`, `/api/stocks/quote/AAPL` all 200.
+  - `detect_all_patterns()` returns 8 pattern classifications on a sample
+    5-row OHLCV (previously silently failed).
+  - 0 undefined names across `risedual_core/`, lint 100% clean.
+
+### Conviction Calibration Admin UI (COMPLETED Feb 20, 2026)
+- New admin Insights tab **Conviction** reading `GET /api/admin/conviction/calibration?days={7|30|90}`.
+- Backend endpoint buckets verified predictions (`verified_24h.correct` set) by either `conviction.score` (primary) or `confidence` (fallback), returning per-bucket totals, correct counts, win-rate, and a monotonic-health boolean.
+- `prediction_tracker.log_prediction()` now accepts an optional `conviction` dict; field only persisted when supplied.
+- Live at ship: 182 verified / 30d, confidence curve monotonic=true (Low — · Medium 52.7% 87/165 · High 88.2% 15/17). Conviction buckets empty pending call-site wiring.
+- Files: `backend/services/prediction_tracker.py`, `backend/routes/admin.py`, `frontend/src/components/admin/ConvictionCalibration.jsx`, `frontend/src/components/AdminPanel.jsx`.
+- Follow-up (P1 backlog): pass conviction dict from `routes/ai.py` & `routes/intelligence.py` when logging predictions so the `by_conviction` badge activates.
+
+### Chat Component Split (COMPLETED Feb 19, 2026)
+- Split `chat/ChatComponents.jsx` (440L monolith) into three focused files
+  while preserving backward-compat imports via a 7-line shim:
+  - `chat/ChatMessages.jsx` (238L) — message list + bubble + chip/action
+    adoption telemetry.
+  - `chat/ChatInput.jsx` (188L) — input bar, voice recording, gap-hint
+    banner. Exports as both `ChatInput` and `ChatInputArea` (legacy alias).
+  - `chat/VoiceSelector.jsx` (30L) — voice toggle.
+  - `chat/ChatComponents.jsx` (7L) — thin re-export shim.
+- E2E verified: chat opens, messages list renders, input accepts "hello".
+
+### LLM Provider chat() Refactor (COMPLETED Feb 19, 2026)
+- Pushed back on the original suggested `_handle_streaming` / `_handle_standard`
+  split — there is no streaming code in either provider, so that pattern
+  didn't apply. Took the safe extraction instead.
+- **Extracted** the response-parsing block in both
+  `risedual_core/risedual_core/llm/anthropic.py` and
+  `risedual_core/risedual_core/llm/openai.py` into a private
+  `_parse_response(response) -> LLMResponse` helper.
+- **Line counts**:
+  - `anthropic.chat()`: 105 → 62 lines. New `_parse_response()`: 51 lines.
+  - `openai.chat()`: 99 → 56 lines. New `_parse_response()`: 48 lines.
+- Both classes still import and expose the same public API. `chat()` is
+  now a clean linear flow: build kwargs → API call → `_parse_response`.
+- Verified: lint clean, imports work (`AnthropicLLM.chat` /
+  `AnthropicLLM._parse_response` both callable), backend restarted
+  healthy, `/api/crypto/prices` 200.
+
+### React Hooks Exhaustive-Deps Sweep (COMPLETED Feb 19, 2026)
+- User asked to run `npx eslint src/hooks/ --rule '{"react-hooks/exhaustive-deps": "error"}'`.
+- **Result: 0 errors** across every custom hook flagged in the original
+  code review (`useTTS`, `useStreamingAgent`, `usePushNotifications`,
+  `useChatMemory`, `useReferralCapture`, `useModals`). The original
+  reviewer's "missing dependencies" claim was categorically wrong.
+- Ran the rule across all of `src/` — still 0 errors. Auto-fix removed
+  8 orphaned `// eslint-disable-next-line react-hooks/exhaustive-deps`
+  comments in `AuthContext.jsx`, `MobileBottomNav.jsx`, and
+  `ShareSmartMoneyBoard.jsx` that were suppressing warnings no longer
+  fired. Pure cosmetic cleanup.
+- Final state: **0 errors, 0 warnings** under strict exhaustive-deps.
+
+### Pyflakes Deep Scan + Re-export Bug Fix (COMPLETED Feb 19, 2026)
+- User asked to run `pyflakes` across the whole backend. Found 12 actual
+  undefined names (all in non-runtime code):
+  - Fixed `scripts/backfill_insider_edgar.py`: missing `SEC_BASE` constant
+    added (`"https://data.sec.gov"`).
+  - Fixed `tests/test_iteration96_auto_invite.py`: missing `import sys`.
+  - Fixed `scripts/train_signal_model.py`: 10 `pd` forward-ref complaints
+    resolved by adding `TYPE_CHECKING` guarded `import pandas as pd`.
+- **CAUGHT + FIXED a real production bug** introduced earlier: the
+  `ruff --fix` pass had aggressively removed `seed_admin` and
+  `create_indexes` from `route_registry.py`'s `from routes.auth import …`
+  line, thinking they were unused locally. But server.py re-imports them
+  from `route_registry`. Backend was crashing on startup with
+  `ImportError: cannot import name 'seed_admin'`. Restored the re-exports
+  with `# noqa: F401` comment and a warning comment.
+- **Final status**: 0 undefined names across the whole backend. All
+  services healthy, all tested API endpoints responding 200.
+
+### Code Review Pass (COMPLETED Feb 19, 2026)
+- **Fixed**: replaced array-index React `key`s with stable data-driven keys in
+  the components I own — `ChipAdoptionInsights.jsx` (3 tables),
+  `HelpSearchInsights.jsx` (2 tables), `ChatComponents.jsx` (chips +
+  actions using `${idx}-${text}`), `HelpCenter.jsx` (suggestions + results).
+  Prevents React reconciliation bugs when lists re-order.
+- **Reviewed & declined (false positives)**:
+  - "eval() in backtester_service.py line 193" — it's a COMMENT saying
+    "Safe Expression Evaluator (replaces eval())". The code is an
+    AST-based safe evaluator (`_CMP_OPS`, `_BIN_OPS` using `operator`
+    module), not eval. No security issue.
+  - "Hardcoded secrets in tests" — these are TEST credentials from
+    `test_credentials.md` (e.g. admin@risedual.ai) used by pytest
+    fixtures. Not production secrets.
+  - "exec/eval in test_iteration36_code_quality.py" — those are SECURITY
+    TESTS named `test_rejects_exec` / `test_rejects_eval` that verify the
+    app REJECTS dynamic code execution. Part of the safeguard, not a risk.
+  - "17 undefined variables" — zero in runtime code
+    (routes/services/server.py). All F821 errors are in standalone
+    `backend/scripts/` using string-forward-refs like `"pd.DataFrame"`.
+- **Reviewed & deferred (post-deploy)**: component size refactors
+  (Watchlist 428L, Navbar 346L, RiseDualGPTChat 350L), LLM `chat()`
+  function decomposition, `useV2Nav/useTTS/useStreamingAgent` missing
+  hook deps. These are real improvements but touch production-critical
+  paths on the eve of deploy — post-deploy work with proper QA.
+
+### Misclick Rate + Pre-Deploy Cleanup (COMPLETED Feb 19, 2026)
+- **Backend stats**: `/api/analytics/chip-events/stats` now classifies
+  `action-clicked` events into forward-clicks and undo-clicks (chip_text
+  starts with `"Undo "`) and returns:
+  - `undo_count` + global `misclick_rate` = undos / forward-clicks
+  - Per-hub `undo_clicked` + `misclick_rate`
+  - `top_actions` now EXCLUDES undo entries (leaderboard shows what users
+    actually want, not what they bounce from)
+- **Admin UI**: new `Misclick` column in Per-Hub Breakdown table — red ≥25%,
+  amber ≥10%, slate otherwise. Hover title shows raw counts.
+- **Bug found + fixed (pre-existing)**: `backend/routes/analytics.py` had a
+  broken duplicate `trigger_help_search_digest` endpoint at line 276 with no
+  success return body. FastAPI was registering two routes for the same
+  path — the stub could have taken precedence over the real one. Deleted.
+- **Auto-fixed 499 unused imports** across `backend/routes/*.py` via ruff.
+  All runtime code (routes/, services/, server.py) is now lint-clean except
+  1 cosmetic unused-local in server.py. Remaining backend lint noise is
+  entirely in standalone `backend/scripts/` which aren't imported at runtime.
+- Frontend lints 100% clean (`components/`, `utils/`, `App.js`).
+- **E2E verified**: stats endpoint returns `action_clicked=12, undo_count=1,
+  misclick_rate=0.083`, Misclick column renders correctly in the admin panel.
+- **Ready to deploy.** ✅
+
+### Undo Last Deep-Link Toast (COMPLETED Feb 19, 2026)
+- Every call to `openWarRoomForTicker` now shows a sonner toast bottom-right
+  ("Analyzing XLK · From Sector Heatmap · [Undo]") with a 5s duration and
+  an Undo button.
+- Undo dispatches `risedualai-navigate` back to the view the user was on
+  (snapshotted via `window.__risedualActiveView` before the nav), so any
+  misclick on a tile is reversible with one click.
+- Undo actions also log `action-clicked` telemetry with chip_text like
+  `"Undo XLK War Room (Sector Heatmap)"`, giving the admin Chip CTR
+  dashboard a proxy for misclick rate per source.
+- Toast suppressed when origin was already `warroom` (no meaningful back
+  state) to avoid a "noisy" experience once the user is inside the hub.
+- **App.js fix along the way**: `window.__risedualActiveView` is now
+  synced via `useEffect` on activeView changes (was only written during
+  `navigateTo`, so it was `undefined` on initial mount — which broke the
+  undo snapshot on the very first tile click).
+
+### Component Sweep + Deep-Link Consolidation (COMPLETED Feb 19, 2026)
+- **Deleted orphans** (no consumers anywhere):
+  - `components/intelligence/ScoreView.jsx`
+  - `components/BotsDashboard.jsx`
+  - `components/CryptoSection.jsx` (already removed in previous commit)
+- **New shared util** `/app/frontend/src/utils/deepLink.js` exporting a single
+  `openWarRoomForTicker({ticker, source, subTab?, suffix?})` helper that:
+  1. Logs `action-clicked` telemetry to `/api/analytics/chip-event`
+  2. Dispatches `risedualai-navigate` to the right hub/subtab
+  3. Dispatches `risedualai-warroom` ticker broadcast
+- **Refactored 5 callers** to use the helper — previously each had a
+  hand-written ~18-line try/fetch/dispatch block:
+  - `components/heatmap/SectorTile.jsx` (2 call sites: AI view + price view)
+  - `components/CryptoTicker.jsx` (crypto tile)
+  - `components/FearGreedGauge.jsx` (verdict tab, with `suffix` carrying the
+    live regime)
+  - `components/Watchlist.jsx` (SM shift alert + per-row SM Board button)
+- **Net reduction**: ~90 lines of duplicated code deleted. Changing telemetry
+  shape or adding a step now means editing one file.
+- Lint clean. E2E verified on 3 independent surfaces (XLF sector, ETH crypto,
+  Fear & Greed) after the consolidation — zero runtime errors.
+
+### Fear & Greed Verdict Tab Redesign + Clickable Deep-Link (COMPLETED Feb 19, 2026)
+- Replaced the semi-circular gauge arc with a **verdict-tab card** that mirrors
+  the AI War Room PASS/VETO / BULLISH / BEARISH visual language.
+- **Clickable**: the whole verdict tab is now a `<button>`. One click fires:
+  - `action-clicked` telemetry with a rich chip_text capturing the live
+    regime at click time, e.g. `"Open SPY War Room (Fear & Greed: GREED 68)"`
+    — so admin `Chip CTR` can track not just adoption but WHICH sentiment
+    regimes users act on.
+  - Navigates to War Room Adversarial subtab.
+  - Dispatches `risedualai-warroom` with `SPY` (S&P proxy).
+- Hover affordance: the date swaps to a subtle "Ask War Room →" hint (band-
+  colored) so the deep-link intent is discoverable without cluttering the
+  resting state.
+- Verified E2E: clicked verdict at 68 GREED → War Room opened → SPY
+  auto-analyzed ("Deploying War Room for SPY" running Strategist + Auditor).
+
+### Markets Density Toggle (COMPLETED Feb 19, 2026)
+- New `MarketsSection.jsx` component hosts both heatmaps with a 3-way
+  segmented toggle: Both · Crypto · Sectors (icons: LayoutGrid · Bitcoin ·
+  BarChart3). Default is "Both". Persisted in `localStorage` under
+  `risedual:markets-view`.
+- Moved `CryptoTicker` out of the global top-of-app strip (was rendered on
+  every view under the navbar) into the Dashboard Markets section — reclaims
+  vertical space on Research/Options/Workspace views where it wasn't needed.
+- `CryptoTicker` component slimmed: removed its own `bg/border/padding`
+  chrome so it can be embedded cleanly inside the new wrapper.
+- Verified E2E: default `Both` shows both heatmaps; clicking `Crypto`
+  collapses sectors; clicking `Sectors` collapses crypto. localStorage
+  persistence confirmed across reloads.
+
+### Crypto Heatmap Tiles with War Room Deep-Link (COMPLETED Feb 19, 2026)
+- Rebuilt `CryptoTicker.jsx` from an auto-scrolling horizontal marquee into a
+  responsive grid (`grid-cols-2 sm:grid-cols-4 lg:grid-cols-8`) matching the
+  `SectorTile` visual language — color-coded by % change (heat scale tuned
+  tighter for crypto volatility: ≥5% deep green, ≤-5% deep red).
+- Each tile is now a clickable `<button>` → same deep-link bundle:
+  telemetry `action-clicked` with source `"Crypto Heatmap"` → navigate to
+  War Room Adversarial → dispatch ticker broadcast. BTC / ETH / BNB / SOL /
+  XRP / ADA / DOGE / AVAX all route correctly.
+- Verified E2E: clicked BTC tile → War Room opened → BTC auto-analyzed.
+  Mobile + desktop layouts confirmed.
+- Admin `Chip CTR` panel now differentiates three heat-source flavours in
+  top-actions: `Sector Heatmap`, `AI Sector Heatmap`, `Crypto Heatmap`.
+
+### Sector Heatmap Deep-Link + Recent Tickers Strip (COMPLETED Feb 19, 2026)
+- **Sector Heatmap tiles** (`SectorTile.jsx`) are now clickable `<button>`s.
+  One click on any sector ETF (XLK, XLF, XLV, etc.) — either the "AI sentiment"
+  view or the classic "% change" view — dispatches the standard deep-link
+  bundle: telemetry (`action-clicked`) → nav to War Room adversarial tab →
+  ticker broadcast. Source tag in chip_text: `"Open XLK War Room (Sector
+  Heatmap)"` / `"(AI Sector Heatmap)"` so the admin dashboard can split them.
+- **Recent Tickers strip** lives in the War Room hub header ("Recent: NVDA
+  TSLA AAPL"). Persisted in `localStorage` under `risedual:recent-tickers`
+  (max 3, deduped, most-recent first). All three War Room subtabs call
+  `addRecent(symbol)` on analyze success, so both manual searches and
+  deep-link arrivals populate it. Click a pill → re-dispatches
+  `risedualai-warroom` so the active subtab re-runs without any typing.
+- Utility: `/app/frontend/src/utils/recentTickers.js` — exports `addRecent`,
+  `getRecent`, `subscribeRecent` (pub/sub so the hub re-renders instantly).
+- **Verified E2E**: clicked XLK tile → War Room opened → XLK auto-analyzed
+  → Recent strip showed NVDA/TSLA/AAPL pills from localStorage in one render.
+
+### CTR Breakdown By Hub + Full War Room Ticker Broadcast (COMPLETED Feb 19, 2026)
+- **Backend**: `GET /api/analytics/chip-events/stats` now also returns
+  `by_hub[]` aggregated per `context_hub` with `shown`, `clicked`, `l1_ctr`,
+  `action_shown`, `action_clicked`, `l2_ctr`, sorted by total event volume.
+- **Admin panel**: "Per-Hub Breakdown" table added under Chip CTR tab — shows
+  which app surfaces (Dashboard / Research / War Room / Options / Workspace)
+  drive the highest L1 (chat chip) and L2 (deep-link action) CTR. Green when
+  CTR ≥20%, amber 10–19%, slate <10%.
+- **Ticker-broadcast pattern extended**: `MarketPrediction` and
+  `AIHypothesis` now both listen to the `risedualai-warroom` event, mirroring
+  `AIWarRoom`. Any deep-link navigation with `{view:'warroom', subTab:'X'}`
+  + a ticker dispatch auto-fills the ticker and runs analysis on whichever
+  subtab is landed on.
+- **WarRoomHub reactive sync**: previously only read `initialTab` on mount —
+  now syncs via `useEffect`, so repeat-clicking different War Room deep-links
+  while already on the hub switches the sub-tab correctly.
+- **Verified E2E**: clicked SM Shift Alert → War Room Hypothesis subtab →
+  TSLA auto-filled → "GPT-5.2 is analyzing TSLA..." started. Per-Hub
+  Breakdown table shows live aggregated data across 3+ hubs.
+
+### Smart Money Board → War Room Deep-Link (COMPLETED Feb 19, 2026)
+- Every Smart Money Shift Alert row in `Watchlist.jsx` now has a compact
+  "WAR ROOM →" button (and per-row `Swords` icon for SM-scored rows).
+- Click flow: (1) logs `action-clicked` telemetry with chip_text
+  `"Open {TICKER} War Room (SM Board|SM Shift Alert)"`, (2) dispatches
+  `risedualai-navigate` → War Room hub, (3) dispatches `risedualai-warroom`
+  with the ticker.
+- `AIWarRoom.jsx` listens to `risedualai-warroom`, populates the symbol input,
+  and auto-fires `analyze()` so the Strategist vs. Auditor run starts in one
+  click — zero keystrokes between "I see a Smart Money shift" and "I have AI
+  verdict."
+- Verified E2E: clicked NVDA shift alert → War Room hub rendered → NVDA input
+  auto-filled → "Deploying War Room for NVDA" analysis auto-started.
+
+### Floating Chat Window (COMPLETED Feb 19, 2026)
+- Un-pinned the chat from screen edges on both breakpoints.
+- Desktop (≥lg): 400×560 floating card, ~24px from bottom-right, backdrop-blur
+  + elevated shadow.
+- Mobile: ~12px side margins × 72dvh height above the bottom nav — no longer
+  a full-screen takeover; navbar/ticker remain visible.
+
+### Level-2 AI Chat Actions — Inline Deep-Link Buttons (COMPLETED Feb 19, 2026)
+- **Backend**: `/api/chat/followups` now returns `{chips[], actions[]}`. The LLM
+  picks 0–2 deep-link actions when the reply has clear routing intent (ticker
+  discussed → research/watchlist; predictions → warroom; options chains →
+  options; portfolio/P&L → workspace). Labels capped at 40 chars, tickers validated.
+- **Backend**: `/api/analytics/chip-event` now accepts `action-shown` /
+  `action-clicked` in addition to `shown` / `clicked`, so L2 adoption is tracked
+  independently from L1 chips.
+- **Backend**: `/api/analytics/chip-events/stats` now returns `action_shown`,
+  `action_clicked`, `action_ctr`, `top_actions[]` alongside the existing chip
+  stats.
+- **Frontend**: New event bus `risedualai-navigate` (listened in `App.js`) lets
+  any surface deep-link into a hub via `{view, subTab}` payload. The chat
+  uses it for L2 clicks.
+- **Frontend**: Chat UI renders a cyan "Go" row of action buttons (with `→`
+  suffix) ABOVE the gray "Next" row of L1 chips. Clicking an action:
+  1. Logs `action-clicked` telemetry.
+  2. Dispatches the correct nav event (`risedualai-navigate` for hubs;
+     `risedualai-research`/`risedualai-add-watchlist` for ticker-aware actions).
+  3. Closes the chat so the target hub becomes visible.
+- **Admin**: Chip CTR tab upgraded to a 5-KPI grid (Shown · Clicked · L1 CTR ·
+  L2 CTR amber · Signal) plus a second table for top-clicked deep-link actions.
+- **Verified**: 17/17 backend tests passed; E2E chat flow + admin panel verified
+  by the testing agent (iteration_135).
+
+### Chip Adoption Admin Dashboard (COMPLETED Feb 19, 2026)
+- **New component** `/app/frontend/src/components/admin/ChipAdoptionInsights.jsx`
+  mirrors the `HelpSearchInsights` pattern: 4 KPI cards (Shown · Clicked · CTR ·
+  Level-2 Signal), 7d/30d/90d window toggle, top-clicked chips table.
+- **Wired into AdminPanel** as a new tab `Chip CTR` (icon: MessageSquare) between
+  `Help Search` and `Tools`.
+- **Signal thresholds**: &ge;20% CTR = `High` (ship Level-2 deep-links),
+  10–19% = `Medium`, &lt;10% = `Low` (redesign before investing).
+- **E2E verified**: logged in as admin, opened panel, clicked `Chip CTR` tab,
+  confirmed all KPIs + top-clicked table populate from real Mongo events.
+
+### Level-1 AI Chat Follow-up Chips + Adoption Telemetry (COMPLETED Feb 19, 2026)
+- **Backend** `POST /api/chat/followups` (Emergent LLM, `gpt-4o-mini`) generates 3
+  contextual follow-up suggestions after every assistant reply.
+- **Backend** `POST /api/analytics/chip-event` logs `shown` + `clicked` events to
+  `chip_events` collection (non-blocking, accepts anon + authed users).
+- **Backend** `GET /api/analytics/chip-events/stats?days=N` — admin-only; returns
+  shown/clicked counts, CTR, top clicked chips.
+- **Frontend**:
+  * `RiseDualGPTChat.jsx` fires `clicked` telemetry in `onFollowupClick` before
+    dispatching the prefill → sendMessage flow.
+  * `ChatComponents.jsx` fires `shown` telemetry via a `useEffect` + `Set` ref
+    (dedupe by `msgIdx::chipText`) so each rendered chip is counted exactly once.
+  * Both calls are fire-and-forget (silent on failure).
+- **Purpose**: CTR from this loop gates the decision to build Level-2 inline
+  deep-link action buttons. Low CTR → skip Level-2; high CTR → invest.
+
+### Help Search Weekly Digest — Proactive Admin Push (COMPLETED Feb 18, 2026)
+- **New service** `/app/backend/services/help_search_digest.py`:
+  - Aggregates last-7-days `help_search_events` via $group pipeline.
+  - Skip threshold: <3 zero-result events → no admin spam on quiet weeks.
+  - Only sends to active `admin`/`owner` roles with email (excludes merged/deactivated).
+- **New HTML template** `_help_search_digest_html` in `email_service.py`:
+  - KPI row (Total · Zero-Result · Gap Signal Low/Medium/High by rate).
+  - "Biggest Gap This Week" callout with top query + user count.
+  - Top-15 table: query, count, unique users, context hubs.
+  - Light-theme Gmail-safe layout consistent with digest emails.
+- **APScheduler job** registered in `server.py` — `cron` Mon 7:00 UTC, id=`help_search_weekly_digest`.
+- **Manual trigger** `POST /api/analytics/help-search/send-digest` (admin-only) + "Email digest" button in the admin panel Help Search tab.
+- **Bug fix**: `seed_admin()` in `routes/auth.py` now respects merged state. Previously every restart resurrected `managingdirector@redslateholdings.com` to `role=owner, is_active=True` — now checks for `role=='merged'` or `merged_into_email` first, only updates password hash for audit access.
+
+## Help Center v2 (COMPLETED Feb 18, 2026)
+- **Rewrote `/app/frontend/src/components/HelpCenter.jsx`** to match v2 aesthetic:
+  - Uses the same `IconTabBar` component as War Room / Research / Options / Workspace.
+  - 8 sections × ~45 tips, all content refreshed for v2 architecture (War Room hub, Stock Detail merge, Classic UI toggle, paper trading gates, referral rewards, live broker status).
+  - Global fuzzy search across all titles + content with score-ranked results.
+  - "Take me there →" deep-links that close the modal and navigate to the exact hub/sub-tab.
+  - Context-aware: receives `activeView` from App so search events are tagged with the hub the user was viewing.
+- **Search telemetry** — debounced (700ms) POST to `POST /api/analytics/help-search` on every non-trivial query; fire-and-forget.
+- **Admin panel "Help Search" tab** (`/app/frontend/src/components/admin/HelpSearchInsights.jsx`):
+  - 3 KPI cards: Total events, Zero-Result events, Gap Signal (Low/Medium/High based on zero-result rate).
+  - Top zero-result queries table: count, context hub, last-seen timestamp.
+  - Top queries overall with avg results per query.
+  - 7d / 30d / 90d window toggle.
+- **Backend endpoints** (`/app/backend/routes/analytics.py`):
+  - `POST /api/analytics/help-search` — logs `{q, results_count, context_hub, user_id, is_anon, ts}` to new `help_search_events` collection. Skips queries <2 or >120 chars.
+  - `GET /api/analytics/help-search/stats?days=N&limit=N` — admin-only; aggregates via $group pipeline; returns zero_result_top + top_queries + overall stats.
+
+## v2 UI Consolidation (COMPLETED Feb 18, 2026)
+1. **War Room hub** — 5th top-level nav between Dashboard and Research (orange accent).
+   Merges Adversarial AI + Predictions + Hypothesis + Signals + Intelligence (5 → 1).
+2. **Stock Detail hub** — shared ticker input dispatches `risedualai-research` event.
+   Company + StockFit + 13F Holders all respond to the same search (3 → 1).
+3. **IconTabBar** reusable component — icon-only tabs + native hover tooltip + ⓘ legend
+   popover + active-tab breadcrumb. Used by War Room, Research, Options, Workspace.
+4. **Slim mobile menu** — 20 buttons → 7 (hubs + Admin + Logout). All sub-tabs live
+   inside each hub's icon bar now, no duplication in the menu.
+5. **v2 promoted to DEFAULT** (previously opt-in `?v2=1`). Classic UI preserved as
+   one-click archive (`?v1=1` or "Classic UI" pill in header).
+
+### Admin + Account Management — NEW
+* **Admin panel "0 users" bug fixed** — `role=admin` accounts can now access
+  `/api/auth/admin/users` (previously owner-only). `require_admin()` helper added.
+* **Red Slate owner account merged into `admin@risedual.ai`**:
+  * 108 docs re-pointed (73 predictions, 24 credit events, 8 chat sessions, 2 smart
+    orders, 1 trading bot).
+  * Empty duplicate singletons discarded (paper_portfolios, user_credits,
+    chat_memory_prefs, watchlists).
+  * `referral_codes` conflict tagged `_merged_...` for manual review.
+  * `admin@risedual.ai` promoted to `role=owner`.
+  * Red Slate shell kept deactivated (`role=merged`, `is_active=false`) for audit.
+  * Kraken LIVE connection + 13 api_keys + 32 paper trades + 6 paper positions
+    already under admin — preserved intact.
+
+### Email System — REWRITTEN
+* `_base_html` light-theme template (Gmail/Outlook-safe with `bgcolor` attrs).
+* 8 template variants rebuilt with dark text on light backgrounds + preheader.
+* `digest_service.py` rewritten to pull real market data from:
+  * `prediction_cache` (market_overview narrative)
+  * `predictions` (top AI predictions, last 48h)
+  * `smart_money_scores` (institutional flow)
+  * `sec_13f_alerts` (regime shifts, last 7d)
+* Test accounts (`@test.com`, `test_*@`, `emailtest*`) excluded from sends.
+* Pacing added (250 ms/send) to respect Resend's 5 req/sec limit.
+* Tiered reward emails wired into `scan_hit_threshold_rewards` and
+  `scan_monthly_leaderboard_rewards`.
+
+### Previous Session Work (preserved)
+* SEC 13F holder tracking + regime-shift alerts (via EDGAR direct scraping)
+* OpenFIGI CUSIP → ticker mapping w/ MongoDB caching
+* Watchlist Smart Money Score badges + 30-day sparklines
+* "Share My Smart Money Board" PNG export (html2canvas + QR code)
+* Tiered Referral Rewards + top-5 Leaderboard
+* ML Pipeline (risedual_core), Thread-Safe Multi-Agent Engine
+* VAPID push notifications
+
+## 5. Known Issues / Limitations
+* QuiverQuant endpoints return 500 — blocked on external provider (P2).
+* Alpaca LIVE Client ID/Secret pending user submission — paper works, live gated.
+
+## 6. Backlog / Roadmap
+### P2 — Upcoming
+* Accumulate 30 live paper trading days to unlock ML Tier 3.
+
+### Nice-to-have
+* Thinkorswim-style "Terminal Mode" workspace route (dockable panels, ticker tape,
+  monospace density).
+* One-click "Send me a fresh digest" button in the Pro dashboard for on-demand
+  digest preview.
+* Admin panel redundancy cleanup (user flagged duplicate buttons in menus — mobile
+  menu done; admin panel itself still pending review).
+
+## 7. Test Credentials
+See `/app/memory/test_credentials.md`.
+
+
+## 7b. Deployment Journal
+
+Running log of what's shipped vs. queued lives in
+`/app/memory/DEPLOYMENT_NOTES.md`. Agents must append to the "Queued for
+next deploy" section at the end of every meaningful change. When the user
+deploys, they run `/app/scripts/mark-deployed.sh "label"` to snapshot the
+queue into a timestamped "Shipped" block.
+
+
+## 8. Changelog
+
+### 2026-04-27 — `/api/crypto/adversarial-stats` endpoint + NO_TRADE attribution fix
+* **Why**: Once the adversarial layer wakes up post-Tier-3, operators
+  need a real-time read on whether Bull/Bear/Commander is actually
+  learning — same way `shadow-research-stats` lets us watch the
+  Tavily lift in flight. Without this, we'd be blind until manually
+  pulling Mongo at promotion time.
+* **Implementation**:
+  - `services/crypto_adversarial_stats.py` — pure
+    `compute_adversarial_stats(rows)` reducer + Mongo glue
+    `fetch_adversarial_stats(db, hours, phase)`. Returns:
+      * `bull_win_rate`, `bear_win_rate` (from the `winner` field
+        already populated at close time)
+      * `no_trade_avoided.avg_r_avoided` — avg r of the trades
+        Commander said NO_TRADE on (in shadow phase, those trades
+        fire anyway, so we DO have outcome data). Negative =
+        Commander would have correctly avoided losing trades.
+      * `edge_gap` distribution (count/mean/min/max) — sanity
+        check on whether `EDGE_GAP_THRESHOLD` needs tuning.
+      * Per-decision-type breakdown (LONG / SHORT_OR_AVOID /
+        NO_TRADE) with count / avg_r / median_r / win_rate.
+  - **Maturity guardrail**: `actionable=False` until every
+    decision bucket has ≥ 15 closed rows (`MIN_BUCKET_SAMPLES`,
+    same as shadow-research-stats).
+  - **Interpretation strings**:
+    `insufficient_data_keep_observing` /
+    `bull_dominates_check_for_long_bias_overfit` (rate spread ≥ 0.10) /
+    `bear_dominates_strong_signal_to_promote_to_risk_only` (≤ -0.10) /
+    `balanced_keep_observing_or_tune_threshold`.
+  - Route: `GET /api/crypto/adversarial-stats?hours=N&phase=...`
+    (admin-gated, optional filters).
+* **NO_TRADE attribution bug fix** in
+  `services/adversarial_logger.py:derive_winner`. Original
+  docstring claimed *"NO_TRADE → neutral, we never measured the
+  counterfactual"* — but in shadow phase the trade fires regardless
+  of Commander's vote, so we DO have a real `r_multiple`. Fixed:
+  in shadow phase, NO_TRADE rows now correctly attribute Bull (if
+  r > 0, the trade Commander wanted to skip would have won) or
+  Bear (if r ≤ 0, Commander was right to want to skip). In
+  veto/full phases, NO_TRADE blocks the fill so
+  `update_decision_outcome` never runs and the row stays neutral.
+  Zero historical data to migrate (Tier 3 still locked, no
+  decisions logged yet).
+* **Tests**: 19 new pytest cases pinning down bucketing, even/odd
+  median, zero-r-as-loss winrate, NO_TRADE-avoided positive vs
+  negative interpretation, neutral rows excluded from win rates,
+  the 15-sample guardrail, and Mongo-glue exception swallowing.
+  Total crypto regression: **235/235 passing**.
+* **Live verification**: endpoint returns the zero-state payload
+  on production, admin-gated, optional `?hours` and `?phase`
+  filters honoured.
+
+### 2026-04-27 — Adversarial Decision Core (Bull / Bear / Commander), DOUBLE-GATED
+* **Why**: The existing Strategist + Auditor pipeline is a two-stage
+  *consensus* system (both agents share the same indicators + the same
+  long-bias goal; combined confidence is averaged). True adversarial
+  AI requires agents with **mirror objective functions** so one of
+  them is always wrong — that's the only structure that produces
+  unambiguous ground truth on every closed trade.
+* **Implementation**:
+  - `services/adversarial_core.py` — pure-function Bull/Bear/Commander.
+    Bull profits if price goes UP (momentum + trend); Bear profits if
+    price goes DOWN/sideways from stretched levels (RSI overbought +
+    volatility). Resolver uses
+    `score = confidence × expected_r`; decision is LONG / SHORT_OR_AVOID
+    / NO_TRADE based on `edge_gap = bull_score - bear_score` against
+    a tunable threshold. Inputs are normalised to 0–1 ranges
+    (tanh-squashed momentum, vol-by-regime lookup) so heuristic
+    weights actually move with real data — fixed the silent-zero bug
+    in the user's original scaffold.
+  - `services/adversarial_logger.py` — async Motor writer +
+    outcome updater. New collection `crypto_adversarial_decision_log`
+    with 4 indexes (timestamp, symbol+timestamp, unique decision_id,
+    sparse trade_id). Pure-function `derive_winner` credits Bull/Bear
+    based on (decision, final_r); NO_TRADE is logged neutral so it
+    can't inflate either side's win rate.
+  - Hook in `crypto_paper_trader.run_crypto_symbol` after the
+    strategist/auditor + adaptation + web-research stages, before
+    the fill insert. Runs only if both gates open, persists the
+    `decision_id` on the trade row.
+  - Hook in `crypto_closer.run_crypto_closer` — when a trade
+    closes, look up `adversarial_decision_id` (if any) and patch
+    the decision row with realised `r_multiple` + winner/loser.
+* **Double gate (default-closed, by design)**:
+  1. **`CRYPTO_ADVERSARIAL_ENABLED=1`** — env flag, default off.
+  2. **ML Tier 3 unlocked** — read from
+     `services.tier3_readiness.check_tier3_unlock`. Both currently
+     fail-closed in production.
+* **Phase progression** (read from `CRYPTO_ADVERSARIAL_PHASE` env var):
+  `shadow` (default, log only) → `risk_only` (size multiplier only,
+  direction unchanged) → `veto` (may block fills) → `full` (may
+  override direction). Phase logic is honoured by the caller, not
+  enforced inside `adversarial_core` — so the module stays pure +
+  testable.
+* **Tests**: 39 new pytest cases (`test_adversarial_core.py`,
+  `test_adversarial_logger.py`) covering input normalisation, agent
+  math, resolver thresholds, double-gate enforcement, phase
+  validation, winner attribution, and Mongo failure swallowing.
+  Total: **216/216 crypto tests passing**.
+* **Production state**: collection + indexes live, both gates
+  closed (env flag unset, Tier 3 still locked) → adversarial layer
+  is silent. Will auto-activate (still in shadow mode) the moment
+  Tier 3 unlocks AND someone sets `CRYPTO_ADVERSARIAL_ENABLED=1`.
+
+### 2026-04-26 — `/api/crypto/shadow-research-stats` endpoint (mid-flight expectancy split)
+* **Why**: With the shadow lane now collecting verdicts, we need a way
+  to answer "is the LLM context actually moving the expectancy
+  needle?" mid-flight, instead of waiting for 100 closed trades.
+* **Implementation**:
+  - `services/crypto_shadow_research_stats.py` — pure
+    `compute_shadow_research_stats(rows)` reducer + Mongo glue
+    `fetch_shadow_research_stats(db, hours=None)`.
+  - Returns per-bucket `count`, `avg_r`, `median_r`, `win_rate`
+    for `agree` / `disagree` / `neutral`, plus derived
+    `lift = avg_r(agree) - avg_r(disagree)`.
+  - **Maturity guardrail**: `actionable=False` until every bucket
+    has ≥ `MIN_BUCKET_SAMPLES` (15) closed trades — prevents
+    promoting the shadow lane to live based on noise.
+  - **Operator-readable interpretation** field:
+    `insufficient_data_keep_observing` /
+    `research_useful_consider_promoting` (lift ≥ 0.10) /
+    `research_harmful_keep_shadow_only` (lift ≤ -0.10) /
+    `research_neutral_drop_or_observe_more`.
+  - Route: `GET /api/crypto/shadow-research-stats?hours=N` (admin-
+    gated, optional rolling window).
+* **Tests**: 17 new pytest cases pinning down bucketing, median
+  edge cases, win-rate zero-R handling, the 15-sample guardrail,
+  and Mongo-glue exception swallowing.
+* **Live verification**: endpoint returns the zero-state payload
+  (`actionable=false`, `interpretation=insufficient_data_keep_observing`)
+  on the production preview URL, gated behind `Authorization: Bearer`.
+
+### 2026-04-26 — Shadow-Mode Web Research (Tavily + LLM stance) wired into crypto bot
+* **Why**: The crypto bot had structured "what" data (RSI/EMA/momentum)
+  but no narrative "why" — was a rip ETF inflows or a thin-liquidity
+  weekend pump? A shadow layer can collect that context for later
+  expectancy analysis without contaminating the 100-trade observation
+  baseline.
+* **Implementation**:
+  - `services/web_research_service.py` — Tavily finance-topic search
+    + EMERGENT_LLM_KEY (gpt-4o-mini) stance classifier with strict
+    JSON parser (handles code fences, prose-wrapped JSON, malformed
+    output, all degrade to ``stance="UNKNOWN"``).
+  - `services/research_router.py` — cost-aware gate:
+    * fires only when direction ∈ {LONG, SHORT} AND
+      (confidence ≥ 0.70 OR regime ∈ {parabolic, overbought, oversold})
+    * 10-minute Mongo cache (`web_research_cache`, unique-symbol
+      index) prevents tick-storm spend.
+    * Ops kill switch: `CRYPTO_SHADOW_RESEARCH_DISABLED=1` short-
+      circuits before any spend (used by the test suite via an autouse
+      fixture so existing tests never make real Tavily calls).
+  - Hook in `services/crypto_paper_trader.py:run_crypto_symbol` — fires
+    AFTER the final LONG/SHORT signal is set; verdict attached to
+    `signal["web_research_shadow_verdict"]`. Wrapped in try/except so
+    a Tavily/LLM failure can never block a fill.
+  - `services/crypto_signal_audit.py` — the audit-log row now
+    persists the verdict so post-hoc analysis can correlate
+    stance/agreement with realised R-multiple.
+  - `services/crypto_paper_trader.py` — the trade row also persists
+    `web_research_shadow_verdict` at fill time.
+* **SHADOW INVARIANT**: verdict is logged into both
+  `crypto_signal_audit_log.web_research_shadow_verdict` and
+  `crypto_paper_trades.web_research_shadow_verdict` but MUST NOT alter
+  direction or confidence — pinned by
+  `test_disagreeing_shadow_does_not_alter_direction` (BEARISH verdict
+  on a LONG signal still opens LONG).
+* **Tests**: 41 new cases across 3 files
+  (`test_crypto_research_router.py`, `test_crypto_web_research_service.py`,
+  `test_crypto_web_research_shadow_integration.py`). All 119 pre-existing
+  crypto tests still pass.
+* **Indexes**: confirmed live in production Mongo:
+  `web_research_cache: [_id_, symbol_unique, cached_at_desc]`,
+  `crypto_signal_audit_log: [_id_, ts_desc, symbol_ts_desc]`.
+
+### 2026-04-22 — Date-rendering fix: 27× `datetime.utcnow()` → `datetime.now(timezone.utc)`
+* User reported emails showing timestamps "all over the place". Root
+  cause: 27 calls to `datetime.utcnow().isoformat()` across 4
+  scraping services returned naive ISO strings with no `+00:00`
+  suffix; email clients rendered them in recipient local time,
+  producing inconsistent dates across recipients.
+* Mechanical sweep closed all 27 sites in
+  `market_prediction_service`, `real_estate_scraping_service`,
+  `crypto_scraping_service`, and `financial_scraping_service`.
+* Live verification: insider-trade timestamps now end with
+  `+00:00`. Zero remaining `utcnow()` calls in non-test backend.
+
+### 2026-04-22 — P2 RESOLVED: QuiverQuant + insider scraper
+* **Root cause reframed**: not flakiness. Quiver's
+  `beta/historical/{endpoint}/{ticker}` routes have been 500-ing
+  across the board for weeks; `beta/live/*` (full feed) routes
+  work. Migrated four public getters to a cached live-feed +
+  client-side ticker filter fallback. Added two-tier fallback on
+  `govcontracts` (detailed `-all` → aggregated).
+* **Scraper bug fix**: OpenInsider scraper was hitting the wrong
+  URL (filter-form shell, no results) and reading wrong column
+  indices (insider = filing date, trade_type = title). New canon:
+  `latest-insider-sales-of-1m` URL, 13-col mapping verified
+  against live HTML.
+* **Route shape fix**: `/api/market/insider-trades` response type
+  corrected from `dict[str, Any]` to `list[dict[str, Any]]` —
+  pre-existing serializer mismatch was causing blanket 500s.
+* **Circuit breaker hygiene**: 404s no longer trip the breaker
+  (they're path errors, not server errors). Log placeholders
+  `<endpoint_key>` / `<expr>` were interpolated for real.
+* **7 new regression tests** in `test_quiver_fallback.py`.
+
+### 2026-02-20 — Code-review cleanup
+* **`alert_dedup.py`** — swapped `hashlib.md5` → `hashlib.sha256`
+  for alert-ID hashing. Collision risk was a non-issue either way;
+  change is hygiene. SHA-256 hex is 64 chars vs MD5's 32, so
+  in-flight dedup rows from the MD5 era won't collide with new
+  SHA-256 rows (at most one extra alert per stale row during
+  cut-over).
+* **3 empty `catch {}` blocks** — `useReferralCapture.js`,
+  `ChatInput.jsx` precheck fetch, `TerminalModeHub.jsx` headlines
+  poll — all now call `logger.warn(...)` via the dev-only
+  `utils/logger.js`. Prod stays quiet, local debugging gains a
+  diagnostic line.
+
+### 2026-02-20 — Global kill switch + `safe_gather` helper
+* **New module** `ai_core/kill_switch.py` — thread-safe fleet-wide
+  circuit breaker. Trips on ≥25% drawdown OR ≥30% rolling error
+  rate (min 5 samples). 5-min auto-clearing cooldown. Env-tunable
+  thresholds. Module-level singleton + `guarded_execute()` wrapper
+  that accepts both sync and async callables, records broker-style
+  `{"error": ...}` failures, and exempts `CancelledError`.
+* **Hook** in `trading_bot_service.execute_signal()` at a new step 0
+  — guard fires before any sizing math, short-circuits with a
+  `cooldown_remaining_seconds` payload when active. Outcome
+  recorded into the rolling window after the broker call.
+* **Admin endpoints** — `GET /api/admin/kill-switch` (status) and
+  `POST /api/admin/kill-switch/reset` (owner-only force-clear that
+  wipes both flag and error window).
+* **New helper** `services/structured_log.safe_gather()` — paired-
+  fallbacks wrapper over `asyncio.gather(return_exceptions=True)` +
+  `unwrap_gather_result` loop. Auto-tags per-task failures with
+  `note=task_N_failure`.
+* **Tests** — 14 kill-switch tests + 3 safe_gather tests + 2 new
+  integration tests on `execute_signal`. Autouse conftest fixture
+  resets the singleton between tests to prevent cross-test
+  contamination. All 120 tests green.
+
+### 2026-02-20 — Admin UI `GatherErrorStrip` card
+* **New** `frontend/src/components/admin/GatherErrorStrip.jsx` — heat-
+  stripe card that renders the `/api/admin/gather-error-rate` payload
+  inside the admin Conviction tab, directly below `MLHealthStrip`.
+  Headline count + `1h/6h/24h` window selector + per-context row
+  stripes + tone that flips to amber when any one context hits ≥40%
+  share of the window's errors.
+* **Wiring** — `ConvictionCalibration.jsx` imports + mounts the new
+  card. Zero changes to existing ML strip or bucket grid.
+
+### 2026-02-20 — `/api/admin/gather-error-rate` observability tile
+* **New rolling-counter module** `services/error_metrics.py` — thread-
+  safe bounded deque (MAX_EVENTS=10k, ~1 MB cap). Every `log_error`
+  call now pushes a `{ts, context, type, note, extra}` record.
+  In-process by design; no Mongo writes on the hot path.
+* **New endpoint** `GET /api/admin/gather-error-rate?hours=24&context_prefix=...`
+  groups events by `context`, returning total count, top 3 exception
+  types, and most-recent timestamp per group. Answers "which
+  provider is flaking right now" without needing log-aggregator
+  access.
+* **Safety:** the metric hook is wrapped in `try/except: pass` — a
+  buffer failure can never block log emission. ERROR-only capture;
+  WARNING / INFO are not counted.
+
+### 2026-02-20 — `market_data_service` migrated to `unwrap_gather_result`
+* **Completes the `asyncio.gather` guard migration started in the prior
+  session.** Both `get_ticker_data()` and `get_crypto_data()` now use
+  `unwrap_gather_result` from `services.structured_log`, matching the
+  war_room / fred / crew_engine pattern. `CancelledError` stays silent,
+  `Exception`s now emit a structured `log_error` line (previously
+  discarded); ticker path tagged `context=market_data.ticker`, crypto
+  tagged `context=market_data.crypto`.
+* **New test** `tests/test_market_data_gather_guard.py` (2 tests, both
+  passing) pins the three-tier guard for both paths.
+* **mypy gate** holds steady at baseline 69 errors (explicit
+  `list[dict]` annotations added for `ticker_data` / `crypto_data`).
+
+### 2026-04-19 — Sliding-TTL price cache + prediction dedup
+* **New service `services/sliding_cache.py`.** Thread-safe, process-local,
+  O(1) get/set with sliding TTL — each access resets expiry. Shared across
+  sync + async price-provider entrypoints so rapid pulls on the same symbol
+  never double-fetch upstream.
+* **`price_provider` wired to sliding cache.** All five entrypoints use it:
+  `get_quote`, `get_quote_sync`, `get_crypto_quote`, `get_crypto_quote_sync`
+  (5 min TTL), and `get_daily_history` / `get_daily_history_sync` (30 min TTL).
+  First miss hits upstream (~250 ms); repeat hits return in ~0 ms with
+  `source="<provider>:hot"` suffix. MongoDB persistent cache retained for
+  cross-restart warm-up.
+* **Reset caps on both sliding mechanisms.**
+  - `SlidingCache` now supports `max_resets`; the shared `price_cache`
+    singleton is configured with `max_resets=2` (5 min TTL × 3 touches =
+    ~15 min max lifetime). Past the cap, reads still return the cached
+    value but stop extending — the entry ages out and forces a fresh
+    upstream fetch.
+  - `log_prediction` caps `dedup_count` at `MAX_DEDUP_HITS=1`
+    (15 min TTL × 2 touches = ~30 min max sliding lifetime). A third
+    identical firing after the cap creates a **new** prediction record
+    and verifies against the current price — catching drift that a
+    perpetually-sticky signal would otherwise hide.
+* **Data cleanup.** Dropped 49 duplicate SPY@$679.46 NEUTRAL predictions
+  left over from a previous session's runaway logger.
+
+### 2026-04-19 — Dynamic NEUTRAL tolerance + Live bot execution wiring
+* **Dynamic per-symbol NEUTRAL tolerance.** Replaced flat 5% (1w) / 2% (24h) bands
+  with ATR-based adaptive bands in `services/prediction_tracker.py`:
+  `tolerance = 1.5 × 10-day-ATR%` (24h) or `3 × ATR%` (1w), clamped to [2%, 10%].
+  Cached 12h per symbol.
+* **Retro rescore endpoint.** `POST /api/accuracy/rescore-neutral?window={24h|1w|both}`
+  (owner-only). Persists `neutral_tolerance_used` + `rescored_at` on each touched record.
+* **Live bot execution.** `services/trading_bot_service._execute_bot_trade` now
+  routes `mode="live"` through `routes.broker._get_or_refresh_client` →
+  `client.place_order()`. Grid, Signal, and Webhook bots all execute live.
+
+### 2026-02-18 — Watchlist.jsx refactor complete
+* `Watchlist.jsx` reduced from 447-line monolith to 58-line orchestrator.
+* Logic extracted to `/app/frontend/src/hooks/useWatchlistData.js` (all fetches,
+  localStorage persistence, backend sync, 60s quote refresh, SMS score/history,
+  external `risedualai-add-watchlist` event listener).
+* UI split across `/app/frontend/src/components/watchlist/`:
+  - `WatchlistToolbar.jsx` (header, expand/collapse, add input, cap warning, share/refresh)
+  - `SmartMoneyShiftAlerts.jsx` (score-shift alert rows w/ chat prefill + War Room deep-link)
+  - `WatchlistTable.jsx` (row rendering + sparkline + Smart Money pill + actions)
+* Lint: 0 issues. Smoke test: collapsed + expanded states render, 5 rows + 2 SMS
+  shift alerts visible for admin account.
+* `managingdirector@redslateholdings.com` marked DEACTIVATED in test_credentials.md
+  (do not re-enable).
+
+
+### 2026-02-18 — Social share / OG preview per ticker
+* **Backend**: `GET /api/share/{ticker}` returns a server-rendered HTML page
+  with full OpenGraph + Twitter Card + JSON-LD `FinancialProduct` metadata,
+  live quote-enriched title (`AAPL · RISEDUAL AI — AI War Room — $270.23 ▲2.59%`)
+  and description. Meta-refresh + JS redirect bounces real browsers to
+  `/?warroom=TICKER`. Honors `X-Forwarded-Proto`/`X-Forwarded-Host` so canonical
+  URL + SPA redirect use the public domain (not cluster-internal). HEAD supported
+  for preview crawlers that probe before GET.
+* **Frontend**: `App.js` intercepts `?warroom=TICKER` query param on load and
+  dispatches the same nav+warroom events `deepLink.js` uses — SPA auto-opens the
+  AI War Room with the ticker queued for analysis. URL is cleaned via
+  `history.replaceState` so manual reloads don't re-fire.
+* **Share button**: Added to `WarRoomHub.jsx` header (next to the v2 badge).
+  Label reflects current ticker ("Share AAPL"). Uses Web Share API on mobile
+  (native X / iMessage / WhatsApp / Mail / Slack / Signal sheet) and falls back
+  to clipboard + toast on desktop.
+* **Platform coverage** (via standard OG + Twitter tags):
+  X, Facebook, LinkedIn, WhatsApp, iMessage, Slack, Discord, Telegram, Reddit,
+  Bluesky, Pinterest, Signal, Teams — plus Google rich results via JSON-LD.
+* Smoke-tested with `facebookexternalhit`, `Twitterbot`, `LinkedInBot` User-Agents
+  — all receive correct meta tags. Live redirect test: share URL → SPA → War
+  Room opens with ticker auto-analyzed. 0 lint issues.
+
+### 2026-02-18 — Onboarding tour positioning + share endpoint tests
+* **Tour polish**: `OnboardingTour.jsx` — centered steps now pin to the top of
+  the viewport (top: 80px, horizontally centered) instead of blocking the
+  middle of the screen. Card is translucent (`bg-[#0B1426]/85 backdrop-blur-md`),
+  scrim reduced from 70% → 25% black, so users can actually see what's being
+  tour-ed while the tooltip guides them.
+* **Share endpoint tests**: `/app/backend/tests/test_share_endpoint.py` —
+  11-test pytest suite covering: 200 HTML response, all required OG tags,
+  Twitter Card tags, JSON-LD FinancialProduct, ticker case normalisation,
+
+### 2026-02-18 — Share link referral attribution
+* **Backend**: `/api/share/{ticker}` accepts optional `?ref=CODE` query param
+  (alphanumeric + dash, 1-32 chars, XSS-sanitised). Preserved through the SPA
+  redirect URL as `/?warroom=TICKER&ref=CODE`.
+* **Frontend App.js**: `?warroom=` handler now preserves the `?ref=` param
+  instead of stripping it, so `useReferralCapture` + AuthModal pick it up at
+  signup for credit attribution.
+* **Frontend WarRoomHub.jsx**: lazily fetches the authenticated user's
+  referral code via `/api/referral/info` and appends `?ref=CODE` to every
+  copied share URL. Every Pro user becomes a passive growth engine — click on
+  their shared analysis → visitor signs up → referrer credited automatically.
+* **Tests**: +5 new pytest cases in `test_share_endpoint.py` for ref
+  preservation, sanitisation, dash-prefixed codes, overlong rejection, and
+  default-no-ref behaviour. **16/16 pass.**
+
+  SPA redirect, input sanitisation (overlong + special chars), X-Forwarded-Host
+  handling, cluster-internal host fallback, HEAD method support. **11/11 pass**.
+
+
+### 2026-02-18 — Terminal Mode, OG PNG generator, Share ROI badge
+* **Terminal Mode workspace** (`/app/frontend/src/components/hubs/TerminalModeHub.jsx`):
+  Thinkorswim-inspired 2×2 dockable grid (Watchlist / Market Signals / War Room
+  deep-link hints / Headlines stream). Drag splitters reapportion layout;
+  positions persist to localStorage. Monospace typography (JetBrains Mono),
+  tight density. Header includes live SPY/QQQ/IWM/VIX pulse + ET session clock.
+  Added to Tools menu (`nav-terminal-btn`) and reachable via
+  `navigateTo('terminal')` event. Lazy-loaded for fast initial paint.
+* **Dynamic OG PNG generator** (`/api/share/img/{ticker}.png`): 1200×630 PNG
+  composited server-side with Pillow — brand gradient background, huge
+  monospace ticker, live price, colored % change (lime up / orange down), teal
+  "Open War Room →" pill CTA. 60s in-memory cache keyed by ticker+price-bucket.
+  Share HTML now points `og:image` + `twitter:image` at this endpoint instead
+  of the static logo — every share on X/Slack/LinkedIn/WhatsApp/Discord now
+  renders a bespoke live-price card.
+* **Share button ROI badge** (`WarRoomHub.jsx`): Share button lazy-fetches
+  `/api/referral/info` and surfaces the authenticated user's `completed_referrals`
+  as a lime pill badge on the button (e.g. "Share AAPL · 3"). Tooltip reads
+  "3 signups via your links so far" — turning a one-off action into a habit
+  loop by giving the user continuous social-proof feedback on their shares.
+* **Regression check**: `test_share_endpoint.py` 16/16 pass. All key endpoints
+  (ready, quote, sectors, share HTML, share PNG, share with ref, referral
+  leaderboard) return 200 + correct payloads.
+* Lint: 0 issues across all new/modified files.
+
+### 2026-02-18 — On-demand digest "Send me one now" button
+* **Backend**: `POST /api/digest/send-now` — authed users trigger an immediate
+  personalized digest delivery to their own inbox. Rate-limited to 1/hour via
+  a `last_on_demand_digest_at` timestamp on the user doc. Bypasses the opt-out
+  flag because the request is explicit. Returns content summary (predictions,
+  smart-money, alerts, watchlist-intel) so the UI can toast-display it.
+* **Digest service**: extracted `send_digest_to_user(db, user)` helper (reuses
+  `collect_digest_data` + `build_digest_html` + `_routed_send`) so
+  single-user sends don't duplicate logic from the scheduled job.
+* **Frontend** (`UserWorkspace.jsx`): new teal "Send me one now" button next
+  to the existing subscribe/unsubscribe toggle. Shows spinner while sending,
+  `sonner` toast on success ("Fresh digest is on its way — 5 predictions, 6
+  smart-money alerts, 2 market alerts"), handles 429 gracefully, and a
+  subtitle clarifies the button exists ("Morning briefing at 6:00 AM UTC ·
+  on-demand preview available").
+* **Tested**: Live API returns 200 on first call (admin@risedual.ai received
+  digest with 5 predictions + 6 smart-money + 2 alerts + overview), 429 on
+  second with clean retry-after message.
+
+
+
+### 2026-02-18 — Admin Panel cleanup
+* `AdminPanel.jsx`: full refactor to eliminate duplicate/misleading controls
+  and improve scanability with 12 tabs.
+* **Context-aware header** — title shows `Admin · {TabLabel}` and subtitle
+  adapts per tab (`50 users total` on Users, `MongoDB cache tiers & TTLs` on
+  Cache, `Market-data + email failover health` on Providers, etc.). Was
+  always-stale `{users.length} users total`.
+* **Scoped Refresh button** — the header's RefreshCw only appears on the
+  Users tab, where it actually refreshes the user list. On Cache / KeyVault /
+  ChipAdoption / HelpSearch / etc., each tab already has its own context-
+  specific Refresh button, so the header one was a misleading no-op.
+* **Proper close button** — literal "x" character replaced with lucide `X`
+  icon in a rounded hover button. `data-testid="admin-close-btn"` for tests.
+* **Grouped tabs** — 12 tabs now organised under three subtle group labels
+  (PEOPLE · OPERATIONS · INSIGHTS) with thin dividers in the tab bar. No
+  behavioural change, just scanability.
+* **Replaced nested ternary** — 12-way `tab === 'x' ? <X/> : tab === 'y' ? …`
+  cascade replaced with `TAB_COMPONENTS` lookup object. ~40 lines shorter,
+  trivially extensible.
+* Lint: 0 issues. Live-verified with screenshots — tab switching updates
+  header title, subtitle, and refresh-button visibility correctly.
+
+### 2026-02-18 — Mobile: Connect Broker entry-point
+* **Bug**: `<BrokerConnect />` was rendered only inside the desktop-only
+  `<div className="hidden lg:flex">` block of Navbar, so the Connect Broker
+  button was completely absent on mobile — users couldn't wire Alpaca/Kraken
+  from their phones. Reported by user on deployed site where they needed to
+  re-paste Kraken keys from mobile.
+* **Fix**: added a window-event handshake — `BrokerConnect` listens for
+  `risedualai-open-broker-connect` and opens its own modal. Added a prominent
+  teal "Connect Broker" chip in the MobileMenu utility row (next to Admin + Help)
+  that dispatches the event. Clean, zero-duplication — BrokerConnect's own
+  state + portal modal handle the rest.
+* **Verified**: mobile viewport (414×896) → hamburger → Connect Broker chip →
+  Broker modal opens with all brokers listed. 0 lint issues.
+
+
+
+
+### 2026-02-18 — Removed Red Slate deactivated account (root cause of READ ONLY bug)
+* **Bug**: deployed site showed broker "READ ONLY" for `admin@risedual.ai`
+  because `_is_execution_allowed()` required `role == "owner"`, but the seed
+  logic had created that account with `role: "admin"`. The `owner` role was
+  assigned only to `managingdirector@redslateholdings.com`, which the user
+  deactivated in Feb 2026 — leaving production with no live `owner` account
+  and every broker connection locked to read-only.
+* **Fix**:
+  - `/app/backend/.env`: `OWNER_EMAIL=admin@risedual.ai`, removed now-unused
+    `ADMIN_EMAIL` / `ADMIN_PASSWORD` vars.
+  - `/app/backend/routes/auth.py` `seed_admin()`: consolidated to a single
+    owner seed. On every startup, promotes `admin@risedual.ai` to
+    `role: owner, is_active: True`. Added one-shot cleanup that deletes any
+    remaining Red Slate row with `role in [merged, free]` — no more
+    resurrection, no more confusion.
+* **Verified on preview**: Red Slate row deleted, `admin@risedual.ai`
+  role=owner, is_active=True, and `GET /api/broker/execution-status` returns
+  `{execution_allowed: true, mode: "live"}`.
+* **On production deploy**: seed cleanup runs automatically → Red Slate row
+  deleted → `admin@risedual.ai` promoted to `owner` → broker flips from
+  READ ONLY → LIVE TRADING with no manual intervention.
+
+
+### 2026-02-18 — Code review triage & genuine cleanups
+* External code review flagged 200+ findings; auditing them surfaced that the
+  "critical" items (eval/exec, 18 undefined vars, hardcoded secrets) are all
+  **false positives** from a context-blind static scanner:
+  - "eval() in backtester_service.py:193" → line is a comment announcing the
+    AST-based safe evaluator that already replaced eval.
+  - "eval/exec in test_iteration36" → security tests that verify the evaluator
+    REJECTS eval/exec strings (intentionally split `"ev"+"al"`).
+  - "18 undefined variables" → `pyflakes .` returns empty.
+  - "Hardcoded secrets" → mostly env-var NAMES (`"RESEND_API_KEY="` searched
+    inside .env) or dev-only preview passwords from test_credentials.md.
+* **Genuine cleanups performed**:
+  - `tests/conftest_creds.py`: consolidated — `OWNER_EMAIL` now aliases to
+    `ADMIN_EMAIL` (both point to `admin@risedual.ai`) after Red Slate removal.
+  - `tests/test_iteration134/135`: moved to `os.getenv()` + safe defaults.
+  - `tests/test_iteration135`: removed dead `owner_session` fixture
+    (referenced deleted Red Slate account, never consumed).
+  - `tests/test_iteration42`: updated stale assertion to pass after Red Slate
+    cleanup.
+  - `utils/deepLink.js` + `utils/recentTickers.js`: replaced 6 empty
+    `/* silent */` catch blocks with `console.debug()` so real failures are
+    still observable.
+* **Deferred to post-launch** (refactoring risk vs reward): 207 hook-dependency
+  warnings (~70% false positive), AppContent/Navbar component splits,
+  localStorage "encryption" (already non-sensitive), 544 `is` vs `==` lint
+  nits in tests, type-hint coverage, inline-prop useMemo micro-perf.
+* Regression: `test_share_endpoint.py` 16/16 pass. Lint: 0 issues.
