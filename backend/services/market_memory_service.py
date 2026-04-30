@@ -11,6 +11,7 @@ import json
 import logging
 import asyncio
 import hashlib
+import math
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, cast
 
@@ -224,15 +225,33 @@ def _make_id(regime: dict) -> str:
         # depending on which writer last touched it, and the
         # historic ``str(regime.get("price", ""))`` produced four
         # different ids for the same trade.
+        #
+        # Edge-case handling (Apr 30, 2026):
+        # * NaN / Inf  → treated as missing (empty string), so they
+        #   collapse with other genuinely-missing rows instead of
+        #   silently writing a row keyed on the literal string
+        #   ``"nan"`` / ``"inf"``.
+        # * -0.0       → folded to ``"0.0000"`` so a leg-arithmetic
+        #   negative-zero can't fork the id from a regular zero.
+        # * Non-numeric junk (e.g. ``"not-a-number"``) → preserved
+        #   in stringified form so the row stays addressable; the
+        #   v1 contract is "same input → same id," not "valid
+        #   input only".
         date_str = to_iso_date(regime.get("date")) or ""
         price = regime.get("price")
-        try:
-            price_str = f"{float(price):.4f}" if price is not None else ""
-        except (TypeError, ValueError):
-            # Non-numeric junk in the price field — keep the
-            # stringified form so the legacy id remains addressable
-            # even though it's not canonical.
-            price_str = str(price)
+        if price is None:
+            price_str = ""
+        else:
+            try:
+                p = float(price)
+                if math.isnan(p) or math.isinf(p):
+                    price_str = ""  # don't hash "nan" / "inf"
+                elif p == 0.0:
+                    price_str = "0.0000"  # collapse -0.0 and 0.0
+                else:
+                    price_str = f"{p:.4f}"
+            except (TypeError, ValueError):
+                price_str = str(price)
         key_parts = [
             str(regime.get("symbol", "") or "").upper(),
             date_str,

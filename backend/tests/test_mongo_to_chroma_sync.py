@@ -120,6 +120,48 @@ def test_make_id_v1_handles_non_numeric_price_gracefully():
     assert isinstance(h, str) and len(h) == 64
 
 
+# ── v1 price edge cases ────────────────────────────────────────────
+
+
+def test_make_id_v1_nan_price_treated_as_missing():
+    """``float('nan')`` formatted with ``:.4f`` gives the literal
+    string ``'nan'``. Hashing that would silently collapse every
+    NaN-priced row to one id while LOOKING like distinct data.
+    Treat as missing instead — keeps semantics honest and matches
+    behaviour of ``price=None``."""
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    id_nan = _make_id({**base, "price": float("nan")})
+    id_missing = _make_id({**base, "price": None})
+    id_omitted = _make_id({**base})
+    # All three resolve to the same "no usable price" key.
+    assert id_nan == id_missing == id_omitted
+
+
+def test_make_id_v1_inf_price_treated_as_missing():
+    """``float('inf')`` is structurally invalid as a trade price.
+    Same treatment as NaN — fold into the missing-price bucket
+    so we don't write a row keyed on the string ``'inf'``."""
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    id_inf = _make_id({**base, "price": float("inf")})
+    id_neginf = _make_id({**base, "price": float("-inf")})
+    id_missing = _make_id({**base, "price": None})
+    assert id_inf == id_neginf == id_missing
+
+
+def test_make_id_v1_negative_zero_collapses_with_zero():
+    """Python's ``-0.0`` formats to ``'-0.0000'`` while ``0.0``
+    formats to ``'0.0000'`` — same logical value, different hashes
+    if you don't fold them. Won't happen often in practice (only
+    from explicit arithmetic), but the canonicalisation should be
+    deterministic for ALL representations of zero."""
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    id_pos = _make_id({**base, "price": 0.0})
+    id_neg = _make_id({**base, "price": -0.0})
+    id_int = _make_id({**base, "price": 0})
+    id_str = _make_id({**base, "price": "0.00"})
+    assert id_pos == id_neg == id_int == id_str
+
+
 # ── save_regime metadata coercion ──────────────────────────────────
 
 
