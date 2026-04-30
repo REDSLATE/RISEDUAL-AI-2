@@ -112,6 +112,31 @@ def append_proof_event(store: ProofChainStore, event: ProofEvent) -> ProofBlock:
     return block
 
 
+# ── Index management ─────────────────────────────────────────────────
+
+
+async def ensure_indexes(db: Any, collection_name: str = "decision_proof_chain") -> None:
+    """Create the indexes the Mongo-backed proof chain needs.
+
+    Mirrors ``scripts/create_risedual_indexes.py`` for the
+    ``decision_proof_chain`` collection. Idempotent; safe to call on
+    every startup. Async (motor) variant — the sync pymongo version
+    lives in the scripts module for offline ops use.
+    """
+    if db is None:
+        return
+    coll = db[collection_name]
+    try:
+        await coll.create_index([("entity_id", 1), ("created_at", 1)])
+        await coll.create_index("block_hash", unique=True)
+        await coll.create_index("prev_hash")
+        await coll.create_index("event_type")
+    except Exception:
+        # Index conflicts (e.g. existing index with a different name)
+        # are non-fatal — the collection still works.
+        pass
+
+
 class InMemoryProofChainStore:
     """
     Test/local implementation.

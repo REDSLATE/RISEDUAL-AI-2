@@ -247,6 +247,18 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
     except Exception as e:
         logger.warning(f"Patent-I risk budget gateway wire failed: {e}")
 
+    # Patent J — proof chain indexes for decision_proof_chain.
+    try:
+        from services.proof_chain import ensure_indexes as _proof_chain_indexes
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_proof_chain_indexes(db))
+        except RuntimeError:
+            pass
+    except Exception as e:
+        logger.warning(f"Patent-J proof chain indexes wire failed: {e}")
+
     try:
         from services.waitlist_service import set_db as set_waitlist_db
         set_waitlist_db(db)
