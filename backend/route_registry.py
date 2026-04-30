@@ -77,6 +77,7 @@ from routes.promotion_bridge_routes import router as promotion_bridge_routes_rou
 from routes.whatif_replay_routes import router as whatif_replay_routes_router, set_db as set_whatif_replay_db
 from routes.trading_mode import router as trading_mode_router, set_db as set_trading_mode_db
 from routes.admin_proof_chain import router as admin_proof_chain_router, set_db as set_admin_proof_chain_db
+from routes.admin_guard_shadow import router as admin_guard_shadow_router, set_db as set_admin_guard_shadow_db
 from services.firewall import set_db as set_firewall_db
 from services.dtd_replay_channel import set_db as set_dtd_replay_db
 from services.role_scoped_db import set_db as set_role_scoped_db
@@ -138,6 +139,7 @@ ALL_ROUTERS = [
     whatif_replay_routes_router,
     trading_mode_router,
     admin_proof_chain_router,
+    admin_guard_shadow_router,
 ]
 
 
@@ -191,6 +193,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_whatif_replay_db,
         set_trading_mode_db,
         set_admin_proof_chain_db,
+        set_admin_guard_shadow_db,
     ]
     for setter in _setters:
         try:
@@ -261,6 +264,18 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             pass
     except Exception as e:
         logger.warning(f"Patent-J proof chain indexes wire failed: {e}")
+
+    # Decision Pipeline Guard — shadow mode log indexes.
+    try:
+        from services.guard_shadow_log import ensure_indexes as _guard_shadow_indexes
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_guard_shadow_indexes(db))
+        except RuntimeError:
+            pass
+    except Exception as e:
+        logger.warning(f"Guard shadow log indexes wire failed: {e}")
 
     # Patent M — equity telemetry baselines.
     try:

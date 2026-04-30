@@ -566,7 +566,33 @@ async def run_crypto_symbol(
                 actor="crypto_paper_bot",
             )
 
-            if not guard["allow"]:
+            # ── Shadow mode (Step 5 of the rollout plan) ─────────────
+            # When ``GUARD_SHADOW_MODE=1`` the guard runs and writes
+            # proof chain + a shadow_log entry, but its verdict is
+            # NOT enforced. The bot proceeds with the legacy
+            # (pre-guard) size. Lets operators compare "would have
+            # blocked" vs "actually executed" for several days before
+            # flipping enforcement on.
+            from services.guard_shadow_log import (
+                is_shadow_mode_enabled,
+                log_guard_shadow_decision,
+            )
+            if is_shadow_mode_enabled():
+                await log_guard_shadow_decision(
+                    db,
+                    source="crypto_bot",
+                    entity_id=f"crypto:{symbol}",
+                    guard_result=guard,
+                    executed_action=_signal_dir,
+                    executed_notional=float(size_usd),
+                    context={
+                        "asset_class": "crypto",
+                        "symbol": str(symbol),
+                        "phase": "entry",
+                    },
+                )
+                # Fall through to legacy execution with pre-guard size.
+            elif not guard["allow"]:
                 await log_adversarial_decision(
                     db, symbol=symbol, signal=signal, final_direction="HOLD",
                 )
@@ -575,8 +601,9 @@ async def run_crypto_symbol(
                     "reason": f"guard:{','.join(guard['reasons'][:3])}",
                     "proof_hashes": guard["proof_hashes"],
                 }
-            # Guard approved — its final notional supersedes ours.
-            size_usd = round(float(guard["notional"]), 2)
+            else:
+                # Guard approved — its final notional supersedes ours.
+                size_usd = round(float(guard["notional"]), 2)
         except Exception as e:  # noqa: BLE001 — fail-open is unsafe
             # but we MUST NOT crash the live bot. Log and proceed
             # with the pre-guard size. The Patent-I-only legacy

@@ -143,6 +143,41 @@ async def run_manual_order_guard(
             actor=f"user:{user_id}",
         )
 
+        # ── Shadow mode (Step 5 of the rollout plan) ─────────────────
+        # When ``GUARD_SHADOW_MODE=1`` the guard runs and writes proof
+        # chain + a shadow_log entry, but its verdict is NOT enforced.
+        # Routes proceed with the original notional. Lets operators
+        # compare "would have blocked" vs "actually executed" before
+        # flipping the guard into enforcement mode.
+        from services.guard_shadow_log import (
+            is_shadow_mode_enabled,
+            log_guard_shadow_decision,
+        )
+        if is_shadow_mode_enabled():
+            await log_guard_shadow_decision(
+                db,
+                source=f"manual_order:{(context or {}).get('route', 'unknown')}",
+                entity_id=f"{asset_class}:{user_id}:{symbol.upper()}",
+                guard_result=guard,
+                executed_action=str(side).upper(),
+                executed_notional=float(base_notional),
+                context={
+                    "asset_class": asset_class,
+                    "symbol": symbol.upper(),
+                    "user_id": user_id,
+                    **(context or {}),
+                },
+            )
+            return {
+                "allow": True,
+                "notional": base_notional,
+                "shadow": True,
+                "would_allow": bool(guard.get("allow")),
+                "would_notional": float(guard.get("notional") or 0.0),
+                "proof_hashes": guard.get("proof_hashes", []),
+                "reasons": guard.get("reasons", []),
+            }
+
         if not guard["allow"]:
             return {
                 "allow": False,

@@ -23,6 +23,73 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Canonical IP Decision Contract + Shadow-Mode Rollout (Apr 30, 2026)
+
+The patent stack is now expressed as a single legal/technical contract
+(`services/risedual_ip_logic.py`) plus a shadow-mode middle gear so
+operators can compare "would-block" vs "actually executed" before
+flipping enforcement on.
+
+**`services/risedual_ip_logic.py` — `run_risedual_ip_decision(ctx)`**:
+The 11-step lifecycle codified as one master function. Every gate
+hash-logs to the proof chain — including REJECTIONS — so the legal
+audit trail is complete whether the trade fires or doesn't:
+1. Observe market (caller)
+2. Generate candidate (`CandidateSignal`)
+3. **Adversarial validation** (Patent K) → `ADVERSARIAL_DECISION` block
+4. **Auditor calibration veto** (new) → `AUDITOR_VERDICT` block
+5. **Authority validation** (Patent H/I expiry+countersignature) →
+   `AUTHORITY_VALIDATED` block
+6. **Failure mode classify** (Patent M) → `FAILURE_MODE_CLASSIFIED` block
+7. **Adaptive risk budget** (Patent I) → `RISK_BUDGET_APPLIED` block
+8. Execute (caller's `ExecutionClient`) → `EXECUTION_ATTEMPTED|FILLED`
+9. Hash-log everything (Patent J — already inline)
+10. Grade outcome (separate flow)
+11. Feedback into retrain (separate flow)
+
+Plus the **`can_execute(decision)`** rule predicate and 4
+non-negotiable invariants (canonical action, multiplier ≤ authority,
+no HOLD with notional, no loosening without countersignature) baked
+in as `assert`s — programming errors fail loudly, not silently.
+
+**`services/auditor_calibration.py`** — the missing step-4 module.
+Pure function `review_calibration(rolling_accuracy, calibration_gap,
+signal_confidence)` returns PASS / CAUTION / VETO. Wide gaps veto
+unconditionally; medium gap + high confidence is a compound veto.
+Catches the "model unanimously confident but historically wrong"
+failure mode that adversarial enforcement (Bull-vs-Bear spread)
+doesn't.
+
+**Shadow-mode middle gear** (`GUARD_SHADOW_MODE` env flag):
+- `services/guard_shadow_log.py` — single-writer module that writes
+  guard verdicts to a new `guard_shadow_log` Mongo collection. Never
+  raises; a logging failure must not block live trading.
+- Wired into `manual_order_guard.py` and `crypto_paper_trader.py` —
+  when `GUARD_SHADOW_MODE=1` the guard runs end-to-end (proof chain
+  populates), but the verdict is RECORDED rather than ENFORCED.
+  Routes proceed with the original notional. Default: `0`.
+- New admin endpoints under `/api/admin/guard-shadow/`:
+  - `GET /summary?hours=N` — counts + would-block rate + top blocking
+    reasons + per-source breakdown (`crypto_bot` / `manual_order:smart_orders` etc).
+  - `GET /decisions?limit=N&source=...&only_blocked=true&entity_substr=...`
+    — paginated raw feed.
+- Live verified end-to-end on the preview: flipped flag on, ran the
+  crypto fleet (SOL SHORT @ $83.84, $318.33 notional), shadow row
+  persisted with `would_allow: true`, source=`crypto_bot`. Flipped
+  flag off, summary correctly reflects `shadow_mode_enabled: false`
+  while keeping the historic row queryable.
+
+**Tests**: 15/15 green in `test_risedual_ip_logic.py` covering happy
+path (6 proof events), every rejection branch (invalid action,
+adversarial reject, auditor compound veto, expired authority,
+failure-mode block, execution failure), the `can_execute` predicate,
+dry-run mode, and 5 auditor calibration unit tests covering the
+compound-veto edge cases. Lint clean across all 5 new files.
+
+**The IP rule, in plain English**: An AI may propose, but only a
+governed, adversarially validated, failure-aware, authority-scoped,
+proof-logged decision may execute.
+
 ### Tier 1 Visual Polish + Paper/Live Consolidation + Exception Sanitization (Apr 30, 2026)
 
 **Per-item Paper/Live pickers consolidated** (user request — single global switch):
