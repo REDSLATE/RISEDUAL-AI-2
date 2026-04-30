@@ -92,6 +92,132 @@ async def test_equity_short_position_closed_by_buy_fill():
     assert out["exit_price"] == 250.0
 
 
+# ── VWAP across multiple closing fills ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_equity_vwap_across_multiple_fills():
+    """Position of 100 shares closed in two fills at different
+    prices → exit price is the volume-weighted average, not the
+    earliest fill (which was the historic behaviour)."""
+    opened_at = datetime.now(timezone.utc) - timedelta(days=2)
+    fill1_at = datetime.now(timezone.utc) - timedelta(hours=4)
+    fill2_at = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    out = await _is_equity_position_closed(
+        symbol="AAPL", side="buy", qty=100, opened_at=opened_at,
+        broker_positions=[],
+        broker_orders=[
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 50, "filled_avg_price": 200.0,
+                "filled_at": fill1_at.isoformat(),
+            },
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 50, "filled_avg_price": 210.0,
+                "filled_at": fill2_at.isoformat(),
+            },
+        ],
+    )
+    assert out is not None
+    # VWAP = (50 × 200 + 50 × 210) / 100 = 205.0
+    assert out["exit_price"] == pytest.approx(205.0)
+    assert out["close_fill_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_equity_vwap_caps_at_original_position_qty():
+    """Defensive: if the broker returns over-supplied close fills
+    (e.g. a re-sell of the same shares hit get_orders), we must
+    cap cumulative volume at the original qty so phantom fills
+    can't poison the average."""
+    opened_at = datetime.now(timezone.utc) - timedelta(days=2)
+    fill1_at = datetime.now(timezone.utc) - timedelta(hours=4)
+    fill2_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    fill3_at = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    out = await _is_equity_position_closed(
+        symbol="AAPL", side="buy", qty=100, opened_at=opened_at,
+        broker_positions=[],
+        broker_orders=[
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 100, "filled_avg_price": 200.0,
+                "filled_at": fill1_at.isoformat(),
+            },
+            # Phantom 50-share fill — must NOT contribute since the
+            # 100-share cap was already hit by the first fill.
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 50, "filled_avg_price": 999.0,
+                "filled_at": fill2_at.isoformat(),
+            },
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 50, "filled_avg_price": 999.0,
+                "filled_at": fill3_at.isoformat(),
+            },
+        ],
+    )
+    assert out is not None
+    # Should be 200.0 — the second/third fills are over the cap.
+    assert out["exit_price"] == pytest.approx(200.0)
+
+
+@pytest.mark.asyncio
+async def test_equity_vwap_partial_close_uses_available_data():
+    """If the broker under-reports (sum of fills < original qty),
+    we still compute over what we have — better than dropping the
+    row. This is the eventual-consistency case where the second
+    fill hasn't been pushed to the orders endpoint yet."""
+    opened_at = datetime.now(timezone.utc) - timedelta(days=2)
+    fill1_at = datetime.now(timezone.utc) - timedelta(hours=4)
+
+    out = await _is_equity_position_closed(
+        symbol="AAPL", side="buy", qty=100, opened_at=opened_at,
+        broker_positions=[],  # position absent → row should close
+        broker_orders=[
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "filled_qty": 60, "filled_avg_price": 195.0,
+                "filled_at": fill1_at.isoformat(),
+            },
+        ],
+    )
+    assert out is not None
+    # VWAP over what we have: 195.0 (only one fill, 60 shares).
+    assert out["exit_price"] == pytest.approx(195.0)
+    assert out["close_fill_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_equity_vwap_falls_back_to_qty_when_filled_qty_missing():
+    """Older Alpaca orders may only have ``qty`` not ``filled_qty``.
+    The VWAP path must use ``qty`` as a fallback so older fills
+    don't get counted as zero-volume."""
+    opened_at = datetime.now(timezone.utc) - timedelta(days=2)
+    fill_at = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    out = await _is_equity_position_closed(
+        symbol="AAPL", side="buy", qty=100, opened_at=opened_at,
+        broker_positions=[],
+        broker_orders=[
+            {
+                "symbol": "AAPL", "side": "sell", "status": "filled",
+                "qty": 100, "filled_avg_price": 200.0,
+                # no ``filled_qty`` field
+                "filled_at": fill_at.isoformat(),
+            },
+        ],
+    )
+    assert out is not None
+    assert out["exit_price"] == pytest.approx(200.0)
+
+
+# ── _is_option_position_closed (unchanged) ─────────────────────────
+
+
 # ── _is_option_position_closed ──────────────────────────────────────
 
 

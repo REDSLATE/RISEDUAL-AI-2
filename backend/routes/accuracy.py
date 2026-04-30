@@ -151,12 +151,22 @@ async def get_failure_modes(request: Request):
 async def _update_chromadb_failure_code(pred: dict, code: str):
     """Update failure_code in ChromaDB metadata for a prediction."""
     try:
-        from services.market_memory_service import _collection
+        from services.market_memory_service import _collection, _make_id
         if _collection:
-            import hashlib
-            doc_id = hashlib.sha256(
-                f"{pred['symbol']}|{pred.get('timestamp', '')[:10]}|{pred.get('price_at_prediction', '')}".encode()
-            ).hexdigest()
+            # Mirror the v1/v2 id contract from market_memory_service.
+            # Pre-fix this site hand-rolled its own SHA-256 with
+            # ``pred.get('timestamp', '')[:10]`` — same bug as the
+            # post-mortem service: TypeError on Mongo BSON datetime
+            # round-trips, swallowed by the broad except, ChromaDB
+            # metadata never updated. ``_make_id`` routes through
+            # ``to_iso_date`` so the id is deterministic regardless
+            # of the timestamp's storage type.
+            doc_id = _make_id({
+                "symbol": pred.get("symbol"),
+                "date": pred.get("timestamp"),
+                "price": pred.get("price_at_prediction"),
+                "prediction_id": pred.get("prediction_id"),
+            })
             existing = await asyncio.to_thread(_collection.get, ids=[doc_id])
             if existing and existing.get("ids"):
                 meta = existing["metadatas"][0].copy() if existing.get("metadatas") else {}

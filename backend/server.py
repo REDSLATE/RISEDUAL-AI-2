@@ -209,6 +209,15 @@ async def _run_memory_cleanup():
         logger.info(f"Nightly memory cleanup: {result.get('toxic_removed', 0)} toxic + {result.get('obsolete_removed', 0)} obsolete removed")
     except Exception as e:
         logger.warning(f"Memory cleanup failed: {e}")
+    # ── Backfill prediction_date on legacy rows ──
+    # Idempotent + bounded; self-disables once the residual is zero.
+    # Pinned to the same 2:00 UTC tick as the rest of nightly
+    # maintenance so it lives or dies with the cleanup window.
+    try:
+        from services.prediction_date_backfill import backfill_prediction_date
+        await backfill_prediction_date(db)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"prediction_date backfill failed: {e}")
 
 
 async def _run_waitlist_auto_invite():

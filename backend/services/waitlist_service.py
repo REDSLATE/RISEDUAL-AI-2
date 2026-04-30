@@ -270,7 +270,14 @@ async def get_waitlist_analytics(days: int = 30) -> dict:
 
     daily_map = {}
     for entry in all_entries:
-        day = entry.get("signed_up_at", "")[:10]
+        # ``signed_up_at`` is written by Mongo as a string but on
+        # round-trip can come back as a tz-naive datetime. The
+        # historic ``[:10]`` slice raised TypeError on those rows
+        # and silently dropped them from the daily-signup chart —
+        # see services/datetime_utils.to_iso_date for the canonical
+        # coercion.
+        from services.datetime_utils import to_iso_date
+        day = to_iso_date(entry.get("signed_up_at"))
         if not day:
             continue
         if day not in daily_map:

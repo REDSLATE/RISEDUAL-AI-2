@@ -115,9 +115,18 @@ async def _is_equity_position_closed(
         if (pos_side == "long") == long_position and abs(pos_qty) >= abs(qty):
             return None  # still open
 
-    # Closed — find the matching opposite-side fill for exit price.
+    # Closed — find ALL matching opposite-side fills since the open
+    # for a volume-weighted exit price.
+    #
+    # Pre-fix used only the EARLIEST fill, so a multi-leg unwind
+    # (e.g., 100-share position sold in two 50-share fills at
+    # different prices) lost the second fill's contribution. The
+    # VWAP calculation below caps total close qty at the original
+    # position size so phantom fills (rare but seen with broker
+    # backend hiccups, where the user manually re-sells the same
+    # qty) can't over-count.
     opposite = "sell" if long_position else "buy"
-    candidates: list[tuple[datetime, float]] = []
+    candidates: list[tuple[datetime, float, float]] = []  # (fill_at, qty, px)
     for o in broker_orders or []:
         if (o.get("symbol", "") or "").upper() != sym:
             continue
@@ -134,8 +143,20 @@ async def _is_equity_position_closed(
             px = float(o.get("filled_avg_price") or 0)
         except (TypeError, ValueError):
             continue
-        if px > 0:
-            candidates.append((fill_at, px))
+        try:
+            # Prefer ``filled_qty`` when present (partial fills);
+            # fall back to ``qty`` for fully-filled orders. If
+            # neither is present (some adapters / older fixtures),
+            # assume this fill covers the original position size —
+            # that's the historic single-fill semantics, preserved
+            # so existing callers don't regress.
+            fill_qty = float(o.get("filled_qty") or o.get("qty") or 0)
+        except (TypeError, ValueError):
+            fill_qty = 0.0
+        if fill_qty <= 0 and px > 0:
+            fill_qty = abs(qty)
+        if px > 0 and fill_qty > 0:
+            candidates.append((fill_at, fill_qty, px))
 
     if not candidates:
         # Position absent but no exit fill recorded yet — wait one
@@ -143,12 +164,31 @@ async def _is_equity_position_closed(
         # price; that's the "false positive" we hard-avoid.
         return None
 
-    # Use the earliest matching close fill (volume-weighted across
-    # multiple closes is a future enhancement).
+    # Volume-weighted average: process fills in chronological order,
+    # capping cumulative volume at the original position qty so
+    # over-supplied fill data can't poison the average. If the broker
+    # under-reports (sum < qty) we still compute over what we have —
+    # that's better than dropping the row.
     candidates.sort(key=lambda t: t[0])
+    target_qty = abs(qty)
+    used_qty = 0.0
+    weighted_px_sum = 0.0
+    for _at, q, px in candidates:
+        remaining = max(target_qty - used_qty, 0.0)
+        if remaining <= 0:
+            break  # already covered original position
+        contrib = min(q, remaining) if target_qty > 0 else q
+        weighted_px_sum += px * contrib
+        used_qty += contrib
+
+    if used_qty <= 0:
+        return None  # defensive — shouldn't happen given the qty>0 filter above
+
+    vwap = weighted_px_sum / used_qty
     return {
-        "exit_price": candidates[0][1],
+        "exit_price": vwap,
         "close_reason": "broker_position_closed",
+        "close_fill_count": len(candidates),
     }
 
 

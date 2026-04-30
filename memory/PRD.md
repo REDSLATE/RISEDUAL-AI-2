@@ -23,6 +23,76 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Backfill + VWAP Equity Reconciler + CI Slice Guard (Apr 30, 2026)
+
+Three actionable backlog items shipped together. Webhook close
+detection and per-leg spread fills remain deferred for the
+documented reason (provider stories not stable enough to commit
+to a contract).
+
+**1. Nightly `prediction_date` backfill**
+
+`services/prediction_date_backfill.py::backfill_prediction_date(db)`
+hooks into the existing 2:00 UTC `_run_memory_cleanup` tick.
+
+* Idempotent: query is `$or: [{$exists: False}, {$eq: None}]` so
+  rows already populated never re-process.
+* Bounded: 5,000 rows per pass — protects nightly cleanup against
+  runaway backlogs.
+* Self-disabling: residual count returned in the result so the
+  operator can see "still 47 pending" without inspecting Mongo.
+* Failure isolated: per-row exceptions counted as `skipped`, never
+  raised.
+
+**Live backfill: 228 rows filled, 0 skipped, 0 pending.** Drift
+endpoint can now bucket on the native `prediction_date` field
+without the `to_iso_date(timestamp)` fallback.
+
+**2. Volume-weighted equity exit price**
+
+Pre-fix `_is_equity_position_closed()` used only the *earliest*
+opposite-side fill — a multi-leg unwind (100 shares closed in two
+50-share fills) lost the second fill's price contribution. Now:
+volume-weighted average across all matching fills since the open,
+with cumulative qty capped at the original position size so phantom
+fills (rare but seen with broker backend hiccups) can't poison
+the average.
+
+Defensive fallbacks:
+* `filled_qty` preferred → `qty` → fall back to original position
+  qty when broker omits both (preserves single-fill historic
+  semantics).
+* Under-reported broker data (sum of fills < open qty) computes
+  VWAP over what's available — better than dropping the row.
+* `close_fill_count` surfaced in the decision dict for downstream
+  observability.
+
+5 new tests pin: VWAP across 2 fills, cap at original qty, partial
+under-reporting, `qty`-fallback when `filled_qty` missing, plus the
+existing single-fill paths still work.
+
+**3. CI guard against `[:10]` on Mongo doc accesses**
+
+`tests/test_no_brittle_slice_on_mongo_dates.py` greps for
+`<expr>.get("…", default)[:10]` and `(<expr> or "")[:10]` patterns
+in `services/`, `routes/`, `ai_core/`. Strict by default; explicit
+`ALLOWLIST` for known-safe sites (Marketstack ISO strings, list
+slices on `bids`/`asks`, watchlist-form date strings).
+
+**Real bugs the guard caught on first run:**
+- `services/waitlist_service.py:273` — `entry.get("signed_up_at", "")[:10]`
+  on Mongo `signed_up_at` field. Same exact bug shape as the
+  Chroma sync sites; would silently drop signups from the daily
+  chart on tz-naive round-trip. Routed through `to_iso_date`.
+- `routes/accuracy.py:158` — `_update_chromadb_failure_code()` was
+  hand-rolling its own SHA-256 with the historic
+  `pred.get("timestamp", "")[:10]` slice. Identical bug to the one
+  fixed in `post_mortem_service.py` two threads ago — the guard
+  caught the duplicate. Now delegates to `_make_id()` so the
+  v1/v2 contract stays unified across all callers.
+
+**Tests**: 119/119 green across 9 sync-related suites.
+
 ### Drift Detector Honesty Fixes — Persisted Last-Rebuild + Date-Field Alignment (Apr 30, 2026)
 
 Two operator-trust gaps in the drift endpoint, both surfaced by the
