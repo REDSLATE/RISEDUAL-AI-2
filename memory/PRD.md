@@ -23,6 +23,66 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Position Reconciler — Step 10 OUTCOME_VERIFIED for External Broker Fills (Apr 30, 2026)
+
+**The gap closed**: Crypto + smart orders had OUTCOME_VERIFIED on
+close (the proof chain's "step 10"). Live equity (`broker.py`) and
+options (`options_trading.py`) did not — fills happen externally,
+the close happens days later, and there was no in-process callback.
+The chain dead-ended at fill.
+
+**New service `services/position_reconciler.py`**:
+- `reconcile_equity_positions(db)` — sweeps `trade_orders` rows
+  with `proof_chain_entity_id` set and `outcome_appended != True`,
+  groups by `(user_id, broker_id)` to minimize broker API calls,
+  pulls `client.get_positions()` + `client.get_orders(status="closed")`,
+  and decides if each row is closed by:
+  * Symbol absent from positions, AND
+  * A later opposite-side filled order exists with a usable price.
+  False-positive guard: if position is gone but no exit fill is
+  found, the row is left for the next sweep — we never invent a
+  price.
+- `reconcile_options_positions(db)` — same shape, scoped to
+  single-leg `option_orders` (multi-leg spread reconciliation
+  deferred). Uses `adapter.list_option_positions()` when the
+  configured options provider exposes it.
+- `run_position_reconciler(db)` — single scheduler entry running
+  both sweeps.
+
+**Schema additions** (forward-compat, safe with existing rows):
+- `trade_orders.proof_chain_entity_id` + `outcome_appended` +
+  `outcome_appended_at` + `outcome_block_hash` + `outcome_exit_price`
+  + `outcome_pnl`.
+- `option_orders.*` — same suffix fields.
+
+**Order-placement reordering**:
+- `routes/broker.py` and `routes/options_trading.py` now run the
+  manual-order guard *before* persisting the audit row so
+  `proof_chain_entity_id` is written atomically. (Previously the
+  guard ran after; the entity_id only flowed back to the response,
+  never to Mongo.)
+
+**New scheduler job**: `position_reconciler` runs every 30 minutes;
+no-op when no eligible rows exist, bounded at 200 rows per pass
+to keep broker API call volume predictable.
+
+**New admin endpoints**:
+- `GET /api/admin/position-reconciler/status` — pending +
+  closed_30d counts for equity & options.
+- `POST /api/admin/position-reconciler/run` — manual sweep
+  trigger, rate-limited to once per 60s per owner.
+
+**CI guard**: `tests/test_no_unguarded_mongo_datetime_math.py`
+greps the codebase for `datetime.now(timezone.utc) - <var>` /
+comparison patterns and fails CI if any new code uses a
+Mongo-derived datetime in math without `ensure_utc()`. Strict by
+default — explicit `ALLOWLIST` for known-safe in-process state
+(provider router cooldowns, kill-switch tripped_at, etc.).
+
+**Test coverage**: 34/34 tests passing (15 datetime_utils + 1 CI
+guard + 10 reconciler unit + 8 API contract tests added by the
+testing agent). End-to-end verified via cookie-based auth.
+
 ### Mongo Tz-Aware Datetime Sweep + `ensure_utc()` Helper (Apr 30, 2026)
 
 **Problem**: MongoDB strips `tzinfo` from BSON Dates and truncates
