@@ -316,14 +316,61 @@ function DriftNarrative({ drift, driftPct, mongo, chroma, recommendation }) {
 
 
 function DriftSparkline({ history, thresholds }) {
-  // Resilient to the no-data path: fresh deploys won't have any
-  // recorded ticks for the first 5 minutes, and an unauthorized /
-  // unavailable response also lands here. Render nothing to keep
-  // the card height stable instead of swallowing space with a
-  // placeholder skeleton.
+  // Two empty states to handle separately:
+  //
+  // 1. NO data yet — fresh deploy with the watcher not yet ticked
+  //    (or an unauthorized response). Render a tiny "warming up"
+  //    note so the operator knows it's bootstrapping, not broken.
+  //
+  // 2. ENOUGH data — render the full sparkline.
+  //
+  // The 5-min watcher produces 12 samples/hour, 288/day. We
+  // consider the chart "warm" at 24 samples (~2h) — enough to
+  // see real trend rather than the seed-tick artifact.
   const points = history?.points;
-  if (!Array.isArray(points) || points.length < 2) {
-    return null;
+  const SAMPLES_PER_HOUR = 12;
+  const FULL_24H_SAMPLES = SAMPLES_PER_HOUR * 24; // 288
+  const WARM_THRESHOLD = 24; // 2h of data
+
+  if (!Array.isArray(points) || points.length === 0) {
+    return (
+      <div className="mb-3" data-testid="memory-drift-sparkline-warmup">
+        <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">
+          Drift Trend · 24h
+        </div>
+        <div className="rounded-md border border-slate-700/40 bg-slate-900/40 p-2 text-[10px] text-slate-400 italic">
+          Warming up — the 5-minute watcher hasn't ticked yet.
+          Sparkline will populate at 12 samples/hour
+          (288/day) within a few minutes.
+        </div>
+      </div>
+    );
+  }
+
+  // Single-sample case — can't draw a meaningful line, but the
+  // operator should still see *something* to confirm the watcher
+  // ticked. Render a single dot + the warmup explainer.
+  if (points.length === 1) {
+    return (
+      <div className="mb-3" data-testid="memory-drift-sparkline-warmup">
+        <div className="flex items-baseline justify-between mb-1">
+          <div className="text-[9px] text-slate-500 uppercase tracking-wider">
+            Drift Trend · 24h
+          </div>
+          <span className="text-[9px] text-slate-500">
+            1 sample · warming up
+          </span>
+        </div>
+        <div className="rounded-md border border-slate-700/40 bg-slate-900/40 p-2 text-[10px] text-slate-400 italic">
+          First sample recorded at{' '}
+          <span className="font-mono tabular-nums text-slate-300">
+            {Number(points[0].drift_pct ?? 0).toFixed(2)}%
+          </span>
+          . Need a second tick to start the trend curve — should
+          arrive within 5 minutes.
+        </div>
+      </div>
+    );
   }
 
   const values = points.map((p) => Number(p.drift_pct) || 0);
@@ -384,7 +431,8 @@ function DriftSparkline({ history, thresholds }) {
         </div>
         <div className="flex items-baseline gap-2">
           <span className="text-[9px] text-slate-500">
-            {points.length} samples
+            {points.length} sample{points.length === 1 ? '' : 's'}
+            {points.length < FULL_24H_SAMPLES && ' / 288'}
           </span>
           <span
             className={`text-[10px] font-mono tabular-nums ${trendColor}`}
@@ -435,6 +483,17 @@ function DriftSparkline({ history, thresholds }) {
           <span className="text-slate-300">{latest.toFixed(2)}%</span>
         </div>
       </div>
+      {points.length < WARM_THRESHOLD && (
+        <p
+          className="text-[9px] text-slate-500 italic mt-1"
+          data-testid="memory-drift-sparkline-warmup-note"
+        >
+          Series still warming up · 5-min watcher produces 12
+          samples/hour · 24h view fully populated by tomorrow ·
+          7-day TTL means the rolling window stabilizes after a
+          week.
+        </p>
+      )}
     </div>
   );
 }
