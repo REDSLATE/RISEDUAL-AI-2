@@ -53,7 +53,12 @@ async def run_manual_order_guard(
         from services.adversarial_enforcer import AgentDecision
         from services.failure_mode_classifier import MarketTelemetry, ModelTelemetry
         from services.proof_chain import AsyncMongoProofChainStore
-        from services.decision_pipeline_guard import run_guarded_decision_pipeline_async
+        from services.risedual_ip_logic import (
+            CandidateSignal,
+            EnforcementPolicy,
+            IPDecisionContext,
+            run_risedual_ip_decision,
+        )
         from services.risk_budget_gateway import (
             build_track_record_for_user,
             get_daily_realized_loss,
@@ -134,14 +139,39 @@ async def run_manual_order_guard(
         proof_store = AsyncMongoProofChainStore(db) if db is not None else None
         from datetime import datetime, timezone
 
-        guard = await run_guarded_decision_pipeline_async(
-            entity_id=f"{asset_class}:{user_id}:{symbol.upper()}:{int(datetime.now(timezone.utc).timestamp())}",
+        # Canonical IP contract — single decision-time evaluator.
+        # Replaces the older ``run_guarded_decision_pipeline_async``;
+        # adds the auditor-calibration veto and explicit
+        # authority-validation block to the proof chain. Per-patent
+        # enforcement honours the same env flags as the crypto bot
+        # (``EnforcementPolicy.from_env``).
+        ip_signal = CandidateSignal(
+            action="BUY" if is_buy else "SELL",
+            base_notional=float(base_notional),
+            base_multiplier=1.0,
             bull=bull, bear=bear, commander=None,
+            rolling_accuracy=float(track.win_rate or 0.0),
+            calibration_gap=float(track.calibration_gap or 0.0),
+        )
+        ip_ctx = IPDecisionContext(
+            request_id=f"{asset_class}:{user_id}:{symbol.upper()}:{int(datetime.now(timezone.utc).timestamp())}",
+            actor=f"user:{user_id}",
+            asset_class=asset_class,
+            symbol=symbol.upper(),
+            signal=ip_signal,
             market=market_tel, model=model_tel,
+            authority=authority,
             risk_request=risk_req,
             proof_store=proof_store,
-            actor=f"user:{user_id}",
+            execution_client=None,  # routes execute themselves after this returns
+            policy=EnforcementPolicy.from_env(),
+            dry_run=True,
         )
+        guard = await run_risedual_ip_decision(ip_ctx)
+        # Translate the contract response to the legacy guard shape the
+        # rest of the helper (and callers) expect.
+        guard["allow"] = guard["allowed"]
+        guard["reasons"] = guard.get("reasons") or [guard.get("reason") or ""]
 
         # ── Shadow mode (Step 5 of the rollout plan) ─────────────────
         # When ``GUARD_SHADOW_MODE=1`` the guard runs and writes proof

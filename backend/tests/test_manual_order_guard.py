@@ -84,13 +84,19 @@ async def test_buy_runs_full_guard_and_writes_proofs(db, user, monkeypatch):
     assert res["allow"] is True
     assert res["notional"] > 0
     assert res["notional"] <= 10_000
-    # Should have appended exactly 3 proof events (adv → failure → risk)
-    assert len(res["proof_hashes"]) == 3
+    # Canonical IP contract writes 6 proof events on a clean accept
+    # (adversarial → auditor → authority → failure_mode → risk_budget
+    # → execution_attempted, since the helper runs the contract in
+    # dry_run mode — routes execute themselves after this returns).
+    assert len(res["proof_hashes"]) == 6
 
     rows = await db.decision_proof_chain.find({}, {"_id": 0}).to_list(10)
     event_types = sorted({r["event_type"] for r in rows})
     assert event_types == [
         "ADVERSARIAL_DECISION",
+        "AUDITOR_VERDICT",
+        "AUTHORITY_VALIDATED",
+        "EXECUTION_ATTEMPTED",
         "FAILURE_MODE_CLASSIFIED",
         "RISK_BUDGET_APPLIED",
     ]
