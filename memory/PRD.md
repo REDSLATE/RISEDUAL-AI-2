@@ -23,6 +23,44 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Deployment Readiness Audit — CLEARED TO SHIP (Feb 27, 2026)
+
+Final pre-deploy health check. Applied 7 security patches earlier
+in this session (axios, react-router, defusedxml swap in 3 files,
+chunked-upload path-traversal regex + realpath check) and one
+additional tz-safety fix in `services/research_router.py:113`
+(`cached_at = ensure_utc(cached_at)` before TTL comparison — same
+hardening pattern as `mongo_chroma_sync_metrics`, closes a bug
+that was silently forcing Tavily re-fetches 4× per crypto tick
+on ETH/SOL).
+
+**Final metrics:**
+
+| Check | Result |
+|---|---|
+| Pytest sync+tracer+rebuild+tz suite | **212/212 passing** (was 209) |
+| Bandit HIGH+MEDIUM (prod code) | **0** (was 4) |
+| npm audit HIGH/CRITICAL (runtime) | **0** (was 3) |
+| Backend post-restart err logs | silent on known bugs |
+| Supervisor services | 4/4 RUNNING |
+| Required env vars | 18/18 present |
+| Hardcoded URLs in JS | 0 (broker doc links excluded) |
+
+**3 accepted operational trade-offs** — not blockers, tracked
+formally in `/app/memory/OPS_BACKLOG.md`:
+
+* **OPS-001** — `/tmp/uploads/` chunked-upload loss on pod
+  restart. Admin-only, sub-30s upload window, graceful client
+  failure. Revisit if upload size > 500 MB.
+* **OPS-002** — Reuters + AP RSS DNS blocked in preview pod.
+  Multi-source design degrades gracefully; world-events still
+  produces output from WSJ/Bloomberg/FT/SEC sources. Revisit
+  if production deploy has the same block.
+* **OPS-003** — ML deps container size (~500-800 MB over
+  baseline). Inference-only, zero SLO impact, RAM
+  steady-state ~700 MB. Revisit if deploy > 5 min or
+  cold-start > 30s.
+
 ### One-Click Wipe-and-Rebuild Recovery + Card Polish (Feb 27, 2026)
 
 Closes the operator gap on "what do we do if the toxic-spike bug
