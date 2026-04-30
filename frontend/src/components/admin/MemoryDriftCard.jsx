@@ -30,6 +30,14 @@ export default function MemoryDriftCard() {
   const [error, setError] = useState(null);
   const [days, setDays] = useState(30);
 
+  // Rebuild dialog state. Three phases:
+  //   - mode === null   → dialog hidden
+  //   - mode === 'refresh' → confirmed upsert, no wipe
+  //   - mode === 'wipe'    → confirmed wipe + rebuild (destructive)
+  const [rebuildMode, setRebuildMode] = useState(null);
+  const [rebuildBusy, setRebuildBusy] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -62,6 +70,34 @@ export default function MemoryDriftCard() {
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load]);
+
+  const runRebuild = useCallback(async (mode) => {
+    // mode === 'refresh' → upsert only (default, safe)
+    // mode === 'wipe'    → destructive wipe-and-backfill
+    setRebuildBusy(true);
+    setRebuildResult(null);
+    try {
+      const url =
+        `${API}/api/accuracy/memory/rebuild-from-mongo` +
+        `?days=${days}&limit=5000` +
+        (mode === 'wipe' ? '&wipe=true' : '');
+      const res = await authFetch(url, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.detail || `HTTP ${res.status}`);
+      }
+      setRebuildResult({ ok: true, ...json, mode });
+      // Reload the drift snapshot to reflect the new state. The
+      // sparkline-history endpoint will catch up on the next 5-min
+      // watcher tick.
+      await load();
+    } catch (e) {
+      setRebuildResult({ ok: false, error: e.message || 'rebuild failed', mode });
+    } finally {
+      setRebuildBusy(false);
+      setRebuildMode(null);
+    }
+  }, [days, load]);
 
   if (error) {
     return (
@@ -132,8 +168,71 @@ export default function MemoryDriftCard() {
           >
             {loading ? '…' : 'Refresh'}
           </button>
+          <button
+            data-testid="memory-drift-rebuild-trigger"
+            onClick={() => setRebuildMode('refresh')}
+            disabled={rebuildBusy}
+            className={`text-[10px] px-2 py-0.5 border rounded disabled:opacity-50 transition-colors ${
+              data.recommendation === 'rebuild'
+                ? 'bg-red-500/20 hover:bg-red-500/30 border-red-500/50 text-red-200'
+                : 'bg-slate-900/60 hover:bg-slate-900/80 border-slate-700/60 text-slate-300'
+            }`}
+          >
+            {rebuildBusy ? 'Rebuilding…' : 'Rebuild ↺'}
+          </button>
         </div>
       </div>
+
+      {/* Last rebuild result toast — surfaces the structured response
+          right inside the card so the operator sees the outcome
+          without bouncing to logs. Auto-cleared on the next manual
+          dismissal so it doesn't go stale. */}
+      {rebuildResult && (
+        <div
+          data-testid="memory-drift-rebuild-result"
+          className={`mb-3 px-3 py-2 rounded-md border text-[10px] ${
+            rebuildResult.ok
+              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
+              : 'bg-red-500/10 border-red-500/40 text-red-200'
+          }`}
+        >
+          <div className="flex items-baseline justify-between">
+            <div>
+              {rebuildResult.ok ? (
+                <>
+                  Rebuild complete · mode{' '}
+                  <span className="font-mono">{rebuildResult.mode}</span>
+                  {rebuildResult.mode === 'wipe' && (
+                    <>
+                      {' · wiped '}
+                      <span className="font-mono tabular-nums">
+                        {rebuildResult.wiped?.toLocaleString() ?? '?'}
+                      </span>
+                    </>
+                  )}
+                  {' · rebuilt '}
+                  <span className="font-mono tabular-nums">
+                    {rebuildResult.rebuilt?.toLocaleString()}
+                  </span>
+                  {' · skipped '}
+                  <span className="font-mono tabular-nums">
+                    {rebuildResult.skipped?.toLocaleString()}
+                  </span>
+                </>
+              ) : (
+                <>Rebuild failed · {rebuildResult.error}</>
+              )}
+            </div>
+            <button
+              onClick={() => setRebuildResult(null)}
+              className="text-slate-400 hover:text-slate-200 ml-2"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Recommendation badge */}
       <div
@@ -297,6 +396,85 @@ export default function MemoryDriftCard() {
           </p>
         </div>
       </details>
+
+      {/* Rebuild confirm dialog. Card-local modal — no Radix dialog
+          needed for a destructive but rare action. Closes on
+          backdrop click; ``runRebuild`` resolves and clears
+          ``rebuildMode`` regardless of outcome. */}
+      {rebuildMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => !rebuildBusy && setRebuildMode(null)}
+          data-testid="memory-drift-rebuild-dialog"
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-lg p-5 max-w-md w-full mx-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-white text-sm font-semibold mb-3">
+              Rebuild ChromaDB from Mongo
+            </h3>
+            <p className="text-[11px] text-slate-300 mb-4 leading-relaxed">
+              Replays every verified prediction in the last{' '}
+              <span className="font-mono text-slate-100">{days}d</span>{' '}
+              from MongoDB through{' '}
+              <code className="text-cyan-300">save_regime</code>. Pick
+              the recovery mode based on the diagnosis below.
+            </p>
+
+            <button
+              data-testid="memory-drift-rebuild-refresh-btn"
+              onClick={() => runRebuild('refresh')}
+              disabled={rebuildBusy}
+              className="w-full mb-2 text-left px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-slate-100 disabled:opacity-50"
+            >
+              <div className="text-[11px] font-semibold mb-0.5">
+                Refresh (upsert) — safe, default
+              </div>
+              <div className="text-[10px] text-slate-400 leading-relaxed">
+                Backfills missing rows. Existing Chroma episodes
+                with no matching Mongo prediction (training
+                over-supply) are <em>preserved</em>. Use when
+                drift is positive and you just want to catch up.
+              </div>
+            </button>
+
+            <button
+              data-testid="memory-drift-rebuild-wipe-btn"
+              onClick={() => {
+                if (window.confirm(
+                  'WIPE will delete every ChromaDB episode and ' +
+                  'rebuild from scratch using Mongo only. Training ' +
+                  'over-supply will be lost — re-run memory_training_service ' +
+                  'afterward if you need it back. Proceed?'
+                )) {
+                  runRebuild('wipe');
+                }
+              }}
+              disabled={rebuildBusy}
+              className="w-full mb-2 text-left px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 rounded text-red-200 disabled:opacity-50"
+            >
+              <div className="text-[11px] font-semibold mb-0.5">
+                Wipe + rebuild — destructive
+              </div>
+              <div className="text-[10px] text-red-300/80 leading-relaxed">
+                Deletes the entire Chroma collection first, then
+                rebuilds from Mongo. Use when Chroma is known-bad
+                (corrupt rows from a sync regression). Drift will
+                land at exactly 0 — training over-supply is gone.
+              </div>
+            </button>
+
+            <button
+              onClick={() => setRebuildMode(null)}
+              disabled={rebuildBusy}
+              className="w-full mt-2 text-[10px] text-slate-400 hover:text-slate-200 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

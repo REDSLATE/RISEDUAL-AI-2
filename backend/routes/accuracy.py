@@ -342,6 +342,7 @@ async def rebuild_memory_from_mongo(
     request: Request,
     days: int = 30,
     limit: int = 5000,
+    wipe: bool = False,
 ):
     """One-shot ChromaDB rebuild from MongoDB.
 
@@ -349,12 +350,27 @@ async def rebuild_memory_from_mongo(
     through ``save_regime``. Idempotent because save_regime upserts
     by ``_make_id`` — re-runs converge to the same state.
 
-    Use case: after the toxic-count bug fix, the operator can
-    rebuild the vector store *if and when* they want to widen
-    ``_make_id``'s key (per-prediction instead of per-episode) so
-    ChromaDB and MongoDB stop disagreeing on counts. Today this
-    endpoint just refreshes the existing per-episode index — no
-    schema change is shipped here. Admin-only.
+    Two recovery modes:
+
+    * ``wipe=False`` (default) — refresh only. Existing Chroma
+      rows that have no matching Mongo prediction in the window
+      (e.g. the benign yfinance bulk-training episodes from
+      ``memory_training_service``) are LEFT IN PLACE. Use this
+      when drift is positive and you want to backfill missing
+      rows without disturbing the training corpus.
+
+    * ``wipe=True`` — DESTRUCTIVE. Deletes the entire ChromaDB
+      collection first, then rebuilds from Mongo. Use this when
+      ChromaDB is known-bad (e.g., corrupt rows from a sync bug,
+      schema migration) and the only trustworthy state is what
+      Mongo holds. After this completes, drift becomes
+      ``mongo_total - mongo_total = 0`` exactly — the previously
+      benign training over-supply is gone too. Operators who
+      need that data back must re-run
+      ``memory_training_service`` afterward.
+
+    Both modes are admin-gated and emit a structured audit log
+    entry on completion.
     """
     user = await get_current_user(request)
     if (user.get("role") or "").lower() not in ("admin", "owner"):
@@ -363,9 +379,20 @@ async def rebuild_memory_from_mongo(
         return {"ok": False, "reason": "db_unavailable"}
 
     from datetime import datetime, timezone, timedelta
-    from services.market_memory_service import save_regime
+    from services.market_memory_service import save_regime, reset_collection
     from services.prediction_tracker import normalize_confidence
     from services.datetime_utils import to_iso_date
+
+    wipe_summary: dict = {}
+    if wipe:
+        # Destructive — log loudly and stamp who did it.
+        logger.warning(
+            "[memory.rebuild] WIPE requested by user=%s "
+            "(role=%s) days=%d limit=%d",
+            user.get("email") or user.get("_id"),
+            user.get("role"), days, limit,
+        )
+        wipe_summary = reset_collection()
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     cursor = db.predictions.find(
@@ -413,7 +440,16 @@ async def rebuild_memory_from_mongo(
     # stamp survives backend restarts.
     await mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
     logger.info(
-        "[memory.rebuild] completed since=%s rebuilt=%d skipped=%d",
-        since, rebuilt, skipped,
+        "[memory.rebuild] completed since=%s rebuilt=%d skipped=%d wipe=%s",
+        since, rebuilt, skipped, wipe,
     )
-    return {"ok": True, "rebuilt": rebuilt, "skipped": skipped, "since": since}
+    result = {
+        "ok": True,
+        "rebuilt": rebuilt,
+        "skipped": skipped,
+        "since": since,
+        "wipe": wipe,
+    }
+    if wipe:
+        result["wiped"] = wipe_summary.get("deleted", 0)
+    return result

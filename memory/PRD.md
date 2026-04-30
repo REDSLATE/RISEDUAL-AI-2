@@ -23,6 +23,78 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### One-Click Wipe-and-Rebuild Recovery + Card Polish (Feb 27, 2026)
+
+Closes the operator gap on "what do we do if the toxic-spike bug
+recurs?" The previous answer was "drop into a Python REPL or
+write curl commands." The new answer is one button on the drift
+card with two confirm modes.
+
+**1. Backend: destructive `wipe=true` mode on the rebuild endpoint**
+
+* `services/market_memory_service.reset_collection()` — new
+  helper. Drops the entire ChromaDB collection via
+  ``delete_collection`` (single HNSW index drop, not a per-row
+  delete loop) and recreates it with identical embedding config.
+  Returns the pre-wipe count for the operator audit trail.
+* `POST /api/accuracy/memory/rebuild-from-mongo?wipe=true` —
+  destructive flag. When set, calls ``reset_collection`` BEFORE
+  iterating predictions (order matters — wiping after would
+  discard the freshly-saved rows). Default `wipe=false` is
+  unchanged (upsert-only, backwards-compatible with any existing
+  automation).
+* Owner-only auth gate runs **before** the wipe; a 403 leaves
+  the collection intact. DB-unavailable check also runs before
+  the wipe — we never wipe Chroma when Mongo is unreachable
+  (would leave the system in an unrecoverable state).
+* Structured `WARNING`-level log on every wipe with
+  user_email + role + days + limit, so accidental clicks are
+  forensically traceable.
+
+**2. Frontend: rebuild button + confirm dialog
+(`MemoryDriftCard.jsx`)**
+
+* Header now has a `Rebuild ↺` button next to `Refresh`. Visual
+  weight increases when `recommendation === "rebuild"` (red
+  background) so the action is unmissable during an incident.
+* Click opens a card-local modal offering two paths:
+  * **Refresh (upsert) — safe, default**: backfills missing
+    rows, preserves training over-supply.
+  * **Wipe + rebuild — destructive**: gated behind a native
+    `window.confirm()` second-tier prompt explaining that
+    training over-supply will be lost.
+* Result toast renders inline: green "rebuilt N · skipped M ·
+  wiped K" on success, red error message with dismiss control
+  on failure. Auto-reloads the drift snapshot so the operator
+  sees the new state without a manual refresh.
+
+**3. Card polish (this session, all visual)**
+
+* `DriftNarrative` — plain-English translation of the raw
+  `drift` number. Three branches (positive / negative /
+  perfectly aligned) with copy that maps to the operator's
+  mental model. Negative drift now reads as "Chroma has N
+  more episodes than Mongo's verified set — Expected. The
+  detector clamps negative drift to 0% because over-supply
+  isn't a corruption signal." instead of just showing -926.
+* `DriftSparkline` warmup states — three phases (0 samples,
+  1 sample, < 24 samples) each with explanatory copy that
+  auto-disappears as the watcher accumulates data. Operators
+  no longer wonder if a thin sparkline means broken watcher.
+* "Why this watcher exists" — collapsible `<details>` section
+  at the bottom with the 2026-04-21 toxic-spike retroactive
+  case study (`mongo:412 / chroma:12`). Institutional memory
+  inside the tool.
+
+**Tests**: 6 new pytest cases in `test_memory_rebuild_wipe.py`
+covering: default behaviour unchanged, wipe path calls reset
+exactly once before iteration, wipe blocks non-admin (403),
+wipe respects DB-unavailable guard, `reset_collection` returns
+pre-wipe count, `reset_collection` uninitialized no-op.
+**209/209** green across the full sync + rebuild + tracer
+test layer (was 122 last commit). Lint clean across all 5
+modified files.
+
 ### Self-Hosted Langfuse Observability — Council v2 LLM Tracing (Feb 27, 2026)
 
 The first observability surface for the multi-LLM consensus

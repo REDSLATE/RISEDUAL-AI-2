@@ -109,6 +109,49 @@ def init_memory(mongo_db: Any = None) -> None:
     logger.info(f"Market Memory initialized: {count} episodes stored in ChromaDB (all-MiniLM-L6-v2)")
 
 
+def reset_collection() -> dict:
+    """Wipe the ChromaDB collection in-place.
+
+    Drops every document via ``delete_collection`` then immediately
+    recreates a fresh empty collection with identical embedding
+    config. This is the **destructive** half of the
+    "wipe-and-backfill" recovery procedure — exposed only via
+    explicit caller intent (e.g., ``rebuild-from-mongo?wipe=true``).
+
+    Why a helper instead of inline ``_collection.delete()``:
+    * Chroma's per-row ``delete()`` requires an id list — no
+      "delete-all" shortcut. Iterating tens of thousands of ids
+      to wipe the collection is wasteful when ``delete_collection``
+      drops the whole HNSW index in one call.
+    * Recreates the collection so the next ``save_regime`` doesn't
+      hit a NoneType — the module-level ``_collection`` reference
+      stays valid through the wipe.
+
+    Returns ``{"deleted": <count_before>}`` for the operator audit
+    trail. Caller is responsible for repopulating via Mongo
+    backfill before the next sync tick.
+    """
+    global _client, _collection
+    if _client is None or _collection is None:
+        return {"ok": False, "reason": "memory_not_initialized", "deleted": 0}
+    try:
+        deleted = _collection.count()
+    except Exception:  # noqa: BLE001
+        deleted = -1  # unknown — Chroma was unhappy reading count
+    try:
+        _client.delete_collection(name=COLLECTION_NAME)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[memory.reset] delete_collection failed: {exc}")
+    _collection = _client.get_or_create_collection(
+        name=COLLECTION_NAME,
+        metadata={"hnsw:space": "cosine"},
+    )
+    logger.info(
+        "[memory.reset] wiped ChromaDB collection — %s episodes removed", deleted,
+    )
+    return {"ok": True, "deleted": deleted}
+
+
 def _regime_to_text(regime: dict) -> str:
     """Convert a market regime dict into a natural-language description for embedding.
     
