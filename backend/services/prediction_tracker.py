@@ -327,9 +327,28 @@ PRICING_FRESHNESS = {
 
 # Maximum number of sliding-window extensions a prediction can accumulate
 # before a repeat firing is treated as a new prediction instead of deduped
-# onto the existing record. 1 → initial creation + 1 extension = ~30 min
-# max lifetime under continuous polling. See `log_prediction()`.
-MAX_DEDUP_HITS = 1
+# onto the existing record.
+#
+# Was 1 (initial + 1 extension = ~30 min max lifetime under continuous
+# polling). That cap caused the "Toxic Spikes Alert" duplication bug:
+# a `signal_dispatcher` that fires every 10 min for 4+ hours produced
+# ~8 fresh records per (symbol, direction) per session — the same
+# prediction at the same price logged 15× over a half-day. Each copy
+# was then verified independently and counted as an independent miss,
+# inflating the "76 high-confidence failures" alert with what was
+# really 3 unique patterns.
+#
+# 5000 is effectively "no cap for any plausible production run"
+# (~52 days of 15-min refresh cycles) while still pinning a finite
+# upper bound — a runaway loop hitting the same record forever
+# eventually rolls over and creates a fresh row with current price,
+# which is the safer failure mode.
+#
+# The price-similarity fallback (<0.2% drift) is the real protection
+# against perpetually-sticky signals hiding price moves: if price
+# drifts past the threshold the dedup branch is bypassed regardless
+# of how many hits the existing record has.
+MAX_DEDUP_HITS = 5000
 
 
 async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
@@ -380,48 +399,69 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
     price = await asyncio.to_thread(_get_current_price, symbol)
     price = price or 0.0
 
+    # ── Anchor-price guard ────────────────────────────────────────────
+    # Refuse to log predictions when the price fetch failed
+    # (`price <= 0`). Without a real anchor:
+    #   1. dedup is bypassed (the sliding window below is gated on
+    #      ``price > 0``), so every retry inserts a fresh duplicate;
+    #   2. ``verified_24h`` later computes ``(verified - 0) / 0`` and
+    #      silently marks the row a MISS;
+    #   3. that MISS lands in the toxic-spike alert with no real
+    #      market signal behind it — the source of the recurring
+    #      "NVDA × 15 / QQQ × 15 / SPY × 15" spam emails the operator
+    #      kept seeing.
+    # The right behavior is to drop the prediction loudly. The caller
+    # gets a sentinel id so logging code paths still work.
+    if price <= 0:
+        logger.warning(
+            "[prediction] dropping %s/%s %s — no price anchor "
+            "(price fetch returned %r). Caller should retry once a "
+            "price is available.",
+            feature, symbol, direction, price,
+        )
+        return f"dropped-no-price-anchor-{symbol}"
+
     # ── Sliding 15-min dedup window (capped at MAX_DEDUP_HITS resets) ──
     now = datetime.now(timezone.utc)
-    if price > 0:
-        cutoff = (now - timedelta(minutes=15)).isoformat()
-        existing = await db.predictions.find_one(
-            {
-                "feature": feature,
-                "symbol": symbol.upper(),
-                "direction": direction.upper(),
-                "user_id": user_id,
-                # Accept either fresh `timestamp` OR recently-refreshed
-                # `last_seen_at` — records created before this field existed
-                # will fall back to `timestamp`.
-                "$or": [
-                    {"last_seen_at": {"$gte": cutoff}},
-                    {"timestamp": {"$gte": cutoff}},
-                ],
-                # Respect the reset cap — once a record has slid its window
-                # MAX_DEDUP_HITS times it's no longer a dedup target; the
-                # next identical firing creates a fresh prediction.
-                "dedup_count": {"$lt": MAX_DEDUP_HITS},
-            },
-            {"_id": 0, "prediction_id": 1, "price_at_prediction": 1,
-             "dedup_count": 1},
-            sort=[("timestamp", -1)],
-        )
-        if existing:
-            prev_price = existing.get("price_at_prediction", 0) or 0
-            if prev_price > 0 and abs(price - prev_price) / prev_price < 0.002:
-                # Refresh the sliding window on this record, don't insert new
-                await db.predictions.update_one(
-                    {"prediction_id": existing["prediction_id"]},
-                    {
-                        "$set": {"last_seen_at": now.isoformat()},
-                        "$inc": {"dedup_count": 1},
-                    },
-                )
-                logger.debug(
-                    f"Dedup sliding hit: {existing['prediction_id']} "
-                    f"dedup_count {existing.get('dedup_count',0)+1}/{MAX_DEDUP_HITS}"
-                )
-                return existing["prediction_id"]
+    cutoff = (now - timedelta(minutes=15)).isoformat()
+    existing = await db.predictions.find_one(
+        {
+            "feature": feature,
+            "symbol": symbol.upper(),
+            "direction": direction.upper(),
+            "user_id": user_id,
+            # Accept either fresh `timestamp` OR recently-refreshed
+            # `last_seen_at` — records created before this field existed
+            # will fall back to `timestamp`.
+            "$or": [
+                {"last_seen_at": {"$gte": cutoff}},
+                {"timestamp": {"$gte": cutoff}},
+            ],
+            # Respect the reset cap — once a record has slid its window
+            # MAX_DEDUP_HITS times it's no longer a dedup target; the
+            # next identical firing creates a fresh prediction.
+            "dedup_count": {"$lt": MAX_DEDUP_HITS},
+        },
+        {"_id": 0, "prediction_id": 1, "price_at_prediction": 1,
+         "dedup_count": 1},
+        sort=[("timestamp", -1)],
+    )
+    if existing:
+        prev_price = existing.get("price_at_prediction", 0) or 0
+        if prev_price > 0 and abs(price - prev_price) / prev_price < 0.002:
+            # Refresh the sliding window on this record, don't insert new
+            await db.predictions.update_one(
+                {"prediction_id": existing["prediction_id"]},
+                {
+                    "$set": {"last_seen_at": now.isoformat()},
+                    "$inc": {"dedup_count": 1},
+                },
+            )
+            logger.debug(
+                f"Dedup sliding hit: {existing['prediction_id']} "
+                f"dedup_count {existing.get('dedup_count',0)+1}/{MAX_DEDUP_HITS}"
+            )
+            return existing["prediction_id"]
 
     prediction_id = str(uuid4())[:12]
     doc = {
@@ -433,6 +473,7 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
         "score": score,
         "price_at_prediction": price,
         "timestamp": now.isoformat(),
+        "prediction_date": now.date().isoformat(),  # YYYY-MM-DD for filters/alerts
         "last_seen_at": now.isoformat(),
         "dedup_count": 0,
         "user_id": user_id,

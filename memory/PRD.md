@@ -23,6 +23,48 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Toxic Spikes Alert Spam Bug — Root-Caused & Fixed (Apr 30, 2026)
+
+The recurring "76 high-confidence failures, only 3 visible patterns
+× 15 copies each" spam email — the operator's long-standing
+complaint. Root cause was NOT the price-anchor bypass I initially
+suspected; live MongoDB inspection revealed every duplicate had
+identical `price_at_prediction=$202.06`. The actual culprit was
+`MAX_DEDUP_HITS = 1` in `services/prediction_tracker.py`. Each
+prediction record could only be extended once (~30min lifetime under
+continuous polling). A `signal_dispatcher` firing every 10 minutes
+for 4+ hours produced ~8 fresh records per (symbol, direction)
+session — same prediction at the same price, logged 15 times,
+each verified independently as a "miss" → spammy alert.
+
+**Fixes (3 layers)**:
+
+1. **Root cause** — `MAX_DEDUP_HITS` raised from 1 → 5000 (effectively
+   uncapped for any plausible production run; the price-similarity
+   check `<0.2% drift` still forces a fresh record on real price moves).
+2. **Defense-in-depth** — added `prediction_date` (YYYY-MM-DD) to every
+   new prediction document so alert filters / digests have a clean
+   date field, and added a `price <= 0` guard at the top of
+   `log_prediction` that drops the row with a sentinel id rather than
+   inserting a poison-anchor record.
+3. **Email rendering** — `_toxic_spikes_html` now collapses
+   `(symbol, date, confidence)` duplicates before the 10-row cap and
+   surfaces a callout: *"collapsed N duplicate rows — same prediction
+   logged multiple times. Showing distinct patterns only."* Even if
+   future bugs slip dupes through, operators see distinct patterns,
+   not spam.
+
+**Historical data cleanup**: ran a one-shot Mongo dedup pass that
+collapsed 1764 duplicate records (kept the oldest of each
+`(symbol, direction, feature, user_id, confidence, price, calendar_day)`
+group). Predictions dropped from ~2035 → 271; toxic count
+dropped from 124 → **13** (the actual unique high-conf misses).
+
+**Verified**: simulated the exact spam input (45 rows of NVDA/QQQ/SPY
+× 15) through the email renderer — output is now 3 distinct rows
+with the "collapsed 42 duplicate rows" callout. Lint clean. Backend
+healthy after restart.
+
 ### Canonical IP Contract Wired Into Crypto Bot + Per-Patent Enforcement Flags (Apr 30, 2026)
 
 **Bot now executes via the canonical contract.** Replaced the

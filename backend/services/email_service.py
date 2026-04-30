@@ -303,7 +303,26 @@ def _toxic_spikes_html(
     are surfaced so the operator sees the truth + the diversity
     signal at a glance."""
     detail_rows = ""
-    for spike in spike_details[:10]:  # Cap at 10 examples
+    # Defense-in-depth: collapse exact dupes by (symbol, date, confidence).
+    # The root cause (price-anchor bypass in prediction_tracker) is fixed,
+    # but operators still have historical 15× duplicates from before the
+    # fix. Without this collapse the email renders 10 rows of the same
+    # 3 tickers — the spam pattern the operator flagged in the
+    # 2026-04-21 alert ("NVDA 100% / QQQ 92.7% / SPY 93.3%" cycling).
+    seen_keys: set = set()
+    deduped: list = []
+    for spike in spike_details:
+        key = (
+            str(spike.get("symbol", "?")).upper(),
+            str(spike.get("date", "?")),
+            f"{float(spike.get('confidence', 0) or 0):.2f}",
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(spike)
+    n_collapsed = len(spike_details) - len(deduped)
+    for spike in deduped[:10]:  # Cap at 10 distinct examples
         detail_rows += f"""<tr>
 <td style="padding:8px 12px;color:#0F172A;font-size:13px;border-bottom:1px solid #E2E8F0;">{spike.get('symbol','?')}</td>
 <td style="padding:8px 12px;color:#DC2626;font-size:13px;border-bottom:1px solid #E2E8F0;font-weight:600;">{spike.get('confidence','?')}%</td>
@@ -324,12 +343,28 @@ def _toxic_spikes_html(
 
     episodes_phrase = ""
     diversity_note = ""
+    # Surface the dedup collapse so operators can see dupes existed
+    # without seeing 10 spam rows. Only fires when the email actually
+    # had repeats to drop.
+    if n_collapsed > 0:
+        diversity_note = (
+            f'<p style="color:#92400E;font-size:12px;line-height:1.6;margin:0 0 16px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;">'
+            f'<strong>Note:</strong> collapsed <strong>{n_collapsed}</strong> duplicate row'
+            + ("s" if n_collapsed != 1 else "")
+            + ' &mdash; the same (ticker, confidence, date) prediction was logged multiple times. Showing distinct patterns only.'
+            + '</p>'
+        )
     if unique_episodes_retagged is not None and unique_episodes_retagged > 0:
         episodes_phrase = (
             f' across <strong style="color:#0F172A;">{unique_episodes_retagged}</strong> unique market episode'
             + ("s" if unique_episodes_retagged != 1 else "")
         )
-        if toxic_count >= 2 * unique_episodes_retagged:
+        # Only surface the chroma-based diversity signal when we
+        # haven't already attached the collapse note above. The
+        # collapse note is the more reliable signal — Chroma's
+        # ``unique_episodes`` count was unreliable when the dedup-on-
+        # write bug was active.
+        if not diversity_note and toxic_count >= 2 * unique_episodes_retagged:
             ratio = round(toxic_count / unique_episodes_retagged, 1)
             diversity_note = (
                 f'<p style="color:#92400E;font-size:12px;line-height:1.6;margin:0 0 16px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;">'
