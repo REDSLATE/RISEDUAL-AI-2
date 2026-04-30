@@ -725,13 +725,21 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
     # Phase 1 of the integration is observation — we don't reject the
     # order based on the decision (the broker already accepted it).
     # Phase 2 will move this gate *before* the broker call once we
-    # have full pre-trade telemetry coverage for equities.
+    # Post-fill audit — log the fill into the IP proof chain for
+    # compliance. Step 10 (OUTCOME_VERIFIED) is NOT appended here:
+    # broker fills are external (Alpaca/Tradier place the order, the
+    # actual close happens days later when the user reduces position),
+    # and there's no local position-reconciliation layer that could
+    # detect those closes. The entity_id flows out in the response so
+    # a future reconciler (broker webhook listener / nightly position
+    # delta) can call ``record_manual_order_outcome`` on close.
+    proof_chain_entity_id = None
     try:
         _est_notional = float(req.quantity) * float(req.limit_price or 0.0)
         if _est_notional > 0:
             from services.manual_order_guard import run_manual_order_guard
             from server import db as _server_db
-            await run_manual_order_guard(
+            _g = await run_manual_order_guard(
                 db=_server_db,
                 user=user,
                 asset_class="equity",
@@ -745,6 +753,7 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
                     "phase": "post_fill_audit",
                 },
             )
+            proof_chain_entity_id = (_g or {}).get("proof_chain_entity_id")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[manual_guard] post-fill audit failed (non-critical): {e}")
 
@@ -755,6 +764,9 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
         "side": req.side,
         "qty": req.quantity,
         "type": req.order_type,
+        # Surfaces the IP entity_id so external reconcilers can later
+        # link the broker fill back to its proof chain.
+        "proof_chain_entity_id": proof_chain_entity_id,
     }
 
 

@@ -4,6 +4,7 @@ import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import { Input } from '../ui/input';
 import { toast } from '../ui/sonner';
+import BlocksPreventedCard from './BlocksPreventedCard';
 
 const API = `${getApiBase()}/api/admin/guard-shadow`;
 
@@ -326,6 +327,44 @@ const GuardShadowPanel = () => {
                 : 'all flags at env defaults'}
             </div>
           </div>
+
+          {/* Auto-promotion suggestions — quiet flags ready to enforce */}
+          {(policy.suggestions || []).length > 0 && (
+            <div
+              className="mb-3 p-2 rounded-md bg-emerald-500/5 border border-emerald-500/20"
+              data-testid="guard-shadow-suggestions"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] text-emerald-300 uppercase tracking-wider mb-2">
+                <ArrowUpCircle className="w-3 h-3" />
+                Promotion suggestions
+              </div>
+              <div className="space-y-1.5">
+                {policy.suggestions.map((s) => (
+                  <div
+                    key={s.flag}
+                    className="flex items-center justify-between gap-2 text-[11px]"
+                    data-testid={`guard-shadow-suggestion-${s.flag}`}
+                  >
+                    <span className="text-slate-300 truncate">{s.rationale}</span>
+                    <button
+                      onClick={() =>
+                        promoteFlag(
+                          s.flag,
+                          true,
+                          `auto-promotion · quiet ${s.days_quiet}d`,
+                        )
+                      }
+                      disabled={policyMutating === s.flag}
+                      className="flex-shrink-0 px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
+                      data-testid={`guard-shadow-suggestion-promote-${s.flag}`}
+                    >
+                      Enforce
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5">
             {Object.entries(FLAG_LABELS).map(([flag, meta]) => {
               const effective = policy.effective?.[flag];
@@ -456,6 +495,13 @@ const GuardShadowPanel = () => {
           )}
         </div>
       )}
+
+      {/* Blocks Prevented hero card — investor-facing summary of
+          ENFORCED blocks (from the proof chain, not the shadow log).
+          Sits between the policy section and the would-block feed
+          so the panel reads "what's promoted? → what was actually
+          blocked? → what would-have-blocked?". */}
+      <BlocksPreventedCard />
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-slate-700/40">

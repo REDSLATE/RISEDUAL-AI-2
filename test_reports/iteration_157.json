@@ -1,0 +1,102 @@
+{
+  "summary": "Iteration 157: Blocks Prevented Card + Auto-Promotion Suggestions + Outcome-Grading Wiring - All features verified working. Backend: /api/admin/blocks-prevented/summary returns correct shape with window, total_blocked, estimated_exposure_prevented_usd, by_reason, by_asset_class, top_symbols, weekly_series. Days param clamped to [1,365]. /api/admin/guard-shadow/policy includes suggestions array. Frontend: BlocksPreventedCard renders in Guard Shadow tab with hero numbers, window selector (Quarter/7d/30d/90d), Export PNG button, By Patent breakdown, By Asset Class panel. Per-Patent Enforcement section shows all 5 policy rows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration157_blocks_prevented.py",
+    "/app/test_reports/pytest/iteration157_blocks_prevented.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: GET /api/admin/blocks-prevented/summary returns 200 with correct shape",
+    "VERIFIED: Response includes window{label,days,since,until}, total_blocked, estimated_exposure_prevented_usd, by_reason[], by_asset_class[], top_symbols[], weekly_series[], generated_at",
+    "VERIFIED: days param clamped: days=0 → 1, days=999 → 365",
+    "VERIFIED: Endpoint is owner-only (401/403 for unauthenticated)",
+    "VERIFIED: GET /api/admin/guard-shadow/policy includes suggestions array (empty when all flags enforcing)",
+    "VERIFIED: Frontend BlocksPreventedCard visible in Guard Shadow tab (data-testid=blocks-prevented-card)",
+    "VERIFIED: Hero numbers: total_blocked (white), estimated_exposure_prevented_usd (cyan)",
+    "VERIFIED: Window selector buttons: Quarter, 7d, 30d, 90d (data-testid=blocks-prevented-window-*)",
+    "VERIFIED: Export PNG button present and enabled (data-testid=blocks-prevented-export)",
+    "VERIFIED: By Patent breakdown visible (data-testid=blocks-prevented-by-reason) - shows 'No blocks in this window.' when total=0",
+    "VERIFIED: By Asset Class panel visible (data-testid=blocks-prevented-by-asset)",
+    "VERIFIED: Window selector interaction works - clicking 7d changes label from 'Q2 2026' to 'Last 7 days'",
+    "VERIFIED: Per-Patent Enforcement section shows all 5 rows (K, Aud, Auth, M, I) with Demote buttons",
+    "VERIFIED: Regression: /api/admin/proof-chain/stats returns 200",
+    "VERIFIED: Regression: /api/admin/guard-shadow/summary returns 200 (total=3, would_allow=3, would_block=0)",
+    "VERIFIED: Regression: /api/admin/conviction/quality-kpis returns 200"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration157_blocks_prevented.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BlocksPreventedCard is now mounted in Guard Shadow tab between Per-Patent Enforcement and Filters sections. The card reads from /api/admin/blocks-prevented/summary which aggregates EXECUTION_REJECTED proof blocks. Auto-promotion suggestions appear when a flag is in shadow mode with <5% would-block rate over 7d and >=50 evaluations. Currently all flags are enforcing so no suggestions are displayed. The tzinfo bug fix in admin_guard_shadow.py line ~298 ensures Mongo datetime round-trips don't crash the oldest-row subtraction.",
+  "features_tested": {
+    "blocks_prevented_summary_endpoint": true,
+    "blocks_prevented_summary_shape": true,
+    "blocks_prevented_days_param": true,
+    "blocks_prevented_days_clamped": true,
+    "blocks_prevented_owner_only": true,
+    "guard_shadow_policy_suggestions": true,
+    "frontend_blocks_prevented_card": true,
+    "frontend_hero_numbers": true,
+    "frontend_window_selector": true,
+    "frontend_export_png_button": true,
+    "frontend_by_patent_breakdown": true,
+    "frontend_by_asset_class": true,
+    "frontend_window_selector_interaction": true,
+    "frontend_per_patent_enforcement": true,
+    "regression_proof_chain_stats": true,
+    "regression_guard_shadow_summary": true,
+    "regression_conviction_quality_kpis": true
+  },
+  "test_data_observed": {
+    "blocks_prevented_summary": {
+      "window": {"label": "Q2 2026", "days": 29},
+      "total_blocked": 0,
+      "estimated_exposure_prevented_usd": 0.0,
+      "by_reason": [],
+      "by_asset_class": [],
+      "top_symbols": [],
+      "weekly_series": []
+    },
+    "guard_shadow_policy": {
+      "suggestions": [],
+      "effective": {
+        "enforce_adversarial": true,
+        "enforce_auditor": true,
+        "enforce_authority": true,
+        "enforce_failure_mode": true,
+        "enforce_risk_budget": true
+      }
+    },
+    "guard_shadow_summary": {
+      "total": 3,
+      "would_allow": 3,
+      "would_block": 0,
+      "by_source": {"crypto_bot": {"would_allow": 3, "would_block": 0}}
+    }
+  },
+  "code_review_notes": {
+    "admin_blocks_prevented.py": "New endpoint aggregates EXECUTION_REJECTED proof blocks. REASON_LABELS maps rejection reasons to patent labels. _quarter_start() computes calendar quarter start. Exposure estimation walks back to SIGNAL_CREATED/RISK_BUDGET_APPLIED blocks for notional lookup.",
+    "admin_guard_shadow.py": "_compute_promotion_suggestions() scans shadow_log for quiet flags. Tzinfo bug fix at line ~298 re-attaches UTC to Mongo datetime. PROMOTION_QUIET_THRESHOLD=0.05, PROMOTION_MIN_EVALUATIONS=50, PROMOTION_WINDOW_DAYS=7.",
+    "broker.py": "proof_chain_entity_id captured from run_manual_order_guard and returned in response (line ~769). OUTCOME_VERIFIED deferred until position-reconciliation layer ships.",
+    "options_trading.py": "Same pattern - proof_chain_entity_id returned in response (line ~529). Post-fill audit logs into IP proof chain.",
+    "route_registry.py": "admin_blocks_prevented_router wired at line 81, set_db at line 199.",
+    "BlocksPreventedCard.jsx": "Hero card with html2canvas PNG export. WINDOWS array for Quarter/7d/30d/90d. formatUSD() renders large values compactly (12.5k, 1.3M).",
+    "GuardShadowPanel.jsx": "Mounts BlocksPreventedCard between policy section and filters. Suggestions UI block renders emerald-bordered card with Enforce buttons when policy.suggestions is non-empty."
+  }
+}

@@ -485,14 +485,18 @@ async def place_order(body: OptionOrderRequest, request: Request):
     )
 
     # ── Patent J/K/M/I — post-fill guard audit ───────────────────────
-    # Same pattern as broker.py: log the fill into the proof chain
-    # for compliance + audit. Phase 1 = observation.
+    # Post-fill audit — log into the IP proof chain. Step 10
+    # (OUTCOME_VERIFIED) is deferred: options fills are external and
+    # no local position-reconciler exists yet. The entity_id flows
+    # out in the response so a future close-detection layer can link
+    # the eventual exit P&L back to the same chain.
+    proof_chain_entity_id = None
     try:
         _est_notional = float(body.qty) * float(body.limit_price or 0.0) * 100.0
         if _est_notional > 0:
             from services.manual_order_guard import run_manual_order_guard
             from server import db as _server_db
-            await run_manual_order_guard(
+            _g = await run_manual_order_guard(
                 db=_server_db,
                 user=user,
                 asset_class="options",
@@ -507,6 +511,7 @@ async def place_order(body: OptionOrderRequest, request: Request):
                     "phase": "post_fill_audit",
                 },
             )
+            proof_chain_entity_id = (_g or {}).get("proof_chain_entity_id")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[manual_guard] options post-fill audit failed: {e}")
 
@@ -521,6 +526,7 @@ async def place_order(body: OptionOrderRequest, request: Request):
         "occ_symbol": occ,
         "provider": provider,
         "routing": {"mode": "direct"},
+        "proof_chain_entity_id": proof_chain_entity_id,
     }
 
 

@@ -161,12 +161,14 @@ async def list_decisions(
 
 @router.get("/policy")
 async def get_policy(request: Request):
-    """Current effective policy + history.
+    """Current effective policy + history + auto-promotion suggestions.
 
     Returns ``effective`` (env-default merged with Mongo overrides as
     the IP contract sees it), ``overrides`` (just the Mongo deltas),
     ``env_defaults`` (read-only baseline so the UI can show what
-    reverting to env would do), and a recent ``history`` array.
+    reverting to env would do), a recent ``history`` array, and
+    ``suggestions`` — automatically computed promote candidates per
+    flag (``would_block_rate < 5%`` over a 7-day window).
     """
     await _require_owner(request)
     state = await get_state(_db)
@@ -192,6 +194,15 @@ async def get_policy(request: Request):
     overrides = state.get("overrides") or {}
     effective = {k: overrides.get(k, env_defaults[k]) for k in env_defaults}
 
+    # ── Auto-promotion suggestions ────────────────────────────────
+    # Scan the shadow log for the last 7d. For each flag that's
+    # currently in shadow mode (effective=False), compute the
+    # would-block rate attributable to that gate. If <5% and we have
+    # at least 50 evaluations of it, suggest promotion.
+    suggestions = await _compute_promotion_suggestions(
+        effective=effective,
+    )
+
     return {
         "effective": effective,
         "overrides": overrides,
@@ -200,7 +211,121 @@ async def get_policy(request: Request):
         "updated_at": state.get("updated_at"),
         "shadow_mode_enabled": is_shadow_mode_enabled(),
         "valid_flags": sorted(VALID_FLAGS),
+        "suggestions": suggestions,
     }
+
+
+# Map each flag name to the rejection reason its enforcement would
+# cause. The shadow log records the `reasons` list per decision —
+# matching against this map tells us which flag-block-rate to count.
+_FLAG_TO_REASON_PREFIX = {
+    "enforce_adversarial": "adversarial_rejection",
+    "enforce_auditor": "auditor_veto",
+    "enforce_authority": "invalid_authority",
+    "enforce_failure_mode": "failure_mode_block",
+    "enforce_risk_budget": "risk_budget_rejection",
+}
+
+PROMOTION_QUIET_THRESHOLD = 0.05   # <5% would-block rate
+PROMOTION_MIN_EVALUATIONS = 50     # need decent sample size
+PROMOTION_WINDOW_DAYS = 7
+
+
+async def _compute_promotion_suggestions(
+    *, effective: dict[str, bool],
+) -> list[dict]:
+    """Scan the last 7d of shadow_log; suggest promotion for any
+    currently-shadow flag with <5% would-block rate.
+
+    Returns one entry per quiet flag:
+        {"flag": "enforce_auditor",
+         "would_block_rate": 0.012,
+         "n_evaluations": 142,
+         "n_would_block": 2,
+         "reason_prefix": "auditor_veto",
+         "days_quiet": 9,         # estimate: window covers >= this much
+         "rationale": "auditor has been quiet for 9 days, ready to enforce?"}
+
+    Empty list when nothing qualifies. Never raises — a missing
+    collection just means "no data yet".
+    """
+    if _db is None:
+        return []
+    suggestions: list[dict] = []
+    since = datetime.now(timezone.utc) - timedelta(days=PROMOTION_WINDOW_DAYS)
+    coll = _db[COLLECTION]
+
+    for flag, currently_enforcing in effective.items():
+        if currently_enforcing:
+            # Already enforcing — no promote needed.
+            continue
+        reason_prefix = _FLAG_TO_REASON_PREFIX.get(flag)
+        if not reason_prefix:
+            continue
+        try:
+            # Total evaluations in the window.
+            n_total = await coll.count_documents({
+                "created_at": {"$gte": since},
+            })
+            if n_total < PROMOTION_MIN_EVALUATIONS:
+                continue
+            # Rows where THIS gate's reason appears in the reasons list.
+            # Stored as `reasons: ["auditor_veto", "..."]` so substring
+            # match via $regex on the array element.
+            n_block = await coll.count_documents({
+                "created_at": {"$gte": since},
+                "reasons": {"$regex": reason_prefix, "$options": "i"},
+            })
+            block_rate = n_block / n_total if n_total else 0.0
+            if block_rate >= PROMOTION_QUIET_THRESHOLD:
+                continue
+            # Days quiet — distance from oldest log row in the
+            # window. If we have data spanning the full window, that's
+            # 7 days. Otherwise it's how much we've actually seen.
+            oldest = await coll.find_one(
+                {"created_at": {"$gte": since}},
+                {"_id": 0, "created_at": 1},
+                sort=[("created_at", 1)],
+            )
+            days_quiet = PROMOTION_WINDOW_DAYS
+            if oldest and isinstance(oldest.get("created_at"), datetime):
+                # Mongo strips tzinfo on round-trip — re-attach UTC so
+                # the subtraction below doesn't raise (caught earlier
+                # by the broad `except` and silently dropped the
+                # entire suggestion, which is why the auto-promotion
+                # logic appeared to never fire).
+                oldest_dt = oldest["created_at"]
+                if oldest_dt.tzinfo is None:
+                    oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - oldest_dt).total_seconds()
+                days_quiet = max(1, int(age / 86400))
+
+            human_label = {
+                "enforce_adversarial": "adversarial",
+                "enforce_auditor": "auditor",
+                "enforce_authority": "authority",
+                "enforce_failure_mode": "failure-mode",
+                "enforce_risk_budget": "risk-budget",
+            }.get(flag, flag)
+            suggestions.append({
+                "flag": flag,
+                "would_block_rate": round(block_rate, 4),
+                "n_evaluations": n_total,
+                "n_would_block": n_block,
+                "reason_prefix": reason_prefix,
+                "days_quiet": days_quiet,
+                "rationale": (
+                    f"{human_label} has been quiet for {days_quiet} day"
+                    + ("s" if days_quiet != 1 else "")
+                    + f" ({n_block}/{n_total} would-blocks · "
+                    + f"{round(block_rate * 100, 1)}%) — ready to enforce?"
+                ),
+            })
+        except Exception:  # noqa: BLE001
+            # Per-flag failure must not block the others.
+            continue
+
+    return suggestions
 
 
 @router.post("/policy/promote")
