@@ -23,6 +23,64 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### One-Click Patent Promotion + Manual-Order Outcome Grading + Calibration Polish (Apr 30, 2026)
+
+**Per-patent enforcement promotion as a UI product**:
+- `services/guard_policy_store.py` — Mongo-backed override store
+  (`guard_policy_state` collection, single doc + history-capped at 50
+  entries). Single source of truth for runtime policy: env vars are
+  the deploy-time seed, Mongo overrides are the runtime-mutated
+  truth. Process-local 30s cache keeps the IP contract's per-decision
+  read O(1).
+- `EnforcementPolicy.from_env()` now merges env defaults with
+  `get_cached_overrides()` so any worker/loop sees the current
+  policy. The IP contract calls `refresh_cache_if_stale()` once per
+  decision (≤30s lag end-to-end).
+- 3 new admin endpoints under `/api/admin/guard-shadow/policy`:
+  `GET /policy` (effective + overrides + env_defaults + history),
+  `POST /policy/promote` ({flag, value, note}), `POST /policy/clear`
+  ({flag}). All owner-only with flag whitelist validation.
+- New "Per-Patent Enforcement" section in `GuardShadowPanel.jsx`:
+  5 rows (K / Auditor / Authority / M / I), each with status pill
+  (ENFORCING green / SHADOW amber), Promote/Demote button, Clear
+  button (only when override exists), and an "override" label. A
+  collapsible "Recent changes" expander shows the audit history
+  (timestamp + flag + value + actor email + note).
+- Live-verified: promote enforce_auditor=false → bot ran → cleared
+  → reverted, all without restart.
+
+**Manual-order outcome grading (step 10 for non-bot trades)**:
+- `services/manual_order_guard.py` now returns `proof_chain_entity_id`
+  in its response. New `record_manual_order_outcome()` helper
+  appends an OUTCOME_VERIFIED proof block to the same chain on
+  close. Failure never blocks a close (wrapped + logged).
+- `services/smart_order_service.py` — persists
+  `proof_chain_entity_id` on the smart_orders row at fill;
+  `cancel_smart_order` reads it back and calls
+  `record_manual_order_outcome` with computed exit P&L. Pending /
+  partially-filled cancels skip the OUTCOME block (no realized P&L
+  to log). Mirrors the crypto_closer flow exactly.
+- `routes/smart_orders.py` — captures `proof_chain_entity_id` from
+  the guard response and threads it through `create_smart_order`
+  via a side-channel field (avoids schema-bumping the public
+  pydantic contract).
+
+**Conviction Calibration page polish**:
+- Removed redundant 3-card stats grid (Verified / Tagged / Window).
+  Window was a duplicate of the selector buttons immediately above
+  it; Verified+Tagged are now a single subtitle line under the
+  heading: "· 101 verified · 56 tagged". Saves a full row of
+  vertical space.
+- "By raw confidence (fallback)" grid is now a `<details>`
+  collapsible — closed by default when conviction-tagged data
+  exists, auto-open when it doesn't. Operators get the conviction
+  view first; the coarser confidence fallback is a click away when
+  comparing.
+
+**Tests**: 9/9 backend tests in `test_iteration156_guard_policy.py`
++ 34/34 prior backend regressions green. Lint clean across all
+modified files. Frontend agent verified 100% (iteration_156).
+
 ### Step 10 (Outcome Grading) + Risk Quality KPIs Widget + Toxic Alert Live-Validated (Apr 30, 2026)
 
 **Outcome grading wired (step 10 of the IP lifecycle)**: when a
