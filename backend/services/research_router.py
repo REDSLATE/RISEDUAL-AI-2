@@ -38,6 +38,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from services.datetime_utils import ensure_utc
+
 logger = logging.getLogger(__name__)
 
 CACHE_COLLECTION = "web_research_cache"
@@ -109,6 +111,11 @@ async def get_cached_verdict(
     cached_at = doc.get("cached_at")
     if not isinstance(cached_at, datetime):
         return None
+    # Mongo strips tzinfo on round-trip, so a naive ``cached_at``
+    # would raise TypeError when compared to ``cutoff`` (tz-aware).
+    # ``ensure_utc`` re-tags as UTC so the comparison is well-defined
+    # — same hardening pattern as ``mongo_chroma_sync_metrics``.
+    cached_at = ensure_utc(cached_at)
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
     if cached_at < cutoff:
         return None
