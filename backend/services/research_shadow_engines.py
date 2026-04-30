@@ -300,47 +300,88 @@ async def _run_single_council_model(
     failure or any LLM error falls back to HOLD with confidence 0
     so the consensus call degrades gracefully under partial
     outages.
+
+    Tracing: emits one Langfuse ``generation`` observation per
+    call when tracing is enabled. Captures the prompt, raw
+    completion, parsed action/confidence/reason, and the
+    pre-computed cost. No-op when tracing is disabled — see
+    :mod:`services.langfuse_tracer`.
     """
     import json as _json
     from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from services.langfuse_tracer import atraced_span, span_update
 
-    try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"council_shadow_{provider}_{model}",
-            system_message=_COUNCIL_SYSTEM_PROMPT,
-        ).with_model(provider, model)
-        response = await chat.send_message(UserMessage(text=prompt))
-        raw = response if isinstance(response, str) else getattr(response, "text", str(response))
-        raw_str = raw.strip()
-        if "```json" in raw_str:
-            raw_str = raw_str.split("```json", 1)[1].split("```", 1)[0].strip()
-        elif raw_str.startswith("```"):
-            raw_str = raw_str.split("```", 2)[1].split("```", 1)[0].strip()
-        parsed = _json.loads(raw_str)
-        action = canonicalise_action(parsed.get("action") or "HOLD")
-        confidence = float(parsed.get("confidence") or 0.0)
-        return {
+    async with atraced_span(
+        f"council_llm_{provider}",
+        as_type="generation",
+        input=prompt,
+        model=f"{provider}/{model}",
+        metadata={
             "provider": provider,
-            "action": action,
-            "confidence": confidence,
-            "reason": (parsed.get("reason") or "")[:100],
-            "cost_usd": _LLM_COUNCIL_COST_USD.get(provider, 0.005),
-            "ok": True,
-        }
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "[council-llm] %s/%s failed, falling back to HOLD: %s",
-            provider, model, exc,
-        )
-        return {
-            "provider": provider,
-            "action": "HOLD",
-            "confidence": 0.0,
-            "reason": f"{provider}_unavailable",
-            "cost_usd": 0.0,
-            "ok": False,
-        }
+            "model": model,
+            "engine": "council_llm",
+        },
+    ) as gen_span:
+        try:
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"council_shadow_{provider}_{model}",
+                system_message=_COUNCIL_SYSTEM_PROMPT,
+            ).with_model(provider, model)
+            response = await chat.send_message(UserMessage(text=prompt))
+            raw = response if isinstance(response, str) else getattr(response, "text", str(response))
+            raw_str = raw.strip()
+            if "```json" in raw_str:
+                raw_str = raw_str.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif raw_str.startswith("```"):
+                raw_str = raw_str.split("```", 2)[1].split("```", 1)[0].strip()
+            parsed = _json.loads(raw_str)
+            action = canonicalise_action(parsed.get("action") or "HOLD")
+            confidence = float(parsed.get("confidence") or 0.0)
+            cost_usd = _LLM_COUNCIL_COST_USD.get(provider, 0.005)
+            result = {
+                "provider": provider,
+                "action": action,
+                "confidence": confidence,
+                "reason": (parsed.get("reason") or "")[:100],
+                "cost_usd": cost_usd,
+                "ok": True,
+            }
+            # Stamp the generation with our pre-computed cost (the
+            # SDK can't auto-cost EMERGENT_LLM_KEY pricing — we
+            # know it locally via _LLM_COUNCIL_COST_USD).
+            span_update(
+                gen_span,
+                output={
+                    "action": action,
+                    "confidence": confidence,
+                    "reason": result["reason"],
+                    "raw_completion": raw_str[:600],
+                },
+                cost_details={"total_cost": cost_usd},
+                metadata={"ok": True},
+            )
+            return result
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[council-llm] %s/%s failed, falling back to HOLD: %s",
+                provider, model, exc,
+            )
+            span_update(
+                gen_span,
+                output={"action": "HOLD", "confidence": 0.0, "reason": f"{provider}_unavailable"},
+                level="ERROR",
+                status_message=f"{type(exc).__name__}: {str(exc)[:120]}",
+                metadata={"ok": False},
+            )
+            return {
+                "provider": provider,
+                "action": "HOLD",
+                "confidence": 0.0,
+                "reason": f"{provider}_unavailable",
+                "cost_usd": 0.0,
+                "ok": False,
+            }
 
 
 def _council_llm_consensus(votes: list[dict[str, Any]]) -> dict[str, Any]:
@@ -407,9 +448,16 @@ async def _run_council_llm(signal: dict[str, Any]) -> dict[str, Any]:
 
     Falls back to HOLD with zero confidence if EMERGENT_LLM_KEY is
     missing.
+
+    Tracing: emits one Langfuse parent span per consensus round,
+    with the three per-model generations nested as children. The
+    parent span's output captures the weighted-vote winner and
+    the panel summary so an operator can answer "why did Council
+    HOLD on this signal?" by drilling into the trace.
     """
     import asyncio as _asyncio
     import os as _os
+    from services.langfuse_tracer import atraced_span, span_update
 
     api_key = _os.environ.get("EMERGENT_LLM_KEY", "").strip()
     if not api_key:
@@ -426,18 +474,57 @@ async def _run_council_llm(signal: dict[str, Any]) -> dict[str, Any]:
         ("anthropic", "claude-sonnet-4-5-20250929"),
         ("gemini", "gemini-2.5-flash"),
     ]
-    votes = await _asyncio.gather(
-        *(_run_single_council_model(api_key, p, m, prompt) for p, m in panel),
-        return_exceptions=False,
-    )
-    consensus = _council_llm_consensus(votes)
-    total_cost = sum(float(v.get("cost_usd") or 0.0) for v in votes if v.get("ok"))
-    return {
-        "action": consensus["action"],
-        "thesis": consensus["thesis"],
-        "confidence": consensus["confidence"],
-        "llm_cost_usd": round(total_cost, 6),
-    }
+    # Parent span — symbol + signal context so the operator can
+    # filter the Langfuse UI by the trade that triggered the panel.
+    async with atraced_span(
+        "council_llm_panel",
+        as_type="span",
+        input={
+            "symbol": str(signal.get("symbol") or ""),
+            "asset_type": signal.get("asset_type"),
+            "active_action": signal.get("action"),
+            "active_confidence": signal.get("confidence"),
+        },
+        metadata={
+            "panel": [f"{p}/{m}" for p, m in panel],
+            "weights": _LLM_COUNCIL_WEIGHTS,
+            "engine": "council_llm",
+        },
+    ) as panel_span:
+        votes = await _asyncio.gather(
+            *(_run_single_council_model(api_key, p, m, prompt) for p, m in panel),
+            return_exceptions=False,
+        )
+        consensus = _council_llm_consensus(votes)
+        total_cost = sum(float(v.get("cost_usd") or 0.0) for v in votes if v.get("ok"))
+        span_update(
+            panel_span,
+            output={
+                "action": consensus["action"],
+                "confidence": consensus["confidence"],
+                "thesis": consensus["thesis"],
+                "votes": [
+                    {
+                        "provider": v.get("provider"),
+                        "action": v.get("action"),
+                        "confidence": v.get("confidence"),
+                        "ok": v.get("ok"),
+                    }
+                    for v in votes
+                ],
+            },
+            cost_details={"total_cost": total_cost},
+            metadata={
+                "votes_ok_count": sum(1 for v in votes if v.get("ok")),
+                "votes_failed_count": sum(1 for v in votes if not v.get("ok")),
+            },
+        )
+        return {
+            "action": consensus["action"],
+            "thesis": consensus["thesis"],
+            "confidence": consensus["confidence"],
+            "llm_cost_usd": round(total_cost, 6),
+        }
 
 
 

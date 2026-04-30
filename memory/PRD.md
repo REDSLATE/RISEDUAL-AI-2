@@ -23,6 +23,127 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Self-Hosted Langfuse Observability — Council v2 LLM Tracing (Feb 27, 2026)
+
+The first observability surface for the multi-LLM consensus
+panel. Everything self-hosted (Docker Compose alongside the
+backend), all data stays inside the operator's trust boundary
+per the IP-defensible / Patent J discipline. No SaaS account
+required.
+
+**1. Defensive tracer module** (`services/langfuse_tracer.py`)
+
+* Lazy-singleton client — constructed only on first call, never
+  at import time.
+* Master kill-switch: `LANGFUSE_ENABLED=false` (or any of
+  the three keys missing) → permanent no-op. Bot loop
+  unaffected.
+* Circuit breaker: SDK init failure (network unreachable, bad
+  keys, server down) caches the failure for 5 minutes. Prevents
+  reconnect storms against a dead langfuse-server.
+* Sync + async context-manager helpers: `traced_span(...)` /
+  `atraced_span(...)` yield `None` when disabled. Caller code
+  reads as if tracing were always-on; the null branch is
+  invisible at the call site.
+* `span_update(span, ...)` accepts `None` and swallows SDK
+  exceptions — same discipline as the proof-chain emit on close.
+* **Anti-black-hole guarantee**: caller exceptions inside
+  the with-block are NEVER swallowed by the tracer. Bot bugs
+  still propagate to the bot loop's exception handler.
+  Pinned by 2 regression tests
+  (`test_traced_span_does_not_swallow_caller_exception` +
+  async variant).
+
+**2. Council v2 instrumentation**
+(`services/research_shadow_engines.py`)
+
+* `_run_council_llm()` — wraps the parallel `asyncio.gather`
+  with a parent span (`council_llm_panel`, `as_type=span`).
+  Captures the symbol, asset_type, active signal context as
+  input; the weighted-vote winner + per-model votes + total cost
+  + ok-count / failed-count as output.
+* `_run_single_council_model()` — wraps each model call as a
+  child generation (`council_llm_{provider}`,
+  `as_type=generation`). Captures the prompt, raw completion,
+  parsed action/confidence/reason, and the
+  pre-computed `_LLM_COUNCIL_COST_USD[provider]` via Langfuse's
+  `cost_details` (Universal Key pricing isn't auto-discoverable
+  by the SDK — we override explicitly).
+* Failure mode visibility: when a single model errors out, the
+  span is tagged `level=ERROR` with the exception type +
+  truncated message so an operator can spot a flaky provider
+  in the trace timeline.
+
+**3. Self-hosted infrastructure**
+
+* `/app/docker-compose.langfuse.yml` — runs `langfuse/langfuse:2`
+  + `postgres:15-alpine` on the operator's machine. Uses
+  port 3090 (host) → 3000 (container) to avoid conflicts.
+  TELEMETRY_ENABLED=false; data never leaves the operator's
+  network. Healthcheck on Postgres so the langfuse-server
+  doesn't race the migration.
+* `/app/LANGFUSE_SETUP.md` — end-to-end runbook: start →
+  signup → mint keys → wire `.env` → smoke test. Includes
+  ops sections (disabling without removing keys, server
+  outage behaviour, cost budget, retention math).
+
+**4. Env contract** (all optional, all leave bot in no-op
+state when missing):
+
+| Var | Purpose |
+|---|---|
+| `LANGFUSE_ENABLED` | Master kill switch (default `true`) |
+| `LANGFUSE_HOST` | e.g. `http://localhost:3090` |
+| `LANGFUSE_PUBLIC_KEY` | From langfuse-server UI signup |
+| `LANGFUSE_SECRET_KEY` | From langfuse-server UI signup |
+| `LANGFUSE_DEBUG` | SDK-level log verbosity (default `false`) |
+
+**5. Cost & risk profile**
+
+* Tracing adds zero LLM cost — Langfuse stores the trace, the
+  LLM cost is the LLM cost. The existing
+  `SHADOW_COST_CEILING_USD_PER_DAY=5` ceiling is unchanged.
+* Disk usage: ~2 KB per Council round → ~125 MB/year at the
+  steady-state crypto-fleet cadence. No retention pruning needed
+  for the foreseeable future.
+* Network: 5s hard timeout on the SDK init. Failed connect
+  triggers the 5-minute circuit breaker — bot keeps running
+  with zero overhead during the cooldown.
+
+**Tests**: 16 new pytest cases in `test_langfuse_tracer.py`
+covering: env-disabled / missing-key / kill-switch no-ops,
+defensive `span_update(None)` and `flush()`, anti-black-hole
+exception propagation, circuit-breaker caches the init failure,
+singleton caches the success, SDK kwargs flow through correctly,
+and end-to-end shape preservation of `_run_council_llm()` under
+disabled tracing. Plus a no-op verification of the tracer pulled
+in by the live preview process.
+
+**Tests + lint**: 122/122 green across
+`test_research_shadow.py + test_langfuse_tracer.py + the 4
+sync/CI guard suites`. Lint clean across all 3 modified +
+created Python files.
+
+**What this is NOT** (set expectations):
+
+* Not a security tool. Use Semgrep / Bandit for SAST.
+* Not an APM. Use Sentry for unhandled exceptions.
+* Not the audit chain. Patent J's `decision_proof_chain`
+  remains the legal-grade tamper-evident record. Langfuse
+  stores the same reasoning in plaintext for *operator
+  debugging* — complementary, not redundant.
+
+**To activate** (operator action required, ~10 min):
+
+1. `docker compose -f docker-compose.langfuse.yml up -d`
+2. Browse to `http://localhost:3090`, sign up, mint API keys.
+3. Paste `LANGFUSE_HOST` + `LANGFUSE_PUBLIC_KEY` +
+   `LANGFUSE_SECRET_KEY` into `/app/backend/.env`.
+4. `sudo supervisorctl restart backend` — log will show
+   `[langfuse] connected: http://localhost:3090`.
+
+Until then the instrumentation is a complete no-op.
+
 ### Drift Sparkline + Email Channel for Drift Alerts (Feb 27, 2026)
 
 Two operator-grade follow-ups on the drift detector — closes the

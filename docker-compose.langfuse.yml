@@ -1,0 +1,80 @@
+version: '3.8'
+
+# Self-hosted Langfuse for RISEDUAL AI Council v2 LLM tracing.
+#
+# This stack is independent of the main backend/frontend pods.
+# Run it on the operator's own infrastructure (laptop / VPS /
+# production cluster) — NOT inside the Emergent preview pod.
+#
+# Usage (from the repo root):
+#   docker compose -f docker-compose.langfuse.yml up -d
+#
+# First-boot:
+#   1. Wait ~15s for the migrations to complete:
+#      docker logs -f langfuse-server   # wait for "Listening on port 3000"
+#   2. Open http://localhost:3090 in a browser
+#   3. Sign up for an account (local, no email verification)
+#   4. Create a project; copy the public + secret keys
+#   5. Paste into your backend/.env:
+#        LANGFUSE_HOST=http://localhost:3090
+#        LANGFUSE_PUBLIC_KEY=pk-lf-...
+#        LANGFUSE_SECRET_KEY=sk-lf-...
+#        LANGFUSE_ENABLED=true
+#   6. Restart the backend; tracing is now live.
+#
+# Stop:
+#   docker compose -f docker-compose.langfuse.yml down
+#
+# Stop + wipe data:
+#   docker compose -f docker-compose.langfuse.yml down -v
+
+services:
+  langfuse-postgres:
+    image: postgres:15-alpine
+    container_name: langfuse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_local_dev_password_change_in_prod
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - langfuse-net
+
+  langfuse-server:
+    # Pin a known-good major; bump deliberately when upgrading.
+    image: langfuse/langfuse:2
+    container_name: langfuse-server
+    restart: unless-stopped
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_local_dev_password_change_in_prod@langfuse-postgres:5432/langfuse
+      NEXTAUTH_SECRET: change_me_min_32_chars_long_random_string_for_session_signing
+      SALT: change_me_random_salt_for_password_hashing
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      NEXTAUTH_URL: http://localhost:3090
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      # Keep signups open during initial setup — flip to "true"
+      # after creating the operator account and project.
+      AUTH_DISABLE_SIGNUP: "false"
+    ports:
+      - "3090:3000"
+    networks:
+      - langfuse-net
+
+networks:
+  langfuse-net:
+    driver: bridge
+
+volumes:
+  langfuse_db_data:
+    driver: local

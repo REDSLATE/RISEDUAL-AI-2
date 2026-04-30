@@ -22,6 +22,7 @@ cffi==2.0.0
 charset-normalizer==3.4.4
 chromadb==1.1.1
 click==8.1.8
+colorama==0.4.6
 cryptography==46.0.5
 curl_cffi==0.15.0
 ddgs==9.13.0
@@ -55,6 +56,7 @@ google-auth-httplib2==0.3.0
 google-genai==1.65.0
 google-generativeai==0.8.6
 googleapis-common-protos==1.72.0
+greenlet==3.4.0
 grpcio==1.78.0
 grpcio-status==1.71.2
 h11==0.16.0
@@ -70,9 +72,7 @@ idna==3.11
 importlib_metadata==8.7.1
 importlib_resources==6.5.2
 iniconfig==2.3.0
-# instructor removed 2026-04-20: not imported anywhere in the codebase and
-# its 1.15.1 pin requires openai>=2.0, which conflicts with our pinned
-# openai==1.99.9. No runtime dependency on it.
+instructor==1.15.1
 isort==8.0.0
 Jinja2==3.1.6
 jiter==0.13.0
@@ -88,10 +88,12 @@ kubernetes==35.0.0
 lance-namespace==0.6.1
 lance-namespace-urllib3-client==0.6.1
 lancedb==0.30.0
+langfuse==4.5.1
 librt==0.8.1
 linkify-it-py==2.1.0
 litellm==1.80.0
 lxml==6.0.2
+mando==0.7.1
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mccabe==0.7.0
@@ -99,6 +101,7 @@ mcp==1.26.0
 mdit-py-plugins==0.5.0
 mdurl==0.1.2
 mmh3==5.2.1
+mongomock==4.3.0
 motor==3.3.1
 mpmath==1.3.0
 multidict==6.7.1
@@ -129,6 +132,7 @@ pdfplumber==0.11.9
 peewee==4.0.4
 pillow==12.1.1
 platformdirs==4.9.2
+playwright==1.58.0
 pluggy==1.6.0
 polygon-api-client==1.16.3
 portalocker==2.7.0
@@ -147,6 +151,7 @@ pycparser==3.0
 pydantic==2.13.1
 pydantic-settings==2.10.1
 pydantic_core==2.46.1
+pyee==13.0.1
 pyflakes==3.4.0
 Pygments==2.19.2
 PyJWT==2.11.0
@@ -165,30 +170,29 @@ pytokens==0.4.1
 pytz==2026.1.post1
 pywebpush==2.3.0
 PyYAML==6.0.3
+pyzbar==0.1.9
 quiverquant==0.2.2
+radon==6.0.1
 referencing==0.37.0
 regex==2026.1.15
 requests==2.32.5
 requests-oauthlib==2.0.0
 resend==2.27.0
 rich==14.3.3
-# Editable install pointing at the vendored risedual_core package inside
-# the repo (/app/backend/risedual_core). Using a repo-relative path so it
-# resolves identically in dev, preview, and production containers.
--e ./risedual_core
+# Editable Git install with no remote (risedual-core==0.1.0)
+-e /app/backend/risedual_core
 rpds-py==0.30.0
 rsa==4.9.1
+ruff==0.15.12
 s3transfer==0.16.0
 s5cmd==0.2.0
 scikit-learn==1.8.0
 scipy==1.17.1
+sentinels==1.1.1
 shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
 soupsieve==2.8.3
-# sse-starlette pinned to 2.1.3 (2026-04-20): newer versions (3.x) require
-# starlette>=0.49 which conflicts with fastapi 0.110.1's starlette<0.38 pin.
-# 2.1.3 has an unconstrained starlette dep and works fine with 0.37.x.
 sse-starlette==2.1.3
 sseclient-py==1.9.0
 starlette==0.37.2
@@ -204,6 +208,7 @@ tomli==2.0.2
 tomli_w==1.1.0
 tqdm==4.67.3
 typer==0.23.1
+types-requests==2.33.0.20260408
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
@@ -214,9 +219,11 @@ urllib3==2.6.3
 uv==0.9.30
 uvicorn==0.44.0
 uvloop==0.22.1
+vaderSentiment==3.3.2
 watchfiles==1.1.1
 websocket-client==1.9.0
 websockets==16.0
+wrapt==1.17.3
 xgboost==3.2.0
 yarl==1.23.0
 yfinance==1.2.1
