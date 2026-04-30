@@ -23,6 +23,42 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Guard Shadow Admin UI + Manual-Order IP Contract Unification (Apr 30, 2026)
+
+**Guard Shadow admin panel** — `frontend/src/components/admin/GuardShadowPanel.jsx`,
+wired into AdminPanel as new "Guard Shadow" tab (Insights group, Eye
+icon). Surfaces the Decision Pipeline Guard shadow-rollout data:
+- **Summary card** — 3 stats: Shadow Mode (ENFORCING/ON badge),
+  Decisions Logged (allow/block split), Would-Block Rate (color-coded:
+  green <10%, amber 10-25%, red ≥25%) with prescriptive subtitles
+  ("Low — safe to enforce" / "Aggressive — review before enforcing").
+- **Window selector** — 24h / 3d / 7d / 30d buckets.
+- **By-source breakdown** — per-source allow/block counts and percent
+  (`crypto_bot`, `manual_order:smart_orders`, etc).
+- **Top blocking reasons** — for the "Aggressive" surface; shows which
+  gates are vetoing trades the most.
+- **Decision feed** — paginated raw rows with source / only-blocked /
+  entity-substring filters. Click a row to expand → shows
+  `would_notional` vs `executed_notional` (the actual data operators
+  need to evaluate enforcement-readiness), risk multiplier, last
+  proof hash.
+- 17/17 frontend test cases passed live (iteration_154). Verified
+  expanded rows correctly surface `would_notional=$113.75` vs
+  `executed_notional=$325.00` — the head-to-head data the rollout
+  playbook calls for.
+
+**Manual-order path unified** — `services/manual_order_guard.py` now
+calls `run_risedual_ip_decision` instead of
+`run_guarded_decision_pipeline_async`. Manual orders (smart orders,
+options trades, broker routes) now write the same 6-block IP chain
+as the crypto bot: `ADVERSARIAL_DECISION → AUDITOR_VERDICT →
+AUTHORITY_VALIDATED → FAILURE_MODE_CLASSIFIED → RISK_BUDGET_APPLIED →
+EXECUTION_ATTEMPTED`. Auditor calibration veto + explicit authority
+validation are now logged on every manual order (previously only
+the 4-step K→M→I→J pipeline ran). Updated
+`tests/test_manual_order_guard.py` to expect 6 events; 47/47 backend
+tests green. Lint clean.
+
 ### Toxic Spikes Alert Spam Bug — Root-Caused & Fixed (Apr 30, 2026)
 
 The recurring "76 high-confidence failures, only 3 visible patterns
