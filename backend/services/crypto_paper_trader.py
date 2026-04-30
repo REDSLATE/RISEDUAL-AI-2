@@ -338,6 +338,40 @@ async def run_crypto_symbol(
                 symbol, _shadow_exc,
             )
 
+    # ── Patent J — proof-chain SIGNAL_CREATED (every cycle, HOLD or not)
+    # Append a single SIGNAL_CREATED block per cycle so every decision
+    # (including HOLDs that short-circuit before the full guard) gets
+    # an immutable audit row. The guard pipeline appends the rest of
+    # the chain only when a directional signal is actually evaluated.
+    import os as _os_signal_log
+    if (_os_signal_log.environ.get("PATENT_GUARD_ENABLED", "1") or "").lower() not in ("0", "false", ""):
+        try:
+            from services.proof_chain import (
+                AsyncMongoProofChainStore, ProofEvent, ProofEventType,
+                async_append_proof_event,
+            )
+            from datetime import datetime as _dt_signal_log, timezone as _tz_signal_log
+            if db is not None:
+                await async_append_proof_event(
+                    AsyncMongoProofChainStore(db),
+                    ProofEvent(
+                        event_type=ProofEventType.SIGNAL_CREATED,
+                        entity_id=f"crypto:{symbol}:{int(_dt_signal_log.now(_tz_signal_log.utc).timestamp())}",
+                        actor="crypto_paper_bot",
+                        payload={
+                            "symbol": symbol,
+                            "direction": str(signal.get("direction") or "HOLD"),
+                            "confidence": float(signal.get("confidence") or 0.0),
+                            "regime": signal.get("regime"),
+                            "reason": signal.get("reason"),
+                            "strategist": signal.get("strategist"),
+                            "auditor": signal.get("auditor"),
+                        },
+                    ),
+                )
+        except Exception as _e:  # noqa: BLE001
+            logger.warning("[patent_j] signal_created proof append failed: %s", _e)
+
     # ── Final HOLD short-circuit ──────────────────────────────────────────
     # Either the strategist said HOLD and no `full`-phase override
     # triggered, OR a veto-phase Commander blocked the fill.
@@ -413,8 +447,8 @@ async def run_crypto_symbol(
             from services.failure_mode_classifier import (
                 MarketTelemetry, ModelTelemetry,
             )
-            from services.proof_chain import MongoProofChainStore
-            from services.decision_pipeline_guard import run_guarded_decision_pipeline
+            from services.proof_chain import AsyncMongoProofChainStore
+            from services.decision_pipeline_guard import run_guarded_decision_pipeline_async
             from services.risk_budget_gateway import (
                 build_track_record_for_crypto_bot,
                 get_daily_realized_loss,
@@ -433,18 +467,33 @@ async def run_crypto_symbol(
             # so the guard has SOMETHING to enforce — Patent K's
             # low-dissent rule will then naturally hold the trade
             # unless the strategist is highly confident.
+            #
+            # Mapping rule: ``signal["confidence"]`` is the conviction
+            # in the PROPOSED direction. So when direction=LONG the
+            # bull is the high-conviction side; when direction=SHORT
+            # the bear is the high-conviction side. Reversing this
+            # would make K read every directional trade as
+            # ``hold_not_promoted`` (Bull holds with high conviction).
             _signal_dir = str(signal.get("direction", "HOLD")).upper()
             _signal_conf = float(signal.get("confidence") or 0.0)
+            _is_long = _signal_dir in ("LONG", "BUY")
+            _is_short = _signal_dir in ("SHORT", "SELL")
             if adv_decision:
-                _bull_conf = float(adv_decision.get("bull_confidence") or 0.0)
-                _bear_conf = float(adv_decision.get("bear_confidence") or 0.0)
-                _bull_action = "BUY" if _signal_dir in ("LONG", "BUY") else "HOLD"
-                _bear_action = "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
-                _commander_action = "BUY" if _signal_dir in ("LONG", "BUY") else (
-                    "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
-                )
-                bull = AgentDecision(name="bull", action=_bull_action, confidence=_bull_conf or _signal_conf)
-                bear = AgentDecision(name="bear", action=_bear_action, confidence=_bear_conf or (1.0 - _signal_conf))
+                _adv_bull_conf = float(adv_decision.get("bull_confidence") or 0.0)
+                _adv_bear_conf = float(adv_decision.get("bear_confidence") or 0.0)
+                # Use real adversarial confidences when present, else
+                # fall back to the signal-conviction split.
+                if _adv_bull_conf > 0 or _adv_bear_conf > 0:
+                    bull_conf = _adv_bull_conf
+                    bear_conf = _adv_bear_conf
+                else:
+                    bull_conf = _signal_conf if _is_long else max(0.0, 1.0 - _signal_conf)
+                    bear_conf = _signal_conf if _is_short else max(0.0, 1.0 - _signal_conf)
+                _bull_action = "BUY" if _is_long else "HOLD"
+                _bear_action = "SELL" if _is_short else "HOLD"
+                _commander_action = "BUY" if _is_long else ("SELL" if _is_short else "HOLD")
+                bull = AgentDecision(name="bull", action=_bull_action, confidence=bull_conf)
+                bear = AgentDecision(name="bear", action=_bear_action, confidence=bear_conf)
                 commander = CommanderDecision(
                     action=_commander_action,
                     confidence=float(adv_decision.get("commander_confidence") or _signal_conf),
@@ -455,10 +504,12 @@ async def run_crypto_symbol(
             else:
                 # No adversarial layer active: build a one-sided
                 # synthetic so the enforcer can still rule on the trade.
-                _bull_action = "BUY" if _signal_dir in ("LONG", "BUY") else "HOLD"
-                _bear_action = "SELL" if _signal_dir in ("SHORT", "SELL") else "HOLD"
-                bull = AgentDecision(name="bull", action=_bull_action, confidence=_signal_conf)
-                bear = AgentDecision(name="bear", action=_bear_action, confidence=max(0.0, 1.0 - _signal_conf))
+                _bull_action = "BUY" if _is_long else "HOLD"
+                _bear_action = "SELL" if _is_short else "HOLD"
+                bull_conf = _signal_conf if _is_long else max(0.0, 1.0 - _signal_conf)
+                bear_conf = _signal_conf if _is_short else max(0.0, 1.0 - _signal_conf)
+                bull = AgentDecision(name="bull", action=_bull_action, confidence=bull_conf)
+                bear = AgentDecision(name="bear", action=_bear_action, confidence=bear_conf)
                 commander = None
 
             # Market telemetry — best-effort from strategist indicators.
@@ -504,9 +555,9 @@ async def run_crypto_symbol(
 
             # Persist proof chain only when DB is available (it is, in
             # production). The store can also be set to None to no-op.
-            proof_store = MongoProofChainStore(db) if db is not None else None
+            proof_store = AsyncMongoProofChainStore(db) if db is not None else None
 
-            guard = run_guarded_decision_pipeline(
+            guard = await run_guarded_decision_pipeline_async(
                 entity_id=f"crypto:{symbol}:{int(datetime.now(timezone.utc).timestamp())}",
                 bull=bull, bear=bear, commander=commander,
                 market=market_tel, model=model_tel,

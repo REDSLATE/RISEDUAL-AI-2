@@ -205,6 +205,57 @@ class MongoProofChainStore:
         )
 
 
+class AsyncMongoProofChainStore:
+    """
+    Motor-compatible (async) Mongo-backed store.
+
+    The sync ``MongoProofChainStore`` is for offline / pymongo use; this
+    one is for the live FastAPI app where ``db`` is an
+    ``AsyncIOMotorDatabase``. Use ``async_append_proof_event`` to write
+    events through this store.
+    """
+
+    def __init__(self, db: Any, collection_name: str = "decision_proof_chain") -> None:
+        self.collection = db[collection_name]
+
+    async def get_latest_block_hash(
+        self, entity_id: Optional[str] = None,
+    ) -> Optional[str]:
+        query: dict[str, Any] = {}
+        if entity_id is not None:
+            query["entity_id"] = entity_id
+
+        doc = await self.collection.find_one(query, sort=[("created_at", -1)])
+        if not doc:
+            return None
+        return str(doc["block_hash"])
+
+    async def insert_block(self, block: ProofBlock) -> None:
+        await self.collection.insert_one(
+            {
+                "block_hash": block.block_hash,
+                "prev_hash": block.prev_hash,
+                "event_type": block.event_type.value,
+                "entity_id": block.entity_id,
+                "payload_hash": block.payload_hash,
+                "payload": block.payload,
+                "actor": block.actor,
+                "schema_version": block.schema_version,
+                "created_at": block.created_at,
+            }
+        )
+
+
+async def async_append_proof_event(
+    store: "AsyncMongoProofChainStore", event: ProofEvent,
+) -> ProofBlock:
+    """Async variant of ``append_proof_event`` for Motor-backed stores."""
+    prev_hash = await store.get_latest_block_hash(event.entity_id)
+    block = build_proof_block(event, prev_hash)
+    await store.insert_block(block)
+    return block
+
+
 def verify_chain(blocks: list[ProofBlock]) -> tuple[bool, list[str]]:
     """
     Verifies local chain continuity and block hashes.

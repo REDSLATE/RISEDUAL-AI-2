@@ -196,6 +196,138 @@ def run_guarded_decision_pipeline(
     }
 
 
+async def run_guarded_decision_pipeline_async(
+    *,
+    entity_id: str,
+    bull: AgentDecision,
+    bear: AgentDecision,
+    commander: Optional[CommanderDecision],
+    market: MarketTelemetry,
+    model: ModelTelemetry,
+    risk_request: RiskBudgetRequest,
+    proof_store: Optional[Any] = None,
+    actor: str = "risedual-ai",
+) -> dict[str, Any]:
+    """Async sibling of ``run_guarded_decision_pipeline`` for callers
+    using ``AsyncMongoProofChainStore`` (Motor-backed)."""
+    from services.proof_chain import async_append_proof_event
+
+    proof_hashes: list[str] = []
+
+    adversarial = enforce_adversarial_decision(
+        bull=bull, bear=bear, commander=commander,
+        config=AdversarialEnforcementConfig(),
+    )
+
+    if proof_store is not None:
+        block = await async_append_proof_event(
+            proof_store,
+            ProofEvent(
+                event_type=ProofEventType.ADVERSARIAL_DECISION,
+                entity_id=entity_id, actor=actor,
+                payload={
+                    "action": adversarial.action,
+                    "confidence": adversarial.confidence,
+                    "dissent_score": adversarial.dissent_score,
+                    "allowed_to_trade": adversarial.allowed_to_trade,
+                    "reason": adversarial.reason.value,
+                    "bull": asdict(bull),
+                    "bear": asdict(bear),
+                    "commander": asdict(commander) if commander else None,
+                },
+            ),
+        )
+        proof_hashes.append(block.block_hash)
+
+    if not adversarial.allowed_to_trade:
+        return _blocked_response(
+            action=adversarial.action,
+            reasons=[adversarial.reason.value],
+            adversarial=adversarial, failure=None, risk=None,
+            proof_hashes=proof_hashes,
+        )
+
+    failure = classify_failure_mode(market=market, model=model)
+
+    if proof_store is not None:
+        block = await async_append_proof_event(
+            proof_store,
+            ProofEvent(
+                event_type=ProofEventType.FAILURE_MODE_CLASSIFIED,
+                entity_id=entity_id, actor=actor,
+                payload={
+                    "mode": failure.mode.value,
+                    "confidence": failure.confidence,
+                    "risk_multiplier_cap": failure.risk_multiplier_cap,
+                    "block_trade": failure.block_trade,
+                    "reasons": failure.reasons,
+                    "metadata": failure.metadata,
+                },
+            ),
+        )
+        proof_hashes.append(block.block_hash)
+
+    adjusted_multiplier, failure_reasons = apply_failure_mode_to_multiplier(
+        risk_request.base_multiplier, failure,
+    )
+
+    risk_request = RiskBudgetRequest(
+        action=adversarial.action,
+        base_notional=risk_request.base_notional,
+        base_multiplier=adjusted_multiplier,
+        authority=risk_request.authority,
+        track_record=risk_request.track_record,
+        daily_realized_loss=risk_request.daily_realized_loss,
+        requested_multiplier=risk_request.requested_multiplier,
+        loosening_countersignature_hash=risk_request.loosening_countersignature_hash,
+        metadata={
+            **risk_request.metadata,
+            "failure_mode": failure.mode.value,
+            "failure_reasons": failure_reasons,
+            "adversarial_reason": adversarial.reason.value,
+        },
+    )
+
+    risk_decision = apply_authority_scoped_risk_budget(risk_request)
+
+    if proof_store is not None:
+        block = await async_append_proof_event(
+            proof_store,
+            ProofEvent(
+                event_type=ProofEventType.RISK_BUDGET_APPLIED,
+                entity_id=entity_id, actor=actor,
+                payload={
+                    "allowed": risk_decision.allowed,
+                    "action": risk_decision.action,
+                    "final_notional": risk_decision.final_notional,
+                    "final_multiplier": risk_decision.final_multiplier,
+                    "authority_tier": risk_decision.authority_tier.value,
+                    "tightened": risk_decision.tightened,
+                    "loosened": risk_decision.loosened,
+                    "reasons": risk_decision.reasons,
+                    "audit_hash": risk_decision.audit_hash,
+                },
+            ),
+        )
+        proof_hashes.append(block.block_hash)
+
+    return {
+        "allow": risk_decision.allowed,
+        "action": risk_decision.action,
+        "notional": risk_decision.final_notional,
+        "risk_multiplier": risk_decision.final_multiplier,
+        "reasons": [
+            adversarial.reason.value,
+            *failure_reasons,
+            *risk_decision.reasons,
+        ],
+        "adversarial": _adversarial_to_dict(adversarial),
+        "failure_mode": _failure_to_dict(failure),
+        "risk_budget": _risk_to_dict(risk_decision),
+        "proof_hashes": proof_hashes,
+    }
+
+
 def _blocked_response(
     *,
     action: str,
