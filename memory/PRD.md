@@ -23,7 +23,78 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Tier 1 Visual Polish + Paper/Live Consolidation + Exception Sanitization (Apr 30, 2026)
+
+**Per-item Paper/Live pickers consolidated** (user request — single global switch):
+- `SmartOrderPanel.jsx` — replaced the Paper/Live/Preview `<Select>`
+  (line 184) with a read-only mode badge (`data-testid="smart-order-mode-display"`)
+  that mirrors the global navbar `TradingModePill`. The "simulate"
+  preview path is still reachable via the existing dedicated Simulate
+  button on the panel.
+- `TradingBotPanel.jsx` `CreateBotForm` — replaced the per-bot Paper/
+  Live dropdown with a read-only badge (`data-testid="create-bot-mode-display"`)
+  inheriting from `useTradingMode()`. New bots created in whichever
+  mode the operator's navbar pill says.
+- Single source of truth confirmed: every mode change now flows
+  through `POST /api/trading-mode/switch` with the 30s cooldown +
+  audit pipeline. No bypass paths.
+
+**CryptoPaperDashboard re-skin** (cosmetic harmonisation):
+- Migrated palette from `bg-neutral-950/900/800` (gray) to
+  `bg-slate-800/40 + slate-700/30` so the panel matches every other
+  admin tab (Shadow, Adversarial, Proof Chain, etc).
+- "Run Bot" promoted to the cyan brand CTA (`bg-[#3DE8D9]
+  hover:bg-[#7AEEE0]`); "Close Due Trades" demoted to a quieter
+  slate variant — proper visual hierarchy between primary +
+  secondary actions.
+- Stat cards now use uppercase tracking-wider labels + monospace
+  values; recent-trades rows use cyan selection ring matching the
+  brand.
+
+**OrderFlowHeatmap duplicate-key fix**:
+- `key={row-${row.price}}` could collide when grid binning produced
+  the same rounded price. Now `key={row-${ri}-${row.price}}`.
+- Console "Encountered two children with the same key" warning
+  on the heatmap grid is gone. The remaining duplicate-key warnings
+  in the console come from the external `emergent-main.js` platform
+  script (not app code) — nothing actionable on our end.
+
+**Global exception handler review** (P2):
+- 5× `f"Broker error: {exc}"` 502 leaks in `routes/options_trading.py`
+  replaced with sanitized "Broker [order placement|spread routing|
+  unavailable]" — full exception still logged via `log_error()` for
+  ops debugging.
+- 1× `error: str(exc)` leak in `routes/public_api.py` `/ml-signal/batch`
+  (200-response bypassed the global sanitizer) replaced with stable
+  `"signal_unavailable"` token. Real exception logged via
+  `logger.warning`.
+- 72/72 related backend tests green.
+
+**Frontend agent verification**: 15/15 cases passed (iteration_153)
+— mode badges render correctly + match global mode, dropdowns gone,
+all 4 admin surfaces still render, Run Bot + Close Due Trades both
+functional, OrderFlowHeatmap fix confirmed.
+
 ### Patent J Proof Chain Explorer — admin UI wired + Mongo-aligned hash (Apr 30, 2026)
+- Wired `frontend/src/components/admin/ProofChainExplorer.jsx` into
+  `AdminPanel.jsx` Insights group as new "Proof Chain" tab
+  (ShieldCheck icon, sits next to Patent Watch).
+- Fixed cross-environment hash drift in `services/proof_chain.py`:
+  Mongo BSON Date strips tzinfo and truncates microseconds to
+  milliseconds on round-trip. Added `canonical_created_at(dt)`
+  helper used by both `build_proof_block` (write) and
+  `verify_chain` (read). Wiped 81 stale dev blocks; fresh chains
+  verify clean.
+- 15/15 backend tests green; frontend agent: 7/7 cases.
+
+### Earlier Architecture — Patents I, J, K, M wired into Decision Pipeline Guard
+- Patent I (Authority-Scoped Risk Budgeting), J (Tamper-evident
+  Proof Chain), K (Structured Adversarial Enforcement), M (Failure
+  Mode Intelligence) — all live and guarding crypto bot, broker
+  routes, smart orders, options trading. 116 backend tests green.
+- `PATENT_GUARD_ENABLED` env flag controls activation.
+
+
 - Wired `frontend/src/components/admin/ProofChainExplorer.jsx` into
   `AdminPanel.jsx` Insights group as new "Proof Chain" tab
   (ShieldCheck icon, sits next to Patent Watch). Stats card +
