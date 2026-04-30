@@ -25,10 +25,13 @@ import pytest
 
 
 def setup_function():
-    """Reset the in-process counters before each test so they
-    don't bleed across cases."""
-    from services.mongo_chroma_sync_metrics import reset_counters
+    """Reset the in-process counters + cache before each test so
+    state doesn't bleed across cases."""
+    from services.mongo_chroma_sync_metrics import (
+        _reset_cache_for_tests, reset_counters,
+    )
     reset_counters()
+    _reset_cache_for_tests()
 
 
 # ── record_skip ─────────────────────────────────────────────────────
@@ -68,19 +71,133 @@ def test_record_skip_logs_at_warn(caplog):
 
 
 def test_mark_rebuild_stamps_tz_aware_utc():
+    """``mark_rebuild`` is async-now (Mongo-backed). Verify the
+    in-process cache is populated with a tz-aware UTC timestamp
+    that survives the ISO round-trip in ``get_last_rebuild()``."""
+    import asyncio
+    from unittest.mock import patch
     from services.mongo_chroma_sync_metrics import (
         get_last_rebuild, mark_rebuild,
     )
-    mark_rebuild(rebuilt=42, skipped=3, since="2026-04-01")
-    out = get_last_rebuild()
+
+    # Force the lazy db lookup to return None — exercises the
+    # in-process-only fallback path. (The Mongo persistence path
+    # has its own dedicated test below.)
+    with patch("services.mongo_chroma_sync_metrics._get_db", return_value=None):
+        asyncio.run(mark_rebuild(rebuilt=42, skipped=3, since="2026-04-01"))
+        out = asyncio.run(get_last_rebuild())
+
     assert out["last_rebuild_summary"] == {
         "rebuilt": 42, "skipped": 3, "since": "2026-04-01",
     }
-    # ``last_rebuild_at`` must be a tz-aware ISO string the drift
-    # endpoint can subtract from ``datetime.now(timezone.utc)``
-    # without re-introducing the tz-naive bug.
     parsed = datetime.fromisoformat(out["last_rebuild_at"])
     assert parsed.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_mark_rebuild_persists_to_mongo_and_get_reads_it():
+    """End-to-end: ``mark_rebuild`` writes to Mongo;
+    ``get_last_rebuild`` reads it back even after the in-process
+    cache is cleared (simulating a backend restart)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from services.mongo_chroma_sync_metrics import (
+        _reset_cache_for_tests, get_last_rebuild, mark_rebuild,
+    )
+
+    captured: dict[str, object] = {}
+
+    async def fake_update_one(query, update, upsert=False):
+        captured["query"] = query
+        captured["update"] = update
+        captured["upsert"] = upsert
+        return MagicMock()
+
+    async def fake_find_one(query, projection=None):
+        # Return what update_one wrote, minus the _id, mimicking
+        # Mongo round-trip behaviour (tzinfo would be stripped here
+        # — the helper uses ensure_utc to re-tag).
+        u = captured.get("update", {}).get("$set", {})
+        return {
+            "last_rebuild_at": u["last_rebuild_at"].replace(tzinfo=None),
+            "last_rebuild_summary": u["last_rebuild_summary"],
+        }
+
+    fake_db = MagicMock()
+    fake_collection = MagicMock()
+    fake_collection.update_one = AsyncMock(side_effect=fake_update_one)
+    fake_collection.find_one = AsyncMock(side_effect=fake_find_one)
+    fake_db.__getitem__ = MagicMock(return_value=fake_collection)
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=fake_db,
+    ):
+        await mark_rebuild(rebuilt=101, skipped=0, since="2026-03-31")
+        # Simulate restart — cache wiped, Mongo unchanged.
+        _reset_cache_for_tests()
+        out = await get_last_rebuild()
+
+    assert out["last_rebuild_summary"] == {
+        "rebuilt": 101, "skipped": 0, "since": "2026-03-31",
+    }
+    assert out["last_rebuild_at"] is not None
+    parsed = datetime.fromisoformat(out["last_rebuild_at"])
+    assert parsed.tzinfo is not None  # tz-naive Mongo round-trip re-tagged
+
+    # Upsert was called with the right shape.
+    assert captured["query"] == {"_id": "mongo_chroma"}
+    assert captured["upsert"] is True
+
+
+@pytest.mark.asyncio
+async def test_mark_rebuild_persistence_failure_does_not_raise():
+    """Mongo write failure must NOT raise — the rebuild has
+    already succeeded by the time we're called. Worst case the
+    timestamp is held in-process only until the next rebuild."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from services.mongo_chroma_sync_metrics import (
+        get_last_rebuild, mark_rebuild,
+    )
+
+    fake_db = MagicMock()
+    fake_collection = MagicMock()
+    fake_collection.update_one = AsyncMock(
+        side_effect=RuntimeError("boom"),
+    )
+    fake_db.__getitem__ = MagicMock(return_value=fake_collection)
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=fake_db,
+    ):
+        # Must not raise.
+        await mark_rebuild(rebuilt=10, skipped=0)
+        out = await get_last_rebuild()
+
+    # In-process cache still serves the value.
+    assert out["last_rebuild_summary"]["rebuilt"] == 10
+    assert out["last_rebuild_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_get_last_rebuild_handles_empty_mongo_state():
+    """Cold start with no prior rebuild on record — endpoint
+    returns ``{None, None}`` instead of raising or stalling."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from services.mongo_chroma_sync_metrics import get_last_rebuild
+
+    fake_db = MagicMock()
+    fake_collection = MagicMock()
+    fake_collection.find_one = AsyncMock(return_value=None)
+    fake_db.__getitem__ = MagicMock(return_value=fake_collection)
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=fake_db,
+    ):
+        out = await get_last_rebuild()
+
+    assert out == {"last_rebuild_at": None, "last_rebuild_summary": None}
 
 
 # ── classify thresholds ─────────────────────────────────────────────
@@ -178,6 +295,74 @@ async def test_drift_endpoint_unavailable_when_db_none():
     assert out == {"available": False, "reason": "db_unavailable"}
 
 
+# ── Date-field alignment with rebuild endpoint ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mongo_per_date_counts_filters_on_verified_at_and_buckets_on_timestamp():
+    """The drift endpoint must:
+    1. Filter Mongo on ``verified_24h.verified_at`` (NOT
+       ``prediction_date``) so it counts the same rows the
+       rebuild endpoint touches.
+    2. Bucket on the date portion of ``timestamp`` via
+       ``to_iso_date``, NOT ``prediction_date`` — that field is
+       ``None`` on older rows and produced one giant null
+       bucket that the dashboard then dropped, hiding all data.
+
+    Pre-fix flow: rebuild ran, processed 101 rows, dashboard
+    still showed mongo=0 because the aggregation grouped on a
+    null key."""
+    from unittest.mock import MagicMock, patch
+    from routes import admin_memory_drift as mod
+
+    captured: dict[str, object] = {}
+
+    class _Cursor:
+        def __init__(self, rows):
+            self._rows = list(rows)
+
+        def __aiter__(self):
+            self._iter = iter(self._rows)
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._iter)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    def fake_find(query, projection=None):
+        captured["query"] = query
+        captured["projection"] = projection
+        # Simulate the production reality: ``prediction_date`` is
+        # None on older rows, but ``timestamp`` is always set. Mix
+        # in one row that DOES have prediction_date so the helper
+        # exercises both branches.
+        return _Cursor([
+            {"timestamp": "2026-04-15T09:30:00+00:00", "prediction_date": None},
+            {"timestamp": "2026-04-15T15:00:00+00:00", "prediction_date": None},
+            {"timestamp": "2026-04-20T10:00:00+00:00", "prediction_date": "2026-04-20"},
+        ])
+
+    fake_db = MagicMock()
+    fake_db.predictions = MagicMock()
+    fake_db.predictions.find = MagicMock(side_effect=fake_find)
+
+    with patch.object(mod, "_db", fake_db):
+        out = await mod._mongo_per_date_counts(days=30)
+
+    # The filter must use verified_at (the rebuild's filter), not
+    # prediction_date (which would miss rows where the field is
+    # null).
+    q = captured["query"]
+    assert "verified_24h.verified_at" in q
+    assert "prediction_date" not in q
+    # Buckets reflect the date portion of timestamp regardless of
+    # whether prediction_date is None or set.
+    assert out == {"2026-04-15": 2, "2026-04-20": 1}
+
+
+
 @pytest.mark.asyncio
 async def test_drift_endpoint_includes_sync_metrics():
     """The drift response must surface skip counters + last-rebuild
@@ -186,12 +371,17 @@ async def test_drift_endpoint_includes_sync_metrics():
 
     from services.mongo_chroma_sync_metrics import (
         mark_rebuild, record_skip, reset_counters,
+        _reset_cache_for_tests,
     )
     reset_counters()
+    _reset_cache_for_tests()
     record_skip("warmup_save_failed")
     record_skip("rebuild_save_failed")
     record_skip("rebuild_save_failed")
-    mark_rebuild(rebuilt=100, skipped=2, since="2026-04-15")
+    # Force the in-process-only path so the test doesn't depend on
+    # a real Mongo connection.
+    with patch("services.mongo_chroma_sync_metrics._get_db", return_value=None):
+        await mark_rebuild(rebuilt=100, skipped=2, since="2026-04-15")
 
     from routes import admin_memory_drift as mod
     mod._db = object()
@@ -209,6 +399,9 @@ async def test_drift_endpoint_includes_sync_metrics():
     assert out["last_rebuild_summary"]["rebuilt"] == 100
     assert out["last_rebuild_summary"]["since"] == "2026-04-15"
     assert out["last_rebuild_at"] is not None
+    # The endpoint must surface which Mongo field it filtered on
+    # so the operator can reconcile against the rebuild endpoint.
+    assert out["window_field"] == "verified_24h.verified_at"
 
 
 @pytest.mark.asyncio

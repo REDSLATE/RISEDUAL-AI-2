@@ -555,9 +555,10 @@ async def _chromadb_warmup():
         # Stamp rebuild metadata so the drift endpoint can
         # distinguish "expected drift right after rebuild" from
         # "drift one hour after rebuild → actively broken".
+        # Persisted to Mongo so the stamp survives backend restarts.
         try:
             from services.mongo_chroma_sync_metrics import mark_rebuild
-            mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
+            await mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
         except Exception:  # noqa: BLE001
             pass
 

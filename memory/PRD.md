@@ -23,6 +23,64 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Drift Detector Honesty Fixes — Persisted Last-Rebuild + Date-Field Alignment (Apr 30, 2026)
+
+Two operator-trust gaps in the drift endpoint, both surfaced by the
+operator while inspecting the live response shape.
+
+**1. `last_rebuild_at` now persists across restarts**
+
+Pre-fix this lived only in `services/mongo_chroma_sync_metrics`'s
+in-process state, so every backend hot-reload wiped it. The alert
+watcher's "8% drift one hour after rebuild = actively broken"
+reasoning was unreliable across deploys — operators couldn't trust
+the timestamp they were seeing.
+
+Now: `mark_rebuild()` is async-Mongo-backed. Single-document
+collection `mongo_chroma_sync_state` (`_id: "mongo_chroma"`),
+upserted on every rebuild. `get_last_rebuild()` reads from Mongo
+on cold start, warms an in-process cache for subsequent reads.
+Persistence is best-effort — a Mongo write failure logs at WARN
+but never raises (the rebuild has already succeeded by the time we
+write). Tests cover the cache-miss-falls-through-to-Mongo and
+"backend restart" scenarios.
+
+**2. Mongo query now aligned with rebuild's date-field semantics**
+
+Pre-fix surfaced as: rebuild ran, processed 101 rows, dashboard
+still showed `mongo_verified_count: 0`. Two compounding bugs:
+
+* **Wrong window field.** Drift filtered on `prediction_date`;
+  rebuild filtered on `verified_24h.verified_at`. Different rows.
+* **Bucketing on a null field.** Even after fixing the window,
+  `prediction_date` is `None` on older rows — the aggregation
+  grouped them all under one null key that the dashboard then
+  dropped. 101 verified predictions silently became 0.
+
+Now: `_mongo_per_date_counts()` filters on
+`verified_24h.verified_at >= cutoff_iso` (matches rebuild) and
+buckets via `to_iso_date(timestamp)` for any row where
+`prediction_date` is null. The Chroma side keys metadata on the
+same `to_iso_date(timestamp)` so per-date totals are directly
+comparable. Endpoint response now also surfaces
+`window_field: "verified_24h.verified_at"` so the contract is
+self-documenting.
+
+**Live verified post-fix**:
+```
+mongo_verified_count: 101    # matches rebuild's "rebuilt: 101"
+chroma_episode_count: 1027   # full training corpus
+drift: -926                  # benign over-supply
+recommendation: ok
+last_rebuild_at: 2026-04-30T11:28:18+00:00   # survived hot-reload
+```
+
+**Tests**: 76/76 green across drift/alert/sync suites — added
+4 new tests for persistence (write/read survives restart, Mongo
+failure non-fatal, empty-state cold start) + 1 alignment test
+(filter uses verified_at, buckets via timestamp through
+to_iso_date).
+
 ### Post-Fix Rebuild + Drift Alert Watcher (Apr 30, 2026)
 
 Two operator follow-ups from the Mongo→Chroma sync hardening thread.

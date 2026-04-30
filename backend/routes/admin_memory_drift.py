@@ -84,46 +84,72 @@ def _classify(drift_pct: float) -> str:
 
 
 async def _mongo_per_date_counts(days: int) -> dict[str, int]:
-    """Aggregate verified predictions per ``prediction_date`` over
-    the lookback window. Returns ``{ "YYYY-MM-DD": count }``."""
+    """Aggregate verified predictions per prediction-date over the
+    lookback window.
+
+    Window field: ``verified_24h.verified_at`` — when grading
+    happened. Mirrors the rebuild endpoint so the two surfaces
+    agree on "the last N days of work".
+
+    Bucketing: the date portion of ``timestamp`` (via
+    ``to_iso_date``), NOT ``prediction_date``. Earlier code used
+    ``$group _id: $prediction_date`` but that field is ``None`` on
+    older rows — the aggregation produced one giant null bucket
+    that the drift dashboard then dropped, leaving
+    ``mongo_verified_count: 0`` even after a 101-row rebuild.
+
+    The Chroma side keys metadata on the same date-portion of the
+    original timestamp (see ``save_regime`` callers), so per-date
+    totals on both sides are directly comparable.
+
+    Returns ``{ "YYYY-MM-DD": count }``.
+    """
     if _db is None:
         return {}
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    pipeline = [
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cursor = _db.predictions.find(
         {
-            "$match": {
-                "verified_24h.correct": {"$in": [True, False]},
-                "prediction_date": {"$gte": cutoff},
-            }
+            "verified_24h.correct": {"$in": [True, False]},
+            "verified_24h.verified_at": {"$gte": cutoff_iso},
         },
-        {"$group": {"_id": "$prediction_date", "n": {"$sum": 1}}},
-    ]
+        {"_id": 0, "timestamp": 1, "prediction_date": 1},
+    )
     out: dict[str, int] = {}
-    async for row in _db.predictions.aggregate(pipeline):
-        date_key = row.get("_id") or ""
-        if date_key:
-            out[date_key] = int(row.get("n", 0))
+    async for doc in cursor:
+        # Prefer ``prediction_date`` when present (newer rows
+        # populate it); fall back to ``to_iso_date(timestamp)`` for
+        # older rows. ``to_iso_date`` handles both ISO strings and
+        # Mongo-datetime BSON Dates and is the same helper the
+        # save path uses, guaranteeing both ends key on the same
+        # YYYY-MM-DD.
+        from services.datetime_utils import to_iso_date
+        date_key = doc.get("prediction_date") or to_iso_date(doc.get("timestamp"))
+        if not date_key:
+            continue
+        out[date_key] = out.get(date_key, 0) + 1
     return out
 
 
 async def _chroma_per_date_counts(days: int) -> dict[str, int]:
     """Pull metadata-only from ChromaDB and bucket per ``date``.
 
-    ChromaDB's ``.get(where=...)`` is the only way to read; we ask
-    for everything in the lookback window then fold client-side.
-    Bounded by ``days`` × however many episodes per day are actually
-    saved — well under ChromaDB's collection size at any sane scale.
+    Note: includes ALL Chroma rows regardless of ``date`` value.
+    The Mongo side is filtered on ``verified_at >= cutoff`` (when
+    grading happened) but Chroma rows are keyed by
+    ``prediction_date`` — so a recently-graded old prediction
+    appears in Mongo's window but its Chroma counterpart has an
+    older ``date``. To keep per-date comparisons honest, we don't
+    drop Chroma rows by date here; the per-date breakdown
+    naturally surfaces both (a) recent verifications missing from
+    Chroma → positive skew → sync regression and (b) older
+    training rows that never had a Mongo prediction → negative
+    skew → benign.
     """
     import asyncio as _aio
     from services.market_memory_service import _collection
     if _collection is None:
         return {}
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     try:
-        # ChromaDB doesn't support range filters on string metadata
-        # in all versions, so we read all ids+metadata for the
-        # window and filter client-side. Cheap (metadata only, no
-        # vector data, no documents).
         result = await _aio.to_thread(
             _collection.get,
             include=["metadatas"],
@@ -136,7 +162,7 @@ async def _chroma_per_date_counts(days: int) -> dict[str, int]:
         if not meta:
             continue
         date_str = meta.get("date") or ""
-        if not date_str or date_str < cutoff:
+        if not date_str:
             continue
         # Skip toxic_lesson re-tags — they're a nightly mutation,
         # not a separate row, so they shouldn't double-count.
@@ -206,11 +232,16 @@ async def memory_drift(
         get_last_rebuild,
     )
     sync_skipped = get_skip_counters()
-    rebuild_meta = get_last_rebuild()
+    rebuild_meta = await get_last_rebuild()
 
     return {
         "available": True,
         "window_days": days,
+        # Document the temporal field used for the Mongo-side
+        # filter so the operator (and any future consumer) can
+        # reconcile this number with the rebuild endpoint, which
+        # uses the same field.
+        "window_field": "verified_24h.verified_at",
         "mongo_verified_count": mongo_total,
         "chroma_episode_count": chroma_total,
         "drift": drift,

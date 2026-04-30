@@ -399,8 +399,9 @@ async def rebuild_memory_from_mongo(
             skipped += 1
 
     # Stamp the rebuild metadata so the drift detector can correlate
-    # "drift % vs time-since-last-rebuild".
-    mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
+    # "drift % vs time-since-last-rebuild". Persisted to Mongo so the
+    # stamp survives backend restarts.
+    await mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
     logger.info(
         "[memory.rebuild] completed since=%s rebuilt=%d skipped=%d",
         since, rebuilt, skipped,
