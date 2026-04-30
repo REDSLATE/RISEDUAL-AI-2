@@ -269,3 +269,144 @@ def test_jump_threshold_is_operator_friendly():
     would page on noise. Documented here so the value isn't
     tweaked unthinkingly."""
     assert JUMP_PCT == 5.0
+
+
+# ── 5. Email dispatch ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_rebuild_alert_dispatches_email(monkeypatch):
+    """Rebuild-recommended alerts are actionable — the operator
+    should hear about them on the email channel as well as in
+    the in-Mongo queue."""
+    monkeypatch.setenv("DRIFT_ALERT_EMAIL_ENABLED", "true")
+    monkeypatch.setenv("OWNER_EMAIL", "ops@example.com")
+    emit = AsyncMock(return_value={"ok": True, "deduped": False, "id": "x"})
+    routed_send = AsyncMock(return_value=True)
+    with patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.drift_alert_watcher._compute_drift",
+        new=AsyncMock(return_value=_mock_snap(12.0)),
+    ), patch("services.email_service._routed_send", new=routed_send):
+        await check_and_alert()
+
+    assert routed_send.call_count == 1
+    to_arg, subject, _ = routed_send.call_args.args
+    assert to_arg == ["ops@example.com"]
+    assert "RISEDUAL" in subject
+    assert "rebuild" in subject.lower()
+
+
+@pytest.mark.asyncio
+async def test_jump_alert_does_not_dispatch_email(monkeypatch):
+    """Jump alerts can fire multiple times per day per (from→to)
+    bucket. They go to the in-Mongo queue only — emailing every
+    jump would clog the operator inbox."""
+    monkeypatch.setenv("DRIFT_ALERT_EMAIL_ENABLED", "true")
+    monkeypatch.setenv("OWNER_EMAIL", "ops@example.com")
+    emit = AsyncMock(return_value={"ok": True, "deduped": False, "id": "x"})
+    routed_send = AsyncMock(return_value=True)
+    with patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.email_service._routed_send", new=routed_send,
+    ):
+        # Prime the watcher at 2% so the second tick at 8% triggers
+        # the jump rule but stays under the rebuild threshold.
+        with patch(
+            "services.drift_alert_watcher._compute_drift",
+            new=AsyncMock(return_value=_mock_snap(2.0)),
+        ):
+            await check_and_alert()
+        with patch(
+            "services.drift_alert_watcher._compute_drift",
+            new=AsyncMock(return_value=_mock_snap(8.0)),
+        ):
+            await check_and_alert()
+
+    assert routed_send.call_count == 0, (
+        "Jump alerts must NOT dispatch email — Mongo queue only."
+    )
+
+
+@pytest.mark.asyncio
+async def test_email_dispatch_skipped_when_flag_off(monkeypatch):
+    """Operators muting the email channel via ``DRIFT_ALERT_EMAIL_ENABLED=false``
+    must not receive emails even on actionable alerts. The Mongo
+    queue still records them."""
+    monkeypatch.setenv("DRIFT_ALERT_EMAIL_ENABLED", "false")
+    monkeypatch.setenv("OWNER_EMAIL", "ops@example.com")
+    emit = AsyncMock(return_value={"ok": True, "deduped": False, "id": "x"})
+    routed_send = AsyncMock(return_value=True)
+    with patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.drift_alert_watcher._compute_drift",
+        new=AsyncMock(return_value=_mock_snap(12.0)),
+    ), patch("services.email_service._routed_send", new=routed_send):
+        await check_and_alert()
+
+    assert emit.call_count == 1, "Mongo queue still receives the alert"
+    assert routed_send.call_count == 0, "Email channel muted by flag"
+
+
+@pytest.mark.asyncio
+async def test_deduped_alert_does_not_resend_email(monkeypatch):
+    """When ``ai_core_alerts.emit`` reports ``deduped=True`` (same
+    type/day already in the queue), we must NOT spam the operator's
+    inbox with a second copy."""
+    monkeypatch.setenv("DRIFT_ALERT_EMAIL_ENABLED", "true")
+    monkeypatch.setenv("OWNER_EMAIL", "ops@example.com")
+    emit = AsyncMock(return_value={"ok": True, "deduped": True, "id": "x"})
+    routed_send = AsyncMock(return_value=True)
+    with patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.drift_alert_watcher._compute_drift",
+        new=AsyncMock(return_value=_mock_snap(12.0)),
+    ), patch("services.email_service._routed_send", new=routed_send):
+        await check_and_alert()
+
+    assert routed_send.call_count == 0, (
+        "Dedup should suppress the email send; operator already got it."
+    )
+
+
+# ── 6. Drift history sample persistence ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_check_and_alert_records_drift_sample_every_tick(monkeypatch):
+    """Sparkline source: every successful tick must persist a
+    drift snapshot, even on the quiet path. This is the time-series
+    that powers the dashboard sparkline."""
+    record = AsyncMock(return_value=None)
+    emit = AsyncMock(return_value={"ok": True, "deduped": False, "id": "x"})
+    with patch(
+        "services.mongo_chroma_sync_metrics.record_drift_sample",
+        new=record,
+    ), patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.drift_alert_watcher._compute_drift",
+        new=AsyncMock(return_value=_mock_snap(0.5)),  # quiet path
+    ):
+        await check_and_alert()
+
+    assert record.call_count == 1
+    kwargs = record.call_args.kwargs
+    assert kwargs["drift_pct"] == 0.5
+    assert kwargs["mongo_total"] == 500
+    assert kwargs["chroma_total"] == 450
+
+
+@pytest.mark.asyncio
+async def test_drift_history_record_failure_does_not_block_alerts(monkeypatch):
+    """If the sparkline write fails (Mongo blip), the alert
+    pipeline must still run. History is observability; alerts are
+    operational."""
+    record = AsyncMock(side_effect=RuntimeError("mongo down"))
+    emit = AsyncMock(return_value={"ok": True, "deduped": False, "id": "x"})
+    with patch(
+        "services.mongo_chroma_sync_metrics.record_drift_sample",
+        new=record,
+    ), patch("services.ai_core_alerts.emit", new=emit), patch(
+        "services.drift_alert_watcher._compute_drift",
+        new=AsyncMock(return_value=_mock_snap(12.0)),
+    ):
+        result = await check_and_alert()
+
+    assert result["ok"] is True
+    assert "rebuild" in result["fired"]
+    assert emit.call_count == 1

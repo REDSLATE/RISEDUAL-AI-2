@@ -226,6 +226,9 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services.ml_paper_trader import ensure_indexes as _ml_paper_indexes
         from services.ai_core_engine import ensure_indexes as _ai_core_engine_indexes
         from services.ai_core_alerts import ensure_indexes as _ai_core_alerts_indexes
+        from services.mongo_chroma_sync_metrics import (
+            ensure_history_indexes as _drift_history_indexes,
+        )
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
@@ -236,6 +239,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_ml_paper_indexes(db))
             loop.create_task(_ai_core_engine_indexes(db))
             loop.create_task(_ai_core_alerts_indexes())
+            loop.create_task(_drift_history_indexes())
         except RuntimeError:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:

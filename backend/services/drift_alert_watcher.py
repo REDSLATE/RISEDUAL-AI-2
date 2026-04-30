@@ -22,12 +22,24 @@ not a spam one):
 The watcher reads from the same ``run_position_reconciler`` /
 ``fetch_memory_drift`` surface — no duplicated logic. Failure isolation
 wraps the whole tick so a bad Mongo response can't crash the scheduler.
+
+Side effects beyond alert emission:
+
+* Every tick persists a drift snapshot to
+  ``mongo_chroma_drift_history`` so the admin dashboard can render
+  a sparkline (``GET /api/admin/memory/drift/history``).
+* Actionable alert types (``rebuild_recommended`` / ``recovered``)
+  are also dispatched to the operator's email when
+  ``DRIFT_ALERT_EMAIL_ENABLED=true`` (default). The noisy-by-design
+  ``jump`` alert stays Mongo-only — it can fire repeatedly within
+  a single day and would spam the inbox.
 """
 from __future__ import annotations
 
 __domain__ = "PRD"  # Observability over historic state.
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -39,6 +51,90 @@ logger = logging.getLogger(__name__)
 REBUILD_PCT = 10.0   # ≥ this → rebuild band → alert if newly-crossed
 OK_PCT = 1.0         # < this → back in ok band → recovery alert
 JUMP_PCT = 5.0       # between-check jump magnitude that deserves an alert
+
+# Alert types that also dispatch via the operator email channel.
+# ``jump`` is intentionally excluded — it can fire repeatedly within
+# a single day (each {prev→curr} pair is its own dedup bucket) and
+# would clog the operator's inbox. The Mongo ``ai_core_alerts``
+# queue still records it for forensic review.
+_EMAIL_ALERT_TYPES = frozenset({
+    "memory_drift_rebuild_recommended",
+    "memory_drift_recovered",
+})
+
+
+def _email_enabled() -> bool:
+    """Allow operators to mute the email channel without redeploying.
+
+    Default is enabled — this is an actionable signal and the
+    in-Mongo ``ai_core_alerts`` queue alone requires the operator to
+    poll the admin panel. The flag exists only as an escape hatch
+    if the email provider is misconfigured or the operator wants
+    to silence the channel during maintenance.
+    """
+    return os.environ.get(
+        "DRIFT_ALERT_EMAIL_ENABLED", "true"
+    ).lower() in {"1", "true", "yes", "on"}
+
+
+async def _dispatch_email(
+    alert_type: str, title: str, message: str, metadata: dict,
+) -> None:
+    """Best-effort email dispatch for actionable drift alerts.
+
+    Wraps the email service so a provider outage / misconfig can't
+    poison the scheduler tick. Falls silent when:
+    * the alert type is not in ``_EMAIL_ALERT_TYPES``
+    * the env flag is off
+    * no ``OWNER_EMAIL`` is configured (defensive — should never
+      happen in production)
+    """
+    if alert_type not in _EMAIL_ALERT_TYPES:
+        return
+    if not _email_enabled():
+        return
+    owner_email = os.environ.get("OWNER_EMAIL", "").strip()
+    if not owner_email:
+        return
+    try:
+        from services.email_service import _routed_send, _base_html
+
+        # Render the alert as a structured operator-grade email.
+        # Keeping the body minimal — the title carries the action,
+        # the metadata is reproduced verbatim for forensic value.
+        rows = "\n".join(
+            f"<tr><td style='padding:4px 8px;color:#94a3b8;font-family:monospace;"
+            f"font-size:12px;'>{k}</td>"
+            f"<td style='padding:4px 8px;color:#e2e8f0;font-family:monospace;"
+            f"font-size:12px;'>{v}</td></tr>"
+            for k, v in (metadata or {}).items()
+        )
+        html_body = (
+            f"<p style='color:#e2e8f0;font-size:14px;line-height:1.5;'>{message}</p>"
+            f"<table style='border-collapse:collapse;margin-top:12px;"
+            f"background:#0f172a;border:1px solid #334155;border-radius:6px;'>"
+            f"{rows}</table>"
+            f"<p style='color:#64748b;font-size:11px;margin-top:16px;'>"
+            f"alert_type: <code>{alert_type}</code>"
+            f"</p>"
+        )
+        body = _base_html(
+            html_body,
+            preheader=f"Memory drift alert · {alert_type}",
+        )
+        subject = f"[RISEDUAL] {title}"
+        sent = await _routed_send([owner_email], subject, body)
+        if sent:
+            logger.info(
+                "[drift_alert] email sent type=%s to=%s", alert_type, owner_email,
+            )
+        else:
+            logger.warning(
+                "[drift_alert] email skipped (provider unavailable) type=%s",
+                alert_type,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[drift_alert] email dispatch failed: %s", exc)
 
 # Process-local state — resets on restart, which is fine. The
 # scheduled tick picks up the current drift on first run and
@@ -100,21 +196,40 @@ async def _compute_drift(days: int = 30) -> Optional[dict]:
 
 async def _emit(alert_type: str, title: str, message: str,
                 metadata: dict, extra_bucket: Optional[str] = None) -> None:
-    """Wrap the alert emitter so the scheduler never raises."""
+    """Wrap the alert emitter so the scheduler never raises.
+
+    Writes to the in-Mongo ``ai_core_alerts`` queue (always) and
+    dispatches to the email channel for actionable alert types
+    (see ``_EMAIL_ALERT_TYPES``).
+    """
+    deduped = False
     try:
         from services.ai_core_alerts import emit
         bucket = _today()
         if extra_bucket:
             bucket = f"{bucket}:{extra_bucket}"
-        await emit(
+        result = await emit(
             alert_type,
             title=title,
             message=message,
             metadata=metadata,
             date_bucket=bucket,
         )
+        # Defensive: ``ai_core_alerts.emit`` returns a dict, but the
+        # tests mock it with an ``AsyncMock`` whose default
+        # ``return_value`` is a MagicMock — so we narrow to dict
+        # before reading the dedup flag. Production path is always
+        # a dict; test path is unaffected.
+        deduped = bool(isinstance(result, dict) and result.get("deduped"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("[drift_alert] emit failed: %s", exc)
+        return
+
+    # Only dispatch the email on the FIRST emit for the day; a
+    # deduped insert means today's alert already went out and the
+    # operator's inbox doesn't need a re-send.
+    if not deduped:
+        await _dispatch_email(alert_type, title, message, metadata)
 
 
 async def check_and_alert() -> dict:
@@ -129,6 +244,22 @@ async def check_and_alert() -> dict:
     snap = await _compute_drift()
     if snap is None:
         return {"ok": False, "reason": "drift_compute_failed"}
+
+    # Persist a sparkline sample on every tick. Best-effort —
+    # the ``record_drift_sample`` helper swallows its own
+    # exceptions so a Mongo write failure can't block the alert
+    # logic that follows.
+    try:
+        from services.mongo_chroma_sync_metrics import record_drift_sample
+        await record_drift_sample(
+            drift_pct=snap["drift_pct"],
+            drift=snap["drift"],
+            mongo_total=snap["mongo_total"],
+            chroma_total=snap["chroma_total"],
+            recommendation=snap.get("recommendation"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[drift_alert] history record failed: %s", exc)
 
     current_pct = snap["drift_pct"]
     prev_pct = _last_pct

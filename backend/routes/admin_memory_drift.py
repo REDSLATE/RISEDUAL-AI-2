@@ -256,3 +256,38 @@ async def memory_drift(
         **rebuild_meta,
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/drift/history")
+async def memory_drift_history(
+    request: Request,
+    hours: int = Query(
+        24, ge=1, le=168,
+        description="Lookback window in hours (max 7d == TTL retention).",
+    ),
+) -> dict:
+    """Time-series of drift snapshots written by the 5-min watcher.
+
+    Powers the dashboard sparkline. The series is intentionally
+    bounded — the underlying collection has a 7-day TTL index, so
+    requesting more than ~168h of history will just return what's
+    been retained.
+    """
+    await _require_owner(request)
+
+    if _db is None:
+        return {"available": False, "reason": "db_unavailable"}
+
+    from services.mongo_chroma_sync_metrics import get_drift_history
+    points = await get_drift_history(hours=hours)
+
+    return {
+        "available": True,
+        "window_hours": hours,
+        "points": points,
+        "thresholds": {
+            "ok_pct": THRESHOLD_OK_PCT,
+            "investigate_pct": THRESHOLD_INVESTIGATE_PCT,
+        },
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+    }

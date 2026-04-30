@@ -23,6 +23,86 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Drift Sparkline + Email Channel for Drift Alerts (Feb 27, 2026)
+
+Two operator-grade follow-ups on the drift detector — closes the
+"operator must poll the admin panel to see drift trends" gap and
+the "Mongo queue alerts can't be missed but only if you're
+already in admin" gap.
+
+**1. Drift trend sparkline (24h)**
+
+* `services/mongo_chroma_sync_metrics.py` extended:
+  * `record_drift_sample()` — persists a tiny snapshot per
+    5-min watcher tick to `mongo_chroma_drift_history`. Tz-aware
+    UTC datetime on write; ``ensure_utc(...)`` re-tags on read so
+    the round-tripped naive datetime can't silently shift the
+    sparkline by the operator's local-time offset.
+  * `get_drift_history(hours)` — returns ascending series with
+    ISO-formatted UTC timestamps (explicit `+00:00` offset
+    guaranteed via `ensure_utc`).
+  * `ensure_history_indexes()` — TTL index (7 days) so the
+    collection stays bounded ~2k docs steady-state at a 5-min
+    cadence. Wired into `route_registry.py`'s startup batch.
+* `services/drift_alert_watcher.py::check_and_alert()` calls
+  `record_drift_sample()` on every tick, even on the quiet
+  path. Failure isolated — a Mongo write blip can't crash the
+  scheduler tick or block the alert pipeline.
+* New endpoint `GET /api/admin/memory/drift/history?hours=24`
+  (owner-only, max 168h tied to the TTL retention).
+* `MemoryDriftCard.jsx` renders an inline-SVG sparkline below
+  the metric tiles. Color tier matches the recommendation
+  classifier (emerald < 1%, amber < 10%, red ≥ 10%); dashed
+  red reference line at the rebuild threshold; trend delta
+  pill (`+1.20pt` / `flat` / `-0.50pt`) so the operator can
+  see direction at a glance. Renders nothing when < 2 samples
+  exist (fresh deploy / scheduler hasn't ticked) — no skeleton
+  placeholder eating vertical space.
+
+**2. Email channel for actionable drift alerts**
+
+* `services/drift_alert_watcher.py::_dispatch_email()`:
+  * Routes only the actionable types
+    (`memory_drift_rebuild_recommended` + `memory_drift_recovered`)
+    through `email_service._routed_send`. Jump alerts stay
+    Mongo-only — they can fire repeatedly per day per
+    `(prev→curr)` bucket and would clog the operator inbox.
+  * Suppressed on the dedup path: when `ai_core_alerts.emit()`
+    reports `deduped=True`, the email is skipped — the
+    operator already received it earlier today.
+  * Mute switch: `DRIFT_ALERT_EMAIL_ENABLED=false` (default
+    `true`). Best-effort wrap so an email provider outage
+    can't poison the scheduler.
+  * `OWNER_EMAIL` env (existing) is the recipient. Subject
+    line includes `[RISEDUAL]` prefix; body renders the alert
+    metadata as a structured table for forensic value.
+
+**Mongo datetime safety**: audited end-to-end against the two
+existing CI guards (`test_no_unguarded_mongo_datetime_math.py`,
+`test_no_brittle_slice_on_mongo_dates.py`) — both green. The
+new code uses `datetime.now(timezone.utc) - timedelta(...)` for
+filter cutoffs (freshly-created tz-aware datetime, never a
+Mongo round-tripped one) and explicitly wraps every Mongo-read
+`ts` field in `ensure_utc(...)` before serializing. No `[:10]`
+slicing on Mongo dates anywhere.
+
+**Live verified**: 3 `check_and_alert()` invocations against
+the live preview DB persisted 3 rows in `mongo_chroma_drift_history`
+with tz-aware ISO strings (`2026-04-30T12:13:46+00:00`),
+`drift_pct=0.0`, `recommendation=ok`. No alerts fired (quiet
+path), no email dispatched.
+
+**Tests**: 11 new pytest cases — 7 in
+`test_drift_alert_watcher.py` (rebuild→email, jump→no-email,
+flag-off→no-email, deduped→no-email, sample-on-every-tick,
+record-failure-doesn't-block, recovery dispatch path) + 4 in
+`test_memory_drift_detector.py` (record_drift_sample shape,
+mongo-failure swallowed, get_drift_history tz re-tag,
+endpoint payload contract, db-unavailable graceful). **120/120**
+green across the full sync test layer (was 109 before this
+change). Lint clean across all 4 modified backend files +
+the frontend card.
+
 ### `_make_id` v2 Hardening — Corrupt prediction_id Defence (Feb 27, 2026)
 
 The remaining v2 hardening from the previous session — closes

@@ -462,3 +462,174 @@ async def test_drift_endpoint_positive_skew_sorted_first():
     second = out["by_date_top_skew"][1]
     assert second["date"] == "2026-04-22"
     assert second["skew"] == -195  # larger magnitude but benign — ranks below
+
+
+# ── Drift history (sparkline source) ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_record_drift_sample_writes_iso_serializable_doc():
+    """``record_drift_sample`` must persist a tz-aware datetime and
+    primitive numeric fields. Anything else and the read path would
+    have to re-coerce — repeating the very bug the previous session
+    fixed."""
+    from unittest.mock import AsyncMock, patch
+
+    captured: dict = {}
+
+    class _FakeColl:
+        async def insert_one(self, doc):
+            captured.update(doc)
+
+    class _FakeDB:
+        def __getitem__(self, name):
+            return _FakeColl()
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=_FakeDB(),
+    ):
+        from services.mongo_chroma_sync_metrics import record_drift_sample
+        await record_drift_sample(
+            drift_pct=2.5, drift=10, mongo_total=100,
+            chroma_total=90, recommendation="investigate",
+        )
+
+    assert captured["drift_pct"] == 2.5
+    assert captured["drift"] == 10
+    assert captured["mongo_total"] == 100
+    assert captured["chroma_total"] == 90
+    assert captured["recommendation"] == "investigate"
+    # Critical: the timestamp must be tz-aware so the round-trip
+    # through Mongo can be re-normalised by ``ensure_utc`` on read.
+    assert isinstance(captured["ts"], datetime)
+    assert captured["ts"].tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_record_drift_sample_swallows_mongo_failure():
+    """The sparkline write must never raise — the alert watcher
+    runs on a 5-minute scheduler and a Mongo blip can't be allowed
+    to crash the tick."""
+    from unittest.mock import patch
+
+    class _BoomColl:
+        async def insert_one(self, doc):
+            raise RuntimeError("mongo down")
+
+    class _BoomDB:
+        def __getitem__(self, name):
+            return _BoomColl()
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=_BoomDB(),
+    ):
+        from services.mongo_chroma_sync_metrics import record_drift_sample
+        # Must not raise.
+        await record_drift_sample(
+            drift_pct=1.0, drift=1, mongo_total=1, chroma_total=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_drift_history_normalises_tz_naive_round_trip():
+    """Mongo strips tzinfo on round-trip. ``get_drift_history`` must
+    re-tag with ``ensure_utc`` before serialising — otherwise an ISO
+    string without a timezone offset reaches the frontend, which
+    would render it as local time on the operator's machine and
+    silently shift every sparkline 5+ hours."""
+    from unittest.mock import patch
+
+    naive_dt = datetime(2026, 4, 30, 12, 0, 0)  # tz-stripped on Mongo round-trip
+
+    class _FakeCursor:
+        def __init__(self):
+            self._rows = [{
+                "ts": naive_dt,
+                "drift_pct": 3.5, "drift": 10,
+                "mongo_total": 100, "chroma_total": 90,
+                "recommendation": "investigate",
+            }]
+        def sort(self, *args, **kwargs):
+            return self
+        def __aiter__(self):
+            self._idx = 0
+            return self
+        async def __anext__(self):
+            if self._idx >= len(self._rows):
+                raise StopAsyncIteration
+            row = self._rows[self._idx]
+            self._idx += 1
+            return row
+
+    class _FakeColl:
+        def find(self, *args, **kwargs):
+            return _FakeCursor()
+
+    class _FakeDB:
+        def __getitem__(self, name):
+            return _FakeColl()
+
+    with patch(
+        "services.mongo_chroma_sync_metrics._get_db",
+        return_value=_FakeDB(),
+    ):
+        from services.mongo_chroma_sync_metrics import get_drift_history
+        rows = await get_drift_history(hours=24)
+
+    assert len(rows) == 1
+    # ISO string with explicit UTC offset — the proof that
+    # ensure_utc retagged the round-tripped naive datetime.
+    assert rows[0]["ts"].endswith("+00:00")
+    assert rows[0]["drift_pct"] == 3.5
+    assert rows[0]["recommendation"] == "investigate"
+
+
+@pytest.mark.asyncio
+async def test_drift_history_endpoint_returns_points_payload():
+    """End-to-end wire shape for ``GET /api/admin/memory/drift/history``."""
+    from unittest.mock import AsyncMock, patch
+    from routes import admin_memory_drift as mod
+    mod._db = object()
+
+    fake_points = [
+        {"ts": "2026-04-30T10:00:00+00:00", "drift_pct": 0.5,
+         "drift": 0, "mongo_total": 100, "chroma_total": 100,
+         "recommendation": "ok"},
+        {"ts": "2026-04-30T10:05:00+00:00", "drift_pct": 0.7,
+         "drift": 0, "mongo_total": 100, "chroma_total": 100,
+         "recommendation": "ok"},
+    ]
+    with patch(
+        "services.mongo_chroma_sync_metrics.get_drift_history",
+        new=AsyncMock(return_value=fake_points),
+    ), patch.object(mod, "_require_owner", return_value={}):
+        from fastapi import Request
+        request = Request({"type": "http", "headers": []})
+        out = await mod.memory_drift_history(request, hours=24)
+
+    assert out["available"] is True
+    assert out["window_hours"] == 24
+    assert out["points"] == fake_points
+    assert out["thresholds"]["investigate_pct"] == mod.THRESHOLD_INVESTIGATE_PCT
+
+
+@pytest.mark.asyncio
+async def test_drift_history_endpoint_unavailable_when_db_missing():
+    """If the global db handle is None, return a structured
+    unavailable payload rather than 500ing — keeps the dashboard
+    graceful through a brief Mongo outage."""
+    from routes import admin_memory_drift as mod
+    from unittest.mock import patch
+
+    saved = mod._db
+    mod._db = None
+    try:
+        with patch.object(mod, "_require_owner", return_value={}):
+            from fastapi import Request
+            request = Request({"type": "http", "headers": []})
+            out = await mod.memory_drift_history(request, hours=24)
+        assert out == {"available": False, "reason": "db_unavailable"}
+    finally:
+        mod._db = saved

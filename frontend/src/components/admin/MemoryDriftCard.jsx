@@ -25,6 +25,7 @@ const API = process.env.REACT_APP_BACKEND_URL;
  */
 export default function MemoryDriftCard() {
   const [data, setData] = useState(null);
+  const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [days, setDays] = useState(30);
@@ -33,12 +34,22 @@ export default function MemoryDriftCard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch(
-        `${API}/api/admin/memory/drift?days=${days}&top_skew=8`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const [driftRes, historyRes] = await Promise.all([
+        authFetch(`${API}/api/admin/memory/drift?days=${days}&top_skew=8`),
+        authFetch(`${API}/api/admin/memory/drift/history?hours=24`),
+      ]);
+      if (!driftRes.ok) throw new Error(`HTTP ${driftRes.status}`);
+      const json = await driftRes.json();
       setData(json);
+      // History is best-effort — sparkline degrades gracefully when
+      // the endpoint isn't available yet (fresh deploy with no
+      // recorded ticks) or the response shape is unexpected.
+      if (historyRes.ok) {
+        const h = await historyRes.json();
+        setHistory(h);
+      } else {
+        setHistory(null);
+      }
     } catch (e) {
       setError(e.message || 'Failed to load drift data');
     } finally {
@@ -145,6 +156,9 @@ export default function MemoryDriftCard() {
         />
       </div>
 
+      {/* Drift trend sparkline (24h) */}
+      <DriftSparkline history={history} thresholds={data.thresholds} />
+
       {/* Per-date skew table */}
       {data.by_date_top_skew && data.by_date_top_skew.length > 0 && (
         <div className="mb-3">
@@ -228,6 +242,130 @@ export default function MemoryDriftCard() {
         <span className="font-mono">risedual.ai</span>
       </div>
     </Card>
+  );
+}
+
+function DriftSparkline({ history, thresholds }) {
+  // Resilient to the no-data path: fresh deploys won't have any
+  // recorded ticks for the first 5 minutes, and an unauthorized /
+  // unavailable response also lands here. Render nothing to keep
+  // the card height stable instead of swallowing space with a
+  // placeholder skeleton.
+  const points = history?.points;
+  if (!Array.isArray(points) || points.length < 2) {
+    return null;
+  }
+
+  const values = points.map((p) => Number(p.drift_pct) || 0);
+  const max = Math.max(...values, 1); // floor at 1% so a flat-zero
+                                       // series still shows a baseline
+  const min = 0;
+  const width = 240;
+  const height = 40;
+  const stepX = points.length > 1 ? width / (points.length - 1) : 0;
+
+  // Color tier from latest sample — matches the recommendation
+  // classifier (ok/investigate/rebuild) so the sparkline reads
+  // semantically without a legend.
+  const latest = values[values.length - 1];
+  const investigatePct = thresholds?.investigate_pct ?? 10;
+  const okPct = thresholds?.ok_pct ?? 1;
+  let stroke = '#34d399'; // emerald
+  let fill = 'rgba(52, 211, 153, 0.15)';
+  if (latest >= investigatePct) {
+    stroke = '#f87171'; // red
+    fill = 'rgba(248, 113, 113, 0.15)';
+  } else if (latest >= okPct) {
+    stroke = '#fbbf24'; // amber
+    fill = 'rgba(251, 191, 36, 0.15)';
+  }
+
+  const norm = (v) => height - ((v - min) / (max - min || 1)) * height;
+  const polyPoints = values
+    .map((v, i) => `${(i * stepX).toFixed(2)},${norm(v).toFixed(2)}`)
+    .join(' ');
+  const areaPoints = `0,${height} ${polyPoints} ${width},${height}`;
+
+  // Reference line at the rebuild threshold (only when within
+  // chart range; otherwise hide so we don't waste pixels on it).
+  const refY = investigatePct <= max ? norm(investigatePct) : null;
+
+  // Drift trend label — first vs last sample
+  const first = values[0];
+  const delta = latest - first;
+  const trendLabel =
+    Math.abs(delta) < 0.05
+      ? 'flat'
+      : delta > 0
+        ? `+${delta.toFixed(2)}pt`
+        : `${delta.toFixed(2)}pt`;
+  const trendColor =
+    Math.abs(delta) < 0.05
+      ? 'text-slate-400'
+      : delta > 0
+        ? 'text-amber-300'
+        : 'text-emerald-300';
+
+  return (
+    <div className="mb-3" data-testid="memory-drift-sparkline">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[9px] text-slate-500 uppercase tracking-wider">
+          Drift Trend · 24h
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[9px] text-slate-500">
+            {points.length} samples
+          </span>
+          <span
+            className={`text-[10px] font-mono tabular-nums ${trendColor}`}
+            data-testid="memory-drift-trend-delta"
+          >
+            {trendLabel}
+          </span>
+        </div>
+      </div>
+      <div className="rounded-md border border-slate-700/40 bg-slate-900/40 p-2">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          height="40"
+          preserveAspectRatio="none"
+        >
+          {refY !== null && (
+            <line
+              x1="0"
+              x2={width}
+              y1={refY}
+              y2={refY}
+              stroke="#f87171"
+              strokeWidth="0.5"
+              strokeDasharray="2,2"
+              opacity="0.5"
+            />
+          )}
+          <polygon points={areaPoints} fill={fill} />
+          <polyline
+            points={polyPoints}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="1.25"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <circle
+            cx={width}
+            cy={norm(latest)}
+            r="2"
+            fill={stroke}
+          />
+        </svg>
+        <div className="flex justify-between text-[9px] text-slate-500 mt-1 font-mono tabular-nums">
+          <span>{values[0].toFixed(2)}%</span>
+          <span>peak {max.toFixed(2)}%</span>
+          <span className="text-slate-300">{latest.toFixed(2)}%</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

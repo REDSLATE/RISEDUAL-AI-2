@@ -27,7 +27,7 @@ instead of in a screenshot four months later.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from services.datetime_utils import ensure_utc
@@ -194,3 +194,112 @@ def _reset_cache_for_tests() -> None:
     read goes through Mongo (or the absence of Mongo)."""
     global _cache
     _cache = None
+
+
+# ── Drift history (Mongo-backed time-series for sparkline) ─────────
+
+# A tiny circular log of drift snapshots so the operator dashboard
+# can show "drift over the last 24 hours" rather than just the
+# instantaneous value. The 5-minute alert watcher writes one row
+# per tick; a TTL index expires rows after 7 days so the collection
+# stays bounded (~2k docs steady-state).
+_HISTORY_COLLECTION = "mongo_chroma_drift_history"
+_HISTORY_TTL_DAYS = 7
+
+
+async def ensure_history_indexes() -> None:
+    """Best-effort index creation for the drift-history collection.
+
+    Two indexes:
+    * ``ts`` descending — sparkline queries scan the recent tail.
+    * ``ts`` TTL (7 days) — bounds the collection without an
+      explicit cleanup job.
+    """
+    db = _get_db()
+    if db is None:
+        return
+    try:
+        await db[_HISTORY_COLLECTION].create_index(
+            [("ts", -1)], name="drift_history_ts_desc"
+        )
+        await db[_HISTORY_COLLECTION].create_index(
+            "ts",
+            expireAfterSeconds=_HISTORY_TTL_DAYS * 24 * 3600,
+            name="drift_history_ts_ttl",
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Index conflicts (e.g. the TTL was created with a different
+        # ``expireAfterSeconds``) are non-fatal — the collection
+        # still works without the perfect index, and a manual drop
+        # is the right fix path. Don't break startup.
+        logger.warning(
+            "[mongo_chroma_sync] drift history index ensure failed: %s",
+            exc,
+        )
+
+
+async def record_drift_sample(
+    *,
+    drift_pct: float,
+    drift: int,
+    mongo_total: int,
+    chroma_total: int,
+    recommendation: Optional[str] = None,
+) -> None:
+    """Persist a single drift snapshot for the dashboard sparkline.
+
+    Called by the 5-minute alert watcher tick. Failure is non-fatal
+    — the watcher must keep running even if Mongo write fails.
+    """
+    db = _get_db()
+    if db is None:
+        return
+    try:
+        await db[_HISTORY_COLLECTION].insert_one({
+            "ts": datetime.now(timezone.utc),
+            "drift_pct": float(drift_pct),
+            "drift": int(drift),
+            "mongo_total": int(mongo_total),
+            "chroma_total": int(chroma_total),
+            "recommendation": recommendation,
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[mongo_chroma_sync] drift history record failed: %s", exc
+        )
+
+
+async def get_drift_history(hours: int = 24) -> list[dict[str, Any]]:
+    """Read drift snapshots over the lookback window.
+
+    Returns rows newest-first with ISO-formatted timestamps so the
+    response is JSON-serializable straight to the wire. Bounded
+    result size; the TTL index keeps the collection capped.
+    """
+    db = _get_db()
+    if db is None:
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    try:
+        cursor = (
+            db[_HISTORY_COLLECTION]
+            .find({"ts": {"$gte": cutoff}}, {"_id": 0})
+            .sort("ts", 1)  # ascending so the sparkline reads left→right
+        )
+        out: list[dict[str, Any]] = []
+        async for doc in cursor:
+            ts = ensure_utc(doc.get("ts"))
+            out.append({
+                "ts": ts.isoformat() if isinstance(ts, datetime) else None,
+                "drift_pct": float(doc.get("drift_pct", 0.0)),
+                "drift": int(doc.get("drift", 0)),
+                "mongo_total": int(doc.get("mongo_total", 0)),
+                "chroma_total": int(doc.get("chroma_total", 0)),
+                "recommendation": doc.get("recommendation"),
+            })
+        return out
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[mongo_chroma_sync] drift history read failed: %s", exc
+        )
+        return []
