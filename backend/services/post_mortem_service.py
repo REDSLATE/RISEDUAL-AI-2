@@ -285,6 +285,12 @@ async def run_and_update_post_mortem(
                     metadatas=cast(list[UpdateMetadata], [meta]),
                 )
     except Exception as e:
+        from services.mongo_chroma_sync_metrics import record_skip
+        record_skip(
+            "post_mortem_chroma_update_failed",
+            doc_id=str(prediction.get("prediction_id") or ""),
+            exc=e,
+        )
         log_warning(logger, {
             "error": str(e),
             "type": type(e).__name__,

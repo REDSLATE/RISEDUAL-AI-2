@@ -366,6 +366,8 @@ async def rebuild_memory_from_mongo(
         {"_id": 0},
     ).limit(limit)
 
+    from services.mongo_chroma_sync_metrics import mark_rebuild, record_skip
+
     rebuilt = 0
     skipped = 0
     async for p in cursor:
@@ -386,7 +388,21 @@ async def rebuild_memory_from_mongo(
                 "prediction_id": p.get("prediction_id"),
             })
             rebuilt += 1
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # Surface every skip — used to vanish silently and force
+            # operators to spot drift via the alert UI.
+            record_skip(
+                "rebuild_save_failed",
+                doc_id=str(p.get("prediction_id") or p.get("symbol") or ""),
+                exc=exc,
+            )
             skipped += 1
 
+    # Stamp the rebuild metadata so the drift detector can correlate
+    # "drift % vs time-since-last-rebuild".
+    mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
+    logger.info(
+        "[memory.rebuild] completed since=%s rebuilt=%d skipped=%d",
+        since, rebuilt, skipped,
+    )
     return {"ok": True, "rebuilt": rebuilt, "skipped": skipped, "since": since}

@@ -749,6 +749,14 @@ async def verify_pending_predictions(db: Any) -> None:
                 }
                 await save_regime(regime)
         except Exception as e:
+            # WARN + structured counter so the next sync regression
+            # surfaces in observability instead of a silent void.
+            from services.mongo_chroma_sync_metrics import record_skip
+            record_skip(
+                "verify_chroma_save_failed",
+                doc_id=str(pred.get("prediction_id") or ""),
+                exc=e,
+            )
             log_warning(logger, {
                 "error": str(e),
                 "type": type(e).__name__,

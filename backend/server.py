@@ -543,8 +543,23 @@ async def _chromadb_warmup():
                     "prediction_id": p.get("prediction_id"),
                 })
                 rebuilt += 1
-            except Exception:
+            except Exception as exc:
+                from services.mongo_chroma_sync_metrics import record_skip
+                record_skip(
+                    "warmup_save_failed",
+                    doc_id=str(p.get("prediction_id") or p.get("symbol") or ""),
+                    exc=exc,
+                )
                 skipped += 1
+
+        # Stamp rebuild metadata so the drift endpoint can
+        # distinguish "expected drift right after rebuild" from
+        # "drift one hour after rebuild → actively broken".
+        try:
+            from services.mongo_chroma_sync_metrics import mark_rebuild
+            mark_rebuild(rebuilt=rebuilt, skipped=skipped, since=since)
+        except Exception:  # noqa: BLE001
+            pass
 
         logger.info(
             f"[chroma_warmup] rehydrated {rebuilt} episodes (skipped {skipped})"

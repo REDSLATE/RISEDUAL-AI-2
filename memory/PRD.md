@@ -23,6 +23,80 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Mongo→Chroma Drift Detector + Sync Hardening Tightenings (Apr 30, 2026)
+
+Three operator-grade follow-ups landed against the sync work:
+
+**1. `_make_id` v1 price canonicalization**
+
+Mongo can hand back a financial field as ``Decimal('180.0')``,
+``Decimal('180.00')``, ``180`` (int), ``180.0`` (float), or
+``"180.00"`` (str) depending on which writer last touched the doc.
+Pre-fix all five hashed differently → up to FIVE ChromaDB rows for
+the same trade. Now coerced through ``f"{float(price):.4f}"`` so all
+five canonicalize to ``"180.0000"``. Test
+``test_make_id_v1_price_canonicalized_across_numeric_types`` pins
+the contract.
+
+**2. Structured sync skip counters**
+
+The four sync sites previously had bare `except: skipped += 1`
+that swallowed every failure into a void. Replaced with
+``services/mongo_chroma_sync_metrics.record_skip(reason, doc_id, exc)``
+which:
+- Bumps an in-process counter keyed by reason
+  (e.g. ``rebuild_save_failed``, ``warmup_save_failed``,
+  ``post_mortem_chroma_update_failed``, ``verify_chroma_save_failed``)
+- Logs at WARN with structured fields so the next regression shows
+  up in observability instead of a screenshot four months later
+
+**3. Drift detector endpoint**
+
+``GET /api/admin/memory/drift?days=30&top_skew=10`` (owner-only).
+Returns:
+```
+{
+  available, window_days,
+  mongo_verified_count, chroma_episode_count,
+  drift,                  # mongo - chroma; positive = sync regression
+  drift_pct,              # max(drift, 0) / mongo * 100
+  recommendation,         # ok / investigate / rebuild
+  thresholds: { ok_pct: 1.0, investigate_pct: 10.0 },
+  by_date_top_skew,       # localizes regression window
+  sync_skipped_total,     # in-process skip counters
+  last_rebuild_at,
+  last_rebuild_summary,   # { rebuilt, skipped, since }
+  computed_at
+}
+```
+
+Sign convention:
+- **Positive drift** (mongo > chroma) = sync silently dropped rows
+  → triggers the recommendation classifier.
+- **Negative drift** (chroma > mongo) = benign over-supply from
+  ``memory_training_service`` yfinance bulk-training → surfaced
+  in the breakdown but never recommends rebuild. Per-date sort
+  ranks positive (actionable) skews above negative ones.
+
+``mark_rebuild()`` is now called by both
+``/api/accuracy/memory/rebuild-from-mongo`` and the startup
+``chroma_warmup`` so the operator can distinguish "8% drift right
+after rebuild = expected" from "8% drift one hour after = actively
+broken".
+
+**Live verified**: endpoint returns real data; current state shows
+0 verified Mongo predictions in the last 30 days vs 371 Chroma
+episodes (the bulk-training ones), drift_pct = 0.0, recommendation
+= "ok" — exactly as designed.
+
+**Tests**: 69/69 green (3 new price-canonicalization, 9 threshold
+parameterizations, 6 drift endpoint cases including negative-drift
+benign handling and positive-skew ranking).
+
+**Operator note**: The first post-fix rebuild is the one that
+actually reconciles state. Run `POST /api/accuracy/memory/rebuild-from-mongo`
+once after this deploy lands.
+
 ### Mongo→Chroma Sync Re-coercion Fix (Apr 30, 2026)
 
 **The bug the user surfaced**: even after fixing the Mongo

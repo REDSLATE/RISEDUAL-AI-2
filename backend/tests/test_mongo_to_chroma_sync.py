@@ -77,6 +77,49 @@ def test_make_id_empty_date_no_longer_collides_with_other_empties():
     assert id_dateless != id_naive
 
 
+def test_make_id_v1_price_canonicalized_across_numeric_types():
+    """Mongo can hand back ``Decimal('180.0')``, ``Decimal('180.00')``,
+    ``180`` (int), ``180.0`` (float), or ``"180.00"`` (str) for a
+    financial field — depending on which writer touched the doc
+    last. Pre-fix these all hashed differently → up to FIVE
+    ChromaDB rows for the same trade. ``f"{float(price):.4f}"``
+    canonicalises to a single ``"180.0000"`` form."""
+    from decimal import Decimal
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    ids = [
+        _make_id({**base, "price": Decimal("180.0")}),
+        _make_id({**base, "price": Decimal("180.00")}),
+        _make_id({**base, "price": 180}),
+        _make_id({**base, "price": 180.0}),
+        _make_id({**base, "price": "180.00"}),
+        _make_id({**base, "price": "180"}),
+    ]
+    assert len(set(ids)) == 1, (
+        "Numeric-type variance produced multiple ids — Decimal/int/"
+        "float/str must all canonicalise to the same key."
+    )
+
+
+def test_make_id_v1_different_prices_still_distinct():
+    """Defensive: the canonicalisation must not collapse genuinely
+    different prices. ``180.00`` and ``180.50`` are different
+    trades."""
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    a = _make_id({**base, "price": 180.0})
+    b = _make_id({**base, "price": 180.5})
+    assert a != b
+
+
+def test_make_id_v1_handles_non_numeric_price_gracefully():
+    """If price is corrupt junk, the v1 path falls back to
+    string-form so the row at least remains addressable instead of
+    raising and breaking the whole save flow."""
+    base = {"symbol": "AAPL", "date": "2026-01-15"}
+    # Should not raise.
+    h = _make_id({**base, "price": "not-a-number"})
+    assert isinstance(h, str) and len(h) == 64
+
+
 # ── save_regime metadata coercion ──────────────────────────────────
 
 

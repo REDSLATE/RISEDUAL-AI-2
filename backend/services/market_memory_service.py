@@ -216,12 +216,27 @@ def _make_id(regime: dict) -> str:
         raw = f"v2|{pred_id}"
     else:
         # v1 fallback: legacy episode-level dedupe. Coerce date so
-        # str/datetime/None all hash identically.
+        # str/datetime/None all hash identically. Coerce price to a
+        # canonical 4-dp float string so ``Decimal('180.0')``,
+        # ``Decimal('180.00')``, ``180.0`` (float), ``180`` (int),
+        # and ``"180.00"`` (str) all hash to the same id — Mongo
+        # gives back any of these shapes for a financial field
+        # depending on which writer last touched it, and the
+        # historic ``str(regime.get("price", ""))`` produced four
+        # different ids for the same trade.
         date_str = to_iso_date(regime.get("date")) or ""
+        price = regime.get("price")
+        try:
+            price_str = f"{float(price):.4f}" if price is not None else ""
+        except (TypeError, ValueError):
+            # Non-numeric junk in the price field — keep the
+            # stringified form so the legacy id remains addressable
+            # even though it's not canonical.
+            price_str = str(price)
         key_parts = [
             str(regime.get("symbol", "") or "").upper(),
             date_str,
-            str(regime.get("price", "") or ""),
+            price_str,
         ]
         raw = "|".join(key_parts)
     return hashlib.sha256(raw.encode()).hexdigest()
