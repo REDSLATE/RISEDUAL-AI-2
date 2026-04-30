@@ -144,6 +144,18 @@ export default function MemoryDriftCard() {
         {recBadge.label}
       </div>
 
+      {/* Drift narrative — translates the raw `drift` number into
+          plain English. Negative drift is the common confusing case
+          (Chroma > Mongo), surfaced inline so the operator doesn't
+          have to remember the sign convention from the footer note. */}
+      <DriftNarrative
+        drift={data.drift}
+        driftPct={data.drift_pct}
+        mongo={data.mongo_verified_count}
+        chroma={data.chroma_episode_count}
+        recommendation={data.recommendation}
+      />
+
       {/* Metric tiles */}
       <div className="grid grid-cols-3 gap-2 mb-3">
         <Tile testid="memory-drift-mongo" label="Mongo verified" value={data.mongo_verified_count.toLocaleString()} />
@@ -244,6 +256,64 @@ export default function MemoryDriftCard() {
     </Card>
   );
 }
+
+function DriftNarrative({ drift, driftPct, mongo, chroma, recommendation }) {
+  // Build a one-sentence explainer keyed on the sign of `drift`.
+  // The card already shows the raw numbers; this translates them
+  // into the operator's mental model.
+  let title;
+  let body;
+  let tone; // controls the left border color
+
+  if (drift === 0) {
+    tone = 'emerald';
+    title = 'Mongo and Chroma are perfectly aligned';
+    body = 'Every verified prediction has a matching ChromaDB episode.';
+  } else if (drift > 0) {
+    // POSITIVE drift = Mongo verified rows that didn't make it into
+    // Chroma. This is the actionable case — sync silently dropped
+    // rows.
+    tone = recommendation === 'rebuild' ? 'red'
+         : recommendation === 'investigate' ? 'amber'
+         : 'amber';
+    title = `Mongo has ${drift.toLocaleString()} more verified prediction${drift === 1 ? '' : 's'} than Chroma episodes`;
+    body = recommendation === 'rebuild'
+      ? `${driftPct}% of recent verified rows are missing from Chroma — sync has materially regressed. Run /api/accuracy/memory/rebuild-from-mongo and re-check.`
+      : `${driftPct}% of recent verified rows aren't represented in Chroma. Review the per-date skew table below to localize the regression window.`;
+  } else {
+    // NEGATIVE drift = Chroma has more episodes than Mongo's verified
+    // set. This is the COMMON case and historically caused operator
+    // confusion ("why is the number negative? is something broken?").
+    // The detector deliberately clamps drift_pct to 0% on this branch
+    // because over-supply is not a corruption signal — it's
+    // architectural by design.
+    tone = 'emerald';
+    const surplus = Math.abs(drift).toLocaleString();
+    title = `Chroma has ${surplus} more episodes than Mongo's verified set`;
+    body = "Expected — Chroma includes unverified training episodes from `memory_training_service`'s yfinance bulk-training that never had a matching Mongo prediction. The detector clamps negative drift to 0% because over-supply isn't a corruption signal.";
+  }
+
+  const toneClasses = {
+    emerald: 'border-emerald-500/40 bg-emerald-500/5 text-emerald-200',
+    amber: 'border-amber-500/40 bg-amber-500/5 text-amber-200',
+    red: 'border-red-500/40 bg-red-500/5 text-red-200',
+  }[tone];
+
+  return (
+    <div
+      data-testid="memory-drift-narrative"
+      className={`mb-3 px-3 py-2 border-l-2 rounded-r-md ${toneClasses}`}
+    >
+      <div className="text-[11px] font-semibold leading-tight mb-1">
+        {title}
+      </div>
+      <div className="text-[10px] leading-relaxed text-slate-300/90">
+        {body}
+      </div>
+    </div>
+  );
+}
+
 
 function DriftSparkline({ history, thresholds }) {
   // Resilient to the no-data path: fresh deploys won't have any
