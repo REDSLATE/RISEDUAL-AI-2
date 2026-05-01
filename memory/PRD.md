@@ -22,6 +22,68 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Multi-action Integrity Mitigation + Slack Activation Notifier (May 1, 2026)
+
+Extended the Integrity Mitigation self-defense layer from a single
+`DEGRADE_TRADING` action to a three-action vocabulary plus a
+best-effort Slack webhook ping on every activation.
+
+**New actions**
+
+* `BLOCK_NEW_BOTS` — while active, `POST /api/bots` and
+  `PATCH /api/bots/{id}/toggle` (with `enabled=true`) return
+  **HTTP 423 Locked** with `error_code: integrity_block_new_bots`.
+  Existing running bots keep going; the gate only blocks new
+  capital commitments and re-enables while the data is suspect.
+  Toggling a bot *off* is always allowed (operators must be able
+  to pause during an incident).
+* `FREEZE_SIZING_OVERRIDES` — while active,
+  `POST /api/admin/guard-shadow/policy/promote` and `/clear`
+  return **HTTP 423** with
+  `error_code: integrity_freeze_sizing_overrides`. Prevents
+  operators from silently loosening per-patent enforcement flags
+  mid-incident — a drift event is precisely when we DON'T want
+  guard-rail flags mutated.
+* `DEGRADE_TRADING` — unchanged from the prior session
+  (multiplier clamp + strong-signal suppression on the crypto bot).
+
+**Slack activation notifier**
+(`services/integrity_mitigation_service._notify_slack_activation`)
+
+* Fires a single card to `SLACK_WEBHOOK_URL` on every activation.
+* Kill-switch: `INTEGRITY_MITIGATION_SLACK_ENABLED=false` silences
+  it without touching the Mongo audit trail.
+* **Anti-black-hole discipline**: a webhook outage NEVER blocks
+  activation — the Mongo row is committed before the notify call,
+  and the wrapper swallows notifier exceptions (pinned by
+  `test_slack_notifier_never_blocks_activation`).
+
+**Schema tightening**
+
+* `AlertRuleUpsert` now validates `mitigation.action` against
+  `SUPPORTED_ACTIONS` at create time — operators can no longer
+  ship a rule with a typoed action that silently no-ops at
+  evaluator time. Unknown actions respond 400 with
+  `error_code: unsupported_mitigation_action` and the supported
+  list.
+
+**Summary endpoint**
+
+`GET /api/admin/data-integrity/summary` → `mitigation` block now
+carries `block_new_bots` and `freeze_sizing_overrides` booleans
+alongside the existing `risk_multiplier` / `suppress_strong_signals`.
+Frontend banner surfaces all four flags + per-item action type +
+operator reason.
+
+**Tests**: 10 pytest cases in `backend/tests/test_integrity_mitigation.py`
+(4 original + 6 new: BLOCK_NEW_BOTS helper, FREEZE_SIZING_OVERRIDES
+helper, 3-action summary rollup, Slack-never-blocks-activation,
+Slack-silenced-by-flag, Slack-silenced-when-webhook-unset).
+Testing agent added 7 API integration tests covering the full
+HTTP gate flow (`iteration_163.json`: **17/17 green**, zero
+critical/minor issues, zero action items). Lint clean across all
+5 modified files.
+
 ### Integrity Mitigation — Self-Defense Layer Closed (May 1, 2026)
 
 Final protection layer of the data-integrity loop: detect drift →
