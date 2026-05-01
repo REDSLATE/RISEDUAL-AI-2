@@ -311,6 +311,48 @@ async def evaluate_rules_once(db: Any) -> dict:
                 "channels": channels,
                 "dispatch_results": channel_results,
             })
+
+            # ── Self-defense activation ──────────────────────────
+            # If the rule carries a ``mitigation`` spec, activate it
+            # now. The mitigation record has its own TTL so even if
+            # a follow-up rule evaluation is throttled, the degrade
+            # mode still auto-expires on schedule. We refresh the
+            # sync cache immediately so the very next position-
+            # sizing call honours the new multiplier without waiting
+            # for the next 15-min evaluator tick.
+            mitigation_spec = rule.get("mitigation")
+            if mitigation_spec:
+                from services.integrity_mitigation_service import (
+                    activate_integrity_mitigation,
+                    refresh_sync_cache,
+                )
+                try:
+                    mid = await activate_integrity_mitigation(
+                        db,
+                        source_rule_id=str(rule.get("rule_id") or rule.get("_id")),
+                        mitigation=mitigation_spec,
+                        ttl_minutes=int(rule.get("mitigation_ttl_minutes", 60)),
+                    )
+                    if mid:
+                        # Backfill the event row with the mitigation
+                        # pointer so the dashboard timeline joins them
+                        # visually (breach → degrade).
+                        await db.data_integrity_alert_events.update_one(
+                            {"rule_id": rule.get("rule_id"),
+                             "fired_at": now.isoformat()},
+                            {"$set": {
+                                "mitigation_id": mid,
+                                "mitigation_action": mitigation_spec.get("action"),
+                                "mitigation_params": mitigation_spec.get("params") or {},
+                            }},
+                        )
+                        await refresh_sync_cache(db)
+                except Exception as exc:
+                    logger.exception(
+                        "[integrity_alert] mitigation activation crashed for "
+                        "rule %s: %s", rule.get("rule_id"), exc,
+                    )
+
             await db.data_integrity_alert_rules.update_one(
                 {"_id": rule["_id"]},
                 {"$set": {

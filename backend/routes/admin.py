@@ -2322,6 +2322,13 @@ class AlertRuleUpsert(BaseModel):
     enabled: bool = True
     throttle_hours: int = 12
     notes: str = ""
+    # Self-defense spec (optional). When present and the rule fires,
+    # `activate_integrity_mitigation` is called with this dict — e.g.
+    #   {"action": "DEGRADE_TRADING",
+    #    "params": {"position_multiplier": 0.5,
+    #               "disable_strong_signals": true}}
+    mitigation: dict | None = None
+    mitigation_ttl_minutes: int = 60
 
 
 @router.get("/data-integrity/alert-rules")
