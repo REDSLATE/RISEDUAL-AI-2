@@ -150,6 +150,26 @@ export default function useChat({ isPro, onLimitReached } = {}) {
         return;
       }
 
+      // HTTP 402 → the ai_service detected an LLM budget exhaustion
+      // on the Emergent Universal Key and mapped it to a structured
+      // payload. Render as an "actionable" assistant message so the
+      // UI pill can render "Top up Universal Key" instead of a raw
+      // "Chat request failed" error. The `error_code` field is what
+      // ChatMessages.jsx keys off to swap renderers.
+      if (res.status === 402) {
+        const errData = await res.json().catch(() => ({}));
+        const payload = errData.detail || errData || {};
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          error_code: payload.error_code || 'llm_budget_exceeded',
+          content: payload.message
+            || 'The Universal Key LLM budget is exhausted. Top up at Profile → Universal Key → Add Balance.',
+          action_url: payload.action_url,
+          action_label: payload.action_label || 'Top up Universal Key',
+        }]);
+        return;
+      }
+
       if (!res.ok) throw new Error('Chat request failed');
       const data = await res.json();
       const aiText = data.response || data.message || 'No response generated.';

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from pydantic import BaseModel
 import logging
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -2298,6 +2299,132 @@ async def run_integrity_audit_now(request: Request):
     summary = await run_nightly_integrity_audit(db)
     summary.pop("_id", None)
     return summary
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DATA INTEGRITY ALERT RULES
+# ═══════════════════════════════════════════════════════════════════
+#
+# Operator-defined threshold alerts on top of the dashboard metrics.
+# Each rule is independently editable from the admin UI; breaches
+# dispatch to email + Slack in parallel subject to per-rule throttle.
+# The rule documents are the same shape the scheduler evaluator
+# reads; see services/data_integrity_alerts.py for the contract.
+
+
+class AlertRuleUpsert(BaseModel):
+    rule_id: str
+    metric: str  # Validated against METRIC_COUNTERS below.
+    window_hours: int = 24
+    threshold: int = 1
+    comparator: str = "gte"  # gte | gt | eq
+    channels: list[str] = []  # "email:<addr>" | "slack"
+    enabled: bool = True
+    throttle_hours: int = 12
+    notes: str = ""
+
+
+@router.get("/data-integrity/alert-rules")
+async def list_alert_rules(request: Request):
+    """Return every alert rule. Sorted most-recently-updated first."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+    cursor = db.data_integrity_alert_rules.find({}).sort("updated_at", -1)
+    rules = []
+    async for r in cursor:
+        r.pop("_id", None)
+        rules.append(r)
+    return {"rules": rules}
+
+
+@router.post("/data-integrity/alert-rules")
+async def upsert_alert_rule(payload: AlertRuleUpsert, request: Request):
+    """Create or update an alert rule, keyed by ``rule_id``."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+
+    from services.data_integrity_alerts import METRIC_COUNTERS
+    if payload.metric not in METRIC_COUNTERS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "unsupported_metric",
+                "supported": sorted(METRIC_COUNTERS.keys()),
+            },
+        )
+    if payload.comparator not in {"gte", "gt", "eq"}:
+        raise HTTPException(status_code=400, detail="comparator must be gte|gt|eq")
+    if payload.window_hours <= 0 or payload.threshold < 0 or payload.throttle_hours < 0:
+        raise HTTPException(status_code=400, detail="window/threshold/throttle must be non-negative")
+    # Channel format sanity — each entry must be "email:<addr>" or
+    # exactly "slack". Unknown channels would silently fail at dispatch.
+    for c in payload.channels:
+        if c == "slack":
+            continue
+        if c.startswith("email:") and "@" in c.split(":", 1)[1]:
+            continue
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported channel {c!r}; use 'email:<addr>' or 'slack'",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        **payload.dict(),
+        "updated_at": now_iso,
+    }
+    existing = await db.data_integrity_alert_rules.find_one({"rule_id": payload.rule_id})
+    if not existing:
+        doc["created_at"] = now_iso
+    await db.data_integrity_alert_rules.update_one(
+        {"rule_id": payload.rule_id},
+        {"$set": doc},
+        upsert=True,
+    )
+    saved = await db.data_integrity_alert_rules.find_one({"rule_id": payload.rule_id})
+    saved.pop("_id", None)
+    return saved
+
+
+@router.delete("/data-integrity/alert-rules/{rule_id}")
+async def delete_alert_rule(rule_id: str, request: Request):
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+    res = await db.data_integrity_alert_rules.delete_one({"rule_id": rule_id})
+    return {"deleted": res.deleted_count > 0, "rule_id": rule_id}
+
+
+@router.post("/data-integrity/alert-rules/evaluate-now")
+async def evaluate_alert_rules_now(request: Request):
+    """Manually run the rule evaluator once. Returns the summary."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+    from services.data_integrity_alerts import evaluate_rules_once
+    return await evaluate_rules_once(db)
+
+
+@router.get("/data-integrity/alert-events")
+async def list_alert_events(request: Request, limit: int = 50):
+    """Recent alert breaches with dispatch results."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+    limit = max(1, min(int(limit or 50), 500))
+    cursor = (
+        db.data_integrity_alert_events
+        .find({})
+        .sort("fired_at", -1)
+        .limit(limit)
+    )
+    events = []
+    async for e in cursor:
+        e.pop("_id", None)
+        events.append(e)
+    return {"events": events, "limit": limit}
 
 
 @router.get("/data-integrity/timeseries")

@@ -77,6 +77,65 @@ def _email_enabled() -> bool:
     ).lower() in {"1", "true", "yes", "on"}
 
 
+async def _dispatch_slack(
+    alert_type: str, title: str, message: str, metadata: dict,
+) -> None:
+    """Best-effort Slack webhook dispatch for actionable drift alerts.
+
+    Off by default — activates only when ``SLACK_WEBHOOK_URL`` is
+    set. Keeps the same alert-type allowlist as email (``jump`` stays
+    Mongo-only to avoid chatops spam). Uses Slack's Block Kit layout
+    so the metadata renders as a structured field table, matching
+    the email template's forensic-value philosophy.
+
+    Never blocks the scheduler tick on a network failure; a 5-second
+    timeout bounds latency, any exception is swallowed and logged.
+    """
+    if alert_type not in _EMAIL_ALERT_TYPES:
+        return
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        return
+    try:
+        import httpx
+        # Block Kit structured payload — section with title, divider,
+        # then fields block for key/value metadata.
+        fields = []
+        for k, v in (metadata or {}).items():
+            fields.append({"type": "mrkdwn", "text": f"*{k}*\n`{v}`"})
+        # Slack limits fields blocks to 10 entries — truncate defensively.
+        fields = fields[:10]
+        blocks: list[dict] = [
+            {"type": "header", "text": {"type": "plain_text",
+                                        "text": f"RISEDUAL · {title}"[:150]}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": message[:2900]}},
+        ]
+        if fields:
+            blocks.append({"type": "section", "fields": fields})
+        blocks.append(
+            {"type": "context",
+             "elements": [{"type": "mrkdwn",
+                           "text": f"alert_type: `{alert_type}`"}]},
+        )
+        payload = {
+            "text": f"RISEDUAL · {title}",  # fallback for clients w/o Block Kit
+            "blocks": blocks,
+        }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(webhook_url, json=payload)
+            if 200 <= resp.status_code < 300:
+                logger.info(
+                    "[drift_alert] slack sent type=%s", alert_type,
+                )
+            else:
+                logger.warning(
+                    "[drift_alert] slack returned %d type=%s",
+                    resp.status_code, alert_type,
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[drift_alert] slack dispatch failed: %s", exc)
+
+
 async def _dispatch_email(
     alert_type: str, title: str, message: str, metadata: dict,
 ) -> None:
@@ -225,11 +284,20 @@ async def _emit(alert_type: str, title: str, message: str,
         logger.warning("[drift_alert] emit failed: %s", exc)
         return
 
-    # Only dispatch the email on the FIRST emit for the day; a
-    # deduped insert means today's alert already went out and the
-    # operator's inbox doesn't need a re-send.
+    # Only dispatch channel notifications on the FIRST emit for the
+    # day; a deduped insert means today's alert already went out and
+    # the operator's inbox / Slack channel don't need a re-send.
+    # Email and Slack run in parallel so a slow provider on one
+    # channel doesn't delay the other. Each has its own enable gate
+    # (DRIFT_ALERT_EMAIL_ENABLED / SLACK_WEBHOOK_URL) so operators
+    # can pick one, both, or neither.
     if not deduped:
-        await _dispatch_email(alert_type, title, message, metadata)
+        import asyncio as _asyncio
+        await _asyncio.gather(
+            _dispatch_email(alert_type, title, message, metadata),
+            _dispatch_slack(alert_type, title, message, metadata),
+            return_exceptions=True,
+        )
 
 
 async def check_and_alert() -> dict:

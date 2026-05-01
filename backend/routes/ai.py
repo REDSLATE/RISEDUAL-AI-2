@@ -133,6 +133,26 @@ async def chat(
         provider_meta = ai_response.get("provider") if isinstance(ai_response, dict) else None
         tools_used = ai_response.get("tools_used") if isinstance(ai_response, dict) else None
 
+        # Budget-exceeded surface: the ai_service signals this with
+        # a structured dict {error: "llm_budget_exceeded"} so the
+        # frontend can render a friendly "Top up Universal Key" pill
+        # instead of a raw 500. HTTP 402 Payment Required is the
+        # semantically-correct status — it tells the caller the
+        # server understood the request but can't fulfil it until
+        # payment. The payload shape below is what
+        # ChatPanel.jsx looks for (`error.response.data.error_code`).
+        if isinstance(ai_response, dict) and ai_response.get("error") == "llm_budget_exceeded":
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error_code": "llm_budget_exceeded",
+                    "message": ai_response.get("detail")
+                        or "Universal Key LLM budget exhausted.",
+                    "action_url": "https://emergent.sh/profile/universal-key",
+                    "action_label": "Top up Universal Key",
+                },
+            )
+
         user_message = ChatMessage(role="user", content=message, image_base64="[image_attached]" if image_base64 else None)
         assistant_message = ChatMessage(role="assistant", content=assistant_text)
 

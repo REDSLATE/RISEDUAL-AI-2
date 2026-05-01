@@ -6,6 +6,7 @@ import { Badge } from '../ui/badge';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import logger from '../../utils/logger';
+import AlertRulesEditor from './AlertRulesEditor';
 
 const API = `${getApiBase()}/api`;
 
@@ -341,6 +342,9 @@ const DataIntegrityPanel = () => {
           </div>
         </div>
       )}
+
+      {/* Alert rules editor — thresholds + channels + live evaluator */}
+      <AlertRulesEditor />
     </Card>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { User, Copy, Check, Pin } from 'lucide-react';
+import { User, Copy, Check, Pin, Zap, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { getApiBase } from '../../utils/apiBase';
 
@@ -18,6 +18,44 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy, isPro, onPin }) => {
       setTimeout(() => setPinned(false), 3000);
     }
   };
+
+  // LLM budget-exceeded banner — the backend returns HTTP 402 with
+  // a structured payload when the Emergent Universal Key budget is
+  // exhausted; `useChat.js` maps that into `msg.error_code` so we
+  // can render an actionable pill instead of a raw error bubble.
+  // Keeps the user in-flow ("ok, one click, I know what to do")
+  // rather than staring at a stack trace.
+  if (!isUser && msg.error_code === 'llm_budget_exceeded') {
+    const href = msg.action_url || 'https://emergent.sh/profile/universal-key';
+    return (
+      <div className="flex gap-2" data-testid={`message-budget-${idx}`}>
+        <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
+        <div className="max-w-[82%] rounded-xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/40 text-amber-100">
+          <div className="flex items-start gap-2">
+            <Zap className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-bold text-amber-300 mb-1">
+                LLM budget exhausted
+              </div>
+              <p className="text-[12px] leading-snug text-amber-100/90">
+                {msg.content}
+              </p>
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/50 hover:bg-amber-400/30 hover:text-amber-100 transition-colors"
+                data-testid={`budget-topup-link-${idx}`}
+              >
+                {msg.action_label || 'Top up Universal Key'}
+                <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex gap-2 ${isUser ? 'justify-end' : ''}`} data-testid={`message-${idx}`}>

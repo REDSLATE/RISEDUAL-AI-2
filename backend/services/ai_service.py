@@ -156,38 +156,103 @@ class AIService:
 
         Returns a dict `{text, provider, [tools_used]}` on the happy path,
         falling back to a plain error string. Callers in `routes/ai.py`
-        branch on `isinstance(response, dict)`."""
-        try:
-            # Route to tools agent for calculation/projection queries (skip if image attached)
-            if not image_base64 and _TOOLS_PATTERN.search(message):
-                try:
-                    from services.financial_tools_agent import FinancialToolsAgent
-                    agent = FinancialToolsAgent(db=self.db)
-                    result = await agent.run(message, session_id)
-                    if result.get("text"):
-                        return result
-                except Exception as e:
-                    logger.warning(f"Tools agent failed, falling back to standard chat: {e}")
+        branch on `isinstance(response, dict)`.
 
-            # Standard chat path
-            failure_warnings = None
-            if user_id:
-                try:
-                    from services.failure_loop_service import build_memory_warnings
-                    failure_warnings = await build_memory_warnings(user_id)
-                except Exception:
-                    pass
+        Observability: every call is wrapped in a Langfuse span so the
+        same operator dashboard that covers Council v2 also covers the
+        AI Chat assistant — latency, provider used, memory-context
+        length, and failure mode are all visible post-hoc. Tracing is
+        no-op when Langfuse env is unset, so this path never adds
+        latency in environments that don't care.
+        """
+        from services.langfuse_tracer import atraced_span, span_update
 
-            system = self._build_system(memory_context, user_id, failure_warnings)
+        async with atraced_span(
+            "ai_chat_assistant",
+            as_type="generation",
+            input=message[:600],
+            metadata={
+                "session_id": session_id,
+                "user_id": user_id or "anon",
+                "has_image": bool(image_base64),
+                "memory_context_chars": len(memory_context or ""),
+                "engine": "ai_service.chat",
+            },
+        ) as gen_span:
+            try:
+                # Route to tools agent for calculation/projection queries (skip if image attached)
+                if not image_base64 and _TOOLS_PATTERN.search(message):
+                    try:
+                        from services.financial_tools_agent import FinancialToolsAgent
+                        agent = FinancialToolsAgent(db=self.db)
+                        result = await agent.run(message, session_id)
+                        if result.get("text"):
+                            span_update(
+                                gen_span,
+                                output={"text_preview": str(result.get("text") or "")[:600],
+                                        "tools_used": result.get("tools_used")},
+                                metadata={"routed_to": "financial_tools_agent", "ok": True},
+                            )
+                            return result
+                    except Exception as e:
+                        logger.warning(f"Tools agent failed, falling back to standard chat: {e}")
 
-            routed = await self.router.run(
-                lambda provider: self._call_provider(provider, message, session_id, system, image_base64)
-            )
-            return {
-                "text": routed["result"],
-                "provider": routed["provider"],
-            }
+                # Standard chat path
+                failure_warnings = None
+                if user_id:
+                    try:
+                        from services.failure_loop_service import build_memory_warnings
+                        failure_warnings = await build_memory_warnings(user_id)
+                    except Exception:
+                        pass
 
-        except Exception as e:
-            logger.error(f"Error in AI chat: {str(e)}")
-            return "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."
+                system = self._build_system(memory_context, user_id, failure_warnings)
+
+                routed = await self.router.run(
+                    lambda provider: self._call_provider(provider, message, session_id, system, image_base64)
+                )
+                span_update(
+                    gen_span,
+                    output={"text_preview": str(routed.get("result") or "")[:600]},
+                    model=routed.get("provider"),
+                    metadata={"routed_to": "standard_chat", "ok": True,
+                              "provider": routed.get("provider")},
+                )
+                return {
+                    "text": routed["result"],
+                    "provider": routed["provider"],
+                }
+
+            except Exception as e:
+                # Detect the specific "LLM budget exceeded" class of
+                # failure so the frontend can render a friendly
+                # "Top up your Universal Key" banner instead of the
+                # raw litellm stack trace. The structured error code
+                # below is what routes/ai.py converts to an HTTP 402
+                # with a payload shape the frontend pill recognises.
+                err_msg = str(e)
+                is_budget_err = (
+                    "Budget has been exceeded" in err_msg
+                    or "Max budget" in err_msg
+                    or "BudgetExceededError" in err_msg
+                )
+                logger.error(f"Error in AI chat: {err_msg}")
+                span_update(
+                    gen_span,
+                    output={"error": err_msg[:500]},
+                    level="ERROR",
+                    status_message=f"{type(e).__name__}: {err_msg[:120]}",
+                    metadata={"budget_exceeded": is_budget_err},
+                )
+                if is_budget_err:
+                    return {
+                        "text": None,
+                        "error": "llm_budget_exceeded",
+                        "provider": None,
+                        "detail": (
+                            "The Universal Key LLM budget is exhausted. "
+                            "Top up at Profile → Universal Key → Add Balance "
+                            "to unblock the AI assistant."
+                        ),
+                    }
+                return "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."

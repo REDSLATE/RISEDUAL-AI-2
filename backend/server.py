@@ -621,6 +621,29 @@ async def _start_schedulers():
             'cron', hour=3, minute=15,
             id='nightly_integrity_audit',
         )
+
+        # Data-integrity alert evaluator — runs every 15 minutes
+        # checking every enabled rule against the same metrics the
+        # admin dashboard reads from. Throttle + event log live on
+        # the rule documents themselves, so this job is safe to
+        # re-run and stateless in memory.
+        async def _run_integrity_alert_evaluator():
+            try:
+                from services.data_integrity_alerts import evaluate_rules_once
+                summary = await evaluate_rules_once(db)
+                if summary.get("fired", 0) > 0:
+                    logging.info(
+                        "[integrity_alerts] fired %d rule(s); throttled=%d errors=%d",
+                        summary["fired"], summary.get("throttled", 0),
+                        summary.get("errors", 0),
+                    )
+            except Exception:
+                logging.exception("integrity_alert_evaluator failed (non-critical)")
+        scheduler.add_job(
+            _run_integrity_alert_evaluator,
+            'interval', minutes=15,
+            id='integrity_alert_evaluator',
+        )
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
