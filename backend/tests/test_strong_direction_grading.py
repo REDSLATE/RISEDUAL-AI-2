@@ -21,6 +21,7 @@ import pytest
 
 from services.prediction_tracker import (
     grade_prediction,
+    canonical_ai_dir,
     DIRECTION_BULLISH,
     DIRECTION_BEARISH,
 )
@@ -151,3 +152,75 @@ def test_every_bearish_alias_grades_falling_price_as_hit(direction):
         price_at_prediction=100.0,
         price_now=90.0,  # -10%
     ) in {"STRONG_HIT", "WEAK_HIT"}
+
+
+# ── canonical_ai_dir: the centralised LONG/SHORT/UNKNOWN mapping ───
+#
+# This helper replaces the scattered hardcoded direction tuples that
+# used to live in `prediction_tracker.py:654`, `research_shadow.py`,
+# and friends. Every service that needs to map a verdict token to a
+# trade side must go through `canonical_ai_dir`. The tests below pin
+# that contract.
+
+
+def test_canonical_strong_buy_maps_to_long():
+    assert canonical_ai_dir("STRONG_BUY") == "LONG"
+
+
+def test_canonical_weak_buy_maps_to_long():
+    assert canonical_ai_dir("WEAK_BUY") == "LONG"
+
+
+def test_canonical_strong_sell_maps_to_short():
+    assert canonical_ai_dir("STRONG_SELL") == "SHORT"
+
+
+def test_canonical_weak_sell_maps_to_short():
+    assert canonical_ai_dir("WEAK_SELL") == "SHORT"
+
+
+def test_canonical_buy_alias_maps_to_long():
+    """Legacy BUY/LONG/BULLISH tokens still resolve."""
+    assert canonical_ai_dir("BUY") == "LONG"
+    assert canonical_ai_dir("BULLISH") == "LONG"
+    assert canonical_ai_dir("LONG") == "LONG"
+    assert canonical_ai_dir("UP") == "LONG"
+
+
+def test_canonical_sell_alias_maps_to_short():
+    assert canonical_ai_dir("SELL") == "SHORT"
+    assert canonical_ai_dir("BEARISH") == "SHORT"
+    assert canonical_ai_dir("SHORT") == "SHORT"
+    assert canonical_ai_dir("DOWN") == "SHORT"
+
+
+def test_canonical_hold_returns_unknown():
+    """HOLD is NOT a trade side — must NOT default to SHORT.
+
+    The pre-fix tuple ``("BUY", "LONG", "BULLISH")`` defaulted every
+    non-bullish token to SHORT, including HOLD. That's how the
+    LearningEngine ended up with phantom SHORT pending trades whose
+    prediction was actually "wait it out".
+    """
+    assert canonical_ai_dir("HOLD") == "UNKNOWN"
+    assert canonical_ai_dir("WAIT") == "UNKNOWN"
+    assert canonical_ai_dir("NEUTRAL") == "UNKNOWN"
+
+
+def test_canonical_empty_returns_unknown():
+    assert canonical_ai_dir("") == "UNKNOWN"
+    assert canonical_ai_dir(None) == "UNKNOWN"
+    assert canonical_ai_dir("   ") == "UNKNOWN"
+
+
+def test_canonical_unknown_token_returns_unknown_not_short():
+    """The whole point of the centralised helper: unknown tokens
+    must NOT silently default to SHORT. Caller skips, doesn't guess."""
+    assert canonical_ai_dir("MAYBE_KIND_OF_BUY") == "UNKNOWN"
+    assert canonical_ai_dir("STRONG_MAYBE") == "UNKNOWN"
+
+
+def test_canonical_handles_mixed_case_and_whitespace():
+    assert canonical_ai_dir("strong_buy") == "LONG"
+    assert canonical_ai_dir(" Strong_Sell ") == "SHORT"
+    assert canonical_ai_dir("\tBUY\n") == "LONG"

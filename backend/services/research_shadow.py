@@ -117,9 +117,19 @@ LLM_SHADOW_MIN_GAP_S: int = _env_int("SHADOW_LLM_MIN_GAP_S", 60)
 # 4-bucket canonical alphabet. Each engine is free to be expressive
 # in its raw output; the dissent detector and scorer work in
 # canonical space only.
+#
+# MUST include every verdict token the AI verdict pipeline emits — pre-
+# 2026-05-01 STRONG_BUY / WEAK_BUY / STRONG_SELL / WEAK_SELL silently
+# fell through the `.get(..., "HOLD")` default at the bottom of
+# `canonicalise_action`, corrupting every shadow record from a
+# STRONG_*-emitting engine into a phantom HOLD. Same bug class as
+# `prediction_tracker.canonical_ai_dir` — see that helper for the
+# centralized pattern.
 _CANONICAL_ACTIONS: dict[str, str] = {
     "LONG": "LONG", "BUY": "LONG", "ENTRY_LONG": "LONG",
+    "STRONG_BUY": "LONG", "WEAK_BUY": "LONG",
     "SHORT": "SHORT", "SELL": "SHORT", "ENTRY_SHORT": "SHORT",
+    "STRONG_SELL": "SHORT", "WEAK_SELL": "SHORT",
     "SHORT_OR_AVOID": "SHORT",  # adversarial commander spelling
     "HOLD": "HOLD", "WAIT": "HOLD", "NO_TRADE": "HOLD", "NEUTRAL": "HOLD",
     "CLOSE": "CLOSE", "EXIT": "CLOSE", "FLAT": "CLOSE",

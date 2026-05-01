@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 #
 # Other modules already had the right sets (`ai_core_engine.py` and
 # `toxic_autopsy_service.py`); only this file was out of sync.
+#
+# Direction canonicalization is centralized here — `canonical_ai_dir`
+# below is the single source of truth for any service that needs to
+# turn a verdict token into a "LONG"/"SHORT"/"UNKNOWN" trade side.
+# Add new aliases here, NOT in caller-side tuples.
 DIRECTION_BULLISH = {
     "BUY", "BULLISH", "LONG", "UP",
     "STRONG_BUY", "WEAK_BUY",
@@ -44,6 +49,33 @@ DIRECTION_BEARISH = {
     "STRONG_SELL", "WEAK_SELL",
 }
 DIRECTION_NEUTRAL = {"HOLD", "NEUTRAL", "WAIT"}
+
+
+def canonical_ai_dir(direction: Any) -> str:
+    """Map any verdict token to its canonical trade side.
+
+    Returns "LONG" / "SHORT" / "UNKNOWN". Callers that resolve trades
+    against the LearningEngine should treat "UNKNOWN" as a skip (NOT
+    a default to SHORT) — silently mapping unknown tokens to a side
+    is exactly what produced the "win=4 / pnl_sum=-1.96" anomaly in
+    `_LE_STATS` (see scripts/recompute_learning_engine_stats.py for
+    the post-mortem).
+
+    >>> canonical_ai_dir("STRONG_BUY")
+    'LONG'
+    >>> canonical_ai_dir("WEAK_SELL")
+    'SHORT'
+    >>> canonical_ai_dir("HOLD")
+    'UNKNOWN'
+    >>> canonical_ai_dir(None)
+    'UNKNOWN'
+    """
+    d = str(direction or "").upper().strip()
+    if d in DIRECTION_BULLISH:
+        return "LONG"
+    if d in DIRECTION_BEARISH:
+        return "SHORT"
+    return "UNKNOWN"
 
 # ── Failure Mode Classification ──
 FAILURE_MODES = {
@@ -303,6 +335,19 @@ def grade_prediction(direction: str, price_at_prediction: float,
             return "STRONG_MISS"
         return "WEAK_MISS"
 
+    # Unknown direction token — scream loudly. Pre-2026-05-01 this was
+    # a silent fallthrough that auto-graded every STRONG_*/WEAK_* row
+    # as STRONG_MISS for ~4 weeks before anyone noticed. The warning
+    # below makes any future regression visible in the logs the moment
+    # an unmapped token appears, instead of being buried in toxic-spike
+    # alerts months later.
+    logger.warning(
+        "[grade_prediction] unknown direction token %r — "
+        "auto-grading STRONG_MISS. Add it to DIRECTION_BULLISH / "
+        "DIRECTION_BEARISH / DIRECTION_NEUTRAL or fix the upstream "
+        "verdict emitter.",
+        direction,
+    )
     return "STRONG_MISS"  # unknown direction → conservative
 
 
@@ -650,8 +695,17 @@ async def verify_pending_predictions(db: Any) -> None:
         # a silent no-op (prediction from a non-trade source is fine).
         try:
             from ai_core.learning_engine import _TRADES as _LE_TRADES, _STATS as _LE_STATS, _STATS_DOC_ID as _LE_DOC
-            direction = (pred.get("direction") or "").upper()
-            ai_dir = "LONG" if direction in ("BUY", "LONG", "BULLISH") else "SHORT"
+            ai_dir = canonical_ai_dir(pred.get("direction"))
+            if ai_dir == "UNKNOWN":
+                # Don't fall back to SHORT — that was the second leg
+                # of the 2026-05-01 direction-token bug. Skip
+                # resolution loudly so the upstream emitter gets fixed.
+                logger.warning(
+                    "[learning-engine] skipping resolve — unknown "
+                    "prediction direction %r for %s/%s",
+                    pred.get("direction"), pred.get("feature"), pred.get("symbol"),
+                )
+                continue
             pnl = (price_now - pred["price_at_prediction"]) if ai_dir == "LONG" else (pred["price_at_prediction"] - price_now)
             # r_multiple: when we know a stop_loss was attached to the
             # trade record (ai_core stamps it on log_trade). Fall back
