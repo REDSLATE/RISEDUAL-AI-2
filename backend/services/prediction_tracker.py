@@ -20,9 +20,29 @@ from services.structured_log import log_error, log_warning
 
 logger = logging.getLogger(__name__)
 
-# Direction classification constants
-DIRECTION_BULLISH = {"BUY", "BULLISH", "LONG", "UP"}
-DIRECTION_BEARISH = {"SELL", "BEARISH", "SHORT", "DOWN"}
+# Direction classification constants.
+#
+# These sets MUST stay aligned with the upstream verdict tokens emitted
+# by `signal_dispatcher` and the AI verdict pipeline (which write
+# `STRONG_BUY` / `WEAK_BUY` / `STRONG_SELL` / `WEAK_SELL` straight into
+# the `direction` field). Pre-2026-05-01 these tokens were missing here,
+# so `grade_prediction` fell through to the `unknown direction →
+# STRONG_MISS` safety net at line ~286 and graded every STRONG_* /
+# WEAK_* prediction as a miss regardless of price movement. That bug
+# was the source of the persistent "Toxic Spikes Alert" emails the
+# operator kept seeing — not a model-overconfidence problem, a label
+# corruption problem in the verification path.
+#
+# Other modules already had the right sets (`ai_core_engine.py` and
+# `toxic_autopsy_service.py`); only this file was out of sync.
+DIRECTION_BULLISH = {
+    "BUY", "BULLISH", "LONG", "UP",
+    "STRONG_BUY", "WEAK_BUY",
+}
+DIRECTION_BEARISH = {
+    "SELL", "BEARISH", "SHORT", "DOWN",
+    "STRONG_SELL", "WEAK_SELL",
+}
 DIRECTION_NEUTRAL = {"HOLD", "NEUTRAL", "WAIT"}
 
 # ── Failure Mode Classification ──
