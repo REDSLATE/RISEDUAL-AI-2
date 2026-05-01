@@ -22,6 +22,73 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Integrity Mitigation — Self-Defense Layer Closed (May 1, 2026)
+
+Final protection layer of the data-integrity loop: detect drift →
+alert → **auto-activate mitigation → reduce risk / suppress strong
+signals → auto-expire → audit trail**. The service file
+(`backend/services/integrity_mitigation_service.py`) and evaluator
+hook were already in place from the prior session; this iteration
+closed the wiring on the five remaining endpoints.
+
+**1. Crypto-bot sizing honours the effective multiplier**
+
+`services/crypto_paper_trader.py::_process_one_symbol` now, after
+the adversarial sizing but before the Patent-K/M/I guard, reads
+`get_effective_integrity_risk_multiplier(db)` and
+`should_suppress_strong_signals(db)`. If suppression is active and
+the raw signal direction is STRONG_BUY/STRONG_SELL OR confidence
+≥ 0.90, the trade is downgraded to HOLD with reason
+`integrity_suppress_strong`. Otherwise the effective multiplier
+clamps the notional. Lookup is wrapped so a mitigation-read
+failure never blocks a trade (fail-open is safer than paralyzing
+the fleet).
+
+**2. Admin summary surfaces the mitigation state**
+
+`GET /api/admin/data-integrity/summary` now returns a `mitigation`
+block (active, active_count, risk_multiplier,
+suppress_strong_signals, items[]) via
+`summarize_integrity_mitigation_state`. Default (nothing active)
+is the strict no-op shape: `{active:false, active_count:0,
+risk_multiplier:1.0, suppress_strong_signals:false, items:[]}`.
+
+**3. 5-minute TTL sweep scheduler**
+
+New APScheduler job `integrity_mitigation_sweep` runs every 5
+minutes, calling `expire_integrity_mitigations` +
+`refresh_sync_cache`. This narrows the worst-case window between
+a mitigation's TTL elapsing and the sync-side sizing cache
+reflecting it from ≤15 min (alert evaluator cadence) to ≤5 min.
+
+**4. Frontend amber banner**
+
+`DataIntegrityPanel.jsx` renders an amber
+`[data-testid=integrity-mitigation-banner]` when
+`summary.mitigation.active === true`, showing risk multiplier,
+suppress flag, active-rule count, and per-item source_rule_id +
+expires_at + params. Header badge also flips to "Mitigation
+active" (amber) instead of "Action needed" (orange) so operators
+can distinguish "we auto-defended" from "we need you now".
+
+**5. Pytest suite (4 tests + 7 API tests)**
+
+`backend/tests/test_integrity_mitigation.py` pins the four
+invariants: (1) multiplier defaults to 1.0 when nothing active,
+(2) activate clamps + TTL flips to inactive (never deleted —
+audit trail preserved), (3) `should_suppress_strong_signals`
+requires the explicit opt-in flag (silence by default), (4)
+multiplier clamps to [0.25, 1.0] and unsupported actions are a
+no-op insert. Testing agent added
+`test_integrity_mitigation_api.py` covering the full HTTP flow
+(login → create rule with mitigation → evaluate-now → summary
+reflects active → cleanup → TTL expire returns to defaults).
+
+**Testing agent verdict** (`iteration_162.json`): 11/11 green
+(4 unit + 7 API), zero critical/minor issues, zero action items.
+Lint clean across all 5 modified files. Backend restart
+succeeded without service regressions.
+
 ### War Room Hub — Unified Search (Option A) (Feb 28, 2026)
 
 A single ticker entry at the top of the War Room hub now fans out to
