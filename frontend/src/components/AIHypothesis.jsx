@@ -24,7 +24,7 @@ const AI_MODELS = [
   { key: 'consensus', label: 'Consensus Mode', provider: 'All 3 Models', icon: Network, color: 'text-violet-300', bg: 'bg-violet-900/30', free: false },
 ];
 
-const AIHypothesis = ({ onSubscribe, onLogin }) => {
+const AIHypothesis = ({ onSubscribe, onLogin, prefetched }) => {
   const { user, isPro } = useAuth();
   const [symbol, setSymbol] = useState('');
   const [hypothesis, setHypothesis] = useState(null);
@@ -35,9 +35,18 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const searchRef = useRef(null);
 
-  // Deep-link hook: dispatch `risedualai-warroom` with `detail: TICKER` from
-  // anywhere in the app to jump here AND auto-run the hypothesis.
+  // When the WarRoomHub orchestrates a unified search, override
+  // internal state with the prefetched bundle. Standalone usages
+  // (ResearchHub) pass nothing → component fetches on its own.
+  const isControlled = !!prefetched;
+  const effSymbol = isControlled ? (prefetched.symbol || '') : symbol;
+  const effHypothesis = isControlled ? prefetched.data : hypothesis;
+  const effLoading = isControlled ? !!prefetched.loading : loading;
+  const effError = isControlled ? (prefetched.error || '') : error;
+
+  // Deep-link hook — disabled when controlled (the hub owns search routing).
   useEffect(() => {
+    if (isControlled) return;
     const handler = (e) => {
       const t = (e?.detail || '').toString().trim().toUpperCase();
       if (!t) return;
@@ -46,7 +55,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
     };
     window.addEventListener('risedualai-warroom', handler);
     return () => window.removeEventListener('risedualai-warroom', handler);
-  }, []);
+  }, [isControlled]);
 
   const currentModel = AI_MODELS.find(m => m.key === selectedModel) || AI_MODELS[0];
 
@@ -115,43 +124,47 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         )}
       </div>
 
-      {/* Model Selector */}
-      <ModelSelector
-        models={AI_MODELS}
-        selectedModel={selectedModel}
-        onSelect={setSelectedModel}
-        isPro={isPro}
-        onSubscribe={onSubscribe}
-        showPicker={showModelPicker}
-        setShowPicker={setShowModelPicker}
-      />
+      {/* Model Selector — hidden when controlled (hub uses default model). */}
+      {!isControlled && (
+        <ModelSelector
+          models={AI_MODELS}
+          selectedModel={selectedModel}
+          onSelect={setSelectedModel}
+          isPro={isPro}
+          onSubscribe={onSubscribe}
+          showPicker={showModelPicker}
+          setShowPicker={setShowModelPicker}
+        />
+      )}
 
-      {/* Search */}
-      <form onSubmit={search} className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <Input
-            placeholder="Enter ticker (AAPL, BTC, TSLA...)"
-            value={symbol}
-            onChange={e => setSymbol(e.target.value.toUpperCase())}
-            className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl"
-            data-testid="hypothesis-search"
-          />
-        </div>
-        <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-6" data-testid="hypothesis-submit">
-          {loading ? (selectedModel === 'consensus' ? 'Running 3 Models...' : 'Analyzing...') : 'Analyze'}
-        </Button>
-      </form>
+      {/* Search — hidden when controlled by WarRoomHub */}
+      {!isControlled && (
+        <form onSubmit={search} className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <Input
+              placeholder="Enter ticker (AAPL, BTC, TSLA...)"
+              value={symbol}
+              onChange={e => setSymbol(e.target.value.toUpperCase())}
+              className="pl-10 bg-slate-800 border-slate-600 text-white rounded-xl"
+              data-testid="hypothesis-search"
+            />
+          </div>
+          <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-6" data-testid="hypothesis-submit">
+            {loading ? (selectedModel === 'consensus' ? 'Running 3 Models...' : 'Analyzing...') : 'Analyze'}
+          </Button>
+        </form>
+      )}
 
       {/* Loading */}
-      {loading && (
+      {effLoading && (
         <Card className="bg-slate-700/60 border-slate-400/30/40 rounded-xl p-8 text-center">
           <div className="animate-pulse space-y-3">
             <currentModel.icon className={`w-8 h-8 ${currentModel.color} mx-auto animate-spin`} />
             <p className="text-white font-medium">
               {selectedModel === 'consensus'
-                ? `Running GPT-5.2, Claude Sonnet 4.5, and Gemini Pro on ${symbol.toUpperCase()}...`
-                : `${currentModel.label} is analyzing ${symbol.toUpperCase()}...`}
+                ? `Running GPT-5.2, Claude Sonnet 4.5, and Gemini Pro on ${effSymbol.toUpperCase()}...`
+                : `${currentModel.label} is analyzing ${effSymbol.toUpperCase()}...`}
             </p>
             <p className="text-slate-300 text-sm">
               {selectedModel === 'consensus'
@@ -162,17 +175,25 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
         </Card>
       )}
 
-      {error && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{error}</div>}
+      {effError && <div className="bg-orange-800 border border-orange-700/50 text-orange-400 text-sm p-3 rounded-lg">{effError}</div>}
+
+      {/* Empty state when controlled and no search yet */}
+      {isControlled && !effLoading && !effError && !effHypothesis && (
+        <Card className="bg-slate-700/60 border-slate-400/30 rounded-xl p-8 text-center">
+          <Sparkles className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+          <p className="text-slate-400 text-sm">Enter a ticker in the unified search above to generate a hypothesis</p>
+        </Card>
+      )}
 
       {/* Locked State (Free User) */}
-      {hypothesis && !hypothesis.is_pro && (
-        <HypothesisLocked hypothesis={hypothesis} user={user} onLogin={onLogin} onSubscribe={onSubscribe} />
+      {effHypothesis && !effHypothesis.is_pro && (
+        <HypothesisLocked hypothesis={effHypothesis} user={user} onLogin={onLogin} onSubscribe={onSubscribe} />
       )}
 
       {/* Full Hypothesis (Pro User) */}
-      {hypothesis && hypothesis.is_pro && (
+      {effHypothesis && effHypothesis.is_pro && (
         <HypothesisResults
-          hypothesis={hypothesis}
+          hypothesis={effHypothesis}
           currentModel={currentModel}
           models={AI_MODELS}
           onExport={exportReport}
