@@ -37,7 +37,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from services.market_memory_service import (
-    init_market_memory,
+    init_memory,
     _make_id,
 )
 import services.market_memory_service as _mms
@@ -89,7 +89,7 @@ async def run(*, dry_run: bool) -> dict:
     client = AsyncIOMotorClient(mongo_url)
     db = client[db_name]
 
-    init_market_memory(db, persist_directory=os.environ.get("CHROMA_PERSIST_DIR"))
+    init_memory(mongo_db=db)
     coll = _mms._collection
     if coll is None:
         logger.error("ChromaDB collection not initialised — aborting.")
