@@ -149,11 +149,13 @@ const DataIntegrityPanel = () => {
     toxic_lessons = {},
     brute_force = {},
     latest_nightly_audit: audit,
+    mitigation = {},
   } = data;
 
   const udt24h = udt.last_24h ?? 0;
   const udt7d = udt.last_7d ?? 0;
-  const overallOk = udt24h === 0 && (audit?.overall_passed ?? true);
+  const mitigationActive = Boolean(mitigation?.active);
+  const overallOk = udt24h === 0 && (audit?.overall_passed ?? true) && !mitigationActive;
 
   const Stat = ({ label, value, tone = 'default', testid, spark, sparkTone }) => {
     const toneCls =
@@ -197,6 +199,13 @@ const DataIntegrityPanel = () => {
             <Badge className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px]">
               <CheckCircle2 className="w-3 h-3 mr-1" /> All invariants passing
             </Badge>
+          ) : mitigationActive ? (
+            <Badge
+              className="bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px]"
+              data-testid="integrity-mitigation-badge"
+            >
+              <AlertTriangle className="w-3 h-3 mr-1" /> Mitigation active
+            </Badge>
           ) : (
             <Badge className="bg-orange-500/15 text-orange-300 border border-orange-500/30 text-[10px]">
               <AlertTriangle className="w-3 h-3 mr-1" /> Action needed
@@ -213,6 +222,57 @@ const DataIntegrityPanel = () => {
           </Button>
         </div>
       </div>
+
+      {/* Integrity-mitigation banner — fires when the self-defense
+          layer has auto-activated a DEGRADE_TRADING response to a
+          tripped alert rule. Amber to convey "we're still trading,
+          but at reduced size until the TTL elapses." */}
+      {mitigationActive && (
+        <div
+          className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-3 flex items-start gap-3"
+          data-testid="integrity-mitigation-banner"
+        >
+          <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-amber-200">
+              Integrity mitigation active · trading degraded
+            </div>
+            <div className="text-[11px] text-amber-100/80 mt-1 font-mono">
+              risk multiplier ×{(mitigation.risk_multiplier ?? 1.0).toFixed(2)}
+              {mitigation.suppress_strong_signals
+                ? ' · strong signals suppressed'
+                : ''}
+              {' · '}{mitigation.active_count ?? 0} active rule{(mitigation.active_count ?? 0) === 1 ? '' : 's'}
+            </div>
+            {Array.isArray(mitigation.items) && mitigation.items.length > 0 && (
+              <div
+                className="mt-2 space-y-1"
+                data-testid="integrity-mitigation-items"
+              >
+                {mitigation.items.map((item, idx) => (
+                  <div
+                    key={`${item.source_rule_id}-${item.activated_at}-${idx}`}
+                    className="text-[10px] text-amber-100/70 font-mono flex flex-wrap gap-x-3"
+                  >
+                    <span>rule: <span className="text-amber-200">{item.source_rule_id}</span></span>
+                    <span>
+                      expires: {item.expires_at
+                        ? new Date(item.expires_at).toLocaleTimeString()
+                        : '—'}
+                    </span>
+                    {item.params?.position_multiplier != null && (
+                      <span>multiplier: ×{Number(item.params.position_multiplier).toFixed(2)}</span>
+                    )}
+                    {item.params?.disable_strong_signals && (
+                      <span className="text-amber-200">disable_strong=true</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Core metric grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

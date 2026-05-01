@@ -423,6 +423,58 @@ async def run_crypto_symbol(
     # phase preserves identical behaviour to the pre-adversarial code.
     size_usd = round(size_usd * size_multiplier, 2)
 
+    # ── Integrity Mitigation (self-defense layer) ────────────────
+    # When a data-integrity alert rule has fired with a mitigation
+    # spec, every subsequent paper trade is scaled down (or strong
+    # signals are fully suppressed) until the mitigation's TTL
+    # elapses. This is the final protection layer of the data-
+    # integrity loop: detect drift → alert → activate mitigation →
+    # reduce risk → auto-expire → audit trail. Failure of the
+    # mitigation read NEVER blocks a trade; a logging hiccup can't
+    # paralyse the fleet.
+    try:
+        from services.integrity_mitigation_service import (
+            get_effective_integrity_risk_multiplier,
+            should_suppress_strong_signals,
+        )
+        from services.prediction_tracker import canonical_ai_dir as _canon
+        _mitig_multiplier = await get_effective_integrity_risk_multiplier(db)
+        _suppress_strong = await should_suppress_strong_signals(db)
+
+        # Strong-signal suppression: a signal is "strong" if its raw
+        # direction token is STRONG_BUY/STRONG_SELL OR confidence
+        # clears the 0.90 threshold (the bot's working definition of
+        # high-conviction). Downgrading to HOLD prevents amplifying
+        # conviction during a period where the data is suspect.
+        _raw_dir = str(signal.get("direction", "")).upper()
+        _is_strong_dir = _raw_dir in ("STRONG_BUY", "STRONG_SELL")
+        _is_strong_conf = float(signal.get("confidence") or 0.0) >= 0.90
+        if _suppress_strong and (_is_strong_dir or _is_strong_conf) and _canon(_raw_dir) in ("LONG", "SHORT"):
+            logger.warning(
+                "[integrity_mitigation] SUPPRESSED strong signal symbol=%s "
+                "direction=%s confidence=%.2f",
+                symbol, _raw_dir, float(signal.get("confidence") or 0.0),
+            )
+            await log_adversarial_decision(
+                db, symbol=symbol, signal=signal, final_direction="HOLD",
+            )
+            return {
+                "symbol": symbol, "skipped": True,
+                "reason": "integrity_suppress_strong",
+                "mitigation_multiplier": _mitig_multiplier,
+            }
+
+        # Multiplier clamp — applied after the strategist + adversarial
+        # sizing so degrade mode is visible in the final notional.
+        if _mitig_multiplier < 1.0:
+            size_usd = round(size_usd * _mitig_multiplier, 2)
+            logger.info(
+                "[integrity_mitigation] size scaled symbol=%s multiplier=%.2f size_usd=%.2f",
+                symbol, _mitig_multiplier, size_usd,
+            )
+    except Exception as e:  # noqa: BLE001 — never block a trade on mitigation lookup
+        logger.warning("[integrity_mitigation] lookup failed, proceeding un-mitigated: %s", e)
+
     # ── Patent J/K/M/I — Decision Pipeline Guard ─────────────────────
     # Full guard: Patent K (adversarial enforcement), Patent M
     # (failure-mode classification), Patent I (authority-scoped risk

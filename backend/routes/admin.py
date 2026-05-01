@@ -2259,6 +2259,18 @@ async def data_integrity_summary(request: Request):
         ])
     ]
 
+    # 6) integrity mitigation state — the self-defense layer surfaced
+    # so the dashboard banner can render "degraded trading active"
+    # without needing a separate endpoint.
+    mitigation_state = {"active": False, "active_count": 0}
+    try:
+        from services.integrity_mitigation_service import (
+            summarize_integrity_mitigation_state,
+        )
+        mitigation_state = await summarize_integrity_mitigation_state(db)
+    except Exception as e:
+        logger.warning("data_integrity: mitigation probe failed: %s", e)
+
     return {
         "as_of": now.isoformat(),
         "unknown_direction_tokens": {
@@ -2282,6 +2294,7 @@ async def data_integrity_summary(request: Request):
             "top_offenders_7d": bf_top,
         },
         "latest_nightly_audit": latest_audit,
+        "mitigation": mitigation_state,
     }
 
 

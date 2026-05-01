@@ -644,6 +644,28 @@ async def _start_schedulers():
             'interval', minutes=15,
             id='integrity_alert_evaluator',
         )
+
+        # Integrity-mitigation TTL sweep — runs every 5 minutes so
+        # the admin dashboard, position sizer, and strong-signal
+        # suppressor see an expired mitigation within ≤5min of its
+        # TTL instead of waiting for the next alert evaluation.
+        # Also primes the sync-side cache used by pure-math sizing
+        # paths that can't await. No-ops when nothing is active.
+        async def _run_integrity_mitigation_sweep():
+            try:
+                from services.integrity_mitigation_service import (
+                    expire_integrity_mitigations,
+                    refresh_sync_cache,
+                )
+                await expire_integrity_mitigations(db)
+                await refresh_sync_cache(db)
+            except Exception:
+                logging.exception("integrity_mitigation_sweep failed (non-critical)")
+        scheduler.add_job(
+            _run_integrity_mitigation_sweep,
+            'interval', minutes=5,
+            id='integrity_mitigation_sweep',
+        )
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
