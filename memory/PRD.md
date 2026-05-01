@@ -22,6 +22,46 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### War Room Hub — Unified Search (Option A) (Feb 28, 2026)
+
+A single ticker entry at the top of the War Room hub now fans out to
+the three per-symbol surfaces (Adversarial AI, Hypothesis,
+Intelligence) in parallel via frontend `Promise.all`. Eliminates the
+2–5 second delay that previously happened every time a user switched
+tabs and re-typed the ticker.
+
+**Why "Option A" (frontend prefetch) over a backend aggregator:**
+The three endpoints don't share data sources (War Room hits AlphaVantage
++ Finnhub, Hypothesis scrapes news, Intelligence runs ML inference) so
+a backend bundle would not save compute. Frontend `Promise.all` keeps
+each panel independent — one slow upstream doesn't block the others
+and partial failures degrade per-panel.
+
+**Implementation:**
+
+- `frontend/src/components/hubs/WarRoomHub.jsx` — added `runUnifiedSearch`
+  that fires `/api/intelligence/war-room/{sym}`, `/api/hypothesis/{sym}?model=gpt-5.2`,
+  and `/api/intelligence/{patterns,brief}/{sym}` independently. Each panel
+  gets its own loading/error/data slice and renders as it resolves.
+- `AIWarRoom.jsx`, `AIHypothesis.jsx`, `AIIntelligence.jsx` — accept an
+  optional `prefetched` prop. When supplied (`isControlled = true`) the
+  internal search bar / model selector is hidden and the component
+  renders the prefetched bundle. Standalone usages (DashboardView,
+  ResearchHub) pass nothing → fall back to local fetch as before.
+- AIIntelligence has internal patterns/brief sub-tabs, so its prefetched
+  bundle uses `results: { patterns, brief }` keyed by sub-tab.
+- Unified search bar visible only on the per-symbol tabs (adversarial,
+  hypothesis, intelligence) — hidden on Predictions/Signals.
+- Recent ticker chips and the existing `risedualai-warroom` deep-link
+  CustomEvent now route through the unified search.
+
+**Verified by testing agent (iteration_160):** 95% frontend pass.
+Unified search correctly fans out, individual search bars correctly
+hidden when controlled, tab switching reuses prefetched data, empty
+states display the right messaging. The only flagged item is unrelated
+React duplicate-key warnings in order book components (out of scope).
+
+
 
 ### ETL Framework for Periodic External-Source Ingestion (Feb 27, 2026)
 
