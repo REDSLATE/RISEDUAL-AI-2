@@ -11,6 +11,7 @@ Flow:
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
+from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -19,6 +20,68 @@ from services.price_provider import get_quote_sync
 from services.structured_log import log_error, log_warning
 
 logger = logging.getLogger(__name__)
+
+
+# ── Canonical direction schema ────────────────────────────────────
+#
+# The allowed prediction direction vocabulary. This is the single
+# source of truth that every writer validates against before saving
+# into Mongo / ChromaDB / LearningEngine. Any token not in this enum
+# is treated as "UNKNOWN" by ``canonical_ai_dir`` below and recorded
+# to ``data_integrity_metrics`` so the nightly invariant check can
+# alert the operator.
+#
+# Do NOT extend this enum without also adding the new token to the
+# `DIRECTION_BULLISH` / `DIRECTION_BEARISH` / `DIRECTION_NEUTRAL`
+# sets — the tests in
+# ``tests/test_strong_direction_grading.py`` will tell you when the
+# sets and the enum have drifted.
+
+
+class PredictionDirection(str, Enum):
+    """The allowed prediction direction vocabulary.
+
+    Writers MUST call ``PredictionDirection.validate(direction)``
+    before persisting a new prediction so bad tokens fail loudly at
+    the boundary instead of producing silent downstream corruption.
+    """
+
+    STRONG_BUY = "STRONG_BUY"
+    BUY = "BUY"
+    WEAK_BUY = "WEAK_BUY"
+    BULLISH = "BULLISH"
+    LONG = "LONG"
+    UP = "UP"
+    HOLD = "HOLD"
+    NEUTRAL = "NEUTRAL"
+    WAIT = "WAIT"
+    WEAK_SELL = "WEAK_SELL"
+    SELL = "SELL"
+    STRONG_SELL = "STRONG_SELL"
+    BEARISH = "BEARISH"
+    SHORT = "SHORT"
+    DOWN = "DOWN"
+
+    @classmethod
+    def validate(cls, direction: Any) -> "PredictionDirection":
+        """Validate and normalise a direction token.
+
+        Raises ``ValueError`` if the token is not in the enum. Callers
+        should use this at every write boundary (log_prediction,
+        signal_dispatcher, crew verdict emitter) so bad tokens fail
+        the request instead of sneaking into Mongo.
+        """
+        if isinstance(direction, cls):
+            return direction
+        d = str(direction or "").upper().strip()
+        try:
+            return cls(d)
+        except ValueError:
+            raise ValueError(
+                f"Invalid prediction direction {direction!r}. "
+                f"Must be one of: {sorted(m.value for m in cls)}"
+            )
+
 
 # Direction classification constants.
 #
@@ -76,6 +139,74 @@ def canonical_ai_dir(direction: Any) -> str:
     if d in DIRECTION_BEARISH:
         return "SHORT"
     return "UNKNOWN"
+
+
+# In-process rolling counter for "unknown direction" events. The
+# nightly invariant check (see
+# ``services.data_integrity_auditor.run_nightly_integrity_audit``)
+# reads both this counter and the persistent Mongo metrics
+# collection below; the in-memory variant is cheap enough to update
+# synchronously on every hit.
+_unknown_direction_counter: dict[str, int] = {}
+
+
+async def record_unknown_direction_token(
+    token: Any,
+    *,
+    context: str,
+    db: Any = None,
+) -> None:
+    """Record a single UNKNOWN-direction event to the metrics sink.
+
+    Parameters
+    ----------
+    token
+        The raw direction string that failed classification.
+    context
+        Short free-form label describing where the miss happened
+        (e.g. ``"learning_engine_resolve"``, ``"grade_prediction"``,
+        ``"signal_from_dict"``). Used for per-call-site breakdown on
+        the integrity dashboard.
+    db
+        Optional Motor db handle. If provided, the event is appended
+        to ``data_integrity_metrics`` for the nightly audit /
+        dashboard to read. Absent DB → in-memory only (still safe).
+
+    This MUST stay fire-and-forget: any failure inside the metric
+    write must NOT break the grading / trading hot path. The whole
+    function is wrapped in a bare ``except`` accordingly.
+    """
+    try:
+        _unknown_direction_counter[context] = (
+            _unknown_direction_counter.get(context, 0) + 1
+        )
+        logger.warning(
+            "[data_integrity] unknown direction token %r at %s — "
+            "not in PredictionDirection enum; caller MUST skip, not default",
+            token,
+            context,
+        )
+        if db is not None:
+            await db.data_integrity_metrics.insert_one({
+                "_id": str(uuid4()),
+                "metric": "unknown_direction_token",
+                "token": str(token),
+                "context": context,
+                "fired_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception:
+        # Metrics must never break business logic.
+        pass
+
+
+def get_unknown_direction_counter_snapshot() -> dict[str, int]:
+    """Return a copy of the in-memory counter for tests / dashboards."""
+    return dict(_unknown_direction_counter)
+
+
+def reset_unknown_direction_counter() -> None:
+    """Reset counter — test helper only."""
+    _unknown_direction_counter.clear()
 
 # ── Failure Mode Classification ──
 FAILURE_MODES = {
@@ -338,8 +469,9 @@ def grade_prediction(direction: str, price_at_prediction: float,
     # Unknown direction token — scream loudly. Pre-2026-05-01 this was
     # a silent fallthrough that auto-graded every STRONG_*/WEAK_* row
     # as STRONG_MISS for ~4 weeks before anyone noticed. The warning
-    # below makes any future regression visible in the logs the moment
-    # an unmapped token appears, instead of being buried in toxic-spike
+    # below + the metric record make any future regression visible
+    # in the logs AND on the data-integrity dashboard the moment an
+    # unmapped token appears, instead of being buried in toxic-spike
     # alerts months later.
     logger.warning(
         "[grade_prediction] unknown direction token %r — "
@@ -348,6 +480,15 @@ def grade_prediction(direction: str, price_at_prediction: float,
         "verdict emitter.",
         direction,
     )
+    # Fire-and-forget metric record — sync wrapper around the async
+    # helper so grade_prediction itself stays synchronous (many
+    # callers already invoke it without an event loop).
+    try:
+        _unknown_direction_counter["grade_prediction"] = (
+            _unknown_direction_counter.get("grade_prediction", 0) + 1
+        )
+    except Exception:
+        pass
     return "STRONG_MISS"  # unknown direction → conservative
 
 
@@ -460,6 +601,33 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
     enforce_no_test_symbol(symbol, context="prediction_tracker.log_prediction")
     if is_test_symbol(symbol):
         return f"blocked-test-symbol-{symbol}"
+
+    # ── Direction-vocabulary guard ───────────────────────────────────
+    # Every prediction MUST have a direction token from the
+    # ``PredictionDirection`` enum. Pre-2026-05-01 the writer
+    # accepted any string; bad tokens then flowed through
+    # ``grade_prediction`` and silently got auto-graded
+    # STRONG_MISS — corrupting toxic-spike alerts, ChromaDB lessons,
+    # and LearningEngine stats. The enum lookup below fails loudly
+    # at the WRITE boundary so the corruption can't start.
+    try:
+        direction_enum = PredictionDirection.validate(direction)
+        direction = direction_enum.value  # store the canonical casing
+    except ValueError as e:
+        # Log + fire metric + refuse the write. Returning a sentinel
+        # id keeps callers from crashing on a broken emitter — the
+        # upstream bug shows up on the data-integrity dashboard.
+        await record_unknown_direction_token(
+            direction,
+            context="log_prediction_writer",
+            db=db,
+        )
+        log_error(
+            "prediction_tracker.log_prediction.invalid_direction",
+            symbol=symbol, feature=feature, direction=str(direction),
+            detail=str(e),
+        )
+        return f"blocked-invalid-direction-{symbol}"
 
     price = await asyncio.to_thread(_get_current_price, symbol)
     price = price or 0.0
@@ -700,10 +868,10 @@ async def verify_pending_predictions(db: Any) -> None:
                 # Don't fall back to SHORT — that was the second leg
                 # of the 2026-05-01 direction-token bug. Skip
                 # resolution loudly so the upstream emitter gets fixed.
-                logger.warning(
-                    "[learning-engine] skipping resolve — unknown "
-                    "prediction direction %r for %s/%s",
-                    pred.get("direction"), pred.get("feature"), pred.get("symbol"),
+                await record_unknown_direction_token(
+                    pred.get("direction"),
+                    context="learning_engine_resolve",
+                    db=db,
                 )
                 continue
             pnl = (price_now - pred["price_at_prediction"]) if ai_dir == "LONG" else (pred["price_at_prediction"] - price_now)

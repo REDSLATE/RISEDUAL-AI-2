@@ -2140,3 +2140,161 @@ async def preview_ml_health_digest(request: Request):
     )
     html = _base_html(_format_body_html(data), preheader=preheader)
     return {"subject": subject, "html": html, "data": data}
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DATA INTEGRITY DASHBOARD
+# ═══════════════════════════════════════════════════════════════════
+#
+# Operator-visible surface for the 2026-05-01 direction-token
+# cleanup and its ongoing tripwires. Every audit / repair / supersede
+# event we care about is aggregated into a single response so the
+# admin UI can render "data integrity timeline" at a glance.
+
+
+@router.get("/data-integrity/summary")
+async def data_integrity_summary(request: Request):
+    """Return the current data-integrity health snapshot.
+
+    Fields:
+
+      * ``unknown_direction_tokens`` — metric counts (24h / 7d) and
+        per-context breakdown. Target: 0 in every window.
+      * ``backfills`` — prediction grade backfills + LE trade repairs
+        performed by the cleanup scripts; counts all-time + 7d.
+      * ``toxic_lessons`` — created in the last 7d vs. superseded
+        (i.e. flipped away from toxic_lesson by the corrections).
+      * ``latest_audit`` — the most recent
+        ``data_integrity_audits`` row (nightly invariant run).
+      * ``brute_force_events`` — lockout triggers in the last 24h
+        / 7d, with the top offending (client_ip, email) pairs.
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+
+    now = datetime.now(timezone.utc)
+    since_24h = (now - timedelta(hours=24)).isoformat()
+    since_7d = (now - timedelta(days=7)).isoformat()
+
+    # 1) unknown-direction metric
+    udt_24h = await db.data_integrity_metrics.count_documents({
+        "metric": "unknown_direction_token",
+        "fired_at": {"$gte": since_24h},
+    })
+    udt_7d = await db.data_integrity_metrics.count_documents({
+        "metric": "unknown_direction_token",
+        "fired_at": {"$gte": since_7d},
+    })
+    udt_contexts = [
+        {"context": r["_id"], "count": r["n"]}
+        async for r in db.data_integrity_metrics.aggregate([
+            {"$match": {"metric": "unknown_direction_token",
+                        "fired_at": {"$gte": since_7d}}},
+            {"$group": {"_id": "$context", "n": {"$sum": 1}}},
+            {"$sort": {"n": -1}},
+            {"$limit": 10},
+        ])
+    ]
+
+    # 2) backfills
+    grade_backfills_all = await db.prediction_grade_backfill_log.count_documents({})
+    grade_backfills_7d = await db.prediction_grade_backfill_log.count_documents({
+        "applied_at": {"$gte": since_7d},
+    })
+    le_repairs_all = await db.learning_engine_trade_repair_log.count_documents({})
+    le_repairs_7d = await db.learning_engine_trade_repair_log.count_documents({
+        "applied_at": {"$gte": since_7d},
+    })
+
+    # 3) toxic-lesson count in Chroma — best-effort, never fail the dashboard.
+    toxic_created_7d = None
+    toxic_superseded = None
+    try:
+        import services.market_memory_service as mms
+        coll = getattr(mms, "_collection", None)
+        if coll is not None:
+            import asyncio as _aio
+            active = await _aio.to_thread(
+                coll.get, where={"outcome": "toxic_lesson"}, include=["metadatas"]
+            )
+            metas = active.get("metadatas") or []
+            toxic_created_7d = sum(
+                1 for m in metas
+                if m and str((m.get("created_at") or m.get("logged_at") or "")) >= since_7d
+            )
+            superseded = await _aio.to_thread(
+                coll.get, where={"lesson_status": "superseded"}, include=["metadatas"]
+            )
+            toxic_superseded = len(superseded.get("ids") or [])
+    except Exception as e:
+        logger.warning("data_integrity: chroma probe failed: %s", e)
+
+    # 4) latest audit summary
+    latest_audit = await db.data_integrity_audits.find_one(
+        {}, sort=[("run_id", -1)],
+    )
+    if latest_audit:
+        latest_audit.pop("_id", None)
+
+    # 5) brute-force events
+    bf_24h = await db.brute_force_events.count_documents({
+        "fired_at": {"$gte": since_24h},
+    })
+    bf_7d = await db.brute_force_events.count_documents({
+        "fired_at": {"$gte": since_7d},
+    })
+    bf_top = [
+        {"identifier": r["_id"], "count": r["n"]}
+        async for r in db.brute_force_events.aggregate([
+            {"$match": {"fired_at": {"$gte": since_7d}}},
+            {"$group": {
+                "_id": {"$concat": ["$client_ip", " → ", "$triggered_by_user_email"]},
+                "n": {"$sum": 1},
+            }},
+            {"$sort": {"n": -1}},
+            {"$limit": 10},
+        ])
+    ]
+
+    return {
+        "as_of": now.isoformat(),
+        "unknown_direction_tokens": {
+            "last_24h": udt_24h,
+            "last_7d": udt_7d,
+            "top_contexts_7d": udt_contexts,
+        },
+        "backfills": {
+            "grade_all_time": grade_backfills_all,
+            "grade_last_7d": grade_backfills_7d,
+            "le_trade_all_time": le_repairs_all,
+            "le_trade_last_7d": le_repairs_7d,
+        },
+        "toxic_lessons": {
+            "created_last_7d": toxic_created_7d,
+            "superseded_total": toxic_superseded,
+        },
+        "brute_force": {
+            "lockouts_last_24h": bf_24h,
+            "lockouts_last_7d": bf_7d,
+            "top_offenders_7d": bf_top,
+        },
+        "latest_nightly_audit": latest_audit,
+    }
+
+
+@router.post("/data-integrity/run-audit")
+async def run_integrity_audit_now(request: Request):
+    """Manually trigger the nightly invariant audit.
+
+    Useful for verifying a cleanup just landed. The scheduled job
+    runs once a day at 03:15 UTC.
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+    from services.data_integrity_auditor import run_nightly_integrity_audit
+    summary = await run_nightly_integrity_audit(db)
+    summary.pop("_id", None)
+    return summary

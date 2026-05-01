@@ -603,6 +603,24 @@ async def _start_schedulers():
         scheduler.add_job(_run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
+
+        # Nightly data-integrity tripwire — runs at 03:15 UTC,
+        # AFTER memory_cleanup (02:00) and ml_retrain (02:30) so the
+        # latest grading / retag is reflected. Writes its summary to
+        # the `data_integrity_audits` Mongo collection; admin UI
+        # surfaces it via /api/admin/data-integrity/summary. Never
+        # mutates production data — tripwire only.
+        async def _run_nightly_integrity_audit():
+            try:
+                from services.data_integrity_auditor import run_nightly_integrity_audit
+                await run_nightly_integrity_audit(db, window_hours=24)
+            except Exception:
+                logging.exception("nightly_integrity_audit failed (non-critical)")
+        scheduler.add_job(
+            _run_nightly_integrity_audit,
+            'cron', hour=3, minute=15,
+            id='nightly_integrity_audit',
+        )
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')

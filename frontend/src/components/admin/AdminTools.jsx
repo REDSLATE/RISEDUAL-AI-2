@@ -10,6 +10,7 @@ import SelfTestPanel from './SelfTestPanel';
 import AlertAuditPanel from './AlertAuditPanel';
 import StrategyLeaderboardPanel from './StrategyLeaderboardPanel';
 import ModelAdaptationsPanel from './ModelAdaptationsPanel';
+import DataIntegrityPanel from './DataIntegrityPanel';
 
 const API = `${getApiBase()}/api`;
 
@@ -61,6 +62,8 @@ const AdminTools = () => {
   return (
     <div className="p-6 space-y-6" data-testid="admin-tools">
       <h3 className="text-white text-sm font-semibold">Developer Tools</h3>
+
+      <DataIntegrityPanel />
 
       <SelfTestPanel />
 

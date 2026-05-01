@@ -3,6 +3,7 @@ import logging
 import bcrypt
 import jwt
 import secrets
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -138,6 +139,31 @@ async def record_failed_attempt(identifier: str):
     if attempts >= 5:
         update["$set"]["locked_until"] = datetime.now(timezone.utc) + timedelta(minutes=15)
     await db.login_attempts.update_one({"identifier": identifier}, update, upsert=True)
+
+    # On the exact transition into lockout, emit an audit event to
+    # `brute_force_events`. This turns the lockout from a silent 15-min
+    # wall into addressable signal: you can tell retroactively whether
+    # a lockout was real-attacker activity or a noisy test run, and
+    # the same collection doubles as an early-warning feed for
+    # credential-stuffing campaigns against the production admin.
+    #
+    # Parsed identifier shape: ``"<client_ip>:<email>"`` — see
+    # ``_get_client_ip`` and the login route for how it's built.
+    if attempts == 5:
+        try:
+            ip, _, email = identifier.partition(":")
+            await db.brute_force_events.insert_one({
+                "_id": str(uuid.uuid4()),
+                "event": "lockout_triggered",
+                "client_ip": ip or "unknown",
+                "triggered_by_user_email": email or "unknown",
+                "attempts_at_trigger": attempts,
+                "locked_until": update["$set"]["locked_until"].isoformat(),
+                "fired_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            # Never fail the core rate-limit path on audit hiccups.
+            logging.warning(f"brute_force_events audit insert failed: {e}")
 
 def user_response(user: dict) -> dict:
     return {

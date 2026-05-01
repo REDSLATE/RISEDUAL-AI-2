@@ -1,0 +1,53 @@
+name: Data-Integrity Gate
+
+# The single job below runs the two structural contracts from the
+# 2026-05-01 direction-token cleanup on every PR:
+#
+#   1. test_no_local_direction_tuples — AST-level lint that bans new
+#      hardcoded direction tuples anywhere in backend/. Any PR adding
+#      a new one must either route through canonical_ai_dir or add an
+#      allowlist entry with a one-line justification.
+#
+#   2. test_strong_direction_grading — pinning the STRONG_*/WEAK_* →
+#      LONG/SHORT mapping so the canonical_ai_dir contract can't
+#      silently regress.
+#
+# If either check fails, the PR is blocked from merging. This is the
+# mechanical gate that makes the bug class structurally impossible
+# to reintroduce via drift.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**/*.py'
+      - '.github/workflows/data-integrity-gate.yml'
+  push:
+    branches: [ main ]
+
+jobs:
+  direction-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install minimal test deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest python-dotenv
+
+      - name: Run direction-tuple lint
+        working-directory: backend
+        run: python -m pytest tests/test_no_local_direction_tuples.py -v --no-header
+
+      - name: Run direction-grading regression
+        working-directory: backend
+        run: python -m pytest tests/test_strong_direction_grading.py -v --no-header
