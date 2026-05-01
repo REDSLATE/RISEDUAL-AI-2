@@ -77,6 +77,35 @@ async def get_optional_user(request: Request):
     except HTTPException:
         return None
 
+def _get_client_ip(request: Request) -> str:
+    """Extract the real client IP, respecting reverse proxies.
+
+    The Kubernetes ingress (and any load balancer in front of the
+    backend) makes ``request.client.host`` return the proxy pod's IP
+    rather than the actual end-user IP. Pre-2026-05-01 the brute-force
+    rate-limiter keyed off ``request.client.host`` directly, which
+    meant the ingress's small pool of pod IPs (e.g. 10.219.1.109) got
+    bucketed across ALL external users. Five typos by anyone locked
+    out everyone routed through that pod for 15 minutes — including
+    the testing agent and the admin. That's a DoS-by-typo.
+
+    Standard mitigation: respect ``X-Forwarded-For`` (the first IP in
+    the comma-separated list is the original client; subsequent
+    entries are proxies) and ``X-Real-IP`` as a fallback. Only fall
+    back to ``request.client.host`` when neither header is present.
+    """
+    xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if xff:
+        # First entry is the original client; comma-split, strip, ignore empties.
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    real_ip = request.headers.get("x-real-ip") or request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else "unknown"
+
+
 # Brute force check
 async def check_brute_force(identifier: str):
     try:
@@ -309,7 +338,7 @@ async def redeem_beta_key(req: RedeemBetaKeyRequest, response: Response):
 async def login(req: LoginRequest, request: Request, response: Response):
     try:
         email = req.email.strip().lower()
-        ip = request.client.host if request.client else "unknown"
+        ip = _get_client_ip(request)
         identifier = f"{ip}:{email}"
         await check_brute_force(identifier)
         user = await db.users.find_one({"email": email})

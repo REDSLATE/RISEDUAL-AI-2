@@ -6,15 +6,20 @@ Test Admin Panel and User Workspace APIs
 import pytest
 import requests
 import os
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL, OWNER_EMAIL, OWNER_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-# Test credentials from environment
-OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
-OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+# Test credentials — env wins, but fall back to the values resolved by
+# `conftest_creds` (which already have the correct production fallbacks).
+# Pre-2026-05-01 the local fallbacks here were empty strings,
+# silently sending ``password=""`` to /api/auth/login when env wasn't
+# set and producing a misleading "401 Invalid email or password" that
+# masked the brute-force-DoS bug for ~4 weeks.
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", OWNER_EMAIL)
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", OWNER_PASSWORD)
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
 
 
 @pytest.fixture(scope="module")
@@ -78,7 +83,18 @@ class TestOwnerLogin:
         print(f"Owner login successful: role={data.get('role')}, subscription={data.get('subscription_status')}")
     
     def test_admin_login_success(self):
-        """Admin can login with correct credentials"""
+        """Admin can login with correct credentials.
+
+        Note: the canonical RISEDUAL admin has ``role="owner"`` after
+        the Feb 2026 single-owner consolidation (see
+        ``routes/auth.py::seed_admin``). The legacy assertion
+        ``role == "admin"`` was stale and contributed to the
+        2026-04 admin-login confusion that masked the brute-force
+        DoS bug. The contract this test pins is "the documented
+        ADMIN credential successfully authenticates and is privileged"
+        — owner is strictly more privileged than admin, so accepting
+        either preserves the original intent.
+        """
         res = requests.post(f"{BASE_URL}/api/auth/login", json={
             "email": ADMIN_EMAIL,
             "password": ADMIN_PASSWORD
@@ -86,7 +102,9 @@ class TestOwnerLogin:
         assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
         data = res.json()
         assert "access_token" in data
-        assert data.get("role") == "admin"
+        assert data.get("role") in {"owner", "admin"}, (
+            f"Expected privileged role, got {data.get('role')!r}"
+        )
         print(f"Admin login successful: role={data.get('role')}")
 
 
@@ -106,14 +124,22 @@ class TestAdminPanel:
         assert isinstance(data["users"], list)
         print(f"Listed {data['total']} users")
     
-    def test_list_users_as_admin_forbidden(self, admin_token):
-        """Admin (non-owner) cannot list users"""
+    def test_list_users_as_admin_forbidden(self, test_user):
+        """Non-privileged user cannot list users.
+
+        Pre-Feb-2026 this test asserted that a separate "admin" tier
+        (distinct from "owner") was forbidden. After the single-owner
+        consolidation (see ``routes/auth.py::seed_admin``) the "admin"
+        tier no longer exists — the meaningful access-control check
+        is "regular registered user is forbidden", which this version
+        pins.
+        """
         res = requests.get(
             f"{BASE_URL}/api/auth/admin/users",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {test_user['token']}"}
         )
         assert res.status_code == 403, f"Expected 403, got {res.status_code}: {res.text}"
-        print("Admin correctly denied access to user list")
+        print("Regular user correctly denied access to user list")
     
     def test_list_users_unauthenticated(self):
         """Unauthenticated request is rejected"""
@@ -164,14 +190,20 @@ class TestAdminPanel:
         assert "message" in data
         print(f"Pro revoked: {data.get('message')}")
     
-    def test_admin_cannot_deactivate(self, admin_token, test_user):
-        """Admin (non-owner) cannot deactivate users"""
+    def test_admin_cannot_deactivate(self, test_user):
+        """Non-privileged user cannot deactivate users.
+
+        See ``test_list_users_as_admin_forbidden`` — under the
+        single-owner consolidation the admin-vs-owner distinction was
+        removed, so we test the meaningful contract: a regular
+        registered user is forbidden from privileged endpoints.
+        """
         res = requests.post(
             f"{BASE_URL}/api/auth/admin/users/{test_user['id']}/deactivate",
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {test_user['token']}"}
         )
         assert res.status_code == 403, f"Expected 403, got {res.status_code}"
-        print("Admin correctly denied deactivate access")
+        print("Regular user correctly denied deactivate access")
 
 
 class TestWorkspaceWatchlist:

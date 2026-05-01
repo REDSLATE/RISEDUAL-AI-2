@@ -108,3 +108,36 @@ def _disable_patent_guard_in_legacy_tests(monkeypatch):
     ``monkeypatch.setenv("PATENT_GUARD_ENABLED", "1")``.
     """
     monkeypatch.setenv("PATENT_GUARD_ENABLED", "0")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _clear_brute_force_lockouts_at_session_start():
+    """Wipe ``login_attempts`` at the start of every test session.
+
+    The auth route's brute-force limiter locks ``(client_ip, email)``
+    buckets for 15 minutes after 5 failed attempts (see
+    ``routes.auth.check_brute_force``). Previous runs that
+    intentionally exercised the 401 path — or that ran before the
+    2026-05-01 X-Forwarded-For fix — left stale lockout rows in
+    Mongo that bled into subsequent sessions and produced cascading
+    429s that masked real test signal.
+
+    Clearing at session start is scoped, idempotent, and safe: the
+    production rate-limiter still fires for end users; only the
+    test's own repeated-failure artefacts are purged.
+    """
+    import os
+    try:
+        from pymongo import MongoClient
+        mongo_url = os.environ.get("MONGO_URL")
+        db_name = os.environ.get("DB_NAME")
+        if mongo_url and db_name:
+            client = MongoClient(mongo_url, serverSelectionTimeoutMS=2000)
+            client[db_name].login_attempts.delete_many({})
+            client.close()
+    except Exception:
+        # Never fail the whole session on a cleanup glitch — Mongo
+        # might be temporarily unavailable in CI without auth tests
+        # running anyway.
+        pass
+    yield
