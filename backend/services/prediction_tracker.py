@@ -187,12 +187,18 @@ async def record_unknown_direction_token(
             context,
         )
         if db is not None:
+            _now = datetime.now(timezone.utc)
             await db.data_integrity_metrics.insert_one({
                 "_id": str(uuid4()),
                 "metric": "unknown_direction_token",
                 "token": str(token),
                 "context": context,
-                "fired_at": datetime.now(timezone.utc).isoformat(),
+                "fired_at": _now.isoformat(),
+                # BSON Date parallel field — drives the 90-day TTL
+                # index so the collection never grows unbounded.
+                # The ISO string above stays authoritative for the
+                # existing range-compare queries on the dashboard.
+                "fired_at_dt": _now,
             })
     except Exception:
         # Metrics must never break business logic.

@@ -624,6 +624,25 @@ async def create_indexes():
     await db.headlines.create_index("expires_at", expireAfterSeconds=0)
     await db.headlines.create_index([("scraped_at", -1)])
 
+    # ── Data-integrity observability (2026-05-01 cleanup) ─────────────
+    # These collections grow on every unknown-direction event and
+    # nightly invariant run. Without a TTL they'd accumulate forever;
+    # 90d is plenty of history for "are we regressing?" trend
+    # analysis while keeping the hot path cheap. The dashboard
+    # aggregates `fired_at` (ISO string) directly; `fired_at_dt`
+    # (BSON Date) exists purely so MongoDB can honour the TTL.
+    await db.data_integrity_metrics.create_index(
+        "fired_at_dt", expireAfterSeconds=7776000,  # 90 days
+        name="ttl_fired_at_dt",
+    )
+    await db.data_integrity_metrics.create_index([("fired_at", -1)])
+    await db.data_integrity_metrics.create_index(
+        [("metric", 1), ("fired_at", -1)],
+        name="metric_fired_at_desc",
+    )
+    await db.data_integrity_audits.create_index([("run_id", -1)])
+    await db.brute_force_events.create_index([("fired_at", -1)])
+
 # --- Owner-only guard ---
 async def require_owner(request: Request):
     user = await get_current_user(request)

@@ -2298,3 +2298,68 @@ async def run_integrity_audit_now(request: Request):
     summary = await run_nightly_integrity_audit(db)
     summary.pop("_id", None)
     return summary
+
+
+@router.get("/data-integrity/timeseries")
+async def data_integrity_timeseries(request: Request, days: int = 14):
+    """Daily bucket counts for the data-integrity sparklines.
+
+    Returns three parallel arrays (unknown-direction tokens, grade
+    backfills, brute-force lockouts) bucketed by UTC calendar day.
+    14 days is the default — plenty of width to catch a slow drift
+    toward the bug class without overwhelming the admin card.
+
+    Shape:
+        {
+          "days": 14,
+          "buckets": ["2026-04-17", "2026-04-18", ..., "2026-04-30"],
+          "unknown_direction_tokens": [0, 0, ..., 0],
+          "grade_backfills":          [0, ..., 24, 0, ...],
+          "brute_force_lockouts":     [0, ..., 0],
+        }
+
+    A rising curve on ``unknown_direction_tokens`` is the earliest
+    tripwire for a new engine emitting a non-enum verdict; the
+    nightly invariant audit will eventually catch it, but the
+    sparkline surfaces the trend hours earlier.
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+
+    days = max(1, min(int(days or 14), 90))
+    today = datetime.now(timezone.utc).date()
+    buckets = [(today - timedelta(days=i)) for i in range(days - 1, -1, -1)]
+    bucket_isos = [d.isoformat() for d in buckets]
+    since = (datetime.combine(buckets[0], datetime.min.time(), tzinfo=timezone.utc)).isoformat()
+
+    async def _daily_counts(coll, time_field: str, extra: dict | None = None) -> dict[str, int]:
+        q: dict[str, Any] = {time_field: {"$gte": since}}
+        if extra:
+            q.update(extra)
+        cursor = coll.find(q, {"_id": 0, time_field: 1})
+        out: dict[str, int] = {d: 0 for d in bucket_isos}
+        async for r in cursor:
+            ts = str(r.get(time_field, ""))
+            if len(ts) >= 10:
+                day = ts[:10]
+                if day in out:
+                    out[day] += 1
+        return out
+
+    udt = await _daily_counts(
+        db.data_integrity_metrics, "fired_at",
+        {"metric": "unknown_direction_token"},
+    )
+    backfills = await _daily_counts(
+        db.prediction_grade_backfill_log, "applied_at",
+    )
+    bf = await _daily_counts(db.brute_force_events, "fired_at")
+
+    return {
+        "days": days,
+        "buckets": bucket_isos,
+        "unknown_direction_tokens": [udt[d] for d in bucket_isos],
+        "grade_backfills": [backfills[d] for d in bucket_isos],
+        "brute_force_lockouts": [bf[d] for d in bucket_isos],
+    }
