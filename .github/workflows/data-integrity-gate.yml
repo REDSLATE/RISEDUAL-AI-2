@@ -37,12 +37,21 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
 
-      - name: Install minimal test deps
+      - name: Install backend test deps
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install pytest python-dotenv
+          # Install the full backend requirements — the previous
+          # "minimal deps" approach (pytest + python-dotenv) was
+          # brittle because our test modules transitively import
+          # services.prediction_tracker → services.price_provider,
+          # which pulls requests + yfinance + more. Every new
+          # indirect dep would silently break CI. The pip cache
+          # (keyed on requirements.txt) makes the first run slow
+          # and every subsequent run ~fast, so robustness > speed.
+          pip install -r requirements.txt
 
       - name: Run direction-tuple lint
         working-directory: backend
