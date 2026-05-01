@@ -679,6 +679,24 @@ async def _start_schedulers():
             'interval', minutes=5,
             id='integrity_mitigation_sweep',
         )
+
+        # Fear & Greed history refresh — daily at 04:30 UTC (after the
+        # alternative.me daily snapshot rolls over). Pulls the last 30
+        # days and upserts them so any backfills/corrections from the
+        # source are reflected. Lazy seeding on first dashboard hit
+        # handles cold-start; this job keeps the store fresh thereafter.
+        async def _run_fear_greed_refresh():
+            try:
+                from services.fear_greed_service import refresh_fear_greed_history
+                n = await refresh_fear_greed_history()
+                logging.info(f"[fear_greed] daily refresh wrote {n} rows")
+            except Exception:
+                logging.exception("fear_greed_refresh failed (non-critical)")
+        scheduler.add_job(
+            _run_fear_greed_refresh,
+            'cron', hour=4, minute=30,
+            id='fear_greed_refresh',
+        )
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
