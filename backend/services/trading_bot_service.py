@@ -759,11 +759,17 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
         if allowed_symbols and symbol not in allowed_symbols:
             continue
 
-        # Determine side from verdict
+        # Determine side from verdict via the central canonicaliser.
+        # Pre-2026-05-01 the local tuple ``("strong_buy", "buy")``
+        # silently excluded WEAK_BUY/BULLISH/LONG/UP — bots ignored
+        # weak signals entirely. Same bug class as the prediction-
+        # tracker line 654 fix.
+        from services.prediction_tracker import canonical_ai_dir
         verdict = signal.get("ai_verdict", "hold")
-        if verdict in ("strong_buy", "buy"):
+        canon = canonical_ai_dir(verdict)
+        if canon == "LONG":
             side = "buy"
-        elif verdict in ("strong_sell", "sell"):
+        elif canon == "SHORT":
             side = "sell"
         else:
             continue

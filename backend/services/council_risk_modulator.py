@@ -72,6 +72,13 @@ MIN_COUNCIL_DOWNWEIGHT_FLOOR: float = 0.50
 # the modulator works in {BUY, SELL, HOLD} space. Map both
 # direction-emitting variants of "negative" onto SELL so the
 # is_opposite check works regardless of source engine.
+#
+# All STRONG_*/WEAK_* aliases live in
+# services.prediction_tracker.{DIRECTION_BULLISH,DIRECTION_BEARISH}
+# and are folded in via ``normalize_action`` below — the local map is
+# kept narrow on purpose (engine-specific spellings), with the
+# centralised sets handling the AI-verdict family. This is the
+# defence-in-depth pattern from the 2026-05-01 direction-token cleanup.
 _ACTION_MAP: Dict[Optional[str], str] = {
     "LONG": "BUY",
     "BUY": "BUY",
@@ -91,11 +98,26 @@ _ACTION_MAP: Dict[Optional[str], str] = {
 
 def normalize_action(action: Optional[str]) -> str:
     """Map any engine's action string onto {BUY, SELL, HOLD}.
-    Unknown values fall through to HOLD — defensively safe (HOLD
-    can't trigger any modulation, ever)."""
+
+    Pass 1: engine-specific token map (above).
+    Pass 2: central canonical_ai_dir for STRONG_*/WEAK_*/BULLISH/UP/etc.
+    Unknown → HOLD (defensively safe — HOLD can't trigger any
+    modulation, ever)."""
     if action is None:
         return "HOLD"
-    return _ACTION_MAP.get(action, _ACTION_MAP.get(action.upper(), "HOLD"))
+    direct = _ACTION_MAP.get(action) or _ACTION_MAP.get(action.upper())
+    if direct:
+        return direct
+    # Fall back to the centralised verdict-token mapper. This catches
+    # STRONG_BUY / WEAK_SELL / BULLISH / UP / etc. that the local
+    # engine-token map intentionally doesn't enumerate.
+    from services.prediction_tracker import canonical_ai_dir
+    canon = canonical_ai_dir(action)
+    if canon == "LONG":
+        return "BUY"
+    if canon == "SHORT":
+        return "SELL"
+    return "HOLD"
 
 
 def is_opposite(a: str, b: str) -> bool:

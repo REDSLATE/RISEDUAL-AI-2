@@ -485,8 +485,15 @@ async def run_crypto_symbol(
             # ``hold_not_promoted`` (Bull holds with high conviction).
             _signal_dir = str(signal.get("direction", "HOLD")).upper()
             _signal_conf = float(signal.get("confidence") or 0.0)
-            _is_long = _signal_dir in ("LONG", "BUY")
-            _is_short = _signal_dir in ("SHORT", "SELL")
+            # Centralised canonicalisation — pre-fix the local tuples
+            # ``("LONG", "BUY")`` / ``("SHORT", "SELL")`` silently
+            # excluded STRONG_BUY/WEAK_BUY/BULLISH/UP and their bearish
+            # counterparts, mis-routing every adversarial pipeline run
+            # for those verdicts. See services.prediction_tracker.
+            from services.prediction_tracker import canonical_ai_dir
+            _canon_dir = canonical_ai_dir(_signal_dir)
+            _is_long = _canon_dir == "LONG"
+            _is_short = _canon_dir == "SHORT"
             if adv_decision:
                 _adv_bull_conf = float(adv_decision.get("bull_confidence") or 0.0)
                 _adv_bear_conf = float(adv_decision.get("bear_confidence") or 0.0)

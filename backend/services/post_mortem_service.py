@@ -170,11 +170,15 @@ async def run_post_mortem(
 
     pct_change = (price_now - price_at) / price_at * 100
 
-    # Direction meaning for prompt clarity
-    direction_upper = direction.upper()
-    if direction_upper in {"BUY", "BULLISH", "LONG", "UP"}:
+    # Direction meaning for prompt clarity. Routes through the
+    # central canonicaliser so STRONG_*/WEAK_* tokens don't fall to
+    # the "stay flat" branch (same bug class as the 2026-05-01
+    # direction-token cleanup — see prediction_tracker.canonical_ai_dir).
+    from services.prediction_tracker import canonical_ai_dir
+    canon = canonical_ai_dir(direction)
+    if canon == "LONG":
         direction_meaning = "up"
-    elif direction_upper in {"SELL", "BEARISH", "SHORT", "DOWN"}:
+    elif canon == "SHORT":
         direction_meaning = "down"
     else:
         direction_meaning = "stay flat"

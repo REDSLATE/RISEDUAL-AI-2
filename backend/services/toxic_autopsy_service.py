@@ -50,12 +50,21 @@ def _bucket_for(conf_pct: float) -> str:
 
 
 def _direction_family(direction: str) -> str:
+    """Map any direction token to BULLISH/BEARISH/NEUTRAL/raw.
+
+    Routes through ``services.prediction_tracker.canonical_ai_dir``
+    for the LONG/SHORT classification. Falls back to the raw upper-
+    cased token (or "UNKNOWN") so the autopsy buckets still group
+    out-of-band tokens distinctly rather than silently coalescing.
+    """
+    from services.prediction_tracker import canonical_ai_dir, DIRECTION_NEUTRAL
     d = (direction or "").upper()
-    if d in {"BUY", "BULLISH", "LONG", "UP", "STRONG_BUY", "WEAK_BUY"}:
+    canon = canonical_ai_dir(d)
+    if canon == "LONG":
         return "BULLISH"
-    if d in {"SELL", "BEARISH", "SHORT", "DOWN", "STRONG_SELL", "WEAK_SELL"}:
+    if canon == "SHORT":
         return "BEARISH"
-    if d in {"HOLD", "NEUTRAL", "WAIT"}:
+    if d in DIRECTION_NEUTRAL:
         return "NEUTRAL"
     return d or "UNKNOWN"
 

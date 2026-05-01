@@ -349,12 +349,21 @@ class LearningEngine:
 
 
 def _direction_family(direction: Any) -> Optional[str]:
-    d = (str(direction or "")).upper()
-    if d in {"BUY", "BULLISH", "LONG", "UP", "STRONG_BUY", "WEAK_BUY"}:
+    """Map any direction token to BULLISH/BEARISH/NEUTRAL.
+
+    Routes through ``services.prediction_tracker.canonical_ai_dir``
+    so the LONG/SHORT/UNKNOWN classification is consistent across
+    every service. Pre-2026-05-01 the local sets here drifted out
+    of sync with prediction_tracker's, which was one leg of the
+    direction-token bug class.
+    """
+    from services.prediction_tracker import canonical_ai_dir, DIRECTION_NEUTRAL
+    canon = canonical_ai_dir(direction)
+    if canon == "LONG":
         return "BULLISH"
-    if d in {"SELL", "BEARISH", "SHORT", "DOWN", "STRONG_SELL", "WEAK_SELL"}:
+    if canon == "SHORT":
         return "BEARISH"
-    if d in {"HOLD", "NEUTRAL", "WAIT"}:
+    if str(direction or "").upper() in DIRECTION_NEUTRAL:
         return "NEUTRAL"
     return None
 

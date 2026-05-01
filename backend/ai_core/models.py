@@ -41,9 +41,30 @@ class Signal:
         """Build a Signal from the loose dicts our scanner/dispatcher emits."""
         direction = (d.get("direction") or "").upper()
         if direction not in ("LONG", "SHORT"):
-            # Map buy/sell verdicts to long/short for convenience.
-            v = (d.get("ai_verdict") or d.get("side") or "").lower()
-            direction = "LONG" if v in ("buy", "strong_buy", "long") else "SHORT"
+            # Map buy/sell verdicts to long/short via the central
+            # canonicaliser. The pre-2026-05-01 inline tuple here was
+            # missing WEAK_BUY / BULLISH / UP / WEAK_SELL / BEARISH,
+            # silently routing those tokens to SHORT. Same bug class
+            # as the prediction_tracker line 654 fix — see
+            # services.prediction_tracker.canonical_ai_dir.
+            from services.prediction_tracker import canonical_ai_dir
+            v = d.get("ai_verdict") or d.get("side") or ""
+            canonical = canonical_ai_dir(v)
+            if canonical == "UNKNOWN":
+                # No bullish/bearish signal in the input — fall back to
+                # SHORT for backwards compatibility, but log loudly so
+                # the upstream emitter can be fixed. Pre-fix this was
+                # silent.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "[Signal.from_dict] unknown verdict token %r — "
+                    "defaulting to SHORT for compat. Add the token to "
+                    "DIRECTION_BULLISH/BEARISH if it should map.",
+                    v,
+                )
+                direction = "SHORT"
+            else:
+                direction = canonical
 
         c = d.get("confidence")
         if c is None:
