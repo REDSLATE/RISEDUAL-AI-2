@@ -63,6 +63,19 @@ async def readiness_check():
     }
 
 
+@api_router.get("/health")
+async def health_check():
+    """Conventional health-check alias for ``/ready``.
+
+    External monitors (uptime probes, status pages, the Emergent
+    deploy liveness check, ad-hoc operator curl) reach for ``/health``
+    by reflex. Pointing it at the same readiness body as ``/ready``
+    means we have one source of truth without forcing every
+    integration to learn our naming.
+    """
+    return await readiness_check()
+
+
 @api_router.get("/download/codebase-pdf")
 async def download_codebase_pdf():
     pdf_path = "/app/RISEDUAL_AI_Complete_Codebase.pdf"
