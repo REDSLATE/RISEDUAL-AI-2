@@ -45,7 +45,21 @@ from typing import Any, Literal, TypedDict
 
 logger = logging.getLogger(__name__)
 
-MitigationAction = Literal["DEGRADE_TRADING"]
+MitigationAction = Literal[
+    "DEGRADE_TRADING",
+    "BLOCK_NEW_BOTS",
+    "FREEZE_SIZING_OVERRIDES",
+]
+
+# Actions the activation path accepts. Adding a new action? Add the
+# string here AND register a matching query helper below. The
+# alert evaluator routes through this whitelist so operators can't
+# create rules with typoed actions that silently no-op.
+SUPPORTED_ACTIONS: frozenset[str] = frozenset({
+    "DEGRADE_TRADING",
+    "BLOCK_NEW_BOTS",
+    "FREEZE_SIZING_OVERRIDES",
+})
 
 
 class MitigationParams(TypedDict, total=False):
@@ -83,28 +97,43 @@ async def activate_integrity_mitigation(
 ) -> str | None:
     """Activate a temporary self-defense mitigation.
 
-    Supported v1 action:
+    Supported actions:
         DEGRADE_TRADING
             params.position_multiplier: 0.25 – 1.0
             params.disable_strong_signals: bool
+        BLOCK_NEW_BOTS
+            params.reason: str (free-form; surfaced to the caller)
+            Effect: /api/bots POST and toggle(enable=true) return 423.
+        FREEZE_SIZING_OVERRIDES
+            params.reason: str
+            Effect: /api/admin/guard-shadow/policy/{promote,clear}
+            return 423 — operators can't silently loosen guard rails
+            while a data-integrity alert is live.
     """
     action = mitigation.get("action")
-    if action != "DEGRADE_TRADING":
+    if action not in SUPPORTED_ACTIONS:
         return None
 
     params_raw = mitigation.get("params") or {}
-    params: MitigationParams = {
-        "position_multiplier": _clamp_multiplier(
-            params_raw.get("position_multiplier", 0.5)
-        ),
-        "disable_strong_signals": bool(
-            params_raw.get("disable_strong_signals", False)
-        ),
-    }
+    if action == "DEGRADE_TRADING":
+        params: dict[str, Any] = {
+            "position_multiplier": _clamp_multiplier(
+                params_raw.get("position_multiplier", 0.5)
+            ),
+            "disable_strong_signals": bool(
+                params_raw.get("disable_strong_signals", False)
+            ),
+        }
+    else:
+        # BLOCK_NEW_BOTS / FREEZE_SIZING_OVERRIDES — the action itself
+        # is the effect, params are free-form operator context.
+        params = {
+            "reason": str(params_raw.get("reason") or "")[:200],
+        }
 
     now = _now()
     doc = {
-        "type": "DEGRADE_TRADING",
+        "type": action,
         "source_rule_id": str(source_rule_id),
         "activated_at": now,
         "expires_at": now + timedelta(minutes=max(1, int(ttl_minutes))),
@@ -115,14 +144,26 @@ async def activate_integrity_mitigation(
     # Loud structured log — so the nightly integrity audit report
     # captures "we entered degrade mode because of X" historically.
     logger.warning(
-        "[integrity_mitigation] ACTIVATED source=%s action=DEGRADE_TRADING "
-        "position_multiplier=%.2f disable_strong=%s ttl_min=%d expires_at=%s",
-        source_rule_id,
-        params["position_multiplier"],
-        params["disable_strong_signals"],
-        ttl_minutes,
+        "[integrity_mitigation] ACTIVATED source=%s action=%s params=%s "
+        "ttl_min=%d expires_at=%s",
+        source_rule_id, action, params, ttl_minutes,
         doc["expires_at"].isoformat(),
     )
+    # Best-effort Slack ping — failure NEVER blocks activation. The
+    # Mongo row is already committed; an outage on the notify path
+    # can't un-activate the mitigation.
+    try:
+        await _notify_slack_activation(
+            source_rule_id=str(source_rule_id),
+            action=action,
+            params=params,
+            expires_at=doc["expires_at"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[integrity_mitigation] slack notify failed source=%s: %s",
+            source_rule_id, exc,
+        )
     return str(result.inserted_id)
 
 
@@ -210,11 +251,17 @@ async def summarize_integrity_mitigation_state(db: Any) -> dict[str, Any]:
         bool((m.get("params") or {}).get("disable_strong_signals"))
         for m in active if m.get("type") == "DEGRADE_TRADING"
     )
+    block_new_bots = any(m.get("type") == "BLOCK_NEW_BOTS" for m in active)
+    freeze_overrides = any(
+        m.get("type") == "FREEZE_SIZING_OVERRIDES" for m in active
+    )
     return {
         "active": bool(active),
         "active_count": len(active),
         "risk_multiplier": min(multipliers) if multipliers else 1.0,
         "suppress_strong_signals": suppress,
+        "block_new_bots": block_new_bots,
+        "freeze_sizing_overrides": freeze_overrides,
         "items": [
             {
                 "type": m.get("type"),
@@ -234,6 +281,115 @@ async def summarize_integrity_mitigation_state(db: Any) -> dict[str, Any]:
             for m in active
         ],
     }
+
+
+async def are_new_bots_blocked_by_integrity(db: Any) -> tuple[bool, dict[str, Any] | None]:
+    """True if any active BLOCK_NEW_BOTS mitigation is live.
+
+    Returns ``(blocked, details)`` where ``details`` is the first
+    matching mitigation row (source_rule_id + reason + expires_at)
+    so callers can surface a precise 423 payload to the operator.
+    """
+    for m in await get_active_integrity_mitigations(db):
+        if m.get("type") != "BLOCK_NEW_BOTS":
+            continue
+        return True, {
+            "source_rule_id": m.get("source_rule_id"),
+            "reason": (m.get("params") or {}).get("reason", ""),
+            "expires_at": (
+                m["expires_at"].isoformat()
+                if isinstance(m.get("expires_at"), datetime)
+                else m.get("expires_at")
+            ),
+        }
+    return False, None
+
+
+async def are_sizing_overrides_frozen_by_integrity(
+    db: Any,
+) -> tuple[bool, dict[str, Any] | None]:
+    """True if any active FREEZE_SIZING_OVERRIDES mitigation is live.
+
+    Same shape as ``are_new_bots_blocked_by_integrity`` — caller
+    surfaces the row context in the 423 response body.
+    """
+    for m in await get_active_integrity_mitigations(db):
+        if m.get("type") != "FREEZE_SIZING_OVERRIDES":
+            continue
+        return True, {
+            "source_rule_id": m.get("source_rule_id"),
+            "reason": (m.get("params") or {}).get("reason", ""),
+            "expires_at": (
+                m["expires_at"].isoformat()
+                if isinstance(m.get("expires_at"), datetime)
+                else m.get("expires_at")
+            ),
+        }
+    return False, None
+
+
+# ── Slack activation notifier ─────────────────────────────────────
+#
+# Fires one Slack webhook post per mitigation activation so ops
+# has a real-time paper trail independent of the Mongo audit row.
+# ENV var ``SLACK_WEBHOOK_URL`` is the router; when unset the
+# notifier short-circuits and returns silently.
+#
+# Opt-out: set ``INTEGRITY_MITIGATION_SLACK_ENABLED=false`` to
+# suppress notifications while leaving the Mongo audit trail
+# intact. Useful during staged rollout / playback testing.
+
+
+async def _notify_slack_activation(
+    *,
+    source_rule_id: str,
+    action: str,
+    params: dict[str, Any],
+    expires_at: datetime,
+) -> bool:
+    """Post a single activation card to Slack. Never raises."""
+    import os
+    if (os.environ.get("INTEGRITY_MITIGATION_SLACK_ENABLED", "true")
+            .strip().lower() in ("0", "false", "off", "no")):
+        return False
+    webhook_url = (os.environ.get("SLACK_WEBHOOK_URL") or "").strip()
+    if not webhook_url:
+        return False
+    try:
+        import httpx
+        title = f"RISEDUAL · Integrity mitigation activated · {action}"
+        # One section per param so the Slack card stays readable.
+        # A mitigation row has at most ~3 params today.
+        param_fields = [
+            {"type": "mrkdwn", "text": f"*{k}*\n`{v}`"}
+            for k, v in (params or {}).items()
+        ][:10]
+        context_fields = [
+            {"type": "mrkdwn", "text": f"*source_rule_id*\n`{source_rule_id}`"},
+            {"type": "mrkdwn", "text": f"*expires_at*\n`{expires_at.isoformat()}`"},
+        ]
+        blocks: list[dict[str, Any]] = [
+            {"type": "header",
+             "text": {"type": "plain_text", "text": title[:150]}},
+            {"type": "section", "fields": context_fields},
+        ]
+        if param_fields:
+            blocks.append({"type": "section", "fields": param_fields})
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                webhook_url,
+                json={"text": title, "blocks": blocks},
+            )
+            ok = 200 <= resp.status_code < 300
+            if not ok:
+                logger.warning(
+                    "[integrity_mitigation] slack webhook status=%d body=%s",
+                    resp.status_code, resp.text[:200],
+                )
+            return ok
+    except Exception as exc:
+        logger.warning("[integrity_mitigation] slack notify crashed: %s", exc)
+        return False
 
 
 # ── Sync bridge for non-async call sites ──────────────────────────

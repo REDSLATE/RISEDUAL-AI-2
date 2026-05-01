@@ -242,6 +242,12 @@ const DataIntegrityPanel = () => {
               {mitigation.suppress_strong_signals
                 ? ' · strong signals suppressed'
                 : ''}
+              {mitigation.block_new_bots
+                ? ' · new bots blocked'
+                : ''}
+              {mitigation.freeze_sizing_overrides
+                ? ' · sizing overrides frozen'
+                : ''}
               {' · '}{mitigation.active_count ?? 0} active rule{(mitigation.active_count ?? 0) === 1 ? '' : 's'}
             </div>
             {Array.isArray(mitigation.items) && mitigation.items.length > 0 && (
@@ -255,6 +261,7 @@ const DataIntegrityPanel = () => {
                     className="text-[10px] text-amber-100/70 font-mono flex flex-wrap gap-x-3"
                   >
                     <span>rule: <span className="text-amber-200">{item.source_rule_id}</span></span>
+                    <span>action: <span className="text-amber-200">{item.type}</span></span>
                     <span>
                       expires: {item.expires_at
                         ? new Date(item.expires_at).toLocaleTimeString()
@@ -265,6 +272,11 @@ const DataIntegrityPanel = () => {
                     )}
                     {item.params?.disable_strong_signals && (
                       <span className="text-amber-200">disable_strong=true</span>
+                    )}
+                    {item.params?.reason && (
+                      <span className="text-amber-100/60 truncate">
+                        reason: {item.params.reason}
+                      </span>
                     )}
                   </div>
                 ))}

@@ -37,6 +37,35 @@ async def create_bot(request: Request, bot: CreateBotRequest):
     if bot.mode == "live" and user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="Live bots restricted to authorized accounts")
 
+    # Integrity mitigation gate — when a data-integrity alert has
+    # tripped a BLOCK_NEW_BOTS self-defense, reject creation with
+    # 423 Locked and surface the source rule + TTL so the operator
+    # knows WHY. Existing bots keep running; this only blocks NEW
+    # commitments of capital while the data is suspect.
+    try:
+        from services.integrity_mitigation_service import (
+            are_new_bots_blocked_by_integrity,
+        )
+        blocked, detail = await are_new_bots_blocked_by_integrity(_db)
+        if blocked:
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "error_code": "integrity_block_new_bots",
+                    "message": "New bots temporarily blocked by an active "
+                               "data-integrity mitigation. Existing bots "
+                               "continue to run.",
+                    **(detail or {}),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Never block a legitimate request on a mitigation-lookup
+        # glitch — the Mongo audit trail is the source of truth,
+        # a transient read failure is less harmful than a false 423.
+        logger.warning("[integrity_mitigation] bot-create gate lookup failed: %s", e)
+
     from services.trading_bot_service import create_bot
     result = await create_bot(user_id, bot.model_dump())
     if result.get("error"):
@@ -56,6 +85,31 @@ async def list_bots(request: Request):
 async def toggle_bot(bot_id: str, request: Request, body: ToggleBotRequest):
     """Toggle a bot on/off."""
     user = await get_current_user(request)
+    # Same BLOCK_NEW_BOTS gate as create_bot — re-enabling a dormant
+    # bot is functionally a new capital commitment. Toggling OFF
+    # (enabled=false) is always allowed so operators can safely
+    # pause a bot during an incident.
+    if body.enabled:
+        try:
+            from services.integrity_mitigation_service import (
+                are_new_bots_blocked_by_integrity,
+            )
+            blocked, detail = await are_new_bots_blocked_by_integrity(_db)
+            if blocked:
+                raise HTTPException(
+                    status_code=423,
+                    detail={
+                        "error_code": "integrity_block_new_bots",
+                        "message": "Re-enabling bots is temporarily blocked "
+                                   "by an active data-integrity mitigation.",
+                        **(detail or {}),
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("[integrity_mitigation] bot-toggle gate lookup failed: %s", e)
+
     from services.trading_bot_service import toggle_bot
     result = await toggle_bot(user["_id"], bot_id, body.enabled)
     if result.get("error"):

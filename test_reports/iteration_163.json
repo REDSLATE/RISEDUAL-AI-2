@@ -1,0 +1,73 @@
+{
+  "summary": "Iteration 163 - Extended Integrity Mitigation with BLOCK_NEW_BOTS and FREEZE_SIZING_OVERRIDES actions. All tests pass: 10 unit tests + 7 API integration tests = 17/17 green. Full end-to-end flows verified for both new actions including HTTP 423 gates on /api/bots and /api/admin/guard-shadow/policy/* endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_integrity_mitigation.py",
+    "/app/backend/tests/test_integrity_mitigation_actions_api.py",
+    "/app/test_reports/pytest/iteration163_integrity_mitigation_actions.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "integrity_mitigation_service.py correctly exports SUPPORTED_ACTIONS frozenset with all 3 actions",
+    "are_new_bots_blocked_by_integrity and are_sizing_overrides_frozen_by_integrity helpers return (blocked, detail) tuple for precise 423 payloads",
+    "trading_bots.py correctly gates POST /api/bots and PATCH toggle(enabled=true) with 423 when BLOCK_NEW_BOTS active",
+    "admin_guard_shadow.py correctly gates /policy/promote and /policy/clear with 423 when FREEZE_SIZING_OVERRIDES active",
+    "AlertRuleUpsert validation in admin.py correctly rejects unsupported mitigation actions with 400 and error_code=unsupported_mitigation_action",
+    "summarize_integrity_mitigation_state correctly returns block_new_bots and freeze_sizing_overrides boolean flags",
+    "Slack notification is best-effort (never blocks activation) - verified by unit test"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_integrity_mitigation_actions_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - test rules (TEST_block_new_bots_rule, TEST_freeze_sizing_rule) were created and deleted during tests",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Integrity Mitigation self-defense layer now supports 3 actions: DEGRADE_TRADING (from iteration 162), BLOCK_NEW_BOTS, and FREEZE_SIZING_OVERRIDES. The summary endpoint returns all flags: active, active_count, risk_multiplier, suppress_strong_signals, block_new_bots, freeze_sizing_overrides, items. HTTP 423 gates are correctly wired: /api/bots POST and toggle(enabled=true) check BLOCK_NEW_BOTS; /api/admin/guard-shadow/policy/promote and /clear check FREEZE_SIZING_OVERRIDES. Invalid mitigation actions are rejected with 400 and error_code=unsupported_mitigation_action. Use ttl_minutes=1 and throttle_hours=0 for fast test cleanup.",
+  "features_verified": {
+    "unit_tests": {
+      "status": "VERIFIED",
+      "details": "10/10 unit tests pass including new tests for BLOCK_NEW_BOTS helper, FREEZE_SIZING_OVERRIDES helper, 3-action summary rollup, Slack-notifier-never-blocks-activation, Slack disabled flag, Slack webhook unset"
+    },
+    "login_baseline": {
+      "status": "VERIFIED",
+      "details": "POST /api/auth/login with admin@risedual.ai / RiseDual2026! returns 200, sets cookies, returns user with role=owner"
+    },
+    "summary_new_flags": {
+      "status": "VERIFIED",
+      "details": "GET /api/admin/data-integrity/summary returns mitigation object with block_new_bots (bool) and freeze_sizing_overrides (bool) fields. Default both false when nothing active."
+    },
+    "block_new_bots_flow": {
+      "status": "VERIFIED",
+      "details": "Full flow verified: (1) Create rule with action=BLOCK_NEW_BOTS, (2) evaluate-now fires rule, (3) summary.mitigation.block_new_bots=true, (4) POST /api/bots returns 423 with error_code=integrity_block_new_bots, (5) PATCH /api/bots/{id}/toggle with enabled=true returns 423, (6) cleanup via DELETE rule"
+    },
+    "freeze_sizing_overrides_flow": {
+      "status": "VERIFIED",
+      "details": "Full flow verified: (1) Create rule with action=FREEZE_SIZING_OVERRIDES, (2) evaluate-now fires rule, (3) summary.mitigation.freeze_sizing_overrides=true, (4) POST /api/admin/guard-shadow/policy/promote returns 423 with error_code=integrity_freeze_sizing_overrides, (5) POST /api/admin/guard-shadow/policy/clear returns 423, (6) cleanup via DELETE rule"
+    },
+    "bogus_action_validation": {
+      "status": "VERIFIED",
+      "details": "POST /api/admin/data-integrity/alert-rules with mitigation.action='BOGUS_ACTION' returns 400 with error_code=unsupported_mitigation_action and lists supported actions"
+    },
+    "no_regression_bots": {
+      "status": "VERIFIED",
+      "details": "POST /api/bots succeeds (not 423) when no BLOCK_NEW_BOTS mitigation is active"
+    },
+    "toggle_disabled_always_allowed": {
+      "status": "VERIFIED",
+      "details": "PATCH /api/bots/{id}/toggle with enabled=false is always allowed regardless of mitigation state (does not return 423)"
+    }
+  }
+}

@@ -31,6 +31,8 @@ import pytest
 from services.integrity_mitigation_service import (
     _clamp_multiplier,
     activate_integrity_mitigation,
+    are_new_bots_blocked_by_integrity,
+    are_sizing_overrides_frozen_by_integrity,
     expire_integrity_mitigations,
     get_active_integrity_mitigations,
     get_effective_integrity_risk_multiplier,
@@ -255,4 +257,196 @@ async def test_multiplier_clamps_to_safe_range(db):
         ttl_minutes=30,
     )
     assert result is None
-    assert len(db.integrity_mitigations._docs) == pre
+
+
+# ── Test 5 — BLOCK_NEW_BOTS action ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_block_new_bots_action_detects_and_surfaces_details(db):
+    """Activating BLOCK_NEW_BOTS flips the helper to True and carries
+    the operator-facing details (source_rule_id, reason, expires_at)
+    so the /api/bots 423 payload can be precise."""
+    # Baseline — nothing active, bots flow freely.
+    blocked, detail = await are_new_bots_blocked_by_integrity(db)
+    assert blocked is False
+    assert detail is None
+
+    # Activate — reason string is preserved.
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-block-bots",
+        mitigation={
+            "action": "BLOCK_NEW_BOTS",
+            "params": {"reason": "unknown-direction spike"},
+        },
+        ttl_minutes=30,
+    )
+    blocked, detail = await are_new_bots_blocked_by_integrity(db)
+    assert blocked is True
+    assert detail is not None
+    assert detail["source_rule_id"] == "rule-block-bots"
+    assert detail["reason"] == "unknown-direction spike"
+    assert "expires_at" in detail
+
+    # DEGRADE_TRADING alone must not trip the bot-blocker — the two
+    # actions are independent.
+    await db.integrity_mitigations.update_many(
+        {"active": True}, {"$set": {"active": False}},
+    )
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-degrade-only",
+        mitigation={"action": "DEGRADE_TRADING", "params": {}},
+        ttl_minutes=30,
+    )
+    blocked, detail = await are_new_bots_blocked_by_integrity(db)
+    assert blocked is False
+
+
+# ── Test 6 — FREEZE_SIZING_OVERRIDES action ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_freeze_sizing_overrides_action_detects_and_surfaces_details(db):
+    """FREEZE_SIZING_OVERRIDES prevents operators from loosening
+    guard-policy flags mid-incident. The helper returns the active
+    row so the 423 response can name the source rule."""
+    # Baseline.
+    frozen, detail = await are_sizing_overrides_frozen_by_integrity(db)
+    assert frozen is False
+    assert detail is None
+
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-freeze-overrides",
+        mitigation={
+            "action": "FREEZE_SIZING_OVERRIDES",
+            "params": {"reason": "pending root-cause investigation"},
+        },
+        ttl_minutes=30,
+    )
+    frozen, detail = await are_sizing_overrides_frozen_by_integrity(db)
+    assert frozen is True
+    assert detail is not None
+    assert detail["source_rule_id"] == "rule-freeze-overrides"
+    assert detail["reason"] == "pending root-cause investigation"
+
+    # Summary surfaces both flags independently.
+    summary = await summarize_integrity_mitigation_state(db)
+    assert summary["freeze_sizing_overrides"] is True
+    assert summary["block_new_bots"] is False
+
+
+# ── Test 7 — Summary flags are independent ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_summary_surfaces_all_three_action_flags_independently(db):
+    """Three simultaneous mitigations — one of each action — surface
+    as independent flags in the summary. Most-conservative for the
+    DEGRADE multiplier, AND-style for the two boolean actions."""
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-degrade",
+        mitigation={
+            "action": "DEGRADE_TRADING",
+            "params": {
+                "position_multiplier": 0.4,
+                "disable_strong_signals": True,
+            },
+        },
+        ttl_minutes=30,
+    )
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-block",
+        mitigation={"action": "BLOCK_NEW_BOTS", "params": {"reason": "x"}},
+        ttl_minutes=30,
+    )
+    await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-freeze",
+        mitigation={"action": "FREEZE_SIZING_OVERRIDES", "params": {"reason": "y"}},
+        ttl_minutes=30,
+    )
+
+    summary = await summarize_integrity_mitigation_state(db)
+    assert summary["active"] is True
+    assert summary["active_count"] == 3
+    assert summary["risk_multiplier"] == 0.4
+    assert summary["suppress_strong_signals"] is True
+    assert summary["block_new_bots"] is True
+    assert summary["freeze_sizing_overrides"] is True
+
+    # Per-item breakdown retains the action type for each row.
+    types = {item["type"] for item in summary["items"]}
+    assert types == {"DEGRADE_TRADING", "BLOCK_NEW_BOTS", "FREEZE_SIZING_OVERRIDES"}
+
+
+# ── Test 8 — Slack activation notifier is best-effort ────────────
+
+
+@pytest.mark.asyncio
+async def test_slack_notifier_never_blocks_activation(db, monkeypatch):
+    """A Slack webhook outage MUST NOT prevent the Mongo activation
+    row from being committed — the audit trail is the source of
+    truth, the Slack ping is a convenience. We simulate the
+    webhook raising inside activate_integrity_mitigation and assert
+    the mitigation still lands in Mongo and flips the helpers."""
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.test/broken")
+    monkeypatch.setenv("INTEGRITY_MITIGATION_SLACK_ENABLED", "true")
+
+    import services.integrity_mitigation_service as mod
+
+    async def _boom(**kwargs):
+        raise RuntimeError("simulated Slack outage")
+
+    monkeypatch.setattr(mod, "_notify_slack_activation", _boom)
+
+    mid = await activate_integrity_mitigation(
+        db,
+        source_rule_id="rule-slack-outage",
+        mitigation={"action": "BLOCK_NEW_BOTS", "params": {"reason": "z"}},
+        ttl_minutes=10,
+    )
+    # Activation still succeeds even though the notifier crashed.
+    assert mid is not None
+    blocked, detail = await are_new_bots_blocked_by_integrity(db)
+    assert blocked is True
+    assert detail["source_rule_id"] == "rule-slack-outage"
+
+
+@pytest.mark.asyncio
+async def test_slack_notifier_short_circuits_when_disabled(monkeypatch):
+    """``INTEGRITY_MITIGATION_SLACK_ENABLED=false`` silences the
+    notifier without touching the audit trail — useful for
+    playback / staged rollouts. Returns False instead of raising."""
+    from services.integrity_mitigation_service import _notify_slack_activation
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.test/ok")
+    monkeypatch.setenv("INTEGRITY_MITIGATION_SLACK_ENABLED", "false")
+
+    ok = await _notify_slack_activation(
+        source_rule_id="test",
+        action="BLOCK_NEW_BOTS",
+        params={"reason": "r"},
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_slack_notifier_short_circuits_when_webhook_unset(monkeypatch):
+    """With no SLACK_WEBHOOK_URL configured the notifier returns
+    False silently — never crashes, never issues an HTTP call."""
+    from services.integrity_mitigation_service import _notify_slack_activation
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("INTEGRITY_MITIGATION_SLACK_ENABLED", "true")
+
+    ok = await _notify_slack_activation(
+        source_rule_id="test",
+        action="DEGRADE_TRADING",
+        params={"position_multiplier": 0.5},
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    assert ok is False

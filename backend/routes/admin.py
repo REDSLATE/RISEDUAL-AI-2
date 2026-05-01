@@ -2390,6 +2390,23 @@ async def upsert_alert_rule(payload: AlertRuleUpsert, request: Request):
             detail=f"unsupported channel {c!r}; use 'email:<addr>' or 'slack'",
         )
 
+    # Mitigation sanity — if the operator attached a mitigation spec,
+    # the `action` must be in the whitelist. Catching it here instead
+    # of silently no-opping at evaluator time prevents rules that
+    # "look like" they'll degrade trading but never actually fire.
+    if payload.mitigation:
+        from services.integrity_mitigation_service import SUPPORTED_ACTIONS
+        mit_action = (payload.mitigation.get("action") or "").strip()
+        if mit_action not in SUPPORTED_ACTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error_code": "unsupported_mitigation_action",
+                    "supported": sorted(SUPPORTED_ACTIONS),
+                    "received": mit_action,
+                },
+            )
+
     now_iso = datetime.now(timezone.utc).isoformat()
     doc = {
         **payload.dict(),

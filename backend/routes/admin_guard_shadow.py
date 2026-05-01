@@ -339,6 +339,35 @@ async def promote_flag(request: Request):
     TTL) starts honouring the new value. No restart needed.
     """
     user = await _require_owner(request)
+    # Integrity mitigation gate — when FREEZE_SIZING_OVERRIDES is
+    # active, operators can't silently loosen guard rails mid-
+    # incident. The audit-trail implication (operator edited a
+    # flag during a drift event) is too large to leave open.
+    try:
+        from services.integrity_mitigation_service import (
+            are_sizing_overrides_frozen_by_integrity,
+        )
+        frozen, detail = await are_sizing_overrides_frozen_by_integrity(_db)
+        if frozen:
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "error_code": "integrity_freeze_sizing_overrides",
+                    "message": "Guard-policy overrides are frozen by an "
+                               "active data-integrity mitigation. Wait "
+                               "for it to auto-expire or resolve the "
+                               "source alert.",
+                    **(detail or {}),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        # Fail-open on a mitigation lookup glitch — the Mongo audit
+        # row is the source of truth; a transient read issue
+        # shouldn't strand the operator.
+        pass
+
     body = await request.json()
     flag = (body.get("flag") or "").strip()
     value = bool(body.get("value"))
@@ -367,6 +396,27 @@ async def promote_flag(request: Request):
 async def clear_flag(request: Request):
     """Remove a flag's override so the env-default takes over again."""
     user = await _require_owner(request)
+    # Same freeze gate — clearing an override is also a sizing change.
+    try:
+        from services.integrity_mitigation_service import (
+            are_sizing_overrides_frozen_by_integrity,
+        )
+        frozen, detail = await are_sizing_overrides_frozen_by_integrity(_db)
+        if frozen:
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "error_code": "integrity_freeze_sizing_overrides",
+                    "message": "Guard-policy overrides are frozen by an "
+                               "active data-integrity mitigation.",
+                    **(detail or {}),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        pass
+
     body = await request.json()
     flag = (body.get("flag") or "").strip()
     if flag not in VALID_FLAGS:
