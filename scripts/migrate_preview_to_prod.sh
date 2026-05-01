@@ -61,11 +61,13 @@ EXCLUDED_COLLECTIONS=(
 SMOKE_COLLECTIONS=(
   "users"
   "predictions"
-  "proof_chain_blocks"
+  "decision_proof_chain"
   "integrity_mitigations"
   "data_integrity_alert_rules"
   "crypto_paper_trades"
-  "trade_orders"
+  "smart_orders"
+  "trading_bots"
+  "model_adaptations"
 )
 
 cmd="${1:-help}"
