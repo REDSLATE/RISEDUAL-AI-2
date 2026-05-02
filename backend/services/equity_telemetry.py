@@ -55,6 +55,8 @@ async def record_measurement(
     spread_bps: Optional[float] = None,
     volume: Optional[float] = None,
     dollar_volume: Optional[float] = None,
+    news_count: Optional[float] = None,
+    news_sentiment_abs: Optional[float] = None,
     asset_class: str = DEFAULT_ASSET_CLASS,
 ) -> None:
     """Append a measurement to the rolling buffer for ``symbol``.
@@ -69,6 +71,14 @@ async def record_measurement(
     starvation independently of share-count — a penny stock logging
     3 M shares at $0.10 is NOT liquid the same way a mega-cap
     logging 3 M shares at $200 is.
+
+    ``news_count`` (articles in a fixed recent window — typically
+    30 minutes) feeds the ``news_volume_zscore`` branch of
+    ``NEWS_SHOCK``. The baseline is the rolling average of past
+    news-counts; a spike ≥ 3σ is the trip condition inside Patent M.
+    ``news_sentiment_abs`` is the magnitude of aggregate sentiment
+    ([0, 1]); populated separately (LLM pass on headlines) when
+    available.
     """
     if _db is None:
         return
@@ -83,6 +93,13 @@ async def record_measurement(
         sample["volume"] = float(volume)
     if dollar_volume is not None and dollar_volume > 0:
         sample["dollar_volume"] = float(dollar_volume)
+    # news_count can legitimately be 0 (a quiet window). Record anyway —
+    # excluding zeros would bias the baseline upward and suppress the
+    # z-score on later quiet periods. Use explicit None check.
+    if news_count is not None and news_count >= 0:
+        sample["news_count"] = float(news_count)
+    if news_sentiment_abs is not None and news_sentiment_abs >= 0:
+        sample["news_sentiment_abs"] = float(news_sentiment_abs)
     if len(sample) == 1:  # only the timestamp
         return
     try:
@@ -122,6 +139,8 @@ async def get_telemetry(
     current_spread_bps: Optional[float] = None,
     current_volume: Optional[float] = None,
     current_dollar_volume: Optional[float] = None,
+    current_news_count: Optional[float] = None,
+    current_news_sentiment_abs: Optional[float] = None,
     asset_class: str = DEFAULT_ASSET_CLASS,
 ) -> Optional[MarketTelemetry]:
     """Build ``MarketTelemetry`` for ``symbol`` using buffered baselines.
@@ -137,6 +156,14 @@ async def get_telemetry(
     both fields surface as 0.0 and the starvation branch becomes
     dormant by contract (see failure_mode_classifier zero-baseline
     guard).
+
+    News telemetry:
+      * ``news_volume_zscore`` is computed from the rolling
+        ``news_count`` baseline + stdev (same stats pattern as
+        ``volume_zscore``). Zero baseline / stdev → 0.0 (dormant).
+      * ``news_sentiment_abs`` is passed through if provided;
+        otherwise defaults to 0.0 (dormant, caller may populate via
+        LLM pass on headlines separately).
 
     Returns ``None`` when no baseline yet — the caller should fall back
     to passing zeros into Patent M, which dormants the volatility/
@@ -161,10 +188,24 @@ async def get_telemetry(
     volume_baseline = _baseline(samples, "volume")
     volume_stdev = _stdev(samples, "volume")
     dollar_volume_baseline = _baseline(samples, "dollar_volume")
+    news_count_baseline = _baseline(samples, "news_count")
+    news_count_stdev = _stdev(samples, "news_count")
 
     volume_z = 0.0
     if current_volume is not None and volume_baseline and volume_stdev > 0:
         volume_z = (current_volume - volume_baseline) / volume_stdev
+
+    # news_volume_zscore — fires the NEWS_SHOCK branch when articles
+    # spike well above their rolling baseline. Same statistical shape
+    # as volume_zscore so Patent M's existing thresholds translate
+    # directly.
+    news_volume_z = 0.0
+    if (
+        current_news_count is not None
+        and news_count_baseline is not None
+        and news_count_stdev > 0
+    ):
+        news_volume_z = (current_news_count - news_count_baseline) / news_count_stdev
 
     return MarketTelemetry(
         symbol=sym,
@@ -176,6 +217,8 @@ async def get_telemetry(
         spread_bps_baseline=float(spread_baseline or 0.0),
         dollar_volume=float(current_dollar_volume or 0.0),
         dollar_volume_baseline=float(dollar_volume_baseline or 0.0),
+        news_sentiment_abs=float(current_news_sentiment_abs or 0.0),
+        news_volume_zscore=float(news_volume_z),
     )
 
 

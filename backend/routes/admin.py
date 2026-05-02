@@ -3005,3 +3005,48 @@ async def benzinga_smoke_test(request: Request, symbol: str = "AAPL"):
         "summary": summary,
         "meta": result.get("meta", {}),
     }
+
+
+@router.post("/benzinga/news-telemetry/{symbol}")
+async def benzinga_news_telemetry_feed(request: Request, symbol: str):
+    """Pull Benzinga news for a symbol and record the article count
+    into the ``equity_telemetry`` rolling buffer.
+
+    This is the NEWS_SHOCK feeder endpoint — each call contributes one
+    sample to the baseline that Patent M's classifier reads. Consumes
+    1 call from the daily ceiling.
+
+    Returns the recorded sample + meta block from the upstream fetch.
+    Safe to call from a scheduler; caller is responsible for cadence
+    and ticker selection.
+    """
+    await _require_owner(request)
+    from services.news_shock_feeder import fetch_and_record_news_telemetry
+
+    return await fetch_and_record_news_telemetry(db, symbol)
+
+
+@router.post("/benzinga/news-telemetry-batch")
+async def benzinga_news_telemetry_batch(
+    request: Request,
+    symbols: str,
+):
+    """Feed a comma-separated batch of symbols (e.g. ``?symbols=AAPL,NVDA,MSFT``).
+    Serialized by the 2s-spacing internal rate limiter. Short-circuits
+    when the daily ceiling trips.
+
+    Limit: 20 symbols per call to keep request wall-time bounded
+    (~40s worst case at a 2s interval)."""
+    await _require_owner(request)
+    from services.news_shock_feeder import batch_feed_symbols
+
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        return {"error": "no_symbols_provided", "fed": 0, "skipped": 0}
+    if len(syms) > 20:
+        return {
+            "error": "too_many_symbols",
+            "max_per_call": 20,
+            "requested": len(syms),
+        }
+    return await batch_feed_symbols(db, syms)

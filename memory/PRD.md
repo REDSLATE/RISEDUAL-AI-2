@@ -22,6 +22,89 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Benzinga News Feeder → NEWS_SHOCK gate wired (May 2, 2026)
+
+Completes Phase B of the Benzinga rollout: the feeder pipeline from
+Benzinga News API → ``equity_telemetry`` rolling buffer →
+``MarketTelemetry.news_volume_zscore`` → Patent M's ``NEWS_SHOCK``
+branch. The dormant branch is now wired to a real data source for
+the first time.
+
+**1. Telemetry buffer extension** (``services/equity_telemetry.py``)
+
+* ``record_measurement`` now accepts ``news_count`` and
+  ``news_sentiment_abs`` (both optional, both tolerate zero —
+  ``news_count=0`` is a legitimate quiet-window sample, not an
+  error).
+* ``get_telemetry`` now computes ``news_volume_zscore`` against the
+  rolling ``news_count`` baseline + stdev (same statistical shape as
+  ``volume_zscore`` — the classifier's existing 3.0σ threshold
+  applies unchanged). Populates the already-existing
+  ``MarketTelemetry.news_volume_zscore`` / ``news_sentiment_abs``
+  fields that previously surfaced as 0.0 at every call site.
+* Baseline-bootstrap safe: the existing ``_baseline`` three-sample
+  minimum keeps the classifier dormant on fresh-deploy symbols.
+
+**2. Feeder service** (``services/news_shock_feeder.py``)
+
+* ``fetch_and_record_news_telemetry(db, symbol, window_minutes=30)``
+  — single-symbol coordinator: calls
+  ``benzinga_news_service.fetch_news`` → counts recent articles via
+  the pure ``count_recent_articles`` helper → records via
+  ``equity_telemetry.record_measurement``. Returns a dict with the
+  count, total returned, ``recorded`` flag, and the raw Benzinga
+  meta block for observability.
+* ``batch_feed_symbols(db, symbols)`` — iterates through a list,
+  serialized by the 2 s rate-limit lock inside the Benzinga client.
+  Short-circuits the loop when the daily ceiling trips (no point in
+  serializing through 50 more calls that will all bounce).
+* Fail-safe: disabled key, daily-ceiling hit, upstream 5xx /
+  network failure → skip the record (baseline stays time-consistent
+  and never biased toward zero by outages). Legit zero-article
+  windows ARE recorded.
+
+**3. Admin endpoints** (owner-only)
+
+* ``POST /api/admin/benzinga/news-telemetry/{symbol}`` — single
+  symbol feeder. Consumes 1 call from the daily ceiling.
+* ``POST /api/admin/benzinga/news-telemetry-batch?symbols=A,B,C``
+  — batch feeder. 20-symbol limit per call (bounds wall-time at
+  ~40 s worst case).
+
+**4. Tests** (18 new)
+
+* 9 in ``test_news_shock_feeder.py``: happy path records the count,
+  zero-articles legit-records as 0, disabled / rate-limited /
+  upstream-error never record, empty-symbol short-circuits,
+  record_measurement failure returns ``recorded=false`` without
+  raising, batch iterates + sums articles, batch short-circuits on
+  ceiling hit.
+* 4 in ``test_news_shock_integration.py``: pins that NEWS_SHOCK
+  fires only when BOTH sentiment_abs AND news_zscore clear their
+  triggers (volume alone is chatter, sentiment alone is a single
+  headline — neither is a shock), and that unpopulated feeders
+  keep the classifier dormant.
+* Plus 5 regression fixes across existing telemetry / classifier
+  suites after the dataclass default shift.
+
+**Live verification** (2026-05-02):
+
+Batch feed of AAPL / NVDA / TSLA / MSFT succeeded end-to-end. All
+4 symbols now have a baseline sample row in
+``equity_telemetry_baselines``, daily counter progressed 3→6, and
+the 2 s rate-limit lock held the spacing between calls (verified by
+``fetched_at`` timestamps 2 s apart). Non-Saturday news day with
+tagged-ticker flow will accumulate non-zero samples as expected.
+
+**Still deferred**: ``news_sentiment_abs`` feeder. Free-tier Benzinga
+does not reliably emit sentiment scores; populating this field
+needs either a paid Benzinga tier or an LLM pass on the titles. Both
+are viable when operator flips the key.
+
+**63/63** tests green across the feeder + NEWS_SHOCK integration +
+Benzinga client + liquidity-intelligence + iteration61-failure-mode
+suites. Lint clean. Backend healthy.
+
 ### Tier-3 Brake Bypass + Smart Money Verification + Liquidity Intelligence Extension (May 2, 2026)
 
 Four-part iteration shipping the next P0/P1 items on the roadmap.
