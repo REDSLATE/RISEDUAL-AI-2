@@ -593,6 +593,76 @@ async def _chromadb_warmup():
 
 async def _start_schedulers():
     """Start APScheduler jobs for daily digest, watchlist pre-gen, and memory cleanup."""
+    # Auto-seed Tier3 universe — runs once on startup. Idempotent
+    # (skip if bots already exist), so it's safe to keep enabled
+    # across every redeploy. The user shouldn't need to manually
+    # curl the seed endpoint from a phone after first deploy.
+    #
+    # Gated by an env flag so a future operator can disable it
+    # if the universe is intentionally being narrowed.
+    if os.environ.get("AUTO_SEED_TIER3_UNIVERSE", "true").strip().lower() not in ("0", "false", "off", "no"):
+        try:
+            from routes.admin import _TIER3_NEW_TICKERS, _TIER3_DAILY_CAP
+            owner_email = os.environ.get("OWNER_EMAIL", "admin@risedual.ai")
+            owner = await db.users.find_one(
+                {"email": owner_email, "role": "owner"},
+                {"_id": 1},
+            )
+            if owner is not None:
+                owner_id = str(owner["_id"])
+                from datetime import datetime, timezone
+                from uuid import uuid4
+                created: list[str] = []
+                base_config = {
+                    "min_confidence": 70,
+                    "strategies": [],
+                    "side": "both",
+                    "qty": 1,
+                    "use_smart_order": True,
+                    "auto_sl_pct": 3,
+                    "auto_tp_pct": 6,
+                    "max_trades_per_day": _TIER3_DAILY_CAP,
+                    "trades_today": 0,
+                }
+                base_stats = {"trades": 0, "pnl": 0, "signals_received": 0, "signals_executed": 0}
+                now = datetime.now(timezone.utc).isoformat()
+                for ticker in _TIER3_NEW_TICKERS:
+                    name = f"Tier3 Accumulator · {ticker}"
+                    existing = await db.trading_bots.find_one({"name": name}, {"_id": 1})
+                    if existing:
+                        continue
+                    await db.trading_bots.insert_one({
+                        "_id": str(uuid4()).replace("-", ""),
+                        "user_id": owner_id,
+                        "type": "signal",
+                        "name": name,
+                        "enabled": True,
+                        "mode": "paper",
+                        "config": {**base_config, "symbols": [ticker]},
+                        "stats": dict(base_stats),
+                        "created_at": now,
+                        "updated_at": now,
+                        "last_run": None,
+                    })
+                    created.append(ticker)
+                # Always normalise the daily cap on existing accumulator bots —
+                # cheap, idempotent, ensures the cap stays at the current value
+                # if we ever bump it again in code.
+                cap_update = await db.trading_bots.update_many(
+                    {"name": {"$regex": "^Tier3 Accumulator · "}},
+                    {"$set": {
+                        "config.max_trades_per_day": _TIER3_DAILY_CAP,
+                        "config.trades_today": 0,
+                    }},
+                )
+                if created or cap_update.modified_count:
+                    logger.info(
+                        "[startup-seed] Tier3 universe: created=%d bumped=%d",
+                        len(created), cap_update.modified_count,
+                    )
+        except Exception as e:
+            logger.warning(f"[startup-seed] Tier3 seed failed (non-critical): {e}")
+
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from services.digest_service import send_daily_digest
