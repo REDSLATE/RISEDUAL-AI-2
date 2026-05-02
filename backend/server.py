@@ -899,6 +899,24 @@ async def _start_schedulers():
             id='top_universe_warm_pre_open', replace_existing=True,
         )
 
+        # Options universe warm — fires every 5 min. The service itself
+        # is market-hours-gated (13:30–21:00 UTC Mon–Fri); off-hours calls
+        # write a "skipped" stats row and exit fast, so the 5-min cadence
+        # keeps the snapshot fresh during session without burning quota
+        # on static overnight data.
+        async def _run_options_universe_warm():
+            try:
+                from services.options_universe_service import warm_options_universe
+                await warm_options_universe(db)
+            except Exception:
+                logging.exception("options_universe_warm failed (non-critical)")
+
+        scheduler.add_job(
+            _run_options_universe_warm,
+            'interval', minutes=5,
+            id='options_universe_warm', replace_existing=True,
+        )
+
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -907,7 +925,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 

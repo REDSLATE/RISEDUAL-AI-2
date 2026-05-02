@@ -60,6 +60,16 @@ class _FakeCollection:
             if _matches(d, query):
                 d.update(update.get("$set", {}))
 
+    async def replace_one(self, query, replacement, upsert=False):
+        """Mirror Motor's replace_one: fully replaces a matched doc, or
+        inserts ``replacement`` when no match and upsert=True."""
+        for i, d in enumerate(self.docs):
+            if _matches(d, query):
+                self.docs[i] = dict(replacement)
+                return
+        if upsert:
+            self.docs.append(dict(replacement))
+
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 
@@ -78,6 +88,13 @@ class _FakeCursor:
 
     async def to_list(self, length):
         return self.rows[:length]
+
+    def __aiter__(self):
+        return self._async_iter()
+
+    async def _async_iter(self):
+        for row in self.rows:
+            yield row
 
 
 def _matches(doc: dict, query: dict) -> bool:
@@ -225,6 +242,21 @@ async def test_rebuild_universe_ranks_by_market_cap_and_assigns_tiers(monkeypatc
         _fake_overview_sync,
     )
 
+    # Daily history is queried concurrently during rebuild for the
+    # dollar-volume term of the composite score. Return synthetic bars.
+    async def _fake_daily(symbol, outputsize="compact"):
+        # 20 bars of modest volume — enough for the 20d dollar volume calc.
+        return [
+            {"date": f"2026-01-{i+1:02d}", "open": 100, "high": 101,
+             "low": 99, "close": 100, "volume": 1_000_000}
+            for i in range(20)
+        ]
+
+    monkeypatch.setattr(
+        "services.price_provider.get_daily_history",
+        _fake_daily,
+    )
+
     db = _FakeDB()
     stats = await rebuild_universe(db)
 
@@ -244,6 +276,14 @@ async def test_rebuild_universe_ranks_by_market_cap_and_assigns_tiers(monkeypatc
     assert all(r["asset_type"] == "equity" for r in rows)
     assert all("last_ranked_at" in r for r in rows)
     assert rows[0]["market_cap"] == 3.0e12
+    # Composite score present and rank-delta stamped (None on first rebuild)
+    assert "composite_score" in rows[0]
+    assert rows[0]["prev_rank"] is None     # first rebuild — no prior rank
+    assert rows[0]["rank_delta"] is None
+    # Drift summary on stats row
+    stats_row = db[WARM_STATS_COLLECTION].docs[0]
+    assert stats_row["drift"]["new_entrants"] == 4
+    assert stats_row["drift"]["exited"] == 0
 
     # Warm-stats row was written
     assert len(db[WARM_STATS_COLLECTION].docs) == 1
@@ -264,6 +304,92 @@ async def test_rebuild_universe_with_empty_seed(monkeypatch):
     assert stats["status"] == "error"
     assert stats["error"] == "empty_seed"
     assert stats["symbols_attempted"] == 0
+
+
+def test_composite_score_uses_market_cap_plus_dollar_volume():
+    """Composite score must prefer MC+volume over MC alone at same MC.
+
+    Same market cap, higher dollar volume → higher score. Also verifies
+    the 0.6 weight (log dv term) is applied so a 10× higher dv doesn't
+    overwhelm MC (it only adds ~1.38 to the score).
+    """
+    from services.top_universe_service import _composite_score
+    base = _composite_score(1e10, None)             # MC only
+    with_dv = _composite_score(1e10, 1e7)           # + 10M ADV
+    higher_dv = _composite_score(1e10, 1e8)         # + 100M ADV
+
+    assert with_dv > base
+    assert higher_dv > with_dv
+    # 10× dv increase should add ~0.6 * log(10) ≈ 1.38
+    assert abs((higher_dv - with_dv) - 0.6 * 2.302) < 0.01
+
+
+def test_composite_score_falls_back_to_market_cap_when_no_history():
+    """Insufficient bar history (None dollar_volume) must fall back to
+    market cap alone — not drop the ticker to zero score."""
+    from services.top_universe_service import _composite_score
+    assert _composite_score(1e10, None) > 0
+    assert _composite_score(0, None) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_rebuild_universe_stamps_rank_delta_on_second_run(monkeypatch):
+    """First rebuild → prev_rank=None. Second rebuild with different MC
+    order → rank_delta reflects positions moved up/down."""
+    from services.top_universe_service import (
+        rebuild_universe, UNIVERSE_COLLECTION,
+    )
+
+    monkeypatch.setattr(
+        "services.top_universe_service.load_seed_tickers",
+        lambda: ["AAA", "BBB", "CCC"],
+    )
+
+    # First pass: AAA > BBB > CCC
+    def _ov_pass1(sym):
+        mc = {"AAA": "3e12", "BBB": "2e12", "CCC": "1e12"}[sym.upper()]
+        return {"Symbol": sym, "MarketCapitalization": mc}
+
+    async def _daily(sym, outputsize="compact"):
+        return [{"date": f"d{i}", "close": 100, "volume": 1_000_000}
+                for i in range(20)]
+
+    monkeypatch.setattr("services.price_provider.get_overview_sync", _ov_pass1)
+    monkeypatch.setattr("services.price_provider.get_daily_history", _daily)
+
+    db = _FakeDB()
+    await rebuild_universe(db)
+
+    first_rows = {r["symbol"]: r for r in db[UNIVERSE_COLLECTION].docs}
+    assert first_rows["AAA"]["rank"] == 1
+    assert first_rows["AAA"]["prev_rank"] is None
+    assert first_rows["AAA"]["rank_delta"] is None
+
+    # Second pass: reorder — CCC becomes largest, AAA slides to 3rd
+    def _ov_pass2(sym):
+        mc = {"AAA": "1e12", "BBB": "2e12", "CCC": "3e12"}[sym.upper()]
+        return {"Symbol": sym, "MarketCapitalization": mc}
+
+    monkeypatch.setattr("services.price_provider.get_overview_sync", _ov_pass2)
+
+    stats = await rebuild_universe(db)
+
+    second_rows = {r["symbol"]: r for r in db[UNIVERSE_COLLECTION].docs}
+    # CCC: prev 3 → now 1, delta = +2 (moved up 2 spots)
+    assert second_rows["CCC"]["rank"] == 1
+    assert second_rows["CCC"]["prev_rank"] == 3
+    assert second_rows["CCC"]["rank_delta"] == 2
+    # AAA: prev 1 → now 3, delta = -2
+    assert second_rows["AAA"]["rank"] == 3
+    assert second_rows["AAA"]["rank_delta"] == -2
+    # BBB held
+    assert second_rows["BBB"]["rank_delta"] == 0
+
+    # Drift summary on second-pass stats row
+    assert stats["drift"]["promoted"] == 1
+    assert stats["drift"]["demoted"] == 1
+    assert stats["drift"]["held"] == 1
+    assert stats["drift"]["new_entrants"] == 0
 
 
 # ───────────────── warm ─────────────────
@@ -344,6 +470,9 @@ async def test_warm_pre_open_only_tier_a(monkeypatch):
     assert stats["symbols_attempted"] == 1
     assert calls["quote"] == ["AAA"]
     assert calls["overview"] == []  # overview is not refreshed pre-open
+    # Phase 1.5 fix: pre-open MUST NOT recompute technicals (no new daily
+    # bar has formed overnight → recomputing produces identical values).
+    assert calls["daily"] == []
 
 
 @pytest.mark.asyncio

@@ -214,30 +214,110 @@ async def top_universe_history(request: Request, limit: int = 30):
 
 @router.post("/top-universe/warm")
 async def top_universe_warm(request: Request, run_type: str = "post_close"):
-    """Manually trigger a universe warm. `run_type` ∈ {"post_close","pre_open"}.
+    """Fire a universe warm asynchronously. Returns immediately with
+    `{"status":"started"}`; poll `/top-universe/status` for completion
+    (the warm writes its stats row when done).
 
-    Synchronous — returns the full stats row once the warm completes. On
-    a 200-symbol run this is typically ~1–4 minutes; callers should expect
-    the HTTP request to hold open that long. Owner-only.
+    Returns HTTP 202. Runs as a detached asyncio task so long-running
+    warms (1–4 min on 200 symbols) don't hit the ingress 60s timeout.
+    Owner-only.
     """
     await _require_owner(request)
     if run_type not in ("post_close", "pre_open"):
         raise HTTPException(status_code=400, detail="run_type must be 'post_close' or 'pre_open'")
+    import asyncio as _asyncio
     from services.top_universe_service import warm_universe
-    return await warm_universe(db, run_type=run_type)
+
+    async def _bg():
+        try:
+            await warm_universe(db, run_type=run_type)
+        except Exception:
+            logger.exception("top-universe warm (%s) failed", run_type)
+
+    _asyncio.create_task(_bg())
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={"status": "started", "run_type": run_type,
+                 "poll": "/api/admin/top-universe/status"},
+    )
 
 
 @router.post("/top-universe/rebuild")
 async def top_universe_rebuild(request: Request):
-    """Manually rebuild the universe ranking (OVERVIEW-pull on full seed list).
+    """Fire a universe rebuild asynchronously. Returns HTTP 202; the
+    actual ranking run (~500 AV OVERVIEW calls, 3–4 minutes) continues
+    in the background and writes its stats row on completion.
 
-    Expensive (~500 AV calls, 3–4 minutes). Normally scheduled weekly on
-    Sunday 00:00 UTC; this endpoint is for forced refreshes after seed
-    edits or a new-ticker event. Owner-only.
+    Normally scheduled weekly on Sunday 00:00 UTC; this endpoint is for
+    forced refreshes after seed edits or a new-ticker event. Owner-only.
     """
     await _require_owner(request)
+    import asyncio as _asyncio
     from services.top_universe_service import rebuild_universe
-    return await rebuild_universe(db)
+
+    async def _bg():
+        try:
+            await rebuild_universe(db)
+        except Exception:
+            logger.exception("top-universe rebuild failed")
+
+    _asyncio.create_task(_bg())
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={"status": "started", "poll": "/api/admin/top-universe/status"},
+    )
+
+
+# ============================================================
+# OPTIONS UNIVERSE (liquidity-filtered top-N per underlying)
+# ============================================================
+
+@router.get("/options-universe/status")
+async def options_universe_status(request: Request):
+    """Current options-universe snapshot + last warm telemetry.
+
+    Reads the single ``option_universe`` doc (_id="current") and the
+    latest ``universe_warm_stats`` row for run_type="options_warm".
+    Returns shape:
+        - snapshot_updated_at
+        - underlyings_configured, top_n_per_symbol
+        - symbols_with_data, symbols_with_hot_flow, contracts_by_symbol
+        - data: list of {symbol, contracts: [top-N], aggregate: {PCR, ...}}
+        - last_warm: stats row (includes wall_seconds, skipped-if-closed)
+        - is_market_open: bool
+    """
+    await _require_owner(request)
+    from services.options_universe_service import get_options_status
+    return await get_options_status(db)
+
+
+@router.post("/options-universe/warm")
+async def options_universe_warm(request: Request, force: bool = True):
+    """Fire the options warm asynchronously. Returns HTTP 202.
+
+    By default (``force=true``) bypasses the market-hours gate — this
+    endpoint is for manual admin triggers. The scheduled job runs with
+    ``force=False`` so it no-ops outside US regular session. Owner-only.
+    """
+    await _require_owner(request)
+    import asyncio as _asyncio
+    from services.options_universe_service import warm_options_universe
+
+    async def _bg():
+        try:
+            await warm_options_universe(db, force=force)
+        except Exception:
+            logger.exception("options-universe warm failed")
+
+    _asyncio.create_task(_bg())
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={"status": "started", "force": force,
+                 "poll": "/api/admin/options-universe/status"},
+    )
 
 
 @router.get("/ml-latest-model")

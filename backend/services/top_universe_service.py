@@ -141,13 +141,50 @@ async def _fetch_overview_safe(symbol: str, sem: asyncio.Semaphore) -> tuple[str
             return symbol, None
 
 
+async def _fetch_daily_safe(symbol: str, sem: asyncio.Semaphore) -> tuple[str, Optional[list[dict]]]:
+    """Pull daily bars for dollar-volume computation during rebuild. Uses
+    the existing cache-first pipeline so repeated rebuilds are cheap."""
+    from services.price_provider import get_daily_history
+
+    async with sem:
+        try:
+            bars = await get_daily_history(symbol, outputsize="compact")
+            return symbol, bars
+        except Exception as exc:
+            logger.warning("[top_universe] daily fetch failed for %s: %s", symbol, exc)
+            return symbol, None
+
+
+def _composite_score(market_cap: float, dollar_volume_20d: Optional[float]) -> float:
+    """Composite ranking: `log(market_cap) + 0.6 * log(dollar_volume_20d)`.
+
+    Market cap rewards stability, dollar volume rewards tradability — the
+    0.6 weight prevents a high-volume penny stock from ranking above a
+    mega-cap with moderate turnover. When ``dollar_volume_20d`` is None
+    (insufficient bar history), fall back to market cap alone so the
+    ticker still sorts sensibly rather than dropping to the bottom.
+    """
+    import math
+
+    if market_cap <= 0:
+        return 0.0
+    mc_term = math.log(market_cap)
+    if dollar_volume_20d and dollar_volume_20d > 0:
+        return round(mc_term + 0.6 * math.log(dollar_volume_20d), 4)
+    return round(mc_term, 4)
+
+
 async def rebuild_universe(db: Any) -> dict:
-    """Re-rank the seed list by market cap, assign tiers, upsert collection.
+    """Re-rank the seed list by composite score (market cap + 20d dollar
+    volume), assign tiers, upsert collection. Persists rank delta vs
+    previous run so moves in/out of the universe become a momentum signal.
 
     Returns a telemetry dict the admin endpoint surfaces. Also writes a row
     to ``universe_warm_stats`` with ``run_type="rebuild"`` so rebuilds and
     warms share a single timeline.
     """
+    from services.universe_technicals import compute_dollar_volume_20d
+
     started_at = datetime.now(timezone.utc)
     t0 = time.perf_counter()
     seed = load_seed_tickers()
@@ -168,14 +205,36 @@ async def rebuild_universe(db: Any) -> dict:
         return stats
 
     sem = asyncio.Semaphore(REBUILD_CONCURRENCY)
-    results = await asyncio.gather(
+    # Fire overview + daily fetches concurrently. Daily fetch is cache-first
+    # so after the first rebuild these are nearly free (hit Mongo price_cache).
+    overview_task = asyncio.gather(
         *[_fetch_overview_safe(t, sem) for t in seed],
         return_exceptions=False,
     )
+    daily_task = asyncio.gather(
+        *[_fetch_daily_safe(t, sem) for t in seed],
+        return_exceptions=False,
+    )
+    overviews, dailies = await asyncio.gather(overview_task, daily_task)
+
+    dollar_vol_by_sym = {
+        sym: compute_dollar_volume_20d(bars) if bars else None
+        for sym, bars in dailies
+    }
+
+    # Read existing rank map so we can stamp rank_delta on the new rows.
+    # Single projection query is cheaper than one find_one per upsert.
+    prev_cursor = db[UNIVERSE_COLLECTION].find(
+        {}, {"_id": 0, "symbol": 1, "rank": 1, "active": 1},
+    )
+    prev_ranks: dict[str, int] = {}
+    async for row in prev_cursor:
+        if row.get("active") and isinstance(row.get("rank"), int):
+            prev_ranks[row["symbol"]] = row["rank"]
 
     ranked: list[dict] = []
     failures = 0
-    for symbol, overview in results:
+    for symbol, overview in overviews:
         if not overview:
             failures += 1
             continue
@@ -183,9 +242,12 @@ async def rebuild_universe(db: Any) -> dict:
         if mc <= 0:
             failures += 1
             continue
+        dv = dollar_vol_by_sym.get(symbol)
         ranked.append({
             "symbol": symbol,
             "market_cap": mc,
+            "dollar_volume_20d": dv,
+            "composite_score": _composite_score(mc, dv),
             "sector": overview.get("Sector") or None,
             "industry": overview.get("Industry") or None,
             "beta": _parse_optional_float(overview.get("Beta")),
@@ -193,8 +255,8 @@ async def rebuild_universe(db: Any) -> dict:
             "name": overview.get("Name") or None,
         })
 
-    # Rank descending by market cap, truncate to the supported universe size.
-    ranked.sort(key=lambda r: r["market_cap"], reverse=True)
+    # Rank descending by composite score, truncate to the supported universe size.
+    ranked.sort(key=lambda r: r["composite_score"], reverse=True)
     ranked = ranked[:UNIVERSE_TOTAL]
     for i, r in enumerate(ranked, start=1):
         r["rank"] = i
@@ -202,6 +264,12 @@ async def rebuild_universe(db: Any) -> dict:
         r["asset_type"] = "equity"
         r["active"] = True
         r["last_ranked_at"] = datetime.now(timezone.utc).isoformat()
+        # Drift tracking: positive delta = moved up in ranking this cycle.
+        # New entrants (no prior rank) get delta=None so UI can badge them
+        # distinctly from "held steady at rank N".
+        prev = prev_ranks.get(r["symbol"])
+        r["prev_rank"] = prev
+        r["rank_delta"] = (prev - i) if prev is not None else None
 
     # Upsert: mark previously-active rows that didn't make the cut as inactive
     # instead of deleting them, so the history of who-was-in-the-universe is
@@ -228,6 +296,30 @@ async def rebuild_universe(db: Any) -> dict:
         "tier_a_size": TIER_A_SIZE,
         "tier_b_size": TIER_B_SIZE,
         "tier_c_size": TIER_C_SIZE,
+        # Drift summary — how many rows actually moved rank this cycle.
+        # Promoted/demoted = in the universe both runs but changed rank.
+        # New = not present last run. Exited = present last run but not this.
+        "drift": {
+            "new_entrants": sum(1 for r in ranked if r["prev_rank"] is None),
+            "held": sum(
+                1 for r in ranked
+                if r["prev_rank"] is not None and r["rank_delta"] == 0
+            ),
+            "promoted": sum(
+                1 for r in ranked
+                if r["rank_delta"] is not None and r["rank_delta"] > 0
+            ),
+            "demoted": sum(
+                1 for r in ranked
+                if r["rank_delta"] is not None and r["rank_delta"] < 0
+            ),
+            "exited": max(
+                0,
+                len(prev_ranks) - sum(
+                    1 for r in ranked if r["prev_rank"] is not None
+                ),
+            ),
+        },
         "status": "success",
         "wall_seconds": round(time.perf_counter() - t0, 2),
     }
@@ -365,9 +457,12 @@ async def warm_universe(db: Any, run_type: str = "post_close") -> dict:
 
     # ── Tier A ──
     if run_type == "pre_open":
+        # Pre-open refresh: quote only. Technicals are derived from daily
+        # bars — no new bar has formed overnight, so recomputing them
+        # produces identical values. Skip the fetch + recompute entirely.
         a_coros = [
             _warm_one(r, fetch_daily=False, fetch_overview=False,
-                      fetch_quote=True, compute_tech=True, db=db, sem=sem)
+                      fetch_quote=True, compute_tech=False, db=db, sem=sem)
             for r in tier_a_rows
         ]
     else:

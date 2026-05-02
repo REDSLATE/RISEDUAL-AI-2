@@ -160,6 +160,137 @@ async def fetch_tradier_option_quote(
     }
 
 
+async def fetch_tradier_option_chain(
+    underlying: str,
+    expiration: str,
+    *,
+    token: Optional[str] = None,
+    base_url: Optional[str] = None,
+    timeout: float = 15.0,
+) -> Optional[list[dict[str, Any]]]:
+    """Fetch the full option chain for an underlying at a given expiration.
+
+    Returns a list of contract dicts (calls + puts, one row per strike/type)
+    with normalised keys:
+        occ_symbol, underlying, expiry, strike, contract_type ("call"|"put"),
+        bid, ask, last, volume, open_interest, implied_volatility
+
+    Returns ``None`` if the token is missing, the chain is empty, or the
+    endpoint is unreachable. Errors are swallowed (universe warmers rely
+    on ``None`` to fall back to yfinance).
+
+    ``expiration`` must be YYYY-MM-DD.
+    """
+    tok = token or os.environ.get("TRADIER_API_TOKEN", "")
+    base = (base_url or os.environ.get("TRADIER_BASE_URL") or DEFAULT_TRADIER_BASE).rstrip("/")
+    if not tok:
+        return None
+
+    url = f"{base}/v1/markets/options/chains"
+    headers = {"Authorization": f"Bearer {tok}", "Accept": "application/json"}
+    params = {"symbol": underlying.upper(), "expiration": expiration, "greeks": "true"}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers, params=params)
+    except httpx.HTTPError as exc:
+        log_warning(logger, {
+            "context": "tradier_chain",
+            "type": type(exc).__name__,
+            "error": str(exc),
+            "note": f"chain fetch failed for {underlying} {expiration}",
+        })
+        return None
+
+    if resp.status_code >= 400:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+
+    options_env = body.get("options") if isinstance(body, dict) else None
+    if not isinstance(options_env, dict):
+        return None
+    rows = options_env.get("option")
+    if isinstance(rows, dict):
+        rows = [rows]
+    if not isinstance(rows, list):
+        return None
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        bid = float(r.get("bid") or 0)
+        ask = float(r.get("ask") or 0)
+        opt_type = str(r.get("option_type") or "").lower()
+        if opt_type not in ("call", "put"):
+            continue
+        greeks = r.get("greeks") if isinstance(r.get("greeks"), dict) else {}
+        iv = greeks.get("mid_iv") or greeks.get("bid_iv") or greeks.get("ask_iv")
+        try:
+            iv_val = float(iv) if iv is not None else None
+        except (TypeError, ValueError):
+            iv_val = None
+        out.append({
+            "occ_symbol": r.get("symbol") or "",
+            "underlying": underlying.upper(),
+            "expiry": expiration,
+            "strike": float(r.get("strike") or 0),
+            "contract_type": opt_type,
+            "bid": bid,
+            "ask": ask,
+            "last": float(r.get("last") or 0),
+            "volume": int(r.get("volume") or 0),
+            "open_interest": int(r.get("open_interest") or 0),
+            "implied_volatility": iv_val,
+        })
+    return out or None
+
+
+async def fetch_tradier_expirations(
+    underlying: str,
+    *,
+    token: Optional[str] = None,
+    base_url: Optional[str] = None,
+    timeout: float = 10.0,
+) -> Optional[list[str]]:
+    """List available expirations for an underlying (YYYY-MM-DD strings,
+    ascending). ``None`` if token missing or endpoint unreachable.
+    """
+    tok = token or os.environ.get("TRADIER_API_TOKEN", "")
+    base = (base_url or os.environ.get("TRADIER_BASE_URL") or DEFAULT_TRADIER_BASE).rstrip("/")
+    if not tok:
+        return None
+
+    url = f"{base}/v1/markets/options/expirations"
+    headers = {"Authorization": f"Bearer {tok}", "Accept": "application/json"}
+    params = {"symbol": underlying.upper(), "includeAllRoots": "true"}
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers, params=params)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code >= 400:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+
+    env = body.get("expirations") if isinstance(body, dict) else None
+    if not isinstance(env, dict):
+        return None
+    dates = env.get("date")
+    if isinstance(dates, str):
+        dates = [dates]
+    if not isinstance(dates, list):
+        return None
+    return sorted(str(d) for d in dates if isinstance(d, str))
+
+
 class TradierOptionsAdapter(BrokerOptionsAdapter):
     """Tradier adapter — Phase 2 surface is quote-only.
 

@@ -104,3 +104,25 @@ def compute_technicals(bars: list[dict]) -> dict:
         "sma50": _sma(closes, 50),
         "sma200": _sma(closes, 200),
     }
+
+
+def compute_dollar_volume_20d(bars: list[dict]) -> float | None:
+    """20-day mean dollar volume (close × volume), in USD.
+
+    Returns None when fewer than 20 bars are available — the ranking score
+    callers treat None as "insufficient history, fall back to market cap
+    alone" rather than zero (which would sink the ticker).
+    """
+    if not bars or len(bars) < 20:
+        return None
+    # price_provider returns newest first — take the 20 most recent.
+    recent = bars[:20]
+    total = 0.0
+    for b in recent:
+        try:
+            total += float(b.get("close") or 0) * float(b.get("volume") or 0)
+        except (TypeError, ValueError):
+            continue
+    if total <= 0:
+        return None
+    return round(total / 20.0, 2)
