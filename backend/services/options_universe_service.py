@@ -385,6 +385,22 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
 
     succeeded = len(universe)
     failures = len(underlyings) - succeeded
+
+    # ── p90 spread-widening detector (inline post-warm hook) ────────
+    # Appends one history row per symbol, then scans the ≈15-min
+    # window for the "p90 rises while avg stays flat" pattern. All
+    # errors swallowed — telemetry must never break the warm.
+    p90_rows = 0
+    p90_alerts = 0
+    try:
+        from services.options_p90_watcher import (
+            record_p90_history, scan_for_p90_spikes,
+        )
+        p90_rows = await record_p90_history(db, finished_at, universe)
+        p90_alerts = await scan_for_p90_spikes(db, finished_at, universe)
+    except Exception:
+        logger.exception("[options_universe] p90 watcher non-fatal failure")
+
     stats = {
         "run_type": "options_warm",
         "started_at": started_at.isoformat(),
@@ -397,6 +413,8 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
         "symbols_with_hot_flow": [
             u["symbol"] for u in universe if u.get("contracts")
         ],
+        "p90_history_rows": p90_rows,
+        "p90_alerts_fired": p90_alerts,
     }
     await db[WARM_STATS_COLLECTION].insert_one(stats.copy())
     logger.info(

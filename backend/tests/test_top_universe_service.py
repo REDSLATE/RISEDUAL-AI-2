@@ -107,6 +107,22 @@ def _matches(doc: dict, query: dict) -> bool:
                 return False
             if "$ne" in v and dv == v["$ne"]:
                 return False
+            # Range operators — comparisons coerce cleanly across the types
+            # this codebase actually stores for filtered fields (datetimes
+            # as ISO strings, numerics as int/float). Missing dv (None)
+            # always fails range predicates — mirrors MongoDB semantics.
+            if "$gte" in v:
+                if dv is None or dv < v["$gte"]:
+                    return False
+            if "$gt" in v:
+                if dv is None or dv <= v["$gt"]:
+                    return False
+            if "$lte" in v:
+                if dv is None or dv > v["$lte"]:
+                    return False
+            if "$lt" in v:
+                if dv is None or dv >= v["$lt"]:
+                    return False
         elif dv != v:
             return False
     return True

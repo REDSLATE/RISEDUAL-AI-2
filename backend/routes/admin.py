@@ -320,6 +320,20 @@ async def options_universe_warm(request: Request, force: bool = True):
     )
 
 
+@router.get("/options-universe/p90-alerts")
+async def options_universe_p90_alerts(request: Request, limit: int = 50):
+    """Recent p90 spread-widening alerts from ``option_universe_p90_alerts``.
+
+    The watcher fires one alert per symbol when p90 rises ≥ 50% while
+    the chain-wide avg stays under ±20% drift within a ≈15-min window.
+    Dedupe is 30 min per symbol. Owner-only.
+    """
+    await _require_owner(request)
+    from services.options_p90_watcher import get_recent_alerts
+    rows = await get_recent_alerts(db, limit=limit)
+    return {"alerts": rows, "count": len(rows)}
+
+
 @router.get("/ml-latest-model")
 async def ml_latest_model(request: Request):
     """Report the newest on-disk signal model artefact. Owner-only."""
