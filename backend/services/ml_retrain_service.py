@@ -796,6 +796,139 @@ async def get_training_history(
     return await cursor.to_list(length=limit)
 
 
+def _classify_thread_binding_health(
+    recent_threads_equiv: list[float],
+) -> dict:
+    """Turn the last few `fit_cpu_threads_equiv` values into a health
+    verdict the UI can render without business logic.
+
+    With ``n_jobs=4`` on XGBoost + serialised ``CalibratedClassifierCV`` folds
+    we expect a per-run equivalent of ~2.5–3.5. Interpretation:
+
+    * mean >= 2.3  → ``ok``       (thread cap is binding as intended)
+    * mean >= 1.5  → ``warn``     (partial binding — investigate)
+    * mean <  1.5  → ``degraded`` (likely env overrides dropped or
+                                   ``n_jobs`` stripped from the estimator)
+    * <3 runs      → ``unknown``  (not enough samples to decide yet)
+    """
+    if len(recent_threads_equiv) < 3:
+        return {
+            "status": "unknown",
+            "reason": f"need 3+ runs with timing, have {len(recent_threads_equiv)}",
+            "window_mean": None,
+        }
+    mean = sum(recent_threads_equiv) / len(recent_threads_equiv)
+    if mean >= 2.3:
+        status, reason = "ok", "thread cap binding as expected (~2.3+)"
+    elif mean >= 1.5:
+        status, reason = "warn", "partial thread binding — worth a look"
+    else:
+        status, reason = (
+            "degraded",
+            "threads_equiv near 1.0 — n_jobs / env overrides may be missing",
+        )
+    return {
+        "status": status,
+        "reason": reason,
+        "window_mean": round(mean, 2),
+    }
+
+
+async def get_retrain_cost_trend(
+    db: Any, limit: int = 30
+) -> dict:
+    """Return the last N successful retrains' cost metrics plus aggregates.
+
+    Powers ``/api/admin/ml-retrain-cost-trend``. Only rows that carry the
+    timing fields added in the retrain-log improvement are included — pre-
+    telemetry legacy rows are counted but not plotted, so a newly-deployed
+    instance shows a clean "gathering baseline" state instead of spiky
+    charts with half the points missing.
+
+    The aggregates are deliberately scalar and chart-friendly so the UI
+    can render a sparkline + verdict badge without any client-side math.
+    """
+    limit = max(1, min(limit, 500))
+
+    # Pull only what the trend needs. Chronological (oldest → newest) so
+    # the UI can render left-to-right without re-sorting.
+    cursor = (
+        db[TRAINING_LOG_COLLECTION]
+        .find(
+            {"status": "success"},
+            {
+                "_id": 0,
+                "started_at": 1,
+                "model_version": 1,
+                "samples": 1,
+                "total_wall_seconds": 1,
+                "fit_wall_seconds": 1,
+                "fit_cpu_seconds": 1,
+                "fit_cpu_threads_equiv": 1,
+            },
+        )
+        .sort("started_at", -1)
+        .limit(limit)
+    )
+    recent_first = await cursor.to_list(length=limit)
+    rows = list(reversed(recent_first))  # oldest first for plotting
+
+    timed = [r for r in rows if isinstance(r.get("fit_wall_seconds"), (int, float))]
+    runs_without_timing = len(rows) - len(timed)
+
+    # Derived throughput: samples trained per second of fit wall-time.
+    # Stable across dataset-size shifts — the cleanest "did training get
+    # slower?" signal.
+    for r in timed:
+        fw = r.get("fit_wall_seconds") or 0.0
+        n = r.get("samples") or 0
+        r["samples_per_fit_second"] = round(n / fw, 1) if fw > 0 else None
+
+    aggregates: dict[str, Any] = {
+        "runs_with_timing": len(timed),
+        "runs_without_timing": runs_without_timing,
+    }
+    if timed:
+        fit_walls = sorted(float(r["fit_wall_seconds"]) for r in timed)
+        # Integer-index p95 — avoids the numpy dependency for a 4-line calc.
+        p95_idx = max(0, int(round(0.95 * (len(fit_walls) - 1))))
+        threads = [
+            float(r["fit_cpu_threads_equiv"]) for r in timed
+            if isinstance(r.get("fit_cpu_threads_equiv"), (int, float))
+        ]
+        throughputs = [
+            float(r["samples_per_fit_second"]) for r in timed
+            if isinstance(r.get("samples_per_fit_second"), (int, float))
+        ]
+        aggregates.update({
+            "mean_fit_wall_seconds": round(sum(fit_walls) / len(fit_walls), 2),
+            "p95_fit_wall_seconds": round(fit_walls[p95_idx], 2),
+            "mean_threads_equiv": (
+                round(sum(threads) / len(threads), 2) if threads else None
+            ),
+            "mean_samples_per_fit_second": (
+                round(sum(throughputs) / len(throughputs), 1)
+                if throughputs else None
+            ),
+        })
+
+    # Health check uses the 3 most recent runs (newest-first slice).
+    # Latency-to-detection trumps stability here — a cap regression should
+    # surface on the first night after the bad deploy, not after a week of
+    # averaging.
+    recent_threads = [
+        float(r["fit_cpu_threads_equiv"]) for r in timed[-3:]
+        if isinstance(r.get("fit_cpu_threads_equiv"), (int, float))
+    ]
+
+    return {
+        "runs": timed,
+        "count": len(timed),
+        "aggregates": aggregates,
+        "thread_binding_health": _classify_thread_binding_health(recent_threads),
+    }
+
+
 def get_latest_model_info() -> Optional[dict]:
     """Walk the models directory and report the highest-version artefact."""
     MODELS_DIR.mkdir(parents=True, exist_ok=True)

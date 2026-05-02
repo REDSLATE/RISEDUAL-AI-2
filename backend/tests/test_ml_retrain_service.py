@@ -199,3 +199,166 @@ def test_loss_amplifier_matches_scalar_module():
     from services.ml_retrain_service import _LOSS_AMPLIFIER as df_amp
     from ai_core.learning_upgrade import _LOSS_AMPLIFIER as scalar_amp
     assert df_amp == scalar_amp
+
+
+
+# ── Cost-trend helper ────────────────────────────────────────────
+#
+# Backs /api/admin/ml-retrain-cost-trend. Tests cover:
+#  * aggregates + derived samples_per_fit_second
+#  * legacy rows (pre-telemetry) excluded cleanly
+#  * thread_binding_health verdict for all three risk bands
+
+
+def _fake_db_with_rows(rows: list[dict]):
+    """Build a mock Motor-style DB whose collection returns `rows` via the
+    chained find/sort/limit/to_list pipeline the helper uses."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    async def _to_list(length):
+        # Mirror server-side "newest first" sort that the helper will
+        # then reverse for chart plotting.
+        return sorted(
+            rows, key=lambda r: r.get("started_at", ""), reverse=True,
+        )[:length]
+
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.limit.return_value = cursor
+    cursor.to_list = AsyncMock(side_effect=_to_list)
+
+    collection = MagicMock()
+    collection.find.return_value = cursor
+
+    db = MagicMock()
+    db.__getitem__.return_value = collection
+    return db
+
+
+def _row(started, version, samples, fit_wall, fit_cpu, status="success"):
+    threads_equiv = round(fit_cpu / max(fit_wall, 1e-3), 2) if fit_wall else None
+    return {
+        "started_at": started,
+        "status": status,
+        "model_version": version,
+        "samples": samples,
+        "total_wall_seconds": fit_wall + 5.0 if fit_wall else 5.0,
+        "fit_wall_seconds": fit_wall,
+        "fit_cpu_seconds": fit_cpu,
+        "fit_cpu_threads_equiv": threads_equiv,
+    }
+
+
+@pytest.mark.asyncio
+async def test_cost_trend_aggregates_and_throughput():
+    """Happy path: 4 rows, all with timing, should produce populated
+    aggregates and a derived samples_per_fit_second on each row."""
+    from services.ml_retrain_service import get_retrain_cost_trend
+
+    rows = [
+        _row("2026-05-01T02:30:00+00:00", "0.1.10", 10_000, 100.0, 300.0),
+        _row("2026-05-02T02:30:00+00:00", "0.1.11", 12_000, 120.0, 360.0),
+        _row("2026-05-03T02:30:00+00:00", "0.1.12", 11_000, 110.0, 330.0),
+        _row("2026-05-04T02:30:00+00:00", "0.1.13",  9_000,  90.0, 270.0),
+    ]
+    db = _fake_db_with_rows(rows)
+
+    out = await get_retrain_cost_trend(db, limit=30)
+
+    assert out["count"] == 4
+    # Chronological order — oldest first
+    assert out["runs"][0]["model_version"] == "0.1.10"
+    assert out["runs"][-1]["model_version"] == "0.1.13"
+
+    # Derived throughput on each row: samples / fit_wall_seconds
+    assert out["runs"][0]["samples_per_fit_second"] == 100.0      # 10_000 / 100
+    assert out["runs"][1]["samples_per_fit_second"] == 100.0      # 12_000 / 120
+
+    agg = out["aggregates"]
+    assert agg["runs_with_timing"] == 4
+    assert agg["runs_without_timing"] == 0
+    assert agg["mean_fit_wall_seconds"] == 105.0                  # (100+120+110+90)/4
+    assert agg["mean_threads_equiv"] == 3.0                       # cpu/wall = 3 on every row
+    assert agg["mean_samples_per_fit_second"] == 100.0
+
+    # Last 3 rows have threads_equiv=3.0 → ok band
+    assert out["thread_binding_health"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_cost_trend_excludes_legacy_pretelemetry_rows():
+    """Rows inserted before the timing improvement (no fit_wall_seconds)
+    should be counted but not plotted — otherwise a newly-upgraded
+    instance would show a chart with half the points at 0."""
+    from services.ml_retrain_service import get_retrain_cost_trend
+
+    rows = [
+        # Legacy — pre-telemetry row, missing fit_wall_seconds
+        {
+            "started_at": "2026-04-01T02:30:00+00:00",
+            "status": "success",
+            "model_version": "0.1.1",
+            "samples": 8_000,
+        },
+        # Modern — has timing
+        _row("2026-05-04T02:30:00+00:00", "0.1.13", 9_000, 90.0, 270.0),
+    ]
+    db = _fake_db_with_rows(rows)
+
+    out = await get_retrain_cost_trend(db, limit=30)
+
+    assert out["count"] == 1
+    assert out["runs"][0]["model_version"] == "0.1.13"
+    assert out["aggregates"]["runs_with_timing"] == 1
+    assert out["aggregates"]["runs_without_timing"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cost_trend_health_degraded_when_cap_appears_unbound():
+    """If the last 3 runs show threads_equiv near 1.0, the verdict must be
+    `degraded` — this is the regression canary for n_jobs / env overrides
+    being accidentally stripped from a future redeploy."""
+    from services.ml_retrain_service import get_retrain_cost_trend
+
+    # All three recent runs: cpu ≈ wall → threads_equiv ≈ 1.0
+    rows = [
+        _row("2026-05-01T02:30:00+00:00", "0.1.10", 10_000, 100.0, 100.0),
+        _row("2026-05-02T02:30:00+00:00", "0.1.11", 12_000, 120.0, 120.0),
+        _row("2026-05-03T02:30:00+00:00", "0.1.12", 11_000, 110.0, 110.0),
+    ]
+    db = _fake_db_with_rows(rows)
+
+    out = await get_retrain_cost_trend(db, limit=30)
+    assert out["thread_binding_health"]["status"] == "degraded"
+    assert out["thread_binding_health"]["window_mean"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_cost_trend_health_unknown_with_few_runs():
+    """Less than 3 timed runs — verdict must be `unknown`, not a false
+    positive from a short window."""
+    from services.ml_retrain_service import get_retrain_cost_trend
+
+    rows = [
+        _row("2026-05-01T02:30:00+00:00", "0.1.10", 10_000, 100.0, 300.0),
+        _row("2026-05-02T02:30:00+00:00", "0.1.11", 12_000, 120.0, 360.0),
+    ]
+    db = _fake_db_with_rows(rows)
+
+    out = await get_retrain_cost_trend(db, limit=30)
+    assert out["thread_binding_health"]["status"] == "unknown"
+    assert out["thread_binding_health"]["window_mean"] is None
+
+
+@pytest.mark.asyncio
+async def test_cost_trend_empty_history():
+    """No successful runs at all — must return empty structure, not crash."""
+    from services.ml_retrain_service import get_retrain_cost_trend
+
+    db = _fake_db_with_rows([])
+    out = await get_retrain_cost_trend(db, limit=30)
+
+    assert out["count"] == 0
+    assert out["runs"] == []
+    assert out["aggregates"] == {"runs_with_timing": 0, "runs_without_timing": 0}
+    assert out["thread_binding_health"]["status"] == "unknown"

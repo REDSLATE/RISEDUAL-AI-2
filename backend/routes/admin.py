@@ -162,6 +162,24 @@ async def ml_training_history(request: Request, limit: int = 20):
     return {"runs": runs, "count": len(runs)}
 
 
+@router.get("/ml-retrain-cost-trend")
+async def ml_retrain_cost_trend(request: Request, limit: int = 30):
+    """Per-run wall/CPU cost + throughput for the last N successful retrains.
+
+    Complements `/ml-training-history` by surfacing the timing telemetry
+    added to `ml_training_log` (fit_wall_seconds, fit_cpu_seconds,
+    fit_cpu_threads_equiv). Returns chart-ready chronological rows, scalar
+    aggregates (mean + p95), and a thread-binding health verdict derived
+    from the 3 most recent runs — so a regression in the `n_jobs` cap
+    surfaces as a red badge instead of requiring a Mongo query.
+
+    Owner-only. `limit` is clamped to 500 server-side.
+    """
+    await _require_owner(request)
+    from services.ml_retrain_service import get_retrain_cost_trend
+    return await get_retrain_cost_trend(db, limit=limit)
+
+
 @router.get("/ml-latest-model")
 async def ml_latest_model(request: Request):
     """Report the newest on-disk signal model artefact. Owner-only."""
