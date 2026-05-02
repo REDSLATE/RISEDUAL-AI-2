@@ -2941,3 +2941,67 @@ async def commander_shadow_brake_activity(request: Request, hours: int = 24):
         "brake_rate_pct": brake_rate_pct,
         "sample_braked_trades": sample,
     }
+
+
+
+# ── Benzinga News API — slot health & smoke test ────────────────
+
+
+@router.get("/benzinga/status")
+async def benzinga_status(request: Request):
+    """Return Benzinga integration health: key presence, daily quota
+    usage, configured ceiling + interval.
+
+    Does NOT make an outbound Benzinga call — pure DB + env read. A
+    separate `/benzinga/smoke` endpoint triggers a real fetch.
+    """
+    await _require_owner(request)
+    import os
+    from services.benzinga_news_service import (
+        _daily_call_count, _daily_ceiling,
+        _min_interval_seconds, _today_key,
+    )
+
+    key = (os.environ.get("BENZINGA_API_KEY") or "").strip()
+    key_configured = bool(key)
+    ceiling = _daily_ceiling()
+    used = await _daily_call_count(db)
+
+    return {
+        "key_configured": key_configured,
+        "key_fingerprint": (key[:4] + "…" + key[-4:]) if len(key) >= 8 else None,
+        "daily_ceiling": ceiling,
+        "daily_calls_used": used,
+        "daily_remaining": max(0, ceiling - used) if ceiling > 0 else None,
+        "min_interval_seconds": _min_interval_seconds(),
+        "today_utc": _today_key(),
+    }
+
+
+@router.post("/benzinga/smoke")
+async def benzinga_smoke_test(request: Request, symbol: str = "AAPL"):
+    """Trigger a single Benzinga News fetch to verify the slot is wired
+    end-to-end. Consumes 1 call from the daily ceiling.
+
+    Returns the summarized article count + channels for the symbol
+    plus the raw meta block from the client (auth status, rate-limit
+    headers, error_code if any). The most recent 5 sample titles are
+    included for an at-a-glance operator read.
+    """
+    await _require_owner(request)
+    from services.benzinga_news_service import fetch_news, summarize_articles
+
+    result = await fetch_news(
+        db=db,
+        tickers=[symbol.upper()],
+        minutes=240,
+        page_size=25,
+        display_output="headline",
+    )
+    summary = summarize_articles(result.get("articles") or [])
+
+    return {
+        "symbol": symbol.upper(),
+        "summary": summary,
+        "meta": result.get("meta", {}),
+    }
