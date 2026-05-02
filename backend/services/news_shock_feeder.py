@@ -145,6 +145,19 @@ async def fetch_and_record_news_telemetry(
         )
         recorded = False
 
+    # Persist articles as ``catalyst_events`` for the Phase-C
+    # statistical catalyst layer. One row per article, idempotent
+    # via a stable ``benzinga:{id}`` key on ``event_id``. Failures
+    # are best-effort — a broken persist can't block the telemetry
+    # write above.
+    try:
+        await _persist_catalyst_events(db, sym, articles)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "[news-shock-feeder] catalyst_events persist failed for %s: %s",
+            sym, exc,
+        )
+
     return {
         "symbol": sym,
         "news_count": news_count,
@@ -152,6 +165,70 @@ async def fetch_and_record_news_telemetry(
         "recorded": recorded,
         "meta": meta,
     }
+
+
+async def _persist_catalyst_events(
+    db: Any, symbol: str, articles: list[dict[str, Any]],
+) -> None:
+    """Upsert Benzinga articles into ``catalyst_events``.
+
+    Schema (matches ``news_shock_service.fetch_recent_events``)::
+
+        {
+            event_id: "benzinga:<id>",  # unique
+            symbol: "AAPL",
+            event_type: "NEWS",
+            event_time: datetime (UTC),
+            headline: "…",
+            source: "benzinga",
+            sentiment_score: None,       # free tier — not available
+            raw: <full article dict>,
+        }
+
+    Benzinga free tier doesn't emit sentiment; the AV feeder's
+    persistence pass fills the sentiment gap. When both feeders
+    touch the same event window, sentiment-scored AV rows and
+    volume-rich Benzinga rows co-exist and the compute step
+    averages across what it finds.
+    """
+    if db is None or not articles:
+        return
+    from services.benzinga_news_service import _parse_benzinga_timestamp
+
+    ops = []
+    for a in articles:
+        art_id = a.get("id")
+        if art_id is None:
+            continue
+        event_time = _parse_benzinga_timestamp(
+            a.get("created") or a.get("updated") or ""
+        )
+        if not event_time:
+            continue
+        event_id = f"benzinga:{art_id}"
+        ops.append({
+            "event_id": event_id,
+            "symbol": symbol,
+            "event_type": "NEWS",
+            "event_time": event_time,
+            "headline": (a.get("title") or "")[:300],
+            "source": "benzinga",
+            "sentiment_score": None,
+            "url": a.get("url"),
+        })
+
+    # Sequential upserts — typical article counts are small (< 50)
+    # and sequential keeps index contention off the hot path.
+    coll = db.catalyst_events
+    for doc in ops:
+        try:
+            await coll.update_one(
+                {"event_id": doc["event_id"]},
+                {"$set": doc},
+                upsert=True,
+            )
+        except Exception:  # noqa: BLE001
+            continue
 
 
 async def batch_feed_symbols(

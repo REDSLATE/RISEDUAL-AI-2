@@ -460,6 +460,54 @@ def pick_tighter_failure(
     return filtered[0]
 
 
+def classify_catalyst_failure(
+    catalyst_snapshot: Optional[dict],
+) -> Optional[FailureModeResult]:
+    """Phase C — derive a ``NEWS_SHOCK`` verdict from a pre-computed
+    catalyst snapshot.
+
+    This is an ADDITIVE complement to the MarketTelemetry-driven
+    ``NEWS_SHOCK`` branch inside ``classify_failure_mode``. Both paths
+    can fire the same label; the caller uses ``pick_tighter_failure``
+    to compose them. Callers without a catalyst snapshot see
+    ``None`` and the classifier reverts to the existing stack.
+
+    Ordering discipline (pinned by the spec):
+      * Hard safety vetoes first (``LOW_RR``, ``LIQUIDITY_TRAP``,
+        ``CIRCUIT_BREAKER``) — those come from ``classify_failure_mode``
+        and must be preserved upstream.
+      * NEWS_SHOCK second — this helper's output.
+    The easiest way to pin that ordering is to call this helper
+    AFTER the standard ``classify_failure_mode`` and let
+    ``pick_tighter_failure`` compose verdicts — a spread trap with
+    ``block_trade=True`` wins over an ``elevated`` shock cleanly.
+    """
+    if not catalyst_snapshot:
+        return None
+    event_risk = catalyst_snapshot.get("event_risk")
+    shock = catalyst_snapshot.get("news_shock", {}) or {}
+    shock_state = shock.get("shock_state")
+
+    # Only the "restricted" / "high" rung creates a block-level
+    # verdict. "elevated" de-risks sizing via the gate but doesn't
+    # fail-mode-block the trade.
+    if event_risk == "restricted" or shock_state == "high":
+        return FailureModeResult(
+            mode=FailureMode.NEWS_SHOCK,
+            confidence=0.8,
+            risk_multiplier_cap=0.25,
+            block_trade=True,
+            reasons=["catalyst_snapshot_news_shock_high"],
+            metadata={
+                "shock_state": shock_state,
+                "news_zscore": shock.get("news_zscore"),
+                "sentiment_label": shock.get("sentiment_label"),
+                "source": "catalyst_snapshot",
+            },
+        )
+    return None
+
+
 def options_stress_size_multiplier(options_entry: Optional[dict]) -> float:
     """Pure opt-in size modulator driven by liquidity stress index.
 

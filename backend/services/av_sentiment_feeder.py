@@ -339,6 +339,17 @@ async def fetch_and_record_sentiment(
         logger.warning("[av-news] record failed for %s: %s", sym, exc)
         recorded = False
 
+    # Persist AV articles with sentiment into catalyst_events for the
+    # Phase-C statistical catalyst layer. AV's signed
+    # ``overall_sentiment_score`` complements Benzinga's sentiment-
+    # free volume rows — together they populate both the news-
+    # volume baseline and the per-article sentiment aggregate used
+    # by news_shock_service.
+    try:
+        await _persist_av_catalyst_events(db, sym, feed)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[av-news] catalyst_events persist failed for %s: %s", sym, exc)
+
     return {
         "symbol": sym,
         "sentiment_abs": round(magnitude, 4),
@@ -389,3 +400,52 @@ async def batch_feed_sentiment(
         "avg_sentiment_abs": round(total_sentiment_sum / fed, 4) if fed else 0.0,
         "per_symbol": per_symbol,
     }
+
+
+async def _persist_av_catalyst_events(
+    db: Any, symbol: str, feed: list[dict[str, Any]],
+) -> None:
+    """Upsert AV articles into ``catalyst_events`` with signed
+    sentiment scores. Idempotency via ``event_id="av:<url>"`` —
+    AV doesn't emit a stable article ID, so URL is the de-facto
+    key (AV never re-issues the same URL for different content).
+
+    Only articles with a parseable ``time_published`` and a
+    numeric ``overall_sentiment_score`` are persisted — a row
+    with no timestamp would never match the recent-window query,
+    and a row with no score can't enrich the sentiment aggregate.
+    """
+    if db is None or not feed:
+        return
+    coll = db.catalyst_events
+    for a in feed:
+        url = a.get("url")
+        if not url:
+            continue
+        ts = _parse_av_timestamp(a.get("time_published"))
+        if ts is None:
+            continue
+        try:
+            score = float(a.get("overall_sentiment_score"))
+        except (TypeError, ValueError):
+            continue
+        event_id = f"av:{url}"
+        try:
+            await coll.update_one(
+                {"event_id": event_id},
+                {
+                    "$set": {
+                        "event_id": event_id,
+                        "symbol": symbol,
+                        "event_type": "NEWS",
+                        "event_time": ts,
+                        "headline": (a.get("title") or "")[:300],
+                        "source": "alpha_vantage",
+                        "sentiment_score": max(-1.0, min(1.0, score)),
+                        "url": url,
+                    }
+                },
+                upsert=True,
+            )
+        except Exception:  # noqa: BLE001
+            continue

@@ -371,11 +371,13 @@ def _build_risks(
     signal_doc: dict[str, Any] | None,
     option_row: dict[str, Any] | None,
     position_context: dict[str, Any] | None,
+    catalyst_snapshot: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Risks come from three sources that each own one axis of ground
+    """Risks come from four sources that each own one axis of ground
     truth: the signal itself (volatility / calibration risk flags), the
-    options aggregate (liquidity regime), and position context
-    (correlation / double-exposure). We never mutate — always rebuild."""
+    options aggregate (liquidity regime), position context
+    (correlation / double-exposure), and the catalyst snapshot
+    (news shock / event risk). We never mutate — always rebuild."""
     risks: list[dict[str, Any]] = []
     signal_doc = signal_doc or {}
     position_context = position_context or {}
@@ -418,6 +420,33 @@ def _build_risks(
             "source": "portfolio",
         })
 
+    # Phase C — catalyst / news shock risks. High shock = "restricted"
+    # event risk surfaces as a high-severity chip; elevated = medium;
+    # directional sentiment always surfaces at low severity so the
+    # operator sees it even on quiet news days.
+    if catalyst_snapshot:
+        event_risk = catalyst_snapshot.get("event_risk")
+        shock = catalyst_snapshot.get("news_shock", {}) or {}
+        if event_risk == "restricted":
+            risks.append({
+                "label": "News shock restricted",
+                "severity": "high",
+                "source": "catalyst",
+            })
+        elif event_risk == "elevated":
+            risks.append({
+                "label": "Catalyst risk elevated",
+                "severity": "medium",
+                "source": "catalyst",
+            })
+        sentiment_label = shock.get("sentiment_label")
+        if sentiment_label in {"bullish", "bearish"}:
+            risks.append({
+                "label": f"News sentiment: {sentiment_label}",
+                "severity": "low",
+                "source": "catalyst",
+            })
+
     return risks
 
 
@@ -458,6 +487,13 @@ async def get_signal(
     tradeability = _tradeability(option_row)
     agg = option_row.get("aggregate", {}) if option_row else {}
 
+    # Phase C — catalyst snapshot (NEWS_SHOCK statistical layer).
+    # Read-only: the feeders scheduler is the sole writer. Missing
+    # snapshot → no catalyst block; UI gracefully hides the chip.
+    catalyst_snapshot = await ctx.db["catalyst_snapshots"].find_one(
+        {"symbol": symbol}, {"_id": 0},
+    ) or {}
+
     size = signal_doc.get("suggested_size") or {}
     # Sizing always carries its explainer — the "anchored sizing" rule
     # from the product spec. Never surface a raw percentage without the
@@ -489,7 +525,7 @@ async def get_signal(
         "sizing": sizing,
         "tradeability": tradeability,
         "why": _build_why_from_breakdown(signal_doc.get("conviction_breakdown")),
-        "risks": _build_risks(signal_doc, option_row, position_context),
+        "risks": _build_risks(signal_doc, option_row, position_context, catalyst_snapshot),
         "liquidity": {
             "avg_spread_bps": agg.get("avg_spread_bps"),
             "p90_spread_bps": agg.get("p90_spread_bps"),
@@ -504,6 +540,14 @@ async def get_signal(
             "mean_iv": agg.get("mean_iv"),
             "top_contracts": option_row.get("contracts", []) if option_row else [],
         },
+        "catalyst": {
+            "event_risk": catalyst_snapshot.get("event_risk", "unknown"),
+            "news_shock": catalyst_snapshot.get("news_shock"),
+            "headline_chip": (
+                (catalyst_snapshot.get("news_shock") or {}).get("latest_headline")
+                if catalyst_snapshot else None
+            ),
+        } if catalyst_snapshot else None,
         "position_context": position_context or None,
         "updated_at": now.isoformat(),
     }

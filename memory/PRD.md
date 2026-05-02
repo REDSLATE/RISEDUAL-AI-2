@@ -22,6 +22,122 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Phase C — NEWS_SHOCK catalyst layer (May 2, 2026)
+
+Implements the operator's full drop-in spec for a statistical
+catalyst layer on top of the existing Benzinga + AV feeders.
+Converts the spec's sync-pymongo code to async Motor; wires
+catalyst_events persistence into both feeders; adds the NEWS_SHOCK
+gate integration points at the Terminal, failure-mode classifier,
+and admin dashboard.
+
+**Operating rules (pinned by tests)**
+
+NEWS_SHOCK may:
+* annotate Commander / Terminal (narrative + risk chip)
+* reduce size via ``catalyst_risk_gate`` (0.75× aligned / 0.50×
+  unaligned on elevated; 0× on restricted)
+* slightly adjust conviction (±0.05–0.10 — helper ready, not yet
+  wired into the existing conviction computation)
+
+NEWS_SHOCK may NOT:
+* create a new BUY / SELL
+* flip direction
+* override stricter hard vetoes (LOW_RR, LIQUIDITY_TRAP,
+  CIRCUIT_BREAKER)
+* fire on fewer than 20 baseline samples
+
+**New modules**
+
+* ``services/news_shock_service.py`` — async Motor conversion of the
+  spec's pymongo core. Pure statistical functions (``zscore``,
+  ``classify_sentiment``, ``classify_news_shock``,
+  ``compute_sentiment_score``, ``compute_news_volume``) + two
+  async Mongo readers (``fetch_recent_events``,
+  ``fetch_baseline_volumes``) + ``compute_news_shock_for_symbol`` /
+  ``compute_news_shock_batch`` coordinators.
+  ``MIN_BASELINE_SAMPLES=20`` pins the no-false-positive window —
+  ~20 trading windows after first ingest a symbol goes live. Zero
+  stddev degrades to ``None`` (no divide-by-zero footgun).
+* ``services/catalyst_snapshot_service.py`` — projects raw shock
+  states onto ``catalyst_snapshots`` (single doc per symbol,
+  upserted). Owns the ``event_risk`` derivation (``restricted`` /
+  ``elevated`` / ``normal``).
+* ``services/catalyst_risk_gate.py`` — pure decision function
+  (signal + snapshot → allow / size_multiplier / reason). 12 test
+  cases pin all 4 branches + synonym boundaries.
+
+**Persistence wire-ups (the spec had to be patched into async)**
+
+* ``news_shock_feeder._persist_catalyst_events`` — every Benzinga
+  fetch now upserts articles into ``catalyst_events`` with
+  ``event_id="benzinga:<id>"`` for idempotency. No sentiment
+  (free-tier unavailable) — Benzinga owns volume enrichment.
+* ``av_sentiment_feeder._persist_av_catalyst_events`` — every AV
+  fetch persists articles with ``event_id="av:<url>"`` and
+  ``sentiment_score`` in [-1, 1]. AV owns sentiment enrichment.
+  Both feeders write to the same ``catalyst_events`` collection;
+  the compute step merges across sources automatically.
+* ``news_feeders_scheduler.run_news_feeders_tick`` — after both
+  feeders complete, calls
+  ``refresh_catalyst_snapshots(db, symbols)`` so every tick that
+  ingested articles also refreshes the snapshot projection.
+  Failure-isolated (snapshot refresh crash can't freeze the
+  rotation offset).
+
+**Classifier / Terminal / admin integration**
+
+* ``failure_mode_classifier.classify_catalyst_failure`` — new
+  helper that maps a catalyst snapshot to ``FailureModeResult(
+  mode=NEWS_SHOCK, block_trade=True, …)`` ONLY when
+  ``event_risk="restricted"`` or ``shock_state="high"``. Used
+  alongside the existing MarketTelemetry-driven path via
+  ``pick_tighter_failure``; hard safety vetoes still win.
+* ``terminal_aggregator.get_signal`` now reads ``catalyst_snapshots``
+  and emits:
+    * a ``catalyst`` block with ``event_risk``, ``news_shock``, and
+      a ``headline_chip`` for UI;
+    * new catalyst entries in the risk list
+      (``News shock restricted`` high-severity,
+      ``Catalyst risk elevated`` medium,
+      ``News sentiment: <label>`` low).
+* ``GET /api/admin/news-shock/status`` — per-symbol readiness
+  dashboard (tracked / ready / elevated / high counts + the most
+  recent headline). Capped at 300 rows.
+* ``POST /api/admin/news-shock/ensure-indexes`` — one-shot
+  idempotent helper to create the 4 Mongo indexes
+  (``catalyst_events.{symbol,event_time}``,
+  ``catalyst_events.event_id_unique``,
+  ``news_telemetry.{symbol,created_at}``,
+  ``catalyst_snapshots.symbol_unique``). Ran once live — all 4
+  indexes created.
+
+**Deliberately deferred**
+
+* ``conviction_service.apply_catalyst_adjustment`` helper — designed
+  per spec but not wired into the existing conviction computation
+  yet. The existing compute function is large and complex; pinning
+  the exact injection point needs operator review. Helper available
+  for drop-in when ready.
+* ``adversarial_core.catalyst_thesis_lines`` — same reason. The
+  bull/bear case helpers exist in ``adversarial_core`` but have
+  their own narrative injection sequence; adding catalyst lines
+  without understanding ordering could break existing Commander
+  output shape.
+
+**Live verification** (2026-05-02):
+
+Benzinga smoke fed 2 AAPL articles → ``catalyst_events`` now has
+2 rows with stable ``benzinga:{id}`` keys. Indexes created via
+admin endpoint. ``/news-shock/status`` returns correct empty-state
+JSON (no snapshots yet since Saturday). Mon 13:00 UTC the
+scheduler fires and the baseline starts accumulating.
+
+22 new tests (``test_news_shock_service.py``) pinning every pure
+function in the spec + 4 catalyst-gate branches. 171/171 across
+adjacent suites. Lint clean on all 10 touched files. Backend
+restarted cleanly (491 routes).
+
 ### Scheduler wiring + Smart Money live + dollar_volume telemetry feeder (May 2, 2026)
 
 Ships three interlocking bits that turn the previously-built

@@ -166,6 +166,17 @@ async def run_news_feeders_tick(db: Any) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("[news-feeder-sched] av batch failed: %s", exc)
 
+    # Phase C: project ingested catalyst events into per-symbol
+    # snapshots that the IP contract + Commander + Terminal read.
+    # Fails silently — a broken snapshot pass must not freeze the
+    # feeders or the rotation offset. The NEWS_SHOCK gate can still
+    # read pre-existing snapshots if one batch fails.
+    try:
+        from services.catalyst_snapshot_service import refresh_catalyst_snapshots
+        await refresh_catalyst_snapshots(db=db, symbols=symbols)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[news-feeder-sched] catalyst snapshot refresh failed: %s", exc)
+
     # Only advance the offset AFTER both feeders run — if the tick died
     # mid-batch (Mongo blip, scheduler restart), we'll re-run the same
     # slice next tick. Idempotent feeders make this safe.

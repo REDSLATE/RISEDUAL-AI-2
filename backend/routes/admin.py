@@ -3119,3 +3119,94 @@ async def news_feeders_manual_tick(request: Request):
     from services.news_feeders_scheduler import run_news_feeders_tick
 
     return await run_news_feeders_tick(db)
+
+
+# ── Phase C — NEWS_SHOCK / catalyst readiness ──
+
+
+@router.get("/news-shock/status")
+async def news_shock_status(request: Request):
+    """Return the ``catalyst_snapshots`` state — per-symbol shock
+    state, z-score readiness, event risk, and the most recent headline.
+
+    Read-only, cheap (single collection scan capped at 300 rows).
+    Used by the admin dashboard + operator tooling to watch the
+    Mon-AM baseline accumulation after a fresh deploy."""
+    await _require_owner(request)
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    cursor = db.catalyst_snapshots.find({}, {"_id": 0}).limit(300)
+    rows = await cursor.to_list(length=300)
+
+    ready_count = 0
+    elevated_count = 0
+    high_count = 0
+    symbols = []
+    for row in rows:
+        shock = row.get("news_shock", {}) or {}
+        ready = bool(shock.get("zscore_ready"))
+        if ready:
+            ready_count += 1
+        if shock.get("shock_state") == "elevated":
+            elevated_count += 1
+        if shock.get("shock_state") == "high":
+            high_count += 1
+        updated = row.get("updated_at")
+        if isinstance(updated, datetime):
+            updated = updated.isoformat()
+        symbols.append({
+            "symbol": row.get("symbol"),
+            "zscore_ready": ready,
+            "baseline_samples": shock.get("baseline_samples", 0),
+            "news_zscore": shock.get("news_zscore"),
+            "shock_state": shock.get("shock_state"),
+            "sentiment_label": shock.get("sentiment_label"),
+            "event_risk": row.get("event_risk"),
+            "latest_headline": shock.get("latest_headline"),
+            "updated_at": updated,
+        })
+
+    return {
+        "ready_symbols": ready_count,
+        "tracked_symbols": len(rows),
+        "elevated_count": elevated_count,
+        "high_count": high_count,
+        "symbols": symbols,
+        "updated_at": now.isoformat(),
+    }
+
+
+@router.post("/news-shock/ensure-indexes")
+async def news_shock_ensure_indexes(request: Request):
+    """One-shot helper to create the three Mongo indexes the NEWS_SHOCK
+    layer depends on. Idempotent; safe to re-run. Kept as an endpoint
+    (rather than eager startup hook) so the operator can time the
+    first creation with an empty database."""
+    await _require_owner(request)
+    created = []
+    try:
+        await db.catalyst_events.create_index(
+            [("symbol", 1), ("event_time", -1)],
+        )
+        created.append("catalyst_events.symbol_event_time")
+    except Exception as exc:  # noqa: BLE001
+        created.append(f"catalyst_events_error:{exc}")
+    try:
+        await db.catalyst_events.create_index("event_id", unique=True)
+        created.append("catalyst_events.event_id_unique")
+    except Exception as exc:  # noqa: BLE001
+        created.append(f"catalyst_events_event_id_error:{exc}")
+    try:
+        await db.news_telemetry.create_index(
+            [("symbol", 1), ("created_at", -1)],
+        )
+        created.append("news_telemetry.symbol_created_at")
+    except Exception as exc:  # noqa: BLE001
+        created.append(f"news_telemetry_error:{exc}")
+    try:
+        await db.catalyst_snapshots.create_index("symbol", unique=True)
+        created.append("catalyst_snapshots.symbol_unique")
+    except Exception as exc:  # noqa: BLE001
+        created.append(f"catalyst_snapshots_error:{exc}")
+    return {"created": created}
