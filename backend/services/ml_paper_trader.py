@@ -377,6 +377,9 @@ async def maybe_paper_trade(
         from services.equity_shadow_promotion import (
             compute_equity_shadow_promotion_status,
         )
+        from services.tier3_readiness import (
+            build_tier3_stats, check_tier3_unlock,
+        )
 
         _strategist_action = "LONG" if signal.direction.value == "up" else "SHORT"
         _commander_signal = {
@@ -397,10 +400,24 @@ async def maybe_paper_trade(
         _commander = resolve_adversarial(_bull, _bear)
 
         _promotion = await compute_equity_shadow_promotion_status(db)
+
+        # Tier 3 unlock check — once unlocked, the adversarial engine has
+        # full directional authority and the pre-Tier-3 brake becomes a
+        # no-op (per handoff: "brake activity recorded until tier 3 is
+        # broken through"). Any failure reading the gate defaults to
+        # tier3_unlocked=False so the brake stays live.
+        _tier3_unlocked = False
+        try:
+            _t3_stats = await build_tier3_stats(db)
+            _tier3_unlocked = bool(check_tier3_unlock(_t3_stats).get("unlocked", False))
+        except Exception as _t3_exc:  # noqa: BLE001
+            log.debug("[ml_paper] tier3 probe failed (defaulting to locked): %s", _t3_exc)
+
         _brake = decide_brake(
             strategist_action=_strategist_action,
             commander_decision=_commander.get("decision"),
             brake_eligible=bool(_promotion.get("brake_eligible", False)),
+            tier3_unlocked=_tier3_unlocked,
         )
 
         if _brake.brake_applied:
@@ -418,6 +435,7 @@ async def maybe_paper_trade(
             "commander_decision": _commander.get("decision"),
             "commander_edge_gap": _commander.get("edge_gap"),
             "promotion_phase": _promotion.get("phase"),
+            "tier3_unlocked": _tier3_unlocked,
         }
     except Exception as _brake_exc:  # noqa: BLE001
         log.warning(

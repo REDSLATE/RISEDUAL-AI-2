@@ -41,6 +41,16 @@ class MarketTelemetry:
     news_sentiment_abs: float = 0.0
     news_volume_zscore: float = 0.0
     data_missing_ratio: float = 0.0
+    # Dollar volume telemetry — when the symbol's dollar-traded flow
+    # collapses well below its baseline, the quoted spread may LOOK
+    # tight only because no one is trading; a real attempt to size
+    # into the name will cross a stale book and slip badly. Both
+    # fields default to 0.0 so legacy callers that only pass the
+    # spread-based fields don't trip the trap by accident — the
+    # classifier requires BOTH a non-zero baseline AND a below-trigger
+    # ratio before firing the dollar-volume branch.
+    dollar_volume: float = 0.0
+    dollar_volume_baseline: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -72,6 +82,11 @@ class FailureModeConfig:
     error_rate_trigger: float = 0.55
     loss_streak_trigger: int = 4
     drawdown_trigger: float = 0.10
+    # Dollar-volume below `dollar_volume_ratio_trigger * baseline` trips
+    # the LIQUIDITY_TRAP branch independently of spread. 0.30 = a 70%
+    # collapse in traded dollars. Tuned conservative — a light-volume
+    # day at 0.50x baseline is NOT a trap; only a severe drop.
+    dollar_volume_ratio_trigger: float = 0.30
 
 
 @dataclass(frozen=True)
@@ -150,6 +165,38 @@ def classify_failure_mode(
                 block_trade=True,
                 reasons=["spread_widening_liquidity_trap"],
                 metadata={"spread_ratio": spread_ratio, "spread_bps": market.spread_bps},
+            )
+        )
+
+    # Dollar-volume starvation branch of LIQUIDITY_TRAP. Independent of
+    # spread — a ghost book can quote tight while no real flow transacts,
+    # and a market order at size will walk through stale resting liquidity.
+    # Fires only when a baseline is available AND the live ratio clears
+    # the trigger in the DEFICIT direction (ratio < trigger). Both sides
+    # guard against the zero-baseline footgun — legacy callers that pass
+    # the default 0.0 values can't trip this branch.
+    dv_ratio = _safe_ratio(market.dollar_volume, market.dollar_volume_baseline)
+    if (
+        market.dollar_volume_baseline > 0
+        and market.dollar_volume > 0
+        and dv_ratio < config.dollar_volume_ratio_trigger
+    ):
+        # Higher deficit → higher confidence. dv_ratio=0.1 → confidence≈0.67,
+        # dv_ratio=0.3 → confidence≈0.0 (right at the trigger edge).
+        deficit = max(0.0, config.dollar_volume_ratio_trigger - dv_ratio)
+        dv_confidence = _clamp01(deficit / config.dollar_volume_ratio_trigger)
+        candidates.append(
+            FailureModeResult(
+                mode=FailureMode.LIQUIDITY_TRAP,
+                confidence=dv_confidence,
+                risk_multiplier_cap=0.25,
+                block_trade=True,
+                reasons=["dollar_volume_starvation"],
+                metadata={
+                    "dollar_volume_ratio": round(dv_ratio, 4),
+                    "dollar_volume": market.dollar_volume,
+                    "dollar_volume_baseline": market.dollar_volume_baseline,
+                },
             )
         )
 

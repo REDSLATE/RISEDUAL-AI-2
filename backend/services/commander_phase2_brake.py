@@ -154,6 +154,7 @@ def decide_brake(
     strategist_action: Optional[str],
     commander_decision: Optional[str],
     brake_eligible: bool,
+    tier3_unlocked: bool = False,
 ) -> BrakeDecision:
     """Decide whether to halve an equity entry's position size.
 
@@ -162,6 +163,15 @@ def decide_brake(
 
     * Even with a clean disagreement, ``brake_eligible=False`` pins
       ``brake_applied=False``. Phase 1 is sacred.
+    * ``tier3_unlocked=True`` also pins ``brake_applied=False`` — once
+      Tier 3 opens, the adversarial engine gains full authority
+      (``CRYPTO_ADVERSARIAL_PHASE=full`` / equivalent) and can
+      override direction outright. The pre-Tier-3 "halve on
+      disagreement" heuristic becomes redundant and risks double-
+      counting size reductions alongside the full engine's override.
+      The brake decision IS still recorded (``reason`` tag carries
+      the bypass), so the admin panel sees continuity rather than
+      a cliff.
     * ``strategist_action=HOLD`` returns an all-False decision — there
       is no entry to brake.
     * Unknown strategist or commander spellings degrade to no-brake
@@ -198,6 +208,17 @@ def decide_brake(
         )
 
     disagreement = _is_disagreement(s, c)
+
+    # Tier 3 unlocked — Commander has full authority via the adversarial
+    # engine. Brake becomes a no-op to avoid double-sizing reductions.
+    # Disagreement still surfaces in telemetry.
+    if tier3_unlocked:
+        return BrakeDecision(
+            brake_applied=False,
+            brake_multiplier=1.0,
+            reason="tier3_unlocked_full_authority",
+            disagreement=disagreement,
+        )
 
     # Phase 1 — evidence-only. Always logs disagreement, never modifies size.
     if not brake_eligible:

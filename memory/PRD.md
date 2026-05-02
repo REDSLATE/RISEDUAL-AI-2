@@ -22,6 +22,89 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Tier-3 Brake Bypass + Smart Money Verification + Liquidity Intelligence Extension (May 2, 2026)
+
+Four-part iteration shipping the next P0/P1 items on the roadmap.
+
+**A. Commander Phase 2 brake — Tier 3 bypass**
+
+`decide_brake` now accepts `tier3_unlocked: bool = False`. When True,
+brake is pinned off with `reason="tier3_unlocked_full_authority"`
+even on a clean disagreement — the adversarial engine gains full
+directional authority at Tier 3 and a halve-on-disagreement
+heuristic on top of that is double-counting. Disagreement still
+records to the audit sub-doc so the admin panel sees continuity
+rather than a cliff. `ml_paper_trader` reads `build_tier3_stats /
+check_tier3_unlock` inline and threads the flag through. Any gate
+read failure defaults to `tier3_unlocked=False` so the brake stays
+live — fail-safe is to keep the guard on.
+
+**B. Position Context design doc — `/app/memory/POSITION_CONTEXT_DESIGN.md`**
+
+Complete contract for unblocking Terminal Phase T2 (`/top-actions`):
+`PositionContext` dataclass shape, 6 data sources + fail-safe per
+source, 5 correlation-dedup rules (exact overlap, sector saturation,
+beta similarity, options delta overlap, crypto cluster), horizon
+anchoring (intraday/swing/multi_day, one-per-candidate), ranking
+formula, endpoint contract, 5 safety invariants, and 6 open
+questions for operator sign-off. Implementation stays blocked until
+those 6 answers land.
+
+**C. Smart Money Verification — `decision_proof_chain` block**
+
+* New `ProofEventType.SMART_MONEY_VERIFIED` in the enum (slots
+  between `RISK_BUDGET_APPLIED` and `EXECUTION_ATTEMPTED`,
+  chronologically correct in the IP lifecycle).
+* New service `services/smart_money_verification.py` with three
+  pure helpers + one Mongo-writing coordinator:
+  - `compute_alignment(action, signal)` — pure matrix:
+    LONG/bullish→confirms, LONG/bearish→contradicts, etc.
+    Unknown action synonyms degrade to `no_data` (never raises).
+  - `build_verification_payload(symbol, action, score)` — shapes a
+    schema-stable payload (top 3 contributors only — keeps the
+    `payload_hash` deterministic regardless of how long the
+    contributor list gets upstream).
+  - `verify_and_append(db, entity_id, symbol, action)` — fetches
+    `compute_smart_money_score`, writes a `SMART_MONEY_VERIFIED`
+    block via `AsyncMongoProofChainStore`, returns the payload.
+    Two fail-safe branches: if score fetch fails, writes a
+    `no_data` block anyway (chain records that verification was
+    *attempted*); if the Mongo insert fails, logs and returns
+    `None` so callers are never blocked by an audit-write outage.
+* 14 tests pinning the alignment matrix (including the 3
+  strategist-action synonyms and 2 commander synonyms), payload
+  schema stability, happy-path block insertion, degradation under
+  score-fetch error, Mongo-write-failure fail-safe, and `db=None`
+  short-circuit.
+
+**D. Liquidity Intelligence Extension — dollar-volume starvation**
+
+* `MarketTelemetry` gains `dollar_volume` + `dollar_volume_baseline`
+  fields (both default 0.0 so legacy callers are unaffected).
+* `FailureModeConfig.dollar_volume_ratio_trigger = 0.30` — below
+  30% of baseline trips the trap branch.
+* `classify_failure_mode` now adds a dollar-volume starvation
+  branch of `LIQUIDITY_TRAP`, independent of spread. Fires only
+  when BOTH `dollar_volume_baseline > 0` AND `dollar_volume > 0`
+  AND `dv_ratio < trigger` — double-guard against the zero-value
+  footgun that would otherwise false-positive on fresh-deploy
+  symbols with no history yet. Confidence scales with deficit
+  depth.
+* `services/equity_telemetry.py` extended end-to-end:
+  `record_measurement(dollar_volume=…)` appends to the rolling
+  buffer; `get_telemetry(current_dollar_volume=…)` computes the
+  baseline and returns a populated telemetry object.
+* 11 tests covering: legacy-caller safety, both-side zero guard,
+  severe deficit trigger (confidence), boundary (ratio ==
+  trigger → no fire), healthy dollar volume no-op, confidence
+  scales with deficit depth, independent firing from spread,
+  spread-only path still works (back-compat), custom-config
+  override.
+
+**Totals**: 61 new tests + 206/206 green across all adjacent
+regression suites. Lint clean across all 9 modified / created
+files. Backend restart succeeded (483 routes).
+
 ### Commander Shadow Phase 2 Pre-Tier-3 Size Brake (May 2, 2026)
 
 Completes the Commander shadow lifecycle on the equity path. Phase 1

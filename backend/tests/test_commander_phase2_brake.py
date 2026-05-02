@@ -172,6 +172,67 @@ def test_apply_brake_zero_position_returns_zero() -> None:
     assert apply_brake_to_position(-1.0, brake) == 0.0
 
 
+# ── Tier 3 bypass (brake disables after full Commander authority) ──
+
+
+@pytest.mark.parametrize(
+    "strategist,commander",
+    [
+        ("LONG", "SHORT_OR_AVOID"),  # would brake at Phase 2
+        ("LONG", "NO_TRADE"),        # would brake at Phase 2
+        ("SHORT", "LONG"),           # would brake at Phase 2
+        ("LONG", "LONG"),            # would no-op anyway
+    ],
+)
+def test_tier3_unlocked_never_brakes_but_records_disagreement(
+    strategist: str, commander: str,
+) -> None:
+    """Once Tier 3 unlocks, adversarial engine gains full authority.
+    The pre-Tier-3 brake must bypass to avoid double-sizing reductions,
+    BUT the disagreement record persists for audit continuity."""
+    b = decide_brake(
+        strategist_action=strategist,
+        commander_decision=commander,
+        brake_eligible=True,
+        tier3_unlocked=True,
+    )
+    assert b.brake_applied is False
+    assert b.brake_multiplier == 1.0
+    assert b.reason == "tier3_unlocked_full_authority"
+    # Disagreement still captured for telemetry continuity.
+    # (LONG/LONG is agreement; everything else here is disagreement.)
+    if (strategist, commander) == ("LONG", "LONG"):
+        assert b.disagreement is False
+    else:
+        assert b.disagreement is True
+
+
+def test_tier3_unlocked_overrides_phase_1_too() -> None:
+    """Belt-and-braces: tier3 bypass must win even when brake_eligible
+    is False — the ``reason`` tag should reflect tier3, not phase_1."""
+    b = decide_brake(
+        strategist_action="LONG",
+        commander_decision="SHORT_OR_AVOID",
+        brake_eligible=False,
+        tier3_unlocked=True,
+    )
+    assert b.brake_applied is False
+    assert b.reason == "tier3_unlocked_full_authority"
+    assert b.disagreement is True
+
+
+def test_tier3_default_false_preserves_phase_2_behavior() -> None:
+    """Existing callers (no tier3 kwarg) keep the Phase 2 brake exactly
+    as it behaved before this patch."""
+    b = decide_brake(
+        strategist_action="LONG",
+        commander_decision="SHORT_OR_AVOID",
+        brake_eligible=True,
+    )
+    assert b.brake_applied is True
+    assert b.brake_multiplier == 0.5
+
+
 # ── Log shape ────────────────────────────────────────────────────
 
 

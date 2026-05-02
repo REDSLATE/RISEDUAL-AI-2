@@ -54,6 +54,7 @@ async def record_measurement(
     atr_pct: Optional[float] = None,
     spread_bps: Optional[float] = None,
     volume: Optional[float] = None,
+    dollar_volume: Optional[float] = None,
     asset_class: str = DEFAULT_ASSET_CLASS,
 ) -> None:
     """Append a measurement to the rolling buffer for ``symbol``.
@@ -62,6 +63,12 @@ async def record_measurement(
     fetch without worrying about duplicates inflating the baseline.
     Missing fields (``None``) are skipped so partial measurements
     don't poison the average.
+
+    ``dollar_volume`` (shares × price) is recorded alongside raw
+    volume so the Patent-M classifier can detect dollar-volume
+    starvation independently of share-count — a penny stock logging
+    3 M shares at $0.10 is NOT liquid the same way a mega-cap
+    logging 3 M shares at $200 is.
     """
     if _db is None:
         return
@@ -74,6 +81,8 @@ async def record_measurement(
         sample["spread_bps"] = float(spread_bps)
     if volume is not None and volume > 0:
         sample["volume"] = float(volume)
+    if dollar_volume is not None and dollar_volume > 0:
+        sample["dollar_volume"] = float(dollar_volume)
     if len(sample) == 1:  # only the timestamp
         return
     try:
@@ -112,6 +121,7 @@ async def get_telemetry(
     current_atr_pct: Optional[float] = None,
     current_spread_bps: Optional[float] = None,
     current_volume: Optional[float] = None,
+    current_dollar_volume: Optional[float] = None,
     asset_class: str = DEFAULT_ASSET_CLASS,
 ) -> Optional[MarketTelemetry]:
     """Build ``MarketTelemetry`` for ``symbol`` using buffered baselines.
@@ -120,6 +130,13 @@ async def get_telemetry(
     can fetch live — e.g. from the broker quote endpoint). Baselines
     are looked up from Mongo. Volume z-score is computed against the
     rolling buffer.
+
+    Dollar-volume (current + baseline) feeds the Patent-M dollar-
+    volume starvation branch of ``LIQUIDITY_TRAP``. A missing baseline
+    (< 3 samples) or a missing current reading degrades gracefully —
+    both fields surface as 0.0 and the starvation branch becomes
+    dormant by contract (see failure_mode_classifier zero-baseline
+    guard).
 
     Returns ``None`` when no baseline yet — the caller should fall back
     to passing zeros into Patent M, which dormants the volatility/
@@ -143,6 +160,7 @@ async def get_telemetry(
     spread_baseline = _baseline(samples, "spread_bps")
     volume_baseline = _baseline(samples, "volume")
     volume_stdev = _stdev(samples, "volume")
+    dollar_volume_baseline = _baseline(samples, "dollar_volume")
 
     volume_z = 0.0
     if current_volume is not None and volume_baseline and volume_stdev > 0:
@@ -156,6 +174,8 @@ async def get_telemetry(
         volume_zscore=float(volume_z),
         spread_bps=float(current_spread_bps or 0.0),
         spread_bps_baseline=float(spread_baseline or 0.0),
+        dollar_volume=float(current_dollar_volume or 0.0),
+        dollar_volume_baseline=float(dollar_volume_baseline or 0.0),
     )
 
 
