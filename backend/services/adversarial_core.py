@@ -267,6 +267,53 @@ def bear_agent(signal: dict[str, Any]) -> AgentOutput:
     )
 
 
+# ── Options-flow narrative enrichment (Phase 2b integration hook) ─────────────
+#
+# Additive, never-dominant: this function appends text to the thesis
+# string based on put/call ratio, but DOES NOT change confidence or
+# expected_r. The Commander still resolves on score gap alone. PCR is
+# evidence the analyst reads, not a vote it gets to cast.
+
+PCR_BULL_THRESHOLD = 0.7   # < this → call-heavy, bullish option flow
+PCR_BEAR_THRESHOLD = 1.3   # > this → put-heavy, bearish option flow
+
+
+def apply_options_context(
+    bull: AgentOutput,
+    bear: AgentOutput,
+    options_entry: Optional[dict],
+) -> tuple[AgentOutput, AgentOutput]:
+    """Enrich bull/bear theses with options-flow context.
+
+    ``options_entry`` is a per-symbol dict from
+    ``options_universe_service.read_options_snapshot`` (or ``None``).
+    Returns fresh ``AgentOutput`` instances — inputs are never mutated.
+    ``None`` / missing-aggregate / unset-PCR all round-trip unchanged,
+    preserving the "empty-snapshot = no-op" guarantee.
+    """
+    import dataclasses
+
+    if not options_entry:
+        return bull, bear
+
+    aggregate = options_entry.get("aggregate") or {}
+    pcr = aggregate.get("put_call_ratio")
+    if pcr is None:
+        return bull, bear
+
+    if pcr < PCR_BULL_THRESHOLD:
+        bull = dataclasses.replace(
+            bull,
+            thesis=bull.thesis + " | strong_call_flow",
+        )
+    elif pcr > PCR_BEAR_THRESHOLD:
+        bear = dataclasses.replace(
+            bear,
+            thesis=bear.thesis + " | elevated_put_activity",
+        )
+    return bull, bear
+
+
 # ── Commander ─────────────────────────────────────────────────────────────────
 
 

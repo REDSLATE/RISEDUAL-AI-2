@@ -362,7 +362,44 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
     return stats
 
 
-# ───────────────────── admin helpers ─────────────────────
+# ───────────────────── downstream-hook reader ─────────────────────
+
+
+async def read_options_snapshot(db: Any, symbol: str) -> dict | None:
+    """Read the per-symbol slice of the current options universe.
+
+    This is the single entry point used by every downstream integration
+    hook (``failure_mode_classifier``, ``adversarial_core``,
+    ``conviction_service``, ``ml_paper_trader``). Returning ``None`` here
+    is the "empty-snapshot = no-op" guard — callers short-circuit on
+    ``None`` without touching their existing logic.
+
+    Returns ``None`` when:
+        * no snapshot doc exists yet (warm never ran)
+        * the symbol isn't in the configured underlying list
+        * the per-symbol entry has no data (rare; means warm failed
+          for that symbol specifically)
+
+    Returns the per-symbol dict ``{symbol, contracts, aggregate}``
+    otherwise. Reads are single-doc — cheap even at high call volume.
+    """
+    if db is None:
+        return None
+    try:
+        snapshot = await db[OPTIONS_UNIVERSE_COLLECTION].find_one(
+            {"_id": CURRENT_SNAPSHOT_ID}, {"_id": 0},
+        )
+    except Exception as exc:
+        logger.debug("[options_universe] read_options_snapshot: %s", exc)
+        return None
+    if not snapshot:
+        return None
+    data = snapshot.get("data") or []
+    target = symbol.upper()
+    for entry in data:
+        if entry.get("symbol") == target:
+            return entry
+    return None
 
 
 async def get_options_status(db: Any) -> dict:

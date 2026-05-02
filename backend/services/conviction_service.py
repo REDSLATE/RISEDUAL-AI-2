@@ -46,6 +46,16 @@ CONVICTION_TIERS = [
     (0.00, "weak",     0.00),
 ]
 
+# Options-flow boost (Phase 2b hook). Capped so options can never
+# single-handedly flip a tier boundary:
+#   * weakest tier gap = 0.40 (moderate→strong)
+#   * boost max is 0.05 → at most you can push a 0.55 signal to 0.60
+#     (still requires base signal to already be close to promotion).
+# Threshold 3.0 is roughly "top-quartile flow score" observed in Phase 2a
+# live data (SPY/QQQ ATM weeklies during peak hours).
+OPTIONS_FLOW_BOOST_THRESHOLD = 3.0
+OPTIONS_FLOW_BOOST_MAX = 0.05
+
 
 def _tier_from_score(score: float) -> tuple[str, float]:
     for threshold, label, mult in CONVICTION_TIERS:
@@ -192,6 +202,7 @@ async def compute_conviction(
     confidence: Optional[float],
     regime_match: Optional[bool] = None,
     risk_ctx: Optional[dict] = None,
+    options_flow_score: Optional[float] = None,
 ) -> dict:
     """Compute the composite conviction score + tier + size multiplier.
 
@@ -199,6 +210,12 @@ async def compute_conviction(
     active weights, and a per-component breakdown for UI/debug transparency.
     Safe to call from any async context — fails gracefully to a neutral
     score when DB lookups error out. Never raises.
+
+    ``options_flow_score`` (Phase 2b integration hook): when present and
+    ≥ ``OPTIONS_FLOW_BOOST_THRESHOLD``, adds a *capped* additive boost of
+    up to ``OPTIONS_FLOW_BOOST_MAX``. Bounded so options can NEVER
+    single-handedly promote a signal across a tier boundary — additive,
+    never-dominant. ``None`` / low scores contribute 0.
     """
     try:
         w = CONVICTION_WEIGHTS
@@ -241,12 +258,27 @@ async def compute_conviction(
             penalty_streak = w["loss_streak"]
         components["loss_streak_penalty"] = round(-penalty_streak, 4)
 
+        # 6. Options-flow boost (Phase 2b hook). Additive + capped. None
+        #    / low scores contribute 0 so Phase 2a downstream consumers
+        #    not yet passing the arg see identical behaviour.
+        options_boost = 0.0
+        if (
+            options_flow_score is not None
+            and options_flow_score >= OPTIONS_FLOW_BOOST_THRESHOLD
+        ):
+            # Linear ramp above threshold, clamped at the max. A flow
+            # score of 3.0 contributes 0; 5.0+ contributes the full cap.
+            scale = min(1.0, (float(options_flow_score) - OPTIONS_FLOW_BOOST_THRESHOLD) / 2.0)
+            options_boost = round(OPTIONS_FLOW_BOOST_MAX * scale, 4)
+        components["options_flow_boost"] = options_boost
+
         score = (
             components["signal_confidence"]
             + components["calibration"]
             + components["regime_match"]
             + components["rejection_bias_penalty"]
             + components["loss_streak_penalty"]
+            + components["options_flow_boost"]
         )
         score = max(0.0, min(1.0, score))
         tier_label, size_mult = _tier_from_score(score)

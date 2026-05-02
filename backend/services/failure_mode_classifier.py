@@ -20,6 +20,7 @@ class FailureMode(str, Enum):
     NORMAL = "NORMAL"
     VOLATILITY_SHOCK = "VOLATILITY_SHOCK"
     LIQUIDITY_TRAP = "LIQUIDITY_TRAP"
+    OPTIONS_LIQUIDITY_TRAP = "OPTIONS_LIQUIDITY_TRAP"
     NEWS_SHOCK = "NEWS_SHOCK"
     CALIBRATION_FAILURE = "CALIBRATION_FAILURE"
     MODEL_INSTABILITY = "MODEL_INSTABILITY"
@@ -268,3 +269,92 @@ def apply_failure_mode_to_multiplier(
         reasons.append("failure_mode_tightened_risk")
 
     return final_multiplier, reasons
+
+
+# ── OPTIONS_LIQUIDITY_TRAP (Phase 2b integration hook) ───────────────
+#
+# Pure function — options-awareness by explicit call only. The equity
+# decision path continues to use ``classify_failure_mode`` unchanged; any
+# caller that also wants to gate on options-market health now composes
+# the two results with ``pick_tighter_failure``. Never-dominant rule:
+# this mode caps the risk multiplier but does NOT ``block_trade`` — the
+# underlying equity trade can still go through at reduced size.
+#
+# Trigger logic (per user spec):
+#   * snapshot missing / symbol absent       → None (no-op)
+#   * symbol present but zero hot contracts  → OPTIONS_LIQUIDITY_TRAP
+#       (the liquid-flow filter rejected everything — market makers
+#        likely pulled back, signal-from-options is unusable)
+#   * symbol present, min spread_bps > 75    → OPTIONS_LIQUIDITY_TRAP
+#       (even the tightest contract is wide — same conclusion)
+
+
+OPTIONS_SPREAD_TRAP_BPS = 75.0
+
+
+def classify_options_liquidity(
+    symbol: str,
+    options_entry: Optional[dict],
+) -> Optional[FailureModeResult]:
+    """Per-symbol options-market liquidity check.
+
+    ``options_entry`` is the per-symbol dict returned by
+    ``options_universe_service.read_options_snapshot``. ``None`` signals
+    "no snapshot / symbol not configured" and must round-trip to ``None``
+    — that's the empty-snapshot guarantee every downstream hook relies on.
+    """
+    if not options_entry:
+        return None
+
+    contracts = options_entry.get("contracts") or []
+    if not contracts:
+        # Symbol is configured AND a warm ran, but the liquid-flow filter
+        # rejected every strike — the options market is currently
+        # untradeable for signal purposes.
+        return FailureModeResult(
+            mode=FailureMode.OPTIONS_LIQUIDITY_TRAP,
+            confidence=0.60,
+            risk_multiplier_cap=0.50,
+            block_trade=False,
+            reasons=["no_hot_flow_contracts"],
+            metadata={"symbol": symbol.upper()},
+        )
+
+    # Narrowest (best) contract still too wide → liquidity regime shift.
+    min_spread = min(
+        float(c.get("spread_bps") or 9999) for c in contracts
+    )
+    if min_spread > OPTIONS_SPREAD_TRAP_BPS:
+        return FailureModeResult(
+            mode=FailureMode.OPTIONS_LIQUIDITY_TRAP,
+            confidence=_clamp01(min_spread / 150.0),
+            risk_multiplier_cap=0.50,
+            block_trade=False,
+            reasons=["options_spread_widening"],
+            metadata={
+                "symbol": symbol.upper(),
+                "min_spread_bps": round(min_spread, 2),
+            },
+        )
+
+    return None
+
+
+def pick_tighter_failure(
+    *results: Optional[FailureModeResult],
+) -> Optional[FailureModeResult]:
+    """Compose multiple failure-mode verdicts into the most conservative
+    one. ``None`` values are dropped. Used when a caller runs both
+    ``classify_failure_mode`` (equity) and ``classify_options_liquidity``
+    (options) and wants a single verdict to feed the risk modulator.
+
+    Priority: block_trade dominates, then lowest risk_multiplier_cap wins.
+    """
+    filtered = [r for r in results if r is not None]
+    if not filtered:
+        return None
+    # block_trade first, then tightest cap
+    filtered.sort(
+        key=lambda r: (not r.block_trade, r.risk_multiplier_cap),
+    )
+    return filtered[0]

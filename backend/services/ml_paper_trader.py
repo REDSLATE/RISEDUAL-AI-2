@@ -56,7 +56,36 @@ _MIN_PAPER_CONFIDENCE: float = 0.55
 _TRADEABLE_REGIMES: frozenset[str] = frozenset({"bull", "bear", "sideways", "trending_up", "trending_down", "unknown", ""})
 
 
-# ── Idempotency: dedupe-on-insert key ─────────────────────────────────────────
+# Options-activity guard (Phase 2b integration hook). When an options
+# snapshot is available, a symbol with essentially no options flow is
+# signalling regime uncertainty — the usual pre-trade smart money read
+# is unavailable. We skip rather than size down because this is a
+# signal-quality gate, not a position-sizing one. Rule stays additive:
+# if the snapshot is empty OR the symbol isn't configured in the
+# options universe, the guard is a no-op (pre-existing behaviour).
+_MIN_OPTIONS_TOTAL_VOLUME: int = 1000
+
+
+def options_activity_guard(
+    options_entry: dict | None,
+    min_volume: int = _MIN_OPTIONS_TOTAL_VOLUME,
+) -> tuple[bool, str]:
+    """Return ``(allow, reason)``. Empty snapshot / missing symbol →
+    ``(True, "")`` — the equity path runs unchanged. When options data
+    exists but the total aggregate volume is below ``min_volume``,
+    returns ``(False, "LOW_OPTIONS_ACTIVITY")``."""
+    if not options_entry:
+        return True, ""
+    aggregate = options_entry.get("aggregate") or {}
+    total_vol = aggregate.get("total_volume")
+    if total_vol is None:
+        return True, ""
+    if int(total_vol) < int(min_volume):
+        return False, "LOW_OPTIONS_ACTIVITY"
+    return True, ""
+
+
+# Idempotency: dedupe-on-insert key ─────────────────────────────────────────
 # Forensic context: 2026-04-16 19:18:20 + 19:18:32 produced two
 # `paper_trades` rows for AAPL/down with identical entry_price (266.43),
 # shares (38.17), and position_size_usd (10170.35) twelve seconds apart.
@@ -180,6 +209,34 @@ async def maybe_paper_trade(
     directional_conf = signal.confidence if signal.direction.value == "up" else (1.0 - signal.confidence)
     log.info("[ml_paper] %s: direction=%s raw_conf=%.3f directional=%.3f regime=%s",
              ticker, signal.direction.value, signal.confidence, directional_conf, regime)
+
+    # ── Options-activity guard (Phase 2b hook) ───────────────────────────────
+    # Consult the current options universe snapshot. No-op for symbols not
+    # in the configured underlying list OR when the snapshot doesn't exist
+    # yet (Phase 2a pre-warm regression path). Only blocks when the
+    # options market for this specific symbol is flat — a signal-quality
+    # veto, not a position-sizing one. Never raises — a snapshot read
+    # failure must not break the equity trade loop.
+    try:
+        from services.options_universe_service import read_options_snapshot
+        _opt_entry = await read_options_snapshot(db, ticker)
+        _allow, _reason = options_activity_guard(_opt_entry)
+        if not _allow:
+            log.info("[ml_paper] %s: options guard veto (%s) — skipping",
+                     ticker, _reason)
+            try:
+                from services.agent_activity_service import log_paper_trade_skipped
+                await log_paper_trade_skipped(
+                    ticker=ticker,
+                    reason=_reason,
+                    confidence=directional_conf,
+                )
+            except Exception:
+                pass  # telemetry failure must never break the trade loop
+            return None
+    except Exception as _opt_exc:
+        # Snapshot read failed — degrade silently to legacy behaviour.
+        log.debug("[ml_paper] options guard bypass for %s: %s", ticker, _opt_exc)
 
     # ── Equity Commander Shadow (Phase 1: observation only) ──────────────────
     # Fire-and-forget shadow opinion on every equity decision. Commander
