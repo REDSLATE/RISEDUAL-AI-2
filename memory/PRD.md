@@ -22,6 +22,193 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+
+### Sovereign AI — DTD/PRD Dual-Stack Mode Guard (May 3, 2026)
+
+Wraps the shared Sovereign AI brain with strict DTD (research / training /
+challenger) vs PRD (production / shadow + bounded contribution) adapters so
+the same ``sovereign_ai_core.py`` brain can't accidentally execute training
+code against a live production DB.
+
+**New modules**
+
+* ``services/sovereign_mode_guard.py`` — ``RISEDUAL_CORE_MODE`` env toggle
+  (``PRD`` default), ``require_dtd()`` / ``require_prd()`` hard-fail
+  sentinels, ``is_dtd()`` / ``is_prd()`` helpers. Unknown values fall back
+  to ``PRD`` — safer default for accidental deploys.
+* ``services/sovereign_dtd_adapter.py`` — DTD-only entry points
+  (``run_dtd_challenger_decision``, ``run_dtd_nightly_retrain``). Every
+  call asserts ``require_dtd()`` so PRD pods can never execute training.
+* ``services/sovereign_prd_adapter.py`` — PRD-mode entry points
+  (``run_prd_sovereign_shadow``, ``apply_promoted_sovereign_contribution``,
+  ``assert_prd_never_trains``). Shadow logging is intentionally mode-agnostic
+  (observation is always safe); contribution is guarded behind
+  ``require_prd()``.
+
+**Bounded contribution — the critical safety rail**
+
+``sovereign_promotion_gate.apply_sovereign_contribution(...)`` pins the
+invariants the user flagged as "without this it will be a disaster":
+
+| Scenario | Behaviour |
+|---|---|
+| Sovereign not promoted | Confidence returned unchanged. ``reason="not_promoted"``. |
+| No sovereign decision available | Unchanged. ``reason="no_sovereign_decision"``. |
+| Production action = HOLD | Unchanged. ``reason="production_hold_immutable"``. **Sovereign CANNOT turn a HOLD into a trade.** |
+| Sovereign agrees with production direction | Confidence bumped. Capped at ``MAX_SOVEREIGN_CONFIDENCE_DELTA`` (default 0.08, env-tunable). |
+| Sovereign disagrees with production direction | Confidence REDUCED. Capped at the same delta. **Sovereign CANNOT flip the action** — it may only soften conviction. |
+| Sovereign says HOLD while production trades | Confidence softened proportional to sovereign conviction. |
+
+The returned meta block carries ``applied`` / ``reason`` / ``delta`` /
+``sovereign_action`` / ``sovereign_confidence`` — never an ``action``
+field, by design, so the contribution cannot leak a direction override
+upstream.
+
+**Paper-trader wire-ups updated**
+
+Both ``ml_paper_trader`` and ``crypto_paper_trader`` now call
+``run_prd_sovereign_shadow()`` + ``apply_promoted_sovereign_contribution()``
+BEFORE position sizing — so once the gate unlocks, the Kelly / crypto
+notional calc naturally uses the nudged confidence. A comment pin in both
+cores reminds future contributors:
+
+    # CRITICAL: confidence-only mutation. Never touch direction.
+
+The ``paper_trades`` rows gain a ``sovereign_contribution`` block alongside
+the existing ``sovereign_decision_id`` so an operator can inspect how often
+sovereign actually moved the needle.
+
+**Admin endpoints added**
+
+* ``GET /api/admin/sovereign-ai/mode`` — reports current ``RISEDUAL_CORE_MODE``.
+* ``POST /api/admin/sovereign-ai/dtd/nightly-retrain`` — DTD-guarded, returns
+  HTTP 403 in PRD mode (live-verified).
+
+**Tests**: 22 new cases in ``tests/test_sovereign_mode_guard.py``
+covering: default mode is PRD, DTD/PRD cross-guards, each bounded
+contribution branch (not_promoted / no_decision / HOLD_immutable /
+aligned_bump / contra_reduces / sovereign_hold_softens), cap
+enforcement under env override, confidence clamping, malformed-input
+safe no-op, DTD nightly blocks in PRD, PRD contribution blocks in DTD,
+PRD shadow logging works in BOTH modes. Plus 30 original Sovereign AI
+Core tests. **175/175 green** across all adjacent suites.
+
+**Live verified** (2026-05-03):
+
+* ``GET /api/admin/sovereign-ai/mode`` → ``{"mode":"PRD","is_prd":true}``.
+* ``POST /api/admin/sovereign-ai/dtd/nightly-retrain`` → HTTP 403
+  ``"DTD-only operation blocked (current mode: PRD)"``.
+* Status endpoint shows both cores in ``phase_1_shadow_only`` with
+  ``rows_to_go: 500``.
+
+### Sovereign AI Core — Shadow Engine LIVE on both cores (May 3, 2026)
+
+Ships the first independent, non-LLM decision engine for RISEDUAL. Runs in
+**shadow mode** on both the equity core (`ml_paper_trader`) and the crypto
+core (`crypto_paper_trader`), writing every decision to
+``sovereign_decisions`` without touching live order flow. Once the per-core
+promotion gate unlocks (≥ 500 resolved rows at ≥ 70% win rate AND ≥ 65%
+calibration), Sovereign AI becomes the sizing/direction authority for that
+core; Commander / Strategist / Council outputs then fall back to **advisory
+votes** logged on the decision row (no sizing control, no veto power).
+
+**New modules**
+
+* ``services/sovereign_ai_core.py`` — Pure deterministic engine with 6
+  native sub-models: Strategist (RSI + momentum → direction), Regime
+  (tradeable-regime gate → size multiplier), OptionsIntent (flow skew
+  alignment), Catalyst (news-shock / event-risk veto + delta), Risk
+  (dollar-volume starvation + ATR extremes + vol-zscore), Calibration
+  (self-consistency score). Zero LLM calls, zero network I/O, microseconds
+  per tick. ``asdict(features)`` is stored verbatim on
+  ``feature_snapshot`` so ML replay is faithful. Hard-veto supremacy —
+  ``NEWS_SHOCK_RESTRICTED`` / ``LIQUIDITY_TRAP`` / ``VOLATILITY_EXTREME``
+  force ``HOLD`` + ``size_multiplier=0`` no matter what. Any internal
+  exception → safe ``HOLD`` + ``SOVEREIGN_INTERNAL_ERROR`` veto so the
+  paper-traders are never blocked.
+* ``services/sovereign_promotion_gate.py`` — Per-core gate math mirroring
+  ``equity_shadow_promotion`` shape. Env-tunable
+  (``SOVEREIGN_PROMOTE_MIN_ROWS`` / ``_MIN_RATE`` / ``_MIN_CAL`` /
+  ``DEMOTE_BELOW`` / ``DEMOTE_WINDOW_DAYS``). Rolling 30-day demotion
+  watcher triggers automatic revert-to-shadow if live authority win rate
+  falls below 55%.
+* ``routes/sovereign_ai.py`` — Owner-gated admin endpoints:
+  ``GET /api/admin/sovereign-ai/status`` (per-core promotion snapshot +
+  last 10 decisions each), ``POST /decide/{symbol}`` (manual tick for
+  smoke tests), ``POST /resolve/{decision_id}`` (manual back-patch),
+  ``POST /ensure-indexes`` (idempotent Mongo index creation).
+
+**Wiring into both cores**
+
+* **Equity core** (``services/ml_paper_trader.maybe_paper_trade``) — after
+  the Commander Phase 2 brake block, calls ``run_shadow_for_equity(...)``.
+  Pulls features from the FeaturesSnapshot + catalyst snapshot. Any
+  failure is swallowed; ``sovereign_decision_id`` is stamped on the
+  ``paper_trades`` row when available for future back-patching.
+* **Crypto core** (``services/crypto_paper_trader._process_one_symbol``)
+  — before the final HOLD short-circuit (so both fired and declined
+  trades generate training rows), calls ``run_shadow_for_crypto(...)``
+  with the strategist signal dict. Same fail-silent discipline.
+
+**Advisory-vote capture**
+
+Both wire-ups pass an ``advisory_votes`` dict containing Strategist +
+Commander verdicts. Post-promotion, when Sovereign AI is the authority,
+these votes still land in ``sovereign_decisions.advisory_votes`` — full
+audit trail of every AI opinion, even when Sovereign overrules them.
+Matches the user's request: "the other decisions can act as a learning
+experience for RISEDUAL... communicate with other AIs in a way that
+humans understand."
+
+**Safety invariants (pinned by tests)**
+
+* Hard vetoes (`LIQUIDITY_TRAP`, `NEWS_SHOCK_RESTRICTED`,
+  `VOLATILITY_EXTREME`) ALWAYS win — Sovereign cannot override even
+  post-promotion.
+* Any exception in ``sovereign_decide`` returns safe ``HOLD`` +
+  ``size_multiplier=0`` rather than raising.
+* Mongo writes never leak ``_id`` (coordinator creates fresh dicts via
+  ``asdict`` + ``to_mongo_doc``; never spreads Mongo-mutated documents
+  into the response).
+* Fail-safe default for ``is_sovereign_authority()`` is ``False`` — any
+  gate-read failure keeps Commander in charge.
+* Promotion gate never raises — BrokenDB test pins this.
+
+**Live verified** (Sat 2026-05-03):
+
+* Backend restarted cleanly; sovereign collection indexes created.
+* ``/status`` returns correct empty-state snapshot for both cores
+  (``rows_to_go: 500``, ``phase: phase_1_shadow_only``).
+* ``/decide/AAPL`` produces shaped decision with all 6 model votes +
+  clamped confidence + HOLD fallback (no bars, so strategist is neutral,
+  regime unknown → conservative size_multiplier).
+
+**Tests**: 30 new cases in ``tests/test_sovereign_ai_core.py``
+covering: each pure sub-model's happy path + edge cases, coordinator
+veto supremacy, feature-snapshot round-trip, internal-error fallback,
+confidence/multiplier clamping, options contra-alignment reducing
+confidence, resolution idempotency, promotion gate below-threshold,
+above-threshold, rolling-30d demotion, Mongo-error fail-safe.
+**153/153 green** across all adjacent Sovereign + Commander-brake +
+catalyst + news-shock + smart-money + feeder + scheduler suites.
+Lint clean on all 4 new files.
+
+**Deferred to P1 (next iteration)**
+
+* Authority handoff: when ``is_sovereign_authority(db, asset_type)``
+  returns True, the paper-traders read Sovereign AI's verdict as primary
+  and treat Commander output as advisory only.
+* Resolution loop: back-patches outcomes at 60m / 4h / EOD horizons
+  against ``sovereign_decisions.outcomes.{horizon}``.
+
+**Deferred to P2** (> 500 shadow rows collected)
+
+* XGBoost/LightGBM retraining endpoint.
+* Sovereign AI chip on the ``/burn-in`` dashboard.
+* Human-readable "AI-to-AI communication" narrator — bullet-point
+  explanation of why Sovereign agreed/disagreed with Commander (user's
+  feature request).
+
 ### Reuters removal + frontend /burn-in dashboard card (May 2, 2026)
 
 **Reuters removed from 3 scrapers**:

@@ -83,6 +83,7 @@ from routes.admin_blocks_prevented import router as admin_blocks_prevented_route
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
+from routes.sovereign_ai import router as sovereign_ai_router, set_db as set_sovereign_ai_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
 # ``services.etl_registry.all_jobs()`` is consulted at startup.
@@ -153,6 +154,7 @@ ALL_ROUTERS = [
     admin_position_reconciler_router,
     admin_memory_drift_router,
     admin_etl_router,
+    sovereign_ai_router,
 ]
 
 
@@ -211,6 +213,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_position_reconciler_db,
         set_admin_memory_drift_db,
         set_admin_etl_db,
+        set_sovereign_ai_db,
     ]
     # Module-level db handle for the per-patent policy store so the
     # IP contract can read overrides without an explicit db arg.
@@ -253,6 +256,12 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_ai_core_alerts_indexes())
             loop.create_task(_drift_history_indexes())
             loop.create_task(_etl_audit_indexes(db))
+            # Sovereign AI — index the sovereign_decisions collection
+            try:
+                from services.sovereign_ai_core import ensure_sovereign_indexes
+                loop.create_task(ensure_sovereign_indexes(db))
+            except Exception:  # noqa: BLE001
+                pass
             # Each registered ETL job ensures its own (unique + TTL)
             # indexes — late registration is supported because this
             # runs at startup AFTER all modules have been imported.

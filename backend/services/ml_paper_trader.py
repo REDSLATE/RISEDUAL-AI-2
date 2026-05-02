@@ -33,7 +33,7 @@ __domain__ = "DTD"
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 import httpx
@@ -345,6 +345,86 @@ async def maybe_paper_trade(
         )
         return None
 
+    # ── Sovereign AI Shadow + bounded confidence contribution ───────────────
+    # PRD-mode: shadow-log every tick; if the per-core promotion gate has
+    # unlocked (>=500 resolved rows, >=70% win rate, >=65% calibration),
+    # apply a bounded confidence delta (cap: SOVEREIGN_MAX_CONF_DELTA,
+    # default 0.08) to ``directional_conf`` BEFORE Kelly sizing.
+    #
+    # Hard invariants (pinned by tests):
+    # * Sovereign adjusts CONFIDENCE only — never flips direction.
+    # * Sovereign cannot turn production HOLD into a trade (we've already
+    #   confirmed direction is LONG/SHORT by the time we reach this block).
+    # * Any exception is swallowed; directional_conf is untouched.
+    sovereign_decision_id: Optional[str] = None
+    sovereign_contribution_meta: dict[str, Any] | None = None
+    try:
+        from services.sovereign_ai_core import SovereignFeatures
+        from services.sovereign_prd_adapter import (
+            apply_promoted_sovereign_contribution,
+            run_prd_sovereign_shadow,
+        )
+
+        _prod_action = "LONG" if str(signal.direction.value) == "up" else "SHORT"
+        _advisory = {
+            "strategist": {
+                "action": _prod_action,
+                "confidence": float(directional_conf),
+            },
+        }
+
+        _catalyst = None
+        try:
+            _catalyst = await db.catalyst_snapshots.find_one(
+                {"symbol": ticker.upper()}, {"_id": 0},
+            )
+        except Exception:
+            _catalyst = None
+
+        _features = SovereignFeatures(
+            symbol=ticker.upper(),
+            asset_type="equity",
+            rsi=getattr(snapshot, "rsi", None),
+            momentum_5b=getattr(snapshot, "momentum_5b", None),
+            atr_pct=getattr(snapshot, "atr_pct", None),
+            volume_zscore=getattr(snapshot, "volume_zscore", None),
+            dollar_volume=getattr(snapshot, "dollar_volume", None),
+            dollar_volume_baseline=getattr(snapshot, "dollar_volume_baseline", None),
+            regime=regime,
+            news_shock_state=(_catalyst or {}).get("news_shock", {}).get("state")
+                if _catalyst else None,
+            event_risk=(_catalyst or {}).get("event_risk") if _catalyst else None,
+            news_sentiment=(_catalyst or {}).get("news_shock", {}).get("sentiment_score")
+                if _catalyst else None,
+            news_volume_zscore=(_catalyst or {}).get("news_shock", {}).get("zscore")
+                if _catalyst else None,
+            strategist_action=_prod_action,
+            strategist_confidence=float(directional_conf),
+        )
+
+        _sov_dec = await run_prd_sovereign_shadow(
+            db, ticker.upper(),
+            asset_type="equity",
+            features=_features,
+            advisory_votes=_advisory,
+        )
+        if _sov_dec is not None:
+            sovereign_decision_id = _sov_dec.decision_id
+
+        _adjusted_conf, sovereign_contribution_meta = (
+            await apply_promoted_sovereign_contribution(
+                db,
+                symbol=ticker.upper(),
+                asset_type="equity",
+                production_action=_prod_action,
+                production_confidence=float(directional_conf),
+            )
+        )
+        # CRITICAL: confidence-only mutation. Never touch direction.
+        directional_conf = float(_adjusted_conf)
+    except Exception as _sov_exc:  # noqa: BLE001
+        log.debug("[ml_paper] sovereign shadow failed for %s: %s", ticker, _sov_exc)
+
     # ── Position sizing ──────────────────────────────────────────────────────
     portfolio_value = await _current_portfolio_value(db)
     position_usd = half_kelly_position(
@@ -493,6 +573,10 @@ async def maybe_paper_trade(
     }
     if brake_log is not None:
         trade_doc["commander_phase2_brake"] = brake_log
+    if sovereign_decision_id is not None:
+        trade_doc["sovereign_decision_id"] = sovereign_decision_id
+    if sovereign_contribution_meta is not None:
+        trade_doc["sovereign_contribution"] = sovereign_contribution_meta
 
     try:
         await db["paper_trades"].insert_one(trade_doc)

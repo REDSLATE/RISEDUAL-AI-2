@@ -400,6 +400,65 @@ async def run_crypto_symbol(
         except Exception as _e:  # noqa: BLE001
             logger.warning("[patent_j] signal_created proof append failed: %s", _e)
 
+    # ── Sovereign AI Shadow + bounded contribution (crypto core) ─────────────
+    # PRD-mode: shadow-log every tick AND (if promoted) nudge the
+    # ``signal["confidence"]`` via the bounded contribution path. Runs
+    # pre-HOLD short-circuit so both fired and declined ticks generate
+    # training rows. Never blocks the trade — fail-silent discipline.
+    try:
+        from services.sovereign_ai_core import SovereignFeatures
+        from services.sovereign_prd_adapter import (
+            apply_promoted_sovereign_contribution,
+            run_prd_sovereign_shadow,
+        )
+
+        _indicators = (signal.get("strategist") or {}).get("indicators", {}) or {}
+        _crypto_features = SovereignFeatures(
+            symbol=symbol.upper(),
+            asset_type="crypto",
+            rsi=_indicators.get("rsi"),
+            momentum_5b=_indicators.get("momentum_5b"),
+            atr_pct=_indicators.get("atr_pct"),
+            volume_zscore=_indicators.get("volume_zscore"),
+            regime=signal.get("regime"),
+            strategist_action=None,
+            strategist_confidence=float(signal.get("confidence") or 0.0),
+        )
+        _advisory_crypto = {
+            "strategist": {
+                "direction": signal.get("direction"),
+                "confidence": float(signal.get("confidence") or 0.0),
+            },
+        }
+        if adv_decision is not None:
+            _advisory_crypto["commander"] = {
+                "decision": adv_decision.get("decision"),
+                "phase": adv_decision.get("phase"),
+                "confidence": adv_decision.get("commander_confidence"),
+            }
+
+        await run_prd_sovereign_shadow(
+            db, symbol.upper(),
+            asset_type="crypto",
+            features=_crypto_features,
+            advisory_votes=_advisory_crypto,
+        )
+
+        _prod_action = str(signal.get("direction") or "HOLD").upper()
+        _adj_conf, _sov_meta = await apply_promoted_sovereign_contribution(
+            db,
+            symbol=symbol.upper(),
+            asset_type="crypto",
+            production_action=_prod_action,
+            production_confidence=float(signal.get("confidence") or 0.0),
+        )
+        # CRITICAL: confidence-only mutation. Direction stays whatever the
+        # strategist / adversarial layer already resolved.
+        signal["confidence"] = float(_adj_conf)
+        signal["sovereign_contribution"] = _sov_meta
+    except Exception as _sov_exc:  # noqa: BLE001
+        logger.debug("[crypto-bot] sovereign shadow failed for %s: %s", symbol, _sov_exc)
+
     # ── Final HOLD short-circuit ──────────────────────────────────────────
     # Either the strategist said HOLD and no `full`-phase override
     # triggered, OR a veto-phase Commander blocked the fill.
