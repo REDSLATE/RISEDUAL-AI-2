@@ -180,6 +180,66 @@ async def ml_retrain_cost_trend(request: Request, limit: int = 30):
     return await get_retrain_cost_trend(db, limit=limit)
 
 
+# ============================================================
+# TOP UNIVERSE (tiered stock pre-warm)
+# ============================================================
+
+@router.get("/top-universe/status")
+async def top_universe_status(request: Request):
+    """Current tiered-universe snapshot + last warm/rebuild telemetry.
+
+    Backs the universe admin panel. Shape:
+        - active_total, by_tier, tier_sizes
+        - last_rebuild, last_warm (full stats row each)
+        - recent_coverage (succeeded/attempted over the last 10 warms)
+        - sample (first 20 rows, rank-ordered)
+    """
+    await _require_owner(request)
+    from services.top_universe_service import get_status
+    return await get_status(db)
+
+
+@router.get("/top-universe/history")
+async def top_universe_history(request: Request, limit: int = 30):
+    """Chronological warm + rebuild history from `universe_warm_stats`.
+
+    Used by the admin panel to render the trend of coverage + wall-time
+    per run. Limit clamped to 200 server-side.
+    """
+    await _require_owner(request)
+    from services.top_universe_service import get_recent_warm_stats
+    rows = await get_recent_warm_stats(db, limit=limit)
+    return {"runs": rows, "count": len(rows)}
+
+
+@router.post("/top-universe/warm")
+async def top_universe_warm(request: Request, run_type: str = "post_close"):
+    """Manually trigger a universe warm. `run_type` ∈ {"post_close","pre_open"}.
+
+    Synchronous — returns the full stats row once the warm completes. On
+    a 200-symbol run this is typically ~1–4 minutes; callers should expect
+    the HTTP request to hold open that long. Owner-only.
+    """
+    await _require_owner(request)
+    if run_type not in ("post_close", "pre_open"):
+        raise HTTPException(status_code=400, detail="run_type must be 'post_close' or 'pre_open'")
+    from services.top_universe_service import warm_universe
+    return await warm_universe(db, run_type=run_type)
+
+
+@router.post("/top-universe/rebuild")
+async def top_universe_rebuild(request: Request):
+    """Manually rebuild the universe ranking (OVERVIEW-pull on full seed list).
+
+    Expensive (~500 AV calls, 3–4 minutes). Normally scheduled weekly on
+    Sunday 00:00 UTC; this endpoint is for forced refreshes after seed
+    edits or a new-ticker event. Owner-only.
+    """
+    await _require_owner(request)
+    from services.top_universe_service import rebuild_universe
+    return await rebuild_universe(db)
+
+
 @router.get("/ml-latest-model")
 async def ml_latest_model(request: Request):
     """Report the newest on-disk signal model artefact. Owner-only."""

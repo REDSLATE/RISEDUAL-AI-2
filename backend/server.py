@@ -854,6 +854,51 @@ async def _start_schedulers():
                 )
         except Exception as _e:  # noqa: BLE001
             logger.warning(f"ETL scheduler setup failed: {_e}")
+
+        # ── Top-universe tiered pre-warm (user-requested Phase 1) ──
+        # Three jobs, all non-critical — a failure here never blocks
+        # anything downstream because they only *seed* caches that
+        # services already check-through-and-fall-back.
+        #   - rebuild:       Sunday 00:00 UTC (~500 OVERVIEW calls, weekly)
+        #   - warm post-close: 21:05 UTC daily (Tier A full, Tier B light)
+        #   - warm pre-open:   13:00 UTC daily (Tier A quote + technicals)
+        async def _run_universe_rebuild():
+            try:
+                from services.top_universe_service import rebuild_universe
+                await rebuild_universe(db)
+            except Exception:
+                logging.exception("top_universe_rebuild failed (non-critical)")
+
+        async def _run_universe_warm_post_close():
+            try:
+                from services.top_universe_service import warm_universe
+                await warm_universe(db, run_type="post_close")
+            except Exception:
+                logging.exception("top_universe_warm_post_close failed (non-critical)")
+
+        async def _run_universe_warm_pre_open():
+            try:
+                from services.top_universe_service import warm_universe
+                await warm_universe(db, run_type="pre_open")
+            except Exception:
+                logging.exception("top_universe_warm_pre_open failed (non-critical)")
+
+        scheduler.add_job(
+            _run_universe_rebuild,
+            'cron', day_of_week='sun', hour=0, minute=0,
+            id='top_universe_rebuild', replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_universe_warm_post_close,
+            'cron', hour=21, minute=5,
+            id='top_universe_warm_post_close', replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_universe_warm_pre_open,
+            'cron', hour=13, minute=0,
+            id='top_universe_warm_pre_open', replace_existing=True,
+        )
+
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.
@@ -862,7 +907,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
