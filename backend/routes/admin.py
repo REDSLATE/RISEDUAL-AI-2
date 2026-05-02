@@ -2637,3 +2637,56 @@ async def seed_tier3_universe(request: Request):
         "total_enabled_signal_bots": total_signal_bots,
         "as_of": now,
     }
+
+
+# ── Commander Shadow — observability + promotion gate ────────────
+
+
+@router.get("/commander-shadow/promotion-status")
+async def commander_shadow_promotion_status(request: Request):
+    """Return the equity Commander Shadow promotion-gate state.
+
+    Powers the admin dashboard card the user requested:
+
+        Commander Equity Shadow
+        Rows: X / 50
+        Win rate: YY%
+        Brake eligible: yes/no
+
+    Phase 1 (logging only) is the default state after redeploy.
+    Phase 2 (pre-Tier-3 size brake) unlocks automatically when the
+    thresholds in ``services.equity_shadow_promotion`` clear.
+    """
+    await _require_owner(request)
+    from services.equity_shadow_promotion import (
+        compute_equity_shadow_promotion_status,
+    )
+    return await compute_equity_shadow_promotion_status(db)
+
+
+@router.get("/commander-shadow/stream-stats")
+async def commander_shadow_stream_stats(request: Request):
+    """Return per-market JSONL file health: size, line_count, mtime.
+
+    Lets the admin dashboard show "we have N crypto / M equity /
+    K options decisions logged this session" without hitting Mongo.
+    The file stream is a developer-ergonomics mirror — the Mongo
+    ``research_shadow_decisions`` collection is authoritative.
+    """
+    await _require_owner(request)
+    from services.commander_decision_stream import list_stream_stats
+    return {"streams": list_stream_stats()}
+
+
+@router.get("/commander-shadow/recent/{asset_type}")
+async def commander_shadow_recent(asset_type: str, request: Request, limit: int = 50):
+    """Tail the last ``limit`` rows of a per-market Commander
+    decision stream. Useful for quick UI spot-checking without
+    shell access.
+
+    ``asset_type`` must be one of ``stock``, ``crypto``, ``options``.
+    """
+    await _require_owner(request)
+    from services.commander_decision_stream import read_recent_decisions
+    rows = read_recent_decisions(asset_type, limit=max(1, min(500, int(limit))))
+    return {"asset_type": asset_type, "count": len(rows), "rows": rows}

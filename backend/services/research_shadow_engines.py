@@ -657,10 +657,39 @@ async def fire_shadow(
             trade_id=trade_id,
             active_trade_doc_id=active_trade_doc_id,
         )
-        return await insert_shadow_decision(db, decision)
+        decision_id = await insert_shadow_decision(db, decision)
+        await _mirror_to_stream_if_commander(decision_id, decision)
+        return decision_id
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "[shadow] fire_shadow swallowed exception bot=%s symbol=%s: %s",
             bot_id, symbol, exc,
         )
         return None
+
+
+async def _mirror_to_stream_if_commander(
+    decision_id: Optional[str],
+    decision: "ShadowDecision",
+) -> None:  # pragma: no cover — trivial glue
+    """Mirror an adversarial (Commander-backed) decision to the
+    per-market JSONL stream for grep-friendly observability.
+
+    Intentionally scoped to ``ENGINE_ADVERSARIAL`` only — the
+    file stream is labelled "Commander decisions" in the UI and
+    the adversarial engine is the one that produces a true
+    Bull/Bear/Commander verdict. Council shadows (rule-based v1)
+    could mirror too if we relabel the feature, but for now
+    keeping the scope narrow prevents muddling the two.
+    """
+    if decision_id is None:
+        return
+    if decision.shadow_engine != ENGINE_ADVERSARIAL:
+        return
+    try:
+        from services.commander_decision_stream import append_commander_decision
+        append_commander_decision(decision, decision.asset_type)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "[shadow] commander stream mirror failed (non-critical): %s", exc,
+        )

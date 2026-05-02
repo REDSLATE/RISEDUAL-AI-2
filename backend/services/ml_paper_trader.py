@@ -181,6 +181,66 @@ async def maybe_paper_trade(
     log.info("[ml_paper] %s: direction=%s raw_conf=%.3f directional=%.3f regime=%s",
              ticker, signal.direction.value, signal.confidence, directional_conf, regime)
 
+    # ── Equity Commander Shadow (Phase 1: observation only) ──────────────────
+    # Fire-and-forget shadow opinion on every equity decision. Commander
+    # has ZERO authority over equity sizing or direction — this is pure
+    # evidence collection until 50+ scored rows clear the 0.70 win-rate
+    # threshold (see ``equity_shadow_promotion.py``). Logging failures
+    # NEVER block the trade; swallowed inside ``fire_shadow``.
+    #
+    # ``decision_phase`` is set up front so both the entry fire (trade
+    # actually opens) and the cycle fire (skipped due to gates) share
+    # the same engine context. The phase distinction is what lets the
+    # promotion gate distinguish "Commander would have agreed with a
+    # HOLD" from "Commander would have vetoed a LONG/SHORT".
+    _shadow_engine_eq = os.environ.get("EQUITY_RESEARCH_SHADOW_ENGINE", "adversarial")
+    if _shadow_engine_eq in ("adversarial", "council"):
+        try:
+            import asyncio as _asyncio_eq
+            from services.research_shadow_engines import fire_shadow as _fire_shadow_eq
+
+            # Build an adapter dict matching what ``_run_engine`` expects.
+            # The adversarial engine reads ``direction`` / ``confidence``
+            # / ``regime`` / ``volume_ratio`` / ``strategist`` / ``auditor``.
+            _active_action = "LONG" if signal.direction.value == "up" else "SHORT"
+            _shadow_signal = {
+                "direction": _active_action,
+                "confidence": float(directional_conf),
+                "regime": regime,
+                "volume_ratio": getattr(snapshot, "volume_ratio", None),
+                "strategist": {
+                    "direction": _active_action,
+                    "confidence": float(directional_conf),
+                },
+                "auditor": {"confidence": float(directional_conf)},
+            }
+            _mid_price_eq = float(snapshot.close_price or 0.0)
+
+            # If we'll skip (below confidence / pattern / regime gates)
+            # the phase is "cycle"; if we'll open, the phase is "entry".
+            # Pre-compute a conservative guess — we re-fire as "entry"
+            # below if the trade actually lands. The cycle shadow is
+            # the one that matters for "Commander would have agreed
+            # with this HOLD anyway" evidence.
+            _asyncio_eq.create_task(_fire_shadow_eq(
+                db,
+                bot_id="equity_ml_orchestrator",  # mirrored in equity_shadow_promotion.EQUITY_BOT_ID
+                user_id="system",
+                symbol=ticker,
+                asset_type="stock",
+                decision_phase="cycle",
+                active_engine="ml_signal_model",
+                active_action=_active_action,
+                shadow_engine=_shadow_engine_eq,
+                signal=_shadow_signal,
+                mid_price=_mid_price_eq,
+            ))
+        except Exception as _shadow_exc:  # noqa: BLE001
+            log.warning(
+                "[ml_paper] equity shadow cycle fire setup failed for %s: %s",
+                ticker, _shadow_exc,
+            )
+
     if directional_conf < _MIN_PAPER_CONFIDENCE:
         log.debug(
             "[ml_paper] Directional confidence %.2f < %.2f — skipping paper trade for %s.",
