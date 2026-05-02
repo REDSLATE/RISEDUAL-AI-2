@@ -45,6 +45,7 @@ _os.environ.setdefault("MKL_NUM_THREADS", "4")
 import logging
 import re
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -476,6 +477,9 @@ async def run_nightly_retrain(
     version; prior versions are kept). Never mutates older models.
     """
     started_at = datetime.now(timezone.utc)
+    # perf_counter for monotonic wall-time; datetime subtraction would also
+    # work but this is immune to NTP skew and cheaper.
+    t0_wall = time.perf_counter()
     log_row: dict = {
         "started_at": started_at.isoformat(),
         "status": "pending",
@@ -508,6 +512,7 @@ async def run_nightly_retrain(
                 "status": "skipped",
                 "reason": f"insufficient_samples ({n} < {MIN_SAMPLES_FOR_TRAINING})",
                 "finished_at": datetime.now(timezone.utc).isoformat(),
+                "total_wall_seconds": round(time.perf_counter() - t0_wall, 3),
             })
             logger.warning(f"ML retrain skipped: {log_row['reason']}")
             try:
@@ -582,6 +587,7 @@ async def run_nightly_retrain(
                         f"(mean_sample_weight={log_row['mean_sample_weight']:.3f} < 0.8)"
                     ),
                     "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "total_wall_seconds": round(time.perf_counter() - t0_wall, 3),
                 })
                 logger.warning(f"ML retrain skipped: {log_row['reason']}")
                 await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
@@ -674,7 +680,25 @@ async def run_nightly_retrain(
         except Exception as e:
             logger.warning(f"[retrain] adaptation apply failed: {e}")
 
+        # ── Time the fit itself (the piece the 4-thread cap acts on) ──
+        # fit_wall_seconds     — monotonic wall-clock around model.fit().
+        # fit_cpu_seconds      — process-wide user+sys CPU time (captures
+        #                        xgboost's native thread pool).
+        # fit_cpu_threads_equiv — cpu/wall ratio. With n_jobs=4 we expect
+        #                        ~3.5-4.0 during tree-building phases and
+        #                        lower averages because CalibratedClassifierCV
+        #                        serialises its 5 folds. A sudden drop toward
+        #                        1.0 across runs signals thread-binding
+        #                        regression (e.g., a missing env override
+        #                        after a redeploy).
+        _t_fit_wall_start = time.perf_counter()
+        _t_fit_cpu_start = time.process_time()
         model.fit(X, y, sample_weight=w)
+        fit_wall = time.perf_counter() - _t_fit_wall_start
+        fit_cpu = time.process_time() - _t_fit_cpu_start
+        log_row["fit_wall_seconds"] = round(fit_wall, 3)
+        log_row["fit_cpu_seconds"] = round(fit_cpu, 3)
+        log_row["fit_cpu_threads_equiv"] = round(fit_cpu / max(fit_wall, 1e-3), 2)
 
         artefact_path = MODELS_DIR / f"{MODEL_ARTIFACT_PREFIX}{version_n}.joblib"
         model.save(artefact_path)
@@ -693,7 +717,11 @@ async def run_nightly_retrain(
             "top_feature_importances": imps,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
-        logger.info(f"ML retrain complete: {artefact_path} ({n} samples)")
+        logger.info(
+            f"ML retrain complete: {artefact_path} ({n} samples, "
+            f"fit_wall={fit_wall:.1f}s cpu={fit_cpu:.1f}s "
+            f"threads_equiv={log_row['fit_cpu_threads_equiv']:.2f})"
+        )
         try:
             from services.agent_activity_service import log_retrain_complete
             await log_retrain_complete(
@@ -711,6 +739,14 @@ async def run_nightly_retrain(
             "error": str(e)[:500],
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
+
+    # Stamp end-to-end wall-time on the success + error paths (the two skip
+    # paths stamped their own before returning). Placed here so every row
+    # that reaches MongoDB carries the metric — makes regressions spottable
+    # with a single `sort({"total_wall_seconds": -1})`.
+    log_row.setdefault(
+        "total_wall_seconds", round(time.perf_counter() - t0_wall, 3)
+    )
 
     await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
 

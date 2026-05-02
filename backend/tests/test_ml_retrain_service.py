@@ -71,6 +71,13 @@ async def test_nightly_retrain_skips_on_insufficient_samples(tmp_path, monkeypat
     assert "insufficient_samples" in result["reason"]
     fake_db.__getitem__.return_value.insert_one.assert_awaited_once()
 
+    # The early-skip path must still stamp the end-to-end wall-time on the
+    # log row so ops can trend retrain cost over time (including skipped
+    # runs — a sudden jump means the data-load itself regressed).
+    assert "total_wall_seconds" in result
+    assert isinstance(result["total_wall_seconds"], (int, float))
+    assert result["total_wall_seconds"] >= 0.0
+
 
 # ── Severity-weighting tests ─────────────────────────────────────
 #
