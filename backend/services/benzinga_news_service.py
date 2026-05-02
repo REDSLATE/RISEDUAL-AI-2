@@ -246,13 +246,28 @@ async def fetch_news(
     for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
-                resp = await client.get(_BASE_URL + _NEWS_PATH, params=params)
+                # Benzinga defaults to XML on the /news endpoint — explicit
+                # Accept header forces JSON. Without this the response is
+                # `<?xml ...` and json() raises JSONDecodeError.
+                resp = await client.get(
+                    _BASE_URL + _NEWS_PATH,
+                    params=params,
+                    headers={"Accept": "application/json"},
+                )
                 rate_headers["remaining"] = resp.headers.get("X-RateLimit-Remaining")
                 rate_headers["limit"] = resp.headers.get("X-RateLimit-Limit")
                 rate_headers["reset"] = resp.headers.get("X-RateLimit-Reset")
 
             if resp.status_code == 200:
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except ValueError:
+                    logger.error(
+                        "[benzinga] 200 but non-JSON body (first 200 chars): %s",
+                        resp.text[:200],
+                    )
+                    error_code = "non_json_response"
+                    break
                 # Response is a JSON array of articles — per Benzinga docs.
                 if isinstance(data, list):
                     articles = data
