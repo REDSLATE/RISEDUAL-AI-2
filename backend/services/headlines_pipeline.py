@@ -25,9 +25,10 @@ logger = logging.getLogger(__name__)
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
 # Configurable sources: (name, url, headline_selector)
+# Reuters removed (May 2026) — DNS-unresolvable in this environment and
+# duplicates CNBC/Bloomberg/WSJ coverage. Slot free for a future source.
 DEFAULT_SOURCES = [
     ("CNBC", "https://www.cnbc.com/markets/", "div.Card-titleContainer a"),
-    ("Reuters", "https://www.reuters.com/markets/", "a[data-testid='Heading']"),
     ("MarketWatch", "https://www.marketwatch.com/latest-news", "h3.article__headline a"),
     ("Fox Business", "https://www.foxbusiness.com/markets", "h2.title a"),
     ("WSJ", "https://www.wsj.com/news/markets", "h3 a"),

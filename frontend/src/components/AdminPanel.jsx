@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -27,6 +27,7 @@ import OpsSnapshotPanel from './admin/OpsSnapshotPanel';
 import ToxicSpikeAutopsyPanel from './admin/ToxicSpikeAutopsyPanel';
 import EngineRegistryPanel from './admin/EngineRegistryPanel';
 import WhatIfReplayPanel from './admin/WhatIfReplayPanel';
+import NewsShockBurnIn from './admin/NewsShockBurnIn';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -47,6 +48,7 @@ const TAB_GROUPS = [
     label: 'Operations',
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
+      { id: 'burn-in',   label: 'Burn-In',   icon: Radio },
       { id: 'providers', label: 'Providers', icon: Activity },
       { id: 'vault',     label: 'Vault',     icon: Lock },
       { id: 'broker',    label: 'Broker',    icon: Key },
@@ -95,6 +97,7 @@ const TAB_SUBTITLES = {
   security:       () => 'Auth attempts · password breaches · rate limits',
   promos:         () => 'Coupons & credit grants',
   ops:            () => 'Env flags · Mongo · scheduler · Tier 3 state · auto notes',
+  'burn-in':      () => 'NEWS_SHOCK feeders · snapshots · Smart-Money blocks — Monday AM burn-in',
   'help-search':  () => 'Unanswered help-search queries',
   'chip-adoption':() => 'L1/L2 chat-chip click-through rates',
   conviction:     () => 'ML calibration · win-rate by conviction score',
@@ -114,6 +117,7 @@ const TAB_SUBTITLES = {
 const TAB_COMPONENTS = {
   users:          (ctx) => <UsersTab users={ctx.users} filter={ctx.filter} setFilter={ctx.setFilter} actionLoading={ctx.actionLoading} doAction={ctx.doAction} />,
   ops:            () => <OpsSnapshotPanel />,
+  'burn-in':      () => <NewsShockBurnIn />,
   providers:      () => <ProviderHealth />,
   vault:          () => <KeyVault />,
   promos:         () => <PromoManager />,

@@ -24,19 +24,20 @@ class FinancialScrapingService:
         return await asyncio.to_thread(requests.get, url, **kwargs)
     
     async def scrape_financial_news(self) -> list[dict]:
-        """Scrape latest financial news from multiple sources"""
+        """Scrape latest financial news from multiple sources.
+
+        Reuters removed (May 2026) — DNS-unresolvable in this environment
+        and fully duplicative of CNBC / WSJ / Bloomberg."""
         news = []
-        
-        # Scrape from various sources
+
         news.extend(await self._scrape_cnbc())
-        news.extend(await self._scrape_reuters())
         news.extend(await self._scrape_marketwatch())
         news.extend(await self._scrape_fox_business())
         news.extend(await self._scrape_wsj())
         news.extend(await self._scrape_bloomberg())
         news.extend(await self._scrape_oan())
         news.extend(await self._scrape_epoch_times())
-        
+
         return news
     
     async def _scrape_cnbc(self) -> list[dict]:
@@ -64,35 +65,6 @@ class FinancialScrapingService:
                 "type": type(e).__name__,
                 "context": "financial_scrape",
                 "note": "CNBC scraping error",
-            })
-            return []
-    
-    async def _scrape_reuters(self) -> list[dict]:
-        """Scrape Reuters market news"""
-        try:
-            url = 'https://www.reuters.com/markets/'
-            response = await self._get(url)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            articles = []
-            for article in soup.find_all('a', {'data-testid': 'Heading'})[:10]:
-                href = article.get('href', '')
-                if not isinstance(href, str):
-                    continue
-                articles.append({
-                    'source': 'Reuters',
-                    'title': article.get_text(strip=True),
-                    'url': 'https://www.reuters.com' + href,
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'sentiment': None
-                })
-            return articles
-        except Exception as e:
-            log_error(logger, {
-                "error": str(e),
-                "type": type(e).__name__,
-                "context": "financial_scrape",
-                "note": "Reuters scraping error",
             })
             return []
     

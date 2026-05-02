@@ -22,6 +22,58 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Reuters removal + frontend /burn-in dashboard card (May 2, 2026)
+
+**Reuters removed from 3 scrapers**:
+* ``services/world_events_service.py`` — 2 Reuters RSS feeds dropped
+  from the 6-source list. AP News also dropped (same DNS-unresolvable
+  behaviour in this environment). Remaining: BBC / NYT / CNBC.
+* ``services/headlines_pipeline.py`` — Reuters removed from
+  ``DEFAULT_SOURCES``. 7 sources remaining: CNBC / MarketWatch /
+  Fox Business / WSJ / Bloomberg / Yahoo Finance / Investing.com.
+* ``services/financial_scraping_service.py`` — ``_scrape_reuters``
+  method deleted + dispatch call removed from ``scrape_financial_news``.
+  Fully duplicative with CNBC / WSJ / Bloomberg; no unique coverage
+  lost.
+
+Backend logs now free of ``feeds.reuters.com DNS`` spam. Post-restart
+log tail: **0 Reuters error entries**.
+
+**Frontend burn-in card** (``components/admin/NewsShockBurnIn.jsx``):
+
+* 60-second polling interval against ``GET /api/admin/news-shock/burn-in``
+* Six traffic-light chips — one per operator signal:
+    1. Scheduler (offset + last-updated freshness)
+    2. Catalyst Events (total + latest symbol + age)
+    3. News Telemetry (rows + last symbol + volume)
+    4. Snapshots (total + zscore_ready count)
+    5. Smart-Money 24 h (proof-chain block count)
+    6. Equity Telemetry (symbols tracked + $vol coverage)
+* Freshness-based colour mapping: <20 min = green, <2 h = yellow,
+  >2 h = red, no data = gray. Matches the operator's on-tick cadence
+  (15 min) so a healthy tick stays green between refreshes.
+* Shows top-3 most-recent catalyst snapshots with shock_state +
+  event_risk so glance-at-screen gives the operator the "what's
+  moving right now" answer.
+* Manual refresh button for impatient polling.
+* Accessible test IDs: ``news-shock-burn-in`` (card),
+  ``burn-in-chip-*`` (per chip), ``burn-in-refresh`` (button).
+
+Registered as a new tab in ``AdminPanel.jsx`` — ``Burn-In`` with the
+``Radio`` icon, sits between ``Health`` and ``Providers``. Subtitle
+string + content switch added to the existing dispatch map.
+
+**Verification**
+
+* Lint clean on all 5 touched files (Python + JSX).
+* Live curl of ``/burn-in`` returns 7-key shape exactly matching
+  the component's polling expectations
+  (``equity_telemetry.total_symbols_tracked: 200`` proves the
+  ``_warm_one`` dollar-volume feeder is already populating from
+  Saturday's cycle).
+* 218/218 tests still green in the NEWS_SHOCK + feeder + terminal
+  suite.
+
 ### Commander pipeline catalyst wiring LIVE (May 2, 2026)
 
 Final hand-off from the Phase C drop-in: `apply_catalyst_context`

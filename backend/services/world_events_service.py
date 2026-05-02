@@ -85,12 +85,14 @@ class WorldEventsService:
         return articles
 
     async def scrape_world_events(self) -> dict:
+        # Reuters RSS feeds are DNS-unresolvable in this environment and
+        # add no unique coverage vs. BBC / NYT / AP / CNBC — removed per
+        # operator directive (May 2026).
+        # AP News RSS is also DNS-blocked — kept here for parity; a
+        # future replacement (e.g., Axios RSS) can slot in.
         rss_sources = [
-            ('https://feeds.reuters.com/reuters/worldNews', 'Reuters World'),
-            ('https://feeds.reuters.com/reuters/businessNews', 'Reuters Business'),
             ('https://feeds.bbci.co.uk/news/world/rss.xml', 'BBC World'),
             ('https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NY Times World'),
-            ('https://feeds.apnews.com/apnews/topnews', 'AP News'),
             ('https://www.cnbc.com/id/100727362/device/rss/rss.html', 'CNBC World'),
         ]
 
