@@ -343,11 +343,14 @@ async def test_read_options_snapshot_unconfigured_symbol_returns_none():
         read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION, CURRENT_SNAPSHOT_ID,
     )
     from tests.test_top_universe_service import _FakeDB
+    from datetime import datetime, timezone
 
     db = _FakeDB()
     db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
         "_id": CURRENT_SNAPSHOT_ID,
-        "data": [{"symbol": "SPY", "contracts": [], "aggregate": {}}],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
     })
     # AAPL isn't in the snapshot
     assert await read_options_snapshot(db, "AAPL") is None
@@ -363,10 +366,13 @@ async def test_read_options_snapshot_case_insensitive():
         read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION, CURRENT_SNAPSHOT_ID,
     )
     from tests.test_top_universe_service import _FakeDB
+    from datetime import datetime, timezone
 
     db = _FakeDB()
     db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
         "_id": CURRENT_SNAPSHOT_ID,
-        "data": [{"symbol": "SPY", "contracts": [], "aggregate": {}}],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
     })
     assert (await read_options_snapshot(db, "spy"))["symbol"] == "SPY"

@@ -197,11 +197,11 @@ def test_aggregate_contracts_put_call_ratio_and_mean_iv():
     from services.options_universe_service import _aggregate_contracts
     chain = [
         {"type": "CALL", "volume": 1000, "open_interest": 500,
-         "implied_volatility": 0.30},
+         "implied_volatility": 0.30, "bid": 1.00, "ask": 1.01},
         {"type": "PUT", "volume": 1500, "open_interest": 400,
-         "implied_volatility": 0.35},
+         "implied_volatility": 0.35, "bid": 1.00, "ask": 1.01},
         {"type": "PUT", "volume": 0, "open_interest": 100,
-         "implied_volatility": None},
+         "implied_volatility": None, "bid": 0, "ask": 0},  # no quote
     ]
     agg = _aggregate_contracts(chain)
     assert agg["total_call_volume"] == 1000
@@ -211,15 +211,225 @@ def test_aggregate_contracts_put_call_ratio_and_mean_iv():
     # IV rank / percentile MUST be None until history exists — never fake.
     assert agg["iv_rank"] is None
     assert agg["iv_percentile"] is None
+    # Flow imbalance: (1000-1500)/2500 = -0.2 (put-heavy)
+    assert agg["flow_imbalance"] == -0.2
+    # Spread distribution: two valid ~99.5 bps quotes → avg ≈ 99.5,
+    # p90 equals the single highest (rounded from computed value).
+    assert agg["avg_spread_bps"] is not None and 99 <= agg["avg_spread_bps"] <= 100
+    assert agg["p90_spread_bps"] is not None
 
 
 def test_aggregate_contracts_zero_call_volume_returns_none_pcr():
     from services.options_universe_service import _aggregate_contracts
     agg = _aggregate_contracts([
         {"type": "PUT", "volume": 500, "open_interest": 100,
-         "implied_volatility": 0.3},
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.01},
     ])
     assert agg["put_call_ratio"] is None
+    # Flow imbalance stays bounded even with one-sided flow: 0 calls,
+    # 500 puts → (0-500)/500 = -1.0 (max bearish, bounded).
+    assert agg["flow_imbalance"] == -1.0
+
+
+def test_aggregate_spread_distribution_detects_widening_tails():
+    """p90_spread_bps must surface wide-tail stress even when avg looks OK.
+    Eight tight contracts + two wide ones → avg stays low, p90 flags it."""
+    from services.options_universe_service import _aggregate_contracts
+
+    chain = [
+        {"type": "CALL", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.005}
+        for _ in range(8)
+    ] + [
+        # Two wide-spread tails (~400 bps each)
+        {"type": "PUT", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.04},
+        {"type": "PUT", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.04},
+    ]
+    agg = _aggregate_contracts(chain)
+    # Avg gets pulled up but stays well under p90
+    assert agg["avg_spread_bps"] < agg["p90_spread_bps"]
+    # p90 catches the wide tail — should be in the hundreds
+    assert agg["p90_spread_bps"] > 300
+
+
+def test_aggregate_flow_imbalance_symmetric_and_bounded():
+    """Flow imbalance is bounded [-1, +1]. Equal call/put volume → 0."""
+    from services.options_universe_service import _aggregate_contracts
+
+    balanced = _aggregate_contracts([
+        {"type": "CALL", "volume": 500, "open_interest": 100,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.01},
+        {"type": "PUT", "volume": 500, "open_interest": 100,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.01},
+    ])
+    assert balanced["flow_imbalance"] == 0.0
+
+    call_heavy = _aggregate_contracts([
+        {"type": "CALL", "volume": 900, "open_interest": 100,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.01},
+        {"type": "PUT", "volume": 100, "open_interest": 100,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.01},
+    ])
+    assert call_heavy["flow_imbalance"] == 0.8  # (900-100)/1000
+
+
+def test_aggregate_flow_imbalance_empty_chain_is_none():
+    """No volume → flow_imbalance is None (not 0.0, which would be
+    indistinguishable from a perfectly balanced book)."""
+    from services.options_universe_service import _aggregate_contracts
+    agg = _aggregate_contracts([])
+    assert agg["flow_imbalance"] is None
+    assert agg["avg_spread_bps"] is None
+    assert agg["p90_spread_bps"] is None
+
+
+@pytest.mark.asyncio
+async def test_warm_stamps_has_hot_flow_on_every_symbol(monkeypatch):
+    """Every per-symbol entry must carry ``has_hot_flow`` — True when
+    ranked contracts survive, False when the filter wiped everything."""
+    from services.options_universe_service import (
+        OPTIONS_UNIVERSE_COLLECTION, CURRENT_SNAPSHOT_ID,
+        warm_options_universe, is_market_open,
+    )
+
+    monkeypatch.setattr(
+        "services.options_universe_service.is_market_open", lambda *_: True,
+    )
+    monkeypatch.setattr(
+        "services.options_universe_service.get_options_underlyings",
+        lambda: ["HOT", "COLD"],
+    )
+
+    async def _fake_build(symbols):
+        # Manually construct two scenarios — one with hot flow, one without.
+        return [
+            {"symbol": "HOT", "contracts": [{"flow_score": 5.0}],
+             "has_hot_flow": True,
+             "aggregate": {"put_call_ratio": 1.0, "total_volume": 1000,
+                           "total_call_volume": 500, "total_put_volume": 500,
+                           "total_open_interest": 500, "mean_iv": 0.3,
+                           "flow_imbalance": 0.0, "avg_spread_bps": 30,
+                           "p90_spread_bps": 50,
+                           "iv_rank": None, "iv_percentile": None}},
+            {"symbol": "COLD", "contracts": [], "has_hot_flow": False,
+             "aggregate": {"put_call_ratio": 1.2, "total_volume": 100,
+                           "total_call_volume": 40, "total_put_volume": 60,
+                           "total_open_interest": 200, "mean_iv": 0.25,
+                           "flow_imbalance": -0.2, "avg_spread_bps": 500,
+                           "p90_spread_bps": 800,
+                           "iv_rank": None, "iv_percentile": None}},
+        ]
+
+    monkeypatch.setattr(
+        "services.options_universe_service.build_options_universe",
+        _fake_build,
+    )
+
+    db = _FakeDB()
+    stats = await warm_options_universe(db)
+    assert stats["status"] == "success"
+
+    snap = next(d for d in db[OPTIONS_UNIVERSE_COLLECTION].docs
+                if d.get("_id") == CURRENT_SNAPSHOT_ID)
+    by_sym = {e["symbol"]: e for e in snap["data"]}
+    assert by_sym["HOT"]["has_hot_flow"] is True
+    assert by_sym["COLD"]["has_hot_flow"] is False
+
+
+# ───────────────── staleness guard ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_read_options_snapshot_stale_returns_none():
+    """Snapshot older than SNAPSHOT_FRESHNESS_SECONDS must return None —
+    guarantees the 'additive, never dominant' rule during warm outages.
+    """
+    from services.options_universe_service import (
+        read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION,
+        CURRENT_SNAPSHOT_ID, SNAPSHOT_FRESHNESS_SECONDS,
+    )
+
+    db = _FakeDB()
+    from datetime import datetime, timedelta, timezone
+    stale_ts = (datetime.now(timezone.utc)
+                - timedelta(seconds=SNAPSHOT_FRESHNESS_SECONDS + 60))
+    db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
+        "_id": CURRENT_SNAPSHOT_ID,
+        "updated_at": stale_ts.isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
+    })
+    # Stale → None, even though SPY is in the doc
+    assert await read_options_snapshot(db, "SPY") is None
+
+
+@pytest.mark.asyncio
+async def test_read_options_snapshot_fresh_returns_entry():
+    """Snapshot within TTL window returns the entry normally."""
+    from services.options_universe_service import (
+        read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION,
+        CURRENT_SNAPSHOT_ID,
+    )
+
+    db = _FakeDB()
+    from datetime import datetime, timezone
+    db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
+        "_id": CURRENT_SNAPSHOT_ID,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
+    })
+    entry = await read_options_snapshot(db, "SPY")
+    assert entry is not None
+    assert entry["symbol"] == "SPY"
+    assert entry["has_hot_flow"] is False
+
+
+@pytest.mark.asyncio
+async def test_read_options_snapshot_custom_max_age():
+    """Per-call max_age override lets a caller tolerate stale data in
+    low-stakes contexts (e.g. a nightly batch view) without changing
+    the conservative 10-min default for decision-critical hooks."""
+    from services.options_universe_service import (
+        read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION,
+        CURRENT_SNAPSHOT_ID,
+    )
+
+    db = _FakeDB()
+    from datetime import datetime, timedelta, timezone
+    old_ts = datetime.now(timezone.utc) - timedelta(minutes=30)
+    db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
+        "_id": CURRENT_SNAPSHOT_ID,
+        "updated_at": old_ts.isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
+    })
+    # Default 10-min TTL → stale → None
+    assert await read_options_snapshot(db, "SPY") is None
+    # 1-hour override → still fresh
+    entry = await read_options_snapshot(db, "SPY", max_age_seconds=3600)
+    assert entry is not None
+
+
+@pytest.mark.asyncio
+async def test_read_options_snapshot_missing_updated_at_treated_stale():
+    """Defensive: snapshot without updated_at is treated as stale rather
+    than letting undated docs pass through with infinite TTL."""
+    from services.options_universe_service import (
+        read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION,
+        CURRENT_SNAPSHOT_ID,
+    )
+
+    db = _FakeDB()
+    db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
+        "_id": CURRENT_SNAPSHOT_ID,
+        # no updated_at
+        "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "aggregate": {}}],
+    })
+    assert await read_options_snapshot(db, "SPY") is None
 
 
 @pytest.mark.asyncio

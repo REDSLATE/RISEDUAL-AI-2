@@ -218,23 +218,63 @@ def get_options_chain_sync(symbol: str) -> list[dict]:
 def _aggregate_contracts(contracts: list[dict]) -> dict:
     """Compute per-symbol aggregates from the PRE-filter chain (so PCR and
     totals reflect real flow, not the post-filter shortlist)."""
+    from services.options_filters import compute_spread_bps
+
     calls = [c for c in contracts if c.get("type") == "CALL"]
     puts = [c for c in contracts if c.get("type") == "PUT"]
     call_vol = sum((c.get("volume", 0) or 0) for c in calls)
     put_vol = sum((c.get("volume", 0) or 0) for c in puts)
+    total_vol = call_vol + put_vol
     total_oi = sum((c.get("open_interest", 0) or 0) for c in contracts)
 
     ivs = [c["implied_volatility"] for c in contracts
            if c.get("implied_volatility") is not None and c["implied_volatility"] > 0]
     mean_iv = round(sum(ivs) / len(ivs), 4) if ivs else None
 
+    # Spread distribution over valid quotes (9999 sentinel = untradeable,
+    # excluded from the distribution so a handful of stale prints don't
+    # poison the avg / p90). When every quote is degenerate, fall through
+    # to None rather than misreport 9999 as a real number.
+    valid_spreads: list[float] = []
+    for c in contracts:
+        bid = float(c.get("bid") or 0)
+        ask = float(c.get("ask") or 0)
+        bps = compute_spread_bps(bid, ask)
+        if bps < 9999:
+            valid_spreads.append(bps)
+
+    avg_spread_bps: float | None = None
+    p90_spread_bps: float | None = None
+    if valid_spreads:
+        sorted_spreads = sorted(valid_spreads)
+        avg_spread_bps = round(sum(sorted_spreads) / len(sorted_spreads), 2)
+        # Integer-index p90 — cheaper than numpy for a 4-line calc, and
+        # behaves sensibly on small chains (n=10 → index 9 = max).
+        p90_idx = max(0, int(round(0.90 * (len(sorted_spreads) - 1))))
+        p90_spread_bps = round(sorted_spreads[p90_idx], 2)
+
+    # Flow imbalance — stable alternative to raw PCR thresholds.
+    # Range: -1.0 (all puts) to +1.0 (all calls). Unlike PCR, which blows
+    # up toward infinity when call_vol → 0, this is bounded and symmetric.
+    # Downstream consumers can compare magnitudes directly without
+    # needing the log(PCR) detour.
+    flow_imbalance: float | None = None
+    if total_vol > 0:
+        flow_imbalance = round((call_vol - put_vol) / total_vol, 3)
+
     return {
         "put_call_ratio": round(put_vol / call_vol, 3) if call_vol > 0 else None,
+        "flow_imbalance": flow_imbalance,
         "total_call_volume": call_vol,
         "total_put_volume": put_vol,
-        "total_volume": call_vol + put_vol,
+        "total_volume": total_vol,
         "total_open_interest": total_oi,
         "mean_iv": mean_iv,
+        # Spread distribution — widening spreads = liquidity withdrawal,
+        # often a pre-volatility signal. Track avg and p90 so a cluster
+        # of wide tails shows up even when the mean stays OK.
+        "avg_spread_bps": avg_spread_bps,
+        "p90_spread_bps": p90_spread_bps,
         # IV rank/percentile need ≥252 days of mean_iv history. Surfaced
         # as None until a derivation pass fills them — never fake these.
         "iv_rank": None,
@@ -272,12 +312,17 @@ async def _build_for_symbol(symbol: str, sem: asyncio.Semaphore) -> dict | None:
             return {
                 "symbol": symbol.upper(),
                 "contracts": [],
+                "has_hot_flow": False,
                 "aggregate": aggregate,
             }
 
         return {
             "symbol": symbol.upper(),
             "contracts": ranked,
+            # Cheap boolean flag so downstream consumers can short-circuit
+            # without walking the contracts list — e.g.:
+            #     if not entry["has_hot_flow"]: reduce_confidence()
+            "has_hot_flow": True,
             "aggregate": aggregate,
         }
 
@@ -364,8 +409,33 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
 
 # ───────────────────── downstream-hook reader ─────────────────────
 
+# Per-symbol snapshot TTL. Once the current ``option_universe`` doc ages
+# past this, downstream hooks treat it as "no data" — preserves the
+# "additive, never dominant" rule during market holidays, extended warm
+# outages, or anything else that stops the 5-min refresh. 10 min matches
+# the warm cadence + a two-interval safety buffer.
+SNAPSHOT_FRESHNESS_SECONDS = 10 * 60
 
-async def read_options_snapshot(db: Any, symbol: str) -> dict | None:
+
+def _parse_iso_utc(s: str | None) -> datetime | None:
+    """Best-effort ISO-8601 → aware UTC datetime. Returns None on any
+    parse failure — caller treats None as "unknown age = stale"."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        # Python 3.11+ handles trailing 'Z' natively; earlier versions
+        # need the swap to +00:00. Use the replace form for portability.
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+async def read_options_snapshot(
+    db: Any,
+    symbol: str,
+    *,
+    max_age_seconds: int = SNAPSHOT_FRESHNESS_SECONDS,
+) -> dict | None:
     """Read the per-symbol slice of the current options universe.
 
     This is the single entry point used by every downstream integration
@@ -376,6 +446,7 @@ async def read_options_snapshot(db: Any, symbol: str) -> dict | None:
 
     Returns ``None`` when:
         * no snapshot doc exists yet (warm never ran)
+        * the snapshot is stale (updated_at > ``max_age_seconds`` ago)
         * the symbol isn't in the configured underlying list
         * the per-symbol entry has no data (rare; means warm failed
           for that symbol specifically)
@@ -394,6 +465,20 @@ async def read_options_snapshot(db: Any, symbol: str) -> dict | None:
         return None
     if not snapshot:
         return None
+
+    # Staleness guard — critical for the "additive, never dominant" rule
+    # during warm outages. An old snapshot must not bias decisions.
+    updated_at = _parse_iso_utc(snapshot.get("updated_at"))
+    if updated_at is None:
+        return None
+    now = datetime.now(timezone.utc)
+    if (now - updated_at).total_seconds() > max_age_seconds:
+        logger.debug(
+            "[options_universe] snapshot stale (%.0fs old > %ds budget); no-op",
+            (now - updated_at).total_seconds(), max_age_seconds,
+        )
+        return None
+
     data = snapshot.get("data") or []
     target = symbol.upper()
     for entry in data:

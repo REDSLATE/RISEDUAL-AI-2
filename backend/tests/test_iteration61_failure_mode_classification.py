@@ -348,9 +348,16 @@ class TestNightlyCleanupPreservesFailureCode:
 
         source = inspect.getsource(nightly_cleanup)
         
-        # Check that cleanup copies existing metadata before updating
-        assert "meta = toxic_metas[i].copy()" in source or "meta.copy()" in source, \
-            "nightly_cleanup should copy existing metadata"
+        # Check that cleanup copies existing metadata before updating.
+        # Accept both idioms — ``dict(toxic_metas[i])`` mirrors ``.copy()``
+        # at runtime and is the form the service uses (ChromaDB's
+        # UpdateMetadata stub types the source as Mapping, so `dict()`
+        # is the mypy-clean idiom here).
+        assert (
+            "meta = toxic_metas[i].copy()" in source
+            or "meta.copy()" in source
+            or "dict(toxic_metas[i])" in source
+        ), "nightly_cleanup should copy existing metadata"
         
         # Check that it only updates the outcome field
         assert 'meta["outcome"] = "toxic_lesson"' in source or "meta['outcome'] = 'toxic_lesson'" in source, \
