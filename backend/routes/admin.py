@@ -3050,3 +3050,60 @@ async def benzinga_news_telemetry_batch(
             "requested": len(syms),
         }
     return await batch_feed_symbols(db, syms)
+
+
+# ── Alpha Vantage sentiment feeder (NEWS_SHOCK sentiment leg) ──
+
+
+@router.get("/av-news/status")
+async def av_news_status(request: Request):
+    """Return AV sentiment feeder health: key presence, daily quota
+    usage, configured ceiling + interval."""
+    await _require_owner(request)
+    from services.av_sentiment_feeder import (
+        _api_key, _daily_call_count, _daily_ceiling,
+        _min_interval_seconds, _today_key,
+    )
+
+    key = _api_key()
+    ceiling = _daily_ceiling()
+    used = await _daily_call_count(db)
+    return {
+        "key_configured": bool(key),
+        "key_fingerprint": (key[:4] + "…" + key[-4:]) if len(key) >= 8 else None,
+        "daily_ceiling": ceiling,
+        "daily_calls_used": used,
+        "daily_remaining": max(0, ceiling - used) if ceiling > 0 else None,
+        "min_interval_seconds": _min_interval_seconds(),
+        "today_utc": _today_key(),
+    }
+
+
+@router.post("/av-news/sentiment-telemetry/{symbol}")
+async def av_news_sentiment_feed(request: Request, symbol: str):
+    """Pull AV NEWS_SENTIMENT for a symbol, compute sentiment magnitude,
+    record into ``equity_telemetry`` rolling buffer. Consumes 1 call
+    from the AV daily ceiling."""
+    await _require_owner(request)
+    from services.av_sentiment_feeder import fetch_and_record_sentiment
+
+    return await fetch_and_record_sentiment(db, symbol)
+
+
+@router.post("/av-news/sentiment-telemetry-batch")
+async def av_news_sentiment_batch(request: Request, symbols: str):
+    """Batch sentiment feeder. 20-symbol cap; short-circuits on AV
+    rate-limit or daily-ceiling hit."""
+    await _require_owner(request)
+    from services.av_sentiment_feeder import batch_feed_sentiment
+
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        return {"error": "no_symbols_provided", "fed": 0, "skipped": 0}
+    if len(syms) > 20:
+        return {
+            "error": "too_many_symbols",
+            "max_per_call": 20,
+            "requested": len(syms),
+        }
+    return await batch_feed_sentiment(db, syms)
