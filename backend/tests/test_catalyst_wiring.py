@@ -198,3 +198,82 @@ def test_thesis_lines_high_shock_bearish_sentiment():
     assert len(out["risk"]) == 1
     assert "high" in out["risk"][0]
     assert "4.7" in out["risk"][0]
+
+
+# ── run_adversarial_decision integration ─────────────────────────
+# Ensures the catalyst enrichment is wired through the Commander
+# orchestrator without breaking the existing gates (env flag +
+# Tier 3 unlock).
+
+import os
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from services.adversarial_core import run_adversarial_decision
+
+
+@pytest.mark.asyncio
+async def test_run_adversarial_decision_passes_catalyst_through_when_gates_open(monkeypatch):
+    """With both gates open + a bullish catalyst snapshot, the returned
+    bull_case thesis carries the ``bullish_catalyst_sentiment`` tag.
+    Confirms the wire-up lands end-to-end."""
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_ENABLED", "1")
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "full")
+
+    fake_db = AsyncMock()
+    fake_db.catalyst_snapshots.find_one = AsyncMock(return_value={
+        "symbol": "NVDA",
+        "news_shock": {
+            "sentiment_label": "bullish",
+            "shock_state": "normal",
+        },
+    })
+
+    signal = {
+        "symbol": "NVDA",
+        "strategist": {"direction": "LONG", "confidence": 0.7, "indicators": {"rsi": 55}},
+        "auditor": {"confidence": 0.7},
+        "regime": "BULL_HIGH",
+    }
+
+    # Open the Tier 3 gate by returning unlocked=True from the probe.
+    with patch(
+        "services.adversarial_core._tier3_gate_open",
+        new=AsyncMock(return_value=True),
+    ):
+        result = await run_adversarial_decision(fake_db, signal)
+
+    assert result is not None
+    assert "bullish_catalyst_sentiment" in result["bull_case"]["thesis"]
+    # Bear thesis untouched — sentiment was bullish.
+    assert "bullish_catalyst_sentiment" not in result["bear_case"]["thesis"]
+
+
+@pytest.mark.asyncio
+async def test_run_adversarial_decision_silent_on_catalyst_read_error(monkeypatch):
+    """A broken ``catalyst_snapshots.find_one`` must NEVER suppress
+    the decision — Commander's core authority stays intact."""
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_ENABLED", "1")
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "full")
+
+    fake_db = AsyncMock()
+    fake_db.catalyst_snapshots.find_one = AsyncMock(
+        side_effect=RuntimeError("mongo blip"),
+    )
+
+    signal = {
+        "symbol": "AAPL",
+        "strategist": {"direction": "LONG", "confidence": 0.7, "indicators": {"rsi": 55}},
+        "auditor": {"confidence": 0.7},
+        "regime": "BULL_HIGH",
+    }
+
+    with patch(
+        "services.adversarial_core._tier3_gate_open",
+        new=AsyncMock(return_value=True),
+    ):
+        result = await run_adversarial_decision(fake_db, signal)
+
+    # Decision still returned despite the broken catalyst read.
+    assert result is not None
+    assert result["symbol"] == "AAPL"

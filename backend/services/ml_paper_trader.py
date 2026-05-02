@@ -369,7 +369,7 @@ async def maybe_paper_trade(
     brake_log: dict[str, Any] | None = None
     try:
         from services.adversarial_core import (
-            bull_agent, bear_agent, resolve_adversarial,
+            apply_catalyst_context, bull_agent, bear_agent, resolve_adversarial,
         )
         from services.commander_phase2_brake import (
             apply_brake_to_position, decide_brake,
@@ -397,6 +397,18 @@ async def maybe_paper_trade(
         }
         _bull = bull_agent(_commander_signal)
         _bear = bear_agent(_commander_signal)
+
+        # Phase C — catalyst narrative enrichment. Fail-silent: an
+        # error reading ``catalyst_snapshots`` must never suppress
+        # the trade; we just miss the annotation this tick.
+        try:
+            _catalyst_snapshot = await db.catalyst_snapshots.find_one(
+                {"symbol": ticker.upper()}, {"_id": 0},
+            )
+            _bull, _bear = apply_catalyst_context(_bull, _bear, _catalyst_snapshot)
+        except Exception:
+            pass
+
         _commander = resolve_adversarial(_bull, _bear)
 
         _promotion = await compute_equity_shadow_promotion_status(db)

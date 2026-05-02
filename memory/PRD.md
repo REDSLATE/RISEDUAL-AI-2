@@ -22,6 +22,60 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Commander pipeline catalyst wiring LIVE (May 2, 2026)
+
+Final hand-off from the Phase C drop-in: `apply_catalyst_context`
+is now invoked inside the real Commander orchestrator AND the
+equity paper-trader's inline adversarial pass. Catalyst annotations
+now flow into every live bull/bear case produced by the
+application.
+
+**1. `adversarial_core.run_adversarial_decision` — canonical wiring**
+
+Added between the `bull_agent` / `bear_agent` runs and
+`resolve_adversarial`:
+
+```python
+catalyst_snapshot = await db.catalyst_snapshots.find_one(
+    {"symbol": symbol}, {"_id": 0},
+)
+bull, bear = apply_catalyst_context(bull, bear, catalyst_snapshot)
+```
+
+Wrapped in a bare `try/except: pass` — the invariant is **no
+catalyst read failure can suppress the decision**. Commander's
+core authority stays intact; a broken snapshot just loses the
+annotation this tick.
+
+This is the orchestrator used by `crypto_paper_trader` +
+`research_shadow_engines`, so both crypto entries and the shadow
+research stream now carry catalyst narrative automatically.
+
+**2. `ml_paper_trader.maybe_paper_trade` — equity path same wiring**
+
+The equity paper-trader builds its adversarial context inline
+(not through `run_adversarial_decision`), so the same 3-line
+catalyst enrichment was mirrored there — symbol pulled from
+`ticker.upper()`. Same fail-safe discipline.
+
+**3. Tests** (2 new in `test_catalyst_wiring.py`)
+
+* ``test_run_adversarial_decision_passes_catalyst_through_when_gates_open``
+  — opens both gates (env flag + Tier 3 probe), feeds a bullish
+  catalyst snapshot, asserts the returned ``bull_case.thesis``
+  carries ``bullish_catalyst_sentiment`` and the bear thesis is
+  untouched.
+* ``test_run_adversarial_decision_silent_on_catalyst_read_error``
+  — patches ``catalyst_snapshots.find_one`` to raise
+  ``RuntimeError``, asserts the decision payload is still returned
+  intact. Pins the "broken catalyst read cannot suppress
+  Commander" invariant.
+
+**Tests**: 19/19 catalyst + 218/218 NEWS_SHOCK/feeder/terminal
+suites + 190/190 adversarial/conviction/commander suites — zero
+regression. Lint clean on all 3 touched files. Backend restarted
+cleanly.
+
 ### Catalyst wiring (conviction + Commander) + Monday burn-in observability (May 2, 2026)
 
 Completes the operator's Phase C drop-in: wires the catalyst helpers

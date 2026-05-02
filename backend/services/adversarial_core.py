@@ -550,6 +550,27 @@ async def run_adversarial_decision(
 
     bull = bull_agent(signal)
     bear = bear_agent(signal)
+
+    # Phase C — catalyst narrative enrichment.
+    # Additive-only: ``apply_catalyst_context`` never moves
+    # ``confidence`` / ``expected_r`` — it only decorates the thesis
+    # strings so the returned ``bull_case`` / ``bear_case`` payloads
+    # carry the "why this signal matters right now" narrative. If the
+    # symbol has no snapshot (fresh-deploy, small-cap outside Tier A),
+    # the helper returns the inputs unchanged.
+    symbol = (signal.get("symbol") or "").upper()
+    if symbol:
+        try:
+            catalyst_snapshot = await db.catalyst_snapshots.find_one(
+                {"symbol": symbol}, {"_id": 0},
+            )
+            bull, bear = apply_catalyst_context(bull, bear, catalyst_snapshot)
+        except Exception:
+            # A broken catalyst read must NEVER suppress the decision —
+            # Commander's core authority stays intact. The thesis
+            # strings just miss the catalyst annotation this run.
+            pass
+
     resolution = resolve_adversarial(bull, bear)
 
     return {
