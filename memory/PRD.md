@@ -22,6 +22,92 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Catalyst wiring (conviction + Commander) + Monday burn-in observability (May 2, 2026)
+
+Completes the operator's Phase C drop-in: wires the catalyst helpers
+into the actual compute functions AND adds a single aggregated
+burn-in endpoint so the Monday AM readiness check is one curl, not
+ten.
+
+**1. ``conviction_service`` — catalyst adjustment live**
+
+* New pure helper ``_catalyst_conviction_delta(action, snapshot)``
+  returning ``(delta, reason_code)``. Implements the operator spec
+  verbatim: ``-0.10`` on high, ``+0.05`` on elevated-aligned,
+  ``-0.05`` on elevated-unaligned, ``0.0`` otherwise. Action
+  synonyms (``BUY``/``UP``/``LONG`` and ``SELL``/``DOWN``/``SHORT``)
+  all map to the right alignment semantics.
+* Wired into ``compute_conviction`` as the new **component #7**
+  after options-flow boost. Reads ``catalyst_snapshots`` async
+  (``find_one`` by symbol); any lookup error swallows to 0.0 and
+  ``reason="NO_CATALYST_DATA"`` so the existing compute path is
+  pristine when the collection is empty. Composite score still
+  clamped to ``[0, 1]`` after addition — a catalyst can never drag
+  below neutral or above perfection.
+* The breakdown dict in the return value gains
+  ``catalyst_adjustment`` + ``catalyst_reason`` alongside the
+  existing components so every conviction row carries full
+  transparency.
+
+**2. ``adversarial_core`` — catalyst narrative enrichment**
+
+Mirrors the existing ``apply_options_context`` pattern — additive
+only, never touches ``confidence`` / ``expected_r``:
+
+* ``apply_catalyst_context(bull, bear, snapshot)`` — appends
+  ``| bullish_catalyst_sentiment`` / ``| bearish_catalyst_sentiment``
+  to the matching thesis. Elevated/high shock state appends
+  ``| news_shock_<state>_z<z>`` to **both** theses (shock raises
+  uncertainty on EITHER side — an operator going long against a
+  shock should see the same flag as one going short against it).
+  Returns fresh ``AgentOutput`` instances via ``dataclasses.replace``;
+  inputs are never mutated.
+* ``catalyst_thesis_lines(snapshot)`` — structured variant
+  returning ``{bull, bear, risk}`` lists. Used by callers that
+  want the raw strings (Terminal UI, proof chain) rather than the
+  in-string annotation.
+
+**3. Monday burn-in endpoint**
+
+``GET /api/admin/news-shock/burn-in`` — one-shot aggregated health
+check. Returns six independent signals:
+
+1. ``scheduler.last_offset`` + ``last_updated_at`` — is the 15-min
+   tick running?
+2. ``catalyst_events`` total + latest event time — is the feeder
+   persisting articles?
+3. ``news_telemetry`` rows — is the shock-compute step recording
+   baselines?
+4. ``catalyst_snapshots`` total + ``zscore_ready`` + 3 most recent
+   updates — is the projection landing?
+5. ``smart_money_blocks_24h`` — are ``SMART_MONEY_VERIFIED`` proof
+   blocks appearing on real equity decisions?
+6. ``equity_telemetry`` total symbols + per-symbol sample with
+   ``has_dollar_volume`` / ``has_news_count`` / ``has_news_sentiment``
+   flags — is ``_warm_one`` feeding the liquidity baselines?
+
+Each read is a single collection count or capped find — safe to
+poll every 30s during the burn-in window.
+
+**Live verification** (Sat 2026-05-02 21:34 UTC):
+
+* `/burn-in` returns a clean all-systems snapshot.
+* Equity telemetry already has **200 symbols tracked** with
+  ``has_dollar_volume=True`` on NVDA/TSLA/MSFT/AMZN — the
+  ``_warm_one`` dollar-volume feeder fired on Saturday's post-close
+  warm as designed.
+* News/sentiment fields correctly empty — feeders wait for
+  Monday's market-hours gate.
+
+**Tests**: 16 new ``test_catalyst_wiring.py`` cases pinning every
+delta branch + alignment synonym + narrative enrichment invariant
+(bull-only / bear-only extension, both-sides on shock,
+confidence/expected_r untouched). 147 adversarial+conviction tests
+still pass — no regression in the existing pipelines.
+
+169/169 green across the NEWS_SHOCK / feeder / scheduler / terminal
+suites. Lint clean on all 4 touched files.
+
 ### Phase C — NEWS_SHOCK catalyst layer (May 2, 2026)
 
 Implements the operator's full drop-in spec for a statistical

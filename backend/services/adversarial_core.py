@@ -337,6 +337,108 @@ def apply_options_context(
     return bull, bear
 
 
+# ── Catalyst narrative enrichment (Phase C integration hook) ──────────────────
+#
+# Mirrors ``apply_options_context``: additive-only, never moves
+# confidence or expected_r, never casts a vote at Commander time.
+# Purely annotates the bull/bear thesis strings so downstream
+# Terminal + audit reads carry the "why this signal right now"
+# narrative the Bloomberg-style operator expects.
+
+def apply_catalyst_context(
+    bull: AgentOutput,
+    bear: AgentOutput,
+    catalyst_snapshot: Optional[dict],
+) -> tuple[AgentOutput, AgentOutput]:
+    """Enrich bull/bear theses with catalyst/news-shock context.
+
+    ``catalyst_snapshot`` is a per-symbol doc from the
+    ``catalyst_snapshots`` collection (or ``None``). Returns fresh
+    ``AgentOutput`` instances — inputs are never mutated.
+
+    Rules (matches operator spec ``catalyst_thesis_lines``):
+
+      * Bullish sentiment  → append to bull thesis
+      * Bearish sentiment  → append to bear thesis
+      * Elevated/high shock → append risk line to BOTH theses so the
+        Commander sees the uncertainty on either side
+    """
+    if not catalyst_snapshot:
+        return bull, bear
+
+    import dataclasses
+
+    shock = catalyst_snapshot.get("news_shock", {}) or {}
+    sentiment = shock.get("sentiment_label")
+    shock_state = shock.get("shock_state")
+    z = shock.get("news_zscore")
+
+    if sentiment == "bullish":
+        bull = dataclasses.replace(
+            bull,
+            thesis=bull.thesis + " | bullish_catalyst_sentiment",
+        )
+    elif sentiment == "bearish":
+        bear = dataclasses.replace(
+            bear,
+            thesis=bear.thesis + " | bearish_catalyst_sentiment",
+        )
+
+    if shock_state in {"elevated", "high"}:
+        tag = f"news_shock_{shock_state}"
+        if z is not None:
+            tag += f"_z{z}"
+        # Both sides see the shock — shock raises uncertainty on the
+        # directional bet regardless of which side the operator is on.
+        bull = dataclasses.replace(
+            bull, thesis=bull.thesis + f" | {tag}",
+        )
+        bear = dataclasses.replace(
+            bear, thesis=bear.thesis + f" | {tag}",
+        )
+
+    return bull, bear
+
+
+def catalyst_thesis_lines(catalyst_snapshot: Optional[dict]) -> dict[str, list[str]]:
+    """Operator-spec structured view of catalyst thesis lines.
+
+    Returns ``{"bull": [...], "bear": [...], "risk": [...]}``.
+    Used by callers that want the raw lines (e.g. Terminal UI,
+    Commander proof chain) rather than the in-string annotation
+    applied by ``apply_catalyst_context``.
+    """
+    if not catalyst_snapshot:
+        return {"bull": [], "bear": [], "risk": []}
+
+    shock = catalyst_snapshot.get("news_shock", {}) or {}
+    sentiment = shock.get("sentiment_label")
+    shock_state = shock.get("shock_state")
+    headline = shock.get("latest_headline")
+    z = shock.get("news_zscore")
+
+    bull: list[str] = []
+    bear: list[str] = []
+    risk: list[str] = []
+
+    if sentiment == "bullish":
+        bull.append(
+            f"Bullish catalyst sentiment detected; latest: {headline}"
+            if headline else "Bullish catalyst sentiment detected"
+        )
+    elif sentiment == "bearish":
+        bear.append(
+            f"Bearish catalyst sentiment detected; latest: {headline}"
+            if headline else "Bearish catalyst sentiment detected"
+        )
+
+    if shock_state in {"elevated", "high"}:
+        z_str = f"; z-score={z}" if z is not None else ""
+        risk.append(f"News shock is {shock_state}{z_str}")
+
+    return {"bull": bull, "bear": bear, "risk": risk}
+
+
 # ── Commander ─────────────────────────────────────────────────────────────────
 
 

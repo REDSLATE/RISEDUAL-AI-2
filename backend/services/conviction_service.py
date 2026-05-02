@@ -193,6 +193,52 @@ async def _is_flagged(db: Any, asset: str, direction: str) -> bool:
         return False
 
 
+def _catalyst_conviction_delta(
+    *,
+    action: Optional[str],
+    catalyst_snapshot: Optional[dict],
+) -> tuple[float, str]:
+    """Phase C catalyst delta — pure function, safe default.
+
+    Returns ``(delta, reason_code)``. Matches the operator spec:
+
+      * ``shock_state=high``                 → -0.10 de-risk
+      * ``shock_state=elevated`` + aligned   → +0.05
+      * ``shock_state=elevated`` + unaligned → -0.05
+      * otherwise                            → 0.0
+
+    Never flips direction, never creates a trade. Caller clamps the
+    composite score to [0, 1] so the delta can't drag a signal below
+    neutral either.
+
+    Accepted action synonyms: {BUY, UP, LONG} → bullish alignment;
+    {SELL, DOWN, SHORT} → bearish alignment. Unknown/empty action
+    with an elevated state degrades to the "unaligned" path (the
+    conservative branch).
+    """
+    if not catalyst_snapshot:
+        return 0.0, "NO_CATALYST_DATA"
+
+    shock = catalyst_snapshot.get("news_shock", {}) or {}
+    shock_state = shock.get("shock_state", "normal")
+    sentiment = shock.get("sentiment_label", "unknown")
+    action_u = str(action or "").upper()
+
+    aligned = (
+        (action_u in {"BUY", "UP", "LONG"} and sentiment == "bullish")
+        or (action_u in {"SELL", "DOWN", "SHORT"} and sentiment == "bearish")
+    )
+
+    if shock_state == "high":
+        return -0.10, "HIGH_NEWS_SHOCK_DE_RISK"
+    if shock_state == "elevated" and aligned:
+        return 0.05, "ELEVATED_ALIGNED_CATALYST"
+    if shock_state == "elevated" and not aligned:
+        return -0.05, "ELEVATED_UNALIGNED_CATALYST"
+    return 0.0, "CATALYST_NORMAL"
+
+
+
 async def compute_conviction(
     db: Any,
     *,
@@ -272,6 +318,28 @@ async def compute_conviction(
             options_boost = round(OPTIONS_FLOW_BOOST_MAX * scale, 4)
         components["options_flow_boost"] = options_boost
 
+        # 7. Catalyst adjustment (Phase C hook). Reads the
+        #    ``catalyst_snapshots`` collection for the asset and
+        #    applies the operator-spec delta (+0.05 elevated-aligned,
+        #    −0.05 elevated-unaligned, −0.10 high). Additive, bounded
+        #    on both sides — catalyst can never single-handedly create
+        #    or flip a signal; it can only nudge sizing off the
+        #    ambiguous middle. ``None`` snapshot or missing collection
+        #    contributes 0.
+        catalyst_delta = 0.0
+        catalyst_reason = "NO_CATALYST_DATA"
+        try:
+            if asset and direction:
+                catalyst_snapshot = await db.catalyst_snapshots.find_one(
+                    {"symbol": asset.upper()}, {"_id": 0},
+                )
+                catalyst_delta, catalyst_reason = _catalyst_conviction_delta(
+                    action=direction, catalyst_snapshot=catalyst_snapshot,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"[conviction] catalyst lookup skipped: {exc}")
+        components["catalyst_adjustment"] = round(catalyst_delta, 4)
+
         score = (
             components["signal_confidence"]
             + components["calibration"]
@@ -279,6 +347,7 @@ async def compute_conviction(
             + components["rejection_bias_penalty"]
             + components["loss_streak_penalty"]
             + components["options_flow_boost"]
+            + components["catalyst_adjustment"]
         )
         score = max(0.0, min(1.0, score))
         tier_label, size_mult = _tier_from_score(score)
@@ -289,6 +358,7 @@ async def compute_conviction(
             "size_multiplier": size_mult,
             "weights": dict(w),
             "breakdown": components,
+            "catalyst_reason": catalyst_reason,
             "inputs": {
                 "confidence": conf,
                 "calibration": round(calibration, 4),

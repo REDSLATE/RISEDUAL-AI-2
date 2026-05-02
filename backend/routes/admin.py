@@ -3210,3 +3210,124 @@ async def news_shock_ensure_indexes(request: Request):
     except Exception as exc:  # noqa: BLE001
         created.append(f"catalyst_snapshots_error:{exc}")
     return {"created": created}
+
+
+@router.get("/news-shock/burn-in")
+async def news_shock_burn_in(request: Request):
+    """One-shot Monday burn-in health check.
+
+    Aggregates the four independent health signals the operator
+    should watch on first-market-open after a fresh deploy:
+
+    1. ``scheduler_state.news_feeders_rotation`` — is the tick
+       running? Last ``updated_at`` + current offset.
+    2. ``catalyst_events`` — is the feeder persisting articles?
+       Row count + most recent event_time.
+    3. ``news_telemetry`` — is the shock-compute step recording
+       baselines? Row count + most recent created_at.
+    4. ``catalyst_snapshots`` — is the projection landing?
+       Total tracked + ``zscore_ready`` count + top-3 most
+       recently updated.
+    5. ``decision_proof_chain`` — are ``SMART_MONEY_VERIFIED``
+       blocks appearing on real equity decisions?
+    6. ``equity_telemetry_baselines`` — is ``_warm_one`` feeding
+       atr/volume/dollar_volume? Samples per symbol histogram.
+
+    Cheap single read per collection — safe to poll every 30 s
+    during the burn-in window.
+    """
+    await _require_owner(request)
+    from datetime import datetime, timezone
+
+    def _iso(dt):
+        if isinstance(dt, datetime):
+            return dt.replace(tzinfo=dt.tzinfo or timezone.utc).isoformat()
+        return dt
+
+    # 1. Scheduler state
+    rot_doc = await db.scheduler_state.find_one(
+        {"_id": "news_feeders_rotation"}, {"_id": 0},
+    )
+
+    # 2. Catalyst events
+    catalyst_events_total = await db.catalyst_events.count_documents({})
+    latest_catalyst_event = await db.catalyst_events.find_one(
+        {}, {"_id": 0, "event_time": 1, "symbol": 1, "source": 1, "headline": 1},
+        sort=[("event_time", -1)],
+    ) or {}
+
+    # 3. News telemetry rows
+    news_tel_total = await db.news_telemetry.count_documents({})
+    latest_news_tel = await db.news_telemetry.find_one(
+        {}, {"_id": 0, "created_at": 1, "symbol": 1, "news_volume": 1},
+        sort=[("created_at", -1)],
+    ) or {}
+
+    # 4. Catalyst snapshots
+    snapshots_total = await db.catalyst_snapshots.count_documents({})
+    ready_total = await db.catalyst_snapshots.count_documents(
+        {"news_shock.zscore_ready": True},
+    )
+    top_cursor = db.catalyst_snapshots.find(
+        {}, {"_id": 0, "symbol": 1, "event_risk": 1, "updated_at": 1, "news_shock.shock_state": 1},
+    ).sort("updated_at", -1).limit(3)
+    top_snapshots = await top_cursor.to_list(length=3)
+    for s in top_snapshots:
+        s["updated_at"] = _iso(s.get("updated_at"))
+
+    # 5. Smart Money proof-chain blocks (last 24 h)
+    from datetime import timedelta
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    smart_money_blocks_24h = await db.decision_proof_chain.count_documents({
+        "event_type": "SMART_MONEY_VERIFIED",
+        "created_at": {"$gte": since_24h},
+    })
+
+    # 6. Equity telemetry baselines (atr/volume/dollar_volume)
+    baseline_total = await db.equity_telemetry_baselines.count_documents({})
+    baseline_cursor = db.equity_telemetry_baselines.find(
+        {}, {"_id": 0, "symbol": 1, "samples": 1},
+    ).limit(5)
+    baseline_samples = []
+    async for row in baseline_cursor:
+        samples = row.get("samples", []) or []
+        last = samples[-1] if samples else {}
+        baseline_samples.append({
+            "symbol": row.get("symbol"),
+            "sample_count": len(samples),
+            "has_dollar_volume": "dollar_volume" in last,
+            "has_news_count": "news_count" in last,
+            "has_news_sentiment": "news_sentiment_abs" in last,
+            "latest_at": _iso(last.get("at")) if isinstance(last.get("at"), datetime) else last.get("at"),
+        })
+
+    return {
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "scheduler": {
+            "last_offset": (rot_doc or {}).get("offset"),
+            "last_updated_at": _iso((rot_doc or {}).get("updated_at")),
+        },
+        "catalyst_events": {
+            "total": catalyst_events_total,
+            "latest_event_time": _iso(latest_catalyst_event.get("event_time")),
+            "latest_symbol": latest_catalyst_event.get("symbol"),
+            "latest_source": latest_catalyst_event.get("source"),
+            "latest_headline": latest_catalyst_event.get("headline"),
+        },
+        "news_telemetry": {
+            "total_rows": news_tel_total,
+            "latest_created_at": _iso(latest_news_tel.get("created_at")),
+            "latest_symbol": latest_news_tel.get("symbol"),
+            "latest_news_volume": latest_news_tel.get("news_volume"),
+        },
+        "catalyst_snapshots": {
+            "total": snapshots_total,
+            "zscore_ready": ready_total,
+            "most_recent": top_snapshots,
+        },
+        "smart_money_blocks_24h": smart_money_blocks_24h,
+        "equity_telemetry": {
+            "total_symbols_tracked": baseline_total,
+            "sample": baseline_samples,
+        },
+    }
