@@ -48,6 +48,14 @@ class _FakeColl:
         doc["_id"] = f"objid-{len(self.inserts)}"
         return type("R", (), {"inserted_id": doc["_id"]})()
 
+    async def find_one(self, query=None, projection=None, sort=None):  # noqa: ANN001
+        query = query or {}
+        matched = [d for d in self.docs if _matches(d, query)]
+        if sort:
+            key, order = sort[0] if isinstance(sort, list) else sort
+            matched.sort(key=lambda d: d.get(key) or 0, reverse=(order == -1))
+        return matched[0] if matched else None
+
     async def count_documents(self, query: dict[str, Any]) -> int:
         return sum(1 for d in self.docs if _matches(d, query))
 
@@ -121,6 +129,11 @@ def _matches(doc: dict[str, Any], query: dict[str, Any]) -> bool:
         if isinstance(v, dict) and "$gte" in v:
             got = _get_nested(doc, k)
             if got is None or got < v["$gte"]:
+                return False
+            continue
+        if isinstance(v, dict) and "$lte" in v:
+            got = _get_nested(doc, k)
+            if got is None or got > v["$lte"]:
                 return False
             continue
         got = _get_nested(doc, k)

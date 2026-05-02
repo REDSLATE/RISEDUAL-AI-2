@@ -193,3 +193,115 @@ async def sovereign_dtd_nightly_retrain(request: Request) -> dict[str, Any]:
     except RuntimeError as exc:
         # Mode guard fired — translate to HTTP 403 for clarity
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/narrate/{decision_id}")
+async def sovereign_narrate(
+    request: Request,
+    decision_id: str,
+) -> dict[str, Any]:
+    """AI-to-AI narrator: 3-bullet plain-English explanation of a sovereign
+    decision (cached 24h per decision_id)."""
+    await _require_owner_request(request)
+    db = _db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.sovereign_narrator import narrate_sovereign_decision
+    return await narrate_sovereign_decision(db, decision_id)
+
+
+@router.post("/resolution/tick")
+async def sovereign_resolution_tick(request: Request) -> dict[str, Any]:
+    """Manually trigger one resolution tick (useful for smoke tests
+    without waiting for the 15-min cron)."""
+    await _require_owner_request(request)
+    db = _db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.sovereign_resolution_loop import run_resolution_tick
+    return await run_resolution_tick(db)
+
+
+@router.get("/burn-in")
+async def sovereign_burn_in(request: Request) -> dict[str, Any]:
+    """Burn-in snapshot for the frontend chip: per-core decisions_24h,
+    resolved_pct, avg_conviction, contribution_applied_pct, phase.
+    """
+    await _require_owner_request(request)
+    db = _db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+
+    from datetime import datetime, timedelta, timezone
+    from services.sovereign_promotion_gate import compute_sovereign_promotion_status
+
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    async def _core_snapshot(asset_type: str) -> dict[str, Any]:
+        base = {"asset_type": asset_type}
+        coll = db["sovereign_decisions"]
+        decisions_24h = await coll.count_documents(
+            {**base, "created_at": {"$gte": since}},
+        )
+        resolved_24h = await coll.count_documents(
+            {**base, "resolved": True, "created_at": {"$gte": since}},
+        )
+        # Avg conviction over 24h
+        pipe = [
+            {"$match": {**base, "created_at": {"$gte": since}}},
+            {"$group": {
+                "_id": None,
+                "avg_conf": {"$avg": "$confidence"},
+                "avg_cal": {"$avg": "$calibration_score"},
+            }},
+        ]
+        try:
+            agg = await coll.aggregate(pipe).to_list(length=1)
+            avg_conf = round(float(agg[0]["avg_conf"]), 4) if agg else None
+            avg_cal = round(float(agg[0]["avg_cal"]), 4) if agg else None
+        except Exception:
+            avg_conf = None
+            avg_cal = None
+
+        # Contribution applied rate — read trade rows for this asset
+        trade_coll = "paper_trades" if asset_type == "equity" else "crypto_paper_trades"
+        try:
+            trades_24h = await db[trade_coll].count_documents(
+                {"opened_at": {"$gte": since}} if asset_type == "equity"
+                else {"created_at": {"$gte": since}},
+            )
+            contrib_applied = await db[trade_coll].count_documents(
+                {
+                    "sovereign_contribution.applied": True,
+                    ("opened_at" if asset_type == "equity" else "created_at"): {"$gte": since},
+                },
+            )
+        except Exception:
+            trades_24h = 0
+            contrib_applied = 0
+
+        promotion = await compute_sovereign_promotion_status(db, asset_type)  # type: ignore[arg-type]
+
+        return {
+            "asset_type": asset_type,
+            "decisions_24h": decisions_24h,
+            "resolved_24h": resolved_24h,
+            "resolved_pct": round(resolved_24h / decisions_24h, 4) if decisions_24h else None,
+            "avg_confidence": avg_conf,
+            "avg_calibration": avg_cal,
+            "trades_24h": trades_24h,
+            "contribution_applied_24h": contrib_applied,
+            "contribution_applied_pct": round(contrib_applied / trades_24h, 4)
+                if trades_24h else None,
+            "phase": promotion.get("phase"),
+            "promoted": promotion.get("promoted"),
+            "rows_to_go": promotion.get("rows_to_go"),
+        }
+
+    return {
+        "ran_at": datetime.now(timezone.utc),
+        "cores": {
+            "equity": await _core_snapshot("equity"),
+            "crypto": await _core_snapshot("crypto"),
+        },
+    }

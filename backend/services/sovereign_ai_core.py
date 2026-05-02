@@ -409,6 +409,46 @@ async def sovereign_decide(
                     "[sovereign_ai] persist failed for %s: %s",
                     features.symbol, exc,
                 )
+            # Proof-chain audit: emit a SOVEREIGN_DECISION block so the
+            # tamper-evident ledger carries every sovereign verdict alongside
+            # Strategist / Commander / Council opinions. Failure is silent —
+            # a broken proof chain write cannot block the decision path.
+            try:
+                from services.proof_chain import (
+                    AsyncMongoProofChainStore,
+                    ProofEvent,
+                    ProofEventType,
+                    async_append_proof_event,
+                )
+                store = AsyncMongoProofChainStore(db)
+                await async_append_proof_event(
+                    store,
+                    ProofEvent(
+                        event_type=ProofEventType.SOVEREIGN_DECISION,
+                        entity_id=f"sovereign:{features.symbol}:{decision.decision_id[:8]}",
+                        actor=f"sovereign_ai[{features.asset_type}]",
+                        payload={
+                            "decision_id": decision.decision_id,
+                            "symbol": decision.symbol,
+                            "asset_type": decision.asset_type,
+                            "action": decision.action,
+                            "confidence": decision.confidence,
+                            "conviction_tier": decision.conviction_tier,
+                            "size_multiplier": decision.size_multiplier,
+                            "reasons": decision.reasons,
+                            "vetoes": decision.vetoes,
+                            "model_votes": decision.model_votes,
+                            "advisory_votes": decision.advisory_votes,
+                            "calibration_score": decision.calibration_score,
+                            "shadow": decision.shadow,
+                        },
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "[sovereign_ai] proof chain append failed for %s: %s",
+                    features.symbol, exc,
+                )
         return decision
 
     except Exception as exc:  # noqa: BLE001

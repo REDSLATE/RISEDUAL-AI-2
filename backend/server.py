@@ -777,6 +777,30 @@ async def _start_schedulers():
             id='news_feeders_tick',
         )
 
+        # Sovereign AI Resolution Loop — back-patches
+        # sovereign_decisions.outcomes.{60m|4h|eod} from closed paper_trades
+        # via the sovereign_decision_id link. Every 15 min, batch cap 50 per
+        # (horizon, asset) slice so a backlog can't starve the rest of the
+        # fleet. Never raises — internal exceptions become structured logs.
+        async def _run_sovereign_resolution_tick():
+            try:
+                from services.sovereign_resolution_loop import run_resolution_tick
+                summary = await run_resolution_tick(db)
+                if summary.get("total_resolved", 0):
+                    logging.info(
+                        "[sovereign_resolve] resolved=%d per_horizon=%s",
+                        summary.get("total_resolved", 0),
+                        [(t["horizon"], t["asset_type"], t["resolved"])
+                            for t in summary.get("per_horizon", [])],
+                    )
+            except Exception:
+                logging.exception("sovereign_resolution_tick failed (non-critical)")
+        scheduler.add_job(
+            _run_sovereign_resolution_tick,
+            'interval', minutes=15,
+            id='sovereign_resolution_tick',
+        )
+
         # Fear & Greed history refresh — daily at 04:30 UTC (after the
         # alternative.me daily snapshot rolls over). Pulls the last 30
         # days and upserts them so any backfills/corrections from the

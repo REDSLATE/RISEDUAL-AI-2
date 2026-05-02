@@ -23,6 +23,111 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Sovereign AI P1+P2 — Resolution Loop, Proof Chain, Burn-in Chip, Narrator (May 3, 2026)
+
+Closes the P1 safety + P2 observability work on Sovereign AI in a single batch.
+
+**1. Resolution loop** — `services/sovereign_resolution_loop.py`
+
+Scheduled every 15 min (APScheduler `sovereign_resolution_tick` job). For
+every unresolved sovereign decision aged past its horizon (`60m` / `4h` /
+`eod` = 8h), joins against `paper_trades` (equity) or `crypto_paper_trades`
+(crypto) via the `sovereign_decision_id` link and back-patches
+`outcomes.{horizon}` with `{pnl_pct, was_right, resolved_at}`.
+
+Per-horizon batch cap 50 so a backlog can't starve the fleet. Idempotent
+— re-running on the same `(decision_id, horizon)` is a no-op. Per operator
+policy: resolves ONLY decisions with a linked fired trade (HOLD decisions
+stay unresolved; they don't contribute to the promotion gate threshold).
+
+Admin endpoint: `POST /api/admin/sovereign-ai/resolution/tick` — manual
+trigger for smoke tests. Live-verified 2026-05-03: empty baseline tick
+returns clean `status=ok` with 6 per-horizon zero rows.
+
+**2. Proof-chain audit** — extension to `services/proof_chain.py`
+
+Added `ProofEventType.SOVEREIGN_DECISION`. Every call into `sovereign_decide`
+that persists to Mongo now also appends a tamper-evident proof block
+carrying `decision_id`, `action`, `confidence`, `conviction_tier`,
+`size_multiplier`, `reasons`, `vetoes`, `model_votes`, `advisory_votes`,
+`calibration_score`, `shadow`. Entity ID is
+`sovereign:{symbol}:{decision_id[:8]}`; actor tag
+`sovereign_ai[{equity|crypto}]`.
+
+This completes the audit trail requirement from the previous session:
+"full audit trail, every Commander/Strategist/Council opinion captured
+even when Sovereign overrules" — those advisory votes are preserved in
+both `sovereign_decisions.advisory_votes` AND the proof chain payload,
+cryptographically chained.
+
+Proof-chain write failure is logged at DEBUG and swallowed — a broken
+audit write cannot block the decision path.
+
+**3. Burn-in dashboard chip** — `GET /api/admin/sovereign-ai/burn-in`
+
+Per-core 24h rollup: `decisions_24h`, `resolved_24h`, `resolved_pct`,
+`avg_confidence`, `avg_calibration`, `trades_24h`,
+`contribution_applied_24h`, `contribution_applied_pct`, `phase`,
+`promoted`, `rows_to_go`.
+
+Frontend `NewsShockBurnIn.jsx` extended with a dedicated Sovereign AI
+section (indigo background, `data-testid="sovereign-ai-burn-in"`)
+showing 4 chips per core: decisions-24h + gate progress with
+traffic-light coloring (green = promoted, yellow = collecting data, gray
+= idle). Polls in parallel with the existing NEWS_SHOCK fetch so there's
+zero extra latency on the dashboard.
+
+Live data captured at burn-in time:
+
+* Equity core: 1 decision, 227 paper trades, avg conf 50%, 500 rows to go
+* Crypto core: 8 decisions, avg calibration 74.94%, avg conf 44.74%
+
+**4. AI-to-AI Narrator** — `services/sovereign_narrator.py` + `POST /api/admin/sovereign-ai/narrate/{decision_id}`
+
+Translates a sovereign decision + its 6 model votes + advisory-vote delta
+into a 3-bullet plain-English explanation operators can actually read. Uses
+**GPT-5.2** via the Emergent universal key. Each narration cached 24h per
+decision_id in `sovereign_narrations` so identical renders are a single
+paid LLM call. ~$0.001 per first-time narration; subsequent hits are free.
+
+Graceful fallback: when the key is missing / LLM call fails / response
+isn't parseable as 3 bullets, the function returns a deterministic
+structured fallback built from the raw `model_votes` dict. Never raises.
+
+**Live narrator sample** (LINK crypto decision):
+
+> - Sovereign decision: HOLD LINK at 37.35% confidence (low tier) with
+>   size multiplier 0.15; strongest driving signal is the strategist
+>   vote HOLD with 0.3735 confidence (bull 0.00 vs bear 0.1265).
+> - Advisory AIs: strategist/commander advisory also indicated HOLD but
+>   with 0.0 confidence; Sovereign agreed on direction (HOLD) and was
+>   not overridden by any other lane signals.
+> - Watch factor: no vetoes are active and catalyst/event risk is marked
+>   normal (delta 0.0, sentiment 0.0), so the key risk is sudden
+>   regime/catalyst change given regime is neutral (gate 0.6) and
+>   options flow provides no confirming signal.
+
+This realizes the user's "communicate with other AIs in a way that humans
+understand" vision — operator opens the narration endpoint during a trade
+review and immediately sees *why* Sovereign shaded conviction up or down,
+in natural prose backed by the exact numbers.
+
+**Tests**: 18 new cases in `test_sovereign_resolution_narrator.py`
+covering: `_was_right` directional matrix including synonyms, resolution
+back-patches fired trade at 60m, skips young decisions below horizon,
+skips HOLD decisions with no linked trade, idempotent re-run, crypto
+path, null-db short-circuit, narrator fallback always returns 3 bullets,
+fallback flags vetoes, missing-decision error, cache round-trip (second
+call returns `cached=true`), null-db error. **Total 48 new Sovereign AI
+tests** across the 3 test files; **178/178 green** across all adjacent
+suites. Lint clean on all 7 new/modified files.
+
+**Deferred (explicit)**: XGBoost / LightGBM retraining — the
+`run_dtd_nightly_retrain` placeholder emits the correct stats payload
+(total/resolved per asset), but real model training lands when the first
+500 resolved shadow rows are on disk (currently 0 resolved; ~200-400
+hours of trading at observed cadence).
+
 ### Sovereign AI — DTD/PRD Dual-Stack Mode Guard (May 3, 2026)
 
 Wraps the shared Sovereign AI brain with strict DTD (research / training /

@@ -46,16 +46,23 @@ const freshness = (iso) => {
 
 const NewsShockBurnIn = () => {
   const [data, setData]       = useState(null);
+  const [sovData, setSovData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [lastPoll, setLastPoll] = useState(null);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await authFetch(`${API}/admin/news-shock/burn-in`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const [res1, res2] = await Promise.all([
+        authFetch(`${API}/admin/news-shock/burn-in`),
+        authFetch(`${API}/admin/sovereign-ai/burn-in`),
+      ]);
+      if (!res1.ok) throw new Error(`HTTP ${res1.status}`);
+      const json = await res1.json();
       setData(json);
+      if (res2.ok) {
+        setSovData(await res2.json());
+      }
       setError(null);
       setLastPoll(new Date());
     } catch (e) {
@@ -145,6 +152,40 @@ const NewsShockBurnIn = () => {
           sub={`${(eq.sample || []).filter((s) => s.has_dollar_volume).length}/${(eq.sample || []).length} w/ $vol`}
         />
       </div>
+
+      {sovData?.cores ? (
+        <div
+          data-testid="sovereign-ai-burn-in"
+          className="rounded-xl border border-indigo-700/40 bg-indigo-950/20 p-3"
+        >
+          <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wider text-indigo-300">
+            <ShieldCheck className="h-3.5 w-3.5" /> Sovereign AI — shadow training
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {['equity', 'crypto'].map((core) => {
+              const c = sovData.cores[core] || {};
+              const promoted = c.promoted === true;
+              const phase = promoted ? 'green' : (c.decisions_24h > 0 ? 'yellow' : 'gray');
+              return (
+                <React.Fragment key={core}>
+                  <Chip
+                    label={`${core === 'equity' ? 'Equity' : 'Crypto'} · decisions 24h`}
+                    value={c.decisions_24h ?? 0}
+                    status={c.decisions_24h > 0 ? 'green' : 'gray'}
+                    sub={`resolved ${c.resolved_24h ?? 0}`}
+                  />
+                  <Chip
+                    label={`${core === 'equity' ? 'Equity' : 'Crypto'} · gate`}
+                    value={promoted ? 'PROMOTED' : `${c.rows_to_go ?? '—'} to go`}
+                    status={phase}
+                    sub={`avg conf ${c.avg_confidence != null ? `${(c.avg_confidence * 100).toFixed(0)}%` : '—'}`}
+                  />
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {snaps.most_recent && snaps.most_recent.length > 0 ? (
         <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-3">
