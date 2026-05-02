@@ -379,6 +379,7 @@ async def test_read_options_snapshot_fresh_returns_entry():
         "_id": CURRENT_SNAPSHOT_ID,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "flow_maturity": True, "stable_minutes": 15,
                   "aggregate": {}}],
     })
     entry = await read_options_snapshot(db, "SPY")
@@ -404,6 +405,7 @@ async def test_read_options_snapshot_custom_max_age():
         "_id": CURRENT_SNAPSHOT_ID,
         "updated_at": old_ts.isoformat(),
         "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "flow_maturity": True, "stable_minutes": 15,
                   "aggregate": {}}],
     })
     # Default 10-min TTL → stale → None
@@ -427,9 +429,161 @@ async def test_read_options_snapshot_missing_updated_at_treated_stale():
         "_id": CURRENT_SNAPSHOT_ID,
         # no updated_at
         "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "flow_maturity": True, "stable_minutes": 15,
                   "aggregate": {}}],
     })
     assert await read_options_snapshot(db, "SPY") is None
+
+
+# ═══════════════ flow_maturity ═══════════════
+
+
+def test_flow_maturity_pure_no_history_is_immature():
+    from services.options_universe_service import _compute_flow_maturity_from_history
+    from datetime import datetime, timezone
+    mature, minutes = _compute_flow_maturity_from_history(
+        [], datetime.now(timezone.utc),
+    )
+    assert mature is False
+    assert minutes == 0
+
+
+def test_flow_maturity_pure_wide_latest_is_immature():
+    """Most-recent tick widens past the limit → immature, even if the
+    prior 10 min were tight. Prevents flipping True on a symbol that
+    was stable 10 min ago but is losing liquidity RIGHT NOW."""
+    from services.options_universe_service import _compute_flow_maturity_from_history
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    history = [
+        # newest first: latest is WIDE
+        {"ts": now.isoformat(), "avg_spread_bps": 120.0},
+        {"ts": (now - timedelta(minutes=5)).isoformat(), "avg_spread_bps": 40.0},
+        {"ts": (now - timedelta(minutes=10)).isoformat(), "avg_spread_bps": 35.0},
+    ]
+    mature, _ = _compute_flow_maturity_from_history(history, now)
+    assert mature is False
+
+
+def test_flow_maturity_pure_stable_window_is_mature():
+    from services.options_universe_service import _compute_flow_maturity_from_history
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    history = [
+        {"ts": now.isoformat(), "avg_spread_bps": 30.0},
+        {"ts": (now - timedelta(minutes=5)).isoformat(), "avg_spread_bps": 35.0},
+        {"ts": (now - timedelta(minutes=10)).isoformat(), "avg_spread_bps": 40.0},
+        {"ts": (now - timedelta(minutes=15)).isoformat(), "avg_spread_bps": 45.0},
+    ]
+    mature, stable_minutes = _compute_flow_maturity_from_history(history, now)
+    assert mature is True
+    assert stable_minutes >= 10
+
+
+def test_flow_maturity_pure_short_window_is_immature():
+    """5 min of stability < 10 min required → immature."""
+    from services.options_universe_service import _compute_flow_maturity_from_history
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    history = [
+        {"ts": now.isoformat(), "avg_spread_bps": 30.0},
+        {"ts": (now - timedelta(minutes=5)).isoformat(), "avg_spread_bps": 40.0},
+    ]
+    mature, stable_minutes = _compute_flow_maturity_from_history(history, now)
+    assert mature is False
+    assert stable_minutes < 10
+
+
+def test_flow_maturity_pure_walks_back_to_first_violation():
+    """If an older tick violated the limit, stable_minutes stops there."""
+    from services.options_universe_service import _compute_flow_maturity_from_history
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    history = [
+        {"ts": now.isoformat(), "avg_spread_bps": 30.0},
+        {"ts": (now - timedelta(minutes=5)).isoformat(), "avg_spread_bps": 35.0},
+        {"ts": (now - timedelta(minutes=10)).isoformat(), "avg_spread_bps": 40.0},
+        # Older violation — must NOT extend the window past this row.
+        {"ts": (now - timedelta(minutes=15)).isoformat(), "avg_spread_bps": 200.0},
+    ]
+    mature, stable_minutes = _compute_flow_maturity_from_history(history, now)
+    # 10 min back is the last tight row — meets maturity requirement
+    assert mature is True
+    assert stable_minutes == 10
+
+
+@pytest.mark.asyncio
+async def test_read_options_snapshot_immature_symbol_returns_none_by_default():
+    """The critical integration guarantee: default `require_maturity=True`
+    makes immature symbols invisible to downstream hooks."""
+    from services.options_universe_service import (
+        read_options_snapshot, OPTIONS_UNIVERSE_COLLECTION,
+        CURRENT_SNAPSHOT_ID,
+    )
+    from datetime import datetime, timezone
+
+    db = _FakeDB()
+    db[OPTIONS_UNIVERSE_COLLECTION].docs.append({
+        "_id": CURRENT_SNAPSHOT_ID,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "data": [{"symbol": "SPY", "contracts": [],
+                  "flow_maturity": False, "stable_minutes": 3,
+                  "aggregate": {}}],
+    })
+    # Default: immature → None
+    assert await read_options_snapshot(db, "SPY") is None
+    # Explicit override for dashboards/telemetry
+    entry = await read_options_snapshot(db, "SPY", require_maturity=False)
+    assert entry is not None
+    assert entry["flow_maturity"] is False
+
+
+# ═══════════════ liquidity_stress_index ═══════════════
+
+
+def test_liquidity_stress_index_normal_band():
+    from services.options_universe_service import _aggregate_contracts
+    # avg=50, p90=80 → ratio 1.6 → normal
+    chain = [
+        {"type": "CALL", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.005},  # ~50 bps
+        {"type": "PUT", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.008},  # ~80 bps
+    ]
+    agg = _aggregate_contracts(chain)
+    assert agg["liquidity_stress_index"] is not None
+    assert agg["stress_level"] == "normal"
+
+
+def test_liquidity_stress_index_stress_band():
+    from services.options_universe_service import _aggregate_contracts
+    # Eight tight (~20 bps) + two very wide (~500 bps).
+    # avg ≈ 116 bps, p90 = 500 bps → ratio ~4.3 → stress.
+    chain = [
+        {"type": "CALL", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.002}
+        for _ in range(8)
+    ] + [
+        {"type": "PUT", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.05},
+        {"type": "PUT", "volume": 100, "open_interest": 50,
+         "implied_volatility": 0.3, "bid": 1.00, "ask": 1.05},
+    ]
+    agg = _aggregate_contracts(chain)
+    assert agg["liquidity_stress_index"] is not None
+    assert agg["stress_level"] in ("stress", "instability")
+
+
+def test_liquidity_stress_index_missing_data_reports_unknown():
+    """Empty chain → no spread distribution → stress_level='unknown'."""
+    from services.options_universe_service import _aggregate_contracts
+    agg = _aggregate_contracts([])
+    assert agg["liquidity_stress_index"] is None
+    assert agg["stress_level"] == "unknown"
 
 
 @pytest.mark.asyncio

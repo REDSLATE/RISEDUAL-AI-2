@@ -298,19 +298,42 @@ def apply_options_context(
 
     aggregate = options_entry.get("aggregate") or {}
     pcr = aggregate.get("put_call_ratio")
-    if pcr is None:
-        return bull, bear
+    stress_idx = aggregate.get("liquidity_stress_index")
 
-    if pcr < PCR_BULL_THRESHOLD:
-        bull = dataclasses.replace(
-            bull,
-            thesis=bull.thesis + " | strong_call_flow",
-        )
-    elif pcr > PCR_BEAR_THRESHOLD:
-        bear = dataclasses.replace(
-            bear,
-            thesis=bear.thesis + " | elevated_put_activity",
-        )
+    if pcr is not None:
+        if pcr < PCR_BULL_THRESHOLD:
+            bull = dataclasses.replace(
+                bull,
+                thesis=bull.thesis + " | strong_call_flow",
+            )
+        elif pcr > PCR_BEAR_THRESHOLD:
+            bear = dataclasses.replace(
+                bear,
+                thesis=bear.thesis + " | elevated_put_activity",
+            )
+
+    # Liquidity stress (p90/avg spread ratio) — when this climbs into
+    # the "stress" band it's a pre-volatility signal that risk is
+    # building in the tails while surface-level prints look OK. Always
+    # annotates the bear case because the base rate for sharp moves
+    # following tail widening skews negative in equity indices. Purely
+    # narrative — confidence/expected_r never move here either.
+    if stress_idx is not None:
+        try:
+            value = float(stress_idx)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value >= 6.0:
+            bear = dataclasses.replace(
+                bear,
+                thesis=bear.thesis + " | liquidity_instability_imminent",
+            )
+        elif value >= 4.0:
+            bear = dataclasses.replace(
+                bear,
+                thesis=bear.thesis + " | liquidity_stress_rising",
+            )
+
     return bull, bear
 
 

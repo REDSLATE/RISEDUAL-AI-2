@@ -30,6 +30,97 @@ def test_classify_options_liquidity_empty_snapshot_noop():
     assert classify_options_liquidity("SPY", {}) is None
 
 
+def test_classify_options_liquidity_stress_index_flags_liquidity_stress():
+    """Healthy contracts + stress index > 4 → LIQUIDITY_STRESS, not TRAP."""
+    from services.failure_mode_classifier import (
+        classify_options_liquidity, FailureMode,
+    )
+    entry = {
+        "symbol": "SPY",
+        "contracts": [
+            {"spread_bps": 20.0, "volume": 10_000},   # narrow, liquid
+        ],
+        "aggregate": {"liquidity_stress_index": 4.8,
+                      "stress_level": "stress"},
+    }
+    result = classify_options_liquidity("SPY", entry)
+    assert result is not None
+    assert result.mode == FailureMode.LIQUIDITY_STRESS
+    assert result.reasons == ["liquidity_stress_building"]
+    # Never-dominant: caps size but doesn't block
+    assert result.block_trade is False
+    assert result.risk_multiplier_cap == 0.70
+    assert result.metadata["liquidity_stress_index"] == 4.8
+
+
+def test_classify_options_liquidity_stress_index_flags_instability():
+    """stress_index ≥ 6 → tighter 0.50 cap, 'instability' reason."""
+    from services.failure_mode_classifier import (
+        classify_options_liquidity, FailureMode,
+    )
+    entry = {
+        "symbol": "QQQ",
+        "contracts": [{"spread_bps": 30.0, "volume": 5000}],
+        "aggregate": {"liquidity_stress_index": 8.0,
+                      "stress_level": "instability"},
+    }
+    result = classify_options_liquidity("QQQ", entry)
+    assert result is not None
+    assert result.mode == FailureMode.LIQUIDITY_STRESS
+    assert result.reasons == ["liquidity_instability_imminent"]
+    assert result.risk_multiplier_cap == 0.50
+
+
+def test_classify_options_liquidity_trap_and_stress_picks_tighter():
+    """Both stressors active (wide spread + instability index) → tighter
+    cap wins. Caps equal → deterministic sort by block/cap."""
+    from services.failure_mode_classifier import (
+        classify_options_liquidity,
+    )
+    entry = {
+        "symbol": "SPY",
+        "contracts": [{"spread_bps": 120.0}, {"spread_bps": 150.0}],  # trap
+        "aggregate": {"liquidity_stress_index": 8.0},                 # instability
+    }
+    result = classify_options_liquidity("SPY", entry)
+    # Both candidates cap at 0.50 — TRAP wins by sort stability (first
+    # in candidate order). Either answer keeps the tight cap intact.
+    assert result is not None
+    assert result.risk_multiplier_cap == 0.50
+
+
+def test_options_stress_size_multiplier_bands():
+    from services.failure_mode_classifier import options_stress_size_multiplier
+
+    # Empty / missing → 1.0 (no effect)
+    assert options_stress_size_multiplier(None) == 1.0
+    assert options_stress_size_multiplier({}) == 1.0
+    assert options_stress_size_multiplier({"aggregate": {}}) == 1.0
+
+    # Normal / cautious → 1.0
+    for idx in (1.0, 2.5, 3.9):
+        entry = {"aggregate": {"liquidity_stress_index": idx}}
+        assert options_stress_size_multiplier(entry) == 1.0
+
+    # Stress band [4, 6) → 0.70
+    assert options_stress_size_multiplier(
+        {"aggregate": {"liquidity_stress_index": 4.0}}) == 0.70
+    assert options_stress_size_multiplier(
+        {"aggregate": {"liquidity_stress_index": 5.9}}) == 0.70
+
+    # Instability ≥ 6 → 0.50
+    assert options_stress_size_multiplier(
+        {"aggregate": {"liquidity_stress_index": 6.0}}) == 0.50
+    assert options_stress_size_multiplier(
+        {"aggregate": {"liquidity_stress_index": 10.0}}) == 0.50
+
+
+def test_options_stress_size_multiplier_malformed_index_is_identity():
+    from services.failure_mode_classifier import options_stress_size_multiplier
+    entry = {"aggregate": {"liquidity_stress_index": "NaN-ish"}}
+    assert options_stress_size_multiplier(entry) == 1.0
+
+
 def test_classify_options_liquidity_empty_contracts_flags_trap():
     """Symbol present but filter rejected all strikes → flag the trap."""
     from services.failure_mode_classifier import (
@@ -175,6 +266,37 @@ def test_apply_options_context_neutral_pcr_is_identity():
     bull2, bear2 = apply_options_context(bull, bear, entry)
     assert bull2.thesis == "momentum"
     assert bear2.thesis == "overbought"
+
+
+def test_apply_options_context_liquidity_stress_annotates_bear():
+    """stress_index ≥ 4 → bear thesis gets stress annotation."""
+    from services.adversarial_core import AgentOutput, apply_options_context
+    bull = AgentOutput(side="LONG", confidence=0.7, expected_r=1.2,
+                       thesis="momentum", invalidations=[])
+    bear = AgentOutput(side="SHORT_OR_REJECT", confidence=0.4, expected_r=1.1,
+                       thesis="overbought", invalidations=[])
+    entry = {"aggregate": {"liquidity_stress_index": 5.0}}
+    bull2, bear2 = apply_options_context(bull, bear, entry)
+    assert "liquidity_stress_rising" in bear2.thesis
+    # Bull never receives stress annotations — purely narrative-additive
+    assert bull2.thesis == "momentum"
+    # Confidence/expected_r still sacred
+    assert bear2.confidence == 0.4
+    assert bear2.expected_r == 1.1
+
+
+def test_apply_options_context_instability_annotates_bear_differently():
+    """stress_index ≥ 6 → 'liquidity_instability_imminent' tag."""
+    from services.adversarial_core import AgentOutput, apply_options_context
+    bull = AgentOutput(side="LONG", confidence=0.7, expected_r=1.2,
+                       thesis="momentum", invalidations=[])
+    bear = AgentOutput(side="SHORT_OR_REJECT", confidence=0.4, expected_r=1.1,
+                       thesis="overbought", invalidations=[])
+    entry = {"aggregate": {"liquidity_stress_index": 7.5}}
+    _, bear2 = apply_options_context(bull, bear, entry)
+    assert "liquidity_instability_imminent" in bear2.thesis
+    # The stress-rising tag is superseded, not both
+    assert "liquidity_stress_rising" not in bear2.thesis
 
 
 # ═══════════════ Hook 3: conviction_service ═══════════════
@@ -350,6 +472,7 @@ async def test_read_options_snapshot_unconfigured_symbol_returns_none():
         "_id": CURRENT_SNAPSHOT_ID,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "flow_maturity": True, "stable_minutes": 15,
                   "aggregate": {}}],
     })
     # AAPL isn't in the snapshot
@@ -373,6 +496,7 @@ async def test_read_options_snapshot_case_insensitive():
         "_id": CURRENT_SNAPSHOT_ID,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "data": [{"symbol": "SPY", "contracts": [], "has_hot_flow": False,
+                  "flow_maturity": True, "stable_minutes": 15,
                   "aggregate": {}}],
     })
     assert (await read_options_snapshot(db, "spy"))["symbol"] == "SPY"

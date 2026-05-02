@@ -37,7 +37,7 @@ import asyncio
 import logging
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from services.options_filters import filter_contracts
@@ -59,6 +59,20 @@ CORE_SYMBOLS: list[str] = [
 TOP_N_PER_SYMBOL = 10
 EXPIRATIONS_PER_SYMBOL = 3
 WARM_CONCURRENCY = 4
+
+# Per-symbol snapshot TTL. Once the current ``option_universe`` doc ages
+# past this, downstream hooks treat it as "no data" — preserves the
+# "additive, never dominant" rule during market holidays, extended warm
+# outages, or anything else that stops the 5-min refresh. 10 min matches
+# the warm cadence + a two-interval safety buffer.
+SNAPSHOT_FRESHNESS_SECONDS = 10 * 60
+
+# Flow maturity — a symbol is only "tradeable" as an options signal
+# once it's been in the liquid regime (avg spread under the cutoff) for
+# at least this many minutes. Prevents opening-minute noise from biasing
+# conviction scoring or commander narratives.
+MATURITY_SPREAD_LIMIT_BPS = 75.0
+MATURITY_STABLE_MINUTES_REQUIRED = 10
 
 # Market hours (UTC): 13:30–21:00, Mon–Fri. Outside this window the chain
 # is static, so we skip the fetch cycle. Boundaries are inclusive-start,
@@ -262,6 +276,28 @@ def _aggregate_contracts(contracts: list[dict]) -> dict:
     if total_vol > 0:
         flow_imbalance = round((call_vol - put_vol) / total_vol, 3)
 
+    # LIQUIDITY_STRESS_INDEX — p90 / avg of the spread distribution.
+    # This is the proprietary pre-volatility signal: when the ratio
+    # climbs it means the tail of the quote distribution is widening
+    # FASTER than the body — i.e. market makers are pulling liquidity
+    # on a subset of strikes while still quoting the rest. Bands:
+    #   ~1–2  → normal                (balanced book)
+    #   ~2–4  → cautious              (tail building)
+    #   ~4–6  → stress                (hidden risk crystallising)
+    #    >6   → instability imminent  (pre-volatility regime)
+    stress_index: float | None = None
+    stress_level = "unknown"
+    if avg_spread_bps and p90_spread_bps and avg_spread_bps > 0:
+        stress_index = round(p90_spread_bps / avg_spread_bps, 2)
+        if stress_index >= 6.0:
+            stress_level = "instability"
+        elif stress_index >= 4.0:
+            stress_level = "stress"
+        elif stress_index >= 2.0:
+            stress_level = "cautious"
+        else:
+            stress_level = "normal"
+
     return {
         "put_call_ratio": round(put_vol / call_vol, 3) if call_vol > 0 else None,
         "flow_imbalance": flow_imbalance,
@@ -275,6 +311,8 @@ def _aggregate_contracts(contracts: list[dict]) -> dict:
         # of wide tails shows up even when the mean stays OK.
         "avg_spread_bps": avg_spread_bps,
         "p90_spread_bps": p90_spread_bps,
+        "liquidity_stress_index": stress_index,
+        "stress_level": stress_level,
         # IV rank/percentile need ≥252 days of mean_iv history. Surfaced
         # as None until a derivation pass fills them — never fake these.
         "iv_rank": None,
@@ -339,6 +377,93 @@ async def build_options_universe(symbols: list[str]) -> list[dict]:
     return [r for r in results if r]
 
 
+def _compute_flow_maturity_from_history(
+    history_newest_first: list[dict],
+    now: datetime,
+    *,
+    spread_limit_bps: float = MATURITY_SPREAD_LIMIT_BPS,
+    stable_minutes_required: int = MATURITY_STABLE_MINUTES_REQUIRED,
+) -> tuple[bool, int]:
+    """Pure maturity calculator — testable without I/O.
+
+    Returns ``(flow_maturity, stable_minutes)``:
+      * ``stable_minutes`` — distance from ``now`` back to the first
+        history row whose ``avg_spread_bps`` crossed the limit (or the
+        oldest available row if the whole window was tight).
+      * ``flow_maturity``  — True iff ``stable_minutes`` ≥
+        ``stable_minutes_required`` AND the most recent row is still
+        inside the limit. We require both to avoid flipping mature=True
+        on a symbol that tightened 10 min ago but is widening again now.
+
+    With no history at all (first warm after deploy) both values return
+    ``(False, 0)`` — the conservative default that makes downstream
+    hooks no-op until evidence accumulates.
+    """
+    if not history_newest_first:
+        return False, 0
+    # Require the most-recent tick to still be tight — prevents a
+    # symbol that was stable 10 min ago but is widening right now
+    # from being flagged mature.
+    try:
+        latest_avg = float(history_newest_first[0].get("avg_spread_bps") or 0)
+    except (TypeError, ValueError):
+        return False, 0
+    if latest_avg >= spread_limit_bps:
+        return False, 0
+
+    # Walk newest→oldest; stop at the first row that violates the limit.
+    # stable_minutes is (now - ts_of_last_tight_row) clamped to int minutes.
+    last_tight_ts: datetime | None = None
+    for row in history_newest_first:
+        try:
+            avg = float(row.get("avg_spread_bps") or 0)
+        except (TypeError, ValueError):
+            break
+        if avg >= spread_limit_bps:
+            break
+        ts = _parse_iso_utc(row.get("ts"))
+        if ts is None:
+            break
+        last_tight_ts = ts
+    if last_tight_ts is None:
+        return False, 0
+    stable_minutes = max(0, int((now - last_tight_ts).total_seconds() // 60))
+    return (stable_minutes >= stable_minutes_required), stable_minutes
+
+
+async def _enrich_with_flow_maturity(
+    db: Any, universe: list[dict], now: datetime,
+) -> None:
+    """In-place: stamp ``flow_maturity`` + ``stable_minutes`` on every
+    per-symbol entry by reading recent ``option_universe_p90_history``.
+    Safe on first-ever run (no history → mature=False)."""
+    from services.options_p90_watcher import P90_HISTORY_COLLECTION
+
+    # Newest-first window — look back ~30 min so 10-min maturity has
+    # room to prove itself even if the earliest ticks were borderline.
+    cutoff_iso = (now - timedelta(minutes=30)).isoformat()
+    for entry in universe:
+        symbol = entry.get("symbol")
+        if not symbol:
+            entry["flow_maturity"] = False
+            entry["stable_minutes"] = 0
+            continue
+        try:
+            cursor = (
+                db[P90_HISTORY_COLLECTION]
+                .find({"symbol": symbol, "ts": {"$gte": cutoff_iso}},
+                      {"_id": 0, "ts": 1, "avg_spread_bps": 1})
+                .sort("ts", -1)
+                .limit(10)
+            )
+            rows = await cursor.to_list(length=10)
+        except Exception:
+            rows = []
+        mature, minutes = _compute_flow_maturity_from_history(rows, now)
+        entry["flow_maturity"] = mature
+        entry["stable_minutes"] = minutes
+
+
 async def warm_options_universe(db: Any, force: bool = False) -> dict:
     """Refresh the ``option_universe`` current-snapshot document.
 
@@ -367,6 +492,21 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
     underlyings = get_options_underlyings()
     universe = await build_options_universe(underlyings)
     finished_at = datetime.now(timezone.utc)
+
+    # ── Flow-maturity enrichment ──────────────────────────────────────
+    # Stamp flow_maturity + stable_minutes on every symbol by reading
+    # prior p90_history rows. Runs BEFORE the snapshot write so the
+    # fields are visible to every downstream hook in the same tick
+    # that would otherwise have seen opening noise.
+    try:
+        await _enrich_with_flow_maturity(db, universe, finished_at)
+    except Exception:
+        # Never-fatal — a flow-maturity read failure degrades to
+        # "not mature yet", which is the safe default.
+        logger.exception("[options_universe] flow_maturity enrichment failed")
+        for entry in universe:
+            entry.setdefault("flow_maturity", False)
+            entry.setdefault("stable_minutes", 0)
 
     # Single-doc snapshot (user spec). Replace, not append, so reads are
     # always the latest universe. History can be layered on later via a
@@ -427,13 +567,6 @@ async def warm_options_universe(db: Any, force: bool = False) -> dict:
 
 # ───────────────────── downstream-hook reader ─────────────────────
 
-# Per-symbol snapshot TTL. Once the current ``option_universe`` doc ages
-# past this, downstream hooks treat it as "no data" — preserves the
-# "additive, never dominant" rule during market holidays, extended warm
-# outages, or anything else that stops the 5-min refresh. 10 min matches
-# the warm cadence + a two-interval safety buffer.
-SNAPSHOT_FRESHNESS_SECONDS = 10 * 60
-
 
 def _parse_iso_utc(s: str | None) -> datetime | None:
     """Best-effort ISO-8601 → aware UTC datetime. Returns None on any
@@ -453,6 +586,7 @@ async def read_options_snapshot(
     symbol: str,
     *,
     max_age_seconds: int = SNAPSHOT_FRESHNESS_SECONDS,
+    require_maturity: bool = True,
 ) -> dict | None:
     """Read the per-symbol slice of the current options universe.
 
@@ -468,9 +602,16 @@ async def read_options_snapshot(
         * the symbol isn't in the configured underlying list
         * the per-symbol entry has no data (rare; means warm failed
           for that symbol specifically)
+        * ``require_maturity=True`` (default) and the symbol's
+          ``flow_maturity`` flag is not yet True — i.e. spreads haven't
+          been stably liquid long enough to trust the signal.
 
-    Returns the per-symbol dict ``{symbol, contracts, aggregate}``
+    Returns the per-symbol dict ``{symbol, contracts, aggregate, ...}``
     otherwise. Reads are single-doc — cheap even at high call volume.
+
+    Low-stakes callers (dashboards, raw telemetry) can pass
+    ``require_maturity=False`` to see all rows including the opening
+    window where markets haven't stabilised yet.
     """
     if db is None:
         return None
@@ -500,8 +641,13 @@ async def read_options_snapshot(
     data = snapshot.get("data") or []
     target = symbol.upper()
     for entry in data:
-        if entry.get("symbol") == target:
-            return entry
+        if entry.get("symbol") != target:
+            continue
+        if require_maturity and not entry.get("flow_maturity", False):
+            # Symbol exists but hasn't stabilised — treat as "no signal
+            # yet" rather than leaking opening noise into decisions.
+            return None
+        return entry
     return None
 
 

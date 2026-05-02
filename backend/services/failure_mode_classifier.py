@@ -21,6 +21,7 @@ class FailureMode(str, Enum):
     VOLATILITY_SHOCK = "VOLATILITY_SHOCK"
     LIQUIDITY_TRAP = "LIQUIDITY_TRAP"
     OPTIONS_LIQUIDITY_TRAP = "OPTIONS_LIQUIDITY_TRAP"
+    LIQUIDITY_STRESS = "LIQUIDITY_STRESS"
     NEWS_SHOCK = "NEWS_SHOCK"
     CALIBRATION_FAILURE = "CALIBRATION_FAILURE"
     MODEL_INSTABILITY = "MODEL_INSTABILITY"
@@ -291,6 +292,14 @@ def apply_failure_mode_to_multiplier(
 
 OPTIONS_SPREAD_TRAP_BPS = 75.0
 
+# LIQUIDITY_STRESS (stress-index) thresholds. Kept aligned with the bands
+# defined in ``options_universe_service._aggregate_contracts`` so the two
+# sides of the system agree on vocabulary. Stress = cap risk at 0.70×;
+# instability = cap at 0.50×. Neither blocks the trade — equity path
+# can still go through at reduced size ("additive, never dominant").
+LIQUIDITY_STRESS_THRESHOLD = 4.0
+LIQUIDITY_INSTABILITY_THRESHOLD = 6.0
+
 
 def classify_options_liquidity(
     symbol: str,
@@ -302,42 +311,86 @@ def classify_options_liquidity(
     ``options_universe_service.read_options_snapshot``. ``None`` signals
     "no snapshot / symbol not configured" and must round-trip to ``None``
     — that's the empty-snapshot guarantee every downstream hook relies on.
+
+    Two distinct stressors are detected here. The tighter of the two wins
+    (via the same pick_tighter_failure composition used for multi-mode).
+
+      * ``OPTIONS_LIQUIDITY_TRAP`` — no hot-flow contracts, or the
+        narrowest spread exceeds 75 bps. Surface-level un-tradeability.
+      * ``LIQUIDITY_STRESS`` / instability — p90/avg ratio of the
+        spread distribution crossed 4.0 (stress) or 6.0 (instability).
+        This is the pre-volatility signal: the tail is widening
+        asymmetrically vs the body, meaning MMs are pulling a subset
+        of strikes even while the broader book looks OK.
     """
     if not options_entry:
         return None
 
+    candidates: list[FailureModeResult] = []
+
     contracts = options_entry.get("contracts") or []
     if not contracts:
-        # Symbol is configured AND a warm ran, but the liquid-flow filter
-        # rejected every strike — the options market is currently
-        # untradeable for signal purposes.
-        return FailureModeResult(
+        candidates.append(FailureModeResult(
             mode=FailureMode.OPTIONS_LIQUIDITY_TRAP,
             confidence=0.60,
             risk_multiplier_cap=0.50,
             block_trade=False,
             reasons=["no_hot_flow_contracts"],
             metadata={"symbol": symbol.upper()},
+        ))
+    else:
+        min_spread = min(
+            float(c.get("spread_bps") or 9999) for c in contracts
         )
+        if min_spread > OPTIONS_SPREAD_TRAP_BPS:
+            candidates.append(FailureModeResult(
+                mode=FailureMode.OPTIONS_LIQUIDITY_TRAP,
+                confidence=_clamp01(min_spread / 150.0),
+                risk_multiplier_cap=0.50,
+                block_trade=False,
+                reasons=["options_spread_widening"],
+                metadata={
+                    "symbol": symbol.upper(),
+                    "min_spread_bps": round(min_spread, 2),
+                },
+            ))
 
-    # Narrowest (best) contract still too wide → liquidity regime shift.
-    min_spread = min(
-        float(c.get("spread_bps") or 9999) for c in contracts
-    )
-    if min_spread > OPTIONS_SPREAD_TRAP_BPS:
-        return FailureModeResult(
-            mode=FailureMode.OPTIONS_LIQUIDITY_TRAP,
-            confidence=_clamp01(min_spread / 150.0),
-            risk_multiplier_cap=0.50,
-            block_trade=False,
-            reasons=["options_spread_widening"],
-            metadata={
-                "symbol": symbol.upper(),
-                "min_spread_bps": round(min_spread, 2),
-            },
-        )
+    aggregate = options_entry.get("aggregate") or {}
+    stress_idx = aggregate.get("liquidity_stress_index")
+    if stress_idx is not None:
+        try:
+            idx = float(stress_idx)
+        except (TypeError, ValueError):
+            idx = None
+        if idx is not None and idx >= LIQUIDITY_STRESS_THRESHOLD:
+            # Tighter cap for instability (>6) than plain stress (>4).
+            if idx >= LIQUIDITY_INSTABILITY_THRESHOLD:
+                cap = 0.50
+                reasons = ["liquidity_instability_imminent"]
+                confidence = 0.85
+            else:
+                cap = 0.70
+                reasons = ["liquidity_stress_building"]
+                confidence = 0.65
+            candidates.append(FailureModeResult(
+                mode=FailureMode.LIQUIDITY_STRESS,
+                confidence=confidence,
+                risk_multiplier_cap=cap,
+                block_trade=False,
+                reasons=reasons,
+                metadata={
+                    "symbol": symbol.upper(),
+                    "liquidity_stress_index": round(idx, 2),
+                    "stress_level": aggregate.get("stress_level"),
+                },
+            ))
 
-    return None
+    if not candidates:
+        return None
+    # Tightest cap wins (mirror pick_tighter_failure's own logic without
+    # importing it — this function is also used standalone).
+    candidates.sort(key=lambda r: (not r.block_trade, r.risk_multiplier_cap))
+    return candidates[0]
 
 
 def pick_tighter_failure(
@@ -358,3 +411,37 @@ def pick_tighter_failure(
         key=lambda r: (not r.block_trade, r.risk_multiplier_cap),
     )
     return filtered[0]
+
+
+def options_stress_size_multiplier(options_entry: Optional[dict]) -> float:
+    """Pure opt-in size modulator driven by liquidity stress index.
+
+    Caller pattern:
+        size *= options_stress_size_multiplier(options_entry)
+
+    Returns:
+      * ``1.0`` when the snapshot is empty, stress is normal/cautious,
+        or the stress index is unavailable. Keeps the "additive,
+        never-dominant" rule — defaults to no effect.
+      * ``0.70`` when stress ≥ 4 (stress regime)
+      * ``0.50`` when stress ≥ 6 (instability imminent)
+
+    This mirrors the risk_multiplier_cap in classify_options_liquidity
+    so both code paths reach the same decisions independently — callers
+    can use whichever composition surface fits their context.
+    """
+    if not options_entry:
+        return 1.0
+    aggregate = options_entry.get("aggregate") or {}
+    idx = aggregate.get("liquidity_stress_index")
+    if idx is None:
+        return 1.0
+    try:
+        value = float(idx)
+    except (TypeError, ValueError):
+        return 1.0
+    if value >= LIQUIDITY_INSTABILITY_THRESHOLD:
+        return 0.50
+    if value >= LIQUIDITY_STRESS_THRESHOLD:
+        return 0.70
+    return 1.0
