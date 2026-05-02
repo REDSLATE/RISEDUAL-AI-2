@@ -223,6 +223,10 @@ class SignalModel:
         }
 
         # ── Fit base XGBoost classifier ───────────────────────────────────────
+        # n_jobs=4: cap per-estimator parallelism on an 8-core pod so retrain
+        # can't starve FastAPI request handlers. tree_method="hist" is the
+        # fast histogram builder (also xgboost's modern default, made explicit
+        # here so behaviour doesn't drift if the default changes upstream).
         base_clf = xgb.XGBClassifier(
             n_estimators=self._config.n_estimators,
             max_depth=self._config.max_depth,
@@ -234,6 +238,8 @@ class SignalModel:
             use_label_encoder=False,
             eval_metric="logloss",
             verbosity=0,
+            n_jobs=4,
+            tree_method="hist",
         )
         self._raw_model = base_clf
 

@@ -31,6 +31,17 @@ Design choices
 """
 from __future__ import annotations
 
+# ── Defensive CPU thread cap (see: 02:30 UTC retrain, 8-core pod) ─────────────
+# xgboost/OpenBLAS/MKL default to grabbing every core. Cap at 4 of 8 so a
+# stray request that lands mid-retrain (or a colocated job) doesn't queue
+# behind a tree-fitting loop. setdefault means an explicit env override still
+# wins. These must be set BEFORE numpy/sklearn/xgboost initialise their
+# native threadpools — so they sit at the top of the module.
+import os as _os
+_os.environ.setdefault("OMP_NUM_THREADS", "4")
+_os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
+_os.environ.setdefault("MKL_NUM_THREADS", "4")
+
 import logging
 import re
 import sys

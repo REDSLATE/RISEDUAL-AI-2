@@ -12,6 +12,15 @@ Usage:
 
 from __future__ import annotations
 
+# ── Defensive CPU thread cap (mirrors services/ml_retrain_service.py) ─────────
+# When this CLI is run during market hours for a quick experiment, cap native
+# threadpools so HMM/KMeans + OpenBLAS don't grab the whole 8-core pod and
+# starve FastAPI. Must be set before numpy/sklearn native libs initialise.
+import os as _os
+_os.environ.setdefault("OMP_NUM_THREADS", "4")
+_os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
+_os.environ.setdefault("MKL_NUM_THREADS", "4")
+
 import argparse
 import asyncio
 import logging
