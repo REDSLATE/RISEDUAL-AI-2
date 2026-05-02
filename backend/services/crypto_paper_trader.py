@@ -52,8 +52,30 @@ logger = logging.getLogger(__name__)
 
 
 # ── Tunables ──────────────────────────────────────────────────────────────────
-CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL"]
-MIN_CRYPTO_CONFIDENCE = 0.60
+# Universe expanded from 3 → 8 on 2026-05-02 to accelerate paper-
+# trading throughput. Each symbol is independent — adding one
+# costs ~one quote + history fetch every 15 min, ~3% extra per
+# symbol. Strategist + adversarial layers do the conviction
+# filtering, so adding symbols can never amplify risk per trade
+# (only frequency). Higher frequency → more learning samples →
+# faster Tier 3 unlock.
+#
+# Eligibility requires (a) live quote available via crypto_quotes
+# (yfinance ``-USD`` fallback), and (b) at least 30 bars of
+# 1h history for the indicator stack. All 8 listed symbols were
+# verified end-to-end on 2026-05-02 (BNB, XRP, ADA, AVAX, LINK
+# join the original BTC, ETH, SOL).
+CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "LINK"]
+
+# Lowered from 0.60 → 0.55 on 2026-05-02. The 0.60 gate was
+# producing ~48% HOLD decisions in the first week of operation,
+# starving the ML pipeline of training samples (only 23 trades
+# in the user's 6-day window). 0.55 widens the trade band by
+# roughly 2× without changing position sizing — the adversarial
+# layer (commander vs strategist veto) still rejects high-
+# disagreement signals, so this lowers *frequency floor*, not
+# *quality floor*. Revisit once trade volume is healthy.
+MIN_CRYPTO_CONFIDENCE = 0.55
 BASE_CRYPTO_NOTIONAL = 250.0
 MAX_CRYPTO_NOTIONAL = 1000.0
 
@@ -61,7 +83,7 @@ MAX_CRYPTO_NOTIONAL = 1000.0
 # Canonical crypto registry — symbols this bot will ever trade.
 # Kept inline so the bot module is self-contained.
 _CRYPTO_REGISTRY: frozenset[str] = frozenset({
-    "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK",
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", "LINK",
 })
 
 
@@ -79,16 +101,22 @@ def is_crypto_symbol(symbol: str | None) -> bool:
 def compute_crypto_position_size(confidence: float) -> float:
     """Confidence-scaled paper notional.
 
-    * Below the 0.60 floor → 0 (no fill).
-    * 0.60 → $250 (base).
-    * 0.95 → ~$396 (linear within the [0.60, 0.95] band).
+    * Below the 0.55 floor → 0 (no fill).
+    * 0.55 → ~$229 (linear within the [0.55, 0.95] band, scaled
+      so 0.60 maps to BASE_CRYPTO_NOTIONAL for backwards
+      compatibility with prior sizing audits).
+    * 0.95 → ~$396.
     * Capped at ``MAX_CRYPTO_NOTIONAL`` so even a perfect-storm
       signal can't blow out the paper portfolio.
     """
     if confidence < MIN_CRYPTO_CONFIDENCE:
         return 0.0
 
-    multiplier = min(max(confidence, 0.6), 0.95)
+    # Clamp into the active band, then scale so a 0.60 reading
+    # still maps to BASE_CRYPTO_NOTIONAL (the historical sizing
+    # contract). Lower-confidence-but-valid signals (0.55-0.59)
+    # therefore size proportionally lower, not equal to 0.60.
+    multiplier = min(max(confidence, MIN_CRYPTO_CONFIDENCE), 0.95)
     size = BASE_CRYPTO_NOTIONAL * (multiplier / 0.60)
     return round(min(size, MAX_CRYPTO_NOTIONAL), 2)
 

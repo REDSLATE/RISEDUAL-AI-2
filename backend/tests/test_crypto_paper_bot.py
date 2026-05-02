@@ -55,20 +55,36 @@ def test_is_crypto_symbol_rejects_equities_and_garbage():
     assert is_crypto_symbol("") is False
 
 
-def test_default_universe_is_btc_eth_sol():
-    assert CRYPTO_SYMBOLS == ["BTC", "ETH", "SOL"]
+def test_default_universe_is_8_majors():
+    """Universe expanded from 3 → 8 on 2026-05-02 to accelerate
+    paper-trading throughput. If you change the list here, also
+    confirm crypto_quotes returns >=30 bars of history for every
+    new symbol — that's the indicator-stack precondition."""
+    assert CRYPTO_SYMBOLS == [
+        "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "LINK",
+    ]
 
 
 # ── Position sizing ───────────────────────────────────────────────────────────
 
 
 def test_size_zero_below_floor():
-    assert compute_crypto_position_size(0.5) == 0.0
-    assert compute_crypto_position_size(0.59) == 0.0
+    """0.55 is the new floor; anything below returns 0 unfilled."""
+    assert compute_crypto_position_size(0.30) == 0.0
+    assert compute_crypto_position_size(0.54) == 0.0
 
 
-def test_size_at_floor_returns_base():
-    assert compute_crypto_position_size(MIN_CRYPTO_CONFIDENCE) == BASE_CRYPTO_NOTIONAL
+def test_size_at_floor_returns_proportional_base():
+    """At the floor (0.55), sizing scales relative to the historical
+    0.60 → BASE contract: 0.55 → BASE * (0.55/0.60) ≈ $229."""
+    expected = round(BASE_CRYPTO_NOTIONAL * (MIN_CRYPTO_CONFIDENCE / 0.60), 2)
+    assert compute_crypto_position_size(MIN_CRYPTO_CONFIDENCE) == expected
+
+
+def test_size_at_legacy_floor_still_base():
+    """0.60 → BASE_CRYPTO_NOTIONAL — preserves the prior sizing
+    audit contract so historical analyses keep their meaning."""
+    assert compute_crypto_position_size(0.60) == BASE_CRYPTO_NOTIONAL
 
 
 def test_size_scales_with_confidence():
@@ -355,7 +371,10 @@ async def test_run_bot_filters_non_crypto_symbols():
 
 
 @pytest.mark.asyncio
-async def test_run_bot_default_universe_is_btc_eth_sol():
+async def test_run_bot_default_universe_is_8_majors():
+    """When called without a symbol override, the bot opens trades
+    on the full 8-symbol majors universe — pinned here so the
+    default never silently shrinks back to 3 symbols."""
     db = _FakeDB()
 
     async def quote(_sym):
@@ -368,7 +387,9 @@ async def test_run_bot_default_universe_is_btc_eth_sol():
         db, quote_provider=quote, history_provider=history,
     )
     opened_symbols = {r["symbol"] for r in out["opened"]}
-    assert opened_symbols == {"BTC", "ETH", "SOL"}
+    assert opened_symbols == {
+        "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "LINK",
+    }
 
 
 @pytest.mark.asyncio

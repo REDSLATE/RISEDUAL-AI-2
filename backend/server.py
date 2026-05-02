@@ -953,11 +953,15 @@ async def _run_crypto_paper_bot():
     try:
         from services.crypto_paper_trader import run_crypto_paper_bot
         from services.crypto_quotes import get_crypto_quote, get_crypto_history
+        # Universe loaded from the bot's own canonical list (8 symbols
+        # as of 2026-05-02). Single source of truth lives in
+        # services.crypto_paper_trader.CRYPTO_SYMBOLS.
+        from services.crypto_paper_trader import CRYPTO_SYMBOLS
         results = await run_crypto_paper_bot(
             db=db,
             quote_provider=get_crypto_quote,
             history_provider=get_crypto_history,
-            symbols=["BTC", "ETH", "SOL"],
+            symbols=CRYPTO_SYMBOLS,
         )
         opened = sum(1 for r in results if r.get("status") == "open")
         skipped = sum(1 for r in results if r.get("skipped"))
