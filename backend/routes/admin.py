@@ -3107,3 +3107,15 @@ async def av_news_sentiment_batch(request: Request, symbols: str):
             "requested": len(syms),
         }
     return await batch_feed_sentiment(db, syms)
+
+
+@router.post("/news-feeders/tick")
+async def news_feeders_manual_tick(request: Request):
+    """Manually trigger one 15-min news-feeders tick. Useful for
+    smoke-testing the scheduler without waiting for the next cron
+    firing. Respects the market-hours gate; returns the skipped
+    summary outside RTH."""
+    await _require_owner(request)
+    from services.news_feeders_scheduler import run_news_feeders_tick
+
+    return await run_news_feeders_tick(db)

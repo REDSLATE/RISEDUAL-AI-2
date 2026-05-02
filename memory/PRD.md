@@ -22,6 +22,99 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Scheduler wiring + Smart Money live + dollar_volume telemetry feeder (May 2, 2026)
+
+Ships three interlocking bits that turn the previously-built
+infrastructure into auto-running production code.
+
+**1. News feeders scheduler** (``services/news_feeders_scheduler.py``)
+
+APScheduler job registered in ``server.py`` firing every 15 min.
+Each tick:
+
+* Checks a **market-hours gate** — Mon-Fri, 13:00-21:00 UTC (a
+  conservative superset of the 9:30-16:00 ET cash session that
+  sidesteps DST boundary bugs entirely). Weekends / off-hours →
+  no-op with ``status="skipped"``; zero provider calls consumed.
+* Pulls the next 15 Tier A symbols via a **rotation offset**
+  persisted in ``scheduler_state.news_feeders_rotation``. After
+  ~7 ticks a full 100-symbol Tier A sweep completes; each symbol
+  gets ~3-4 samples per market day — exactly the minimum the
+  ``_baseline`` helper needs to start computing z-scores.
+* Feeds **both** ``batch_feed_symbols`` (Benzinga) and
+  ``batch_feed_sentiment`` (AV) back-to-back on the same batch so
+  the two halves of ``NEWS_SHOCK`` share a baseline cadence.
+* Persists the new offset **only after both feeders complete** —
+  mid-tick crashes re-feed the same slice next tick (idempotent
+  feeders make this safe; the alternative of advancing eagerly
+  would skip symbols on crash).
+
+**Budget math**: 15 symbols × 2 providers × ~26 ticks/day = ~780
+calls/day split evenly — 390 Benzinga (78% of 500 ceiling), 390
+AV (65% of 600 ceiling). Plenty of headroom for ad-hoc operator
+probes via the existing smoke endpoints.
+
+**Admin endpoint**: ``POST /api/admin/news-feeders/tick`` — manual
+trigger for smoke-testing without waiting for the next cron firing.
+
+11 tests pin the market-hours gate (weekday/weekend/edges),
+rotation math (clean slice + wrap-around), empty-Tier-A short
+circuit, feeder-failure resilience (offset still advances so a
+broken provider doesn't freeze the rotation).
+
+**2. Smart Money Verification live** (``risedual_ip_logic.py``)
+
+Added Step 6.5 between the Patent M failure-mode block and the
+Patent I risk-budget step. For equity decisions only:
+
+* Imports ``smart_money_verification.verify_and_append``
+* Pulls the raw Mongo handle off
+  ``AsyncMongoProofChainStore._db`` (new attribute on the store —
+  cheaper than plumbing a second Mongo reference through every
+  context)
+* Writes a ``SMART_MONEY_VERIFIED`` proof block with the 13F
+  alignment result (``confirms`` / ``contradicts`` / ``neutral`` /
+  ``no_data``) alongside the strategist action
+
+Never blocks a trade — IP contract keeps full authority via the
+classifier + risk budget. Any exception is logged at DEBUG and
+swallowed (verification is a nice-to-have audit block, a broken
+SEC EDGAR endpoint can't take down order entry).
+
+Crypto + options decisions skip this step — 13F data has no signal
+on non-equity assets. Options flow verification will come through
+a separate (future) block type.
+
+**3. ``dollar_volume`` telemetry feeder** (``top_universe_service.py``)
+
+Found during this work: nothing was calling
+``equity_telemetry.record_measurement`` for atr/spread/volume/
+dollar_volume — the rolling baselines were entirely empty.
+
+Added a record hook inside ``_warm_one`` that fires once per warm
+cycle per symbol. Piggybacks on ``bars`` (already fetched for
+technicals computation) — **zero additional API calls**.
+Computes:
+
+* ``atr_pct`` = ``tech["atr_pct"]`` (if technicals ran)
+* ``volume`` = latest close-of-day volume
+* ``dollar_volume`` = ``close × volume`` (spot reading,
+  NOT the 20-day mean already stamped on the universe row —
+  we want the instantaneous value so ``get_telemetry(current_
+  dollar_volume=…)`` has something real to compare the rolling
+  baseline against)
+
+Runs twice daily (post-close 21:05 + pre-open 13:00 UTC) per
+existing ``top_universe`` warm schedule. After ~3 cycles each
+Tier A symbol has enough history for z-scores; the dollar-volume
+starvation branch of ``LIQUIDITY_TRAP`` becomes live.
+
+**Totals**: 11 new scheduler tests + 181/181 across all adjacent
+suites. Lint clean (5 files). Backend restarted cleanly (491
+routes, +8 from last checkpoint). Live-verified: Saturday tick
+correctly skipped with ``outside_market_hours``. Mon-Fri 13:00 UTC
+onward the scheduler runs auto-populated.
+
 ### Benzinga News Feeder → NEWS_SHOCK gate wired (May 2, 2026)
 
 Completes Phase B of the Benzinga rollout: the feeder pipeline from

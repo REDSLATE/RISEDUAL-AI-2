@@ -355,6 +355,31 @@ async def run_risedual_ip_decision(ctx: IPDecisionContext) -> dict[str, Any]:
             failure.mode.value,
         )
 
+    # ── Step 6.5 — Smart Money Verification (Patent J) ───────────────
+    # Additive audit block: records whether aggregate 13F smart-money
+    # flow confirms or contradicts the strategist's direction at
+    # decision time. NEVER blocks a trade — the classifier and risk
+    # budget retain full veto authority. Writes a
+    # SMART_MONEY_VERIFIED proof block to the chain for post-hoc
+    # calibration. Equity-only (13F data is irrelevant for crypto
+    # and options entries — options verification will come via a
+    # separate flow-based block).
+    if ctx.asset_class == "equity":
+        try:
+            from services.smart_money_verification import verify_and_append
+            db_handle = getattr(ctx.proof_store, "_db", None) if ctx.proof_store else None
+            if db_handle is not None:
+                await verify_and_append(
+                    db_handle,
+                    entity_id=ctx.request_id,
+                    symbol=ctx.symbol,
+                    strategist_action=effective_action.value if hasattr(effective_action, "value") else str(effective_action),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[ip_contract] smart_money_verification skipped (non-critical): %s", exc,
+            )
+
     # ── Step 7 — Adaptive risk budget (Patent I) ─────────────────────
     adjusted_multiplier, fm_reasons = apply_failure_mode_to_multiplier(
         ctx.risk_request.base_multiplier, failure,

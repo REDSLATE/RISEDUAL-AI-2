@@ -240,6 +240,11 @@ class AsyncMongoProofChainStore:
     """
 
     def __init__(self, db: Any, collection_name: str = "decision_proof_chain") -> None:
+        # Keep the raw db handle so callers (e.g., Smart Money
+        # Verification in the IP contract) can attach additional
+        # proof blocks without plumbing a second Mongo reference
+        # through every context.
+        self._db = db
         self.collection = db[collection_name]
 
     async def get_latest_block_hash(

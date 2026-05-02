@@ -750,6 +750,33 @@ async def _start_schedulers():
             id='integrity_mitigation_sweep',
         )
 
+        # NEWS_SHOCK feeders — drives both Benzinga (news volume) and
+        # Alpha Vantage (sentiment) telemetry population on a 15-min
+        # market-hours cadence over a rotating slice of Tier A. The
+        # market-hours gate is inside the tick, so this job is safe to
+        # run every 15 min around the clock — it no-ops outside RTH
+        # without consuming any provider quota.
+        async def _run_news_feeders_tick():
+            try:
+                from services.news_feeders_scheduler import run_news_feeders_tick
+                summary = await run_news_feeders_tick(db)
+                if summary.get("status") == "ran":
+                    logging.info(
+                        "[news_feeders] fed=%d+%d skipped=%d+%d offset→%d",
+                        summary.get("benzinga", {}).get("fed", 0),
+                        summary.get("av", {}).get("fed", 0),
+                        summary.get("benzinga", {}).get("skipped", 0),
+                        summary.get("av", {}).get("skipped", 0),
+                        summary.get("new_offset", -1),
+                    )
+            except Exception:
+                logging.exception("news_feeders_tick failed (non-critical)")
+        scheduler.add_job(
+            _run_news_feeders_tick,
+            'interval', minutes=15,
+            id='news_feeders_tick',
+        )
+
         # Fear & Greed history refresh — daily at 04:30 UTC (after the
         # alternative.me daily snapshot rolls over). Pulls the last 30
         # days and upserts them so any backfills/corrections from the

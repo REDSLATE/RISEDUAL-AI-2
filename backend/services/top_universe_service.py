@@ -416,6 +416,42 @@ async def _warm_one(
             except Exception as exc:
                 result["errors"].append(f"technicals:{type(exc).__name__}")
 
+        # Feed equity_telemetry baselines — one sample per warm cycle per
+        # symbol. Piggybacks on ``bars`` which is ALREADY fetched above;
+        # zero additional API calls. Keeps ``MarketTelemetry`` inputs
+        # (atr_pct, volume, dollar_volume) populated so the Patent M
+        # liquidity branches (spread + dollar-volume starvation) have
+        # real baselines when the IP contract runs.
+        #
+        # Dollar-volume = latest close × latest volume. Not a 20-day
+        # mean — that's a separate column on the universe row; we want
+        # the spot reading so ``get_telemetry(current_dollar_volume=…)``
+        # has something to compare against the rolling baseline.
+        if bars:
+            try:
+                latest = bars[0]  # price_provider returns newest first
+                close = float(latest.get("close") or 0)
+                vol = float(latest.get("volume") or 0)
+                if close > 0 and vol > 0:
+                    from services import equity_telemetry
+                    atr_pct_value = None
+                    # compute_technicals emits ATR as a %; scrape it if
+                    # available to populate the ATR baseline as well.
+                    try:
+                        atr_raw = (tech or {}).get("atr_pct") if "tech" in locals() else None
+                        if atr_raw is not None:
+                            atr_pct_value = float(atr_raw)
+                    except (TypeError, ValueError):
+                        atr_pct_value = None
+                    await equity_telemetry.record_measurement(
+                        symbol,
+                        atr_pct=atr_pct_value,
+                        volume=vol,
+                        dollar_volume=close * vol,
+                    )
+            except Exception as exc:
+                result["errors"].append(f"telemetry:{type(exc).__name__}")
+
     result["ok"] = not result["errors"]
     return result
 
