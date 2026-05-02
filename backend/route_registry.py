@@ -31,6 +31,7 @@ from routes.broker import router as broker_router, set_db as set_broker_db
 from routes.market_data import router as market_data_router, set_db as set_market_data_db
 from routes.sectors import router as sectors_router, set_db as set_sectors_db
 from routes.admin import router as admin_router, set_db as set_admin_db
+from routes.terminal import router as terminal_router, set_db as set_terminal_db
 from routes.accuracy import router as accuracy_router, set_db as set_accuracy_db
 from routes.stream import router as stream_router, set_db as set_stream_db
 from routes.orderflow_stream import router as orderflow_stream_router
@@ -107,7 +108,7 @@ ALL_ROUTERS = [
     auth_router, market_router, trading_router, ai_router, workspace_router,
     subscription_router, referral_router, promo_router, digest_router, push_router,
     journal_router, strategy_router, intelligence_router, broker_router,
-    market_data_router, sectors_router, admin_router, accuracy_router,
+    market_data_router, sectors_router, admin_router, terminal_router, accuracy_router,
     stream_router, orderflow_stream_router, whale_radar_router,
     paper_trading_router, media_router, security_audit_router, waitlist_router,
     smart_orders_router,
@@ -170,7 +171,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_auth_helpers_db, set_auth_db, set_ai_db, set_workspace_db,
         set_subscription_db, set_referral_db, set_promo_db, set_digest_db,
         set_push_db, set_journal_db, set_strategy_db, set_intelligence_db,
-        set_broker_db, set_market_data_db, set_admin_db, set_accuracy_db,
+        set_broker_db, set_market_data_db, set_admin_db, set_terminal_db, set_accuracy_db,
         set_stream_db, set_price_provider_db, set_market_data_pool_db, set_paper_trading_db,
         set_options_trading_db,
         set_sectors_db, set_security_audit_db, set_smart_orders_db,
