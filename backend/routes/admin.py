@@ -2862,3 +2862,82 @@ async def commander_shadow_recent(asset_type: str, request: Request, limit: int 
     from services.commander_decision_stream import read_recent_decisions
     rows = read_recent_decisions(asset_type, limit=max(1, min(500, int(limit))))
     return {"asset_type": asset_type, "count": len(rows), "rows": rows}
+
+
+
+@router.get("/commander-shadow/brake-activity")
+async def commander_shadow_brake_activity(request: Request, hours: int = 24):
+    """Summarize Phase 2 brake activity over the last ``hours`` hours.
+
+    Reads the ``paper_trades`` collection for rows that carry a
+    ``commander_phase2_brake`` sub-doc (written inline at entry time
+    by ``ml_paper_trader`` when the brake evaluator ran). Returns:
+
+        {
+            "window_hours": int,
+            "since": ISO UTC,
+            "trades_evaluated": int,
+            "trades_braked": int,
+            "trades_disagreement_logged": int,  # includes non-braked Phase 1
+            "brake_rate_pct": float,
+            "sample_braked_trades": [...],      # most recent 10
+        }
+
+    Complements ``/commander-shadow/promotion-status`` — the status
+    endpoint shows *whether* the gate has opened, this one shows
+    *how often* the brake actually fires once it does.
+    """
+    await _require_owner(request)
+    from datetime import datetime, timezone, timedelta
+
+    hours = max(1, min(168, int(hours)))
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    base_query = {
+        "opened_at": {"$gte": since},
+        "commander_phase2_brake": {"$exists": True},
+    }
+
+    trades_evaluated = await db.paper_trades.count_documents(base_query)
+    trades_braked = await db.paper_trades.count_documents({
+        **base_query,
+        "commander_phase2_brake.brake_applied": True,
+    })
+    trades_disagreement = await db.paper_trades.count_documents({
+        **base_query,
+        "commander_phase2_brake.disagreement": True,
+    })
+
+    brake_rate_pct = (
+        round(trades_braked / trades_evaluated * 100, 2)
+        if trades_evaluated > 0 else 0.0
+    )
+
+    cursor = db.paper_trades.find(
+        {**base_query, "commander_phase2_brake.brake_applied": True},
+        {
+            "_id": 0,
+            "ticker": 1,
+            "direction": 1,
+            "opened_at": 1,
+            "position_size_usd": 1,
+            "commander_phase2_brake": 1,
+        },
+    ).sort("opened_at", -1).limit(10)
+    sample = []
+    async for row in cursor:
+        if isinstance(row.get("opened_at"), datetime):
+            row["opened_at"] = row["opened_at"].replace(
+                tzinfo=row["opened_at"].tzinfo or timezone.utc
+            ).isoformat()
+        sample.append(row)
+
+    return {
+        "window_hours": hours,
+        "since": since.isoformat(),
+        "trades_evaluated": trades_evaluated,
+        "trades_braked": trades_braked,
+        "trades_disagreement_logged": trades_disagreement,
+        "brake_rate_pct": brake_rate_pct,
+        "sample_braked_trades": sample,
+    }

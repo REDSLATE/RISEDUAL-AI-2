@@ -356,6 +356,76 @@ async def maybe_paper_trade(
         log.debug("[ml_paper] Kelly sizing returned $0 — skipping paper trade for %s.", ticker)
         return None
 
+    # ── Commander Shadow Phase 2 brake ──────────────────────────────────────
+    # Halve position when Commander's adversarial verdict disagrees with the
+    # Strategist's direction AND the promotion gate has unlocked
+    # (50+ scored rows at ≥70% win rate — see equity_shadow_promotion.py).
+    # Phase 1 behaviour (pre-gate) is a pure no-op; the brake decision logs
+    # disagreement evidence without touching size.
+    #
+    # Defensive: any error — pure-function crash, Mongo hiccup reading the
+    # promotion gate, unknown action strings — must NEVER block the trade.
+    # Fail-safe is to size at Phase 1 (no brake).
+    brake_log: dict[str, Any] | None = None
+    try:
+        from services.adversarial_core import (
+            bull_agent, bear_agent, resolve_adversarial,
+        )
+        from services.commander_phase2_brake import (
+            apply_brake_to_position, decide_brake,
+        )
+        from services.equity_shadow_promotion import (
+            compute_equity_shadow_promotion_status,
+        )
+
+        _strategist_action = "LONG" if signal.direction.value == "up" else "SHORT"
+        _commander_signal = {
+            "strategist": {
+                "direction": _strategist_action,
+                "confidence": float(directional_conf),
+                "indicators": {
+                    "rsi": getattr(snapshot, "rsi", None),
+                    "momentum_5b": getattr(snapshot, "momentum_5b", None),
+                },
+            },
+            "auditor": {"confidence": float(directional_conf)},
+            "regime": regime,
+            "symbol": ticker,
+        }
+        _bull = bull_agent(_commander_signal)
+        _bear = bear_agent(_commander_signal)
+        _commander = resolve_adversarial(_bull, _bear)
+
+        _promotion = await compute_equity_shadow_promotion_status(db)
+        _brake = decide_brake(
+            strategist_action=_strategist_action,
+            commander_decision=_commander.get("decision"),
+            brake_eligible=bool(_promotion.get("brake_eligible", False)),
+        )
+
+        if _brake.brake_applied:
+            _before = position_usd
+            position_usd = apply_brake_to_position(position_usd, _brake)
+            log.info(
+                "[ml_paper] Phase 2 brake applied to %s: $%.2f → $%.2f "
+                "(strategist=%s, commander=%s, reason=%s)",
+                ticker, _before, position_usd,
+                _strategist_action, _commander.get("decision"), _brake.reason,
+            )
+
+        brake_log = {
+            **_brake.to_log(),
+            "commander_decision": _commander.get("decision"),
+            "commander_edge_gap": _commander.get("edge_gap"),
+            "promotion_phase": _promotion.get("phase"),
+        }
+    except Exception as _brake_exc:  # noqa: BLE001
+        log.warning(
+            "[ml_paper] Phase 2 brake evaluation failed for %s (safe no-op): %s",
+            ticker, _brake_exc,
+        )
+        brake_log = None
+
     # Infer shares from last close price (use ATR proxy if close unavailable)
     entry_price = snapshot.close_price if snapshot.close_price and snapshot.close_price > 0 else None
     shares: float | None = None
@@ -391,6 +461,8 @@ async def maybe_paper_trade(
         "outcome": None,   # filled by labeling pipeline
         "schema_version": 1,
     }
+    if brake_log is not None:
+        trade_doc["commander_phase2_brake"] = brake_log
 
     try:
         await db["paper_trades"].insert_one(trade_doc)

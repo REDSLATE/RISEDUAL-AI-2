@@ -22,6 +22,78 @@ adversarial trading platform with:
 * 3rd-party: OpenAI/Anthropic/Google via Emergent Universal Key · OpenRouter · Stripe · Kraken · Alpaca · OpenFIGI · SEC EDGAR · Resend · Finnhub · FRED · FMP · Alpha Vantage
 
 ## 3. What's Been Implemented (latest first)
+### Commander Shadow Phase 2 Pre-Tier-3 Size Brake (May 2, 2026)
+
+Completes the Commander shadow lifecycle on the equity path. Phase 1
+(logging only) has been accumulating `research_shadow_decisions` rows
+with back-patched `tactical_score.shadow_was_right` since the earlier
+session; the gate in `equity_shadow_promotion.py` flips
+`brake_eligible=True` automatically once 50+ rows clear at ≥70% win
+rate. This iteration wires the brake that actually *uses* that flag.
+
+**1. Pure brake decision module** (`services/commander_phase2_brake.py`)
+
+* `decide_brake(strategist_action, commander_decision, brake_eligible)`
+  returns a `BrakeDecision` dataclass. Zero I/O, sub-millisecond, so the
+  equity entry path pays no latency cost.
+* `BRAKE_MULTIPLIER = 0.5` — hard-coded per the handoff spec. Not
+  env-configurable: the rollout playbook calls for "halve or stop",
+  not "dial a knob", and audit-stability across deploys matters more
+  than tunability here.
+* Safety invariant (pinned by `test_phase_1_never_brakes_even_on_disagreement`):
+  `brake_eligible=False` → `brake_applied=False` **unconditionally**,
+  even on a textbook Strategist/Commander disagreement. Phase 1 stays
+  a pure logging lane until the promotion gate opens on its own.
+* `disagreement` is recorded separately from `brake_applied` so Phase 1
+  evidence collection still tracks "Commander would have disagreed"
+  without touching size.
+* Unknown strategist / commander action strings degrade to no-brake
+  rather than raising (fail-safe). Telemetry logs `reason="unknown_*"`
+  so a contract drift upstream surfaces in logs instead of silently
+  misclassifying a typoed action as HOLD and suppressing the brake.
+
+**2. Wire-up in `services/ml_paper_trader.maybe_paper_trade`**
+
+Right after `half_kelly_position(...)` produces `position_usd`:
+1. Build a commander signal dict from the strategist's direction +
+   confidence + regime + raw indicators on `FeaturesSnapshot`.
+2. Run `bull_agent` / `bear_agent` / `resolve_adversarial` inline
+   (pure compute, microseconds).
+3. Read `compute_equity_shadow_promotion_status(db)` to check
+   `brake_eligible`.
+4. Apply `decide_brake(...)`; if `brake_applied`, multiply
+   `position_usd` by 0.5.
+5. Persist the full brake audit (`commander_phase2_brake`) onto the
+   `paper_trades` row so `/api/admin/commander-shadow/brake-activity`
+   can count brake events without re-running the engine.
+
+Any exception in this path — including a Mongo hiccup reading the
+promotion gate or an adversarial pure-function crash — **never
+blocks the trade**. Fail-safe degrades to Phase 1 (no brake).
+
+**3. Admin observability endpoint**
+`GET /api/admin/commander-shadow/brake-activity?hours=N` (owner-only,
+capped at 168h window). Returns rolling counts:
+`trades_evaluated / trades_braked / trades_disagreement_logged /
+brake_rate_pct` plus the 10 most recent braked trades. Complements
+the existing `/commander-shadow/promotion-status` — that one tells
+you *whether* the gate has opened, this one tells you *how often*
+the brake fires once it does.
+
+**Tests** (`tests/test_commander_phase2_brake.py`): 23 cases,
+0.13s total. Covers the Phase 1 safety invariant, Phase 2 brake on
+all 7 disagreement combinations (including LONG/BUY/STRONG_BUY and
+SHORT_OR_AVOID/SHORT_OR_REJECT/NO_TRADE synonyms), Phase 2 agreement
+no-op (4 combinations), strategist=HOLD always no-ops regardless of
+commander verdict, unknown-input fail-safe, and the `to_log` /
+`apply_brake_to_position` helpers.
+
+**Current live state** (verified via curl on the external preview):
+Gate is closed — `brake_eligible=false`, `phase=phase_1_logging_only`,
+1/50 scored rows. Brake evaluation wiring is live but the brake
+multiplier stays at 1.0 until the gate unlocks automatically.
+
+
 ### Multi-action Integrity Mitigation + Slack Activation Notifier (May 1, 2026)
 
 Extended the Integrity Mitigation self-defense layer from a single
