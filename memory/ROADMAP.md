@@ -89,6 +89,60 @@ current live deploy queue.
 
 ## P2 — Future
 
+- **Kraken US Equities — second-broker stock routing** *(doc-only, no code)*
+
+  Kraken opened US stock + ETF trading in early 2026 alongside its
+  crypto book. That makes Kraken a candidate for a **unified
+  crypto+equity broker** in RISEDUAL, sitting next to Alpaca.
+
+  **Scope parked for now** — this entry is documentation only.
+  No adapter, routes, or .env slots have been added yet. Do NOT
+  start implementation without an explicit go-ahead.
+
+  When we green-light this, the intended shape is:
+
+  *Transport*
+  - Kraken Pro REST (`api.kraken.com`) — same base URL as the
+    existing crypto integration, new `/equities/*` route family.
+  - Reuse the existing Kraken HMAC-SHA512 signing path in
+    `services/kraken_*` (auth is shared across asset classes on
+    Kraken Pro).
+  - Sandbox/test creds already held in repo `.env` slots
+    (`KRAKEN_API_KEY` / `KRAKEN_API_SECRET`) — user confirmed these
+    can be used as-is during integration.
+
+  *Rollout order* (when scheduled)
+  1. **Phase 0 — Market data only.** Wire Kraken's equity quote /
+     candle endpoints into the existing price provider pool as a
+     tertiary source. Shadow-compare against Alpaca to validate
+     symbology mapping (CUSIP / Kraken ticker / our canonical
+     symbol). No orders placed.
+  2. **Phase 1 — Paper trading / shadow layer.** Route equity
+     paper fills through the Kraken adapter in a `shadow_` flag
+     so we can measure fill latency, spreads, and reject rates vs
+     Alpaca without touching the live order path.
+  3. **Phase 2 — Live equity orders (opt-in).** Add an
+     `EQUITY_BROKER_ROUTING` env var (values: `alpaca` /
+     `kraken` / `best_venue`) and a hard-gated `RISEDUAL_LIVE_EXECUTION=1`
+     override, mirroring the Alpaca live rollout pattern.
+  4. **Phase 3 (maybe) — Equity options / ETFs.** Track Kraken's
+     option contract availability before committing — not on the
+     current critical path.
+
+  *Safety invariants* (applied when we schedule the work)
+  - Kraken equity integration MUST NOT regress the existing
+    Kraken crypto bot. Separate service modules
+    (`kraken_equity_broker.py`) so crypto adapters stay untouched.
+  - Broker-ambiguity prevention: every order request must carry
+    an explicit `asset_class: "equity" | "crypto"` field — no
+    inferring from symbol shape.
+  - Reuse `integrity_mitigation_service` ceiling + `confidence_gate`
+    across both asset classes; the Sovereign AI layer is
+    broker-agnostic by design.
+
+  *Owner-tracked* — re-open this entry when there's capacity.
+  Status: **PARKED (doc-only, 2026-05-03)**.
+
 - **Adversarial Core: Phase progression + per-regime weight tuning.**
 
   Status: **Bull / Bear / Commander layer built and shadow-gated**
