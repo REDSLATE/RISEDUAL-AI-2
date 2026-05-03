@@ -345,6 +345,63 @@ async def maybe_paper_trade(
         )
         return None
 
+    # ── Symbol Failure Memory — short-term per-symbol bias loop containment ─
+    # Closes the persistent-bias-loop hole that surfaced twice on NVDA: even
+    # after a string of losses on the same symbol/direction the strategist
+    # keeps proposing the same trade because past failures only flow into
+    # long-term ML training. This block reads the last-5 closed trades + the
+    # 7-day miss count and applies a tiered penalty BEFORE Kelly sizing.
+    #
+    # Hard cooldown at 4+ recent losses → return None (skip trade entirely).
+    # Otherwise: confidence × {1.0, 0.7, 0.5} based on recent loss count;
+    # size capped at 0.5× and confidence capped at 0.75 when 7-day misses
+    # accumulate.
+    #
+    # Fail-safe: any exception in the lookup keeps the trade un-penalised.
+    failure_penalty_meta: dict[str, Any] | None = None
+    try:
+        from services.symbol_failure_memory import get_failure_penalty
+        _direction_label = "up" if str(signal.direction.value) == "up" else "down"
+        _penalty = await get_failure_penalty(
+            db, symbol=ticker, direction=_direction_label, asset_type="equity",
+        )
+        if _penalty.force_hold:
+            log.warning(
+                "[ml_paper] Symbol failure cooldown HOLD %s — recent_losses=%d, misses_7d=%d, reason=%s",
+                ticker, _penalty.recent_losses, _penalty.misses_7d, _penalty.reason,
+            )
+            try:
+                from services.activity_logger import log_paper_trade_skipped
+                await log_paper_trade_skipped(
+                    ticker=ticker,
+                    reason=f"symbol_failure_cooldown ({_penalty.recent_losses} recent losses)",
+                    confidence=directional_conf,
+                    why=[],
+                )
+            except Exception:
+                pass
+            return None
+        _before = directional_conf
+        directional_conf, _ = _penalty.apply(
+            confidence=directional_conf, size_multiplier=1.0,
+        )
+        if directional_conf < _before:
+            log.info(
+                "[ml_paper] Symbol failure penalty applied %s: conf %.3f → %.3f (%s)",
+                ticker, _before, directional_conf, _penalty.reason,
+            )
+        failure_penalty_meta = {
+            "recent_losses": _penalty.recent_losses,
+            "misses_7d": _penalty.misses_7d,
+            "confidence_multiplier": _penalty.confidence_multiplier,
+            "size_multiplier_applied": _penalty.size_multiplier,
+            "confidence_cap": _penalty.confidence_cap,
+            "force_hold": _penalty.force_hold,
+            "reason": _penalty.reason,
+        }
+    except Exception as _fp_exc:  # noqa: BLE001
+        log.debug("[ml_paper] failure penalty lookup failed for %s: %s", ticker, _fp_exc)
+
     # ── Sovereign AI Shadow + bounded confidence contribution ───────────────
     # PRD-mode: shadow-log every tick; if the per-core promotion gate has
     # unlocked (>=500 resolved rows, >=70% win rate, >=65% calibration),
@@ -435,6 +492,16 @@ async def maybe_paper_trade(
     if position_usd <= 0.0:
         log.debug("[ml_paper] Kelly sizing returned $0 — skipping paper trade for %s.", ticker)
         return None
+
+    # Apply symbol failure size multiplier (composes with Kelly output)
+    if failure_penalty_meta and failure_penalty_meta.get("size_multiplier_applied", 1.0) < 1.0:
+        _before_pos = position_usd
+        position_usd = round(position_usd * float(failure_penalty_meta["size_multiplier_applied"]), 2)
+        log.info(
+            "[ml_paper] Symbol failure size penalty %s: $%.2f → $%.2f (×%.2f)",
+            ticker, _before_pos, position_usd,
+            failure_penalty_meta["size_multiplier_applied"],
+        )
 
     # ── Commander Shadow Phase 2 brake ──────────────────────────────────────
     # Halve position when Commander's adversarial verdict disagrees with the
@@ -577,6 +644,8 @@ async def maybe_paper_trade(
         trade_doc["sovereign_decision_id"] = sovereign_decision_id
     if sovereign_contribution_meta is not None:
         trade_doc["sovereign_contribution"] = sovereign_contribution_meta
+    if failure_penalty_meta is not None:
+        trade_doc["symbol_failure_penalty"] = failure_penalty_meta
 
     try:
         await db["paper_trades"].insert_one(trade_doc)

@@ -291,6 +291,54 @@ async def run_crypto_symbol(
     size_multiplier = 1.0
     adversarial_action: Optional[str] = None  # "veto_block" | "full_override" | "full_trigger"
 
+    # ── Symbol Failure Memory — short-term per-symbol bias loop containment ─
+    # Applied BEFORE adversarial-phase resolution so size_multiplier and
+    # confidence reflect the penalty when the resolution layers run.
+    failure_penalty_meta: Optional[dict] = None
+    try:
+        from services.symbol_failure_memory import get_failure_penalty
+        _penalty_crypto = await get_failure_penalty(
+            db, symbol=symbol, direction=str(signal.get("direction") or "HOLD"),
+            asset_type="crypto",
+        )
+        if _penalty_crypto.force_hold:
+            logger.warning(
+                "[crypto-bot] Symbol failure cooldown HOLD %s — recent_losses=%d, misses_7d=%d",
+                symbol, _penalty_crypto.recent_losses, _penalty_crypto.misses_7d,
+            )
+            from services.crypto_signal_audit import log_adversarial_decision as _log_skip
+            await _log_skip(db, symbol=symbol, signal=signal, final_direction="HOLD")
+            return {
+                "symbol": symbol, "skipped": True,
+                "reason": "symbol_failure_cooldown",
+                "recent_losses": _penalty_crypto.recent_losses,
+                "misses_7d": _penalty_crypto.misses_7d,
+            }
+        # Apply confidence + size multipliers
+        _conf_before = float(signal.get("confidence") or 0.0)
+        _new_conf, _new_size = _penalty_crypto.apply(
+            confidence=_conf_before, size_multiplier=size_multiplier,
+        )
+        if _new_conf < _conf_before:
+            logger.info(
+                "[crypto-bot] Symbol failure penalty applied %s: conf %.3f→%.3f size×%.2f",
+                symbol, _conf_before, _new_conf, _new_size,
+            )
+        signal["confidence"] = _new_conf
+        size_multiplier = _new_size
+        failure_penalty_meta = {
+            "recent_losses": _penalty_crypto.recent_losses,
+            "misses_7d": _penalty_crypto.misses_7d,
+            "confidence_multiplier": _penalty_crypto.confidence_multiplier,
+            "size_multiplier_applied": _penalty_crypto.size_multiplier,
+            "confidence_cap": _penalty_crypto.confidence_cap,
+            "force_hold": _penalty_crypto.force_hold,
+            "reason": _penalty_crypto.reason,
+        }
+        signal["symbol_failure_penalty"] = failure_penalty_meta
+    except Exception as _fp_exc:  # noqa: BLE001
+        logger.debug("[crypto-bot] failure penalty lookup failed for %s: %s", symbol, _fp_exc)
+
     if adv_decision is not None:
         phase = adv_decision.get("phase") or "shadow"
         commander = (adv_decision.get("decision") or "").upper()

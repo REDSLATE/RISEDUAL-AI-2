@@ -136,6 +136,11 @@ def _matches(doc: dict[str, Any], query: dict[str, Any]) -> bool:
             if got is None or got > v["$lte"]:
                 return False
             continue
+        if isinstance(v, dict) and "$in" in v:
+            got = _get_nested(doc, k)
+            if got not in v["$in"]:
+                return False
+            continue
         got = _get_nested(doc, k)
         if got != v:
             return False

@@ -41,6 +41,21 @@ async def _require_owner(request: Request):
 # CACHE MANAGEMENT
 # ============================================================
 
+@router.get("/symbol-failure/{symbol}")
+async def get_symbol_failure_status(symbol: str, request: Request, asset_type: str = "equity"):
+    """Show recent miss count + the penalty that would be applied to the
+    next signal for this symbol. Owner-only."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from dataclasses import asdict
+    from services.symbol_failure_memory import get_failure_penalty
+    penalty = await get_failure_penalty(
+        db, symbol=symbol.upper(), asset_type=asset_type,
+    )
+    return {"symbol": symbol.upper(), "asset_type": asset_type, "penalty": asdict(penalty)}
+
+
 @router.get("/cache-stats")
 async def get_cache_stats(request: Request):
     await _require_admin(request)

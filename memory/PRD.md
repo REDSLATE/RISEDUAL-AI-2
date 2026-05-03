@@ -23,6 +23,75 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Symbol Failure Memory — short-term per-symbol bias loop containment (May 3, 2026)
+
+Closes the persistent-bias-loop hole that surfaced twice on NVDA: the
+strategist kept proposing the same direction even after a string of losses
+because past failures only flowed into long-term ML training. This service
+adds a short-term memory override that reads recent paper_trade outcomes
+on every tick and reduces conviction BEFORE Kelly sizing.
+
+**New module**: `services/symbol_failure_memory.py`
+
+* `compute_failure_penalty(recent_losses, misses_7d) -> FailurePenalty` —
+  pure function (zero I/O, microseconds). Tested independently.
+* `get_failure_penalty(db, symbol, direction, asset_type)` — async Mongo
+  reader. Direction-filters the recent-N window; 7-day window stays
+  direction-agnostic so cross-direction failure clusters still get caught.
+* `FailurePenalty.apply(confidence, size_multiplier)` — clamped to [0, 1].
+
+**Penalty schedule** (env-tunable):
+
+| Recent-N losses | Effect                          |
+|-----------------|---------------------------------|
+| 0–1             | No penalty                      |
+| 2               | confidence × 0.7                |
+| 3               | confidence × 0.5                |
+| 4+              | **force HOLD** (return None)    |
+
+| 7-day misses    | Effect                          |
+|-----------------|---------------------------------|
+| 0–1             | No penalty                      |
+| 2               | size_multiplier × 0.5           |
+| 3+              | confidence capped at 0.75       |
+
+Branches compose: a symbol with 3 recent + 4 in 7d gets confidence × 0.5
+AND size × 0.5 AND the 0.75 cap (tightest wins). At 4+ recent the symbol
+goes on hard cooldown until a non-loss trade clears the buffer.
+
+**Wired into both cores** (PRD-mode aware):
+
+* `ml_paper_trader.maybe_paper_trade` — runs BEFORE the Sovereign AI
+  shadow + Kelly sizing. Force-HOLD short-circuits with
+  `log_paper_trade_skipped(reason="symbol_failure_cooldown")`. Persists
+  `symbol_failure_penalty` on the `paper_trades` row.
+* `crypto_paper_trader._process_one_symbol` — runs BEFORE the
+  adversarial-phase resolution. Force-HOLD returns the standard
+  `{skipped: true, reason: "symbol_failure_cooldown"}` shape with
+  `recent_losses` and `misses_7d` for observability.
+
+**Admin endpoint**: `GET /api/admin/symbol-failure/{symbol}?asset_type=equity|crypto`
+— shows the penalty that would apply to the next signal. Owner-only.
+
+**Live verified** (May 3, 2026):
+
+* NVDA equity: 1 recent loss, no penalty active yet (kicks in at ≥2 — correct).
+* BTCUSDT crypto: 0 recent losses, baseline state.
+
+**Tests**: 19 new cases in `test_symbol_failure_memory.py` covering: each
+penalty tier independently, force-HOLD dominance, branch composition,
+clamping to [0, 1], direction filtering on recent-N, 7-day cross-direction
+catch, crypto collection routing, null-db safety, exclude open trades,
+exclude old (>7d) misses, immutable dataclass. **197/197 green** across
+all adjacent suites. Lint clean.
+
+**Why this fix is high-impact, low-complexity**: the existing pipeline
+stored failures but did not strongly influence the next decision. Now:
+recent failures → immediately reduce conviction. The Commander brake
+phase 2 already disagrees-and-halves on adversarial verdict mismatch;
+this layer adds a complementary single-asset memory penalty so the
+strategist can't hammer the same losing thesis tick after tick.
+
 ### Sovereign AI P1+P2 — Resolution Loop, Proof Chain, Burn-in Chip, Narrator (May 3, 2026)
 
 Closes the P1 safety + P2 observability work on Sovereign AI in a single batch.
