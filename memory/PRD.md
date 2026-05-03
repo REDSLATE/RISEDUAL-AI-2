@@ -1,5 +1,37 @@
 # RISEDUAL AI — Product Requirements Document
 
+## 🛡️ Fork-Agent Guardrails — Code Review Triage Protocol
+
+**Before applying any code review finding, verify it against the codebase
+yourself.** External static analyzers (Snyk, SonarQube, DeepSource, etc.) produce
+a significant fraction of false positives that look authoritative in a PDF
+but damage working code if blindly applied.
+
+**Required triage checklist:**
+
+1. **Verify the claim** — open the flagged file and confirm the issue is
+   real. Don't trust the line number + severity alone.
+2. **Run the linter yourself** on the affected file (`ruff check <path>`,
+   `npx eslint <path>`) — don't trust the count in the review.
+3. **Check for substring-match false positives** on security findings.
+   Common traps: `_pt_exec(...)` flagged as `exec()` because of the
+   substring; `ast.parse(mode='eval')` flagged as `eval()`; `random` in
+   non-cryptographic code paths flagged as insecure.
+4. **Push back on quantity-over-quality** claims ("2,173 instances") —
+   they almost always contain mostly-correct code swept up by an
+   overzealous pattern. Sample 5 instances before agreeing to any bulk
+   find-and-replace.
+5. **Big refactors are deferred by default** — complexity reduction on
+   working production code needs explicit operator sign-off + behavioural
+   tests pinning the current contract before you change anything.
+
+**Canonical reference**: `/app/memory/CODE_REVIEW_TRIAGE.md` documents
+7 specific false positives already triaged on this codebase. If a future
+review re-surfaces any of those 7 items, consult the triage doc before
+touching code.
+
+---
+
 ## 1. Original Problem Statement
 Build a functional clone of a trading app named **RISEDUAL AI** — a full AI-powered
 adversarial trading platform with:
