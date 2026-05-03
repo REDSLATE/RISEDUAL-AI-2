@@ -153,7 +153,7 @@ const OpsSnapshotPanel = () => {
             const isAllGood = n === 'All gauges nominal.';
             return (
               <li
-                key={i}
+                key={`${i}-${n}`}
                 className={`text-xs flex items-start gap-2 ${
                   isAllGood ? 'text-emerald-300' : 'text-amber-200'
                 }`}

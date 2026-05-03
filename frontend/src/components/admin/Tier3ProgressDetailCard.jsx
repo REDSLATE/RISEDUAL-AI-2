@@ -157,7 +157,7 @@ export default function Tier3ProgressDetailCard() {
           <ul className="space-y-1">
             {data.next_steps.map((step, idx) => (
               <li
-                key={idx}
+                key={`${idx}-${step}`}
                 className="text-[11px] text-slate-300 flex gap-1.5"
                 data-testid={`tier3-next-step-${idx}`}
               >
