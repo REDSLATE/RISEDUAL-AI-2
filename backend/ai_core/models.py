@@ -36,49 +36,59 @@ class Signal:
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
-    @classmethod
-    def from_dict(cls, d: dict) -> "Signal":
-        """Build a Signal from the loose dicts our scanner/dispatcher emits."""
-        direction = (d.get("direction") or "").upper()
-        if direction not in ("LONG", "SHORT"):
-            # Map buy/sell verdicts to long/short via the central
-            # canonicaliser. The pre-2026-05-01 inline tuple here was
-            # missing WEAK_BUY / BULLISH / UP / WEAK_SELL / BEARISH,
-            # silently routing those tokens to SHORT. Same bug class
-            # as the prediction_tracker line 654 fix — see
-            # services.prediction_tracker.canonical_ai_dir.
-            from services.prediction_tracker import canonical_ai_dir
-            v = d.get("ai_verdict") or d.get("side") or ""
-            canonical = canonical_ai_dir(v)
-            if canonical == "UNKNOWN":
-                # No bullish/bearish signal in the input — fall back to
-                # SHORT for backwards compatibility, but log loudly so
-                # the upstream emitter can be fixed. Pre-fix this was
-                # silent.
-                import logging
-                logging.getLogger(__name__).warning(
-                    "[Signal.from_dict] unknown verdict token %r — "
-                    "defaulting to SHORT for compat. Add the token to "
-                    "DIRECTION_BULLISH/BEARISH if it should map.",
-                    v,
-                )
-                direction = "SHORT"
-            else:
-                direction = canonical
+    @staticmethod
+    def _parse_direction(d: dict) -> Direction:
+        """Resolve a loose ``direction`` / ``ai_verdict`` / ``side`` input
+        into the canonical ``LONG`` / ``SHORT`` enum.
 
+        Delegates unknown verdict tokens to
+        ``services.prediction_tracker.canonical_ai_dir``. Pre-2026-05-01
+        this logic was inline and silently routed WEAK_BUY / BULLISH /
+        UP / WEAK_SELL / BEARISH to SHORT; same bug class as the
+        prediction_tracker line 654 fix.
+        """
+        direction = (d.get("direction") or "").upper()
+        if direction in ("LONG", "SHORT"):
+            return direction  # type: ignore[return-value]
+
+        from services.prediction_tracker import canonical_ai_dir
+        v = d.get("ai_verdict") or d.get("side") or ""
+        canonical = canonical_ai_dir(v)
+        if canonical == "UNKNOWN":
+            # No bullish/bearish signal in the input — fall back to SHORT
+            # for backwards compatibility, but log loudly so the upstream
+            # emitter can be fixed. Pre-fix this was silent.
+            import logging
+            logging.getLogger(__name__).warning(
+                "[Signal.from_dict] unknown verdict token %r — "
+                "defaulting to SHORT for compat. Add the token to "
+                "DIRECTION_BULLISH/BEARISH if it should map.",
+                v,
+            )
+            return "SHORT"
+        return canonical  # type: ignore[return-value]
+
+    @staticmethod
+    def _parse_confidence(d: dict) -> float:
+        """Accept both 0-1 floats and 0-100 percentages. Defaults to 0."""
         c = d.get("confidence")
         if c is None:
             c = d.get("ai_confidence", 0)
-        # Accept both 0-1 floats and 0-100 percentages.
-        conf = float(c) / 100.0 if c and float(c) > 1.0 else float(c or 0)
+        if not c:
+            return 0.0
+        value = float(c)
+        return value / 100.0 if value > 1.0 else value
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Signal":
+        """Build a Signal from the loose dicts our scanner/dispatcher emits."""
         return cls(
             asset=(d.get("asset") or d.get("symbol") or "").upper(),
-            direction=direction,  # type: ignore[arg-type]
+            direction=cls._parse_direction(d),
             entry=float(d.get("entry") or d.get("price") or 0),
             stop_loss=float(d.get("stop_loss") or d.get("sl") or 0),
             take_profit=float(d.get("take_profit") or d.get("tp") or 0),
-            confidence=conf,
+            confidence=cls._parse_confidence(d),
             strategy_id=d.get("strategy_id"),
             timestamp=d.get("timestamp") or datetime.now(timezone.utc).isoformat(),
         )
