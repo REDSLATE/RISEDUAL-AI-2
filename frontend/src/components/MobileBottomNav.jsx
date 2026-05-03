@@ -31,7 +31,6 @@ const MobileBottomNav = ({ onOpenChat, activeView, onNavigate, v2Nav = false }) 
                 if (item.action) {
                   item.action();
                 } else {
-                  console.log('[MobileNav] navigating to:', item.key);  
                   onNavigate(item.key);
                 }
               }}

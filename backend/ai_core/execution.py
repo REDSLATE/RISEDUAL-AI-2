@@ -35,6 +35,85 @@ class ExecutionClient:
         self.mode = mode
         self.user_id = user_id
 
+    @staticmethod
+    def _reject(size: float, reason: str, trade_id: str = "") -> ExecutionResult:
+        """Canonical rejection-shape builder. Keeps the three early-exit
+        branches from drifting from one another."""
+        return ExecutionResult(
+            trade_id=trade_id,
+            filled_price=0.0,
+            size=size,
+            status="rejected",
+            reason=reason,
+        )
+
+    async def _execute_paper(
+        self,
+        user_id: str,
+        trade: Trade,
+        signal: Optional[Signal],
+        side: str,
+    ) -> ExecutionResult:
+        """Paper route — delegates to paper_trading_service.execute_trade
+        (handles SL/TP + r_multiple persistence)."""
+        from services.paper_trading_service import execute_trade as _pt_exec
+        sl = signal.stop_loss if signal else None
+        tp = signal.take_profit if signal else None
+        raw = await _pt_exec(
+            user_id, trade.asset, side, trade.size,
+            stop_loss=sl, take_profit=tp,
+        )
+        return ExecutionResult(
+            trade_id=f"paper_{trade.asset}_{trade.timestamp}",
+            filled_price=float(raw.get("price") or trade.entry),
+            size=float(raw.get("qty") or trade.size),
+            status=raw.get("status", "rejected"),  # type: ignore[arg-type]
+            reason=raw.get("error"),
+        )
+
+    async def _execute_live(
+        self,
+        user_id: str,
+        trade: Trade,
+        side: str,
+    ) -> ExecutionResult:
+        """Live route — places a market order through the user's connected
+        broker (Alpaca for equities, Kraken for crypto). SL/TP bracket
+        wrap-around is the caller's responsibility."""
+        import asyncio
+        try:
+            from server import db as _db  # type: ignore
+            from routes.broker import _get_or_refresh_client, _get_user_broker
+
+            broker_conn = await _db.broker_connections.find_one(
+                {"user_id": user_id}, {"_id": 0, "broker_id": 1},
+            )
+            if not broker_conn:
+                return self._reject(trade.size, "no_broker_connected")
+
+            conn = await _get_user_broker(user_id, broker_conn["broker_id"])
+            client = await _get_or_refresh_client(user_id, broker_conn["broker_id"], conn)
+            result = await asyncio.to_thread(
+                client.place_order,
+                symbol=trade.asset,
+                qty=trade.size,
+                side=side.lower(),
+                order_type="market",
+                time_in_force="day",
+            )
+            if not result:
+                return self._reject(trade.size, "broker_rejected")
+
+            return ExecutionResult(
+                trade_id=str(result.get("id") or uuid4()),
+                filled_price=float(result.get("filled_avg_price") or trade.entry),
+                size=float(result.get("filled_qty") or trade.size),
+                status="filled",
+            )
+        except Exception as e:
+            logger.exception(f"[execution] live route failed: {e}")
+            return self._reject(trade.size, f"live_exception:{type(e).__name__}")
+
     async def execute_trade(
         self,
         trade: Trade,
@@ -51,83 +130,13 @@ class ExecutionClient:
         """
         user_id = trade.user_id or self.user_id
         if not user_id:
-            return ExecutionResult(
-                trade_id="",
-                filled_price=0.0,
-                size=trade.size,
-                status="rejected",
-                reason="no_user_id",
-            )
+            return self._reject(trade.size, "no_user_id")
 
         side = "BUY" if trade.direction == "LONG" else "SELL"
 
         if self.mode == "paper":
-            from services.paper_trading_service import execute_trade as _pt_exec
-            sl = signal.stop_loss if signal else None
-            tp = signal.take_profit if signal else None
-            raw = await _pt_exec(
-                user_id, trade.asset, side, trade.size,
-                stop_loss=sl, take_profit=tp,
-            )
-            status = raw.get("status", "rejected")
-            return ExecutionResult(
-                trade_id=f"paper_{trade.asset}_{trade.timestamp}",
-                filled_price=float(raw.get("price") or trade.entry),
-                size=float(raw.get("qty") or trade.size),
-                status=status,  # type: ignore[arg-type]
-                reason=raw.get("error"),
-            )
-
-        # mode == "live"
-        try:
-            from server import db as _db  # type: ignore
-            from routes.broker import _get_or_refresh_client, _get_user_broker
-            import asyncio
-
-            broker_conn = await _db.broker_connections.find_one(
-                {"user_id": user_id}, {"_id": 0, "broker_id": 1},
-            )
-            if not broker_conn:
-                return ExecutionResult(
-                    trade_id="",
-                    filled_price=0.0,
-                    size=trade.size,
-                    status="rejected",
-                    reason="no_broker_connected",
-                )
-            conn = await _get_user_broker(user_id, broker_conn["broker_id"])
-            client = await _get_or_refresh_client(user_id, broker_conn["broker_id"], conn)
-            result = await asyncio.to_thread(
-                client.place_order,
-                symbol=trade.asset,
-                qty=trade.size,
-                side=side.lower(),
-                order_type="market",
-                time_in_force="day",
-            )
-            if not result:
-                return ExecutionResult(
-                    trade_id="",
-                    filled_price=0.0,
-                    size=trade.size,
-                    status="rejected",
-                    reason="broker_rejected",
-                )
-            return ExecutionResult(
-                trade_id=str(result.get("id") or uuid4()),
-                filled_price=float(result.get("filled_avg_price") or trade.entry),
-                size=float(result.get("filled_qty") or trade.size),
-                status="filled",
-            )
-        except Exception as e:
-            logger.exception(f"[execution] live route failed: {e}")
-            return ExecutionResult(
-                trade_id="",
-                filled_price=0.0,
-                size=trade.size,
-                status="rejected",
-                reason=f"live_exception:{type(e).__name__}",
-            )
+            return await self._execute_paper(user_id, trade, signal, side)
+        return await self._execute_live(user_id, trade, side)
 
     # ------------------------------------------------------------------
     # Outcome lookup (simulator-backed backtest path)
