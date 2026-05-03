@@ -23,6 +23,71 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Natural Language Trading Layer (May 3, 2026)
+
+User-supplied drop-in module: deterministic NL trade explanations + bull/bear/Commander
+debate text + "why was this rejected?" debug narratives + safe NL command
+parsing. Saved verbatim to `services/natural_language_trading.py` with two
+small additions over the paste:
+
+* **Owner-gated router** — every endpoint wraps `Depends(_require_owner)`
+  so unauthenticated callers can't mutate the in-process NL runtime
+  state. Verified live: `curl /api/nl-trading/state` returns HTTP 401
+  without auth, returns full state with admin cookie.
+* **Registry contract `set_db(db)` stub** — module has no Mongo
+  dependency, but the route registry pattern requires it.
+
+**Endpoints** (all `/api/nl-trading/*`, owner-only):
+* `POST /explain` — TradeSignal → bull/bear/commander/risk_notes/headline/summary
+* `POST /debate` — TradeSignal → debate-only payload
+* `POST /why-rejected` — TradeSignal → human-readable rejection report
+* `POST /parse-command` — natural-language text → structured `ParsedNLCommand`
+* `POST /execute-command` — applies hard-bounded mutations to in-process NL state
+* `GET /state` — reads current NL runtime state + audit log
+
+**Hard safety invariants** (pinned by tests):
+
+* NL never executes trades. ``execute_command`` cannot return
+  ``trade_id`` / ``order`` / ``fill`` / ``executed`` / ``broker_order_id`` keys.
+* `SET_RISK_MULTIPLIER` clamps to `[0.50, 1.25]`.
+* `SET_MIN_RR` clamps to `[0.50, 10.0]`.
+* `ABSTAIN` action returns `accepted=False`.
+* Each engine instance has its own `NLRuntimeState` — no global mutation
+  across engines.
+* `ParsedNLCommand.value=None` raises ValueError on execute (no implicit defaults).
+* Audit log appended on every executed command.
+
+**Architectural notes flagged to operator** (not yet wired):
+
+The module has its own `NLRuntimeState.risk_multiplier` and `min_rr`.
+These are **independent from**:
+* `integrity_mitigation_service` global Mongo-backed risk_multiplier.
+* `confidence_gate.BASE_MIN_CONFIDENCE` static threshold.
+* `failure_mode_classifier` RR rules.
+
+Today the NL layer is purely advisory — it doesn't write through to the
+deterministic gates. If we want NL commands to actually shift production
+behaviour, two follow-ups are needed:
+1. `SET_RISK_MULTIPLIER` should call `integrity_mitigation_service.activate_risk_multiplier(...)`.
+2. `SET_MIN_RR` should write to the env-backed `confidence_gate` config or an admin-settable Mongo doc the gates read.
+
+This is intentional for now — the module's design rule is "NL never
+executes trades". Wiring it through to live config is a separate
+operator-confirmed step.
+
+**Tests**: 28 cases in `test_natural_language_trading.py` covering: util
+formatters, all 4 verdict branches (APPROVE / MODIFY / REJECT / WATCHLIST),
+hard-veto detection, command parser for every CommandAction, clamp
+enforcement on execute, audit log append, mode enable/disable round trip,
+abstain-not-accepted, no-trade-execution invariant, isolated state per
+engine. **181/181 green** across all adjacent suites. Lint clean.
+
+**Live verified**:
+* `GET /api/nl-trading/state` → baseline state (admin cookie).
+* `POST /api/nl-trading/parse-command {"text":"reduce risk..."}` →
+  `SET_RISK_MULTIPLIER value=0.75`.
+* `GET /api/nl-trading/state` (no auth) → **HTTP 401** as expected.
+
 ### Confidence Gate + Sovereign Adversarial Amplification (May 3, 2026)
 
 Two additive imports from the user's clean-corridor design that closed real
