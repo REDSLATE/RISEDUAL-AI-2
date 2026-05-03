@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import { RefreshCw, Radio, Newspaper, Database, ShieldCheck, Activity } from 'lucide-react';
+import KrakenShadowChip from './KrakenShadowChip';
 
 const API = `${getApiBase()}/api`;
 const POLL_INTERVAL_MS = 60_000;
@@ -47,21 +48,26 @@ const freshness = (iso) => {
 const NewsShockBurnIn = () => {
   const [data, setData]       = useState(null);
   const [sovData, setSovData] = useState(null);
+  const [krakenData, setKrakenData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [lastPoll, setLastPoll] = useState(null);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const [res1, res2] = await Promise.all([
+      const [res1, res2, res3] = await Promise.all([
         authFetch(`${API}/admin/news-shock/burn-in`),
         authFetch(`${API}/admin/sovereign-ai/burn-in`),
+        authFetch(`${API}/admin/kraken-shadow/today`),
       ]);
       if (!res1.ok) throw new Error(`HTTP ${res1.status}`);
       const json = await res1.json();
       setData(json);
       if (res2.ok) {
         setSovData(await res2.json());
+      }
+      if (res3.ok) {
+        setKrakenData(await res3.json());
       }
       setError(null);
       setLastPoll(new Date());
@@ -152,6 +158,8 @@ const NewsShockBurnIn = () => {
           sub={`${(eq.sample || []).filter((s) => s.has_dollar_volume).length}/${(eq.sample || []).length} w/ $vol`}
         />
       </div>
+
+      {krakenData ? <KrakenShadowChip data={krakenData} /> : null}
 
       {sovData?.cores ? (
         <div

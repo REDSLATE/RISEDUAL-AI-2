@@ -3346,3 +3346,18 @@ async def news_shock_burn_in(request: Request):
             "sample": baseline_samples,
         },
     }
+
+
+@router.get("/kraken-shadow/today")
+async def kraken_shadow_today(request: Request):
+    """Today's Kraken xStock shadow-compare summary for the burn-in card.
+
+    Returns the same shape as ``summarize_today`` — rows count, max
+    bps, p95 bps, divergent count vs threshold, alerts fired, last
+    run, session counts, and a 5-row sample. Cheap single aggregation
+    pass; safe to poll every 60 s alongside the rest of the burn-in.
+    """
+    await _require_owner(request)
+    from services.kraken_equity_shadow_service import summarize_today
+    return await summarize_today(db)
+

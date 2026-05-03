@@ -55,6 +55,86 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Kraken xStock Equity Shadow — Phase 0 (May 3, 2026)
+
+Phase 0 of the Kraken US-equities ("xStocks") rollout: **public market
+data only**, shadow-compared against our existing Alpaca / AV equity
+quote provider. **No orders, no auth.** Default OFF — opt in via
+``KRAKEN_SHADOW_ENABLED=1``.
+
+**New module**: ``services/kraken_equity_shadow_service.py``
+* ``run_kraken_shadow_compare_once(db)`` — one tick: discover pair
+  metadata, batch-fetch tickers, compare each canonical symbol's mid
+  vs Alpaca's mid, persist one row per (symbol × tick).
+* Symbology resolution via ``/0/public/AssetPairs?asset_class=tokenized_asset``
+  — fast-path on canonical ``<SYM>USD`` pair codes, falls back to
+  ``altname`` and ``base/quote/aclass_base`` matching. Symbols with no
+  Kraken xStock listing get a ``not_listed`` sentinel cached for the
+  TTL window so we don't re-hammer AssetPairs each tick.
+* Rate-limit-respecting batching: 100-symbol batches with 60s spacing
+  inside the 5-min scheduler interval = ~5 batches per tick at <1
+  request/sec, well under Kraken's public ceiling.
+* ``market_session()`` classifier (regular / pre / post / closed via
+  static ET offsets + 2026 US-holiday set). Slack alerts only fire in
+  ``regular`` session — xStocks legitimately trade against staled
+  Alpaca closes outside RTH so off-hours divergence is expected and
+  non-actionable.
+* Slack alert path mirrors ``integrity_mitigation_service`` — uses
+  ``SLACK_WEBHOOK_URL`` env var, never raises, single webhook post per
+  threshold breach.
+
+**New collections**:
+* ``xstock_pair_metadata`` — ``{canonical_symbol, kraken_pair, altname,
+  status, last_seen}``. Unique index on ``canonical_symbol``.
+* ``kraken_equity_shadow_compare`` — ``{symbol, kraken_pair, kraken_mid,
+  kraken_spread_bps, alpaca_mid, divergence_bps, market_session,
+  fetched_at, alert_fired}``. Indexed on ``(symbol, fetched_at)`` and
+  ``fetched_at`` for the burn-in summary aggregator.
+
+**New scheduler job**: ``kraken_shadow_compare`` runs every 5 min;
+guarded by env so cold-start pods stay silent until ops opts in.
+
+**New admin endpoint**: ``GET /api/admin/kraken-shadow/today``
+(owner-gated) returns ``{rows, max_bps, p95_bps, divergent_count,
+alerts_fired, last_run_at, session_counts, sample, threshold_bps,
+enabled}`` for the burn-in card.
+
+**New frontend chip**: ``components/admin/KrakenShadowChip.jsx``
+rendered inline in the burn-in panel. Traffic-light status — gray
+(disabled / no rows), green (clean), yellow (some symbols above
+threshold but no alert fired in regular session), red (alerts fired).
+
+**Universe**: top 20 ML watchlist + full S&P 500 from
+``data/sp500_constituents.json`` (~500 tickers). Tunable via
+``KRAKEN_SHADOW_TOP_N_ML`` and ``KRAKEN_SHADOW_INCLUDE_SP500``.
+
+**Env knobs** (all optional, safe defaults):
+* ``KRAKEN_SHADOW_ENABLED`` (default off)
+* ``KRAKEN_SHADOW_DIVERGENCE_BPS_ALERT`` (default 50)
+* ``KRAKEN_SHADOW_BATCH_SIZE`` (default 100)
+* ``KRAKEN_SHADOW_BATCH_DELAY_SECONDS`` (default 60)
+* ``KRAKEN_SHADOW_PAIR_CACHE_TTL_HOURS`` (default 24)
+* ``KRAKEN_SHADOW_TOP_N_ML`` (default 20)
+* ``KRAKEN_SHADOW_INCLUDE_SP500`` (default true)
+
+**Tests**: 18 cases in ``test_kraken_equity_shadow_service.py``
+covering universe loader (top-N + S&P500 toggle), ticker parser
+(normal + malformed + zero-mid), divergence math (zero-Alpaca guard),
+market-session classifier (RTH / pre / post / weekend / holiday),
+pair resolution (fast-path + altname fallback + missing), pair cache
+(fresh skips upstream, not-listed sentinel), disabled / no-db
+short-circuits, end-to-end tick (3 symbols, mocked HTTP + Alpaca,
+correct divergences persisted), zero-Alpaca-quote skip, and
+``summarize_today`` aggregator (empty + populated + threshold logic).
+**86/86 green** across kraken_shadow + nl_live_bridge +
+confidence_gate + natural_language + integrity_mitigation suites.
+Lint clean. Backend healthy (200 OK).
+
+**Live verified**:
+* ``GET /api/admin/kraken-shadow/today`` (no auth) → HTTP 401.
+* ``GET /api/admin/kraken-shadow/today`` (admin cookie) →
+  ``{rows: 0, threshold_bps: 50, enabled: false, ...}``.
+
 ### NL Live Command Bridge — wire-through to live trading (May 3, 2026)
 
 Follow-up to the Natural Language Trading Layer. Closes the gap between

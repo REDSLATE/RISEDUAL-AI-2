@@ -141,7 +141,10 @@ current live deploy queue.
     broker-agnostic by design.
 
   *Owner-tracked* — re-open this entry when there's capacity.
-  Status: **PARKED (doc-only, 2026-05-03)**.
+  Status: **Phase 0 SHIPPED 2026-05-03 (default OFF, opt-in via
+  ``KRAKEN_SHADOW_ENABLED=1``)**. See PRD §3 entry for details.
+  Phase 1 (paper/shadow order routing) and Phase 2 (live equity
+  orders) remain parked.
 
 - **Adversarial Core: Phase progression + per-regime weight tuning.**
 

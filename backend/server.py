@@ -777,6 +777,38 @@ async def _start_schedulers():
             id='news_feeders_tick',
         )
 
+        # Kraken xStock equity shadow comparator — Phase 0 (market data
+        # only, no orders). Hits Kraken's public Ticker + AssetPairs
+        # endpoints and shadow-compares against our primary Alpaca/AV
+        # quote for the top-N ML watchlist + S&P500 universe. Writes
+        # one row per (symbol × tick) into ``kraken_equity_shadow_compare``.
+        # GATED: the inner ``run_kraken_shadow_compare_once`` short-circuits
+        # unless ``KRAKEN_SHADOW_ENABLED`` is set, so this job is safe
+        # to register unconditionally — cold-start pods stay silent.
+        async def _run_kraken_shadow_compare():
+            try:
+                from services.kraken_equity_shadow_service import (
+                    ensure_indexes,
+                    run_kraken_shadow_compare_once,
+                )
+                # Cheap idempotent index pass — safe every tick.
+                await ensure_indexes(db)
+                summary = await run_kraken_shadow_compare_once(db)
+                if summary.get("ok") and summary.get("rows_written", 0) > 0:
+                    logging.info(
+                        "[kraken_shadow] tick rows=%d alerts=%d session=%s",
+                        summary.get("rows_written", 0),
+                        summary.get("alerts_fired", 0),
+                        summary.get("session"),
+                    )
+            except Exception:
+                logging.exception("kraken_shadow_compare failed (non-critical)")
+        scheduler.add_job(
+            _run_kraken_shadow_compare,
+            'interval', minutes=5,
+            id='kraken_shadow_compare',
+        )
+
         # Sovereign AI Resolution Loop — back-patches
         # sovereign_decisions.outcomes.{60m|4h|eod} from closed paper_trades
         # via the sovereign_decision_id link. Every 15 min, batch cap 50 per
