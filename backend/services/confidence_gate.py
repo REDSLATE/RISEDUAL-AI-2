@@ -213,6 +213,10 @@ async def get_dynamic_confidence_threshold(
     * ``max_drawdown`` + ``loss_streak`` from the track-record builder.
     * ``calibration_gap`` averaged across paper_trades and
       sovereign_decisions resolved subsets.
+    * NL override from ``confidence_gate_overrides._id="current"`` — if
+      an operator set a min_rr via the NL layer, use that as the base
+      instead of the static ``BASE_MIN_CONFIDENCE``. Expired override
+      rows are silently ignored.
 
     Never raises — any data hiccup degrades to the static baseline.
     """
@@ -220,8 +224,39 @@ async def get_dynamic_confidence_threshold(
         db, asset_type=asset_type,
     )
     cal_gap = await _read_calibration_gap(db, asset_type=asset_type)
+
+    # NL override — note the field is named ``min_rr`` for operator
+    # clarity but the gate computes a confidence threshold. We treat the
+    # override as a floor on the threshold: if operator asked for "min
+    # RR 2.0" the confidence bar still rides on drawdown/loss streak.
+    # The min_rr override lives on ``confidence_gate_overrides`` and is
+    # consumed by the existing RR gates in failure_mode_classifier +
+    # NL runtime state.
+    nl_base = BASE_MIN_CONFIDENCE
+    try:
+        if db is not None:
+            override = await db["confidence_gate_overrides"].find_one(
+                {"_id": "current"},
+                {"_id": 0, "min_rr": 1, "expires_at": 1},
+            )
+            if override and override.get("expires_at"):
+                from datetime import datetime, timezone
+                if override["expires_at"] > datetime.now(timezone.utc):
+                    # NL override — shift the base by 5 points per 0.5
+                    # above default (conservative mapping). This couples
+                    # an "operator wants tighter RR" signal to the
+                    # confidence gate without blowing through MAX_THRESHOLD.
+                    extra_rr = max(0.0, float(override["min_rr"]) - 1.5)
+                    nl_base = min(
+                        MAX_THRESHOLD,
+                        BASE_MIN_CONFIDENCE + min(0.15, extra_rr * 0.10),
+                    )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[confidence_gate] override read failed: %s", exc)
+
     return compute_dynamic_threshold(
         drawdown=drawdown,
         loss_streak=loss_streak,
         calibration_gap=cal_gap,
+        base=nl_base,
     )
