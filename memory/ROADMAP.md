@@ -141,10 +141,49 @@ current live deploy queue.
     broker-agnostic by design.
 
   *Owner-tracked* — re-open this entry when there's capacity.
-  Status: **Phase 0 SHIPPED 2026-05-03 (default OFF, opt-in via
-  ``KRAKEN_SHADOW_ENABLED=1``)**. See PRD §3 entry for details.
+  Status: **Phase 0 SHIPPED 2026-05-03** (infrastructure complete,
+  default OFF, opt-in via ``KRAKEN_SHADOW_ENABLED=1``).
+
+  **Geo-block discovered on activation (2026-05-03)**: when the env
+  flag was flipped on for a live verification run, the manual tick
+  returned ``rows_written: 0 / no_listed_xstocks``. Probing
+  Kraken's public REST API directly confirmed:
+
+  * Pod egress IP is **US (Iowa)**.
+  * ``GET /0/public/AssetPairs`` returns 1528 pairs but **0 rows
+    with ``aclass_base == "tokenized_asset"``** from this region.
+  * Direct ``Ticker?pair=AAPL*`` probes all return
+    ``EQuery:Unknown asset pair`` regardless of pair-code form.
+
+  **Root cause**: Kraken xStocks are regulatory-gated to **non-US
+  jurisdictions** (MiCA / non-US frameworks). The earlier
+  integration playbook framing (Alpaca custody partnership,
+  one-to-one backing, etc.) applies only to non-US users; the
+  same Kraken account sees no tokenized_asset rows when the
+  request originates from a US IP.
+
+  **What's working anyway**: the shadow service code is correct —
+  symbol resolution gracefully writes ``not_listed`` sentinels,
+  the scheduler tick short-circuits with a structured summary,
+  zero rows persist, no orders or auth happen. The
+  ``GET /api/admin/kraken-shadow/today`` endpoint, the burn-in
+  chip, the slack alert path, and the divergence math are all
+  exercised by the 18 unit tests and ready to flip on in
+  *whichever* environment has non-US egress.
+
+  **Re-activation path** (when ready):
+  1. Either deploy to a Kubernetes cluster with non-US egress,
+     OR plumb an outbound proxy (e.g. a small VPN sidecar or a
+     CDN-fronted proxy in EU/UK) for ``api.kraken.com`` only.
+     The shadow service uses a single base URL — surgical proxy
+     scope is easy.
+  2. Flip ``KRAKEN_SHADOW_ENABLED=1`` again. First tick discovers
+     pair metadata and starts populating ``kraken_equity_shadow_compare``.
+  3. Once ~24h of data is in, the burn-in chip's traffic-light
+     status will start showing real divergence trends.
+
   Phase 1 (paper/shadow order routing) and Phase 2 (live equity
-  orders) remain parked.
+  orders) remain parked behind the same geo gate.
 
 - **Adversarial Core: Phase progression + per-regime weight tuning.**
 

@@ -87,6 +87,16 @@ integrity_mitigation. Lint clean. Backend healthy.
 
 ### Kraken xStock Equity Shadow — Phase 0 (May 3, 2026)
 
+> **⚠️ Geo-block discovered on activation (2026-05-03)**: probing
+> Kraken's public REST live from this US-egress pod shows **zero
+> tokenized_asset pairs** — Kraken regulatory-gates xStocks to
+> non-US jurisdictions. ``KRAKEN_SHADOW_ENABLED`` was flipped on
+> briefly for verification, returned ``no_listed_xstocks`` cleanly,
+> and was rolled back. Infrastructure is intact and tested; needs
+> non-US egress (proxy / EU pod) before it can produce data.
+> Full re-activation runbook in `ROADMAP.md` under the Kraken P2
+> entry.
+
 Phase 0 of the Kraken US-equities ("xStocks") rollout: **public market
 data only**, shadow-compared against our existing Alpaca / AV equity
 quote provider. **No orders, no auth.** Default OFF — opt in via
