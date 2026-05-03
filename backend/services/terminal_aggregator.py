@@ -551,3 +551,329 @@ async def get_signal(
         "position_context": position_context or None,
         "updated_at": now.isoformat(),
     }
+
+
+# ═══════════════ top actions (T2) ═══════════════
+#
+# Phase T2: prioritized action queue for the operator's terminal.
+# Composes existing collections — sovereign_decisions (latest signals),
+# paper_trades (open positions), option_universe (tradeability) — into
+# ranked action cards.
+#
+# Default correlation rules (operator skipped explicit rules):
+#   * Hard cap of 5 ENTER actions per response (concentration guard).
+#   * Each open paper_trade in the same symbol replaces a fresh ENTER
+#     with a MANAGE card so we never recommend doubling down silently.
+#   * No sector-correlation logic in T2 — re-open if the operator
+#     wants tighter coupling (would need symbol→sector resolver +
+#     beta data, both already in the codebase but out of scope for
+#     T2's "default" path).
+
+TOP_ACTIONS_LOOKBACK_HOURS = 24
+TOP_ACTIONS_MAX_DEFAULT = 10
+TOP_ACTIONS_ENTER_CAP = 5
+
+# Conviction-tier → priority anchor. Confidence within a tier nudges
+# rank ordering. Keep this tight: we don't want a 0.71-confidence
+# "medium" sneaking ahead of a 0.85-confidence "high".
+_TIER_PRIORITY_ANCHOR = {
+    "high": 0.80,
+    "VERY_STRONG": 0.85,
+    "STRONG": 0.75,
+    "medium": 0.55,
+    "MODERATE": 0.55,
+    "low": 0.30,
+    "WEAK": 0.30,
+}
+
+ActionKind = Literal["MANAGE_POSITION", "ENTER", "WATCH", "EXIT"]
+
+
+def _action_priority_score(
+    *,
+    confidence: float,
+    tier: str,
+    size_multiplier: float,
+    decision_age_minutes: float,
+) -> float:
+    """Pure ranking score in ``[0, 1]``.
+
+    Composition:
+    * ~70% conviction (anchored on the tier and adjusted by raw
+      confidence within the tier).
+    * ~20% size multiplier — Sovereign already encodes "how aggressive
+      should we be" in the size multiplier. Tradeability + risk vetoes
+      drag this down upstream.
+    * ~10% freshness decay — older decisions lose priority linearly
+      down to 0 at the lookback horizon.
+    """
+    anchor = _TIER_PRIORITY_ANCHOR.get(tier, 0.50)
+    confidence = max(0.0, min(1.0, float(confidence or 0.0)))
+    size = max(0.0, min(1.5, float(size_multiplier or 0.0)))
+    # Linear freshness decay from 1.0 at age=0 to 0.0 at the horizon.
+    horizon_minutes = TOP_ACTIONS_LOOKBACK_HOURS * 60
+    freshness = max(0.0, 1.0 - (decision_age_minutes / horizon_minutes))
+
+    raw = (
+        0.70 * (0.5 * anchor + 0.5 * confidence)
+        + 0.20 * (size / 1.5)
+        + 0.10 * freshness
+    )
+    return round(max(0.0, min(1.0, raw)), 4)
+
+
+def _classify_kind(
+    *,
+    action: str,
+    tier: str,
+    confidence: float,
+    has_open_position: bool,
+) -> ActionKind:
+    """Map a sovereign decision + position context into one of the
+    four action kinds the terminal renders. ``has_open_position`` is
+    the only correlation rule applied at T2 default settings — it
+    reroutes a fresh ENTER into a MANAGE_POSITION card for the same
+    symbol so we never recommend doubling down silently."""
+    if has_open_position:
+        return "MANAGE_POSITION"
+    if action in ("LONG", "BUY"):
+        if tier in ("high", "STRONG", "VERY_STRONG") or confidence >= 0.70:
+            return "ENTER"
+        return "WATCH"
+    if action in ("SHORT", "SELL"):
+        if tier in ("high", "STRONG", "VERY_STRONG") or confidence >= 0.70:
+            return "ENTER"
+        return "WATCH"
+    # HOLD / UNKNOWN — only worth surfacing if the model is confident
+    # enough to justify operator attention (e.g., HOLD@0.80 = "stay
+    # the course" with conviction).
+    if confidence >= 0.65:
+        return "WATCH"
+    return "WATCH"
+
+
+def _reason_text(
+    *,
+    kind: ActionKind,
+    action: str,
+    tier: str,
+    confidence: float,
+    has_open_position: bool,
+    vetoes_count: int,
+) -> str:
+    parts: list[str] = []
+    if kind == "MANAGE_POSITION":
+        parts.append(f"Open position; latest sovereign view is {action}")
+    elif kind == "ENTER":
+        parts.append(f"Sovereign {action}")
+    elif kind == "WATCH":
+        parts.append(f"Sovereign {action} below entry threshold")
+    elif kind == "EXIT":
+        parts.append("Exit recommended")
+    parts.append(f"{tier} tier")
+    parts.append(f"conf {confidence:.2f}")
+    if vetoes_count:
+        parts.append(f"{vetoes_count} active veto(es)")
+    if not has_open_position and kind == "ENTER":
+        parts.append("no open position")
+    return " · ".join(parts)
+
+
+async def _latest_decisions_per_symbol(
+    ctx: TerminalContext, *, since: datetime, max_universe: int = 200,
+) -> list[dict[str, Any]]:
+    """Pull the freshest sovereign decision for each symbol seen in
+    the lookback window. Single ``find().sort().to_list`` then
+    Python-side dedupe — keeps test stubs simple and the I/O at one
+    Mongo round trip."""
+    cursor = ctx.db["sovereign_decisions"].find(
+        {"created_at": {"$gte": since}},
+    ).sort("created_at", -1).limit(max_universe * 5)
+    rows = await cursor.to_list(max_universe * 5)
+    seen: set[str] = set()
+    latest: list[dict[str, Any]] = []
+    for row in rows:
+        sym = (row.get("symbol") or "").upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        latest.append(row)
+        if len(latest) >= max_universe:
+            break
+    return latest
+
+
+async def _open_positions_for_user(
+    ctx: TerminalContext, user_id: str | None,
+) -> dict[str, dict[str, Any]]:
+    """Map ``symbol -> open paper_trade row`` for the requesting user.
+
+    No user_id → empty map (the terminal still surfaces ENTER actions
+    on a global view). Crypto + equity open trades are merged so the
+    operator sees one unified action queue.
+    """
+    if not user_id:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for coll, sym_field in (("paper_trades", "ticker"), ("crypto_paper_trades", "symbol")):
+        cursor = ctx.db[coll].find(
+            {"status": "open", "user_id": user_id},
+        )
+        rows = await cursor.to_list(length=200)
+        for row in rows:
+            sym = (row.get(sym_field) or row.get("symbol") or "").upper()
+            if sym:
+                out[sym] = row
+    return out
+
+
+async def get_top_actions(
+    ctx: TerminalContext,
+    *,
+    user_id: str | None = None,
+    limit: int = TOP_ACTIONS_MAX_DEFAULT,
+) -> dict[str, Any]:
+    """Answers Q6: what should the operator act on right now?
+
+    Composes the freshest sovereign decision per symbol with the
+    user's open paper_trades. Ranks by conviction × size × freshness,
+    classifies each into one of MANAGE_POSITION / ENTER / WATCH /
+    EXIT, and returns the top ``limit`` actions plus per-kind totals.
+
+    Read-only and bounded — caps the underlying decision set at 200
+    symbols × the 24h lookback window. No fresh API calls, no model
+    inference. Empty list on cold-start (no sovereign rows yet) is
+    a valid response, never a failure.
+    """
+    from datetime import timedelta as _td
+
+    now = _now(ctx)
+    limit = max(1, min(int(limit if limit is not None else TOP_ACTIONS_MAX_DEFAULT), 50))
+    since = now - _td(hours=TOP_ACTIONS_LOOKBACK_HOURS)
+
+    decisions = await _latest_decisions_per_symbol(ctx, since=since)
+    open_positions = await _open_positions_for_user(ctx, user_id)
+
+    # Surface MANAGE_POSITION cards for every open position even if
+    # there's no fresh sovereign decision on that symbol — operator
+    # still needs visibility.
+    positions_without_signal = {
+        sym: row for sym, row in open_positions.items()
+        if not any((d.get("symbol") or "").upper() == sym for d in decisions)
+    }
+
+    actions: list[dict[str, Any]] = []
+    enter_count = 0
+
+    for d in decisions:
+        symbol = (d.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        action = (d.get("action") or "HOLD").upper()
+        tier = d.get("conviction_tier") or _conviction_label(d.get("confidence"))
+        confidence = float(d.get("confidence") or 0.0)
+        size_multiplier = float(d.get("size_multiplier") or 0.0)
+        vetoes = list(d.get("vetoes") or [])
+        has_pos = symbol in open_positions
+
+        kind = _classify_kind(
+            action=action, tier=tier,
+            confidence=confidence, has_open_position=has_pos,
+        )
+
+        # Concentration guard — once we've queued the configured
+        # number of ENTER cards, demote subsequent ENTER candidates
+        # to WATCH so the operator sees them but doesn't get nudged
+        # into over-concentration.
+        correlation_note: str | None = None
+        if kind == "ENTER" and enter_count >= TOP_ACTIONS_ENTER_CAP:
+            kind = "WATCH"
+            correlation_note = (
+                f"Demoted to WATCH — {TOP_ACTIONS_ENTER_CAP}-position "
+                f"concentration cap already reached this tick."
+            )
+        elif kind == "ENTER":
+            enter_count += 1
+
+        created = d.get("created_at")
+        if isinstance(created, datetime):
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            age_min = max(0.0, (now - created).total_seconds() / 60.0)
+        else:
+            age_min = 0.0
+
+        score = _action_priority_score(
+            confidence=confidence,
+            tier=tier,
+            size_multiplier=size_multiplier,
+            decision_age_minutes=age_min,
+        )
+
+        actions.append({
+            "kind": kind,
+            "symbol": symbol,
+            "asset_type": d.get("asset_type") or "equity",
+            "action": action,
+            "priority_score": score,
+            "conviction": {"tier": tier, "score": round(confidence, 4)},
+            "size_multiplier": round(size_multiplier, 4),
+            "vetoes": vetoes,
+            "vetoes_count": len(vetoes),
+            "reason": _reason_text(
+                kind=kind, action=action, tier=tier,
+                confidence=confidence, has_open_position=has_pos,
+                vetoes_count=len(vetoes),
+            ),
+            "correlation_note": correlation_note,
+            "decision_id": d.get("decision_id"),
+            "decision_age_minutes": round(age_min, 1),
+            "shadow": bool(d.get("shadow", True)),
+            "links": {"signal": f"/api/terminal/signal/{symbol}"},
+        })
+
+    # MANAGE cards for positions without any fresh signal.
+    for sym, row in positions_without_signal.items():
+        actions.append({
+            "kind": "MANAGE_POSITION",
+            "symbol": sym,
+            "asset_type": row.get("asset_class") or "equity",
+            "action": (row.get("direction") or "LONG").upper(),
+            "priority_score": 0.50,
+            "conviction": {"tier": "unknown", "score": None},
+            "size_multiplier": 0.0,
+            "vetoes": [],
+            "vetoes_count": 0,
+            "reason": "Open position — no fresh sovereign view in window",
+            "correlation_note": None,
+            "decision_id": None,
+            "decision_age_minutes": None,
+            "shadow": True,
+            "links": {"signal": f"/api/terminal/signal/{sym}"},
+        })
+
+    actions.sort(key=lambda a: a["priority_score"], reverse=True)
+    actions = actions[:limit]
+    for i, a in enumerate(actions, start=1):
+        a["rank"] = i
+
+    totals = {"manage": 0, "enter": 0, "watch": 0, "exit": 0}
+    for a in actions:
+        if a["kind"] == "MANAGE_POSITION":
+            totals["manage"] += 1
+        elif a["kind"] == "ENTER":
+            totals["enter"] += 1
+        elif a["kind"] == "WATCH":
+            totals["watch"] += 1
+        elif a["kind"] == "EXIT":
+            totals["exit"] += 1
+
+    return {
+        "as_of": now.isoformat(),
+        "user_id": user_id,
+        "limit": limit,
+        "lookback_hours": TOP_ACTIONS_LOOKBACK_HOURS,
+        "enter_cap": TOP_ACTIONS_ENTER_CAP,
+        "totals": totals,
+        "actions": actions,
+    }

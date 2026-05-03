@@ -182,8 +182,13 @@ current live deploy queue.
   3. Once ~24h of data is in, the burn-in chip's traffic-light
      status will start showing real divergence trends.
 
-  Phase 1 (paper/shadow order routing) and Phase 2 (live equity
-  orders) remain parked behind the same geo gate.
+  Phase 1 — **live equity orders** (skip the paper/shadow routing
+  step that the original entry described — Kraken doesn't offer
+  paper trading; paper stays on Alpaca). Phase 1 needs the same
+  non-US egress gate that blocks Phase 0 data today.
+  Phase 2 — broker-routing env var
+  ``EQUITY_BROKER_ROUTING ∈ {alpaca, kraken, best_venue}`` and the
+  hard ``RISEDUAL_LIVE_EXECUTION=1`` opt-in.
 
 - **Adversarial Core: Phase progression + per-regime weight tuning.**
 

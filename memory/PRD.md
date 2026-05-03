@@ -55,6 +55,76 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Terminal Top Actions — T2 endpoint (May 3, 2026)
+
+**P0 from the handoff backlog**: ``/api/terminal/top-actions`` ships
+the operator's prioritized action queue for the Market State
+Awareness Terminal UI. Composes ``sovereign_decisions`` (latest per
+symbol over the last 24h) with the user's open ``paper_trades`` /
+``crypto_paper_trades`` into ranked action cards.
+
+**New endpoint**: ``GET /api/terminal/top-actions?user_id=&limit=10``
+(owner-gated). Empty list on cold-start is a valid response.
+
+**Action kinds**:
+* ``MANAGE_POSITION`` — symbol has an open user paper-trade (never
+  silently doubles-down even if a fresh ``LONG`` signal arrived).
+* ``ENTER`` — high-conviction (``tier ∈ {high, STRONG, VERY_STRONG}``
+  or ``confidence ≥ 0.70``) ``LONG/SHORT`` signal on a symbol with no
+  open user position.
+* ``WATCH`` — every other signal worth surfacing.
+* ``EXIT`` — reserved for the close-side rule layer (not yet wired).
+
+**Ranking score** (in ``[0, 1]``):
+* 70% conviction (50% tier-anchor + 50% raw confidence).
+* 20% Sovereign size_multiplier.
+* 10% freshness decay (linear over the 24h lookback).
+
+**Default correlation rules** (operator skipped explicit rules):
+* Hard cap of **5 ENTER cards** per response. The 6th-and-beyond
+  ENTER candidate is demoted to ``WATCH`` with a ``correlation_note``
+  explaining the concentration cap. The operator still sees the
+  signal, just without the "act now" prompt.
+* No sector / beta correlation logic at T2 default settings (the
+  symbol→sector resolver and beta data exist but are out of scope
+  for the default path; re-open if tighter coupling is needed).
+* ``MANAGE_POSITION`` cards always surface for open positions, even
+  with no fresh sovereign view in the window — the operator never
+  loses visibility on a position because the model went quiet.
+
+**Per-card payload** (pinned by ``test_top_actions_action_payload_shape``):
+``kind, symbol, asset_type, action, priority_score, conviction,
+size_multiplier, vetoes, vetoes_count, reason, correlation_note,
+decision_id, decision_age_minutes, shadow, links.signal, rank``.
+
+**Tests**: 11 cases in ``test_terminal_top_actions.py`` covering
+cold-start envelope, dedup-to-freshest-per-symbol, lookback exclusion,
+high-conviction LONG → ENTER, open-position reroute to MANAGE_POSITION,
+6-position concentration cap → WATCH+correlation_note, priority-score
+ranking monotonicity, orphan-position MANAGE surface, ``limit``
+clamp [1, 50], low-confidence HOLD surfaces as WATCH (not silenced),
+and the per-card payload schema. **113/113 green** across terminal +
+ingestion + kraken_shadow + nl_live_bridge + confidence_gate +
+natural_language + integrity_mitigation suites. Lint clean. Live
+endpoint verified — 401 unauth, owner-cookie returns ranked actions
+composed from 217 real sovereign_decisions rows in the test DB.
+
+### Kraken xStock Shadow — re-enabled per operator (May 3, 2026)
+
+Operator confirmed: empty-row days are themselves signal ("slow days
+are just as important as busy days"). ``KRAKEN_SHADOW_ENABLED=1`` is
+back on permanently. The shadow lane runs every 5 min, persists
+``not_listed`` sentinels for symbols Kraken's US-egress AssetPairs
+won't expose (currently all top-20 ML symbols), and writes empty
+ticks into the audit trail. When egress changes (proxy, EU pod) or
+Kraken lifts the geo-restriction, the inflection point will be
+visible in the data with no code change required.
+
+Also corrected the Kraken P2 ROADMAP entry — Phase 1 is no longer
+"paper/shadow equity routing" (Kraken doesn't offer paper trading);
+paper stays on Alpaca. Phase 1 is now framed as live equity orders
+behind the same geo gate that Phase 0 needs.
+
 ### Burn-in Ingestion Sparkline — Benzinga + AV (May 3, 2026)
 
 P1 burn-in observability: a small two-line SVG sparkline on the

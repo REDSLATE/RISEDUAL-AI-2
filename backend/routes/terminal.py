@@ -14,7 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from services.terminal_aggregator import (
-    TerminalContext, get_market_state, get_signal,
+    TerminalContext, get_market_state, get_signal, get_top_actions,
 )
 
 router = APIRouter(prefix="/api/terminal", tags=["terminal"])
@@ -62,3 +62,29 @@ async def terminal_signal(
         raise HTTPException(status_code=400, detail="Invalid symbol")
     ctx = TerminalContext(db=db)
     return await get_signal(ctx, symbol=symbol, user_id=user_id)
+
+
+@router.get("/top-actions")
+async def terminal_top_actions(
+    request: Request,
+    user_id: str | None = None,
+    limit: int = 10,
+):
+    """Answers Q6: what should the operator act on right now?
+
+    Returns the operator's prioritized action queue for the terminal:
+    a ranked list of MANAGE_POSITION / ENTER / WATCH / EXIT cards
+    composed from the freshest sovereign decisions per symbol plus
+    any open paper trades for ``user_id``.
+
+    Read-only — never creates a new decision. Empty list on cold-start
+    is a valid response. Bounded ``limit`` ∈ [1, 50] to keep payload
+    sizes predictable.
+    """
+    await _require_owner_ref(request)
+    if limit is not None and (limit < 1 or limit > 50):
+        raise HTTPException(
+            status_code=400, detail="limit must be between 1 and 50",
+        )
+    ctx = TerminalContext(db=db)
+    return await get_top_actions(ctx, user_id=user_id, limit=limit)
