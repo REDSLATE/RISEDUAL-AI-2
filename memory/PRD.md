@@ -55,6 +55,49 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### NL Live Command Bridge — wire-through to live trading (May 3, 2026)
+
+Follow-up to the Natural Language Trading Layer. Closes the gap between
+the advisory NL runtime state and the deterministic production gates.
+`SET_RISK_MULTIPLIER` now composes with `integrity_mitigation_service`,
+and `SET_MIN_RR` now writes an override doc that `confidence_gate` reads
+on every tick.
+
+Module: `services/nl_live_command_bridge.py`
+* Two-step flow: `prepare_nl_live_command()` stages a pending row, then
+  `confirm_nl_live_command(pending_id, session_id)` applies it.
+* 30s confirmation cooldown + 120s pending TTL (Mongo TTL index).
+* Integrity-floor respected — NL can tighten sizing, never widen above
+  the deterministic throttle ceiling. Preview payload shows the
+  operator the capped effective value and a `floor_note` explaining it.
+* Idempotent confirms — re-confirming an applied command returns
+  `already_applied` instead of double-inserting.
+* Session-isolation — only the session that prepared a command can
+  confirm it.
+* Proof-chain audit trail via `ProofEventType.NL_COMMAND_APPLIED`.
+
+Collections touched:
+* `nl_pending_commands` (TTL index on `expires_at`)
+* `confidence_gate_overrides` (single `_id: "current"` row, read by
+  `confidence_gate.get_dynamic_confidence_threshold`)
+* `integrity_mitigations` (via the existing activator)
+* `decision_proof_chain` (via `async_append_proof_event`)
+
+`confidence_gate.get_dynamic_confidence_threshold()` now:
+* Reads `confidence_gate_overrides._id="current"` on every tick.
+* Lifts the base threshold by `min(0.15, (min_rr - 1.5) × 0.10)` when
+  active, silently ignores expired rows, and caps at MAX_THRESHOLD.
+
+**Tests**: 13 cases in `test_nl_live_command_bridge.py` covering:
+prepare staging (no side effects), integrity-ceiling capping,
+confirm routing for both command kinds, idempotency, expiry, session
+mismatch, unknown pending_id, confidence_gate override consumption,
+confidence_gate ignoring expired overrides, index creation on None-db
+and fake-db, no-db structured error path. **173/173 green** across
+adjacent suites (nl_live_bridge + confidence_gate + natural_language +
+integrity_mitigation + proof_chain + symbol_failure + sovereign_ai).
+Lint clean.
+
 ### Natural Language Trading Layer (May 3, 2026)
 
 User-supplied drop-in module: deterministic NL trade explanations + bull/bear/Commander
