@@ -3361,3 +3361,89 @@ async def kraken_shadow_today(request: Request):
     from services.kraken_equity_shadow_service import summarize_today
     return await summarize_today(db)
 
+
+@router.get("/news-shock/ingestion-sparkline")
+async def news_shock_ingestion_sparkline(request: Request, hours: int = 24):
+    """Hourly Benzinga + Alpha Vantage article ingestion counts over a
+    rolling N-hour window for the burn-in sparkline.
+
+    Returns
+    -------
+    {
+        "hours": int,
+        "buckets": ["2026-05-03T01:00:00Z", ...],   # ascending UTC hour starts
+        "benzinga": [int, int, ...],                # per-bucket counts
+        "alpha_vantage": [int, int, ...],
+        "totals": {"benzinga": int, "alpha_vantage": int},
+        "current_hour": {"benzinga": int, "alpha_vantage": int},
+    }
+
+    Aggregates ``catalyst_events`` by hour bucket. Caps at 168 hours
+    (one week) to keep the aggregation cheap and the sparkline
+    legible.
+    """
+    await _require_owner(request)
+    from datetime import timedelta
+
+    hours = max(1, min(int(hours if hours is not None else 24), 168))
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    start = now - timedelta(hours=hours - 1)
+
+    # One aggregation pass — group by (source, hour-bucket) and emit
+    # the per-source per-hour count. We fan it out into two parallel
+    # arrays in Python because the bucket list is short.
+    pipeline = [
+        {"$match": {"event_time": {"$gte": start}}},
+        {"$group": {
+            "_id": {
+                "source": "$source",
+                "bucket": {
+                    "$dateTrunc": {
+                        "date": "$event_time",
+                        "unit": "hour",
+                        "timezone": "UTC",
+                    },
+                },
+            },
+            "count": {"$sum": 1},
+        }},
+    ]
+    rows = await db.catalyst_events.aggregate(pipeline).to_list(length=None)
+
+    bucket_starts: list[datetime] = []
+    for i in range(hours):
+        bucket_starts.append(start + timedelta(hours=i))
+
+    benzinga = [0] * hours
+    av = [0] * hours
+    for r in rows:
+        src = (r.get("_id", {}) or {}).get("source")
+        bucket = (r.get("_id", {}) or {}).get("bucket")
+        if not isinstance(bucket, datetime):
+            continue
+        if bucket.tzinfo is None:
+            bucket = bucket.replace(tzinfo=timezone.utc)
+        # Find bucket index by hour delta.
+        delta_h = int((bucket - start).total_seconds() // 3600)
+        if delta_h < 0 or delta_h >= hours:
+            continue
+        if src == "benzinga":
+            benzinga[delta_h] = int(r.get("count", 0))
+        elif src == "alpha_vantage":
+            av[delta_h] = int(r.get("count", 0))
+
+    return {
+        "hours": hours,
+        "buckets": [b.isoformat() for b in bucket_starts],
+        "benzinga": benzinga,
+        "alpha_vantage": av,
+        "totals": {
+            "benzinga": sum(benzinga),
+            "alpha_vantage": sum(av),
+        },
+        "current_hour": {
+            "benzinga": benzinga[-1] if benzinga else 0,
+            "alpha_vantage": av[-1] if av else 0,
+        },
+    }
+

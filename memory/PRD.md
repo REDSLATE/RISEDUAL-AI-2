@@ -55,6 +55,36 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Burn-in Ingestion Sparkline — Benzinga + AV (May 3, 2026)
+
+P1 burn-in observability: a small two-line SVG sparkline on the
+admin burn-in panel showing hourly Benzinga + Alpha Vantage article
+ingestion counts over a rolling N-hour window (default 24h, cap 168h).
+Lets ops spot a stalled feeder at a glance instead of digging through
+catalyst_events row counts.
+
+**New endpoint**: ``GET /api/admin/news-shock/ingestion-sparkline?hours=24``
+(owner-gated). Returns ``{hours, buckets[], benzinga[], alpha_vantage[],
+totals: {benzinga, alpha_vantage}, current_hour: {benzinga,
+alpha_vantage}}``. Single Mongo aggregation against ``catalyst_events``
+with ``$dateTrunc`` hour buckets — cheap, indexed by ``event_time``.
+Hours param is bounded ``[1, 168]`` so a runaway query doesn't pull
+the whole event log.
+
+**New frontend component**: ``components/admin/IngestionSparkline.jsx``
+— pure inline-SVG (no chart library, no bundle bloat), two stacked
+sparklines coloured emerald (Benzinga) and blue (AV) with explicit
+24h totals + current-hour counter beside each line. Renders an
+"empty state" card when both sources are silent for the window so
+ops can distinguish "feeder paused" from "render bug".
+
+**Tests**: 3 cases in ``test_ingestion_sparkline.py`` covering: 401
+unauth, hours=24 returns the seeded benzinga (6) + AV (2) counts in
+the right buckets, and ``hours=0`` floors to 1 / ``hours=999`` caps
+to 168. **89/89 green** across ingestion + kraken_shadow +
+nl_live_bridge + confidence_gate + natural_language +
+integrity_mitigation. Lint clean. Backend healthy.
+
 ### Kraken xStock Equity Shadow — Phase 0 (May 3, 2026)
 
 Phase 0 of the Kraken US-equities ("xStocks") rollout: **public market
