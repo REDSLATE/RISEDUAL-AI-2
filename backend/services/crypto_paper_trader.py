@@ -339,6 +339,37 @@ async def run_crypto_symbol(
     except Exception as _fp_exc:  # noqa: BLE001
         logger.debug("[crypto-bot] failure penalty lookup failed for %s: %s", symbol, _fp_exc)
 
+    # ── Dynamic confidence gate (drawdown / loss-streak / calibration aware) ─
+    # Tests POST-PENALTY confidence: the failure-memory layer above may have
+    # already trimmed conviction. If we still pass the dynamic threshold,
+    # proceed; otherwise short-circuit to HOLD with full audit logging.
+    try:
+        from services.confidence_gate import get_dynamic_confidence_threshold
+        _crypto_thresh = await get_dynamic_confidence_threshold(db, asset_type="crypto")
+        _post_penalty_conf = float(signal.get("confidence") or 0.0)
+        if (
+            starting_direction != "HOLD"
+            and final_direction != "HOLD"
+            and _post_penalty_conf < _crypto_thresh.threshold
+        ):
+            logger.info(
+                "[crypto-bot] Dynamic confidence gate blocked %s: %.3f < %.3f (delta=%.2f, %s)",
+                symbol, _post_penalty_conf, _crypto_thresh.threshold,
+                _crypto_thresh.delta, ",".join(_crypto_thresh.reasons),
+            )
+            from services.crypto_signal_audit import log_adversarial_decision as _log_skip
+            await _log_skip(db, symbol=symbol, signal=signal, final_direction="HOLD")
+            return {
+                "symbol": symbol,
+                "skipped": True,
+                "reason": "below_dynamic_confidence_threshold",
+                "threshold": _crypto_thresh.threshold,
+                "confidence": _post_penalty_conf,
+                "gate_reasons": _crypto_thresh.reasons,
+            }
+    except Exception as _cg_exc:  # noqa: BLE001
+        logger.debug("[crypto-bot] confidence gate lookup failed for %s: %s", symbol, _cg_exc)
+
     if adv_decision is not None:
         phase = adv_decision.get("phase") or "shadow"
         commander = (adv_decision.get("decision") or "").upper()

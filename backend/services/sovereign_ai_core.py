@@ -111,6 +111,13 @@ def _strategist_model(f: SovereignFeatures) -> dict[str, Any]:
 
     Independent of the upstream Strategist (the upstream one becomes advisory
     post-promotion; we need our own directional brain).
+
+    **Adversarial coupling**: when the upstream strategist passes a high-
+    confidence proposal that contradicts Sovereign's native compute, we
+    AMPLIFY the contradicting vote — a confidently-wrong proposal is
+    information. This makes Sovereign genuinely adversarial: it doesn't run
+    beside the strategist, it specifically attacks the proposal when it
+    has reason to.
     """
     rsi = f.rsi if f.rsi is not None else 50.0
     mom = f.momentum_5b if f.momentum_5b is not None else 0.0
@@ -131,6 +138,26 @@ def _strategist_model(f: SovereignFeatures) -> dict[str, Any]:
     # Momentum-only contribution (even if RSI is neutral)
     bullish += max(0.0, min(0.3, mom * 10))
     bearish += max(0.0, min(0.3, -mom * 10))
+
+    # ── Adversarial amplification ──
+    # When strategist proposes LONG with high conviction but our native
+    # compute leans bearish (or vice versa), the disagreement amplifies our
+    # contradicting side. Capped at +0.20 amplification so a borderline
+    # native vote can't be turned into a strong contradiction by upstream
+    # confidence alone.
+    upstream_action = (f.strategist_action or "").upper()
+    upstream_conf = float(f.strategist_confidence or 0.0)
+    if upstream_conf >= 0.70 and upstream_action in {"LONG", "SHORT"}:
+        native_lean_bull = bullish > bearish
+        native_lean_bear = bearish > bullish
+        if upstream_action == "LONG" and native_lean_bear:
+            # Strategist confidently LONG but we lean bear → amplify bear
+            amp = min(0.20, (upstream_conf - 0.50) * 0.40)
+            bearish += amp
+        elif upstream_action == "SHORT" and native_lean_bull:
+            # Strategist confidently SHORT but we lean bull → amplify bull
+            amp = min(0.20, (upstream_conf - 0.50) * 0.40)
+            bullish += amp
 
     net = bullish - bearish
     if net > 0.15:

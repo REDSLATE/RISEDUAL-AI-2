@@ -23,6 +23,79 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Confidence Gate + Sovereign Adversarial Amplification (May 3, 2026)
+
+Two additive imports from the user's clean-corridor design that closed real
+gaps in our existing stack:
+
+**1. Dynamic confidence gate** (`services/confidence_gate.py`)
+
+Replaces the static `_MIN_PAPER_CONFIDENCE = 0.55` floor with a dynamic
+threshold that raises the bar when the system is in stress:
+
+| Condition                | Threshold delta |
+|--------------------------|-----------------|
+| drawdown >= 10%          | +0.05           |
+| drawdown >= 15%          | +0.10 (stacks)  |
+| calibration_gap >= 8%    | +0.05           |
+| loss_streak >= 3         | +0.05           |
+| (cap)                    | 0.90 max        |
+
+Drawdown branches stack — at 15% DD we get +0.15. Calibration gap is the
+average of two sources: (a) win-rate vs avg-confidence on `paper_trades`
+and (b) right-rate vs avg-conviction on resolved `sovereign_decisions` —
+giving us both production-trade and shadow-engine calibration evidence.
+
+Wired into BOTH cores:
+* **Equity** (`ml_paper_trader`): `max(_MIN_PAPER_CONFIDENCE, dynamic_threshold)`
+  becomes the new floor; skip reason logged to activity feed includes the
+  dynamic delta + per-branch reasons.
+* **Crypto** (`crypto_paper_trader`): tested AFTER the symbol-failure
+  penalty has trimmed conviction (so the dynamic gate sees post-penalty
+  confidence). HOLD short-circuit returns `reason="below_dynamic_confidence_threshold"`
+  with full audit fields.
+
+Live verified: both cores report `threshold=0.70 delta=0.0 reasons=[baseline]`
+on a healthy book with no drawdown / no loss streak / no calibration data
+yet — exactly the right baseline.
+
+**2. Sovereign genuinely adversarial** (`sovereign_ai_core._strategist_model`)
+
+Previously: `_strategist_model` ignored `SovereignFeatures.strategist_action` /
+`strategist_confidence` even though we passed them in. Sovereign was
+"running beside" the strategist, not "attacking" it.
+
+Fix: when upstream strategist passes a high-confidence (>=0.70) proposal
+that contradicts Sovereign's native compute (LONG vs bearish lean, or
+SHORT vs bullish lean), AMPLIFY Sovereign's contradicting vote. The
+disagreement itself is information — a confidently-wrong proposal is
+worth attacking. Amplification capped at +0.20 so a borderline native
+vote can't be flipped to a strong contradiction by upstream confidence
+alone.
+
+Pinned by tests: amplification fires only on disagreement, only when
+upstream conf >= 0.70, never on neutral native compute, never when sides
+agree.
+
+**Items deliberately skipped** from the user's design:
+* Hard 0.15 confidence-gap block — would conflict with our existing
+  Phase-2 brake's halve-on-disagreement discipline (better to compose,
+  not duplicate).
+* Unified `run_adversarial_corridor()` refactor — defer until options
+  trading or another asset class justifies the abstraction. Current
+  pipeline is working and well-tested.
+* Inlining liquidity gate into corridor — already covered by
+  `failure_mode_classifier` + Sovereign's `_risk_model`; duplicating
+  would create two sources of truth.
+
+**Tests**: 17 new cases in `test_confidence_gate_and_amplification.py`
+covering: each threshold branch independently, branch composition,
+0.90 cap enforcement, baseline empty-DB read, broken-DB safe baseline,
+amplification on LONG/SHORT disagreement, no-amplification on agreement,
+no-amplification below 0.70 floor, +0.20 cap enforcement, neutral-compute
+no-op. **Total 197/197 → 214/214 green** across all adjacent suites.
+Lint clean. Backend restarts cleanly.
+
 ### Symbol Failure Memory — short-term per-symbol bias loop containment (May 3, 2026)
 
 Closes the persistent-bias-loop hole that surfaced twice on NVDA: the

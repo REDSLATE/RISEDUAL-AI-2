@@ -298,11 +298,23 @@ async def maybe_paper_trade(
                 ticker, _shadow_exc,
             )
 
-    if directional_conf < _MIN_PAPER_CONFIDENCE:
+    # ── Dynamic confidence gate (drawdown / loss-streak / calibration aware) ─
+    # Replaces the static _MIN_PAPER_CONFIDENCE floor with a dynamic threshold
+    # that raises the bar when the system is in a drawdown or on a loss
+    # streak. Falls back to _MIN_PAPER_CONFIDENCE if the lookup fails.
+    try:
+        from services.confidence_gate import get_dynamic_confidence_threshold
+        _conf_thresh = await get_dynamic_confidence_threshold(db, asset_type="equity")
+        _min_conf = max(_MIN_PAPER_CONFIDENCE, _conf_thresh.threshold)
+    except Exception:  # noqa: BLE001
+        _conf_thresh = None
+        _min_conf = _MIN_PAPER_CONFIDENCE
+
+    if directional_conf < _min_conf:
         log.debug(
             "[ml_paper] Directional confidence %.2f < %.2f — skipping paper trade for %s.",
             directional_conf,
-            _MIN_PAPER_CONFIDENCE,
+            _min_conf,
             ticker,
         )
         try:
@@ -321,9 +333,12 @@ async def maybe_paper_trade(
                 importances=signal.feature_importance or {},
                 top_k=3,
             )
+            _reason_suffix = ""
+            if _conf_thresh and _conf_thresh.delta > 0:
+                _reason_suffix = f" (dynamic +{_conf_thresh.delta:.2f}: {','.join(_conf_thresh.reasons)})"
             await log_paper_trade_skipped(
                 ticker=ticker,
-                reason=f"conviction below {_MIN_PAPER_CONFIDENCE * 100:.0f}% threshold",
+                reason=f"conviction below {_min_conf * 100:.0f}% threshold{_reason_suffix}",
                 confidence=directional_conf,
                 why=why,
             )
