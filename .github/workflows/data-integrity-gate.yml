@@ -49,7 +49,16 @@ jobs:
           # and avoids OOM on free-tier CI. Harmless when nothing in
           # requirements.txt actually pulls torch (the resolver just
           # ignores the extra index).
-          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+          #
+          # The second extra-index is the Emergent CDN, which is
+          # where `emergentintegrations` is served. PyPI returns 404
+          # for that package by design (it's an internal SDK), so
+          # without this line CI fails with:
+          #   "ERROR: No matching distribution found for emergentintegrations"
+          pip install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
+            -r requirements.txt
           # Belt-and-braces: pytest is pinned in requirements.txt
           # already, but keeping this line guarantees CI never breaks
           # if someone reorders the requirements file or adds a
