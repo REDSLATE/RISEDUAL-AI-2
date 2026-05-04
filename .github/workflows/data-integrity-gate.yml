@@ -58,8 +58,12 @@ jobs:
 
       - name: Run direction-tuple lint
         working-directory: backend
+        env:
+          PYTHONPATH: .
         run: python -m pytest tests/test_no_local_direction_tuples.py -v --no-header
 
       - name: Run direction-grading regression
         working-directory: backend
+        env:
+          PYTHONPATH: .
         run: python -m pytest tests/test_strong_direction_grading.py -v --no-header
