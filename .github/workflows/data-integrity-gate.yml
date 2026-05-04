@@ -43,15 +43,18 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          # Install the full backend requirements — the previous
-          # "minimal deps" approach (pytest + python-dotenv) was
-          # brittle because our test modules transitively import
-          # services.prediction_tracker → services.price_provider,
-          # which pulls requests + yfinance + more. Every new
-          # indirect dep would silently break CI. The pip cache
-          # (keyed on requirements.txt) makes the first run slow
-          # and every subsequent run ~fast, so robustness > speed.
-          pip install -r requirements.txt
+          # PyTorch CPU wheel index is added as an extra index so any
+          # transitive `torch` dep resolves to the CPU build instead
+          # of pulling the multi-GB CUDA wheel — keeps the runner fast
+          # and avoids OOM on free-tier CI. Harmless when nothing in
+          # requirements.txt actually pulls torch (the resolver just
+          # ignores the extra index).
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+          # Belt-and-braces: pytest is pinned in requirements.txt
+          # already, but keeping this line guarantees CI never breaks
+          # if someone reorders the requirements file or adds a
+          # constraint that delays pytest resolution.
+          pip install pytest
 
       - name: Run direction-tuple lint
         working-directory: backend
