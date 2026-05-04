@@ -41,6 +41,13 @@ const STYLE_BY_ACTION = {
   },
 };
 
+const DELTA_TEXT = {
+  improved: 'text-emerald-300',
+  degraded: 'text-rose-300',
+  unchanged: 'text-slate-500',
+  new: 'text-cyan-400',
+};
+
 const cooldownLabel = (mins) => {
   if (!mins) return '';
   if (mins >= 1440) return `${Math.round(mins / 1440)}d`;
@@ -137,6 +144,7 @@ const TickerAbandonmentTable = () => {
                 <th className="px-2 py-1.5 text-left">Sym</th>
                 <th className="px-1 py-1.5 text-left">Lane</th>
                 <th className="px-1 py-1.5 text-center">Action</th>
+                <th className="px-1 py-1.5 text-center" title="Δ since yesterday's snapshot">Δ</th>
                 <th className="px-2 py-1.5 text-left font-normal normal-case text-slate-500">
                   Reason
                 </th>
@@ -174,6 +182,21 @@ const TickerAbandonmentTable = () => {
                       >
                         <Icon className="h-2.5 w-2.5" />
                         {action}
+                      </span>
+                    </td>
+                    <td
+                      className="px-1 py-1.5 text-center text-[14px] tabular-nums"
+                      data-testid={`ticker-abandonment-delta-${row.symbol}`}
+                      title={
+                        row.delta?.delta === 'new'
+                          ? 'first time tracked'
+                          : row.delta?.prior_action
+                            ? `was ${row.delta.prior_action} yesterday`
+                            : ''
+                      }
+                    >
+                      <span className={DELTA_TEXT[row.delta?.delta] || 'text-slate-500'}>
+                        {row.delta?.arrow || '—'}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-slate-500">

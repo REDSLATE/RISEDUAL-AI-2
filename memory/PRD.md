@@ -55,6 +55,50 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Ticker Abandonment — Δ Since Yesterday (May 4, 2026)
+
+The table now answers the operator's real question: "is this
+ticker degrading or recovering?" — not just "what does the gate
+say right now?".
+
+* **New service** ``services/ticker_abandonment_history.py``:
+  * ``compute_action_delta(today, yesterday)`` — pure function
+    mapping action pairs to ``{delta, arrow, prior_action}``
+    where delta ∈ ``new`` / ``improved`` / ``unchanged`` /
+    ``degraded``. Action ranking pinned: ``ABANDON=0 <
+    COOLDOWN=1 < KEEP=2``.
+  * ``write_snapshot`` / ``fetch_prior_action`` — Mongo I/O,
+    keyed by ``(date, lane, symbol)``. ``fetch_prior_action``
+    is loose: returns the most recent snapshot strictly before
+    today, even if the daily job missed yesterday.
+  * ``snapshot_today(db)`` — walks the same union of symbols
+    the bulk endpoint discovers, writes one snapshot per
+    (lane, symbol). Idempotent same-day re-run.
+* **Bulk endpoint update** — ``GET /api/admin/ticker-abandonment``
+  now stamps ``delta`` onto every row AND opportunistically
+  upserts today's snapshot. The operator never has to remember
+  to run a script; just opening the page keeps history flowing.
+* **Cron-friendly script** ``scripts/snapshot_ticker_abandonment.py``
+  — guaranteed once-a-day trigger when no admin opens the
+  page. Same idempotent contract.
+* **Frontend column** in
+  ``TickerAbandonmentTable.jsx`` — single-char arrow column
+  between Action and Reason, color-coded (improved=emerald,
+  degraded=rose, unchanged=slate, new=cyan), with a tooltip
+  showing yesterday's action.
+* **17 new tests** in
+  ``tests/test_ticker_abandonment_history.py`` pinning all 4
+  delta transitions, action-rank invariant, idempotency,
+  loose-fallback behaviour, and the snapshot-today integration
+  walk.
+* **Live verified end-to-end**: injected a synthetic
+  "yesterday" snapshot for AAPL (COOLDOWN) and BTC (KEEP),
+  hit the endpoint, observed AAPL = ``improved ↑`` (recovered)
+  and BTC = ``unchanged →``. Other 9 symbols correctly
+  reported ``new •``.
+
+
+
 ### Ticker Abandonment Bulk Overview + Admin Table (May 4, 2026)
 
 * **New endpoint** ``GET /api/admin/ticker-abandonment`` —

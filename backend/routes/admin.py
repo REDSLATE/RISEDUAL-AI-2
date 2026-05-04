@@ -3609,6 +3609,36 @@ async def ticker_abandonment_overview(request: Request):
             _serialize_abandonment_row("crypto", sym, inputs, decision),
         )
 
+    # ── Δ-since-yesterday + same-day snapshot persistence ─────────
+    # For each row, look up the most recent prior snapshot's action
+    # (strictly < today's UTC date) and stamp the delta envelope.
+    # Then upsert today's snapshot so tomorrow's call has yesterday
+    # to compare against. Idempotent — re-running same day is a
+    # no-op-write of the same fields.
+    from services.ticker_abandonment_history import (
+        compute_action_delta, fetch_prior_action, write_snapshot,
+    )
+    for r in rows:
+        try:
+            prior = await fetch_prior_action(
+                db, lane=r["lane"], symbol=r["symbol"],
+            )
+        except Exception:
+            prior = None
+        r["delta"] = compute_action_delta(r["decision"]["action"], prior)
+        try:
+            await write_snapshot(
+                db,
+                lane=r["lane"],
+                symbol=r["symbol"],
+                action=r["decision"]["action"],
+                reason=r["decision"]["reason"],
+                cooldown_minutes=r["decision"].get("cooldown_minutes") or 0,
+                inputs_view=r["inputs"],
+            )
+        except Exception:
+            pass  # snapshot write must never break the read endpoint
+
     # Sort: ABANDON first, COOLDOWN by descending cooldown_minutes,
     # then KEEP alphabetical.
     _action_rank = {"ABANDON": 0, "COOLDOWN": 1, "KEEP": 2}
