@@ -687,6 +687,25 @@ async def _start_schedulers():
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
 
+        # Nightly ticker-abandonment snapshot — runs at 03:30 UTC.
+        # Belt-and-suspenders alongside the on-read upsert in the
+        # admin endpoint: guarantees the Δ-since-yesterday column has
+        # data even if nobody opens the admin page on a given day.
+        # Idempotent (safe to run repeatedly same-day). Never raises.
+        async def _run_ticker_abandonment_snapshot():
+            try:
+                from services.ticker_abandonment_history import snapshot_today
+                await snapshot_today(db)
+            except Exception:
+                logging.exception(
+                    "ticker_abandonment_snapshot failed (non-critical)",
+                )
+        scheduler.add_job(
+            _run_ticker_abandonment_snapshot,
+            'cron', hour=3, minute=30,
+            id='ticker_abandonment_snapshot',
+        )
+
         # Nightly data-integrity tripwire — runs at 03:15 UTC,
         # AFTER memory_cleanup (02:00) and ml_retrain (02:30) so the
         # latest grading / retag is reflected. Writes its summary to
