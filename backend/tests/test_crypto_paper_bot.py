@@ -19,6 +19,15 @@ Architecture this file pins down
 """
 from __future__ import annotations
 
+import os
+
+# Pin the confidence-gate baseline so the bot-opening tests below
+# reflect the regime-agnostic sizing policy they were written for.
+# The production gate was raised to 0.70 on 2026-05-03 but these
+# tests pin the 0.55 bot-opening behaviour — the gate math itself
+# is covered by ``tests/test_confidence_gate_and_amplification.py``.
+os.environ.setdefault("CONFIDENCE_GATE_BASE", "0.55")
+
 from unittest.mock import AsyncMock
 
 import pytest
@@ -194,10 +203,23 @@ class _FakeDB:
         self.crypto_signal_audit_log.insert_one = self._audit_insert
         self.crypto_model_adaptations = AsyncMock()
         self.crypto_model_adaptations.find = self._empty_cursor
+        # Adversarial logger writes to this collection on every signal.
+        # Without it the ``db[...]`` lookup (``getattr`` fallback) raises
+        # AttributeError, the logger swallows it, but the paper-trader's
+        # downstream logic that depends on a non-None decision_id is
+        # already affected. Declaring the mock keeps the insert path
+        # on-rails even though the test doesn't assert against it.
+        self.crypto_adversarial_decision_log = AsyncMock()
         self.writes: list[dict] = []
         self.audit_writes: list[dict] = []
 
     def __getitem__(self, key):
+        # Auto-vivify any other collection access as a no-op AsyncMock
+        # so new collections added to the bot's code path don't break
+        # this test fixture on contact. This is explicitly a test-only
+        # convenience — production code MUST always use a real Motor DB.
+        if not hasattr(self, key):
+            setattr(self, key, AsyncMock())
         return getattr(self, key)
 
     def _empty_cursor(self, _query):

@@ -887,6 +887,25 @@ async def _start_schedulers():
         # ── Crypto adaptation detector (closed-loop learning, 6-hourly) ──
         scheduler.add_job(_run_crypto_adaptation_detector, 'interval', hours=6,
                           id='crypto_adaptation_detector', replace_existing=True)
+        # ── Day-trade scanner (scan → rank → gate → queue top-1) ──
+        # Strict discipline: never execute while scanning. ALWAYS scan
+        # all symbols first, THEN rank, THEN decide. Two parallel lanes
+        # (equity + crypto) at 5-min cadence. Scanner writes only to
+        # ``day_trade_targets`` + ``day_trade_scan_log`` — no live
+        # trade mutation. Gated by ``DAY_TRADE_SCANNER_ENABLED``.
+        scheduler.add_job(
+            _run_day_trade_scanner_equity, 'interval', minutes=5,
+            id='day_trade_scanner_equity', replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_day_trade_scanner_crypto, 'interval', minutes=5,
+            id='day_trade_scanner_crypto', replace_existing=True,
+        )
+        # ── Day-trade EOD exit monitor (closes max_hold_until breaches) ──
+        scheduler.add_job(
+            _run_day_trade_exit_monitor, 'interval', minutes=5,
+            id='day_trade_exit_monitor', replace_existing=True,
+        )
         # ── Research Shadow scorer (Tier-3 safe; writes only to
         # research_shadow_decisions; deferred counterfactual scoring) ──
         scheduler.add_job(_run_research_shadow_scorer, 'interval', seconds=60,
@@ -1259,6 +1278,72 @@ async def _run_crypto_adaptation_detector():
             )
     except Exception as e:
         logger.debug(f"Crypto adaptation detector error: {e}")
+
+
+async def _run_day_trade_scanner_equity():
+    """Background: scan all equity predictions, rank, gate, queue
+    the single highest-scoring survivor as a day-trade target.
+
+    Read-mostly: phases 1-3 issue zero writes to ``paper_trades``.
+    Phase 4 writes one ``day_trade_targets`` row (the chosen winner,
+    if any) and one ``day_trade_scan_log`` row (audit trail).
+    Gated by ``DAY_TRADE_SCANNER_ENABLED`` (default on)."""
+    if os.environ.get("DAY_TRADE_SCANNER_ENABLED", "1").strip().lower() in (
+        "0", "false", "off", "no",
+    ):
+        return
+    try:
+        from services.day_trade_scanner import run_scan
+        result = await run_scan(db, "equity")
+        if result.chosen is not None:
+            logger.info(
+                "[day_trade_scan] equity winner=%s score=%.4f blocked=%d total=%d",
+                result.chosen.symbol, result.chosen.score,
+                result.blocked_count, result.total_scanned,
+            )
+    except Exception as e:
+        logger.debug(f"Day-trade scanner (equity) error: {e}")
+
+
+async def _run_day_trade_scanner_crypto():
+    """Background: same scan → rank → gate → queue pipeline as the
+    equity scanner, scoped to crypto predictions."""
+    if os.environ.get("DAY_TRADE_SCANNER_ENABLED", "1").strip().lower() in (
+        "0", "false", "off", "no",
+    ):
+        return
+    try:
+        from services.day_trade_scanner import run_scan
+        result = await run_scan(db, "crypto")
+        if result.chosen is not None:
+            logger.info(
+                "[day_trade_scan] crypto winner=%s score=%.4f blocked=%d total=%d",
+                result.chosen.symbol, result.chosen.score,
+                result.blocked_count, result.total_scanned,
+            )
+    except Exception as e:
+        logger.debug(f"Day-trade scanner (crypto) error: {e}")
+
+
+async def _run_day_trade_exit_monitor():
+    """Background: close day-trade positions whose ``max_hold_until``
+    (21:00 UTC EOD) has elapsed. Idempotent — re-running after the
+    close is a no-op."""
+    if os.environ.get("DAY_TRADE_SCANNER_ENABLED", "1").strip().lower() in (
+        "0", "false", "off", "no",
+    ):
+        return
+    try:
+        from services.day_trade_exit_monitor import expire_due_day_trades
+        counts = await expire_due_day_trades(db)
+        if counts.get("equity_closed") or counts.get("crypto_closed"):
+            logger.info(
+                "[day_trade_exit] equity=%d crypto=%d errors=%d",
+                counts["equity_closed"], counts["crypto_closed"],
+                counts.get("errors", 0),
+            )
+    except Exception as e:
+        logger.debug(f"Day-trade exit monitor error: {e}")
 
 
 async def _run_paper_trade_closer():

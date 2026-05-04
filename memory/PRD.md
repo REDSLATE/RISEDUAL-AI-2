@@ -55,6 +55,40 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Day-Trade Scanner Loop — FULLY WIRED (May 4, 2026)
+
+Closes the P0 wiring gap from the previous session. Scanner service
++ exit monitor were created + unit-tested on 2026-05-03 but never
+reached the scheduler or an admin surface. Now fully operational.
+
+* **APScheduler wiring** in ``server.py``:
+  * ``day_trade_scanner_equity`` — every 5 min (equity lane)
+  * ``day_trade_scanner_crypto`` — every 5 min (crypto lane)
+  * ``day_trade_exit_monitor`` — every 5 min (EOD 21:00 UTC close)
+  * All three gated by ``DAY_TRADE_SCANNER_ENABLED`` (default ON).
+  * Strict discipline: scan ALL symbols → rank → apply gates →
+    queue exactly ONE winner per lane. Never execute while scanning.
+* **Admin endpoints** in ``routes/admin.py`` (owner-only):
+  * ``POST /api/admin/day-trade/scan/{equity|crypto}`` — manual trigger
+  * ``GET /api/admin/day-trade/scan/recent?limit=20`` — scan log rows
+  * ``GET /api/admin/day-trade/targets?status=pending&limit=50`` — queue
+  * ``POST /api/admin/day-trade/exit-monitor/tick`` — manual EOD close
+* **Live verified** (2026-05-04): equity + crypto scans both return
+  ``total_scanned=0 candidates=[] chosen=null`` on first tick (cold
+  start; predictions.timestamp window empty). Scan log persists,
+  targets queue persists, exit monitor returns
+  ``equity_closed=0 crypto_closed=0 errors=0``. 401 on unauth.
+* **Pre-existing test debt cleared**: ``tests/test_crypto_paper_bot.py``
+  ``_FakeDB`` fixture now auto-vivifies missing collections as AsyncMock
+  (caught the ``crypto_adversarial_decision_log`` attribute error that
+  was polluting the fixture), and the file pins
+  ``CONFIDENCE_GATE_BASE=0.55`` at import-time so the bot-opening tests
+  (which predate the 0.70 production raise) run against their
+  historical regime. **26/26 green** (was 20/26). **47/47 green** in
+  scanner + crypto-bot suites combined.
+
+
+
 ### Ticker Abandonment — Δ Since Yesterday (May 4, 2026)
 
 The table now answers the operator's real question: "is this
