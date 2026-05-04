@@ -747,6 +747,24 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
             conviction = None
     if conviction is not None:
         doc["conviction"] = conviction
+
+    # ── Calibration stamp (read-only, scoped to Tier 3 readiness) ────
+    # Add ``calibrated_confidence`` + audit fields when an active
+    # calibration model exists. This signal is consumed ONLY by
+    # ``services.tier3_readiness`` — the per-row audit field
+    # ``calibration_applies_to`` makes that boundary explicit. Sizing
+    # / execution paths keep reading the raw ``confidence`` field.
+    # Pure no-op when no model is active, so older deploys are
+    # backwards-compatible.
+    try:
+        from services.calibration_service import (
+            calibration_audit_fields, get_active_calibration,
+        )
+        active_model = await get_active_calibration(db)
+        doc.update(calibration_audit_fields(confidence, active_model))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[prediction] calibration stamp skipped: %s", exc)
+
     await db.predictions.insert_one(doc)
     logger.info(f"Logged prediction: {feature}/{symbol} {direction} @ ${price}")
     return prediction_id

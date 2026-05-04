@@ -55,6 +55,65 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Confidence Calibration (Tier 3 readiness only) (May 4, 2026)
+
+Audit of the 147-row verified-prediction corpus revealed structural
+under-confidence: bulk of the volume sat at raw 0.5-0.7 confidence
+with 88-97% actual win rates. **Weighted ECE: 35.56pp.** First fit
+brought it to **1.06pp** — a 33× improvement.
+
+Critical guardrails (operator-pinned 2026-05-04):
+
+* **Raw ``confidence`` is never overwritten** — calibrated value
+  lands in a separate ``calibrated_confidence`` field.
+* Sizing (``ai_core/sizing.compute_*``), execution gate
+  (``MIN_CONFIDENCE_TO_TRADE``), and signal-bot quantity scaling all
+  keep reading raw ``confidence``. Calibration is consumed ONLY by
+  ``services.tier3_readiness``.
+* Per-row audit field ``calibration_applies_to=["tier3_readiness_only"]``
+  makes the boundary explicit at the data layer — anyone who later
+  wants to use this signal for sizing has to change that list,
+  triggering code review.
+* No auto-schedule yet — one-off fit script
+  (``scripts/fit_calibration_from_history.py``) for now; weekly
+  refresh deferred until first month of evidence is reviewed.
+
+New components:
+
+* ``services/calibration_service.py`` — isotonic fit
+  (``LOOKBACK_DAYS=90``, ``MIN_CALIBRATION_ROWS=100``,
+  ``MAX_CALIBRATED_CONFIDENCE=0.95``), pure ``apply_calibration``,
+  ``calibration_audit_fields`` (full per-row envelope for the
+  writer), ``get_active_calibration``.
+* ``services/prediction_tracker.log_prediction`` write-path hook —
+  stamps ``calibrated_confidence`` + audit fields before insert when
+  an active model exists. No-op fallback when no model.
+* ``services/tier3_readiness._high_conf_and_grades`` read-path
+  change — prefers ``calibrated_confidence`` per row, falls back to
+  raw for legacy rows.
+* ``GET /api/admin/calibration/status`` (owner-gated) — version,
+  fit timestamp, ECE before/after, knot table, ``applies_to``
+  scope.
+* ``scripts/fit_calibration_from_history.py`` — one-off + ``--print``
+  preview mode.
+* ``tests/test_calibration_service.py`` — 13 cases pinning purity,
+  monotonicity, max-cap, 0-1/0-100 scale handling, refusal below
+  ``MIN_CALIBRATION_ROWS``, ECE-improvement invariant, persisted
+  ``applies_to`` boundary.
+
+First fit (live preview):
+
+::
+
+    version       : isotonic_2026_05_04T09_13_25
+    n_rows        : 147
+    ece_before_pp : 35.56
+    ece_after_pp  : 1.06
+    knots         : x=0.00→y=0.667, x=0.16→y=0.667,
+                    x=0.47→y=0.917, x=1.00→y=0.917
+
+
+
 ### Adversarial Promotion Gate + Warm-Up Indicator (May 4, 2026)
 
 Operator now has at-a-glance visibility into when the adversarial cores

@@ -335,6 +335,7 @@ async def _high_conf_and_grades(db: Any, days: int) -> dict:
             {
                 "_id": 0,
                 "confidence": 1,
+                "calibrated_confidence": 1,
                 "verified_24h.correct": 1,
                 "verified_24h.grade": 1,
                 "timestamp": 1,
@@ -351,12 +352,27 @@ async def _high_conf_and_grades(db: Any, days: int) -> dict:
             if correct:
                 out["overall_correct"] += 1
 
-            # Normalise confidence to 0-100.
-            try:
-                conf = float(row.get("confidence") or 0.0)
-            except (TypeError, ValueError):
-                conf = 0.0
-            if conf <= 1.0 and conf > 0:
+            # Tier 3 readiness reads ``calibrated_confidence`` when
+            # the writer stamped one (post-2026-05-04 calibration
+            # rollout). Falls back to raw ``confidence`` for legacy
+            # rows so historical readiness math stays comparable
+            # until the corpus rolls over. Sizing / execution paths
+            # keep reading raw ``confidence`` only — see
+            # services.calibration_service docstring.
+            raw_calibrated = row.get("calibrated_confidence")
+            if raw_calibrated is not None:
+                try:
+                    conf = float(raw_calibrated)
+                except (TypeError, ValueError):
+                    conf = 0.0
+            else:
+                try:
+                    conf = float(row.get("confidence") or 0.0)
+                except (TypeError, ValueError):
+                    conf = 0.0
+            # Normalise to 0-100. Calibrated values land in [0,1] by
+            # construction; raw values may be on either scale.
+            if 0 < conf <= 1.0:
                 conf *= 100.0
             conf = max(0.0, min(100.0, conf))
 

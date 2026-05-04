@@ -3393,6 +3393,64 @@ async def adversarial_cores_promotion(request: Request):
     return await compute_promotion_status(db)
 
 
+@router.get("/calibration/status")
+async def calibration_status(request: Request):
+    """Active confidence-calibration model + last-fit telemetry.
+
+    Inform-only — never refits on its own. Use the one-off script
+    ``backend/scripts/fit_calibration_from_history.py`` to refit;
+    the result is picked up automatically on the next request via
+    ``services.calibration_service.get_active_calibration``.
+
+    Returned shape::
+
+        {
+          "active": bool,
+          "version": str | None,
+          "fitted_at": ISO datetime | None,
+          "n_rows": int,
+          "ece_before_pp": float | None,
+          "ece_after_pp": float | None,
+          "max_calibrated_confidence": float,
+          "calibration_applies_to": ["tier3_readiness_only"],
+          "knots": [{"x": float, "y": float}, ...]
+        }
+    """
+    await _require_owner(request)
+    from services.calibration_service import (
+        MAX_CALIBRATED_CONFIDENCE, get_active_calibration,
+    )
+    model = await get_active_calibration(db)
+    if not model:
+        return {
+            "active": False,
+            "version": None,
+            "fitted_at": None,
+            "n_rows": 0,
+            "ece_before_pp": None,
+            "ece_after_pp": None,
+            "max_calibrated_confidence": MAX_CALIBRATED_CONFIDENCE,
+            "calibration_applies_to": ["tier3_readiness_only"],
+            "knots": [],
+        }
+    fitted_at = model.get("fitted_at")
+    return {
+        "active": bool(model.get("active")),
+        "version": model.get("version"),
+        "fitted_at": fitted_at.isoformat() if fitted_at else None,
+        "n_rows": int(model.get("n_rows") or 0),
+        "ece_before_pp": model.get("ece_before_pp"),
+        "ece_after_pp": model.get("ece_after_pp"),
+        "max_calibrated_confidence": float(
+            model.get("max_calibrated_confidence") or MAX_CALIBRATED_CONFIDENCE,
+        ),
+        "calibration_applies_to": list(
+            model.get("calibration_applies_to", ["tier3_readiness_only"]),
+        ),
+        "knots": list(model.get("knots") or []),
+    }
+
+
 @router.get("/news-shock/ingestion-sparkline")
 async def news_shock_ingestion_sparkline(request: Request, hours: int = 24):
     """Hourly Benzinga + Alpha Vantage article ingestion counts over a
