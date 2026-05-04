@@ -1014,6 +1014,29 @@ async def run_crypto_symbol(
         },
     }
 
+    # ── Decision reasoning overlay (READ-ONLY) ───────────────────────
+    # Stamp the rich gate-trace overlay onto the crypto trade row.
+    # The adapter pulls Commander vote + sovereign contribution +
+    # failure-penalty + adversarial-action into reason codes the
+    # operator can scan at a glance (COMMANDER_DISAGREES,
+    # INTEGRITY_MITIGATION_ACTIVE, SMALL_SAMPLE_DISCOUNT, etc.).
+    # Pure function; trade row is fully composed by this point and
+    # the overlay never touches direction/confidence/sizing. Failure
+    # mode: log + skip — the trade still inserts.
+    try:
+        from services.decision_reasoning_overlay import (
+            build_crypto_paper_trade_decision_view, build_reasoning_overlay,
+        )
+        decision_view = build_crypto_paper_trade_decision_view(
+            trade, signal=signal,
+        )
+        trade["reasoning"] = build_reasoning_overlay(decision_view)
+    except Exception as _reason_exc:  # noqa: BLE001
+        logger.debug(
+            "[crypto_paper] reasoning overlay skipped for %s: %s",
+            symbol, _reason_exc,
+        )
+
     try:
         await db.crypto_paper_trades.insert_one(trade)
         # Strip Mongo-injected _id (ObjectId not JSON-serializable).

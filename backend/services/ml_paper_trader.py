@@ -662,6 +662,35 @@ async def maybe_paper_trade(
     if failure_penalty_meta is not None:
         trade_doc["symbol_failure_penalty"] = failure_penalty_meta
 
+    # ── Decision reasoning overlay (READ-ONLY) ───────────────────────
+    # Stamp the rich gate-trace overlay onto the trade row. The
+    # adapter walks the now-populated trade_doc + brake/sovereign/
+    # failure blocks and produces passed_gates / failed_gates /
+    # risk_adjustments + commander_shadow — surfacing reason codes
+    # like COMMANDER_DISAGREES, SMALL_SAMPLE_DISCOUNT,
+    # INTEGRITY_MITIGATION_ACTIVE for downstream readers (admin UI,
+    # post-trade autopsy). Pure function; can never affect sizing
+    # or execution because trade_doc is fully composed by this
+    # point. Failure mode: log + skip — the trade still inserts.
+    try:
+        from services.decision_reasoning_overlay import (
+            build_equity_paper_trade_decision_view, build_reasoning_overlay,
+        )
+        decision_view = build_equity_paper_trade_decision_view(
+            trade_doc,
+            snapshot=snapshot,
+            patterns=patterns,
+            dynamic_conf_threshold=(
+                _conf_thresh.threshold if _conf_thresh is not None else None
+            ),
+        )
+        trade_doc["reasoning"] = build_reasoning_overlay(decision_view)
+    except Exception as _reason_exc:  # noqa: BLE001
+        log.debug(
+            "[ml_paper] reasoning overlay skipped for %s: %s",
+            ticker, _reason_exc,
+        )
+
     try:
         await db["paper_trades"].insert_one(trade_doc)
     except DuplicateKeyError:

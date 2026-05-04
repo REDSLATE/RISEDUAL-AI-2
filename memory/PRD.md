@@ -55,6 +55,58 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Reasoning Overlay — Plumbed to Paper Traders (May 4, 2026)
+
+The reasoning overlay now reaches the rich gate-trace context from
+both paper traders, surfacing the COMMANDER_DISAGREES /
+PHASE2_BRAKE_VETO / INTEGRITY_MITIGATION_ACTIVE codes the user
+wanted on every new trade row.
+
+* **Two new pure adapters** in
+  ``services/decision_reasoning_overlay.py``:
+  * ``build_equity_paper_trade_decision_view(trade_doc, *,
+    snapshot, patterns, dynamic_conf_threshold)`` — walks the
+    equity ``paper_trades`` row + brake/sovereign/failure blocks
+    and emits ``passed_gates`` (confidence, dynamic-threshold,
+    pattern, regime, phase2-brake-pass) /
+    ``failed_gates`` (phase2-brake-veto) /
+    ``risk_adjustments`` (sovereign delta, integrity mitigation,
+    brake throttle) /
+    ``commander_shadow`` (with authority=ACTIVE only when
+    ``promotion_phase == "full"``).
+  * ``build_crypto_paper_trade_decision_view(trade_doc, *,
+    signal)`` — same shape for ``crypto_paper_trades``, sourcing
+    Commander vote from the signal payload (the trade row stores
+    only ``adversarial_decision_id``, not the Commander vote).
+* **Bug caught + fixed during smoke**: equity ML paper trader
+  persists ``direction="up"/"down"`` (the ML signal enum), not
+  ``LONG/SHORT``. Without normalisation every equity trade would
+  have landed in ``NEUTRAL_ACTION``. Added
+  ``_normalise_equity_direction`` inside the adapter (overlay
+  itself stays purist; the canonicalisation happens at the
+  adapter boundary).
+* **Integration** in both ``ml_paper_trader.py`` (right before
+  ``paper_trades.insert_one``) and ``crypto_paper_trader.py``
+  (right before ``crypto_paper_trades.insert_one``). Same
+  ``try/except → debug log + skip`` failure mode as the
+  ``log_prediction`` integration — overlay can never block a
+  trade insert.
+* **12 new tests** in
+  ``tests/test_reasoning_overlay_adapters.py`` pinning: input
+  immutability, up/down normalisation, COMMANDER_DISAGREES,
+  brake-veto → FAILED gate, full-phase → ACTIVE authority,
+  sovereign threshold filtering, ``adversarial_action`` →
+  Commander authority for crypto, COMMANDER_AGREES path.
+* **Live smoke**: equity scenario with brake-pass + Commander
+  disagree + symbol failure penalty produced
+  ``[REGIME_SUPPORTS_LONG, PASSED_ALL_GATES,
+  INTEGRITY_MITIGATION_ACTIVE, COMMANDER_DISAGREES,
+  COMMANDER_NO_AUTHORITY]`` and summary "Strategist favored a
+  long position under TRENDING_BULL regime while Commander
+  suggested SHORT (shadow only)."
+
+
+
 ### Reasoning Overlay Backfill (May 4, 2026)
 
 * **New script** ``scripts/backfill_reasoning_overlay.py`` —
