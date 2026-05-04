@@ -55,6 +55,75 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Adversarial Monitor + SSE Stream + Phase 2 EXIT (May 4, 2026)
+
+Three tightly-coupled follow-ups shipped together — operator
+monitoring surface, real-time push, and price-driven EXIT triggers.
+
+**(A) Adversarial Cores monitor**
+* New module ``services/adversarial_monitor.py::summarize_24h`` —
+  24h rollup of ``crypto_adversarial_decision_log``: decision counts
+  (LONG/SHORT_OR_AVOID/NO_TRADE), per-agent wins, win rates (``None``
+  until closed rows exist so no false-precision on cold-start), avg
+  edge_gap, avg Bull/Bear confidences, last decision timestamp.
+* New endpoint ``GET /api/admin/adversarial-cores/24h`` (owner-gated).
+* New frontend chip ``components/admin/AdversarialCoresChip.jsx``
+  rendered inside the admin Terminal tab. Traffic-light status:
+  ``OFF`` (env flag unset, slate), ``IDLE`` (enabled but no rows yet,
+  amber), ``LEARNING`` (enabled + rows flowing, emerald). Shows
+  decisions count, closed count, avg edge_gap, last-run age, per-side
+  confidence + win stats, and a Bull−Bear win-rate spread in
+  percentage-points.
+* Tests: ``test_adversarial_monitor.py`` — 6 cases.
+
+**(B) SSE stream for top-actions**
+* New endpoint ``GET /api/terminal/top-actions/stream`` using
+  ``sse_starlette.EventSourceResponse``. Pushes ``event: snapshot``
+  whenever a structural hash of the actions list changes (new
+  sovereign decision, paper-trade open/close, SL/TP breach flip);
+  heartbeat every 30s otherwise. Cookie-auth compatible so vanilla
+  ``new EventSource(url)`` on the frontend just works.
+* Frontend ``TerminalTopActions.jsx`` now opens an SSE subscription
+  alongside a 60s polling fallback — stream-status pill shows
+  ``● live`` (emerald) when connected or ``○ poll`` (slate) when
+  degraded. Auto-reconnects are delegated to the browser's
+  EventSource implementation.
+
+**(C) Phase 2 EXIT — hard SL/TP breach detection**
+* New pure-function classifier
+  ``terminal_aggregator::_hard_exit_trigger(direction, price, sl, tp)``
+  — LONG SL breach: price ≤ SL; LONG TP hit: price ≥ TP; SHORT rules
+  symmetrical; zero-price short-circuits (never fabricate an EXIT on
+  a stale price).
+* New async helper ``_build_hard_exit_cards(ctx, open_positions,
+  price_fetcher=...)`` — probes each open position, fires a
+  hard-EXIT card per breach. Priority floor 0.99 (above the 0.95
+  reversal-EXIT floor, so hard breaches always rank first). Conviction
+  tier ``"hard"``. Reason text includes trigger type + live price +
+  entry/SL/TP for operator context.
+* Wired into ``get_top_actions``: hard-EXIT cards are injected before
+  the sovereign loop, AND the breached symbol is stripped from the
+  reversal-EXIT / orphan-MANAGE paths so we never render two EXITs
+  for the same asset on one tick.
+* Broken price fetcher degrades silently (returns ``[]``) — a dead
+  live-price provider can never suppress the rest of the response.
+* Equity SL/TP merged from ``portfolios.positions[].stop_loss/take_profit``
+  (inline on crypto_paper_trades); currently `portfolios` is empty in
+  the test DB so only crypto hard-EXITs fire today.
+* Tests: ``test_terminal_hard_exit.py`` — 14 cases (pure classifier
+  parametrized × 10, card builder normal/broken/empty × 3,
+  integration tests proving hard-EXIT outranks reversal + suppresses
+  duplicate MANAGE + rank=1).
+
+**Totals**: **105/105 green** across adversarial + terminal +
+nl_live_bridge + kraken_shadow + terminal_aggregator suites. Lint
+clean. Live-verified: `/api/admin/adversarial-cores/24h` returns
+enabled=True/phase=shadow, `/api/terminal/top-actions/stream` returns
+HTTP 200 with `content-type: text/event-stream` and first frame
+`event: snapshot`. Testing agent iteration_165: **100% backend (9/9)
++ 100% frontend**, zero issues, zero action items. Live data showing
+4 ENTER + 1 WATCH cards from the active sovereign core.
+
 ### Adversarial Core — unblocked for shadow recording & learning (May 4, 2026)
 
 **Operator directive**: *"There should be nothing blocking them.
