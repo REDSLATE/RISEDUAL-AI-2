@@ -798,3 +798,13 @@ credentials.json
 *.pem
 *.key
 .credentials
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+frontend/node_modules/.cache/default-development/14.pack_
