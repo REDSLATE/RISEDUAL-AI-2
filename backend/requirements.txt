@@ -180,7 +180,7 @@ requests-oauthlib==2.0.0
 resend==2.27.0
 rich==14.3.3
 # Editable Git install with no remote (risedual-core==0.1.0)
--e /app/backend/risedual_core
+-e ./risedual_core
 rpds-py==0.30.0
 rsa==4.9.1
 ruff==0.15.12
