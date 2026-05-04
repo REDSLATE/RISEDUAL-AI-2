@@ -527,10 +527,26 @@ async def run_adversarial_decision(
 ) -> Optional[dict[str, Any]]:
     """Top-level adversarial decision builder.
 
-    Returns the decision payload on success, or ``None`` when either
-    gate is closed (which is the default state today).
+    Returns the decision payload on success, or ``None`` when the
+    operator kill-switch is off.
 
-    Caller responsibilities:
+    Gating policy (2026-05-04 update per operator directive: *"there
+    should be nothing blocking them — record the moves and learn from
+    the decisions it makes"*):
+
+    * **Env flag** (``CRYPTO_ADVERSARIAL_ENABLED=1``) — operator
+      kill-switch. Closed by default on fresh pods so an uninitialised
+      environment never surprises an operator.
+
+    * **Tier 3 unlock** — only gates promotion OUT of shadow phase.
+      In shadow mode the module records decisions without altering
+      any live trade, so Tier 3 is a safety net for live mutation, not
+      a prerequisite for learning. Earlier builds gated recording
+      behind Tier 3 too; this created a chicken-and-egg problem where
+      the adversarial layer could not accumulate the very evidence
+      Tier 3 measures. Now shadow phase runs on the env flag alone.
+
+    Caller responsibilities (unchanged):
       1. **shadow phase** — log the payload, do NOT alter the trade.
       2. **risk_only phase** — multiply position size by
          ``payload["risk_multiplier"]``. Direction stays as-is.
@@ -540,13 +556,17 @@ async def run_adversarial_decision(
     The phase logic is honoured by the caller, not enforced here, so
     this module stays pure and testable.
     """
-    # Gate 1 — env flag (cheap, default off).
+    # Gate 1 — env flag (cheap, default off). Operator kill-switch.
     if not _env_gate_open():
         return None
 
-    # Gate 2 — Tier 3 unlock (DB hit, default closed on error).
-    if not await _tier3_gate_open(db):
-        return None
+    # Gate 2 — Tier 3 unlock only gates *live-impacting* phases.
+    # Shadow mode is observation-only, so we skip the DB hit and let
+    # the Bull/Bear/Commander decision flow through to the logger.
+    phase = _read_phase()
+    if phase != "shadow":
+        if not await _tier3_gate_open(db):
+            return None
 
     bull = bull_agent(signal)
     bear = bear_agent(signal)
@@ -577,7 +597,7 @@ async def run_adversarial_decision(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": signal.get("symbol"),
         "regime": signal.get("regime"),
-        "phase": _read_phase(),
+        "phase": phase,
         "bull_case": asdict(bull),
         "bear_case": asdict(bear),
         **resolution,

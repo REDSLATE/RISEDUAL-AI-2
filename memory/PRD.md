@@ -55,6 +55,65 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Adversarial Core — unblocked for shadow recording & learning (May 4, 2026)
+
+**Operator directive**: *"There should be nothing blocking them.
+Record the moves and learn from the decisions it makes."*
+
+**Diagnosis** (before this change):
+* `crypto_adversarial_decision_log`: **0 rows** (idle)
+* `sovereign_decisions`: 241 rows, `prd_resolved_outcomes`: 269 rows
+  — the **Sovereign** core was fine; the **Bull/Bear/Commander**
+  layer was silent.
+* Root cause: ``run_adversarial_decision()`` had a **double gate** —
+  env flag ``CRYPTO_ADVERSARIAL_ENABLED`` (unset) AND Tier 3 unlock
+  (locked with ``days: 2``, only 9 high-confidence samples). The
+  Tier 3 gate created a chicken-and-egg problem: the layer couldn't
+  run until Tier 3 unlocked, but Tier 3 couldn't unlock without the
+  evidence the layer was supposed to generate.
+
+**Fix** (`services/adversarial_core.py`):
+* **Tier 3 gate now only blocks non-shadow phases** (``risk_only`` /
+  ``veto`` / ``full``) — i.e., anything that can alter live trades.
+* **Shadow phase runs on the env flag alone**, since shadow has no
+  live mutation by design. The Bull/Bear/Commander decisions flow
+  through to ``log_adversarial_decision`` unconditionally under the
+  operator's kill-switch.
+* Tier 3 remains the safety net for promotion to live-influencing
+  phases. No change to how ``phase != shadow`` is guarded.
+
+**Env flags** (flipped in ``/app/backend/.env``):
+* ``CRYPTO_ADVERSARIAL_ENABLED=1`` — operator kill-switch ON.
+* ``CRYPTO_ADVERSARIAL_PHASE=shadow`` — observation-only (default).
+
+**Learning loop already wired**:
+* Open: ``crypto_paper_trader.py:282`` logs the full decision
+  payload to ``crypto_adversarial_decision_log``.
+* Close: ``crypto_closer.py:259`` calls ``update_decision_outcome``
+  with the realised R-multiple, patching winner (Bull/Bear/Commander)
+  back onto the original decision row.
+* Stats aggregator: ``crypto_adversarial_stats.py`` reads back the
+  closed-outcome rows to compute per-agent win rate, edge-gap
+  distribution, and per-regime calibration for the Adversarial
+  admin panel.
+
+**Live verified end-to-end**:
+* Invoked ``run_adversarial_decision`` with a realistic BTC signal.
+* Bull agent: conf 0.763 / Bear agent: conf 0.441 / Commander:
+  ``NO_TRADE`` (edge_gap 0.30, just below 0.35 threshold).
+* Logged with UUID ``9142f939-…`` into
+  ``crypto_adversarial_decision_log`` (0 → 1 rows).
+* Phase ``shadow`` — no live trade impact.
+
+**Tests updated**: `test_adversarial_core.py` got two new policy
+assertions — ``test_double_gate_tier3_locked_still_records_shadow``
+pins the new "shadow always runs" contract, and
+``test_tier3_locked_blocks_non_shadow_phases`` pins Tier 3 still
+guards any live-impacting phase. **22/22 green** in the adversarial
+suite, **125/125 green** across adversarial + terminal +
+nl_live_bridge + kraken_shadow + crypto_adversarial_phase_wiring +
+crypto_adversarial_stats suites. Lint clean.
+
 ### Terminal Top Actions — Frontend tab + EXIT rule layer (May 3, 2026)
 
 **Two follow-ups to T2** shipped in one pass — the visual layer for

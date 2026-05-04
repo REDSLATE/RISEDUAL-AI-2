@@ -238,23 +238,56 @@ async def test_double_gate_env_flag_default_off(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_double_gate_tier3_locked_returns_none(monkeypatch):
-    """Env flag ON, but Tier 3 still locked → no decision generated."""
+async def test_double_gate_tier3_locked_still_records_shadow(monkeypatch):
+    """New (2026-05-04) policy: shadow mode must RUN even when Tier 3
+    is locked. Shadow has no live impact, and gating recording on
+    Tier 3 created a chicken-and-egg problem where the layer could
+    never accumulate the evidence Tier 3 measures.
+
+    Env flag is still the operator kill-switch; Tier 3 only gates
+    non-shadow phases (risk_only / veto / full).
+    """
     monkeypatch.setenv("CRYPTO_ADVERSARIAL_ENABLED", "1")
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "shadow")
 
     async def fake_locked(_db):
         return False
 
     with patch("services.adversarial_core._tier3_gate_open", side_effect=fake_locked):
         out = await run_adversarial_decision(db=object(), signal=_signal())
-    assert out is None
+    assert out is not None
+    assert out["phase"] == "shadow"
+    assert "bull_case" in out and "bear_case" in out
+
+
+@pytest.mark.asyncio
+async def test_tier3_locked_blocks_non_shadow_phases(monkeypatch):
+    """Phase promotion — risk_only / veto / full — still requires
+    Tier 3 unlocked. Tier 3 is a live-mutation safety net, not a
+    shadow-observation prerequisite."""
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_ENABLED", "1")
+
+    async def fake_locked(_db):
+        return False
+
+    for phase in ("risk_only", "veto", "full"):
+        monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", phase)
+        with patch(
+            "services.adversarial_core._tier3_gate_open",
+            side_effect=fake_locked,
+        ):
+            out = await run_adversarial_decision(db=object(), signal=_signal())
+        assert out is None, f"phase={phase} leaked past a locked Tier 3"
 
 
 @pytest.mark.asyncio
 async def test_double_gate_tier3_check_failure_degrades_closed(monkeypatch):
-    """If the Tier 3 lookup raises, gate must stay shut. Better to be
-    silent than to fire on a stale stats read."""
+    """If the Tier 3 lookup raises *on a non-shadow phase*, the gate
+    must stay shut. Better to be silent than to fire on a stale stats
+    read. In shadow phase the Tier 3 check doesn't even run, so the
+    stale-stats risk doesn't apply there."""
     monkeypatch.setenv("CRYPTO_ADVERSARIAL_ENABLED", "1")
+    monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "veto")
 
     # Patch build_tier3_stats to raise — the real gate catches it
     # internally and degrades to False.
