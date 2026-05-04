@@ -55,6 +55,48 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Ticker Abandonment / Cooldown Gate (May 4, 2026)
+
+> "A ticker can be watched forever, but it cannot consume trading
+> bandwidth forever."
+
+The bots can now LET GO. New gate runs FIRST in both paper-trade
+loops — bad ticker behaviour reduces attention before it consumes
+capital.
+
+* **New module** ``services/ticker_abandonment.py`` — pure
+  ``decide_ticker_exit`` returning ``KEEP / COOLDOWN / ABANDON``
+  across 6 spec'd branches: insufficient data, toxic
+  loss-cluster, high rejection rate, poor avg RR, low-confidence
+  churn, stale-no-recent-profit. Stateless: rolling-window
+  inputs heal naturally once the ticker stops being evaluated.
+* **New stats helper** ``services/ticker_abandonment_stats.py``
+  — ``compute_equity_inputs`` and ``compute_crypto_inputs``
+  aggregate the 7 inputs from existing collections
+  (``agent_activity`` for signals + rejections,
+  ``paper_trades`` / ``crypto_paper_trades`` for outcomes +
+  RR + last-profitable). 30-day window, env-tunable via
+  ``TICKER_ABANDONMENT_WINDOW_DAYS``.
+* **Integration** as the FIRST gate in both
+  ``services/ml_paper_trader.run_paper_trade`` and
+  ``services/crypto_paper_trader.run_crypto_symbol``. COOLDOWN
+  / ABANDON skips the trade and emits a
+  ``paper_trade_skipped`` activity event with the gate's
+  reason (e.g. ``ticker_cooldown_high_rejection_rate``).
+  Defensive: any gate failure logs + falls through (gate can
+  never block a healthy trade loop).
+* **Admin endpoint**
+  ``GET /api/admin/ticker-abandonment/{symbol}?lane=equity|crypto``
+  — owner-gated, inform-only. Returns the resolved inputs and
+  the gate's current decision. Live verified end-to-end on
+  both lanes.
+* **22 new tests** in ``tests/test_ticker_abandonment.py`` —
+  one per spec branch, branch-precedence ordering (ABANDON
+  beats high-rejection cooldown), KEEP-path full coverage,
+  frozen-dataclass invariant.
+
+
+
 ### Reasoning Overlay — Plumbed to Paper Traders (May 4, 2026)
 
 The reasoning overlay now reaches the rich gate-trace context from

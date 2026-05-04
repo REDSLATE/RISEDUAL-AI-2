@@ -3451,6 +3451,60 @@ async def calibration_status(request: Request):
     }
 
 
+@router.get("/ticker-abandonment/{symbol}")
+async def ticker_abandonment_status(
+    request: Request, symbol: str, lane: str = "equity",
+):
+    """Inspect the ticker-abandonment gate's current decision for a
+    symbol. Inform-only — the gate runs on every paper-trade tick
+    and this endpoint just shows what the gate would say right now.
+
+    ``lane`` query param: ``"equity"`` (default) or ``"crypto"``.
+    Returns the resolved inputs the gate read + the
+    ``TickerExitDecision`` action / reason / cooldown_minutes.
+    """
+    await _require_owner(request)
+    from services.ticker_abandonment import decide_ticker_exit
+    from services.ticker_abandonment_stats import (
+        compute_crypto_inputs, compute_equity_inputs,
+    )
+    sym = symbol.upper()
+    if lane.lower() == "crypto":
+        inputs = await compute_crypto_inputs(db, sym)
+    else:
+        inputs = await compute_equity_inputs(db, sym)
+    decision = decide_ticker_exit(
+        symbol=sym,
+        recent_signals=inputs.recent_signals,
+        recent_rejections=inputs.recent_rejections,
+        recent_losses=inputs.recent_losses,
+        recent_wins=inputs.recent_wins,
+        avg_confidence=inputs.avg_confidence,
+        avg_rr=inputs.avg_rr,
+        last_profitable_at=inputs.last_profitable_at,
+    )
+    last_p = inputs.last_profitable_at
+    return {
+        "symbol": sym,
+        "lane": lane.lower(),
+        "window_days": inputs.window_days,
+        "inputs": {
+            "recent_signals": inputs.recent_signals,
+            "recent_rejections": inputs.recent_rejections,
+            "recent_wins": inputs.recent_wins,
+            "recent_losses": inputs.recent_losses,
+            "avg_confidence": round(inputs.avg_confidence, 4),
+            "avg_rr": round(inputs.avg_rr, 4),
+            "last_profitable_at": last_p.isoformat() if last_p else None,
+        },
+        "decision": {
+            "action": decision.action,
+            "reason": decision.reason,
+            "cooldown_minutes": decision.cooldown_minutes,
+        },
+    }
+
+
 @router.get("/news-shock/ingestion-sparkline")
 async def news_shock_ingestion_sparkline(request: Request, hours: int = 24):
     """Hourly Benzinga + Alpha Vantage article ingestion counts over a

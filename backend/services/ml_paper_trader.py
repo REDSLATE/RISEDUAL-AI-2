@@ -210,6 +210,49 @@ async def maybe_paper_trade(
     log.info("[ml_paper] %s: direction=%s raw_conf=%.3f directional=%.3f regime=%s",
              ticker, signal.direction.value, signal.confidence, directional_conf, regime)
 
+    # ── Ticker Abandonment / Cooldown Gate ──────────────────────────────────
+    # FIRST gate by design — bad ticker behaviour should reduce attention
+    # before it consumes capital. Pure decision against rolling-window
+    # behaviour: signals + rejections + wins/losses + avg confidence/RR
+    # + last profitable event. Stateless: once enough time passes
+    # without trading the ticker, the rolling window heals and the
+    # gate flips back to KEEP automatically.
+    try:
+        from services.ticker_abandonment import decide_ticker_exit
+        from services.ticker_abandonment_stats import compute_equity_inputs
+        _abandon_inputs = await compute_equity_inputs(db, ticker)
+        _abandon = decide_ticker_exit(
+            symbol=ticker,
+            recent_signals=_abandon_inputs.recent_signals,
+            recent_rejections=_abandon_inputs.recent_rejections,
+            recent_losses=_abandon_inputs.recent_losses,
+            recent_wins=_abandon_inputs.recent_wins,
+            avg_confidence=_abandon_inputs.avg_confidence,
+            avg_rr=_abandon_inputs.avg_rr,
+            last_profitable_at=_abandon_inputs.last_profitable_at,
+        )
+        if _abandon.action in ("COOLDOWN", "ABANDON"):
+            log.info(
+                "[ml_paper] %s: ticker abandonment %s (%s, cooldown=%dm) — skipping",
+                ticker, _abandon.action, _abandon.reason,
+                _abandon.cooldown_minutes,
+            )
+            try:
+                from services.agent_activity_service import log_paper_trade_skipped
+                await log_paper_trade_skipped(
+                    ticker=ticker,
+                    reason=f"ticker_{_abandon.action.lower()}_{_abandon.reason}",
+                    confidence=directional_conf,
+                )
+            except Exception:
+                pass  # telemetry failure must never break the trade loop
+            return None
+    except Exception as _abandon_exc:  # noqa: BLE001
+        log.debug(
+            "[ml_paper] ticker abandonment gate skipped for %s: %s",
+            ticker, _abandon_exc,
+        )
+
     # ── Options-activity guard (Phase 2b hook) ───────────────────────────────
     # Consult the current options universe snapshot. No-op for symbols not
     # in the configured underlying list OR when the snapshot doesn't exist

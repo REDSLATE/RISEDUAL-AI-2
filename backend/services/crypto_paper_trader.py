@@ -209,6 +209,41 @@ async def run_crypto_symbol(
     if not bars or len(bars) < 30:
         return {"symbol": symbol, "skipped": True, "reason": "insufficient_bars"}
 
+    # ── Ticker Abandonment / Cooldown Gate ──────────────────────────────────
+    # FIRST gate by design — bad ticker behaviour reduces attention
+    # before consuming capital. Stateless rolling-window decision.
+    try:
+        from services.ticker_abandonment import decide_ticker_exit
+        from services.ticker_abandonment_stats import compute_crypto_inputs
+        _abandon_inputs = await compute_crypto_inputs(db, symbol)
+        _abandon = decide_ticker_exit(
+            symbol=symbol,
+            recent_signals=_abandon_inputs.recent_signals,
+            recent_rejections=_abandon_inputs.recent_rejections,
+            recent_losses=_abandon_inputs.recent_losses,
+            recent_wins=_abandon_inputs.recent_wins,
+            avg_confidence=_abandon_inputs.avg_confidence,
+            avg_rr=_abandon_inputs.avg_rr,
+            last_profitable_at=_abandon_inputs.last_profitable_at,
+        )
+        if _abandon.action in ("COOLDOWN", "ABANDON"):
+            logger.info(
+                "[crypto_paper] %s: ticker abandonment %s (%s, cooldown=%dm) — skipping",
+                symbol, _abandon.action, _abandon.reason,
+                _abandon.cooldown_minutes,
+            )
+            return {
+                "symbol": symbol,
+                "skipped": True,
+                "reason": f"ticker_{_abandon.action.lower()}_{_abandon.reason}",
+                "cooldown_minutes": _abandon.cooldown_minutes,
+            }
+    except Exception as _abandon_exc:  # noqa: BLE001
+        logger.debug(
+            "[crypto_paper] ticker abandonment gate skipped for %s: %s",
+            symbol, _abandon_exc,
+        )
+
     raw_signal = adversarial_signal(bars)
 
     # Tag regime + failure_context on the proposal so the

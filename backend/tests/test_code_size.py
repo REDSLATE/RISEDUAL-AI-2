@@ -97,6 +97,13 @@ ALLOWLIST: dict[str, str] = {
         "split cleanly."
     ),
     # ── Backend Python — mature domain services ────────────────────
+    "backend/services/ml_paper_trader.py": (
+        "Single-purpose equity ML paper-trade orchestrator that "
+        "sequences ~12 mandatory gates (options, abandonment, "
+        "confidence, regime, brake, sovereign, etc.) plus the row "
+        "write + idempotency. Splitting fragments the gate-order "
+        "discipline that the trade-correctness invariants depend on."
+    ),
     "backend/services/trading_bot_service.py": (
         "Bot lifecycle + tick loop + risk-budget accounting. "
         "Tightly coupled — splitting would require exposing internal "
