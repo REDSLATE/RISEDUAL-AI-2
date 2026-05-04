@@ -55,6 +55,44 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Decision Reasoning Overlay (READ-ONLY) (May 4, 2026)
+
+Every prediction now carries a `reasoning` field with human +
+machine-readable explanation alongside the existing schema. Pure
+function, never mutates input — same audit-stable discipline as the
+calibration scope.
+
+* **New module** `services/decision_reasoning_overlay.py` —
+  `build_reasoning_overlay(decision)` returns
+  `{summary, bull_case, bear_case, what_would_change_decision,
+  reason_codes, meta}`. Reason codes include
+  `REGIME_SUPPORTS_LONG/SHORT`, `NEUTRAL_ACTION`,
+  `UNDERCONFIDENT_MODEL` / `OVERCONFIDENT_MODEL` (powered by the
+  calibration delta), `PASSED_ALL_GATES` /
+  `FAILED_ONE_OR_MORE_GATES`, `SMALL_SAMPLE_DISCOUNT`,
+  `INTEGRITY_MITIGATION_ACTIVE`, `COMMANDER_AGREES`/`DISAGREES`,
+  `COMMANDER_NO_AUTHORITY`.
+* **Integration** in `services/prediction_tracker.log_prediction`
+  — overlay stamped onto every prediction doc just before insert,
+  via a synthetic `decision_view` dict (preserves on-disk schema:
+  the doc still uses `direction` not `action`; `reasoning` is the
+  only new field). Defensive against missing data — falls back to
+  baseline reasoning when upstream call sites don't carry
+  `passed_gates` / `commander_shadow`.
+* **Read-only contract pinned by tests**:
+  `tests/test_reasoning_overlay.py` — 20 cases including the
+  user-spec smoke test, an explicit
+  `test_overlay_does_not_mutate_input` invariant (deep-copy
+  comparison), all reason-code dispatches, calibration
+  awareness, commander logic, defensive empty-dict handling.
+* **Live verified** end-to-end: a smoke prediction at raw 0.56
+  / calibrated 0.917 produced reason codes
+  `[REGIME_SUPPORTS_LONG, UNDERCONFIDENT_MODEL, PASSED_ALL_GATES]`
+  + bear case "model confidence may be understated", exactly as
+  spec'd.
+
+
+
 ### Raw vs Calibrated Tier 3 Badge (May 4, 2026)
 
 Operator visibility for the calibration work — both the email digest

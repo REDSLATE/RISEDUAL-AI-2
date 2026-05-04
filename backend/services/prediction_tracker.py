@@ -765,6 +765,28 @@ async def log_prediction(db: Any, feature: str, symbol: str, direction: str,
     except Exception as exc:  # noqa: BLE001
         logger.debug("[prediction] calibration stamp skipped: %s", exc)
 
+    # ── Decision reasoning overlay (READ-ONLY) ──────────────────────
+    # Stamp the overlay onto the doc just before insert. Pure function,
+    # never affects action / confidence / sizing — every consumer of
+    # this field treats it as audit/explanation only. ``log_prediction``
+    # only carries a subset of the overlay's expected fields, so the
+    # reasoning is a baseline (direction + calibration awareness +
+    # default "all gates clear" since no gate-trace is available
+    # here). Richer call sites (e.g. an upstream decision composer
+    # that has ``passed_gates`` / ``commander_shadow``) can pass their
+    # own dict to ``build_reasoning_overlay`` and get the full envelope.
+    try:
+        from services.decision_reasoning_overlay import build_reasoning_overlay
+        decision_view = {
+            "symbol": doc.get("symbol"),
+            "action": doc.get("direction"),
+            "confidence": doc.get("confidence"),
+            "calibrated_confidence": doc.get("calibrated_confidence"),
+        }
+        doc["reasoning"] = build_reasoning_overlay(decision_view)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[prediction] reasoning overlay skipped: %s", exc)
+
     await db.predictions.insert_one(doc)
     logger.info(f"Logged prediction: {feature}/{symbol} {direction} @ ${price}")
     return prediction_id
