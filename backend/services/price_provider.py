@@ -160,6 +160,32 @@ async def get_quote(symbol: str) -> Optional[dict]:
     if hot and hot.get("price", 0) > 0:
         return {**hot, "source": hot.get("source", "cache") + ":hot"}
 
+    # Alpaca real-time market data — primary US-equity quote source
+    # (2026-05-04 onwards). Returns native bid/ask with sub-second
+    # latency on the IEX feed. Free with the existing paper-account
+    # credentials. Gated by ``ALPACA_EQUITY_PRIMARY_ENABLED`` (default
+    # ON). Falls through to the legacy provider pool on any failure.
+    if os.environ.get(
+        "ALPACA_EQUITY_PRIMARY_ENABLED", "1",
+    ).strip().lower() not in ("0", "false", "off", "no"):
+        try:
+            from services.alpaca_equity_quotes import get_alpaca_equity_quote
+            ap = await get_alpaca_equity_quote(symbol)
+            if ap is not None and float(ap.get("price") or 0) > 0:
+                # Stamp into the existing cache so cousins
+                # (``get_quote_sync``, market_data_pool consumers)
+                # benefit from the same hop.
+                price_cache.set(cache_key, ap)
+                return ap
+        except Exception as e:
+            log_warning(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "price_provider",
+                "note": "Alpaca primary quote failed for <symbol>",
+                "symbol": symbol,
+            })
+
     # Try the provider pool first (it has its own caching)
     try:
         from services.market_data_pool import market_quote, market_pool

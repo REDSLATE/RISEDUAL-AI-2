@@ -3905,6 +3905,33 @@ async def kraken_crypto_quotes_probe(
 
 
 # ============================================================
+# ALPACA EQUITY QUOTES — primary US equity live provider probe
+# ============================================================
+
+
+@router.get("/alpaca-equity-quotes/probe")
+async def alpaca_equity_quotes_probe(
+    request: Request, symbols: str = "AAPL,MSFT,SPY",
+):
+    """Live probe of Alpaca as the primary US equity quote source.
+
+    Bypasses the local TTL cache. After-hours / closed-market state
+    will surface as ``ask=null spread_bps=null`` with ``price`` set
+    to last trade — that's expected, not an error."""
+    await _require_owner(request)
+    from services.alpaca_equity_quotes import fetch_alpaca_equity_quotes_batch
+    req = [s.strip() for s in symbols.split(",") if s.strip()]
+    out = await fetch_alpaca_equity_quotes_batch(req)
+    missing = [s for s in req if s.upper() not in out]
+    return {
+        "requested": req,
+        "resolved_count": len(out),
+        "quotes": out,
+        "missing_from_alpaca": missing,
+    }
+
+
+# ============================================================
 # AI PROMOTION HISTORY (audit trail)
 # ============================================================
 

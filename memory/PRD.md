@@ -55,6 +55,62 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Alpaca as Primary US Equity Quote Source (May 4, 2026)
+
+Operator directive: *"Just US based and if you're able expand from
+there"* — after we confirmed Kraken xStocks remain US-geo-blocked
+across REST and WebSocket v2 (probed 4 angles).
+
+**Outcome**: US equity quote chain now leads with Alpaca's IEX
+real-time feed (free with the existing paper-account credentials).
+Mirrors the Kraken-primary architecture for crypto.
+
+* **New service** ``services/alpaca_equity_quotes.py``:
+  * ``fetch_alpaca_equity_quotes_batch(symbols)`` — single-hop
+    snapshot for any list of symbols via
+    ``/v2/stocks/snapshots?symbols=…``. Returns native ``bid /
+    ask / last / spread_bps`` per symbol.
+  * ``get_alpaca_equity_quote(symbol)`` — single-symbol with 2s
+    in-process TTL cache. ``None`` on unknown / failure / missing
+    creds (never raises).
+  * ``get_alpaca_equity_history(symbol, lookback_bars=90)`` —
+    daily closes via ``/v2/stocks/{sym}/bars``.
+  * After-hours pattern handled cleanly: when ``ap=0`` (one-sided
+    book), price falls back to ``latestTrade.p`` and ``spread_bps``
+    reports ``None`` rather than a fabricated zero.
+* **Wired into** ``services/price_provider.get_quote`` — Alpaca
+  FIRST priority above the existing market_data_pool (AV →
+  Finnhub → TwelveData → Marketstack → Polygon → yfinance →
+  Mongo cache). Gated by ``ALPACA_EQUITY_PRIMARY_ENABLED``
+  (default ON). Existing pool stays as fallback so the equity
+  bot never goes dark on an Alpaca outage.
+* **Admin probe endpoint** ``GET /api/admin/alpaca-equity-quotes/probe``
+  — owner-only; bypasses cache, reports per-symbol spread + AH
+  status. 401 on unauth.
+* **Live smoke (2026-05-04, post-close)**: 8/8 symbols resolved
+  in one hop. QQQ spread 1.49 bps (still has an active AH book);
+  SPY / AAPL / META show one-sided quotes (correctly degraded to
+  last-trade with ``spread_bps=None``); MSFT / NVDA / TSLA / GOOGL
+  show wide AH spreads as expected. Once RTH opens, all spreads
+  will tighten to single-digit bps.
+* **Equity xStocks via Kraken — RE-PROBED + parked permanently
+  (until non-US egress)**: 4 endpoints tested today —
+  ``/0/public/Assets`` (783 assets, all currency),
+  ``AssetPairs?asset_class=stock|equity`` (filter ignored),
+  ``Ticker`` for AAPL/AAPLx/TSLA/TSLAx/MSFT/SPY × USD/EUR/USDT
+  (all Unknown asset pair), Kraken Futures API (0 instruments).
+  Geo-block is at the API boundary, not configurable from the
+  pod. Kraken stays information-only for crypto; the existing
+  shadow service is intact and ready for re-activation.
+* **18 new tests** in ``tests/test_alpaca_equity_quotes.py``:
+  symbol normalisation, mid+spread math, after-hours fall-back,
+  None-on-empty-data, credential gate, batched fetch
+  (happy/unknown/empty/HTTP-error/unparseable), cache dedupe,
+  bypass flag, OHLC trim. **124/124 green** across all adjacent
+  suites. Lint clean.
+
+
+
 ### Kraken as Primary Crypto Quote Source (May 4, 2026)
 
 Operator directive: *"Kraken has stocks as well as Crypto. Can we
