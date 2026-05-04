@@ -267,6 +267,31 @@ def build_post_trade_autopsy(trade_doc: dict[str, Any]) -> dict[str, Any]:
         close_reason=close_reason, entry_conf=entry_conf,
     )
 
+    # ── Slippage attribution ──
+    # Read the entry-side slippage that was stamped at fill time
+    # (see services/slippage_simulator.py + paper traders). Compute
+    # the dollar drag at the trade's actual notional so the operator
+    # can see what the spread cost vs what the strategy earned.
+    slippage_block = _slippage_attribution(doc)
+    if slippage_block is not None:
+        if slippage_block.get("entry_bps", 0) > 0:
+            # High slippage on a winning trade still hurt the return;
+            # high slippage on a losing trade made the loss worse.
+            tag = (
+                f"Entry slippage cost {slippage_block['entry_bps']:.1f} bps "
+                f"(${slippage_block['entry_dollar_cost']:.2f})"
+            )
+            if outcome == "loss":
+                what_went_wrong.append(
+                    f"{tag} — {slippage_block['fill_method']} fill on the "
+                    "wrong side of the book amplified the loss."
+                )
+            elif outcome == "win":
+                what_went_right.append(
+                    f"{tag} — strategy still profited despite paying the "
+                    "spread."
+                )
+
     return {
         "summary": summary,
         "reason_codes": reason_codes,
@@ -284,4 +309,52 @@ def build_post_trade_autopsy(trade_doc: dict[str, Any]) -> dict[str, Any]:
             "adversarial_decision": adv or None,
             "risk_multiplier_at_entry": _as_float(rm) if rm is not None else None,
         },
+        "slippage": slippage_block,
+    }
+
+
+def _slippage_attribution(doc: dict[str, Any]) -> dict[str, Any] | None:
+    """Compose the realised slippage cost block from the entry
+    fields stamped at fill time.
+
+    Returns ``None`` when the trade row predates the slippage stamp
+    (legacy historical rows) so the caller can render "—" instead
+    of fabricated zeros. When stamped but on the ``mid_only``
+    path (legacy provider, no bid/ask), reports zero cost with the
+    method preserved so the UI can explain why.
+    """
+    method = doc.get("slippage_method")
+    if method is None:
+        return None  # row predates the slippage stamp
+
+    entry_bps = _as_float(doc.get("slippage_bps"))
+    # Notional: shares × entry_price for equity, position_size_usd
+    # for crypto. Both lanes carry one of these directly.
+    entry_price = _as_float(doc.get("entry_price"))
+    shares = _as_float(doc.get("shares"))
+    crypto_size_usd = _as_float(doc.get("position_size_usd"))
+
+    if shares > 0 and entry_price > 0:
+        notional_usd = shares * entry_price
+    elif crypto_size_usd > 0:
+        notional_usd = crypto_size_usd
+    else:
+        notional_usd = 0.0
+
+    # Dollar cost = notional × (bps / 10_000). Always non-negative
+    # so the panel can render a single P&L drag column.
+    entry_dollar_cost = round(
+        notional_usd * (abs(entry_bps) / 10_000.0), 4,
+    )
+
+    return {
+        "entry_bps": round(abs(entry_bps), 2),
+        "entry_dollar_cost": entry_dollar_cost,
+        "exit_bps": None,         # exit-side slippage is future work
+        "exit_dollar_cost": None,
+        "total_bps": round(abs(entry_bps), 2),
+        "total_dollar_cost": entry_dollar_cost,
+        "fill_method": method,
+        "notional_usd": round(notional_usd, 2),
+        "quote_source": doc.get("quote_source"),
     }

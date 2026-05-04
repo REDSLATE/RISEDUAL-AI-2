@@ -4237,3 +4237,159 @@ async def kraken_ws_status(request: Request):
         ages[sym] = round(_t.time() - float(ts), 2) if ts else None
     base["snapshot_ages_sec"] = ages
     return base
+
+
+
+# ============================================================
+# SLIPPAGE ATTRIBUTION — realised spread cost vs strategy P&L
+# ============================================================
+
+
+@router.get("/slippage-attribution")
+async def slippage_attribution_summary(
+    request: Request, lane: str = "all", lookback_days: int = 30,
+):
+    """Aggregate realised slippage cost across recently closed
+    trades. Returns per-lane and per-method roll-ups so the
+    operator can see what the spread is taking from the strategy.
+
+    * ``lane`` ∈ ``equity`` / ``crypto`` / ``all``
+    * ``lookback_days`` window applies to ``closed_at``
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from datetime import datetime, timezone, timedelta
+    from services.post_trade_autopsy import build_post_trade_autopsy
+
+    lane_norm = (lane or "all").strip().lower()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, lookback_days))
+
+    colls: list[tuple[str, str]] = []
+    if lane_norm in ("equity", "all"):
+        colls.append(("paper_trades", "equity"))
+    if lane_norm in ("crypto", "all"):
+        colls.append(("crypto_paper_trades", "crypto"))
+
+    aggregates: dict[str, dict] = {}
+    by_method: dict[str, dict] = {}
+    grand_pnl = 0.0
+    grand_drag = 0.0
+    grand_count = 0
+    rows_with_slippage = 0
+
+    for coll, label in colls:
+        cursor = db[coll].find({
+            "status": "closed",
+            "closed_at": {"$gte": cutoff},
+        }, {"_id": 0})
+        async for r in cursor:
+            grand_count += 1
+            pnl = float(r.get("pnl_usd", r.get("pnl", 0.0)) or 0.0)
+            grand_pnl += pnl
+            slippage = (r.get("autopsy") or {}).get("slippage")
+            if slippage is None:
+                # Compute on-the-fly for rows that predate the
+                # autopsy stamp.
+                slippage = build_post_trade_autopsy(r).get("slippage")
+            if slippage is None:
+                continue
+            rows_with_slippage += 1
+            cost = float(slippage.get("total_dollar_cost") or 0.0)
+            grand_drag += cost
+            method = slippage.get("fill_method") or "unknown"
+            method_row = by_method.setdefault(
+                method,
+                {"count": 0, "dollar_cost": 0.0, "bps_sum": 0.0},
+            )
+            method_row["count"] += 1
+            method_row["dollar_cost"] += cost
+            method_row["bps_sum"] += float(slippage.get("total_bps") or 0.0)
+            lane_row = aggregates.setdefault(
+                label,
+                {"count": 0, "dollar_cost": 0.0, "bps_sum": 0.0, "pnl": 0.0},
+            )
+            lane_row["count"] += 1
+            lane_row["dollar_cost"] += cost
+            lane_row["bps_sum"] += float(slippage.get("total_bps") or 0.0)
+            lane_row["pnl"] += pnl
+
+    def _finalise(rows: dict) -> dict:
+        out: dict = {}
+        for k, v in rows.items():
+            n = max(v["count"], 1)
+            out[k] = {
+                "count": v["count"],
+                "dollar_cost": round(v["dollar_cost"], 2),
+                "avg_bps": round(v["bps_sum"] / n, 2),
+            }
+            if "pnl" in v:
+                out[k]["pnl"] = round(v["pnl"], 2)
+                # Drag % = drag / |pnl| × 100 (capped, useful only
+                # when there's some pnl to compare against).
+                pnl_abs = abs(v["pnl"]) or 1.0
+                out[k]["drag_pct_of_abs_pnl"] = round(
+                    (v["dollar_cost"] / pnl_abs) * 100.0, 2,
+                )
+        return out
+
+    return {
+        "lane_filter": lane_norm,
+        "lookback_days": lookback_days,
+        "totals": {
+            "trades": grand_count,
+            "trades_with_slippage_stamp": rows_with_slippage,
+            "total_pnl_usd": round(grand_pnl, 2),
+            "total_slippage_drag_usd": round(grand_drag, 2),
+            "drag_pct_of_abs_pnl": round(
+                (grand_drag / (abs(grand_pnl) or 1.0)) * 100.0, 2,
+            ),
+            "avg_bps_per_trade": (
+                round(
+                    sum(v["bps_sum"] for v in by_method.values())
+                    / max(rows_with_slippage, 1),
+                    2,
+                )
+            ),
+        },
+        "by_lane": _finalise(aggregates),
+        "by_method": _finalise(by_method),
+    }
+
+
+# ============================================================
+# CROSS-ASSET STRESS EVENTS — auto-flatten + audit
+# ============================================================
+
+
+@router.get("/stress-events")
+async def stress_events_recent(request: Request, limit: int = 20):
+    """Recent ``stress_events`` rows (newest first). Each row
+    captures a moment when the Spread Watch flagged ≥ N stressed
+    symbols simultaneously across crypto + equity."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    limit = max(1, min(int(limit), 200))
+    cursor = db.stress_events.find({}, {"_id": 0}).sort(
+        "fired_at", -1,
+    ).limit(limit)
+    rows = await cursor.to_list(length=limit)
+    for r in rows:
+        for k in ("fired_at", "cooldown_until"):
+            v = r.get(k)
+            if hasattr(v, "isoformat"):
+                r[k] = v.isoformat()
+    return {"rows": rows, "count": len(rows)}
+
+
+@router.post("/stress-events/check")
+async def stress_events_manual_check(request: Request):
+    """Manually trigger the stress-event monitor. Useful for
+    smoke-testing the auto-flatten path."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.stress_event_monitor import run_stress_check
+    result = await run_stress_check(db)
+    return result

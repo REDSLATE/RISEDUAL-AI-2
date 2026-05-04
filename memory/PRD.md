@@ -55,6 +55,67 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Slippage Attribution Panel + Cross-Asset Stress Alarm (May 4, 2026)
+
+* **Slippage attribution panel** (P1) — extends post-trade
+  autopsy with a realised-slippage block plus an admin aggregate
+  endpoint + Terminal tile.
+  * ``post_trade_autopsy.build_post_trade_autopsy`` now emits a
+    ``slippage`` sub-object computed from the entry stamp:
+    ``{entry_bps, entry_dollar_cost, exit_bps, total_bps,
+    total_dollar_cost, fill_method, notional_usd, quote_source}``.
+    Returns ``None`` for legacy rows that predate the stamp so
+    the UI can render "—" instead of fabricated zeros. Crypto
+    notional read from ``position_size_usd``; equity from
+    ``shares × entry_price``.
+  * Loss bullets get a "Entry slippage cost X bps ($Y) — ask_fill
+    fill on the wrong side amplified the loss" line when
+    slippage > 0; wins get a paired "strategy still profited
+    despite paying the spread" line.
+  * New endpoint ``GET /api/admin/slippage-attribution?lookback_days=30``
+    aggregates: totals (P&L, drag $, drag % of |P&L|, avg bps),
+    by_lane (equity/crypto), by_method (ask_fill/bid_fill/
+    mid_only/unknown). Computes on-the-fly for rows that don't
+    yet have an autopsy stamp.
+  * New ``SlippageAttributionPanel.jsx`` Terminal tile — drag pill
+    color-coded green / amber / rose by drag-pct-of-P&L bands
+    (<5% / 5-15% / >15%). Polls every 60s.
+  * **Live-verified (2026-05-04)**: 835 historical trades returned;
+    0 currently have the slippage stamp (expected — stamping
+    started today, no closes since).
+  * **6 new tests** pinning the slippage block: present / None /
+    crypto position_size path / loss bullet / mid_only zero-bps
+    no-bullet.
+
+* **Cross-asset stress event monitor** (P2) — wired into
+  APScheduler (every 1 min) + manual admin trigger.
+  * ``services/stress_event_monitor.py`` mirrors the
+    ``/spread-watch`` snapshot logic in-process so the monitor
+    and UI stay in sync. Defaults: ``STRESS_SYMBOL_THRESHOLD=3``,
+    ``STRESS_COOLDOWN_MIN=10``,
+    ``STRESS_SPREAD_THRESHOLD_BPS=25``.
+  * Equity stress only fires during ``session=rth`` — wide
+    post-close spreads on MSFT / NVDA never trigger a false
+    alarm (verified live: post-close run returned ``calm`` even
+    with 987 bps MSFT spread).
+  * Auto-flatten gated by ``STRESS_AUTO_FLATTEN_ENABLED`` (default
+    OFF). When ON: closes all open ``paper_trades`` and
+    ``crypto_paper_trades`` rows with
+    ``close_reason=stress_auto_flatten``, stamps a fresh autopsy
+    on each, no exit slippage applied.
+  * Cooldown tracked on the ``stress_events`` row itself
+    (``cooldown_until`` field) so a process restart still
+    respects it. Sustained stress doesn't spam the collection.
+  * New endpoints: ``GET /api/admin/stress-events?limit=20`` +
+    ``POST /api/admin/stress-events/check`` (manual trigger).
+  * **9 new tests** covering calm / fired / cooldown / cooldown-
+    expires-allows-refire / auto-flatten ON+OFF / snapshot-failed.
+
+* **15 new tests + 4 new endpoints + 1 new Terminal tile**.
+  **175/175 tests green** across all adjacent suites. Lint clean.
+
+
+
 ### Slippage Simulator + Live Spread Watch + Kraken WebSocket (May 4, 2026)
 
 Three P2 items shipped together — all leverage the new bid/ask

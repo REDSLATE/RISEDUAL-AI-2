@@ -937,6 +937,14 @@ async def _start_schedulers():
             _run_day_trade_exit_monitor, 'interval', minutes=5,
             id='day_trade_exit_monitor', replace_existing=True,
         )
+        # ── Cross-asset stress monitor — checks Spread Watch every
+        # minute. Fires stress_events row + (optionally) auto-flattens
+        # when ≥ STRESS_SYMBOL_THRESHOLD symbols are stressed. Per-event
+        # cooldown lives on the row so process restarts respect it. ──
+        scheduler.add_job(
+            _run_stress_event_monitor, 'interval', minutes=1,
+            id='stress_event_monitor', replace_existing=True,
+        )
         # ── Research Shadow scorer (Tier-3 safe; writes only to
         # research_shadow_decisions; deferred counterfactual scoring) ──
         scheduler.add_job(_run_research_shadow_scorer, 'interval', seconds=60,
@@ -1375,6 +1383,29 @@ async def _run_day_trade_exit_monitor():
             )
     except Exception as e:
         logger.debug(f"Day-trade exit monitor error: {e}")
+
+async def _run_stress_event_monitor():
+    """Background: check Spread Watch for cross-asset liquidity
+    stress; fire ``stress_events`` rows + auto-flatten when the
+    threshold + cooldown gates allow."""
+    if os.environ.get("STRESS_MONITOR_ENABLED", "1").strip().lower() in (
+        "0", "false", "off", "no",
+    ):
+        return
+    try:
+        from services.stress_event_monitor import run_stress_check
+        result = await run_stress_check(db)
+        if result.get("fired"):
+            logger.info(
+                "[stress] FIRED — stressed=%d session=%s flatten=%s",
+                result.get("stressed_count"),
+                result.get("session"),
+                result.get("flatten_result"),
+            )
+    except Exception as e:
+        logger.debug(f"Stress event monitor error: {e}")
+
+
 
 
 async def _run_paper_trade_closer():

@@ -7,6 +7,7 @@ import { getApiBase } from '../../utils/apiBase';
 import AdversarialCoresChip from './AdversarialCoresChip';
 import EquityCommanderShadowChip from './EquityCommanderShadowChip';
 import LiveSpreadWatchTile from './LiveSpreadWatchTile';
+import SlippageAttributionPanel from './SlippageAttributionPanel';
 import TickerAbandonmentTable from './TickerAbandonmentTable';
 
 const API = `${getApiBase()}/api`;
@@ -263,6 +264,10 @@ const TerminalTopActions = () => {
       <AdversarialCoresChip />
 
       <EquityCommanderShadowChip />
+
+      <LiveSpreadWatchTile />
+
+      <SlippageAttributionPanel />
 
       <TickerAbandonmentTable />
 

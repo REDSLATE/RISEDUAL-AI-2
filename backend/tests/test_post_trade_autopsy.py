@@ -236,3 +236,81 @@ def test_bullet_cases_populated_for_known_outcomes():
         "confidence": 0.85,
     })
     assert loss["what_went_wrong"], "high-conviction SL should produce bullets"
+
+
+# ── Slippage attribution block ───────────────────────────────────
+
+
+def test_slippage_block_present_when_stamped():
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": 50.0,
+        "close_reason": "take_profit",
+        "confidence": 0.80,
+        "shares": 10,
+        "entry_price": 100.0,
+        "slippage_bps": 50.0,
+        "slippage_method": "ask_fill",
+        "entry_quote_bid": 99.5,
+        "entry_quote_ask": 100.5,
+        "entry_quote_mid": 100.0,
+        "quote_source": "alpaca",
+    })
+    s = out["slippage"]
+    assert s is not None
+    assert s["entry_bps"] == 50.0
+    # 10 shares × $100 × 50bps = $5
+    assert s["entry_dollar_cost"] == pytest.approx(5.0, abs=0.01)
+    assert s["fill_method"] == "ask_fill"
+    assert s["notional_usd"] == 1000.0
+    assert s["quote_source"] == "alpaca"
+    assert s["exit_bps"] is None  # exit-side is future work
+
+
+def test_slippage_block_none_when_not_stamped():
+    """Legacy rows that predate the slippage stamp must report
+    ``slippage=None`` rather than zero so the UI can render —."""
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": 50.0,
+        "close_reason": "take_profit",
+    })
+    assert out["slippage"] is None
+
+
+def test_slippage_block_handles_crypto_position_size_field():
+    """Crypto trades store ``position_size_usd`` instead of
+    ``shares × entry_price``. Block should pick that up."""
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl": 50.0,
+        "close_reason": "take_profit",
+        "slippage_bps": 5.0,
+        "slippage_method": "ask_fill",
+        "position_size_usd": 500.0,
+    })
+    s = out["slippage"]
+    assert s["notional_usd"] == 500.0
+    # 500 × 5bps = $0.25
+    assert s["entry_dollar_cost"] == pytest.approx(0.25, abs=0.01)
+
+
+def test_slippage_loss_emits_loss_bullet():
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": -50.0,
+        "close_reason": "stop_loss",
+        "shares": 10, "entry_price": 100.0,
+        "slippage_bps": 25.0, "slippage_method": "ask_fill",
+    })
+    assert any("slippage" in b.lower() for b in out["what_went_wrong"])
+
+
+def test_slippage_zero_bps_no_bullet():
+    """``mid_only`` path → 0 bps → no slippage bullet (but the
+    block is still present so the UI can show "no spread cost")."""
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": 50.0,
+        "close_reason": "take_profit",
+        "shares": 10, "entry_price": 100.0,
+        "slippage_bps": 0.0, "slippage_method": "mid_only",
+    })
+    assert out["slippage"]["entry_bps"] == 0.0
+    assert not any("slippage" in b.lower() for b in out["what_went_right"])
+    assert not any("slippage" in b.lower() for b in out["what_went_wrong"])
