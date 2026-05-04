@@ -55,6 +55,31 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Reasoning Overlay Backfill (May 4, 2026)
+
+* **New script** ``scripts/backfill_reasoning_overlay.py`` —
+  one-off, idempotent, with ``--dry-run`` preview mode. Walks every
+  prediction lacking the ``reasoning`` field and stamps the
+  calibration-aware overlay onto it. Read-only by construction —
+  the overlay is a pure function and ``direction`` / ``confidence``
+  are never touched.
+* **Live applied**: 609 of 665 historical prediction rows
+  backfilled. Remaining 56 are pre-schema rows that legitimately
+  lack ``prediction_id`` and were correctly skipped.
+* **Reason-code distribution after backfill**:
+  ``PASSED_ALL_GATES`` 609,
+  ``REGIME_SUPPORTS_LONG`` 377,
+  ``NEUTRAL_ACTION`` 162,
+  ``REGIME_SUPPORTS_SHORT`` 70.
+* **Idempotency verified** — second invocation reports
+  ``updated: 0 rows``.
+* **Operator query now possible**:
+  ``db.predictions.find({"reasoning.reason_codes":
+  "UNDERCONFIDENT_MODEL"})`` (will start returning rows as new
+  predictions land carrying the calibrated_confidence field).
+
+
+
 ### Decision Reasoning Overlay (READ-ONLY) (May 4, 2026)
 
 Every prediction now carries a `reasoning` field with human +
