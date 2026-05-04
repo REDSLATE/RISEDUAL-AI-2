@@ -172,18 +172,43 @@ async def close_due_paper_trades(db: Any) -> dict:
                 direction, entry, current, shares,
             )
 
-            res = await db["paper_trades"].update_one(
-                {"trade_id": trade_id, "status": "open"},
-                {"$set": {
-                    "status": "closed",
-                    "closed_at": now,
-                    "exit_price": current,
+            # Post-trade autopsy — pure overlay built from the
+            # about-to-be-closed state. Stamped alongside the close
+            # fields so a single $set lands both together.
+            try:
+                from services.post_trade_autopsy import (
+                    build_post_trade_autopsy,
+                )
+                autopsy = build_post_trade_autopsy({
+                    **row,
                     "pnl_usd": pnl_usd,
                     "pnl_pct": pnl_pct,
                     "outcome": outcome,
-                    "auto_closed": True,
+                    "close_reason": f"hold_window_{hold_hours}h",
                     "auto_close_reason": f"hold_window_{hold_hours}h",
-                }},
+                })
+            except Exception as _ap_exc:  # noqa: BLE001
+                logger.debug(
+                    "[paper-closer] autopsy build failed: %s", _ap_exc,
+                )
+                autopsy = None
+
+            update_set = {
+                "status": "closed",
+                "closed_at": now,
+                "exit_price": current,
+                "pnl_usd": pnl_usd,
+                "pnl_pct": pnl_pct,
+                "outcome": outcome,
+                "auto_closed": True,
+                "auto_close_reason": f"hold_window_{hold_hours}h",
+            }
+            if autopsy is not None:
+                update_set["autopsy"] = autopsy
+
+            res = await db["paper_trades"].update_one(
+                {"trade_id": trade_id, "status": "open"},
+                {"$set": update_set},
             )
             if res.modified_count:
                 closed += 1

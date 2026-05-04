@@ -227,6 +227,20 @@ async def close_expired_crypto_trades(
                 "close_reason": exit_reason,
             }
 
+            # Post-trade autopsy — pure overlay describing why this
+            # trade won or lost. Stamped alongside the close fields.
+            try:
+                from services.post_trade_autopsy import (
+                    build_post_trade_autopsy,
+                )
+                update["autopsy"] = build_post_trade_autopsy({
+                    **trade, **update,
+                })
+            except Exception as _ap_exc:  # noqa: BLE001
+                logger.debug(
+                    "[crypto-closer] autopsy build failed: %s", _ap_exc,
+                )
+
             result = await db.crypto_paper_trades.update_one(
                 {"_id": trade["_id"], "status": "open"},
                 {"$set": update},

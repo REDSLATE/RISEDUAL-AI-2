@@ -403,6 +403,22 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-critical): {e}")
 
+    # AI Promotion History — tamper-evident audit trail. Detect any
+    # phase change that happened between the previous boot (env flag
+    # flip + restart) and now. Seeds an initial row per core on the
+    # very first boot. Never raises.
+    try:
+        from services.promotion_history import detect_phase_changes_at_startup
+        inserted = await detect_phase_changes_at_startup(db)
+        if inserted:
+            logger.info(
+                "[promotion-history] recorded %d transition(s) at boot: %s",
+                len(inserted),
+                [(r["core"], r["from_phase"], r["to_phase"]) for r in inserted],
+            )
+    except Exception as e:
+        logger.warning(f"Promotion-history boot detector failed (non-critical): {e}")
+
     try:
         await create_indexes()
         logger.info("Indexes created")
