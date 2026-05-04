@@ -35,6 +35,7 @@ dist
 *token.json*
 *credentials.json*
 memory/test_credentials.md
+memory/local/
 
 # Logs and debug files
 npm-debug.log*
