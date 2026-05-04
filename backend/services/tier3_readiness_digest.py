@@ -131,6 +131,8 @@ def _format_body_html(
     delta: float | None,
     stats: dict,
     unlock: dict,
+    raw_view: dict | None = None,
+    calibration: dict | None = None,
 ) -> str:
     reasons = list(unlock.get("reasons") or [])
     chips = [_format_blocker_chip(r, stats) for r in reasons]
@@ -154,11 +156,38 @@ def _format_body_html(
         else ""
     )
 
+    # Raw vs calibrated badge — only rendered when a calibration
+    # model is active. Spells out exactly what each number means so
+    # the operator can read it cold without context. ``score`` is
+    # the calibrated-derived headline (already what every Tier 3
+    # consumer reads); ``raw_view`` carries the uncalibrated peer.
+    calibration_badge = ""
+    if calibration and calibration.get("active") and raw_view:
+        raw_score = float((raw_view.get("unlock") or {}).get("confidence_score", 0.0))
+        ece_after = calibration.get("ece_after_pp")
+        ece_before = calibration.get("ece_before_pp")
+        ece_line = ""
+        if ece_after is not None and ece_before is not None:
+            ece_line = (
+                f" · ECE {ece_before:.1f}pp → {ece_after:.1f}pp "
+                f"(scope: tier3 readiness only)"
+            )
+        calibration_badge = (
+            "<div style='display:inline-block;background:#F1F5F9;"
+            "border:1px solid #E2E8F0;border-radius:6px;padding:6px 10px;"
+            "font-size:12px;color:#334155;margin:0 0 12px;'>"
+            f"<strong>{score:.1f}</strong> calibrated &nbsp;·&nbsp; "
+            f"<span style='color:#64748B'>{raw_score:.1f} raw</span>"
+            f"{ece_line}"
+            "</div>"
+        )
+
     return f"""
 <h2 style="color:#0F172A;font-size:20px;margin:0 0 8px;font-weight:800;">
   Tier 3 readiness: <span style="color:#0052FF">{score:.1f} / 100</span>
 </h2>
 <p style="color:#64748B;font-size:13px;margin:0 0 6px;">{delta_str}</p>
+{calibration_badge}
 {unlocked_badge}
 <p style="color:#0F172A;font-size:14px;margin:14px 0 4px;font-weight:600;">
   Blockers ({len(reasons)}):
@@ -205,7 +234,11 @@ async def run_tier3_readiness_digest(db: Any) -> dict:
             f"{score:.1f}/100 · {len(unlock.get('reasons') or [])} blockers"
         )
         html = _base_html(
-            _format_body_html(score, delta, stats, unlock),
+            _format_body_html(
+                score, delta, stats, unlock,
+                raw_view=snap.get("raw_view"),
+                calibration=snap.get("calibration"),
+            ),
             preheader=preheader,
         )
         sent = await _routed_send([owner_email], subject, html)

@@ -304,12 +304,19 @@ async def _paper_trades_count(db: Any) -> int:
         return 0
 
 
-async def _high_conf_and_grades(db: Any, days: int) -> dict:
+async def _high_conf_and_grades(db: Any, days: int, *, use_calibrated: bool = True) -> dict:
     """Single pass over `predictions` to derive:
       * high_conf_trades / correct / sum_confidence
       * strong_miss count / total graded
       * last-7d wins, total (for stability)
       * overall win total (fraction of correct across graded)
+
+    ``use_calibrated`` (default ``True``) — when a row carries a
+    ``calibrated_confidence`` value, that value is used for the
+    high-conf bucketing instead of the raw ``confidence``. Set to
+    ``False`` to force the raw-only path; the snapshot uses this to
+    expose the operator-facing "raw vs calibrated" badge so the
+    impact of the calibration model is visible at a glance.
     """
     out = {
         "high_conf_trades": 0,
@@ -354,12 +361,13 @@ async def _high_conf_and_grades(db: Any, days: int) -> dict:
 
             # Tier 3 readiness reads ``calibrated_confidence`` when
             # the writer stamped one (post-2026-05-04 calibration
-            # rollout). Falls back to raw ``confidence`` for legacy
-            # rows so historical readiness math stays comparable
-            # until the corpus rolls over. Sizing / execution paths
-            # keep reading raw ``confidence`` only — see
-            # services.calibration_service docstring.
-            raw_calibrated = row.get("calibrated_confidence")
+            # rollout) AND ``use_calibrated`` is True. Falls back to
+            # raw ``confidence`` for legacy rows so historical
+            # readiness math stays comparable until the corpus rolls
+            # over. Sizing / execution paths keep reading raw
+            # ``confidence`` only — see services.calibration_service
+            # docstring.
+            raw_calibrated = row.get("calibrated_confidence") if use_calibrated else None
             if raw_calibrated is not None:
                 try:
                     conf = float(raw_calibrated)
@@ -402,10 +410,15 @@ async def _high_conf_and_grades(db: Any, days: int) -> dict:
     return out
 
 
-async def build_tier3_stats(db: Any, days: int = 30) -> dict:
+async def build_tier3_stats(db: Any, days: int = 30, *, use_calibrated: bool = True) -> dict:
     """Assemble the `stats` dict that :func:`check_tier3_unlock`
     consumes. Fails to a zeroed dict that naturally lands
     `unlocked=False`.
+
+    ``use_calibrated`` (default ``True``) — forwarded to
+    :func:`_high_conf_and_grades` so the snapshot can compute both
+    raw-only and calibrated views in one call without copy-pasting
+    the rest of the assembly logic.
     """
     stats: dict[str, Any] = {
         "days": 0,
@@ -419,6 +432,7 @@ async def build_tier3_stats(db: Any, days: int = 30) -> dict:
         "clamp_total": 0,
         "high_conf_threshold": HIGH_CONF_THRESHOLD,
         "lookback_days": days,
+        "uses_calibrated_confidence": use_calibrated,
     }
     if db is None:
         return stats
@@ -431,7 +445,7 @@ async def build_tier3_stats(db: Any, days: int = 30) -> dict:
 
     stats["total_trades"] = await _paper_trades_count(db)
 
-    agg = await _high_conf_and_grades(db, days)
+    agg = await _high_conf_and_grades(db, days, use_calibrated=use_calibrated)
     hc_n = agg["high_conf_trades"]
     stats["high_conf_trades"] = hc_n
     stats["high_conf_win_rate"] = (agg["high_conf_correct"] / hc_n) if hc_n else 0.0
@@ -460,11 +474,59 @@ async def build_tier3_stats(db: Any, days: int = 30) -> dict:
 
 
 async def tier3_readiness_snapshot(db: Any, days: int = 30) -> dict:
-    """Full admin payload: `stats` + `unlock` decision + timestamp."""
+    """Full admin payload: `stats` + `unlock` decision + timestamp.
+
+    When a calibration model is active, the payload also carries a
+    ``raw_view`` block with the same stats + unlock recomputed from
+    raw confidence only. UI surfaces (admin dashboard, daily email
+    digest) render this side-by-side as the "raw vs calibrated"
+    badge so the operator can see calibration's impact at a glance.
+
+    The TOP-LEVEL ``stats``/``unlock`` keep their existing shape
+    (calibrated when a model is active, raw when none) — every
+    existing caller — including ``trading_bot_service`` adaptive
+    sizing — keeps reading whatever Tier 3 considers authoritative
+    today. ``raw_view`` is purely informational for the operator UI.
+    """
     stats = await build_tier3_stats(db, days=days)
     decision = check_tier3_unlock(stats)
-    return {
+
+    payload: dict[str, Any] = {
         "stats": stats,
         "unlock": decision,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # When calibration is active, also compute the raw-only view for
+    # the operator badge. Cheap — second pass over the same 30d
+    # cursor. If no calibration model exists OR no rows carry a
+    # ``calibrated_confidence`` field, the two views are identical
+    # and we omit the badge to avoid confusion.
+    try:
+        from services.calibration_service import get_active_calibration
+        active_model = await get_active_calibration(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[tier3] calibration probe skipped: %s", exc)
+        active_model = None
+
+    if active_model is not None:
+        raw_stats = await build_tier3_stats(db, days=days, use_calibrated=False)
+        raw_decision = check_tier3_unlock(raw_stats)
+        payload["raw_view"] = {
+            "stats": raw_stats,
+            "unlock": raw_decision,
+        }
+        payload["calibration"] = {
+            "active": True,
+            "version": active_model.get("version"),
+            "n_rows": int(active_model.get("n_rows") or 0),
+            "ece_before_pp": active_model.get("ece_before_pp"),
+            "ece_after_pp": active_model.get("ece_after_pp"),
+            "applies_to": list(
+                active_model.get("calibration_applies_to", ["tier3_readiness_only"]),
+            ),
+        }
+    else:
+        payload["calibration"] = {"active": False}
+
+    return payload

@@ -69,6 +69,9 @@ export default function Tier3ProgressDetailCard() {
 
   const breakdown = data.tier3_breakdown || [];
   const composite = data.tier3_progress_pct ?? 0;
+  const compositeRaw = data.tier3_progress_pct_raw;
+  const calibration = data.tier3_calibration;
+  const calibrationActive = calibration && calibration.active && compositeRaw !== null && compositeRaw !== undefined;
   const unlocked = !!data.tier3_unlocked;
 
   return (
@@ -122,6 +125,24 @@ export default function Tier3ProgressDetailCard() {
             {composite.toFixed(1)}
           </span>
           <span className="text-xs text-slate-500">/ 100</span>
+          {calibrationActive && (
+            <span
+              data-testid="tier3-calibration-badge"
+              title={
+                `Calibrated score uses isotonic-mapped confidence ` +
+                `(scope: tier3 readiness only — sizing & execution ` +
+                `keep reading raw confidence). ECE ${calibration.ece_before_pp ?? '?'}pp → ` +
+                `${calibration.ece_after_pp ?? '?'}pp on ${calibration.n_rows ?? 0} rows.`
+              }
+              className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/5 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300"
+            >
+              <span className="text-cyan-400/70">calibrated</span>
+              <span className="text-cyan-200 tabular-nums">{composite.toFixed(1)}</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-400/80">raw</span>
+              <span className="text-slate-300 tabular-nums">{compositeRaw.toFixed(1)}</span>
+            </span>
+          )}
         </div>
         <div className="w-full h-1.5 bg-slate-900/60 rounded-full mt-1.5 overflow-hidden">
           <div

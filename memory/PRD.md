@@ -55,6 +55,38 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Raw vs Calibrated Tier 3 Badge (May 4, 2026)
+
+Operator visibility for the calibration work — both the email digest
+and the admin dashboard now surface "calibrated **X.X** · raw **Y.Y**"
+side-by-side whenever an active calibration model is present, so the
+calibration's impact is visible at a glance instead of buried in
+``test_calibration_service.py``.
+
+* ``services/tier3_readiness.build_tier3_stats`` gained a
+  ``use_calibrated`` kwarg (default True). Setting it False forces
+  the legacy raw-only aggregation path.
+* ``tier3_readiness_snapshot`` now runs both passes when calibration
+  is active, returning ``raw_view`` + ``calibration`` blocks
+  alongside the existing top-level shape (no breaking changes for
+  any existing consumer; sizing/execution untouched).
+* ``services/research_shadow_stats.fetch_tier_readiness`` exposes
+  ``tier3_progress_pct_raw`` + ``tier3_calibration`` for the admin
+  dashboard card.
+* ``services/tier3_readiness_digest._format_body_html`` renders the
+  badge as a single inline pill: "calibrated 88.0 · raw 70.5 · ECE
+  35.6pp → 1.06pp (scope: tier3 readiness only)".
+* ``frontend/src/components/admin/Tier3ProgressDetailCard.jsx``
+  renders a cyan inline badge next to the composite score, with a
+  full-context tooltip pinning the
+  ``applies_to=["tier3_readiness_only"]`` boundary.
+* ``tests/test_tier3_readiness_calibration_badge.py`` — 3 cases
+  pinning: snapshot omits ``raw_view`` without calibration; both
+  views computed when active; top-level still uses calibrated path
+  (sizing reader contract).
+
+
+
 ### Confidence Calibration (Tier 3 readiness only) (May 4, 2026)
 
 Audit of the 147-row verified-prediction corpus revealed structural

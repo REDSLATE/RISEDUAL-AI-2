@@ -733,6 +733,8 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
     tier3_unlocked = False
     tier3_blockers: list[str] = []
     tier3_breakdown: list[dict] = []
+    tier3_raw_progress_pct: float | None = None
+    tier3_calibration: dict | None = None
     try:
         if db is not None:
             t3_stats = await build_tier3_stats(db, days=30)
@@ -745,6 +747,46 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
             # current/target/earned-points/hint. Earned points sum
             # to ``tier3_progress_pct``.
             tier3_breakdown = compute_tier3_breakdown(t3_stats)
+
+            # Calibration-aware "raw vs calibrated" badge. When the
+            # calibration model is active, recompute the score from
+            # raw confidence only so the operator can see calibration's
+            # impact at a glance. Sizing/execution paths are NOT
+            # affected — this is purely operator UI.
+            try:
+                from services.calibration_service import (
+                    get_active_calibration,
+                )
+                active_model = await get_active_calibration(db)
+            except Exception:  # noqa: BLE001
+                active_model = None
+            if active_model is not None:
+                try:
+                    raw_stats = await build_tier3_stats(
+                        db, days=30, use_calibrated=False,
+                    )
+                    tier3_raw_progress_pct = round(
+                        compute_tier3_score(raw_stats), 2,
+                    )
+                    tier3_calibration = {
+                        "active": True,
+                        "version": active_model.get("version"),
+                        "n_rows": int(active_model.get("n_rows") or 0),
+                        "ece_before_pp": active_model.get("ece_before_pp"),
+                        "ece_after_pp": active_model.get("ece_after_pp"),
+                        "applies_to": list(
+                            active_model.get(
+                                "calibration_applies_to",
+                                ["tier3_readiness_only"],
+                            ),
+                        ),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(
+                        "[tier-readiness] raw-view compute skipped: %s", exc,
+                    )
+            else:
+                tier3_calibration = {"active": False}
     except Exception as exc:  # noqa: BLE001
         logger.warning("[tier-readiness] tier3 stats failed: %s", exc)
         tier3_blockers = ["tier3_stats_unavailable"]
@@ -861,6 +903,8 @@ async def fetch_tier_readiness(db: Any) -> dict[str, Any]:
         "council_modulator_enabled": COUNCIL_RISK_MODULATOR_ENABLED,
         "adversarial_phase": adversarial_phase,
         "tier3_progress_pct": tier3_progress_pct,
+        "tier3_progress_pct_raw": tier3_raw_progress_pct,
+        "tier3_calibration": tier3_calibration,
         "tier3_unlocked": tier3_unlocked,
         "tier3_blockers": tier3_blockers,
         "tier3_breakdown": tier3_breakdown,
