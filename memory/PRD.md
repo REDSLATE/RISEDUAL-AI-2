@@ -55,6 +55,28 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Ticker Abandonment Bulk Overview + Admin Table (May 4, 2026)
+
+* **New endpoint** ``GET /api/admin/ticker-abandonment`` —
+  bulk-discovery across ``paper_trades`` (equity), ``crypto_paper_trades``
+  (crypto), and ``agent_activity`` ``paper_trade_*`` events
+  (catches symbols that ONLY get rejections). Computes the
+  gate decision per (lane, symbol) and sorts ABANDON →
+  COOLDOWN-by-descending-cooldown → KEEP. Returns row list +
+  totals.
+* **New component** ``frontend/src/components/admin/TickerAbandonmentTable.jsx``
+  — polls every 60s, renders one color-coded row per (lane,
+  symbol) with action pill, reason, signals/rejections/wins/
+  losses, avg confidence, avg RR, cooldown duration. Same visual
+  language as the AdversarialCoresChip; lives under it in the
+  Terminal admin tab.
+* **Live verified**: 11 tickers discovered (1 equity AAPL + 10
+  crypto majors), all currently KEEP because no symbol has
+  accumulated 5+ recent signals yet — exactly the expected
+  cold-start behaviour.
+
+
+
 ### Ticker Abandonment / Cooldown Gate (May 4, 2026)
 
 > "A ticker can be watched forever, but it cannot consume trading

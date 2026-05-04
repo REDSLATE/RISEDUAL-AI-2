@@ -5,6 +5,7 @@ import {
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
 import AdversarialCoresChip from './AdversarialCoresChip';
+import TickerAbandonmentTable from './TickerAbandonmentTable';
 
 const API = `${getApiBase()}/api`;
 
@@ -258,6 +259,8 @@ const TerminalTopActions = () => {
       </div>
 
       <AdversarialCoresChip />
+
+      <TickerAbandonmentTable />
 
       {error && (
         <div
