@@ -687,10 +687,16 @@ async def _start_schedulers():
         scheduler.add_job(_run_self_test_monitor, 'interval', minutes=15, id='self_test_monitor')
         scheduler.add_job(_run_conviction_drift_check, 'cron', hour=8, minute=0, id='conviction_drift_check')
 
-        # Nightly ticker-abandonment snapshot — runs at 03:30 UTC.
-        # Belt-and-suspenders alongside the on-read upsert in the
-        # admin endpoint: guarantees the Δ-since-yesterday column has
+        # Daily ticker-abandonment snapshot — runs at 21:05 UTC,
+        # right after the regular US session close (matches the
+        # existing top-universe-warm-post-close pattern). Belt-and-
+        # suspenders alongside the on-read upsert in the admin
+        # endpoint: guarantees the Δ-since-yesterday column has
         # data even if nobody opens the admin page on a given day.
+        # Picked 21:05 UTC over 01:00 UTC to keep the snapshot's
+        # date stamp on the SAME UTC day as the trading session —
+        # otherwise the Δ comparison breaks because the session-
+        # ending snapshot would land on tomorrow's date.
         # Idempotent (safe to run repeatedly same-day). Never raises.
         async def _run_ticker_abandonment_snapshot():
             try:
@@ -702,7 +708,7 @@ async def _start_schedulers():
                 )
         scheduler.add_job(
             _run_ticker_abandonment_snapshot,
-            'cron', hour=3, minute=30,
+            'cron', hour=21, minute=5,
             id='ticker_abandonment_snapshot',
         )
 
