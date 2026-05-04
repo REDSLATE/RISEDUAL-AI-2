@@ -55,6 +55,62 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Terminal Top Actions — Frontend tab + EXIT rule layer (May 3, 2026)
+
+**Two follow-ups to T2** shipped in one pass — the visual layer for
+`/api/terminal/top-actions` and the EXIT card rule logic.
+
+**Frontend** — new `components/admin/TerminalTopActions.jsx` rendered
+inside the Admin panel as a new "Terminal" tab in the Operations
+group. Polls `/api/terminal/top-actions?limit=10` every 30s.
+Renders:
+* A 4-chip totals row (EXIT / ENTER / MANAGE / WATCH).
+* A vertical stack of action cards, each with rank, symbol, side
+  arrow, conviction score, priority score (0-100), reason text,
+  veto count, shadow flag, and an optional correlation_note chip.
+* Per-kind colour coding — EXIT in rose, ENTER in emerald, MANAGE
+  in slate, WATCH in amber. EXIT cards visually scream by design.
+* Empty state when sovereign is quiet ("normal during market closes
+  or low-conviction regimes").
+
+**EXIT rule layer** — `_classify_kind()` now emits ``"EXIT"`` when:
+* The user has an open paper_trade on the symbol AND
+* The latest sovereign decision **reverses** the side (LONG vs
+  SHORT) AND
+* Conviction is high (``tier ∈ {high, STRONG, VERY_STRONG}`` or
+  ``confidence ≥ 0.70``).
+
+EXIT cards get a **priority-score floor of 0.95** so they always
+rank above any new ENTER candidate within the same response — the
+operator must see the reversal first. Reason text explicitly names
+the reversal: ``"Sovereign reversed to SHORT on open LONG position
+· high tier · conf 0.82"``. Aligned signals stay MANAGE_POSITION;
+low-conviction reversals stay MANAGE_POSITION (noise filter).
+
+**Hard SL/TP breach detection deferred** — the equity portfolio
+storage collections are empty in the current test DB and crypto
+SL/TP fields aren't populated on most rows; needs a live-price hop
+to be meaningful. v1 ships sovereign-reversal as the only EXIT
+trigger, which works on both equity and crypto with no new I/O.
+
+**Tests**: 5 new EXIT-specific cases added to
+``test_terminal_top_actions.py`` (LONG-position + high-conviction
+SHORT → EXIT, SHORT-position + high-conviction LONG → EXIT,
+low-conviction reversal stays MANAGE, aligned signal stays MANAGE,
+EXIT outranks ENTER on the same tick). **16/16 green** in the
+terminal_top_actions suite, **63/63 green** across all
+terminal-related + sparkline + kraken_shadow + nl_live_bridge
+suites. Lint clean.
+
+**Testing agent verification (iteration_164)**: backend 8/8 API
+tests passed, frontend 100% verified — Terminal tab renders, totals
+chips visible, action cards display all schema fields, refresh
+button works, existing /signal/{symbol} and /market-state
+endpoints unaffected. Live data showed 1 ENTER (BTC) and 7 WATCH
+cards from the 217 real sovereign_decisions rows. EXIT path
+correctly stays empty in live data because no admin paper_trades
+exist; unit tests cover the EXIT logic.
+
 ### Terminal Top Actions — T2 endpoint (May 3, 2026)
 
 **P0 from the handoff backlog**: ``/api/terminal/top-actions`` ships
