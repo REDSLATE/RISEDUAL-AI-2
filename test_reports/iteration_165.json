@@ -1,0 +1,87 @@
+{
+  "summary": "Iteration 165 - Adversarial Cores chip + SSE stream for top-actions. All backend API tests pass (9/9). Frontend Terminal tab verified: AdversarialCoresChip renders with IDLE status, SSE stream shows '● live', top-action cards render correctly with totals row.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_adversarial_cores_stream_api.py",
+    "/app/test_reports/pytest/iteration165_adversarial_stream.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/admin/adversarial-cores/24h correctly requires owner auth (401 without auth)",
+    "Response shape matches contract: enabled, phase, decisions_24h, closed_24h, decision_counts, wins, avg_edge_gap, avg_bull_confidence, avg_bear_confidence, bull_win_rate, bear_win_rate, last_decision_at, collection",
+    "enabled=True confirmed (CRYPTO_ADVERSARIAL_ENABLED=1 is set in .env)",
+    "GET /api/terminal/top-actions/stream correctly requires owner auth (401 without auth)",
+    "Stream returns content-type 'text/event-stream; charset=utf-8' with initial 'event: snapshot' frame",
+    "Stream limit validation works: limit=0 returns 400, limit=999 returns 400, limit=5 returns 200",
+    "Frontend AdversarialCoresChip renders with correct status: IDLE (enabled=true, decisions_24h=0)",
+    "Frontend stream-status shows '● live' (green) indicating SSE connection established",
+    "Frontend top-action cards render correctly with rank, symbol, kind badge, action direction, conf score, priority score, reason text",
+    "Frontend totals row shows correct counts: 0 EXIT, 4 ENTER, 0 MANAGE, 4 WATCH"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_adversarial_cores_stream_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 API tests passed)",
+    "frontend": "100% (Terminal tab renders, all new UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing sovereign_decisions in test DB",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Adversarial Cores chip and SSE stream for top-actions are fully functional. Backend tests in test_adversarial_cores_stream_api.py cover: auth requirements (401), response shapes, limit validation. Frontend Terminal tab in Admin panel renders correctly with AdversarialCoresChip (IDLE status when enabled but 0 decisions), SSE stream status pill (● live), and top-action cards. Live data shows 4 ENTER (ETH, BTC, ADA, XRP) and 4 WATCH cards. No EXIT cards present (no open paper_trades with SL/TP breach).",
+  "features_verified": {
+    "backend_adversarial_cores_auth": {
+      "status": "VERIFIED",
+      "details": "GET /api/admin/adversarial-cores/24h without auth returns 401"
+    },
+    "backend_adversarial_cores_shape": {
+      "status": "VERIFIED",
+      "details": "Response includes enabled, phase, decisions_24h, closed_24h, decision_counts, wins, avg_edge_gap, avg_bull_confidence, avg_bear_confidence, bull_win_rate, bear_win_rate, last_decision_at, collection"
+    },
+    "backend_adversarial_cores_enabled": {
+      "status": "VERIFIED",
+      "details": "enabled=True (CRYPTO_ADVERSARIAL_ENABLED=1 is set)"
+    },
+    "backend_stream_auth": {
+      "status": "VERIFIED",
+      "details": "GET /api/terminal/top-actions/stream without auth returns 401"
+    },
+    "backend_stream_content_type": {
+      "status": "VERIFIED",
+      "details": "Returns text/event-stream; charset=utf-8 with initial 'event: snapshot' frame"
+    },
+    "backend_stream_limit_validation": {
+      "status": "VERIFIED",
+      "details": "limit=0 returns 400, limit=999 returns 400, limit=5 returns 200"
+    },
+    "frontend_adversarial_chip": {
+      "status": "VERIFIED",
+      "details": "[data-testid=adversarial-cores-chip] renders with IDLE status, 0 decisions, 0.000 avg_edge_gap"
+    },
+    "frontend_adversarial_status": {
+      "status": "VERIFIED",
+      "details": "[data-testid=adversarial-cores-status] shows 'IDLE' (correct for enabled=true, decisions_24h=0)"
+    },
+    "frontend_stream_status": {
+      "status": "VERIFIED",
+      "details": "[data-testid=terminal-top-actions-stream-status] shows '● live · 0s' (green, SSE connected)"
+    },
+    "frontend_top_actions": {
+      "status": "VERIFIED",
+      "details": "[data-testid=terminal-top-actions] renders with totals row and action cards"
+    },
+    "frontend_action_cards_regression": {
+      "status": "VERIFIED",
+      "details": "Action cards render correctly with rank, symbol, kind badge, action direction, conf score, priority score, reason text"
+    }
+  }
+}

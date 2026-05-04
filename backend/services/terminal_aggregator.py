@@ -747,6 +747,149 @@ async def _open_positions_for_user(
             sym = (row.get(sym_field) or row.get("symbol") or "").upper()
             if sym:
                 out[sym] = row
+    # For equity positions, merge in stop_loss / take_profit from the
+    # portfolios collection — the paper_trades row is a trade record
+    # and doesn't carry the live SL/TP. Crypto rows already have the
+    # fields inline so no extra lookup needed there.
+    try:
+        portfolio = await ctx.db["portfolios"].find_one(
+            {"user_id": user_id}, {"_id": 0},
+        )
+    except Exception:  # noqa: BLE001
+        portfolio = None
+    if portfolio:
+        for pos in (portfolio.get("positions") or []):
+            sym = (pos.get("symbol") or "").upper()
+            if sym and sym in out:
+                # Don't clobber fields already on the trade row; only
+                # fill SL/TP/avg_cost when missing.
+                for k in ("stop_loss", "take_profit", "avg_cost"):
+                    if out[sym].get(k) is None and pos.get(k) is not None:
+                        out[sym][k] = pos[k]
+    return out
+
+
+# ── Hard exit triggers (SL / TP breach detection) ─────────────────
+#
+# Phase 2 of the EXIT rule layer. Where v1 EXIT cards fired on
+# sovereign-side reversal, v2 adds *price-driven* EXIT cards:
+# when the live mid-price breaches an open position's stop_loss or
+# take_profit, that symbol gets a top-ranked EXIT with an explicit
+# "SL breach" / "TP hit" reason.
+#
+# Gated on position_direction being set AND the trade row carrying
+# a numeric stop_loss/take_profit. Any failure of the live-price
+# hop degrades silently — a stale price source is *never* allowed to
+# fabricate an EXIT card.
+
+
+def _hard_exit_trigger(
+    *,
+    direction: str,
+    price: float,
+    stop_loss: float | None,
+    take_profit: float | None,
+) -> tuple[str, str] | None:
+    """Pure-function SL/TP breach classifier.
+
+    Returns ``(trigger, reason_snippet)`` or ``None`` when no breach.
+
+    LONG rules:
+      * price ≤ stop_loss → ("sl_breach", "Stop-loss breached @ <price>")
+      * price ≥ take_profit → ("tp_hit", "Take-profit hit @ <price>")
+
+    SHORT rules (symmetric):
+      * price ≥ stop_loss → ("sl_breach", ...)
+      * price ≤ take_profit → ("tp_hit", ...)
+    """
+    if price <= 0:
+        return None
+    d = (direction or "").upper()
+    sl = float(stop_loss) if stop_loss is not None else None
+    tp = float(take_profit) if take_profit is not None else None
+
+    if d == "LONG":
+        if sl is not None and sl > 0 and price <= sl:
+            return ("sl_breach", f"Stop-loss breached @ ${price:.2f}")
+        if tp is not None and tp > 0 and price >= tp:
+            return ("tp_hit", f"Take-profit hit @ ${price:.2f}")
+    elif d == "SHORT":
+        if sl is not None and sl > 0 and price >= sl:
+            return ("sl_breach", f"Stop-loss breached @ ${price:.2f}")
+        if tp is not None and tp > 0 and price <= tp:
+            return ("tp_hit", f"Take-profit hit @ ${price:.2f}")
+    return None
+
+
+async def _build_hard_exit_cards(
+    ctx: TerminalContext,
+    open_positions: dict[str, dict[str, Any]],
+    *,
+    price_fetcher=None,
+) -> list[dict[str, Any]]:
+    """Probe open positions for SL/TP breaches and emit a fully-
+    formed action card for each breach. Returns ``[]`` on any failure
+    so a broken live-price provider can never suppress the rest of
+    the top-actions response.
+
+    ``price_fetcher`` is injectable for tests. Defaults to
+    ``services.price_provider.get_quote`` which the sovereign path
+    already uses.
+    """
+    if not open_positions:
+        return []
+    if price_fetcher is None:
+        try:
+            from services.price_provider import get_quote as price_fetcher  # type: ignore
+        except Exception:  # noqa: BLE001
+            return []
+
+    out: list[dict[str, Any]] = []
+    for symbol, pos in open_positions.items():
+        direction = (
+            pos.get("direction") or pos.get("side") or ""
+        ).upper() or None
+        if direction not in ("LONG", "SHORT"):
+            continue
+        sl = pos.get("stop_loss")
+        tp = pos.get("take_profit")
+        if sl is None and tp is None:
+            continue
+        try:
+            quote = await price_fetcher(symbol)
+        except Exception:  # noqa: BLE001
+            quote = None
+        price = float((quote or {}).get("price") or 0.0)
+        trigger = _hard_exit_trigger(
+            direction=direction, price=price,
+            stop_loss=sl, take_profit=tp,
+        )
+        if trigger is None:
+            continue
+        trigger_kind, reason_snippet = trigger
+        out.append({
+            "kind": "EXIT",
+            "symbol": symbol,
+            "asset_type": pos.get("asset_class") or "equity",
+            "action": "CLOSE",
+            "priority_score": 0.99,  # Hard breaches outrank reversals (0.95).
+            "conviction": {"tier": "hard", "score": None},
+            "size_multiplier": 0.0,
+            "vetoes": [],
+            "vetoes_count": 0,
+            "reason": (
+                f"{reason_snippet} · open {direction} position "
+                f"(entry/avg: {pos.get('entry_price') or pos.get('avg_cost') or '—'}, "
+                f"SL: {sl}, TP: {tp})"
+            ),
+            "correlation_note": None,
+            "decision_id": None,
+            "decision_age_minutes": 0.0,
+            "shadow": True,
+            "trigger": trigger_kind,
+            "live_price": price,
+            "links": {"signal": f"/api/terminal/signal/{symbol}"},
+        })
     return out
 
 
@@ -777,20 +920,36 @@ async def get_top_actions(
     decisions = await _latest_decisions_per_symbol(ctx, since=since)
     open_positions = await _open_positions_for_user(ctx, user_id)
 
+    # Phase 2 EXIT — hard SL/TP breach detection runs BEFORE the
+    # sovereign classifier. If a position's live price has already
+    # crossed its stop or take, we emit a hard-EXIT card for it
+    # (priority 0.99, tier "hard") and *remove* that symbol from the
+    # decisions loop so we never render two EXIT cards for the same
+    # asset on one tick.
+    hard_exit_cards = await _build_hard_exit_cards(ctx, open_positions)
+    hard_exit_symbols = {c["symbol"] for c in hard_exit_cards}
+
     # Surface MANAGE_POSITION cards for every open position even if
     # there's no fresh sovereign decision on that symbol — operator
-    # still needs visibility.
+    # still needs visibility. Symbols that already got a hard-EXIT
+    # card are excluded here so they don't get a duplicate orphan
+    # MANAGE row.
     positions_without_signal = {
         sym: row for sym, row in open_positions.items()
-        if not any((d.get("symbol") or "").upper() == sym for d in decisions)
+        if sym not in hard_exit_symbols
+        and not any((d.get("symbol") or "").upper() == sym for d in decisions)
     }
 
-    actions: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = list(hard_exit_cards)
     enter_count = 0
 
     for d in decisions:
         symbol = (d.get("symbol") or "").upper()
         if not symbol:
+            continue
+        # Skip decisions for symbols that already got a hard-EXIT —
+        # the hard breach wins. Operator closes, period.
+        if symbol in hard_exit_symbols:
             continue
         action = (d.get("action") or "HOLD").upper()
         tier = d.get("conviction_tier") or _conviction_label(d.get("confidence"))

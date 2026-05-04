@@ -3362,6 +3362,22 @@ async def kraken_shadow_today(request: Request):
     return await summarize_today(db)
 
 
+@router.get("/adversarial-cores/24h")
+async def adversarial_cores_24h(request: Request):
+    """At-a-glance read of the Bull/Bear/Commander core activity over
+    the last 24 hours — decision counts, win rates (once closed rows
+    exist), avg edge_gap and confidences, plus enabled + phase.
+
+    Feeds the compact "Adversarial Cores" chip on the admin Terminal
+    tab. Designed for the same cold-start-is-normal flow as the
+    Kraken xStock shadow chip: zero rows returns a valid empty
+    envelope rather than erroring.
+    """
+    await _require_owner(request)
+    from services.adversarial_monitor import summarize_24h
+    return await summarize_24h(db)
+
+
 @router.get("/news-shock/ingestion-sparkline")
 async def news_shock_ingestion_sparkline(request: Request, hours: int = 24):
     """Hourly Benzinga + Alpha Vantage article ingestion counts over a

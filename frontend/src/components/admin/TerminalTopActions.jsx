@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   RefreshCw, ArrowDownCircle, ArrowUpCircle, Eye, Settings2, AlertOctagon,
 } from 'lucide-react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
+import AdversarialCoresChip from './AdversarialCoresChip';
 
 const API = `${getApiBase()}/api`;
 
@@ -160,6 +161,8 @@ const TerminalTopActions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastPoll, setLastPoll] = useState(null);
+  const [streamConnected, setStreamConnected] = useState(false);
+  const esRef = useRef(null);
 
   const fetchActions = useCallback(async () => {
     try {
@@ -177,9 +180,47 @@ const TerminalTopActions = () => {
   }, []);
 
   useEffect(() => {
+    // Primary path — SSE subscription. Pushes fresh snapshots only
+    // when the underlying data structurally changes. Falls back to
+    // 30s polling if the browser or proxy blocks EventSource.
     fetchActions();
-    const id = setInterval(fetchActions, 30_000);
-    return () => clearInterval(id);
+    const streamUrl = `${API}/terminal/top-actions/stream?limit=10`;
+    try {
+      const es = new EventSource(streamUrl, { withCredentials: true });
+      esRef.current = es;
+      es.addEventListener('snapshot', (evt) => {
+        try {
+          const payload = JSON.parse(evt.data);
+          setData(payload);
+          setError(null);
+          setLastPoll(new Date());
+          setStreamConnected(true);
+          setLoading(false);
+        } catch (_) { /* ignore malformed frame */ }
+      });
+      es.addEventListener('heartbeat', () => {
+        setStreamConnected(true);
+        setLastPoll(new Date());
+      });
+      es.onerror = () => {
+        setStreamConnected(false);
+        // EventSource auto-reconnects; no manual retry needed.
+      };
+    } catch (_) {
+      // EventSource unsupported — fall through to polling.
+      setStreamConnected(false);
+    }
+
+    // Fallback polling always runs at 60s so if SSE drops silently,
+    // the operator still sees fresh data within the minute.
+    const id = setInterval(fetchActions, 60_000);
+    return () => {
+      clearInterval(id);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+    };
   }, [fetchActions]);
 
   return (
@@ -194,8 +235,15 @@ const TerminalTopActions = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-slate-500 tabular-nums">
-            {lastPoll ? `${Math.max(0, Math.floor((Date.now() - lastPoll.getTime()) / 1000))}s ago` : '—'}
+          <span
+            className={`text-[10px] tabular-nums ${streamConnected ? 'text-emerald-400' : 'text-slate-500'}`}
+            data-testid="terminal-top-actions-stream-status"
+            title={streamConnected ? 'SSE stream connected' : 'polling fallback'}
+          >
+            {streamConnected ? '● live' : '○ poll'}
+            {lastPoll && (
+              <> · {Math.max(0, Math.floor((Date.now() - lastPoll.getTime()) / 1000))}s</>
+            )}
           </span>
           <button
             onClick={fetchActions}
@@ -208,6 +256,8 @@ const TerminalTopActions = () => {
           </button>
         </div>
       </div>
+
+      <AdversarialCoresChip />
 
       {error && (
         <div

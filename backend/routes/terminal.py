@@ -16,6 +16,11 @@ from fastapi import APIRouter, HTTPException, Request
 from services.terminal_aggregator import (
     TerminalContext, get_market_state, get_signal, get_top_actions,
 )
+import asyncio
+import json as _json
+import logging as _logging
+from datetime import datetime as _dt, timezone as _tz
+from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/api/terminal", tags=["terminal"])
 
@@ -88,3 +93,100 @@ async def terminal_top_actions(
         )
     ctx = TerminalContext(db=db)
     return await get_top_actions(ctx, user_id=user_id, limit=limit)
+
+
+@router.get("/top-actions/stream")
+async def terminal_top_actions_stream(
+    request: Request,
+    user_id: str | None = None,
+    limit: int = 10,
+):
+    """Server-Sent Events stream of the top-actions payload.
+
+    Pushes a fresh snapshot whenever the underlying data **changes**:
+    a new sovereign_decision lands, a paper_trade opens/closes, or
+    a live-price check in the EXIT detector flips a breach state.
+
+    Change detection is intentionally simple — re-compute the payload
+    every 10s and emit only when a structural hash of the actions
+    list changes. This gives the operator near-real-time visibility
+    without requiring a Mongo change stream (which needs a replica
+    set) or a fan-out pub/sub layer.
+
+    A heartbeat fires every 30s even when nothing changes so the
+    proxy doesn't kill the connection.
+
+    Auth is cookie-based (same as the snapshot endpoint) — works with
+    vanilla ``new EventSource(url)`` on the frontend, no custom
+    headers required.
+    """
+    await _require_owner_ref(request)
+    if limit is not None and (limit < 1 or limit > 50):
+        raise HTTPException(
+            status_code=400, detail="limit must be between 1 and 50",
+        )
+    ctx = TerminalContext(db=db)
+
+    async def _event_generator():
+        last_hash: str | None = None
+        last_heartbeat = _dt.now(_tz.utc)
+        # Kick off with an initial snapshot so the frontend has
+        # something to render immediately (no waiting for the first
+        # 10s tick).
+        try:
+            first = await get_top_actions(ctx, user_id=user_id, limit=limit)
+            last_hash = _hash_actions(first.get("actions") or [])
+            yield {
+                "event": "snapshot",
+                "data": _json.dumps(first, default=str),
+            }
+        except Exception as exc:  # noqa: BLE001
+            _logging.getLogger(__name__).warning(
+                "[top-actions-stream] initial snapshot failed: %s", exc,
+            )
+
+        while True:
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(10)
+            now = _dt.now(_tz.utc)
+            try:
+                payload = await get_top_actions(
+                    ctx, user_id=user_id, limit=limit,
+                )
+                new_hash = _hash_actions(payload.get("actions") or [])
+                if new_hash != last_hash:
+                    last_hash = new_hash
+                    yield {
+                        "event": "snapshot",
+                        "data": _json.dumps(payload, default=str),
+                    }
+                elif (now - last_heartbeat).total_seconds() >= 30:
+                    last_heartbeat = now
+                    yield {
+                        "event": "heartbeat",
+                        "data": _json.dumps({
+                            "timestamp": now.isoformat(),
+                            "actions_hash": last_hash,
+                        }),
+                    }
+            except Exception as exc:  # noqa: BLE001
+                _logging.getLogger(__name__).warning(
+                    "[top-actions-stream] tick failed: %s", exc,
+                )
+
+    return EventSourceResponse(_event_generator())
+
+
+def _hash_actions(actions: list) -> str:
+    """Cheap structural hash — concatenate (symbol, kind, rank,
+    round(priority, 2)) for each action. Good enough to detect
+    meaningful changes without being so sensitive it fires on every
+    minor confidence-score tick."""
+    import hashlib
+    key = "|".join(
+        f"{a.get('symbol', '')}:{a.get('kind', '')}:{a.get('rank', '')}:"
+        f"{round(float(a.get('priority_score') or 0.0), 2)}"
+        for a in actions
+    )
+    return hashlib.md5(key.encode("utf-8")).hexdigest()
