@@ -3871,6 +3871,40 @@ async def day_trade_exit_tick(request: Request):
 
 
 # ============================================================
+# KRAKEN CRYPTO QUOTES — primary live provider probe
+# ============================================================
+
+
+@router.get("/kraken-crypto-quotes/probe")
+async def kraken_crypto_quotes_probe(
+    request: Request, symbols: str = "BTC,ETH,SOL",
+):
+    """Live probe of Kraken as the primary crypto quote source.
+
+    Accepts a comma-separated list of canonical symbols and returns
+    whatever Kraken answered, bypassing the local TTL cache so every
+    call is a fresh exchange hop. Useful for verifying latency /
+    spread / geo-block state from the pod."""
+    await _require_owner(request)
+    from services.kraken_crypto_quotes import (
+        fetch_kraken_quotes_batch, _to_kraken_pair,
+    )
+    req = [s.strip() for s in symbols.split(",") if s.strip()]
+    out = await fetch_kraken_quotes_batch(req)
+    # Report which symbols Kraken couldn't resolve so the operator
+    # can adjust the universe.
+    unresolved = [s for s in req if _to_kraken_pair(s.upper()) is None]
+    missing = [s for s in req if s.upper() not in out and s not in unresolved]
+    return {
+        "requested": req,
+        "resolved_count": len(out),
+        "quotes": out,
+        "unresolved_symbols": unresolved,
+        "missing_from_kraken": missing,
+    }
+
+
+# ============================================================
 # AI PROMOTION HISTORY (audit trail)
 # ============================================================
 

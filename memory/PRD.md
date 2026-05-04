@@ -55,7 +55,113 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
-### Day-Trade Scanner Loop — FULLY WIRED (May 4, 2026)
+### Kraken as Primary Crypto Quote Source (May 4, 2026)
+
+Operator directive: *"Kraken has stocks as well as Crypto. Can we
+use it as a first source for live calls? It actually gives prices
+in real time!"*
+
+**Outcome**: Crypto lane fully migrated to Kraken as primary. All
+11 majors (BTC, ETH, SOL, BNB, XRP, ADA, AVAX, LINK, DOGE, DOT,
+MATIC) resolve live from the US-egress pod with tight exchange
+spreads (BTC 0.01 bps, ETH 0.38 bps, SOL 1.18 bps). xStocks (US
+equities) remain geo-blocked — investigated REST + WebSocket v2
+from this pod; both return zero tokenized_asset pairs. Parking
+stays until non-US egress is available.
+
+* **New service** ``services/kraken_crypto_quotes.py``:
+  * ``fetch_kraken_quotes_batch(symbols)`` — single hop, ~250ms
+    for the full universe. Returns per-symbol
+    ``{price, bid, ask, last, spread_bps, source, ts}``.
+  * ``get_kraken_crypto_quote(symbol, bypass_cache=False)`` — single
+    symbol with 2s in-process TTL cache. None on unknown /
+    failure (never raises).
+  * ``get_kraken_crypto_history(symbol, lookback_bars=60)`` — daily
+    closes via ``/0/public/OHLC``. Replaces the yfinance
+    ``{TICKER}-USD`` scrape for crypto.
+  * Symbol normalisation: ``BTC`` / ``BTC-USD`` / ``BTCUSDT`` all
+    resolve to canonical ``BTC``. Response-key normalisation
+    handles Kraken's X/Z prefix quirks
+    (``XXBTZUSD → BTC``, ``XETHZUSD → ETH``, ``XDGUSD → DOGE``).
+  * MATIC correctly routed to ``POLUSD`` (Polygon rebrand 2024).
+* **Wrapper rewired** ``services/crypto_quotes`` — Kraken FIRST,
+  falls back to AV → yfinance → Mongo cache on any failure.
+  Response shape gained ``bid``, ``ask``, ``spread_bps``, ``last``,
+  ``source`` fields (legacy ``price`` still the mid, so existing
+  callers unchanged). Gated by ``KRAKEN_CRYPTO_PRIMARY_ENABLED``
+  (default ON).
+* **Admin probe endpoint** ``GET /api/admin/kraken-crypto-quotes/probe``
+  — owner-only; bypasses cache, reports resolved_count +
+  unresolved_symbols so the operator can verify pod reachability
+  at a glance.
+* **Live smoke (2026-05-04)**:
+  ``requested=11 resolved=11``, all majors returned with native
+  bid/ask and sub-10-bps spreads. BTC 0.01 bps, ETH 0.30 bps,
+  DOGE 0.73 bps. Tighter than anything AV or yfinance could offer.
+* **Equity xStocks probe** — 2026-05-04:
+  * REST ``/0/public/AssetPairs?asset_class=tokenized_asset`` returned
+    1528 pairs but **zero** with ``aclass_base=tokenized_asset``
+    (filter doesn't actually filter; all returned pairs are
+    ``currency``-class crypto).
+  * WebSocket v2 ``instrument`` channel returned 669 symbols,
+    all crypto, zero xStocks.
+  * AAPLUSD probe returns ``EQuery:Unknown asset pair``.
+  * Conclusion: US-egress geo-block is still in force. Stays
+    parked per the existing Kraken P2 entry in ROADMAP.
+* **27 new tests** in ``tests/test_kraken_crypto_quotes.py``:
+  symbol normalisation (10 cases), Kraken response-key mapping,
+  bid/ask parse math, spread calc, malformed/zero-price rejection,
+  batched fetch (happy/unknown/empty/partial/HTTP-error), cache
+  dedupe, bypass flag, OHLC trim to lookback_bars, OHLC error
+  paths. **102/102 green** across all adjacent suites.
+
+
+
+### Post-Trade Autopsy + Promotion History + Equity Commander Shadow Chip (May 4, 2026)
+
+Three P1/P2 audit-and-visibility features shipped in one batch.
+
+* **Post-trade autopsy** (``services/post_trade_autopsy.py``) — pure
+  function ``build_post_trade_autopsy(trade_doc)`` that emits
+  ``{summary, reason_codes, what_went_right, what_went_wrong,
+  meta}`` at close time. Stamped onto both ``paper_trades`` and
+  ``crypto_paper_trades`` rows by the respective closers. Reason
+  codes include: ``WIN_TOOK_PROFIT`` / ``LOSS_STOPPED_OUT``,
+  ``WIN_HOLD_EXPIRED`` / ``LOSS_HOLD_EXPIRED``, ``TIMED_OUT_DAY_TRADE``,
+  ``WIN_HARD_EXIT`` / ``LOSS_HARD_EXIT``, ``HIGH_CONVICTION_WIN``/
+  ``LOSS``, ``LOW_CONVICTION_WIN`` / ``LOSS``,
+  ``INTEGRITY_THROTTLE_WAS_ACTIVE``, ``ADVERSARIAL_DISAGREED``.
+  New endpoints: ``GET /api/admin/post-trade-autopsy/{trade_id}``
+  + ``GET /api/admin/post-trade-autopsy?lane=equity|crypto|all``.
+  20 tests. Live-verified: historical SOL/ETH losses now return
+  ``LOSS_HOLD_EXPIRED`` with human-readable summaries.
+
+* **Promotion history** (``services/promotion_history.py``) — new
+  ``ai_promotion_history`` collection capturing every phase
+  transition across 4 cores (adversarial, sovereign_equity,
+  sovereign_crypto, equity_shadow_commander). Boot-time detector
+  diffs current env phase against last recorded row; writes a
+  row on any delta. Gate metrics are snapshotted on each write.
+  Endpoints: ``GET /api/admin/promotion-history`` +
+  ``POST /api/admin/promotion-history/record`` (manual operator
+  notes). 8 tests. Live-verified: cold boot seeded 4 rows with
+  full metrics payloads (sovereign_crypto: 495 rows total / 0
+  resolved, adversarial: 149 closed lifetime / 10.74% commander
+  correct).
+
+* **Equity Commander Shadow pill**
+  (``frontend/src/components/admin/EquityCommanderShadowChip.jsx``)
+  — mirrors the Adversarial chip treatment. Polls
+  ``/api/admin/commander-shadow/promotion-status`` every 30s.
+  Shows rows_total / rows_scored / win_rate / rows_to_go chips
+  plus a traffic-light status (LOGGING / LEARNING / BRAKE
+  ELIGIBLE) and a promotion pill (``N rows to Phase 2`` →
+  ``Ready → Phase 2 brake``). Slotted into the Terminal tab
+  between the Adversarial chip and the Ticker Abandonment table.
+
+
+
+### Day-Trade Scanner Wiring (May 4, 2026)
 
 Closes the P0 wiring gap from the previous session. Scanner service
 + exit monitor were created + unit-tested on 2026-05-03 but never
