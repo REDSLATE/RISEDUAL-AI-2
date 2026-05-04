@@ -3378,6 +3378,21 @@ async def adversarial_cores_24h(request: Request):
     return await summarize_24h(db)
 
 
+@router.get("/adversarial-cores/promotion")
+async def adversarial_cores_promotion(request: Request):
+    """Lifetime readiness for ``shadow → risk_only → veto → full``.
+
+    Inform-only — never flips a phase env on its own. Returns the
+    Commander-correct rate vs the next-transition floor, the
+    Bull/Bear lifetime win-rate spread, and a copy-pastable
+    ``promote_env_line`` for the operator to paste into
+    ``backend/.env`` when ``ready_to_promote=true``.
+    """
+    await _require_owner(request)
+    from services.adversarial_promotion_gate import compute_promotion_status
+    return await compute_promotion_status(db)
+
+
 @router.get("/news-shock/ingestion-sparkline")
 async def news_shock_ingestion_sparkline(request: Request, hours: int = 24):
     """Hourly Benzinga + Alpha Vantage article ingestion counts over a

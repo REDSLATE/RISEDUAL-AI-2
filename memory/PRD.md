@@ -55,6 +55,44 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Adversarial Promotion Gate + Warm-Up Indicator (May 4, 2026)
+
+Operator now has at-a-glance visibility into when the adversarial cores
+have earned the right to advance through ``shadow → risk_only → veto →
+full``.
+
+* **New service** ``services/adversarial_promotion_gate.py`` —
+  ``compute_promotion_status(db)`` aggregates the full
+  ``crypto_adversarial_decision_log`` and returns:
+  * ``commander_correct_rate`` (decision=LONG+winner=bull OR
+    decision=SHORT_OR_AVOID+winner=bear, divided by total closed rows)
+  * ``trustworthy`` flag once ``closed_lifetime ≥ 20`` (chip warm-up)
+  * ``ready_to_promote`` against per-transition row+rate floors
+    (defaults: 20/55%, 50/58%, 100/60% — all env-tunable)
+  * Copy-pastable ``promote_env_line`` like
+    ``CRYPTO_ADVERSARIAL_PHASE=risk_only``
+  * Terminal phase ``full`` returns ``next_transition=None``.
+* **New endpoint** ``GET /api/admin/adversarial-cores/promotion``
+  (owner-gated, mirrors the existing ``/24h`` shape).
+* **AdversarialCoresChip.jsx** now polls both endpoints every 30s and
+  surfaces:
+  * Promotion pill in the header — ``Ready → risk_only`` (emerald),
+    ``N rows to risk_only`` (slate), or ``TERMINAL · full`` (violet).
+  * Warm-up banner under the header until the trustworthy floor is
+    crossed (replaces the misleading "0% spread" early state).
+  * Bull−Bear spread now uses the lifetime aggregation (more stable
+    than the 24h slice it was reading before) and only renders once
+    trustworthy.
+  * Copy-button drawer with the env line + restart command when the
+    gate flips green. Inform-only — never flips the env on its own
+    (audit-stable, matches ``commander_phase2_brake`` discipline).
+* **Tests**: ``test_adversarial_promotion_gate.py`` — 10 cases
+  pinning empty/cold-start envelope, trustworthy threshold,
+  shadow→risk_only / risk_only→veto / terminal-full transitions,
+  NO_TRADE exclusion from commander-correct, lifetime-spread math,
+  env override.
+
+
 ### Data-Integrity Gate AST lint — fully green (May 4, 2026)
 
 Closed out the remaining 17 ``test_no_local_direction_tuples.py``
