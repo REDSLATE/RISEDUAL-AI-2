@@ -650,21 +650,27 @@ def _classify_kind(
     high_conviction = tier in HIGH_CONVICTION_TIERS or confidence >= 0.70
 
     if has_open_position and position_direction:
-        pos_dir = position_direction.upper()
-        signal_dir = action.upper()
+        from services.prediction_tracker import canonical_ai_dir
+        pos_dir = canonical_ai_dir(position_direction)
+        signal_dir = canonical_ai_dir(action)
         # Reversal trigger — only when the model speaks with conviction.
         # A low-conviction reversal is noise and shouldn't pull the
         # operator out of a thesis.
-        long_reversal = pos_dir == "LONG" and signal_dir in ("SHORT", "SELL") and high_conviction
-        short_reversal = pos_dir == "SHORT" and signal_dir in ("LONG", "BUY") and high_conviction
-        if long_reversal or short_reversal:
+        is_reversal = (
+            pos_dir in {"LONG", "SHORT"}
+            and signal_dir in {"LONG", "SHORT"}
+            and pos_dir != signal_dir
+            and high_conviction
+        )
+        if is_reversal:
             return "EXIT"
         return "MANAGE_POSITION"
 
     if has_open_position:
         return "MANAGE_POSITION"
 
-    if action in ("LONG", "BUY", "SHORT", "SELL"):
+    from services.prediction_tracker import canonical_ai_dir
+    if canonical_ai_dir(action) in {"LONG", "SHORT"}:
         if high_conviction:
             return "ENTER"
         return "WATCH"
@@ -846,10 +852,13 @@ async def _build_hard_exit_cards(
 
     out: list[dict[str, Any]] = []
     for symbol, pos in open_positions.items():
-        direction = (
-            pos.get("direction") or pos.get("side") or ""
-        ).upper() or None
-        if direction not in ("LONG", "SHORT"):
+        from services.prediction_tracker import canonical_ai_dir
+        direction = canonical_ai_dir(
+            pos.get("direction") or pos.get("side") or "",
+        )
+        # canonical_ai_dir returns "LONG" / "SHORT" / "UNKNOWN" — anything
+        # else (HOLD, malformed, missing) becomes "UNKNOWN" and is skipped.
+        if direction == "UNKNOWN":
             continue
         sl = pos.get("stop_loss")
         tp = pos.get("take_profit")

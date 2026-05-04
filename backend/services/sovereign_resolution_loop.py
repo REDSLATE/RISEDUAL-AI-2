@@ -51,10 +51,11 @@ BATCH_CAP: int = 50
 
 def _was_right(action: str, pnl_pct: float) -> bool:
     """Sovereign directional verdict aligned with realised P&L sign."""
-    a = (action or "").upper()
-    if a in {"LONG", "BUY", "STRONG_BUY", "UP", "BULLISH"}:
+    from services.prediction_tracker import canonical_ai_dir
+    canon = canonical_ai_dir(action)
+    if canon == "LONG":
         return pnl_pct > 0
-    if a in {"SHORT", "SELL", "STRONG_SELL", "DOWN", "BEARISH"}:
+    if canon == "SHORT":
         return pnl_pct < 0
     # HOLD / unknown — shouldn't appear here (HOLD decisions have no fired
     # trade to link to) but stay safe: treat as right only if |pnl|<0.25%.

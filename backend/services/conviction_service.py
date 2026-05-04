@@ -222,11 +222,13 @@ def _catalyst_conviction_delta(
     shock = catalyst_snapshot.get("news_shock", {}) or {}
     shock_state = shock.get("shock_state", "normal")
     sentiment = shock.get("sentiment_label", "unknown")
-    action_u = str(action or "").upper()
+
+    from services.prediction_tracker import canonical_ai_dir
+    canon_action = canonical_ai_dir(action)
 
     aligned = (
-        (action_u in {"BUY", "UP", "LONG"} and sentiment == "bullish")
-        or (action_u in {"SELL", "DOWN", "SHORT"} and sentiment == "bearish")
+        (canon_action == "LONG" and sentiment == "bullish")
+        or (canon_action == "SHORT" and sentiment == "bearish")
     )
 
     if shock_state == "high":

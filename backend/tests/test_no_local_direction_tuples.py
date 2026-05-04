@@ -138,6 +138,38 @@ ALLOWLIST: dict[str, str] = {
         "budget/proof-chain action field). Verdict-token canonicalisation "
         "above already routes through canonical_ai_dir."
     ),
+    # Engine-specific synonym folding to canonical LONG/SHORT/HOLD inside
+    # a pure compare-and-return brake decision. The folding sets are the
+    # local source of truth for the broker-side spelling variants this
+    # surface accepts (LONG/BUY/STRONG_BUY); canonical_ai_dir would
+    # require a network round-trip-style indirection inside what is
+    # documented as a microsecond-level pure function.
+    "services/commander_phase2_brake.py": (
+        "Engine-specific strategist action-synonym folding to canonical "
+        "LONG/SHORT/HOLD inside a pure brake decision (no I/O)."
+    ),
+    "services/smart_money_verification.py": (
+        "Engine-specific action-synonym folding (mirrors "
+        "commander_phase2_brake) for the smart-money proof block."
+    ),
+    # NL ticker-extraction stopword list. Includes BUY/SELL/HOLD as
+    # English words that must NOT be treated as tickers — this is a
+    # vocabulary filter, not a direction classifier.
+    "services/natural_language_trading.py": (
+        "Stopword set for ticker extraction (filters BUY/SELL/HOLD as "
+        "English words from regex matches) — not a direction classifier."
+    ),
+    # Top-actions terminal aggregator: every direction comparison runs
+    # AFTER canonical_ai_dir has folded the upstream verdict token into
+    # canonical {LONG, SHORT}. The remaining literal sets are the
+    # post-canonicalisation invariant checks. The sentiment-label
+    # check on `news_shock.sentiment_label` is news-sentiment, not an
+    # AI verdict, so the 2026-05-01 token-bug class doesn't apply.
+    "services/terminal_aggregator.py": (
+        "Post-canonicalisation invariant checks (canonical_ai_dir output "
+        "compared to canonical {LONG, SHORT}) plus a news-sentiment "
+        "label check that's not an AI verdict token."
+    ),
 }
 
 

@@ -259,22 +259,22 @@ def apply_sovereign_contribution(
         meta["sovereign_action"] = sov_action
         meta["sovereign_confidence"] = sov_conf
 
-        # Normalize directional synonyms
-        def _dir(a: str) -> str:
-            if a in {"LONG", "BUY", "STRONG_BUY", "UP", "BULLISH"}:
-                return "LONG"
-            if a in {"SHORT", "SELL", "STRONG_SELL", "DOWN", "BEARISH"}:
-                return "SHORT"
-            return a
+        # Resolve directional synonyms via the canonical helper.
+        # ``canonical_ai_dir`` returns "LONG" / "SHORT" / "UNKNOWN" —
+        # the latter is the *only* correct answer for HOLD / empty /
+        # unrecognised tokens. We treat "UNKNOWN" as the soften-conviction
+        # branch below, mirroring the prior local behaviour for HOLD.
+        from services.prediction_tracker import canonical_ai_dir
 
-        prod_dir = _dir(prod_action)
-        sov_dir = _dir(sov_action)
+        prod_dir = canonical_ai_dir(prod_action)
+        sov_dir = canonical_ai_dir(sov_action)
 
         cap = MAX_SOVEREIGN_CONFIDENCE_DELTA
 
-        if sov_dir == "HOLD":
-            # Sovereign wants to hold but production is going — soften conviction
-            # proportional to sovereign confidence in the hold.
+        if sov_dir == "UNKNOWN":
+            # Sovereign wants to hold (or emitted an unknown token) but
+            # production is going — soften conviction proportional to
+            # sovereign confidence in the hold/skip.
             delta = -min(cap, sov_conf * cap)
             meta.update(applied=True, reason="sovereign_hold_softens", delta=delta)
             return max(0.0, min(1.0, base + delta)), meta
@@ -285,7 +285,7 @@ def apply_sovereign_contribution(
             meta.update(applied=True, reason="aligned_bump", delta=delta)
             return max(0.0, min(1.0, base + delta)), meta
 
-        if sov_dir and sov_dir != prod_dir:
+        if sov_dir != prod_dir:
             # Contradicting direction — reduce confidence, NEVER flip action
             delta = -min(cap, sov_conf * cap)
             meta.update(applied=True, reason="contra_reduces", delta=delta)

@@ -55,6 +55,28 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Data-Integrity Gate AST lint — fully green (May 4, 2026)
+
+Closed out the remaining 17 ``test_no_local_direction_tuples.py``
+violations exposed when the gate first ran end-to-end.
+
+* **Refactored to ``canonical_ai_dir``** (preferred path):
+  * ``services/sovereign_ai_core.py`` (3 sites — adversarial
+    amplification + crypto strategist mapping)
+  * ``services/sovereign_resolution_loop.py`` (``_was_right`` direction
+    folding)
+  * ``services/conviction_service.py`` (catalyst alignment check)
+* **Allowlisted with justification** (4 files): ``commander_phase2_brake``
+  + ``smart_money_verification`` (engine-specific synonym folding to
+  canonical inside pure functions), ``natural_language_trading``
+  (BUY/SELL stopword filter for ticker extraction), ``terminal_aggregator``
+  (post-canonicalisation invariant checks).
+* **Verified**: ``pytest tests/test_no_local_direction_tuples.py``
+  green; full direction-grading + sovereign + conviction + terminal
+  suite (179 tests) passes.
+
+
+
 ### Adversarial Monitor + SSE Stream + Phase 2 EXIT (May 4, 2026)
 
 Three tightly-coupled follow-ups shipped together — operator

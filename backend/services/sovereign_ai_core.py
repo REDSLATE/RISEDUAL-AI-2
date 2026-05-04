@@ -145,9 +145,10 @@ def _strategist_model(f: SovereignFeatures) -> dict[str, Any]:
     # contradicting side. Capped at +0.20 amplification so a borderline
     # native vote can't be turned into a strong contradiction by upstream
     # confidence alone.
-    upstream_action = (f.strategist_action or "").upper()
+    from services.prediction_tracker import canonical_ai_dir
+    upstream_action = canonical_ai_dir(f.strategist_action)
     upstream_conf = float(f.strategist_confidence or 0.0)
-    if upstream_conf >= 0.70 and upstream_action in {"LONG", "SHORT"}:
+    if upstream_conf >= 0.70 and upstream_action != "UNKNOWN":
         native_lean_bull = bullish > bearish
         native_lean_bear = bearish > bullish
         if upstream_action == "LONG" and native_lean_bear:
@@ -568,12 +569,17 @@ async def run_shadow_for_crypto(
     """Thin adapter for the crypto path. ``signal`` is the strategist dict."""
     try:
         indicators = (signal.get("strategist") or {}).get("indicators", {}) or {}
-        # Map canonical direction to sovereign vocabulary
+        # Map canonical direction to sovereign vocabulary via the central
+        # canonical helper — STRONG_*/WEAK_*/BULLISH/BEARISH all fold to
+        # LONG/SHORT (or UNKNOWN). HOLD stays HOLD as the sovereign
+        # vocabulary distinguishes "no trade" from "ambiguous token".
+        from services.prediction_tracker import canonical_ai_dir
         raw_dir = str(signal.get("direction", "HOLD")).upper()
         action: Optional[Direction] = None
-        if raw_dir in {"LONG", "BUY", "STRONG_BUY", "UP", "BULLISH"}:
+        canon = canonical_ai_dir(raw_dir)
+        if canon == "LONG":
             action = "LONG"
-        elif raw_dir in {"SHORT", "SELL", "STRONG_SELL", "DOWN", "BEARISH"}:
+        elif canon == "SHORT":
             action = "SHORT"
         elif raw_dir == "HOLD":
             action = "HOLD"
