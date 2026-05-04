@@ -628,26 +628,45 @@ def _classify_kind(
     tier: str,
     confidence: float,
     has_open_position: bool,
+    position_direction: str | None = None,
 ) -> ActionKind:
     """Map a sovereign decision + position context into one of the
-    four action kinds the terminal renders. ``has_open_position`` is
-    the only correlation rule applied at T2 default settings — it
-    reroutes a fresh ENTER into a MANAGE_POSITION card for the same
-    symbol so we never recommend doubling down silently."""
+    four action kinds the terminal renders.
+
+    Routing rules (applied in order):
+
+    * **EXIT** — fired when the user has an open position AND the
+      latest sovereign decision *reverses* the side at high conviction.
+      This is the only way EXIT cards get emitted in v1; SL/TP breach
+      detection needs a live-price hop and is handled by a future
+      pass when position-storage collections are reliably populated.
+    * **MANAGE_POSITION** — open position, sovereign agrees with the
+      side or is HOLD/uncertain. Operator owns the close decision.
+    * **ENTER** — no open position + high-conviction directional
+      signal (LONG/SHORT). The "act now" prompt.
+    * **WATCH** — every other signal worth surfacing.
+    """
+    HIGH_CONVICTION_TIERS = ("high", "STRONG", "VERY_STRONG")
+    high_conviction = tier in HIGH_CONVICTION_TIERS or confidence >= 0.70
+
+    if has_open_position and position_direction:
+        pos_dir = position_direction.upper()
+        signal_dir = action.upper()
+        # Reversal trigger — only when the model speaks with conviction.
+        # A low-conviction reversal is noise and shouldn't pull the
+        # operator out of a thesis.
+        long_reversal = pos_dir == "LONG" and signal_dir in ("SHORT", "SELL") and high_conviction
+        short_reversal = pos_dir == "SHORT" and signal_dir in ("LONG", "BUY") and high_conviction
+        if long_reversal or short_reversal:
+            return "EXIT"
+        return "MANAGE_POSITION"
+
     if has_open_position:
         return "MANAGE_POSITION"
-    if action in ("LONG", "BUY"):
-        if tier in ("high", "STRONG", "VERY_STRONG") or confidence >= 0.70:
+
+    if action in ("LONG", "BUY", "SHORT", "SELL"):
+        if high_conviction:
             return "ENTER"
-        return "WATCH"
-    if action in ("SHORT", "SELL"):
-        if tier in ("high", "STRONG", "VERY_STRONG") or confidence >= 0.70:
-            return "ENTER"
-        return "WATCH"
-    # HOLD / UNKNOWN — only worth surfacing if the model is confident
-    # enough to justify operator attention (e.g., HOLD@0.80 = "stay
-    # the course" with conviction).
-    if confidence >= 0.65:
         return "WATCH"
     return "WATCH"
 
@@ -660,16 +679,20 @@ def _reason_text(
     confidence: float,
     has_open_position: bool,
     vetoes_count: int,
+    position_direction: str | None = None,
 ) -> str:
     parts: list[str] = []
-    if kind == "MANAGE_POSITION":
+    if kind == "EXIT":
+        pos = (position_direction or "?").upper()
+        parts.append(
+            f"Sovereign reversed to {action} on open {pos} position"
+        )
+    elif kind == "MANAGE_POSITION":
         parts.append(f"Open position; latest sovereign view is {action}")
     elif kind == "ENTER":
         parts.append(f"Sovereign {action}")
     elif kind == "WATCH":
         parts.append(f"Sovereign {action} below entry threshold")
-    elif kind == "EXIT":
-        parts.append("Exit recommended")
     parts.append(f"{tier} tier")
     parts.append(f"conf {confidence:.2f}")
     if vetoes_count:
@@ -775,10 +798,17 @@ async def get_top_actions(
         size_multiplier = float(d.get("size_multiplier") or 0.0)
         vetoes = list(d.get("vetoes") or [])
         has_pos = symbol in open_positions
+        pos_direction: str | None = None
+        if has_pos:
+            pos_row = open_positions[symbol]
+            pos_direction = (
+                pos_row.get("direction") or pos_row.get("side") or ""
+            ).upper() or None
 
         kind = _classify_kind(
             action=action, tier=tier,
             confidence=confidence, has_open_position=has_pos,
+            position_direction=pos_direction,
         )
 
         # Concentration guard — once we've queued the configured
@@ -809,6 +839,12 @@ async def get_top_actions(
             size_multiplier=size_multiplier,
             decision_age_minutes=age_min,
         )
+        # EXIT cards represent a "sovereign reversed against your open
+        # position" event — the operator must see this immediately,
+        # ahead of any new ENTER candidate. Floor the score at 0.95
+        # so the natural ranking always lifts EXIT to the top.
+        if kind == "EXIT":
+            score = max(score, 0.95)
 
         actions.append({
             "kind": kind,
@@ -824,6 +860,7 @@ async def get_top_actions(
                 kind=kind, action=action, tier=tier,
                 confidence=confidence, has_open_position=has_pos,
                 vetoes_count=len(vetoes),
+                position_direction=pos_direction,
             ),
             "correlation_note": correlation_note,
             "decision_id": d.get("decision_id"),

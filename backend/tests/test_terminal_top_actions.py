@@ -315,3 +315,154 @@ async def test_top_actions_action_payload_shape():
     assert a["vetoes"] == ["liq_low"]
     assert a["vetoes_count"] == 1
     assert a["links"]["signal"] == "/api/terminal/signal/NVDA"
+
+
+# ── EXIT rule tests (Sovereign reversal) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_exit_emitted_on_long_position_with_high_conviction_short():
+    """Sovereign flips to SHORT at high conviction on a symbol the
+    user holds LONG → EXIT card with reversal-specific reason."""
+    from services.terminal_aggregator import TerminalContext, get_top_actions
+
+    db = _FakeDB()
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "NVDA", action="SHORT", tier="high", confidence=0.82,
+    ))
+    db["paper_trades"].docs.append({
+        "trade_id": "pt-long",
+        "ticker": "NVDA",
+        "user_id": "user-rev",
+        "status": "open",
+        "direction": "LONG",
+    })
+
+    out = await get_top_actions(
+        TerminalContext(db=db, now=_fixed_now()),
+        user_id="user-rev", limit=10,
+    )
+    nvda = next(a for a in out["actions"] if a["symbol"] == "NVDA")
+    assert nvda["kind"] == "EXIT"
+    assert "reversed to SHORT" in nvda["reason"]
+    assert "open LONG position" in nvda["reason"]
+    assert out["totals"]["exit"] == 1
+    assert out["totals"]["manage"] == 0
+    # EXIT must be ranked first.
+    assert nvda["rank"] == 1
+    assert nvda["priority_score"] >= 0.95
+
+
+@pytest.mark.asyncio
+async def test_exit_emitted_on_short_position_with_high_conviction_long():
+    from services.terminal_aggregator import TerminalContext, get_top_actions
+
+    db = _FakeDB()
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "TSLA", action="LONG", tier="high", confidence=0.78,
+    ))
+    db["crypto_paper_trades"].docs.append({
+        "trade_id": "cpt-short",
+        "symbol": "TSLA",
+        "user_id": "user-short",
+        "status": "open",
+        "direction": "SHORT",
+    })
+
+    out = await get_top_actions(
+        TerminalContext(db=db, now=_fixed_now()),
+        user_id="user-short", limit=10,
+    )
+    tsla = next(a for a in out["actions"] if a["symbol"] == "TSLA")
+    assert tsla["kind"] == "EXIT"
+    assert "reversed to LONG" in tsla["reason"]
+    assert "open SHORT position" in tsla["reason"]
+
+
+@pytest.mark.asyncio
+async def test_low_conviction_reversal_stays_manage_position():
+    """SHORT signal at conf 0.55 + medium tier on a LONG position must
+    NOT trigger EXIT — that's noise. Stay MANAGE_POSITION."""
+    from services.terminal_aggregator import TerminalContext, get_top_actions
+
+    db = _FakeDB()
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "AAPL", action="SHORT", tier="medium", confidence=0.55,
+    ))
+    db["paper_trades"].docs.append({
+        "trade_id": "pt-aapl",
+        "ticker": "AAPL",
+        "user_id": "user-noisy",
+        "status": "open",
+        "direction": "LONG",
+    })
+
+    out = await get_top_actions(
+        TerminalContext(db=db, now=_fixed_now()),
+        user_id="user-noisy", limit=10,
+    )
+    aapl = next(a for a in out["actions"] if a["symbol"] == "AAPL")
+    assert aapl["kind"] == "MANAGE_POSITION"
+    assert out["totals"]["exit"] == 0
+
+
+@pytest.mark.asyncio
+async def test_aligned_signal_on_open_position_stays_manage():
+    """Sovereign LONG on a LONG position is agreement — never EXIT.
+    Operator owns the close decision."""
+    from services.terminal_aggregator import TerminalContext, get_top_actions
+
+    db = _FakeDB()
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "MSFT", action="LONG", tier="high", confidence=0.85,
+    ))
+    db["paper_trades"].docs.append({
+        "trade_id": "pt-msft",
+        "ticker": "MSFT",
+        "user_id": "user-aligned",
+        "status": "open",
+        "direction": "LONG",
+    })
+
+    out = await get_top_actions(
+        TerminalContext(db=db, now=_fixed_now()),
+        user_id="user-aligned", limit=10,
+    )
+    msft = next(a for a in out["actions"] if a["symbol"] == "MSFT")
+    assert msft["kind"] == "MANAGE_POSITION"
+    assert out["totals"]["exit"] == 0
+
+
+@pytest.mark.asyncio
+async def test_exit_ranks_above_enter_on_same_tick():
+    """An EXIT card must always rank above ENTER candidates within
+    the same response. The score floor of 0.95 enforces this."""
+    from services.terminal_aggregator import TerminalContext, get_top_actions
+
+    db = _FakeDB()
+    # Stronger ENTER candidate (conf 0.90) than the reversal trigger
+    # (conf 0.72). Without the score floor, ENTER would rank first.
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "REVRSE", action="SHORT", tier="high", confidence=0.72,
+        decision_id="rev",
+    ))
+    db["sovereign_decisions"].docs.append(_make_decision(
+        "STRONG", action="LONG", tier="high", confidence=0.90,
+        decision_id="strong",
+    ))
+    db["paper_trades"].docs.append({
+        "trade_id": "pt-rev",
+        "ticker": "REVRSE",
+        "user_id": "user-mix",
+        "status": "open",
+        "direction": "LONG",
+    })
+
+    out = await get_top_actions(
+        TerminalContext(db=db, now=_fixed_now()),
+        user_id="user-mix", limit=10,
+    )
+    assert out["actions"][0]["kind"] == "EXIT"
+    assert out["actions"][0]["symbol"] == "REVRSE"
+    assert out["actions"][1]["kind"] == "ENTER"
+    assert out["actions"][1]["symbol"] == "STRONG"

@@ -1,0 +1,86 @@
+{
+  "summary": "Iteration 164 - Terminal Top-Actions endpoint (T2) + Admin Terminal tab. All backend API tests pass (8/8). Frontend Terminal tab verified: component renders, totals chips (EXIT/ENTER/MANAGE/WATCH), 8 action cards with proper structure, refresh button works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_terminal_top_actions_api.py",
+    "/app/test_reports/pytest/iteration164_terminal_top_actions.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/terminal/top-actions correctly requires owner auth (401 without auth)",
+    "Response shape matches contract: as_of, user_id, limit, lookback_hours, enter_cap, totals, actions",
+    "Limit validation works: limit=0 returns 400, limit=999 returns 400, limit=5 returns at most 5 actions",
+    "Action card schema includes all required fields: rank, kind, symbol, asset_type, action, priority_score, conviction, size_multiplier, vetoes, vetoes_count, reason, correlation_note, decision_id, decision_age_minutes, shadow, links",
+    "Existing endpoints unaffected: /api/terminal/signal/AAPL and /api/terminal/market-state both return 200",
+    "Frontend TerminalTopActions.jsx correctly renders totals row with 4 chips (EXIT/ENTER/MANAGE/WATCH)",
+    "Action cards display rank, symbol, kind badge, action direction, conf score, priority score, and reason text",
+    "Refresh button re-fetches without errors",
+    "EXIT cards not present in live data (expected - no open paper_trades for admin user triggering reversal)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_terminal_top_actions_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 API tests passed)",
+    "frontend": "100% (Terminal tab renders, all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing 217 sovereign_decisions in test DB",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Terminal Top-Actions endpoint (T2) is fully functional. Backend tests in test_terminal_top_actions_api.py cover: auth requirement (401), response shape, limit validation (0→400, 999→400, 5→max 5), action card schema, existing endpoints unaffected. Frontend Terminal tab in Admin panel renders correctly with totals chips and action cards. EXIT cards require open paper_trades with high-conviction reversal signals - unit tests in test_terminal_top_actions.py cover this logic. Live data shows 1 ENTER (BTC) and 7 WATCH cards.",
+  "features_verified": {
+    "backend_auth": {
+      "status": "VERIFIED",
+      "details": "GET /api/terminal/top-actions without auth returns 401"
+    },
+    "backend_response_shape": {
+      "status": "VERIFIED",
+      "details": "Response includes as_of, user_id, limit, lookback_hours, enter_cap, totals (manage/enter/watch/exit), actions array"
+    },
+    "backend_limit_validation": {
+      "status": "VERIFIED",
+      "details": "limit=0 returns 400, limit=999 returns 400, limit=5 returns at most 5 actions"
+    },
+    "backend_action_card_schema": {
+      "status": "VERIFIED",
+      "details": "Action cards include rank, kind, symbol, asset_type, action, priority_score, conviction (tier/score), size_multiplier, vetoes, vetoes_count, reason, correlation_note, decision_id, decision_age_minutes, shadow, links"
+    },
+    "backend_existing_endpoints": {
+      "status": "VERIFIED",
+      "details": "GET /api/terminal/signal/AAPL returns 200, GET /api/terminal/market-state returns 200"
+    },
+    "frontend_terminal_tab": {
+      "status": "VERIFIED",
+      "details": "Admin panel Terminal tab accessible via [data-testid=admin-tab-terminal]"
+    },
+    "frontend_top_actions_component": {
+      "status": "VERIFIED",
+      "details": "[data-testid=terminal-top-actions] renders with totals row and action cards"
+    },
+    "frontend_totals_chips": {
+      "status": "VERIFIED",
+      "details": "4 chips visible: EXIT, ENTER, MANAGE, WATCH"
+    },
+    "frontend_action_cards": {
+      "status": "VERIFIED",
+      "details": "8 action cards rendered with rank, symbol, kind badge, action direction, conf score, priority score, reason text"
+    },
+    "frontend_refresh_button": {
+      "status": "VERIFIED",
+      "details": "[data-testid=terminal-top-actions-refresh] re-fetches without errors"
+    },
+    "exit_cards_styling": {
+      "status": "NOT_TESTABLE",
+      "details": "No EXIT cards in live data (no open paper_trades for admin user with high-conviction reversal). EXIT styling (border-rose-500/60) verified in code review of TerminalTopActions.jsx KIND_CONFIG"
+    }
+  }
+}

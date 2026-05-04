@@ -28,6 +28,7 @@ import ToxicSpikeAutopsyPanel from './admin/ToxicSpikeAutopsyPanel';
 import EngineRegistryPanel from './admin/EngineRegistryPanel';
 import WhatIfReplayPanel from './admin/WhatIfReplayPanel';
 import NewsShockBurnIn from './admin/NewsShockBurnIn';
+import TerminalTopActions from './admin/TerminalTopActions';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -48,6 +49,7 @@ const TAB_GROUPS = [
     label: 'Operations',
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
+      { id: 'terminal',  label: 'Terminal',  icon: TrendingUp },
       { id: 'burn-in',   label: 'Burn-In',   icon: Radio },
       { id: 'providers', label: 'Providers', icon: Activity },
       { id: 'vault',     label: 'Vault',     icon: Lock },
@@ -97,6 +99,7 @@ const TAB_SUBTITLES = {
   security:       () => 'Auth attempts · password breaches · rate limits',
   promos:         () => 'Coupons & credit grants',
   ops:            () => 'Env flags · Mongo · scheduler · Tier 3 state · auto notes',
+  terminal:       () => 'Sovereign-driven prioritized action queue · EXIT / ENTER / MANAGE / WATCH',
   'burn-in':      () => 'NEWS_SHOCK feeders · snapshots · Smart-Money blocks — Monday AM burn-in',
   'help-search':  () => 'Unanswered help-search queries',
   'chip-adoption':() => 'L1/L2 chat-chip click-through rates',
@@ -117,6 +120,7 @@ const TAB_SUBTITLES = {
 const TAB_COMPONENTS = {
   users:          (ctx) => <UsersTab users={ctx.users} filter={ctx.filter} setFilter={ctx.setFilter} actionLoading={ctx.actionLoading} doAction={ctx.doAction} />,
   ops:            () => <OpsSnapshotPanel />,
+  terminal:       () => <TerminalTopActions />,
   'burn-in':      () => <NewsShockBurnIn />,
   providers:      () => <ProviderHealth />,
   vault:          () => <KeyVault />,
