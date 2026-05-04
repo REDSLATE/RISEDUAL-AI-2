@@ -55,6 +55,67 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Slippage Simulator + Live Spread Watch + Kraken WebSocket (May 4, 2026)
+
+Three P2 items shipped together — all leverage the new bid/ask
+shape that Kraken (crypto) and Alpaca (equity) feed into the system.
+
+* **Slippage simulator** (``services/slippage_simulator.py``) —
+  pure function ``apply_entry_slippage(quote, direction)`` returning
+  ``SlippageResult(fill_price, slippage_bps, method, bid, ask, mid)``.
+  Methods: ``ask_fill`` (LONG entry), ``bid_fill`` (SHORT entry),
+  ``mid_only`` (legacy provider, no slippage), ``unknown`` (skip).
+  Wired into BOTH paper traders:
+  * ``crypto_paper_trader.run_crypto_symbol`` — fills at ask/bid
+    when Kraken-primary serves the quote, else mid_only.
+  * ``ml_paper_trader.maybe_paper_trade`` — pulls a live Alpaca
+    quote, applies slippage when bid/ask are present, falls back
+    to ``snapshot.close_price`` on any failure.
+  Trade rows now stamp ``entry_quote_bid``, ``entry_quote_ask``,
+  ``entry_quote_mid``, ``slippage_bps``, ``slippage_method``,
+  ``quote_source`` so the autopsy can attribute spread cost
+  separately from directional accuracy.
+  **22 tests** including realistic Alpaca AH and Kraken BTC
+  payloads.
+
+* **Live Spread Watch tile** (``LiveSpreadWatchTile.jsx`` +
+  ``GET /api/admin/spread-watch``) — cross-asset liquidity-stress
+  monitor. Polls both Kraken (5 crypto majors) and Alpaca (5
+  equity majors) in parallel via ``asyncio.gather``, normalises
+  the response shape, and flags symbols whose spread exceeds
+  ``stress_threshold_bps`` (default 25). Critically: equity
+  spreads only flag as stressed during ``market_session=rth``,
+  so wide post-close spreads on MSFT / NVDA do NOT trigger false
+  alarms (verified: MSFT 987 bps post-close → ``stressed=False``
+  ✓). Crypto is 24/7 so any wide crypto spread always flags.
+  Slotted into Terminal tab between the Equity Commander chip
+  and the Ticker Abandonment table.
+
+* **Kraken WebSocket streamer** (``services/kraken_ws_stream.py``)
+  — push-based crypto quotes. Single background task connects to
+  ``wss://ws.kraken.com/v2``, subscribes to ``ticker`` channel
+  for all 11 majors, maintains an in-memory snapshot keyed by
+  canonical symbol. ``get_streamed_quote(symbol)`` returns the
+  freshest snapshot if ``< MAX_STALENESS_SEC`` old (default 30s),
+  else ``None``. ``kraken_crypto_quotes.get_kraken_crypto_quote``
+  checks the WS snapshot FIRST, falls through to the existing
+  REST + 2s cache chain on stale/miss. Exponential backoff
+  reconnect (1s → 30s cap) with subscription replay. Gated by
+  ``KRAKEN_WS_STREAM_ENABLED`` (default ON). Lifecycle wired
+  into ``server.py`` startup + shutdown hooks.
+  **Live-verified (2026-05-04)**: streamer connected on boot,
+  11/11 symbols streaming, all snapshots ≤3.1s old, BTC spread
+  0.01 bps. Admin probe at ``GET /api/admin/kraken-ws/status``
+  returns alive + per-symbol snapshot ages.
+  **15 tests** for snapshot store, malformed-payload handling,
+  staleness gate, mapping coverage. Real WS connection covered
+  by the boot-time live smoke.
+
+* **39 new tests** total. **163/163 green** across all adjacent
+  suites. All lint clean.
+
+
+
 ### Alpaca as Primary US Equity Quote Source (May 4, 2026)
 
 Operator directive: *"Just US based and if you're able expand from

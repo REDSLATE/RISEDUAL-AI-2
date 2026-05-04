@@ -611,7 +611,13 @@ async def run_crypto_symbol(
 
     # Live quote (crypto-only path — never touches equity get_quote).
     quote = await quote_provider(symbol)
-    entry_price = float((quote or {}).get("price") or 0.0)
+    # Realistic fill price — when bid/ask flow through (Kraken
+    # primary), LONGs fill at ask + SHORTs fill at bid. Falls back
+    # to mid for legacy providers via the slippage module's
+    # ``mid_only`` path. Stamped onto the trade row for autopsy.
+    from services.slippage_simulator import apply_entry_slippage
+    _slip = apply_entry_slippage(quote, signal["direction"])
+    entry_price = _slip.fill_price
     if entry_price <= 0:
         await log_adversarial_decision(
             db, symbol=symbol, signal=signal, final_direction="HOLD",
@@ -982,6 +988,16 @@ async def run_crypto_symbol(
 
         "stop_loss": stops["stop_loss"],
         "take_profit": stops["take_profit"],
+
+        # Slippage audit — what the spread cost us at entry.
+        # ``slippage_method`` ∈ ask_fill / bid_fill / mid_only / unknown
+        # (see services/slippage_simulator.py).
+        "entry_quote_bid": _slip.bid,
+        "entry_quote_ask": _slip.ask,
+        "entry_quote_mid": _slip.mid,
+        "slippage_bps": _slip.slippage_bps,
+        "slippage_method": _slip.method,
+        "quote_source": (quote or {}).get("source"),
 
         # Top-level snapshot fields — denormalised so the closer +
         # memory writer + adaptation queries don't need nested-doc

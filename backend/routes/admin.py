@@ -3932,6 +3932,116 @@ async def alpaca_equity_quotes_probe(
 
 
 # ============================================================
+# LIVE SPREAD WATCH — cross-asset liquidity-stress monitor
+# ============================================================
+
+
+def _market_session_label() -> str:
+    """Coarse US market session classifier — RTH / pre / post /
+    closed. Pure UTC math, no holiday calendar."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    if now.weekday() >= 5:  # Sat / Sun
+        return "closed"
+    # RTH: 13:30–20:00 UTC (covers EST 9:30–16:00 with no DST guard
+    # — the chip just informs the operator; precise calendar logic
+    # lives in services.kraken_equity_shadow_service).
+    minutes = now.hour * 60 + now.minute
+    if 13 * 60 + 30 <= minutes < 20 * 60:
+        return "rth"
+    if 8 * 60 <= minutes < 13 * 60 + 30:
+        return "pre"
+    if 20 * 60 <= minutes < 24 * 60:
+        return "post"
+    return "closed"
+
+
+@router.get("/spread-watch")
+async def spread_watch(
+    request: Request,
+    crypto_symbols: str = "BTC,ETH,SOL,DOGE,XRP",
+    equity_symbols: str = "SPY,QQQ,AAPL,MSFT,NVDA",
+    stress_threshold_bps: float = 25.0,
+):
+    """Cross-asset live spread snapshot.
+
+    Pulls Kraken (crypto) + Alpaca (equity) in parallel, normalises
+    the response shape, and flags any symbol whose ``spread_bps``
+    exceeds ``stress_threshold_bps`` as a liquidity-stress signal.
+
+    For equities, post-close one-sided quotes (``spread_bps=null``)
+    are explicitly NOT counted as stress — that's the normal AH
+    state. The frontend can use ``market_session`` to gate the
+    "WIDE" pill so wide AH spreads don't trigger false alarms.
+    """
+    await _require_owner(request)
+    import asyncio
+
+    from services.kraken_crypto_quotes import fetch_kraken_quotes_batch
+    from services.alpaca_equity_quotes import fetch_alpaca_equity_quotes_batch
+
+    crypto_list = [s.strip() for s in crypto_symbols.split(",") if s.strip()]
+    equity_list = [s.strip() for s in equity_symbols.split(",") if s.strip()]
+
+    crypto_task = fetch_kraken_quotes_batch(crypto_list) if crypto_list else None
+    equity_task = fetch_alpaca_equity_quotes_batch(equity_list) if equity_list else None
+
+    crypto_out: dict = {}
+    equity_out: dict = {}
+    if crypto_task is not None and equity_task is not None:
+        crypto_out, equity_out = await asyncio.gather(crypto_task, equity_task)
+    elif crypto_task is not None:
+        crypto_out = await crypto_task
+    elif equity_task is not None:
+        equity_out = await equity_task
+
+    session = _market_session_label()
+
+    def _row(lane: str, symbol: str, q: dict) -> dict:
+        spread = q.get("spread_bps")
+        stressed = (
+            spread is not None
+            and lane == "crypto" or (lane == "equity" and session == "rth")
+        ) and (spread is not None and spread > stress_threshold_bps)
+        return {
+            "lane": lane,
+            "symbol": symbol,
+            "price": q.get("price"),
+            "bid": q.get("bid"),
+            "ask": q.get("ask"),
+            "last": q.get("last"),
+            "spread_bps": spread,
+            "source": q.get("source"),
+            "stressed": bool(stressed),
+        }
+
+    rows: list[dict] = []
+    for sym in crypto_list:
+        q = crypto_out.get(sym.upper())
+        if q is not None:
+            rows.append(_row("crypto", sym.upper(), q))
+    for sym in equity_list:
+        q = equity_out.get(sym.upper())
+        if q is not None:
+            rows.append(_row("equity", sym.upper(), q))
+
+    stressed_count = sum(1 for r in rows if r["stressed"])
+    return {
+        "rows": rows,
+        "row_count": len(rows),
+        "stressed_count": stressed_count,
+        "market_session": session,
+        "stress_threshold_bps": stress_threshold_bps,
+        "missing_crypto": [
+            s for s in crypto_list if s.upper() not in crypto_out
+        ],
+        "missing_equity": [
+            s for s in equity_list if s.upper() not in equity_out
+        ],
+    }
+
+
+# ============================================================
 # AI PROMOTION HISTORY (audit trail)
 # ============================================================
 
@@ -4097,3 +4207,33 @@ async def post_trade_autopsy_recent(
     rows.sort(key=lambda x: x.get("closed_at") or "", reverse=True)
     rows = rows[:limit]
     return {"rows": rows, "count": len(rows), "lane": lane}
+
+
+# ============================================================
+# KRAKEN WEBSOCKET STREAM — push-based crypto quotes
+# ============================================================
+
+
+@router.get("/kraken-ws/status")
+async def kraken_ws_status(request: Request):
+    """Diagnostic snapshot of the Kraken WS streamer state.
+
+    Reports whether the background task is alive, how many symbols
+    have an in-memory snapshot, and the staleness threshold beyond
+    which streamed quotes fall through to REST."""
+    await _require_owner(request)
+    from services.kraken_ws_stream import stream_status, get_streamed_quote
+    base = stream_status()
+    # Include the ages of each tracked snapshot so the operator can
+    # see which symbols are flowing vs which are stale.
+    import time as _t
+    ages: dict[str, float | None] = {}
+    for sym in list(base.get("tracked_symbols", [])):
+        q = await get_streamed_quote(sym)
+        if q is None:
+            ages[sym] = None
+            continue
+        ts = q.get("ts")
+        ages[sym] = round(_t.time() - float(ts), 2) if ts else None
+    base["snapshot_ages_sec"] = ages
+    return base

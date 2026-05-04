@@ -663,6 +663,34 @@ async def maybe_paper_trade(
 
     # Infer shares from last close price (use ATR proxy if close unavailable)
     entry_price = snapshot.close_price if snapshot.close_price and snapshot.close_price > 0 else None
+
+    # Realistic slippage — when Alpaca bid/ask is available, fill
+    # at ask on LONG / bid on SHORT (mirrors the crypto lane on
+    # 2026-05-04). Falls back to ``close_price`` on any failure.
+    slippage_meta: dict | None = None
+    if entry_price:
+        try:
+            from services.alpaca_equity_quotes import get_alpaca_equity_quote
+            from services.slippage_simulator import apply_entry_slippage
+            live_quote = await get_alpaca_equity_quote(ticker)
+            if live_quote is not None:
+                slip = apply_entry_slippage(live_quote, str(signal.direction.value))
+                if slip.fill_price > 0 and slip.method in ("ask_fill", "bid_fill"):
+                    entry_price = slip.fill_price
+                slippage_meta = {
+                    "entry_quote_bid": slip.bid,
+                    "entry_quote_ask": slip.ask,
+                    "entry_quote_mid": slip.mid,
+                    "slippage_bps": slip.slippage_bps,
+                    "slippage_method": slip.method,
+                    "quote_source": live_quote.get("source"),
+                }
+        except Exception as _slip_exc:  # noqa: BLE001
+            log.debug(
+                "[ml_paper_trader] slippage probe failed for %s: %s",
+                ticker, _slip_exc,
+            )
+
     shares: float | None = None
     if entry_price:
         shares = round(position_usd / entry_price, 4)
@@ -698,6 +726,8 @@ async def maybe_paper_trade(
     }
     if brake_log is not None:
         trade_doc["commander_phase2_brake"] = brake_log
+    if slippage_meta is not None:
+        trade_doc.update(slippage_meta)
     if sovereign_decision_id is not None:
         trade_doc["sovereign_decision_id"] = sovereign_decision_id
     if sovereign_contribution_meta is not None:

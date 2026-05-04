@@ -258,6 +258,17 @@ async def get_kraken_crypto_quote(
     if _to_kraken_pair(canonical) is None:
         return None
 
+    # WebSocket-fed snapshot — sub-100ms freshness when the stream
+    # is alive. Falls through to REST below on miss / stale entry.
+    if not bypass_cache:
+        try:
+            from services.kraken_ws_stream import get_streamed_quote
+            ws_quote = await get_streamed_quote(canonical)
+            if ws_quote is not None:
+                return ws_quote
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[kraken_crypto_quotes] ws lookup failed: %s", exc)
+
     now = _now()
     if not bypass_cache:
         async with _cache_lock:

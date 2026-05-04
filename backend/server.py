@@ -419,6 +419,21 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Promotion-history boot detector failed (non-critical): {e}")
 
+    # Kraken WebSocket streamer — push-based crypto quotes. Drops
+    # the 2s REST cache to sub-100ms freshness when the socket is
+    # healthy. Falls back to REST automatically on disconnect or
+    # stale snapshots. Gated by ``KRAKEN_WS_STREAM_ENABLED``.
+    try:
+        from services.kraken_ws_stream import start_kraken_ws_stream
+        symbols = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA",
+                   "AVAX", "LINK", "DOGE", "DOT", "MATIC"]
+        if start_kraken_ws_stream(symbols):
+            logger.info(
+                "[kraken_ws] streamer started for %d symbol(s)", len(symbols),
+            )
+    except Exception as e:
+        logger.warning(f"Kraken WS streamer start failed (non-critical): {e}")
+
     try:
         await create_indexes()
         logger.info("Indexes created")
@@ -1742,4 +1757,9 @@ def _write_test_credentials():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    try:
+        from services.kraken_ws_stream import stop_kraken_ws_stream
+        await stop_kraken_ws_stream()
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Kraken WS stop on shutdown: {e}")
     client.close()
