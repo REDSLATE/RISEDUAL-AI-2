@@ -98,7 +98,22 @@ async def get_notifications(request: Request):
     if not is_pro_user(user):
         return {"notifications": [], "unread_count": 0, "is_pro": False}
     cursor = db.notifications.find(
-        {"user_id": user["_id"]}, {"_id": 0, "type": 1, "title": 1, "message": 1, "read": 1, "created_at": 1, "metadata": 1, "symbol": 1, "new_verdict": 1, "old_verdict": 1, "confidence": 1, "in_watchlist": 1}
+        {
+            "user_id": user["_id"],
+            # Lifecycle filter — hide rows that have been
+            # superseded / resolved / dismissed by the regrade
+            # cleanup or by the operator. See
+            # ``services/notification_lifecycle.py``.
+            "$and": [
+                {"$or": [{"resolved": {"$exists": False}},
+                         {"resolved": False}]},
+                {"$or": [{"status": {"$exists": False}},
+                         {"status": {"$nin": [
+                             "resolved", "superseded", "dismissed",
+                         ]}}]},
+            ],
+        },
+        {"_id": 0, "type": 1, "title": 1, "message": 1, "read": 1, "created_at": 1, "metadata": 1, "symbol": 1, "new_verdict": 1, "old_verdict": 1, "confidence": 1, "in_watchlist": 1}
     ).sort("created_at", -1).limit(30)
     notifications = []
     async for doc in cursor:
@@ -112,7 +127,17 @@ async def get_unread_count(request: Request):
     user = await get_current_user(request)
     if not is_pro_user(user):
         return {"count": 0, "is_pro": False}
-    count = await db.notifications.count_documents({"user_id": user["_id"], "read": False})
+    count = await db.notifications.count_documents({
+        "user_id": user["_id"], "read": False,
+        "$and": [
+            {"$or": [{"resolved": {"$exists": False}},
+                     {"resolved": False}]},
+            {"$or": [{"status": {"$exists": False}},
+                     {"status": {"$nin": [
+                         "resolved", "superseded", "dismissed",
+                     ]}}]},
+        ],
+    })
     return {"count": count, "is_pro": True}
 
 

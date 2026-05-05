@@ -1232,6 +1232,48 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
         if len(affected_tickers) > 5:
             ticker_summary += f" +{len(affected_tickers) - 5} more"
 
+        # Source-row provenance — needed by the lifecycle service so
+        # notifications can be auto-superseded once their source
+        # predictions get regraded. ChromaDB stamps the original
+        # prediction's date in metadata; we capture both.
+        source_prediction_ids = sorted(
+            str(d.get("id"))
+            for d in toxic_details
+            if d.get("id")
+        )
+        episode_dates = sorted({
+            str(d.get("date"))
+            for d in toxic_details
+            if d.get("date") and str(d.get("date")) != "?"
+        })
+
+        # Dedupe — if an active toxic_spike notification for the
+        # exact same source IDs already exists, don't fan out a
+        # second copy. Anchored on a sentinel user (the global
+        # alerts row in ``alerts_sent`` already carries the alert_id;
+        # we add a notifications-side guard to keep the drawer
+        # clean across multi-day persistence runs).
+        if source_prediction_ids:
+            existing = await _db.notifications.find_one({
+                "type": "toxic_spike",
+                "metadata.source_prediction_ids": source_prediction_ids,
+                "$and": [
+                    {"$or": [{"resolved": {"$exists": False}},
+                             {"resolved": False}]},
+                    {"$or": [{"status": {"$exists": False}},
+                             {"status": {"$nin": [
+                                 "resolved", "superseded", "dismissed",
+                             ]}}]},
+                ],
+            })
+            if existing is not None:
+                logger.info(
+                    "[toxic-alert] skipping notification fan-out — "
+                    "active alert with identical source_prediction_ids "
+                    "already present.",
+                )
+                return
+
         # Find all Pro users
         pro_users = []
         cursor = _db.users.find(
@@ -1276,6 +1318,12 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
                 "message": message,
                 "read": False,
                 "created_at": now,
+                # ── Lifecycle fields ──
+                # New writes start ``active`` and ``resolved=False``.
+                # The notification_lifecycle service flips these to
+                # ``superseded`` when source predictions get regraded.
+                "status": "active",
+                "resolved": False,
                 "metadata": {
                     "toxic_count": headline_count,
                     "toxic_count_mongo": toxic_count_mongo,
@@ -1286,6 +1334,13 @@ async def _send_toxic_alerts(cleanup_results: dict) -> None:
                     "persistence_run": run + 1,
                     "alert_id": alert_id,
                     "run_id": run_id,
+                    # Source-row provenance for the lifecycle service.
+                    # When the regrade backfill mutates these
+                    # predictions, the cleanup pass uses these IDs +
+                    # dates to decide whether to supersede.
+                    "source_prediction_ids": source_prediction_ids,
+                    "episode_dates": episode_dates,
+                    "symbols": affected_tickers,
                 },
             }
             for uid in pro_users

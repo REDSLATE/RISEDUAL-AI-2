@@ -55,6 +55,64 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Notification Lifecycle (Stale Toxic-Spike Cleanup) — May 4, 2026
+
+Operator alert: 9 stale toxic-spike alerts visible in the drawer
+referencing GOOGL / MSFT / AMZN / AAPL / NVDA — but their source
+predictions had been regraded by ``backfill_strong_direction_grades``
+days earlier. Notifications had no concept of being *resolved*,
+so they kept haunting the UI.
+
+**Fix is lifecycle, not the model.** Added an
+``active → superseded | resolved | dismissed`` lifecycle to every
+toxic-spike notification.
+
+* **``services/notification_lifecycle.py``** (NEW):
+  * ``supersede_stale_toxic_alerts(db)`` — walks every active
+    toxic_spike notification, recounts source predictions in
+    BOTH schemas (legacy ``outcome`` + new
+    ``verified_24h.outcome``). Supersedes any whose source rows
+    are no longer miss-graded. Stamps ``status="superseded"``,
+    ``resolved=True``, ``resolved_at``, ``resolved_reason``.
+  * Idempotent — already-superseded rows skipped via the status
+    filter.
+
+* **``scripts/supersede_stale_toxic_alerts.py``** (NEW one-shot):
+  * **Live-run result (2026-05-04)**:
+    ``checked=390 superseded=390 kept_active=0``
+  * Drawer verification post-cleanup:
+    ``visible in drawer: 0``. Every source prediction had been
+    regraded.
+
+* **``routes/workspace.py`` ``GET /api/workspace/notifications``**:
+  * Added lifecycle filter — only returns rows with
+    ``resolved != True`` AND ``status ∉ {resolved, superseded,
+    dismissed}``. Same filter applied to the unread-count
+    endpoint.
+
+* **``services/market_memory_service`` notification writer**:
+  * Every NEW toxic_spike notification now writes
+    ``status: "active"``, ``resolved: False``, plus
+    ``metadata.source_prediction_ids`` (sorted unique ChromaDB
+    IDs of the toxic rows) and ``metadata.episode_dates`` so
+    future regrade passes can match + supersede deterministically.
+  * **Dedup gate** — if an active notification with identical
+    ``source_prediction_ids`` already exists, skips fan-out so
+    multi-day persistence runs don't pile up duplicates.
+
+* **``scripts/backfill_strong_direction_grades.py``**:
+  * Calls ``supersede_stale_toxic_alerts(db)`` after writing
+    regrade changes. Future regrades clean their alerts
+    automatically — no manual cleanup required.
+
+* **7 new tests** covering: superseded-when-clean,
+  kept-active-with-misses, ``verified_24h.outcome`` schema,
+  already-superseded skipped, idempotent reruns, alternate
+  field locations (top-level ``tickers`` / ``symbols``), null
+  DB. **199/199 green** across all adjacent suites. Lint clean.
+
+
+
 ### Tier-3 Slippage Advisor (May 4, 2026)
 
 P2 closes the loop on the slippage round-trip stamping shipped
