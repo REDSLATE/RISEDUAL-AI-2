@@ -944,6 +944,11 @@ async def _start_schedulers():
         scheduler.add_job(_run_tier3_readiness_digest, 'cron', hour=8, minute=15, id='tier3_readiness_digest')
         scheduler.add_job(_run_ml_health_digest, 'cron', hour=8, minute=0, id='ml_health_digest')
         scheduler.add_job(_run_paper_trade_closer, 'interval', minutes=60, id='paper_trade_closer')
+        # ── Tier-3 paper bot closer (Schema-B fill-pair closer) ──
+        # Pairs unmatched BUYs with exit SELLs. Same exit cascade as
+        # the crypto closer: SL → trail → max_hold (hard TP off).
+        scheduler.add_job(_run_tier3_paper_closer, 'interval', minutes=15,
+                          id='tier3_paper_closer', replace_existing=True)
         # ── Crypto bot (24/7 lane, isolated from equity ml_paper_trader) ──
         scheduler.add_job(_run_crypto_paper_bot, 'interval', minutes=15,
                           id='crypto_paper_bot', replace_existing=True)
@@ -1165,7 +1170,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), tier3 paper closer (15m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 
@@ -1523,6 +1528,30 @@ async def _run_paper_trade_closer():
             )
     except Exception as e:
         logger.debug(f"Paper trade closer error: {e}")
+
+
+async def _run_tier3_paper_closer():
+    """Background: Every 15 min. Close Tier-3 Accumulator bot fills
+    that the legacy `paper_trade_closer` skips (Schema-B rows
+    without a `status` field). Mirrors the crypto closer's exit
+    cascade — SL → TP (off by default) → trailing-stop → max_hold.
+
+    Plugs the 198:8 BUY:SELL ratio observed in 2026-Q2 — Tier-3
+    bots were buying without anything ever closing.
+    """
+    try:
+        from services.tier3_paper_closer import close_due_tier3_paper_trades
+        result = await close_due_tier3_paper_trades(db)
+        if result.get("closed") or result.get("errors"):
+            logger.info(
+                "Tier3 paper closer: evaluated=%d closed=%d errors=%d reasons=%s",
+                result.get("positions_evaluated", 0),
+                result.get("closed", 0),
+                result.get("errors", 0),
+                result.get("reasons", {}),
+            )
+    except Exception as e:
+        logger.debug(f"Tier3 paper closer error: {e}")
 
 
 

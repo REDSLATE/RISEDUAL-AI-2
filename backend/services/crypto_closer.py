@@ -30,6 +30,7 @@ without monkey-patching the live price layer.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Optional
 
@@ -41,6 +42,93 @@ logger = logging.getLogger(__name__)
 DEFAULT_CRYPTO_HOLD_HOURS = 12
 
 QuoteProvider = Callable[[str], Awaitable[dict]]
+
+
+def _resolve_trail_config() -> dict[str, float | bool]:
+    """Read trailing-stop knobs from env. Tunable via:
+
+    * ``CRYPTO_TRAIL_ENABLED``       (default ``1`` → on)
+    * ``CRYPTO_TRAIL_TRIGGER_PCT``   (default ``2.0`` → arms once
+      unrealized > +2% from entry)
+    * ``CRYPTO_TRAIL_GIVEBACK_PCT``  (default ``50.0`` → exit when
+      price falls back by 50% of the peak gain)
+
+    Disabled trails fall through to the legacy SL → TP → max_hold
+    cascade.
+    """
+    def _f(name: str, default: float) -> float:
+        try:
+            v = float(os.environ.get(name, "") or default)
+            return max(0.0, v)
+        except ValueError:
+            return default
+
+    enabled_raw = os.environ.get("CRYPTO_TRAIL_ENABLED", "1").strip().lower()
+    return {
+        "enabled": enabled_raw in {"1", "true", "yes", "on"},
+        "trigger_pct": _f("CRYPTO_TRAIL_TRIGGER_PCT", 2.0),
+        "giveback_pct": _f("CRYPTO_TRAIL_GIVEBACK_PCT", 50.0),
+    }
+
+
+def _check_trailing_exit(
+    direction: str,
+    entry_price: float,
+    current_price: float,
+    peak_price: Optional[float],
+    trigger_pct: float,
+    giveback_pct: float,
+) -> bool:
+    """Return True iff the trailing-stop should fire NOW.
+
+    Logic (LONG; SHORT mirrors):
+      1. peak_price is the highest favourable mark since entry
+         (closer updates this every tick).
+      2. peak_gain_pct = (peak - entry) / entry × 100. If <
+         trigger_pct, trail isn't armed yet.
+      3. Once armed, fire when price falls back to:
+            entry + peak_gain × (1 - giveback_pct/100)
+         i.e., 50% of the peak gain from entry by default.
+    """
+    if peak_price is None or entry_price <= 0:
+        return False
+
+    direction = (direction or "LONG").upper()
+    if direction == "LONG":
+        peak_gain_pct = (peak_price - entry_price) / entry_price * 100
+        if peak_gain_pct < trigger_pct:
+            return False
+        keep = peak_gain_pct * (1 - giveback_pct / 100.0)
+        floor = entry_price * (1 + keep / 100.0)
+        return current_price <= floor
+
+    if direction == "SHORT":
+        # For SHORT, "favourable" is a falling price → peak is the
+        # LOW since entry. peak_gain_pct = (entry - peak) / entry × 100.
+        peak_gain_pct = (entry_price - peak_price) / entry_price * 100
+        if peak_gain_pct < trigger_pct:
+            return False
+        keep = peak_gain_pct * (1 - giveback_pct / 100.0)
+        ceiling = entry_price * (1 - keep / 100.0)
+        return current_price >= ceiling
+
+    return False
+
+
+def _update_peak_price(
+    direction: str,
+    current_peak: Optional[float],
+    current_price: float,
+) -> float:
+    """Return the new peak/trough mark. LONG tracks the highest
+    price seen, SHORT tracks the lowest. Initialised to
+    ``current_price`` when peak is missing."""
+    if current_peak is None:
+        return float(current_price)
+    direction = (direction or "LONG").upper()
+    if direction == "SHORT":
+        return min(float(current_peak), float(current_price))
+    return max(float(current_peak), float(current_price))
 
 
 def compute_crypto_pnl(
@@ -139,7 +227,8 @@ async def close_expired_crypto_trades(
     skipped = 0
     errors = 0
     reasons: dict[str, int] = {
-        "stop_loss": 0, "take_profit": 0, "hold_window_expired": 0,
+        "stop_loss": 0, "take_profit": 0, "trailing_stop": 0,
+        "hold_window_expired": 0,
     }
 
     # Widened from the previous "aged-only" query: every open crypto
@@ -177,8 +266,28 @@ async def close_expired_crypto_trades(
             stop_loss = trade.get("stop_loss")
             take_profit = trade.get("take_profit")
             opened_at = trade.get("opened_at")
+            stored_peak = trade.get("peak_price")
 
-            # ── Exit decision (SL → TP → max_hold) ────────────────
+            # ── Trailing-stop bookkeeping ─────────────────────────
+            # Update the peak/trough watermark every tick BEFORE
+            # the exit decision so a single-tick spike-and-revert
+            # still arms the trail (peak captured) and triggers it
+            # (price now back below the floor) in one pass.
+            new_peak = _update_peak_price(direction, stored_peak, exit_price)
+            peak_changed = (
+                stored_peak is None or abs(float(new_peak) - float(stored_peak)) > 1e-9
+            )
+            trail_cfg = _resolve_trail_config()
+            trail_armed = trail_cfg["enabled"] and _check_trailing_exit(
+                direction=direction,
+                entry_price=entry_price,
+                current_price=exit_price,
+                peak_price=new_peak,
+                trigger_pct=trail_cfg["trigger_pct"],
+                giveback_pct=trail_cfg["giveback_pct"],
+            )
+
+            # ── Exit decision (SL → TP → trail → max_hold) ────────
             # Detection MUST use mid (or last) — TP/SL levels were
             # configured against unbiased prices. Realised fill is
             # computed AFTER the trigger fires, when we know the
@@ -186,6 +295,8 @@ async def close_expired_crypto_trades(
             exit_reason = _check_exit_trigger(
                 direction, exit_price, stop_loss, take_profit,
             )
+            if exit_reason is None and trail_armed:
+                exit_reason = "trailing_stop"
             if exit_reason is None:
                 # Fall back to max-hold expiry. ``opened_at`` lives
                 # in Mongo as either a BSON datetime or ISO string;
@@ -203,7 +314,24 @@ async def close_expired_crypto_trades(
                 if opened_at.tzinfo is None:
                     opened_at = opened_at.replace(tzinfo=timezone.utc)
                 if opened_at > cutoff:
-                    # Still in the hold window — leave open
+                    # Still in the hold window — leave open, but
+                    # persist the updated peak watermark so the
+                    # next tick's trailing-stop check has the
+                    # correct reference point. Cheap update; only
+                    # writes when the watermark actually moved.
+                    if peak_changed:
+                        try:
+                            await db.crypto_paper_trades.update_one(
+                                {"trade_id": trade.get("trade_id"),
+                                 "status": "open"},
+                                {"$set": {"peak_price": float(new_peak)}},
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug(
+                                "[crypto-closer] peak_price persist "
+                                "failed for %s: %s",
+                                trade.get("trade_id"), exc,
+                            )
                     skipped += 1
                     continue
                 exit_reason = "hold_window_expired"
@@ -240,6 +368,7 @@ async def close_expired_crypto_trades(
                 "pnl": pnl,
                 "r_multiple": r_multiple,
                 "close_reason": exit_reason,
+                "peak_price": float(new_peak),
                 # Exit-side slippage stamp — mirrors entry stamp.
                 "exit_quote_bid": _xslip.bid,
                 "exit_quote_ask": _xslip.ask,

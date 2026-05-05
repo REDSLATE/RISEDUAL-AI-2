@@ -120,16 +120,42 @@ def test_size_capped_at_max():
 # ── SL/TP defaults ────────────────────────────────────────────────────────────
 
 
-def test_stops_long_2pct_4pct():
+def test_stops_long_default_1pct_sl_tp_disabled():
+    """Defaults updated 2026-Q2 after the calibration audit found
+    hard TP firing on only 1% of closes (10/808) while contributing
+    nothing to profit factor. Default is now SL=1% and TP off; the
+    trailing stop in crypto_closer handles winner exits."""
     stops = build_stop_take_profit(100.0, "LONG")
-    assert stops["stop_loss"] == 98.0
-    assert stops["take_profit"] == 104.0
+    assert stops["stop_loss"] == 99.0
+    assert stops["take_profit"] is None
 
 
-def test_stops_short_inverted():
+def test_stops_short_default_1pct_sl_tp_disabled():
     stops = build_stop_take_profit(100.0, "SHORT")
-    assert stops["stop_loss"] == 102.0
-    assert stops["take_profit"] == 96.0
+    assert stops["stop_loss"] == 101.0
+    assert stops["take_profit"] is None
+
+
+def test_stops_explicit_pct_overrides_env_defaults():
+    """Caller can still pin tight 0.5% SL or restore old 2%/4%
+    behaviour for shadow / backtest scenarios."""
+    legacy = build_stop_take_profit(
+        100.0, "LONG", sl_pct=2.0, tp_pct=4.0, tp_disabled=False,
+    )
+    assert legacy["stop_loss"] == 98.0
+    assert legacy["take_profit"] == 104.0
+
+
+def test_stops_env_overrides(monkeypatch):
+    """Env knobs are read each call (no module-level cache) so an
+    operator can shift the live behaviour by setting one env var
+    and restarting supervisor."""
+    monkeypatch.setenv("CRYPTO_SL_PCT", "0.5")
+    monkeypatch.setenv("CRYPTO_DISABLE_TP", "0")
+    monkeypatch.setenv("CRYPTO_TP_PCT", "3.0")
+    stops = build_stop_take_profit(200.0, "LONG")
+    assert stops["stop_loss"] == 199.0  # 200 × 0.995
+    assert stops["take_profit"] == 206.0  # 200 × 1.03
 
 
 # ── Regime + failure-context taggers ──────────────────────────────────────────
@@ -265,7 +291,9 @@ async def test_run_symbol_writes_to_crypto_collection_only():
     assert result["direction"] == "LONG"
     assert result["size_usd"] >= BASE_CRYPTO_NOTIONAL
     assert result["stop_loss"] < 70000.0  # LONG stop below entry
-    assert result["take_profit"] > 70000.0  # LONG target above entry
+    # take_profit defaults to None now (hard TP off in 2026-Q2 calibration);
+    # a non-None value would mean the env override is forcing it on.
+    assert result["take_profit"] is None or result["take_profit"] > 70000.0
 
     # Architectural firewall — paper_trades MUST stay untouched
     db.paper_trades.insert_one.assert_not_called()

@@ -55,6 +55,79 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Paper Trading Activity Calibration (Feb, 2026)
+
+User-driven correction of "the IP has been maintaining the
+amounts it was given. It's not making trades to profit." Two
+parallel root causes diagnosed and fixed.
+
+**Crypto (was hyperactive but break-even, +$14 on $96k deployed)**:
+- Diagnosis: 808 closed trades / 7d at 49.3% win rate. Hard TP
+  fired only 10× (1% of closes), SL drag (-$293) almost exactly
+  cancelled time-stop profits (+$258).
+- ``services/crypto_paper_trader.py`` — ``build_stop_take_profit``
+  now reads env-tunable knobs (``CRYPTO_SL_PCT``,
+  ``CRYPTO_DISABLE_TP``, ``CRYPTO_TP_PCT``). **Defaults shifted**:
+  SL = 1.0% (was 2.0%), hard TP **off** (was 4.0%).
+- ``services/crypto_closer.py`` — added trailing-stop logic
+  (``_check_trailing_exit`` + ``_update_peak_price``). Arms at
+  +2% favourable excursion, fires at 50% giveback from peak.
+  Env-tunable via ``CRYPTO_TRAIL_TRIGGER_PCT`` /
+  ``CRYPTO_TRAIL_GIVEBACK_PCT`` / ``CRYPTO_TRAIL_ENABLED``.
+- New exit cascade: **SL → trail → max_hold** (hold_window
+  remains the safety floor; hard TP off).
+- Peak watermark persisted on each tick (no schema migration —
+  column added on the fly).
+
+**Equity Tier-3 bots (was buying without ever closing)**:
+- Diagnosis: 198 BUY / 8 SELL fills in 7d (25:1 ratio).
+  Tier-3 bots route through ``paper_trading_service`` which
+  writes Schema-B fills (no ``status`` field). Existing
+  ``paper_trade_closer`` only handles Schema-A position rows
+  (``status: open``) emitted by ``ml_paper_trader``, so
+  Tier-3 BUYs accumulated indefinitely.
+- New module ``services/tier3_paper_closer.py`` (~290 lines):
+  - Reconstructs open positions from BUY/SELL fill ledger via
+    Mongo aggregation.
+  - **Symbol-gated to the active Tier-3 Accumulator universe**
+    (20 symbols: SPY, QQQ, AAPL, MSFT, NVDA, GOOGL, AMZN, META,
+    TSLA, AMD, AVGO, NFLX, PLTR, COIN, SMCI, JPM, BAC, XOM, WMT,
+    UNH). Manual user buys (BTC, off-roster equities) are
+    **never touched**.
+  - Same exit cascade as crypto: SL=1% → trail (+2% / 50%
+    giveback) → max_hold (default 36h). Env-tunable via
+    ``EQUITY_*`` knobs.
+  - Stamps ``close_reason``, ``peak_price``, ``exit_path`` on
+    the SELL fill so post-trade analytics can attribute the
+    exit cause.
+  - Reuses ``crypto_closer._check_trailing_exit`` / ``_update_peak_price``
+    helpers — single source of truth for trailing logic.
+- Wired into APScheduler at **15-minute** cadence
+  (``tier3_paper_closer`` job ID, replaces_existing for safe
+  hot-reload). Boot log updated to surface the new job.
+
+**Tests**: **2441 / 2441 green** (up from 2414). New tests:
+- ``tests/test_crypto_trailing_stop.py`` (15 cases) — peak
+  watermark, LONG/SHORT trail arming + firing, env config,
+  defensive guards.
+- ``tests/test_tier3_paper_closer.py`` (10 cases) — full exit
+  cascade, env override paths, defensive guards.
+- 4 existing tests updated to reflect the new defaults
+  (``test_stops_long_default_1pct_sl_tp_disabled``,
+  ``test_stops_short_default_1pct_sl_tp_disabled``,
+  ``test_stops_explicit_pct_overrides_env_defaults``,
+  ``test_stops_env_overrides``).
+
+**Live-verified end-to-end (Feb 5, 2026)**:
+- First real run of the equity closer: 5 positions evaluated,
+  **1 closed via stop_loss (GOOGL, 49 shares @ $384.54,
+  $18,842.46)**, 0 errors. Symbol gating correctly excluded
+  unmanaged symbols (BTC etc.).
+- Crypto closer's trailing stop active on next tick — now
+  protects winners that previously expired flat at hold_window.
+
+
+
 ### Session Closeout — Stable Baseline (Feb, 2026)
 
 - Full fast test suite green: 2414 passed in 14.8s.

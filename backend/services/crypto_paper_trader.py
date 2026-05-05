@@ -36,6 +36,7 @@ The architectural firewall is enforced two ways:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Optional
 from uuid import uuid4
@@ -121,20 +122,75 @@ def compute_crypto_position_size(confidence: float) -> float:
     return round(min(size, MAX_CRYPTO_NOTIONAL), 2)
 
 
-def build_stop_take_profit(entry: float, direction: str) -> dict[str, float]:
-    """Defensive symmetric SL/TP defaults.
+def _resolve_sltp_config() -> dict[str, float | bool]:
+    """Read SL/TP knobs from the env once per call. Tunable via:
 
-    LONG: -2% stop, +4% target → 2:1 reward:risk.
-    SHORT: +2% stop, -4% target → 2:1 reward:risk.
+    * ``CRYPTO_SL_PCT`` (default ``1.0`` → 1% from entry; was 2.0)
+    * ``CRYPTO_TP_PCT`` (default ``4.0`` — used only when TP is on)
+    * ``CRYPTO_DISABLE_TP`` (default ``1`` → hard TP off, trailing
+      handles winner exits; legacy behaviour was hard TP at +4%)
+
+    The 2026-Q2 calibration audit found the hard TP firing on only
+    1% of closes (10 / 808) while contributing nothing to the
+    profit factor. Time-stops and trailing-stops do the actual
+    work, so the default is now TP-off.
     """
+    def _f(name: str, default: float) -> float:
+        try:
+            v = float(os.environ.get(name, "") or default)
+            return max(0.0, v)
+        except ValueError:
+            return default
+
+    def _b(name: str, default: bool) -> bool:
+        v = os.environ.get(name, "").strip().lower()
+        if v == "":
+            return default
+        return v in {"1", "true", "yes", "on"}
+
+    return {
+        "sl_pct": _f("CRYPTO_SL_PCT", 1.0),
+        "tp_pct": _f("CRYPTO_TP_PCT", 4.0),
+        "tp_disabled": _b("CRYPTO_DISABLE_TP", True),
+    }
+
+
+def build_stop_take_profit(
+    entry: float,
+    direction: str,
+    sl_pct: float | None = None,
+    tp_pct: float | None = None,
+    tp_disabled: bool | None = None,
+) -> dict[str, float | None]:
+    """Build defensive SL / (optional) TP defaults.
+
+    LONG: SL = entry × (1 - sl_pct/100)
+          TP = entry × (1 + tp_pct/100)  (or None when disabled)
+    SHORT: SL = entry × (1 + sl_pct/100)
+           TP = entry × (1 - tp_pct/100) (or None when disabled)
+
+    Defaults are read from the env (see ``_resolve_sltp_config``)
+    when not explicitly passed — sl_pct=1.0, tp_disabled=True. Hard
+    TP is off by default; trailing-stop in ``crypto_closer`` is the
+    winner-exit mechanism. ``hold_window_expired`` remains the
+    safety floor.
+    """
+    cfg = _resolve_sltp_config()
+    sl = sl_pct if sl_pct is not None else cfg["sl_pct"]
+    tp = tp_pct if tp_pct is not None else cfg["tp_pct"]
+    tp_off = tp_disabled if tp_disabled is not None else cfg["tp_disabled"]
+
+    sl_mult = sl / 100.0
+    tp_mult = tp / 100.0
+
     if direction.upper() == "SHORT":
         return {
-            "stop_loss": round(entry * 1.02, 2),
-            "take_profit": round(entry * 0.96, 2),
+            "stop_loss": round(entry * (1 + sl_mult), 2),
+            "take_profit": None if tp_off else round(entry * (1 - tp_mult), 2),
         }
     return {
-        "stop_loss": round(entry * 0.98, 2),
-        "take_profit": round(entry * 1.04, 2),
+        "stop_loss": round(entry * (1 - sl_mult), 2),
+        "take_profit": None if tp_off else round(entry * (1 + tp_mult), 2),
     }
 
 

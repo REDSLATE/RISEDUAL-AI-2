@@ -484,7 +484,15 @@ async def test_closer_keeps_fresh_trade_open_when_no_levels_hit():
     summary = await close_expired_crypto_trades(db, quote, hold_hours=12)
     assert summary["closed"] == 0
     assert summary["skipped"] == 1
-    assert len(db.updates) == 0
+    # 2026-Q2 trailing-stop upgrade: closer now persists the
+    # peak_price watermark when it advances, even if no exit
+    # fires. Verify no CLOSE write happened — peak-only writes
+    # are fine.
+    closing_writes = [
+        u for u in db.updates
+        if (u.get("update", {}).get("$set") or {}).get("status") == "closed"
+    ]
+    assert closing_writes == []
 
 
 @pytest.mark.asyncio
