@@ -242,6 +242,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services.ml_paper_trader import ensure_indexes as _ml_paper_indexes
         from services.ai_core_engine import ensure_indexes as _ai_core_engine_indexes
         from services.ai_core_alerts import ensure_indexes as _ai_core_alerts_indexes
+        from services.ai_cache_service import AICacheService as _AICacheService
         from services.mongo_chroma_sync_metrics import (
             ensure_history_indexes as _drift_history_indexes,
         )
@@ -259,6 +260,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_ml_paper_indexes(db))
             loop.create_task(_ai_core_engine_indexes(db))
             loop.create_task(_ai_core_alerts_indexes())
+            loop.create_task(_AICacheService.ensure_indexes(db))
             loop.create_task(_drift_history_indexes())
             loop.create_task(_etl_audit_indexes(db))
             # Sovereign AI — index the sovereign_decisions collection

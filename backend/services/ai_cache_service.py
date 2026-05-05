@@ -20,6 +20,87 @@ class AICacheService:
     def __init__(self, db):
         self.db = db
 
+    @classmethod
+    async def ensure_indexes(cls, db) -> None:
+        """Create the indexes the cache hot-path depends on.
+
+        Each index is created in its own try/except so a conflict on
+        one (e.g. an old non-TTL ``expires_at_1`` left over from a
+        prior deployment) doesn't short-circuit the rest.
+
+        Indexes created:
+
+        * **Unique on ``cache_key``** (``cache_key_1``) — every read
+          does ``find_one({"cache_key": ...})`` and every write does
+          ``replace_one({"cache_key": ...}, upsert=True)``. Without
+          uniqueness, two concurrent writes for the same key can race
+          and produce duplicate documents.
+        * **TTL on ``expires_at``** (``expires_at_ttl``) — Mongo
+          background-deletes expired entries with no app cooperation.
+          ``expireAfterSeconds=0`` means "delete as soon as the
+          stored timestamp is in the past" (the timestamp itself is
+          the deadline). Any pre-existing non-TTL ``expires_at_*``
+          index is dropped first so the upgrade is idempotent.
+        * **``created_at`` descending** (``created_at_desc``) — used
+          by ``get_stale`` (sorted fallback) and the
+          ``max_age_seconds`` filter.
+
+        Also opportunistically drops the stale ``endpoint_1`` index
+        from a prior schema if it lingers in the deployed cluster.
+        """
+        if db is None:
+            return
+        collection = db[cls.COLLECTION]
+
+        # 1. unique index on cache_key. Use the conventional Mongo
+        # default name so re-running matches whatever a prior deploy
+        # auto-named via ``create_index("cache_key", unique=True)``.
+        try:
+            await collection.create_index(
+                "cache_key", unique=True, name="cache_key_1",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"AICacheService cache_key index: {e}")
+
+        # 2. TTL index on expires_at — drop any non-TTL variant first
+        # so the upgrade is safe on existing clusters.
+        try:
+            info = await collection.index_information()
+            for name, spec in info.items():
+                if name == "_id_":
+                    continue
+                key = spec.get("key") or []
+                if (
+                    key == [("expires_at", 1)]
+                    and "expireAfterSeconds" not in spec
+                ):
+                    await collection.drop_index(name)
+            await collection.create_index(
+                "expires_at",
+                expireAfterSeconds=0,
+                name="expires_at_ttl",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"AICacheService expires_at TTL index: {e}")
+
+        # 3. created_at descending — for get_stale + max_age_seconds.
+        try:
+            await collection.create_index(
+                [("created_at", -1)], name="created_at_desc",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"AICacheService created_at index: {e}")
+
+        # 4. Best-effort cleanup of stale-schema indexes.
+        try:
+            info = await collection.index_information()
+            for stale in ("endpoint_1",):
+                if stale in info:
+                    await collection.drop_index(stale)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"AICacheService stale-index cleanup: {e}")
+
+
     def build_key(self, namespace: str, params: Union[dict, None] = None, **kwargs) -> str:
         """Build a deterministic cache key from namespace + params."""
         merged = {**(params or {}), **kwargs}
