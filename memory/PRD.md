@@ -55,6 +55,65 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Four-domain admin.py decomposition sprint (Feb, 2026)
+
+Largest single-PR `admin.py` reduction yet — 4 new modules, 11 routes
+extracted. URLs unchanged for every moved endpoint.
+
+* **``routes/admin_tier3_bootstrap.py``** (1 route, ~144 lines):
+  - ``POST /api/admin/bots/seed-tier3-universe``
+  - Re-houses the ``_TIER3_NEW_TICKERS`` and ``_TIER3_DAILY_CAP``
+    constants. ``server.py`` import updated to point at the new
+    module — single line edit, no functional change.
+
+* **``routes/admin_promotion_gates.py``** (4 routes, ~140 lines):
+  - ``GET /api/admin/kraken-shadow/today``
+  - ``GET /api/admin/adversarial-cores/24h``
+  - ``GET /api/admin/adversarial-cores/promotion``
+  - ``GET /api/admin/calibration/status``
+  - Cohesive grouping — all four are read-only / owner-gated /
+    cold-start-is-normal observability surfaces with the same
+    "promotion-gate" mental model.
+
+* **``routes/admin_ticker_abandonment.py``** (2 routes + helper,
+  ~271 lines):
+  - ``GET /api/admin/ticker-abandonment/{symbol}``
+  - ``GET /api/admin/ticker-abandonment``
+  - Carries the ``_serialize_abandonment_row`` helper alongside.
+  - Bulk overview retains the Δ-since-yesterday + same-day
+    snapshot persistence behaviour.
+
+* **``routes/admin_day_trade.py``** (4 routes + helper, ~126 lines):
+  - ``POST /api/admin/day-trade/scan/{asset_class}``
+  - ``GET  /api/admin/day-trade/scan/recent``
+  - ``GET  /api/admin/day-trade/targets``
+  - ``POST /api/admin/day-trade/exit-monitor/tick``
+  - ``_scan_result_to_dict`` serializer hoisted into the module.
+
+* **``admin.py`` shrank from 2803 → 2277 lines** (-18.8%, -526
+  lines). **Cumulative across the last four extractions: 4049 →
+  2277 lines** (-43.8%, -1772 lines, 36 routes extracted across
+  7 modules). Still over the 800-line allowlist target — next
+  candidate domains: post-trade autopsy / promotion-history,
+  spread-watch + slippage-attribution, kraken-ws status,
+  stress-events, tier3-slippage-advisor.
+
+* **Live-verified end-to-end (Feb 2026)**:
+  - ``/calibration/status`` returns real active model
+    ``isotonic_2026_05_04T09_13_25``.
+  - ``/day-trade/targets?status=pending`` returns real empty queue
+    envelope.
+  - All 7 endpoints return 401 unauth.
+  - Zero duplicate routes registered (route_registry verifier
+    cross-checks all 11 paths).
+
+* **Tests**: **136/136 green** = 36 fast regression + 100
+  domain-specific (calibration_reliability /
+  ticker_abandonment_history / tier3_readiness / tier3_breakdown /
+  adversarial_logger).
+
+
+
 ### News/Benzinga admin extraction (Feb, 2026)
 
 Largest single-domain `admin.py` extraction so far — 12 routes spanning

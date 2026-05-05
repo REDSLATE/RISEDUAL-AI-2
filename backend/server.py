@@ -633,7 +633,7 @@ async def _start_schedulers():
     # if the universe is intentionally being narrowed.
     if os.environ.get("AUTO_SEED_TIER3_UNIVERSE", "true").strip().lower() not in ("0", "false", "off", "no"):
         try:
-            from routes.admin import _TIER3_NEW_TICKERS, _TIER3_DAILY_CAP
+            from routes.admin_tier3_bootstrap import _TIER3_NEW_TICKERS, _TIER3_DAILY_CAP
             owner_email = os.environ.get("OWNER_EMAIL", "admin@risedual.ai")
             owner = await db.users.find_one(
                 {"email": owner_email, "role": "owner"},

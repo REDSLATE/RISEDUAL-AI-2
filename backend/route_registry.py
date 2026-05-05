@@ -90,6 +90,10 @@ from routes.admin_data_integrity import router as admin_data_integrity_router, s
 from routes.admin_adaptations import router as admin_adaptations_router, set_db as set_admin_adaptations_db
 from routes.admin_compression_gate import router as admin_compression_gate_router, set_db as set_admin_compression_gate_db
 from routes.admin_news import router as admin_news_router, set_db as set_admin_news_db
+from routes.admin_tier3_bootstrap import router as admin_tier3_bootstrap_router, set_db as set_admin_tier3_bootstrap_db
+from routes.admin_promotion_gates import router as admin_promotion_gates_router, set_db as set_admin_promotion_gates_db
+from routes.admin_ticker_abandonment import router as admin_ticker_abandonment_router, set_db as set_admin_ticker_abandonment_db
+from routes.admin_day_trade import router as admin_day_trade_router, set_db as set_admin_day_trade_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -168,6 +172,10 @@ ALL_ROUTERS = [
     admin_adaptations_router,
     admin_compression_gate_router,
     admin_news_router,
+    admin_tier3_bootstrap_router,
+    admin_promotion_gates_router,
+    admin_ticker_abandonment_router,
+    admin_day_trade_router,
     nl_trading_router,
 ]
 
@@ -234,6 +242,10 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_adaptations_db,
         set_admin_compression_gate_db,
         set_admin_news_db,
+        set_admin_tier3_bootstrap_db,
+        set_admin_promotion_gates_db,
+        set_admin_ticker_abandonment_db,
+        set_admin_day_trade_db,
         set_nl_trading_db,
     ]
     # Module-level db handle for the per-patent policy store so the
