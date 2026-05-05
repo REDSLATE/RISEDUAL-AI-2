@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, Trash2, RefreshCw, Zap, Clock, BarChart3, Server } from 'lucide-react';
+import { Database, Trash2, RefreshCw, Zap, Clock, BarChart3, Server, Timer, Hammer, Layers, TrendingDown } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -141,6 +141,135 @@ const CacheMonitor = () => {
           </div>
           <div className="w-full bg-slate-700/50 rounded-full h-2">
             <div className={`h-2 rounded-full transition-all duration-700 ${hitRateBg}`} style={{ width: `${hitRate}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* ── 2026-Q2 Diagnostic Metrics ─────────────────────────── */}
+      {stats && (
+        <div className="space-y-3" data-testid="cache-diagnostics">
+          <h3 className="text-white text-sm font-semibold flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-[#3DE8D9]" />
+            Diagnostics
+          </h3>
+
+          {/* Latency + Eviction summary tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-avg-lookup-ms">
+              <div className="flex items-center gap-2 mb-2">
+                <Timer className="w-4 h-4 text-cyan-400" />
+                <span className="text-slate-300 text-xs">Avg Lookup</span>
+              </div>
+              <p className="text-xl font-black text-white">
+                {(stats.avg_lookup_ms ?? 0).toFixed(2)}<span className="text-xs text-slate-400 ml-1">ms</span>
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">caller-felt latency</p>
+            </Card>
+
+            <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-avg-build-ms">
+              <div className="flex items-center gap-2 mb-2">
+                <Hammer className="w-4 h-4 text-amber-300" />
+                <span className="text-slate-300 text-xs">Avg Build</span>
+              </div>
+              <p className="text-xl font-black text-white">
+                {(stats.avg_build_ms ?? 0).toFixed(2)}<span className="text-xs text-slate-400 ml-1">ms</span>
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">upstream fetch only</p>
+            </Card>
+
+            <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-evictions-total">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingDown className="w-4 h-4 text-orange-400" />
+                <span className="text-slate-300 text-xs">Evictions</span>
+              </div>
+              <p className="text-xl font-black text-white">
+                {(stats.evictions?.total ?? 0).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">all sources</p>
+            </Card>
+
+            <Card className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4" data-testid="cache-largest-key-size">
+              <div className="flex items-center gap-2 mb-2">
+                <Layers className="w-4 h-4 text-purple-400" />
+                <span className="text-slate-300 text-xs">Largest Key</span>
+              </div>
+              <p className="text-xl font-black text-white">
+                {stats.largest_keys?.[0]
+                  ? formatBytes(stats.largest_keys[0].size_bytes)
+                  : '—'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1 truncate">
+                {stats.largest_keys?.[0]?.key ?? 'no entries'}
+              </p>
+            </Card>
+          </div>
+
+          {/* Eviction taxonomy + Largest keys side-by-side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Expired vs Manual Breakdown */}
+            <Card
+              className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4"
+              data-testid="cache-evict-breakdown"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-slate-300 text-xs font-semibold">Expired vs Manual Invalidations</span>
+                <Badge className="text-[9px] bg-slate-700 text-slate-300 border-slate-600">
+                  taxonomy
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div data-testid="cache-evict-expired">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Expired</p>
+                  <p className="text-lg font-black text-amber-300">
+                    {stats.expired_vs_manual_invalidations?.expired ?? 0}
+                  </p>
+                  <p className="text-[10px] text-slate-500">TTL replaced</p>
+                </div>
+                <div data-testid="cache-evict-manual">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Manual</p>
+                  <p className="text-lg font-black text-orange-400">
+                    {stats.expired_vs_manual_invalidations?.manual ?? 0}
+                  </p>
+                  <p className="text-[10px] text-slate-500">invalidate()</p>
+                </div>
+                <div data-testid="cache-evict-clear">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Clear</p>
+                  <p className="text-lg font-black text-rose-400">
+                    {stats.expired_vs_manual_invalidations?.clear ?? 0}
+                  </p>
+                  <p className="text-[10px] text-slate-500">bulk flush</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Top 5 largest keys */}
+            <Card
+              className="bg-slate-800/60 border-slate-400/30/40 rounded-xl p-4"
+              data-testid="cache-largest-keys"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-slate-300 text-xs font-semibold">Largest Keys (Top 5)</span>
+                <Badge className="text-[9px] bg-slate-700 text-slate-300 border-slate-600">
+                  memory pressure
+                </Badge>
+              </div>
+              {stats.largest_keys && stats.largest_keys.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {stats.largest_keys.map((lk) => (
+                    <li
+                      key={lk.key}
+                      className="flex justify-between items-center text-xs"
+                      data-testid={`cache-largest-key-${lk.key}`}
+                    >
+                      <span className="text-white font-mono truncate mr-3">{lk.key}</span>
+                      <span className="text-slate-300 shrink-0">{formatBytes(lk.size_bytes)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No entries cached.</p>
+              )}
+            </Card>
           </div>
         </div>
       )}

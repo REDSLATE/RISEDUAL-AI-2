@@ -55,6 +55,51 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Cache Diagnostics Metrics (Feb, 2026)
+
+Operator visibility upgrade for `services.cache.TTLCache`. Five
+new diagnostic fields added to `cache.stats()` so the admin tile
+can distinguish healthy churn from hot-key thrashing and catch a
+slow upstream provider before it shows up in user-facing latency.
+
+**Backend (`services/cache.py`):**
+- **Eviction taxonomy** — `manual` (invalidate() calls), `clear`
+  (bulk flush), `replaced` (TTL-driven overwrite). Exposed
+  per-source under `evictions.{manual,clear,replaced,total}`. We
+  refused to collapse these into one number because operators
+  care about the mix: 1000 `replaced` is healthy churn, 1000
+  `manual` on the same window is a hot-key thrashing bug.
+- **`avg_lookup_ms`** — rolling average of full `get_or_fetch`
+  wall-time. Reflects what callers actually feel.
+- **`avg_build_ms`** — rolling average of upstream `fetch_fn`
+  wall-time only. Catches a slow upstream provider quietly
+  degrading user latency without polluting lookup timing.
+- **`largest_keys`** — top 5 cached entries by `len(str(data))`
+  for memory-pressure awareness.
+- **`expired_vs_manual_invalidations`** — re-views eviction
+  taxonomy as `{expired, manual, clear}` so the admin tile can
+  render the breakdown without recomputing.
+- All timings use `time.perf_counter()` (monotonic).
+  `invalidate()` on a never-cached key does **not** count.
+  `clear()` on an empty cache does **not** count.
+
+**Frontend (`components/admin/CacheMonitor.jsx`):**
+- New `Diagnostics` block under the existing hit-rate bar.
+- Four summary tiles: Avg Lookup, Avg Build, Total Evictions,
+  Largest Key (with key name).
+- Two side-by-side cards: `Expired vs Manual Invalidations`
+  taxonomy breakdown + top-5 `Largest Keys` list.
+- Test IDs: `cache-diagnostics`, `cache-avg-lookup-ms`,
+  `cache-avg-build-ms`, `cache-evictions-total`,
+  `cache-largest-key-size`, `cache-evict-{breakdown,expired,manual,clear}`,
+  `cache-largest-keys`, `cache-largest-key-{key}`.
+
+**Tests:** `tests/test_cache_diagnostics.py` — 10 cases covering
+manual/clear/replaced counters, missing-key no-op, build-not-on-hit,
+empty-cache zeros, largest-keys ordering + cap-at-5, and the
+expired/manual/clear breakdown. **All 2451 backend tests pass**
+(was 2441 — gained the 10 new diagnostics tests, zero regressions).
+
 ### Paper Trading Activity Calibration (Feb, 2026)
 
 User-driven correction of "the IP has been maintaining the
