@@ -55,6 +55,44 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### News/Benzinga admin extraction (Feb, 2026)
+
+Largest single-domain `admin.py` extraction so far — 12 routes spanning
+the entire news-ingestion stack lifted into a single cohesive module.
+
+* **``routes/admin.py`` → ``routes/admin_news.py`` extraction**:
+  * **12 routes lifted** (~527 lines):
+    - **Benzinga slot** (4): ``/benzinga/status``, ``/benzinga/smoke``,
+      ``/benzinga/news-telemetry/{symbol}``, ``/benzinga/news-telemetry-batch``
+    - **Alpha Vantage sentiment** (3): ``/av-news/status``,
+      ``/av-news/sentiment-telemetry/{symbol}``,
+      ``/av-news/sentiment-telemetry-batch``
+    - **News-feeders scheduler** (1): ``/news-feeders/tick``
+    - **NEWS_SHOCK / catalyst readiness** (4): ``/news-shock/status``,
+      ``/news-shock/ensure-indexes``, ``/news-shock/burn-in``,
+      ``/news-shock/ingestion-sparkline``
+  * URLs unchanged — no frontend / test edits required.
+  * Same module pattern as ``admin_conviction.py`` /
+    ``admin_data_integrity.py`` / ``admin_adaptations.py`` — own
+    ``router`` + ``set_db()`` + duplicated ``_require_owner`` so the
+    new module has no inbound dependency on ``admin.py``.
+  * Wired into ``route_registry.py`` (import + ``ALL_ROUTERS`` +
+    ``wire_db`` setter list).
+  * **``admin.py`` shrank from 3271 → 2803 lines** (-14.3%, -468
+    lines). **Cumulative across the last three extractions:
+    4049 → 2803 lines** (-30.8%, -1246 lines, 25 routes extracted
+    across 3 modules: data_integrity / adaptations / news).
+  * **Live-verified end-to-end (2026-02-XX)**: owner-cookie request
+    against ``/news-shock/ingestion-sparkline?hours=24`` returns real
+    aggregate data (``{'benzinga': 40, 'alpha_vantage': 824}``) —
+    proves the auth → endpoint → Mongo aggregation → JSON pipeline
+    works after the move. All 12 endpoints return 401 unauth.
+  * **Tests**: **63/63 green** across the fast regression suite (36)
+    + ingestion-sparkline integration tests (3) + benzinga + news-shock
+    feeder unit tests (24).
+
+
+
 ### Compression CI Gate Frontend + Adaptations Extraction (Feb, 2026)
 
 Two paired items: a UI surface for the Compression CI Gate so
