@@ -945,6 +945,15 @@ async def _start_schedulers():
             _run_stress_event_monitor, 'interval', minutes=1,
             id='stress_event_monitor', replace_existing=True,
         )
+        # ── Tier-3 slippage advisor — weekly segmentation pass.
+        # Mondays at 13:15 UTC (just before US RTH) so the proposals
+        # land in time for the operator to flip env knobs before the
+        # session opens. Advisory only — never applies env changes. ──
+        scheduler.add_job(
+            _run_tier3_slippage_advisor, 'cron',
+            day_of_week='mon', hour=13, minute=15,
+            id='tier3_slippage_advisor', replace_existing=True,
+        )
         # ── Research Shadow scorer (Tier-3 safe; writes only to
         # research_shadow_decisions; deferred counterfactual scoring) ──
         scheduler.add_job(_run_research_shadow_scorer, 'interval', seconds=60,
@@ -1383,6 +1392,28 @@ async def _run_day_trade_exit_monitor():
             )
     except Exception as e:
         logger.debug(f"Day-trade exit monitor error: {e}")
+
+async def _run_tier3_slippage_advisor():
+    """Background: weekly slippage segmentation → drafts env-tweak
+    proposals into ``tier3_advisor_proposals`` (advisory only —
+    operator review required to apply)."""
+    if os.environ.get("TIER3_ADVISOR_ENABLED", "1").strip().lower() in (
+        "0", "false", "off", "no",
+    ):
+        return
+    try:
+        from services.tier3_slippage_advisor import run_advisor_cycle
+        result = await run_advisor_cycle(db, lookback_days=30)
+        if result.get("inserted", 0) > 0:
+            logger.info(
+                "[tier3-advisor] inserted=%d deduped=%d outliers=%d",
+                result["inserted"], result.get("deduped", 0),
+                result.get("outliers_found", 0),
+            )
+    except Exception as e:
+        logger.debug(f"Tier-3 slippage advisor error: {e}")
+
+
 
 async def _run_stress_event_monitor():
     """Background: check Spread Watch for cross-asset liquidity

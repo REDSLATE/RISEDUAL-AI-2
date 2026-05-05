@@ -8,6 +8,7 @@ import AdversarialCoresChip from './AdversarialCoresChip';
 import EquityCommanderShadowChip from './EquityCommanderShadowChip';
 import LiveSpreadWatchTile from './LiveSpreadWatchTile';
 import SlippageAttributionPanel from './SlippageAttributionPanel';
+import Tier3SlippageAdvisorTile from './Tier3SlippageAdvisorTile';
 import TickerAbandonmentTable from './TickerAbandonmentTable';
 
 const API = `${getApiBase()}/api`;
@@ -268,6 +269,8 @@ const TerminalTopActions = () => {
       <LiveSpreadWatchTile />
 
       <SlippageAttributionPanel />
+
+      <Tier3SlippageAdvisorTile />
 
       <TickerAbandonmentTable />
 

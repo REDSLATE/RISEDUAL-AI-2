@@ -4393,3 +4393,93 @@ async def stress_events_manual_check(request: Request):
     from services.stress_event_monitor import run_stress_check
     result = await run_stress_check(db)
     return result
+
+
+
+# ============================================================
+# TIER-3 SLIPPAGE ADVISOR — env-tweak proposals
+# ============================================================
+
+
+class _Tier3StatusUpdate(BaseModel):
+    segment_key: str
+    generated_week: str
+    status: str  # accepted / dismissed / pending
+
+
+@router.get("/tier3-slippage-advisor/proposals")
+async def tier3_advisor_list(
+    request: Request, status: str | None = None, limit: int = 50,
+):
+    """List Tier-3 slippage advisor proposals (newest first).
+    Optional ``status`` filter (``pending`` / ``accepted`` /
+    ``dismissed``)."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.tier3_slippage_advisor import list_proposals
+    rows = await list_proposals(db, status=status, limit=limit)
+    return {"rows": rows, "count": len(rows), "filter_status": status}
+
+
+@router.get("/tier3-slippage-advisor/analysis")
+async def tier3_advisor_analysis(
+    request: Request, lookback_days: int = 30,
+):
+    """Pure read-only segmentation pass — same math the writer uses
+    but with no insert. Lets the operator inspect what the next
+    advisor cycle WOULD propose."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.tier3_slippage_advisor import (
+        analyze_slippage_segments, detect_outliers, draft_proposals,
+    )
+    analysis = await analyze_slippage_segments(
+        db, lookback_days=lookback_days,
+    )
+    outliers = detect_outliers(analysis["segments"], analysis["baseline"])
+    drafts = draft_proposals(outliers, lookback_days=lookback_days)
+    # Strip ``generated_at`` datetime so the response is JSON-safe.
+    for d in drafts:
+        ga = d.get("generated_at")
+        if hasattr(ga, "isoformat"):
+            d["generated_at"] = ga.isoformat()
+    return {
+        **analysis,
+        "outliers": outliers,
+        "draft_proposals": drafts,
+    }
+
+
+@router.post("/tier3-slippage-advisor/run")
+async def tier3_advisor_run(request: Request, lookback_days: int = 30):
+    """Manually trigger a full advisor cycle (analyse → draft →
+    upsert)."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.tier3_slippage_advisor import run_advisor_cycle
+    return await run_advisor_cycle(db, lookback_days=lookback_days)
+
+
+@router.post("/tier3-slippage-advisor/proposals/status")
+async def tier3_advisor_set_status(
+    request: Request, body: _Tier3StatusUpdate,
+):
+    """Mark a proposal accepted / dismissed / pending. Advisory
+    only — does NOT apply the proposed env change."""
+    user = await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.tier3_slippage_advisor import update_proposal_status
+    res = await update_proposal_status(
+        db,
+        segment_key=body.segment_key,
+        generated_week=body.generated_week,
+        new_status=body.status,
+        actor=user.get("email") or "operator",
+    )
+    if res is None:
+        raise HTTPException(status_code=404, detail="proposal_not_found")
+    return res

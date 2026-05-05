@@ -55,6 +55,70 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Tier-3 Slippage Advisor (May 4, 2026)
+
+P2 closes the loop on the slippage round-trip stamping shipped
+earlier today. The advisor reads the per-trade slippage data,
+segments it by axis (lane / method_in / method_out / symbol /
+direction / session), detects outlier segments, and drafts
+ENV-tweak proposals into ``tier3_advisor_proposals`` for operator
+review. **Advisory only — never auto-applies env changes.**
+
+* **``services/tier3_slippage_advisor.py``** — pure deterministic
+  pipeline (no LLM tokens):
+  * ``analyze_slippage_segments(db, lookback_days=30)`` — read-only
+    grouping. Returns baseline (avg_bps, total_dollar_cost,
+    total_pnl) + per-axis segments with stable
+    ``segment_key`` hash.
+  * ``detect_outliers(segments, baseline)`` — gates: count ≥ 20
+    AND avg_bps > (baseline × 1.75) AND avg_bps > 8 absolute floor.
+    Tunable via ``TIER3_ADVISOR_MIN_SAMPLE_SIZE``,
+    ``TIER3_ADVISOR_OUTLIER_MULTIPLIER``,
+    ``TIER3_ADVISOR_ABSOLUTE_BPS_FLOOR``.
+  * ``draft_proposals(outliers)`` — template-based natural-language
+    rationale with severity (info/warn/critical based on ratio).
+    Six axis-specific templates: method_drag, method_drag_exit,
+    symbol_drag, session_drag, direction_drag, lane_drag.
+  * ``run_advisor_cycle(db)`` — orchestrator with idempotent dedup
+    keyed on ``(segment_key, lookback_days, generated_week)`` so
+    daily reruns within the same ISO week skip existing rows.
+  * ``update_proposal_status(...)`` — round-trips operator review
+    (``accepted`` / ``dismissed`` / ``pending``). Stamps reviewer
+    email + timestamp.
+
+* **APScheduler**: Mondays 13:15 UTC (just before US RTH).
+  Gated by ``TIER3_ADVISOR_ENABLED`` (default ON).
+
+* **Admin endpoints** (owner-only):
+  * ``GET /api/admin/tier3-slippage-advisor/proposals?status=pending``
+  * ``GET /api/admin/tier3-slippage-advisor/analysis`` — pure
+    read-only; lets operator preview what the next cycle WOULD
+    propose without writing
+  * ``POST /api/admin/tier3-slippage-advisor/run`` — manual trigger
+  * ``POST /api/admin/tier3-slippage-advisor/proposals/status`` —
+    accept / dismiss
+
+* **Frontend tile** ``Tier3SlippageAdvisorTile.jsx`` — slotted
+  into Terminal tab. Header severity (info/warn/critical) reflects
+  the worst pending proposal. Each row shows axis, ratio,
+  env_knob, accept/dismiss buttons, full metrics + rationale.
+  Polls every 5 min.
+
+* **Live-smoke (2026-05-04)**: ``run`` returned
+  ``trades_scanned=835 trades_with_slippage=0 outliers_found=0``
+  — expected (slippage stamping started today; first proposals
+  will fire after a week of round-trip data accumulates).
+  ``analysis`` endpoint confirmed clean.
+
+* **15 new tests** covering: empty DB, slippage-stamp filter,
+  per-axis aggregation, sample-size gate, absolute-bps floor,
+  ratio-based severity buckets, proposal drafting per axis,
+  idempotent dedup within ISO week, status round-trip, invalid
+  status, missing proposal. **192/192 green** across all
+  adjacent suites. Lint clean.
+
+
+
 ### Exit-Side Slippage Stamping (May 4, 2026)
 
 P2 closes the slippage round-trip — entry was stamped on
