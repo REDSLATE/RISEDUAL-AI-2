@@ -140,6 +140,14 @@ def test_close_due_closes_old_short_correctly(monkeypatch):
             with patch.object(
                 paper_trade_closer, "_fetch_price",
                 new=AsyncMock(return_value=271.06),
+            ), patch(
+                # The closer also probes ``get_alpaca_equity_quote`` to
+                # apply exit slippage. Without this patch the test
+                # silently fetches LIVE AAPL bid/ask and the assertion
+                # against the mocked 271.06 fails any time AAPL is
+                # actually trading near a different price (every weekday).
+                "services.alpaca_equity_quotes.get_alpaca_equity_quote",
+                AsyncMock(return_value=None),
             ):
                 result = await paper_trade_closer.close_due_paper_trades(db)
             assert result["closed"] == 1, result
