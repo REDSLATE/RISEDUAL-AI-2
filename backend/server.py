@@ -806,6 +806,41 @@ async def _start_schedulers():
             id='integrity_mitigation_sweep',
         )
 
+        # Notification lifecycle sweep — runs the registered
+        # superseders (toxic_spike, verdict_change, ...) twice daily
+        # so stale alerts disappear from the drawer without waiting
+        # for an admin button-click or a regrade-backfill run. Cheap
+        # operation: re-checks source rows, supersedes only when the
+        # source no longer supports the alert. Idempotent — re-runs
+        # are safe. Each run writes a receipt to
+        # ``notification_lifecycle_runs`` with trigger=``scheduled_cron``.
+        # Cadence: 04:00 UTC (post-overnight backfills) and 16:00 UTC
+        # (pre-US-close) so an alert that becomes stale during the
+        # session is cleared within ~12 hours.
+        async def _run_notification_lifecycle_sweep():
+            try:
+                from services.notification_lifecycle import supersede_stale_alerts
+                summary = await supersede_stale_alerts(
+                    db, trigger="scheduled_cron",
+                )
+                totals = summary.get("totals") or {}
+                if totals.get("superseded", 0) > 0:
+                    logging.info(
+                        "[notif_lifecycle] superseded=%d kept_active=%d checked=%d",
+                        totals.get("superseded", 0),
+                        totals.get("kept_active", 0),
+                        totals.get("checked", 0),
+                    )
+            except Exception:
+                logging.exception(
+                    "notification_lifecycle_sweep failed (non-critical)"
+                )
+        scheduler.add_job(
+            _run_notification_lifecycle_sweep,
+            'cron', hour='4,16', minute=0,
+            id='notification_lifecycle_sweep',
+        )
+
         # NEWS_SHOCK feeders — drives both Benzinga (news volume) and
         # Alpha Vantage (sentiment) telemetry population on a 15-min
         # market-hours cadence over a rotating slice of Tier A. The
@@ -1130,7 +1165,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
 

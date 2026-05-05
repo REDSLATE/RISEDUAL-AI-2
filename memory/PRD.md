@@ -55,6 +55,54 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Notification Lifecycle Scheduled Sweep + admin.py decomposition (Feb, 2026)
+
+Two P2 items shipped together — periodic auto-supersession of stale
+alerts, and continued admin.py decomposition.
+
+* **Notification lifecycle scheduled sweep**:
+  * **APScheduler job** ``notification_lifecycle_sweep`` wired in
+    ``server.py``. Cadence: ``cron hour='4,16' minute=0`` (04:00 UTC
+    post-overnight backfills + 16:00 UTC pre-US-close). Calls the
+    existing ``supersede_stale_alerts(db, trigger="scheduled_cron")``
+    dispatcher that already runs every registered superseder
+    (``toxic_spike``, ``verdict_change``).
+  * Cheap operation — recounts source rows, supersedes only when the
+    source no longer supports the alert. Idempotent. Safe re-run.
+  * Receipt row written to ``notification_lifecycle_runs`` with
+    ``trigger="scheduled_cron"`` so the operator can audit "no stale
+    alerts? when did we last check, and what fired the check?".
+  * **2 new tests** in ``test_notification_lifecycle_scheduled.py``
+    pinning: scheduler-trigger receipt stamping, default-trigger
+    fallback to ``"unknown"``.
+  * **Live-verified**: backend boot log includes
+    "notification lifecycle sweep (4:00 + 16:00)" in the schedulers
+    line; job registered cleanly.
+
+* **``routes/admin.py`` → ``routes/admin_data_integrity.py`` extraction**:
+  * 8 routes lifted out (~383 lines): ``/data-integrity/summary``,
+    ``/run-audit``, ``/alert-rules`` (GET/POST/DELETE),
+    ``/alert-rules/evaluate-now``, ``/alert-events``, ``/timeseries``.
+  * URLs unchanged — frontend + tests unaffected.
+  * Same module pattern as ``admin_conviction.py``: own ``router`` +
+    ``set_db()`` + duplicated ``_require_owner`` so the new module has
+    zero inbound dependency on ``admin.py``.
+  * Wired into ``route_registry.py`` (import + ``ALL_ROUTERS`` +
+    ``wire_db`` setter list).
+  * **``admin.py`` shrank from 4049 → 3666 lines** (-9.5%).
+    Continues the path toward the 800-line file-size allowlist
+    target. Next candidates: news/benzinga (~580 lines), adaptations
+    (~370 lines).
+  * **Live-verified**: all 8 endpoints return 401 unauth (proves
+    registration + owner-gate); existing ``conviction`` routes still
+    401 (no regression).
+
+* **Tests**: **36/36 green** across compression CI gate, no-direction-
+  tuple invariant, proof-chain E2E, notification lifecycle (existing
+  + new scheduled), and code-size allowlist.
+
+
+
 ### Compression CI Gate — read-only IP guardrail (Feb, 2026)
 
 P0 from the prior fork's handoff. Ships a strictly read-only CI gate
