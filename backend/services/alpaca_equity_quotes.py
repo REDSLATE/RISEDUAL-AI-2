@@ -97,7 +97,10 @@ def _normalise_symbol(symbol: str) -> str:
 
 
 def _parse_quote_block(
-    *, latest_quote: dict | None, latest_trade: dict | None,
+    *,
+    latest_quote: dict | None,
+    latest_trade: dict | None,
+    prev_daily_bar: dict | None = None,
 ) -> dict[str, Any] | None:
     """Build the canonical quote shape from Alpaca's snapshot
     components. Returns ``None`` if neither side has anything
@@ -107,6 +110,13 @@ def _parse_quote_block(
     ``latestQuote`` with ``ap=0`` but a valid ``latestTrade.p``.
     Mid is preferred when both bid+ask are populated; falls
     through to last-trade otherwise.
+
+    When ``prev_daily_bar`` is supplied we also surface
+    ``change`` / ``change_pct`` / ``prev_close`` — the fields every
+    non-execution consumer of the generic ``get_quote()`` expects
+    (sector heatmap, dashboard tiles, etc.). Without them those
+    consumers raise ``KeyError: 'change'`` on every Alpaca-primary
+    quote, which broke the Sectors Heating tab on 2026-05-04.
     """
     bid = 0.0
     ask = 0.0
@@ -137,6 +147,21 @@ def _parse_quote_block(
     else:
         return None
 
+    # Previous-close enrichment. Alpaca's ``prevDailyBar.c`` is the
+    # adjusted close of the prior trading session; change vs. current
+    # price is what every dashboard tile renders.
+    prev_close = 0.0
+    change = 0.0
+    change_pct = 0.0
+    if prev_daily_bar:
+        try:
+            prev_close = float(prev_daily_bar.get("c") or 0)
+        except (TypeError, ValueError):
+            prev_close = 0.0
+        if prev_close > 0:
+            change = round(price - prev_close, 4)
+            change_pct = round((change / prev_close) * 100.0, 4)
+
     return {
         "price": round(price, 4),
         "bid": round(bid, 4) if bid > 0 else None,
@@ -145,6 +170,9 @@ def _parse_quote_block(
         "spread_bps": (
             round(spread_bps, 2) if spread_bps is not None else None
         ),
+        "prev_close": round(prev_close, 4) if prev_close > 0 else 0,
+        "change": change,
+        "change_pct": change_pct,
         "source": "alpaca",
         "ts": _now(),
     }
@@ -215,6 +243,7 @@ async def fetch_alpaca_equity_quotes_batch(
         parsed = _parse_quote_block(
             latest_quote=snap.get("latestQuote"),
             latest_trade=snap.get("latestTrade"),
+            prev_daily_bar=snap.get("prevDailyBar"),
         )
         if parsed is not None:
             parsed["symbol"] = sym

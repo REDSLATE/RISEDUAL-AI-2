@@ -24,13 +24,19 @@ SECTOR_ETFS = {
 
 
 async def _fetch_etf_quote(symbol: str) -> dict:
-    """Fetch a single ETF quote using smart price provider."""
+    """Fetch a single ETF quote using smart price provider.
+
+    All reads use ``.get(..., 0)`` — some providers (Alpaca live
+    snapshot before the 2026-05-05 enrichment, for instance) don't
+    populate every field, and a missing field used to blow the
+    entire sector-heatmap endpoint with a ``KeyError``.
+    """
     quote = await get_quote(symbol)
     if quote:
         return {
-            "price": quote["price"],
-            "change": quote["change"],
-            "change_pct": quote["change_pct"],
+            "price": quote.get("price", 0),
+            "change": quote.get("change", 0),
+            "change_pct": quote.get("change_pct", 0),
             "prev_close": quote.get("prev_close", 0),
             "high": quote.get("high", 0),
             "low": quote.get("low", 0),
