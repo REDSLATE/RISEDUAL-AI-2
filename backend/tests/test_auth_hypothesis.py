@@ -12,7 +12,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Admin credentials from environment
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
 
 # Test user for registration
 TEST_USER_EMAIL = f"test_user_{int(time.time())}@test.com"
