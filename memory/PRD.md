@@ -55,6 +55,30 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Lifecycle Receipts — `notification_lifecycle_runs` (May 4, 2026)
+
+Operator request: receipt trail per cleanup run so "no stale alerts"
+is auditable rather than a UI claim.
+
+* ``services/notification_lifecycle.supersede_stale_alerts`` now writes
+  one row per dispatcher run to ``notification_lifecycle_runs``:
+  ``{ran_at, types, checked, superseded, kept_active, by_type, trigger}``
+* Trigger strings stamped by each caller:
+  * ``manual_admin`` — admin endpoint
+  * ``backfill_regrade`` — `backfill_strong_direction_grades.py` hook
+  * ``oneshot_script`` — `scripts/supersede_stale_toxic_alerts.py`
+  * ``unknown`` — fallback
+* NEW endpoint ``GET /api/admin/notifications/lifecycle/runs?limit=20``
+  (owner-only) returns newest-first receipts.
+* **Live-verified (2026-05-05)**: 2 receipts written from sequential
+  admin cleanup calls, both stamped `trigger=manual_admin` with
+  correct totals + per-type breakdown.
+* **3 new tests** (receipt write + types filter capture + default
+  trigger). **17/17 lifecycle tests green**, **209/209** across all
+  adjacent suites.
+
+
+
 ### Generalised Notification Lifecycle (May 4, 2026)
 
 P3 extends the lifecycle contract from `toxic_spike`-only to ALL

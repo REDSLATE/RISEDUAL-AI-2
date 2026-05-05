@@ -358,3 +358,48 @@ def test_register_superseder_extension_point():
     assert "custom_test_type" in lc._REGISTRY
     # Cleanup so other tests don't see this entry.
     lc._REGISTRY.pop("custom_test_type", None)
+
+
+# ── Receipt audit trail ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_writes_receipt():
+    """Every dispatcher run should leave one row in
+    ``notification_lifecycle_runs`` capturing the totals + trigger."""
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    db.notification_lifecycle_runs = _Coll()
+
+    out = await lc.supersede_stale_alerts(db, trigger="manual_admin")
+
+    assert len(db.notification_lifecycle_runs.rows) == 1
+    receipt = db.notification_lifecycle_runs.rows[0]
+    assert receipt["trigger"] == "manual_admin"
+    assert receipt["checked"] == out["totals"]["checked"]
+    assert receipt["superseded"] == out["totals"]["superseded"]
+    assert "ran_at" in receipt
+    assert "by_type" in receipt
+
+
+@pytest.mark.asyncio
+async def test_receipt_records_types_filter():
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    db.notification_lifecycle_runs = _Coll()
+
+    await lc.supersede_stale_alerts(
+        db, types=["verdict_change"], trigger="oneshot_script",
+    )
+    receipt = db.notification_lifecycle_runs.rows[0]
+    assert receipt["types"] == ["verdict_change"]
+    assert receipt["trigger"] == "oneshot_script"
+
+
+@pytest.mark.asyncio
+async def test_receipt_default_trigger_is_unknown():
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    db.notification_lifecycle_runs = _Coll()
+    await lc.supersede_stale_alerts(db)
+    assert db.notification_lifecycle_runs.rows[0]["trigger"] == "unknown"

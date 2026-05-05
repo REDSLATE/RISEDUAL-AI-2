@@ -43,7 +43,7 @@ async def main() -> None:
     if db is None:
         log.error("DB unavailable — abort.")
         sys.exit(1)
-    result = await supersede_stale_alerts(db)
+    result = await supersede_stale_alerts(db, trigger="oneshot_script")
     totals = result["totals"]
     log.info(
         "Notification lifecycle cleanup — totals: checked=%d "

@@ -4509,4 +4509,26 @@ async def notifications_lifecycle_cleanup(
     type_list: list[str] | None = None
     if types:
         type_list = [t.strip() for t in types.split(",") if t.strip()]
-    return await supersede_stale_alerts(db, types=type_list)
+    return await supersede_stale_alerts(db, types=type_list, trigger="manual_admin")
+
+
+@router.get("/notifications/lifecycle/runs")
+async def notifications_lifecycle_runs(
+    request: Request, limit: int = 20,
+):
+    """Recent ``notification_lifecycle_runs`` receipts (newest first).
+    Lets the operator audit "no stale alerts" claims with timestamps
+    + trigger source."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    limit = max(1, min(int(limit), 200))
+    cursor = db.notification_lifecycle_runs.find(
+        {}, {"_id": 0},
+    ).sort("ran_at", -1).limit(limit)
+    rows = await cursor.to_list(length=limit)
+    for r in rows:
+        v = r.get("ran_at")
+        if hasattr(v, "isoformat"):
+            r["ran_at"] = v.isoformat()
+    return {"rows": rows, "count": len(rows)}

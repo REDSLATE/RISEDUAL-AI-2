@@ -293,12 +293,19 @@ _REGISTRY: dict[str, SupersederFn] = {
 
 async def supersede_stale_alerts(
     db: Any, *, types: list[str] | None = None,
+    trigger: str = "unknown",
 ) -> dict[str, Any]:
     """Run every registered superseder (or a subset). Returns a
     per-type breakdown plus a totals row.
 
     Idempotent: each individual superseder is idempotent, so the
     dispatcher inherits that property.
+
+    Every run writes one receipt row to ``notification_lifecycle_runs``
+    capturing ``ran_at``, ``types``, totals, and the ``trigger``
+    string the caller passed (``manual_admin`` /
+    ``backfill_regrade`` / ``oneshot_script`` / ``unknown``). Lets
+    the operator audit "no stale alerts? when did we last check?"
     """
     target_types = types or list(_REGISTRY.keys())
     by_type: dict[str, dict[str, int]] = {}
@@ -313,6 +320,22 @@ async def supersede_stale_alerts(
         by_type[t] = result
         for k in totals:
             totals[k] += result.get(k, 0)
+
+    # Receipt — best-effort. Failure to log doesn't roll back the
+    # supersede work that already landed.
+    if db is not None:
+        try:
+            await db.notification_lifecycle_runs.insert_one({
+                "ran_at": datetime.now(timezone.utc),
+                "types": target_types,
+                "checked": totals["checked"],
+                "superseded": totals["superseded"],
+                "kept_active": totals["kept_active"],
+                "by_type": by_type,
+                "trigger": trigger,
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[notif-lifecycle] receipt write failed: %s", exc)
 
     return {"by_type": by_type, "totals": totals}
 
