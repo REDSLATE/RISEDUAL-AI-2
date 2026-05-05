@@ -6,6 +6,56 @@ here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.m
 
 ## 4. What's Been Implemented (cumulative)
 
+### Regime Memory Retrieval + Event-Aware Regime Labeler (Feb, 2026)
+
+**Regime Memory Retrieval Layer** (`services/regime_memory_retrieval.py`,
+`routes/regime_memory.py`):
+
+- Read-mostly, in-memory engine that retrieves similar-regime trade
+  memories and detects pre-tell regime warnings.
+- **Hard rails**: never flips direction, never promotes HOLD/UNKNOWN
+  into a trade, never writes to `toxic_lessons` / `prediction_tracker`
+  / `paper_trades` / `ai_alerts`. Bounded risk multiplier 0.50–1.00.
+- **No direction drift**: imports the project-wide
+  `services.prediction_tracker.canonical_ai_dir` (LONG / SHORT /
+  UNKNOWN). Extra ingest guard rejects raw tokens not in the known
+  bullish/bearish/neutral sets.
+- **Default mode**: `REGIME_MEMORY_ENABLED=false` and
+  `REGIME_MEMORY_MODE=shadow` — multiplier is logged as
+  `shadow_risk_multiplier` and the live `risk_multiplier` is forced
+  back to 1.0.
+- New env vars: `REGIME_MEMORY_ENABLED`, `REGIME_MEMORY_MODE`,
+  `REGIME_MEMORY_MIN_SIMILARITY`, `REGIME_PRETELL_MIN_SAMPLES`,
+  `REGIME_MEMORY_{MIN,MAX}_RISK_MULTIPLIER`.
+- New owner-only admin endpoints:
+  - `GET  /api/admin/regime-memory/report`
+  - `POST /api/admin/regime-memory/risk-context/preview`
+- 14 pytest cases pinning every safety rail (disabled-by-default,
+  non-canonical rejection, HOLD non-promotion, multiplier flooring,
+  shadow-mode masking, no Mongo writes).
+
+**Event-Aware Regime Labeler**
+(`services/event_aware_regime_labeler.py`):
+
+- Pure labeling utility for training-data enrichment, backtests,
+  post-mortems, calibration. Emits macro regime + named market event
+  + event family + deterministic `regime_id` (sha256 fingerprint).
+- 15-year event taxonomy: GFC, Flash Crash, China devaluation, 2018
+  vol spike, COVID crash, COVID recovery, rate-hike cycle, AI bubble.
+- **Isolation contract** enforced by tests: must not import any
+  decision-stack / execution / risk-modulation / memory-writer module
+  and must not perform any Mongo write.
+- 17 pytest cases covering event tagging, regime bucket boundaries,
+  determinism of `regime_id`, batch labeling, partial inputs, and
+  the import-isolation contract.
+
+**Misc**:
+
+- Removed pre-existing stray `}")` syntax error at
+  `route_registry.py:382` that was blocking backend startup after
+  the new router was wired in.
+
+
 ### Status Pill + Regime Weights Scaffolding (Feb 26, 2026)
 
 **Council Tier Status Pill** (recommended enhancement):

@@ -84,6 +84,7 @@ from routes.admin_position_reconciler import router as admin_position_reconciler
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
 from routes.sovereign_ai import router as sovereign_ai_router, set_db as set_sovereign_ai_db
+from routes.regime_memory import router as regime_memory_router, set_db as set_regime_memory_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -156,6 +157,7 @@ ALL_ROUTERS = [
     admin_memory_drift_router,
     admin_etl_router,
     sovereign_ai_router,
+    regime_memory_router,
     nl_trading_router,
 ]
 
