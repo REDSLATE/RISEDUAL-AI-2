@@ -55,6 +55,38 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Session Closeout — Stable Baseline (Feb, 2026)
+
+- Full fast test suite green: 2414 passed in 14.8s.
+- All services healthy: backend, frontend, mongo, nginx.
+- Admin route registry verified: 166 routes, 0 duplicate routes.
+- Compression CI Gate shipped end-to-end: CI script, tests, Makefile,
+  admin endpoint, and frontend tile.
+- Notification Lifecycle scheduled sweep shipped via APScheduler at
+  04:00 and 16:00 UTC.
+- ``routes/admin.py`` reduced from 4049 lines to 1689 lines
+  (-2360, -58.3%).
+- **14 extracted admin modules** now own cohesive route groups:
+  ``admin_conviction``, ``admin_data_integrity``,
+  ``admin_adaptations``, ``admin_compression_gate``, ``admin_news``,
+  ``admin_tier3_bootstrap``, ``admin_promotion_gates``,
+  ``admin_ticker_abandonment``, ``admin_day_trade``,
+  ``admin_spread_slippage``, ``admin_autopsy_promotion``,
+  ``admin_realtime_infra``, ``admin_notification_lifecycle``,
+  ``admin_introspection``.
+- **5 pre-existing admin modules** (predate this session, unchanged):
+  ``admin_etl``, ``admin_guard_shadow``, ``admin_memory_drift``,
+  ``admin_position_reconciler``, ``admin_proof_chain``.
+- No open blockers, no failed tests, no mocked APIs, no pending
+  integrations.
+
+**Status: stable baseline.**
+
+**Next best move:** tag this state in git before starting the next
+feature.
+
+
+
 ### Route introspection endpoint + Compression CI Gate frontend testing (Feb, 2026)
 
 Two complementary closeout items — surfaces the decomposition's
