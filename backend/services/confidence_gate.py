@@ -33,12 +33,23 @@ from typing import Any, Literal
 logger = logging.getLogger(__name__)
 
 # Base threshold — overridable via env so ops can shift the floor.
-BASE_MIN_CONFIDENCE: float = float(
-    os.environ.get("CONFIDENCE_GATE_BASE", "0.70")
-)
-MAX_THRESHOLD: float = float(
-    os.environ.get("CONFIDENCE_GATE_CAP", "0.90")
-)
+# Read at call-time (via the ``_current_*`` accessors below) so test
+# suites that toggle the env mid-run see the override instead of a
+# stale import-time snapshot. The module-level constants below
+# preserve backwards-compat for callers that read them directly.
+def _current_base_min_confidence() -> float:
+    return float(os.environ.get("CONFIDENCE_GATE_BASE", "0.70"))
+
+
+def _current_max_threshold() -> float:
+    return float(os.environ.get("CONFIDENCE_GATE_CAP", "0.90"))
+
+
+# Module-level constants — kept for backwards compat with callers
+# that import them directly. The ``_current_*`` accessors above are
+# the source of truth for the dynamic threshold computation.
+BASE_MIN_CONFIDENCE: float = _current_base_min_confidence()
+MAX_THRESHOLD: float = _current_max_threshold()
 
 
 @dataclass(frozen=True)
@@ -62,9 +73,17 @@ def compute_dynamic_threshold(
     drawdown: float = 0.0,
     loss_streak: int = 0,
     calibration_gap: float = 0.0,
-    base: float = BASE_MIN_CONFIDENCE,
+    base: float | None = None,
 ) -> ConfidenceThreshold:
-    """Pure threshold computation. Tested independently of any I/O."""
+    """Pure threshold computation. Tested independently of any I/O.
+
+    ``base`` defaults to the env-driven value at call-time (so a test
+    can flip ``CONFIDENCE_GATE_BASE`` between tests without reloading
+    the module). The cap is also re-read each call.
+    """
+    if base is None:
+        base = _current_base_min_confidence()
+    max_threshold = _current_max_threshold()
     delta = 0.0
     reasons: list[str] = []
 
@@ -87,7 +106,7 @@ def compute_dynamic_threshold(
     if not reasons:
         reasons.append("baseline")
 
-    threshold = min(base + delta, MAX_THRESHOLD)
+    threshold = min(base + delta, max_threshold)
     return ConfidenceThreshold(
         base=base,
         delta=round(delta, 4),
@@ -232,7 +251,7 @@ async def get_dynamic_confidence_threshold(
     # The min_rr override lives on ``confidence_gate_overrides`` and is
     # consumed by the existing RR gates in failure_mode_classifier +
     # NL runtime state.
-    nl_base = BASE_MIN_CONFIDENCE
+    nl_base = _current_base_min_confidence()
     try:
         if db is not None:
             override = await db["confidence_gate_overrides"].find_one(
@@ -241,15 +260,22 @@ async def get_dynamic_confidence_threshold(
             )
             if override and override.get("expires_at"):
                 from datetime import datetime, timezone
-                if override["expires_at"] > datetime.now(timezone.utc):
+                from services.datetime_utils import ensure_utc
+                # Mongo BSON dates round-trip naive — normalise before
+                # comparing against tz-aware ``now``. Without this the
+                # static-source scanner (test_no_unguarded_mongo_datetime
+                # _math) flags it and runtime can raise on naive docs
+                # written by older code paths.
+                exp = ensure_utc(override["expires_at"])
+                if exp and exp > datetime.now(timezone.utc):
                     # NL override — shift the base by 5 points per 0.5
                     # above default (conservative mapping). This couples
                     # an "operator wants tighter RR" signal to the
                     # confidence gate without blowing through MAX_THRESHOLD.
                     extra_rr = max(0.0, float(override["min_rr"]) - 1.5)
                     nl_base = min(
-                        MAX_THRESHOLD,
-                        BASE_MIN_CONFIDENCE + min(0.15, extra_rr * 0.10),
+                        _current_max_threshold(),
+                        _current_base_min_confidence() + min(0.15, extra_rr * 0.10),
                     )
     except Exception as exc:  # noqa: BLE001
         logger.debug("[confidence_gate] override read failed: %s", exc)

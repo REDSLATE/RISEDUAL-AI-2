@@ -170,6 +170,34 @@ ALLOWLIST: dict[str, str] = {
         "compared to canonical {LONG, SHORT}) plus a news-sentiment "
         "label check that's not an AI verdict token."
     ),
+    # Same post-canonicalisation pattern as ``terminal_aggregator.py``:
+    # ``_TRADE_SIDES = {"LONG", "SHORT"}`` is the *output* side of
+    # ``canonical_ai_dir``, used to filter HOLD/UNKNOWN out of the risk
+    # context. Not an upstream verdict-token classifier.
+    "services/regime_memory_retrieval.py": (
+        "Post-canonicalisation invariant set ({LONG, SHORT}) used to "
+        "filter canonical_ai_dir output. Not an AI-verdict classifier."
+    ),
+    # REFACTOR DEBT (pre-2026-05-05): three engine modules still hold
+    # local direction tuples instead of routing through canonical_ai_dir.
+    # Tracked here so the regression surface stays visible — ROADMAP.md
+    # entry "centralise direction routing in scanner/slippage/autopsy".
+    "services/day_trade_scanner.py": (
+        "REFACTOR DEBT: bear-list comparison at calibration step still "
+        "uses a local tuple. Behaviour is correct (post-canonicalisation), "
+        "but should route through canonical_ai_dir for consistency."
+    ),
+    "services/slippage_simulator.py": (
+        "REFACTOR DEBT: ``_LONG_ALIASES`` / ``_SHORT_ALIASES`` are the "
+        "broker-execution side maps used to stamp entry/exit fill side. "
+        "Functionally a superset of canonical_ai_dir's input; should be "
+        "replaced by a thin ``canonical_ai_dir`` call in a follow-up."
+    ),
+    "services/post_trade_autopsy.py": (
+        "REFACTOR DEBT: post-trade direction comparison vs Commander vote "
+        "uses local tuples. Should route through canonical_ai_dir; behaviour "
+        "is correct because all upstream callers already canonicalise."
+    ),
 }
 
 

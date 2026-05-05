@@ -8,8 +8,8 @@ import asyncio
 import pytest
 
 from services.confidence_gate import (
-    BASE_MIN_CONFIDENCE,
-    MAX_THRESHOLD,
+    _current_base_min_confidence,
+    _current_max_threshold,
     compute_dynamic_threshold,
     get_dynamic_confidence_threshold,
 )
@@ -17,8 +17,34 @@ from services.sovereign_ai_core import SovereignFeatures, _strategist_model
 from tests.test_sovereign_ai_core import _FakeDB
 
 
+# Use the *current* (call-time) values throughout this file so the
+# tests are robust to other modules in the suite mutating the env.
+def BASE_MIN_CONFIDENCE() -> float:  # noqa: N802 — keep symbol shape
+    return _current_base_min_confidence()
+
+
+def MAX_THRESHOLD() -> float:  # noqa: N802 — keep symbol shape
+    return _current_max_threshold()
+
+
+@pytest.fixture(autouse=True)
+def _pin_confidence_gate_base_to_production(monkeypatch):
+    """These tests pin the *production* threshold maths (BASE=0.70).
+    Sibling test files (e.g. ``test_crypto_paper_bot``) override the
+    env to 0.55 — without this fixture the 0.55 leak corrupts the
+    cap test."""
+    monkeypatch.delenv("CONFIDENCE_GATE_BASE", raising=False)
+    monkeypatch.delenv("CONFIDENCE_GATE_CAP", raising=False)
+
+
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Fresh loop avoids RuntimeError: no current event loop
+    # pollution after a prior async test closes pytest-asyncio's loop.
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # ─── Dynamic threshold pure tests ─────────────────────────────────────────────
@@ -26,7 +52,7 @@ def _run(coro):
 
 def test_baseline_threshold_is_base():
     t = compute_dynamic_threshold()
-    assert t.threshold == BASE_MIN_CONFIDENCE
+    assert t.threshold == BASE_MIN_CONFIDENCE()
     assert t.delta == 0
     assert "baseline" in t.reasons
 
@@ -72,13 +98,14 @@ def test_threshold_capped_at_max():
     t = compute_dynamic_threshold(
         drawdown=0.50, calibration_gap=0.50, loss_streak=10,
     )
-    assert t.threshold == MAX_THRESHOLD
+    assert t.threshold == MAX_THRESHOLD()
 
 
 def test_passes_helper():
-    t = compute_dynamic_threshold(drawdown=0.10)  # threshold = 0.75
-    assert t.passes(0.80) is True
-    assert t.passes(0.70) is False
+    # threshold = current base + 0.05 (drawdown)
+    t = compute_dynamic_threshold(drawdown=0.10)
+    assert t.passes(t.threshold + 0.05) is True
+    assert t.passes(t.threshold - 0.05) is False
 
 
 # ─── Mongo-backed reader (calibration gap) ────────────────────────────────────
@@ -88,7 +115,7 @@ def test_get_dynamic_threshold_baseline_with_no_data():
     """Empty DB → baseline threshold."""
     db = _FakeDB()
     t = _run(get_dynamic_confidence_threshold(db, asset_type="equity"))
-    assert t.threshold == BASE_MIN_CONFIDENCE
+    assert t.threshold == BASE_MIN_CONFIDENCE()
 
 
 def test_get_dynamic_threshold_swallows_mongo_errors():
@@ -98,7 +125,7 @@ def test_get_dynamic_threshold_swallows_mongo_errors():
             raise RuntimeError("mongo down")
 
     t = _run(get_dynamic_confidence_threshold(BrokenDB(), asset_type="equity"))
-    assert t.threshold == BASE_MIN_CONFIDENCE
+    assert t.threshold == BASE_MIN_CONFIDENCE()
     assert t.delta == 0
 
 

@@ -95,8 +95,14 @@ def patch_auto_revert_enabled(monkeypatch):
     monkeypatch.setenv("ML_ADAPTATION_AUTO_REVERT_ENABLED", "true")
 
 
-def test_auto_revert_disabled_by_default():
-    """When the env flag is off, the scan is a no-op."""
+def test_auto_revert_disabled_by_default(monkeypatch):
+    """When BOTH the live flag (``ML_ADAPTATION_AUTO_REVERT_ENABLED``)
+    AND the shadow flag (``ML_ADAPTATION_SHADOW_MODE``) are off, the
+    scan is a true no-op. Pin both explicitly: the .env ships with
+    shadow mode on, which would otherwise produce ``{'shadow': True}``
+    audit rows here even when the live flag is off."""
+    monkeypatch.delenv("ML_ADAPTATION_AUTO_REVERT_ENABLED", raising=False)
+    monkeypatch.delenv("ML_ADAPTATION_SHADOW_MODE", raising=False)
     from services.model_adaptation import evaluate_auto_revert_candidates
 
     async def _run():
@@ -120,7 +126,7 @@ def test_auto_revert_disabled_by_default():
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_reverts_on_3_consecutive_negative(patch_auto_revert_enabled):
@@ -173,7 +179,7 @@ def test_auto_revert_reverts_on_3_consecutive_negative(patch_auto_revert_enabled
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_final_kill_after_ceiling(patch_auto_revert_enabled):
@@ -233,7 +239,7 @@ def test_auto_revert_final_kill_after_ceiling(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_resets_counter_after_soften(patch_auto_revert_enabled):
@@ -279,7 +285,7 @@ def test_auto_revert_resets_counter_after_soften(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_respects_grace_period(patch_auto_revert_enabled):
@@ -306,7 +312,7 @@ def test_auto_revert_respects_grace_period(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_respects_epsilon(patch_auto_revert_enabled):
@@ -333,7 +339,7 @@ def test_auto_revert_respects_epsilon(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_skips_on_low_coverage(patch_auto_revert_enabled):
@@ -361,7 +367,7 @@ def test_auto_revert_skips_on_low_coverage(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_respects_risk_compression(patch_auto_revert_enabled):
@@ -389,7 +395,7 @@ def test_auto_revert_respects_risk_compression(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_skips_on_missing_attribution(patch_auto_revert_enabled):
@@ -442,7 +448,7 @@ def test_auto_revert_skips_on_missing_attribution(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 
@@ -479,7 +485,7 @@ def test_auto_revert_respects_effect_size_floor(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_auto_revert_cooldown_pauses_scanner(patch_auto_revert_enabled):
@@ -530,7 +536,7 @@ def test_auto_revert_cooldown_pauses_scanner(patch_auto_revert_enabled):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 
@@ -591,7 +597,7 @@ def test_shadow_mode_observes_without_acting(patch_shadow_mode):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_shadow_mode_does_not_block_itself_via_cooldown(patch_shadow_mode):
@@ -634,7 +640,7 @@ def test_shadow_mode_does_not_block_itself_via_cooldown(patch_shadow_mode):
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_parallel_scanner_handles_multiple_adaptations(
@@ -686,7 +692,7 @@ def test_parallel_scanner_handles_multiple_adaptations(
             for aid in aids:
                 await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 
@@ -775,4 +781,4 @@ def test_effect_size_env_override_gates_action(patch_auto_revert_enabled, monkey
         finally:
             await _cleanup(db, aid)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())

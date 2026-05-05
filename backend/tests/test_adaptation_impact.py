@@ -52,9 +52,9 @@ def seeded_adaptation():
         db = _mongo_db()
         await db.model_adaptations.delete_many({"adaptation_id": aid})
 
-    asyncio.get_event_loop().run_until_complete(_seed())
+    asyncio.run(_seed())
     yield aid
-    asyncio.get_event_loop().run_until_complete(_teardown())
+    asyncio.run(_teardown())
 
 
 def test_estimate_adaptation_impact_empty_frame():
@@ -116,7 +116,7 @@ def test_apply_adaptations_return_masks_shape(seeded_adaptation):
         )
         return res
 
-    res = asyncio.get_event_loop().run_until_complete(_run())
+    res = asyncio.run(_run())
     assert len(res) == 3, "expected (adjusted, summary, masks) 3-tuple"
     _, summary, masks = res
     # masks align 1:1 with summary

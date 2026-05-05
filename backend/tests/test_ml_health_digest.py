@@ -103,7 +103,7 @@ def test_collect_counts_aggregate_audit_rows_correctly():
         finally:
             await _cleanup(db, tag)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_subject_reflects_mode_and_activity():
@@ -193,7 +193,7 @@ def test_recommendation_only_fires_above_threshold():
         finally:
             await _cleanup(db, tag)
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_run_is_idempotent_per_date():
@@ -214,4 +214,4 @@ def test_run_is_idempotent_per_date():
         finally:
             await db.ml_health_digest_history.delete_many({"date": today})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())

@@ -32,23 +32,29 @@ def test_contamination_check_passes_on_clean_db():
         db = _mongo_db()
         # Belt-and-suspenders: scrub any pre-existing contamination
         # so this test doesn't get a false fail from earlier runs.
-        import re
-        pat = re.compile(r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ)", re.I)
+        # Use a string regex (not a compiled Python pattern) — Motor
+        # only translates the string form into BSON ``$regex`` cleanly
+        # inside ``$pull``; a compiled pattern silently no-ops on the
+        # array element scrub.
+        pat_str = r"^(TEST_|MOCK_|FAKE_|DUMMY_|FIXTURE_|FAKEXYZ|TEST\d+$)"
         for coll, field in [
             ("predictions", "symbol"), ("trade_ideas", "symbol"),
             ("trades", "ticker"), ("signals", "ticker"),
         ]:
-            await db[coll].delete_many({field: pat})
+            await db[coll].delete_many(
+                {field: {"$regex": pat_str, "$options": "i"}},
+            )
         for coll, field in [("watchlists", "tickers"), ("alerts_sent", "tickers")]:
             await db[coll].update_many(
-                {field: pat}, {"$pull": {field: {"$regex": pat}}}
+                {field: {"$regex": pat_str, "$options": "i"}},
+                {"$pull": {field: {"$regex": pat_str, "$options": "i"}}},
             )
 
         result = await _check_test_contamination(db)
         assert result["status"] == "PASS", result
         assert result["name"] == "test_contamination"
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_contamination_check_fails_when_predictions_contaminated():
@@ -76,7 +82,7 @@ def test_contamination_check_fails_when_predictions_contaminated():
         finally:
             await db.predictions.delete_one({"prediction_id": seed_id})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_contamination_check_fails_on_array_field_contamination():
@@ -100,7 +106,7 @@ def test_contamination_check_fails_on_array_field_contamination():
         finally:
             await db.watchlists.delete_one({"user_id": seed_uid})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_contamination_check_handles_db_none():
@@ -112,7 +118,7 @@ def test_contamination_check_handles_db_none():
         assert result["status"] == "FAIL"
         assert "db reference is None" in result["error"]
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_contamination_check_in_full_self_test_battery():
@@ -128,4 +134,4 @@ def test_contamination_check_in_full_self_test_battery():
             f"Expected `test_contamination` in {names}"
         )
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())

@@ -256,7 +256,19 @@ class AsyncMongoProofChainStore:
         if entity_id is not None:
             query["entity_id"] = entity_id
 
-        doc = await self.collection.find_one(query, sort=[("created_at", -1)])
+        # Sort by ``created_at`` desc with ``_id`` as deterministic
+        # tiebreaker. ObjectId is monotonically increasing within a
+        # given client process, so when multiple blocks land in the
+        # same millisecond (rapid sequential append, hot-path replay,
+        # or fast tests) the chain still resolves correctly. Without
+        # the tiebreaker the sort order on tied timestamps is
+        # implementation-defined and the chain's ``prev_hash`` link
+        # can break — a real production race surfaced by
+        # ``test_proof_chain_e2e::test_full_lifecycle_chain_links_correctly``
+        # under fast-test ordering.
+        doc = await self.collection.find_one(
+            query, sort=[("created_at", -1), ("_id", -1)],
+        )
         if not doc:
             return None
         return str(doc["block_hash"])

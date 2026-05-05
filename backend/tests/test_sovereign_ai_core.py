@@ -282,7 +282,19 @@ def test_classify_tier_boundaries():
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Run a coroutine in a fresh event loop.
+
+    Was previously ``asyncio.get_event_loop().run_until_complete``,
+    which raises ``RuntimeError: There is no current event loop`` on
+    Python 3.10+ once a prior test has closed pytest-asyncio's loop.
+    Using a fresh loop per call sidesteps the cross-test pollution
+    seen when ``test_kraken_ws_stream`` runs before this file.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 @pytest.fixture

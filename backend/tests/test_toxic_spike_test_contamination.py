@@ -92,7 +92,7 @@ def test_send_toxic_alerts_drops_test_fixtures_at_boundary(monkeypatch):
         with patch("services.alert_dedup.record_alert", _fake_record), \
              patch("services.alert_dedup.persistence_run_count", _fake_persistence), \
              patch("services.email_service.send_toxic_spikes_email", _fake_email):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 mms._send_toxic_alerts(cleanup_results)
             )
 
@@ -136,7 +136,7 @@ def test_send_toxic_alerts_suppresses_all_test_set(monkeypatch):
     with patch.object(mms, "_db", AsyncMock()), \
          patch("services.alert_dedup.record_alert", _fake_record), \
          patch("services.email_service.send_toxic_spikes_email", _fake_email):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             mms._send_toxic_alerts(cleanup_results)
         )
 
@@ -187,7 +187,7 @@ def test_send_toxic_alerts_passes_through_real_symbols(monkeypatch):
         with patch("services.alert_dedup.record_alert", _fake_record), \
              patch("services.alert_dedup.persistence_run_count", _fake_persistence), \
              patch("services.email_service.send_toxic_spikes_email", _fake_email):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 mms._send_toxic_alerts(cleanup_results)
             )
 
@@ -222,7 +222,7 @@ def test_emergency_mute_short_circuits_everything(monkeypatch):
     with patch.object(mms, "_db", AsyncMock()), \
          patch("services.alert_dedup.record_alert", _fake_record), \
          patch("services.email_service.send_toxic_spikes_email", _fake_email):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             mms._send_toxic_alerts(cleanup_results)
         )
 

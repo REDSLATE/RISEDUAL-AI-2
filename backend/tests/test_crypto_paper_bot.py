@@ -21,16 +21,25 @@ from __future__ import annotations
 
 import os
 
-# Pin the confidence-gate baseline so the bot-opening tests below
-# reflect the regime-agnostic sizing policy they were written for.
-# The production gate was raised to 0.70 on 2026-05-03 but these
-# tests pin the 0.55 bot-opening behaviour — the gate math itself
-# is covered by ``tests/test_confidence_gate_and_amplification.py``.
-os.environ.setdefault("CONFIDENCE_GATE_BASE", "0.55")
-
 from unittest.mock import AsyncMock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _pin_confidence_gate_base(monkeypatch):
+    """Pin the confidence-gate baseline so the bot-opening tests below
+    reflect the regime-agnostic sizing policy they were written for.
+    The production gate was raised to 0.70 on 2026-05-03 but these
+    tests pin the 0.55 bot-opening behaviour — the gate math itself
+    is covered by ``tests/test_confidence_gate_and_amplification.py``.
+
+    Per-test ``monkeypatch.setenv`` (rather than module-level
+    ``os.environ.setdefault``) so the override doesn't leak to other
+    test files. Made possible by the call-time re-read inside
+    ``services.confidence_gate._current_base_min_confidence``.
+    """
+    monkeypatch.setenv("CONFIDENCE_GATE_BASE", "0.55")
 
 from services.crypto_paper_trader import (
     CRYPTO_SYMBOLS,

@@ -119,7 +119,7 @@ def test_close_due_skips_recent_trades(monkeypatch):
         finally:
             await db.paper_trades.delete_many({"seed_tag": tag})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_close_due_closes_old_short_correctly(monkeypatch):
@@ -155,7 +155,7 @@ def test_close_due_closes_old_short_correctly(monkeypatch):
         finally:
             await db.paper_trades.delete_many({"seed_tag": tag})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_close_due_ignores_manual_ui_ticks(monkeypatch):
@@ -200,7 +200,7 @@ def test_close_due_ignores_manual_ui_ticks(monkeypatch):
         finally:
             await db.paper_trades.delete_many({"seed_tag": tag})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_close_due_quote_failure_keeps_trade_open(monkeypatch):
@@ -229,7 +229,7 @@ def test_close_due_quote_failure_keeps_trade_open(monkeypatch):
         finally:
             await db.paper_trades.delete_many({"seed_tag": tag})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_close_due_disabled_short_circuits(monkeypatch):
@@ -243,7 +243,7 @@ def test_close_due_disabled_short_circuits(monkeypatch):
         assert result.get("disabled") is True
         assert result["closed"] == 0
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_self_test_stuck_paper_trades_pass_on_clean_db(monkeypatch):
@@ -262,7 +262,7 @@ def test_self_test_stuck_paper_trades_pass_on_clean_db(monkeypatch):
         result = await _check_stuck_paper_trades(db)
         assert result["status"] == "PASS", result
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 def test_self_test_stuck_paper_trades_fail_when_closer_broken(monkeypatch):
@@ -285,4 +285,4 @@ def test_self_test_stuck_paper_trades_fail_when_closer_broken(monkeypatch):
         finally:
             await db.paper_trades.delete_many({"seed_tag": tag})
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())

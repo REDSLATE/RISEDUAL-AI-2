@@ -22,7 +22,13 @@ from services.sovereign_promotion_gate import apply_sovereign_contribution
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Fresh loop avoids RuntimeError: no current event loop
+    # pollution after a prior async test closes pytest-asyncio's loop.
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # ─── Mode guard ────────────────────────────────────────────────────────────────

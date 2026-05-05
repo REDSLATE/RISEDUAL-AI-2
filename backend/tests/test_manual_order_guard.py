@@ -87,19 +87,32 @@ async def test_buy_runs_full_guard_and_writes_proofs(db, user, monkeypatch):
     # Canonical IP contract writes 6 proof events on a clean accept
     # (adversarial → auditor → authority → failure_mode → risk_budget
     # → execution_attempted, since the helper runs the contract in
-    # dry_run mode — routes execute themselves after this returns).
-    assert len(res["proof_hashes"]) == 6
+    # Canonical IP contract writes 6 mandatory proof events on a
+    # clean accept (adversarial → auditor → authority → failure_mode
+    # → risk_budget → execution_attempted, since the helper runs the
+    # contract in dry_run mode — routes execute themselves after this
+    # returns). SMART_MONEY_VERIFIED is an *additive* 7th block that
+    # only fires when the production 13F dataset has a row for the
+    # symbol and the verification append succeeds — so it's optional.
+    assert len(res["proof_hashes"]) in (6, 7)
 
     rows = await db.decision_proof_chain.find({}, {"_id": 0}).to_list(10)
     event_types = sorted({r["event_type"] for r in rows})
-    assert event_types == [
+    required = {
         "ADVERSARIAL_DECISION",
         "AUDITOR_VERDICT",
         "AUTHORITY_VALIDATED",
         "EXECUTION_ATTEMPTED",
         "FAILURE_MODE_CLASSIFIED",
         "RISK_BUDGET_APPLIED",
-    ]
+    }
+    assert required.issubset(set(event_types)), (
+        f"missing required event types: {required - set(event_types)}"
+    )
+    assert set(event_types) - required <= {"SMART_MONEY_VERIFIED"}, (
+        f"unexpected extra event types: "
+        f"{set(event_types) - required - {'SMART_MONEY_VERIFIED'}}"
+    )
 
 
 @pytest.mark.asyncio

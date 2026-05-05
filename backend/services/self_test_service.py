@@ -221,7 +221,21 @@ async def _check_test_contamination(db: Any) -> dict:
                 )
                 if doc is not None:
                     val = doc.get(field)
-                    sample = val[0] if isinstance(val, list) and val else val
+                    # Report the actual offender, not val[0]: a mixed
+                    # array like ``['AAPL', 'TEST1']`` would have
+                    # falsely surfaced 'AAPL' under the old sample
+                    # logic. Use the regex to pick the matching item.
+                    if isinstance(val, list) and val:
+                        import re as _re
+                        _matcher = _re.compile(
+                            _CONTAMINATION_REGEX, _re.IGNORECASE,
+                        )
+                        sample = next(
+                            (v for v in val if isinstance(v, str) and _matcher.match(v)),
+                            val[0],
+                        )
+                    else:
+                        sample = val
                     hits.append(f"{cname}.{field}={sample!r}")
             except Exception as inner:
                 # A single-collection probe error shouldn't blank
