@@ -1092,6 +1092,36 @@ async def _start_schedulers():
             id='options_universe_warm', replace_existing=True,
         )
 
+        # Dedicated scheduler heartbeat — writes every 60s to a tiny
+        # ``scheduler_heartbeat`` document. Replaces the old "infer
+        # heartbeat from arbitrary other writes" proxy which would
+        # show false-stale on quiet pods (e.g. when no paper trades
+        # opened in the last day, the proxy reported the scheduler as
+        # dead even though it was firing every minute).
+        async def _write_scheduler_heartbeat():
+            try:
+                from datetime import datetime, timezone
+                await db.scheduler_heartbeat.update_one(
+                    {"_id": "main"},
+                    {
+                        "$set": {
+                            "last_beat_at": datetime.now(timezone.utc),
+                            "host_pid": os.getpid(),
+                        },
+                        "$inc": {"beat_count": 1},
+                    },
+                    upsert=True,
+                )
+            except Exception:  # noqa: BLE001
+                logging.exception("scheduler_heartbeat write failed")
+
+        scheduler.add_job(
+            _write_scheduler_heartbeat,
+            'interval', seconds=60,
+            id='scheduler_heartbeat', replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),  # write one immediately
+        )
+
         scheduler.start()
         # Expose the started scheduler to the self-test route so its
         # /api/admin/self-test probe can check job registration health.

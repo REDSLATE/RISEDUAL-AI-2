@@ -134,6 +134,108 @@ async def test_probe_mongo_command_raises():
 # ── _heuristic_notes ──────────────────────────────────────────────
 
 
+@pytest.mark.asyncio
+async def test_scheduler_heartbeat_prefers_dedicated_doc():
+    """Pin the new contract: dedicated `scheduler_heartbeat` document
+    is the source of truth. The old proxy-across-three-collections
+    fallback is only consulted when the dedicated doc is missing."""
+    now = datetime.now(timezone.utc)
+    fresh = now - timedelta(seconds=30)
+    proxy_old = now - timedelta(days=2)
+
+    fake_collection = MagicMock()
+    # Dedicated heartbeat — fresh.
+    fake_collection.find_one = AsyncMock(return_value={
+        "last_beat_at": fresh, "beat_count": 42, "host_pid": 1234,
+    })
+
+    class FakeDB:
+        # Dispatch by collection name so we can prove the dedicated
+        # doc short-circuits the proxy fallback.
+        def __init__(self):
+            self.calls = []
+
+        def __getitem__(self, name):
+            self.calls.append(name)
+            if name == "scheduler_heartbeat":
+                return fake_collection
+            # Proxy collections — should NOT be consulted.
+            stale = MagicMock()
+            stale.find_one = AsyncMock(
+                return_value={"opened_at": proxy_old, "logged_at": proxy_old},
+            )
+            return stale
+
+        # Attribute-style access mirrors how server.py writes.
+        @property
+        def scheduler_heartbeat(self):
+            return self["scheduler_heartbeat"]
+
+    db = FakeDB()
+    out = await ops._collect_scheduler_heartbeat(db)
+    assert out["ok"] is True
+    assert out["source"] == "dedicated_heartbeat"
+    assert out["age_seconds"] < 60
+    assert out["beat_count"] == 42
+    # Proxy collections must not have been touched.
+    assert "research_shadow_decisions" not in db.calls
+    assert "crypto_paper_trades" not in db.calls
+    assert "paper_trades" not in db.calls
+
+
+@pytest.mark.asyncio
+async def test_scheduler_heartbeat_falls_back_to_proxy_when_dedicated_missing():
+    """First minute after a fresh deploy: the dedicated doc may not
+    exist yet. Verify we still surface a useful answer from proxies."""
+    now = datetime.now(timezone.utc)
+    proxy_fresh = now - timedelta(minutes=10)
+
+    class FakeDB:
+        def __getitem__(self, name):
+            coll = MagicMock()
+            if name == "scheduler_heartbeat":
+                coll.find_one = AsyncMock(return_value=None)
+            elif name == "crypto_paper_trades":
+                coll.find_one = AsyncMock(return_value={"opened_at": proxy_fresh})
+            else:
+                coll.find_one = AsyncMock(return_value=None)
+            return coll
+
+        @property
+        def scheduler_heartbeat(self):
+            return self["scheduler_heartbeat"]
+
+    out = await ops._collect_scheduler_heartbeat(FakeDB())
+    assert out["ok"] is True
+    assert out["source"] == "proxy_fallback"
+    assert out["age_seconds"] < 700  # ~10 min
+
+
+@pytest.mark.asyncio
+async def test_scheduler_heartbeat_stale_when_dedicated_doc_old():
+    """The 3-minute staleness threshold is what catches a wedged
+    scheduler — pin it so it doesn't get accidentally relaxed."""
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(minutes=10)
+
+    fake_collection = MagicMock()
+    fake_collection.find_one = AsyncMock(return_value={
+        "last_beat_at": stale, "beat_count": 999,
+    })
+
+    class FakeDB:
+        def __getitem__(self, _name):
+            return fake_collection
+
+        @property
+        def scheduler_heartbeat(self):
+            return fake_collection
+
+    out = await ops._collect_scheduler_heartbeat(FakeDB())
+    assert out["ok"] is False
+    assert out["source"] == "dedicated_heartbeat"
+
+
 def test_notes_all_good_when_everything_ok():
     flags = {f: None for f in ops.KNOWN_FLAGS}
     integrations = [

@@ -123,14 +123,40 @@ async def _probe_mongo(db: Any, timeout_s: float = 1.5) -> dict[str, Any]:
 async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
     """How long since the most recent scheduled job ran successfully.
 
-    Cheap proxy: read the most recent ``research_shadow_decisions``
-    or ``crypto_paper_trades`` ``opened_at`` timestamp. The
-    scheduler runs both pipelines hourly-ish, so a stale value
-    means something's wedged.
+    Primary source: the dedicated ``scheduler_heartbeat`` document
+    that the in-process APScheduler writes every 60 seconds (see the
+    ``scheduler_heartbeat`` job in ``server.py::_start_schedulers``).
+    A fresh value here means the scheduler loop is genuinely alive —
+    independent of whether any *other* job happened to produce
+    user-facing writes.
+
+    Fallback: if the dedicated doc is missing (e.g. just deployed,
+    first 60s of new pod), fall back to the freshest of three proxy
+    collections. Any one of them being recent is also conclusive.
     """
     if db is None:
         return {"ok": False, "error": "db_unavailable"}
     try:
+        # ── Primary: dedicated heartbeat ──
+        hb = await db.scheduler_heartbeat.find_one(
+            {"_id": "main"},
+            {"_id": 0, "last_beat_at": 1, "beat_count": 1, "host_pid": 1},
+        )
+        if hb and isinstance(hb.get("last_beat_at"), datetime):
+            ts = hb["last_beat_at"]
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_s = (datetime.now(timezone.utc) - ts).total_seconds()
+            return {
+                "ok": age_s < 180,  # >3 min stale = unhealthy (job is 60s)
+                "last_signal_at": ts.isoformat(),
+                "age_seconds": int(age_s),
+                "source": "dedicated_heartbeat",
+                "beat_count": hb.get("beat_count"),
+                "host_pid": hb.get("host_pid"),
+            }
+
+        # ── Fallback: proxy across three high-frequency collections ──
         latest = None
         for coll, key in (
             ("research_shadow_decisions", "logged_at"),
@@ -150,12 +176,22 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
                     if latest is None or ts > latest:
                         latest = ts
         if latest is None:
-            return {"ok": False, "error": "no_scheduler_signals_found"}
+            return {
+                "ok": False,
+                "error": (
+                    "no_scheduler_signals_found — dedicated heartbeat "
+                    "missing AND all three proxy collections empty. "
+                    "Hit /api/admin/scheduler/status as owner to see "
+                    "whether the scheduler started at all."
+                ),
+                "source": "proxy",
+            }
         age_s = (datetime.now(timezone.utc) - latest).total_seconds()
         return {
-            "ok": age_s < 24 * 3600,  # >24h stale = unhealthy
+            "ok": age_s < 24 * 3600,  # >24h stale = unhealthy (proxy is fuzzy)
             "last_signal_at": latest.isoformat(),
             "age_seconds": int(age_s),
+            "source": "proxy_fallback",
         }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:120]}
