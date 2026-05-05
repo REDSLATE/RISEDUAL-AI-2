@@ -87,6 +87,8 @@ from routes.sovereign_ai import router as sovereign_ai_router, set_db as set_sov
 from routes.regime_memory import router as regime_memory_router, set_db as set_regime_memory_db
 from routes.admin_conviction import router as admin_conviction_router, set_db as set_admin_conviction_db
 from routes.admin_data_integrity import router as admin_data_integrity_router, set_db as set_admin_data_integrity_db
+from routes.admin_adaptations import router as admin_adaptations_router, set_db as set_admin_adaptations_db
+from routes.admin_compression_gate import router as admin_compression_gate_router, set_db as set_admin_compression_gate_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -162,6 +164,8 @@ ALL_ROUTERS = [
     regime_memory_router,
     admin_conviction_router,
     admin_data_integrity_router,
+    admin_adaptations_router,
+    admin_compression_gate_router,
     nl_trading_router,
 ]
 
@@ -225,6 +229,8 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_regime_memory_db,
         set_admin_conviction_db,
         set_admin_data_integrity_db,
+        set_admin_adaptations_db,
+        set_admin_compression_gate_db,
         set_nl_trading_db,
     ]
     # Module-level db handle for the per-patent policy store so the

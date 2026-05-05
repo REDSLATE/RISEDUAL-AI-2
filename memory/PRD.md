@@ -55,6 +55,74 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Compression CI Gate Frontend + Adaptations Extraction (Feb, 2026)
+
+Two paired items: a UI surface for the Compression CI Gate so
+operators can preview a candidate model's regime-aware calibration
+drift directly from the dashboard before promoting a quantized
+variant, plus continued admin.py decomposition.
+
+* **Compression CI Gate admin endpoint**:
+  * **New module** ``routes/admin_compression_gate.py`` — exposes
+    ``GET /api/admin/compression-ci-gate?baseline_tag=X&candidate_tag=Y&window_days=30``.
+    Owner-gated. Read-only. Calls the same ``evaluate_gate`` pure
+    function used by the Makefile + pytest entry points (single
+    source of truth — no duplicated gate logic).
+  * Validates ``baseline_tag != candidate_tag`` (400 on equal).
+  * Returns ``{verdict, ok, inconclusive, breaches, baseline_summary,
+    candidate_summary, baseline_tag, candidate_tag, window_days}``.
+    Verdict label is one of ``PASS / FAIL / INCONCLUSIVE``.
+  * **Live-verified end-to-end (2026-02-XX)**: owner-cookie returns
+    ``{verdict: INCONCLUSIVE, breaches: ['baseline has only 0
+    resolved predictions (<30)']}`` for fictional tags v0.1.0 vs
+    v0.2.0 — proves the full pipeline (auth → endpoint →
+    ``_load_resolved`` → ``evaluate_gate`` → JSON) works.
+
+* **Compression CI Gate Terminal tile**
+  (``components/admin/CompressionCIGateTile.jsx``):
+  * Two text inputs (baseline / candidate model_version) + window
+    selector (7/14/30/60/90 days) + Evaluate button.
+  * Verdict pill color-coded emerald (PASS) / rose (FAIL) / amber
+    (INCONCLUSIVE) with appropriate Lucide icon.
+  * Side-by-side baseline vs candidate sample counts +
+    ``weighted_avg_calibration_gap``.
+  * Breaches list rendered in monospace below the verdict for
+    operator inspection.
+  * All inputs / button / result sections carry ``data-testid``
+    attributes for testability.
+  * Slotted into the Terminal admin tab (after
+    ``TickerAbandonmentTable``).
+  * Read-only, no polling — only fires on explicit Evaluate click.
+
+* **``routes/admin.py`` → ``routes/admin_adaptations.py`` extraction**:
+  * 5 routes lifted out (~395 lines): ``/adaptations`` (list),
+    ``/adaptations/{id}/revert``, ``/adaptations/disable_all``,
+    ``/adaptations/calibration``, ``/adaptations/why/{id}``.
+  * Plus the ``_explain_adaptation_metric`` helper used by the
+    explainer endpoint.
+  * URLs unchanged. Same module pattern as ``admin_conviction.py``
+    / ``admin_data_integrity.py``: own ``router`` + ``set_db()`` +
+    duplicated ``_require_admin`` / ``_require_owner`` helpers so
+    the new module has zero inbound dependency on ``admin.py``.
+  * Wired into ``route_registry.py`` (import + ``ALL_ROUTERS`` +
+    ``wire_db`` setter list) alongside the new compression-gate
+    router.
+  * **``admin.py`` shrank from 3666 → 3271 lines** (-10.8%, -395
+    lines). Cumulative ``admin.py`` reduction across the last
+    two extractions: 4049 → 3271 (-19.2%, -778 lines, 13 routes
+    extracted across 2 modules).
+  * **Live-verified**: all 5 ``/adaptations`` endpoints return 401
+    unauth (proves registration + owner-gate); existing extracted
+    ``/conviction`` + ``/data-integrity`` routes still 401 (no
+    regression).
+
+* **Tests**: **36/36 green** across compression CI gate, no-direction-
+  tuple invariant, proof-chain E2E, notification lifecycle
+  (existing + scheduled), and code-size allowlist. Frontend
+  webpack compiles cleanly.
+
+
+
 ### Notification Lifecycle Scheduled Sweep + admin.py decomposition (Feb, 2026)
 
 Two P2 items shipped together — periodic auto-supersession of stale

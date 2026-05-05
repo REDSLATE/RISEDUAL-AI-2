@@ -10,6 +10,7 @@ import LiveSpreadWatchTile from './LiveSpreadWatchTile';
 import SlippageAttributionPanel from './SlippageAttributionPanel';
 import Tier3SlippageAdvisorTile from './Tier3SlippageAdvisorTile';
 import TickerAbandonmentTable from './TickerAbandonmentTable';
+import CompressionCIGateTile from './CompressionCIGateTile';
 
 const API = `${getApiBase()}/api`;
 
@@ -273,6 +274,8 @@ const TerminalTopActions = () => {
       <Tier3SlippageAdvisorTile />
 
       <TickerAbandonmentTable />
+
+      <CompressionCIGateTile />
 
       {error && (
         <div
