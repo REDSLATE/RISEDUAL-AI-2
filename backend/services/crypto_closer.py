@@ -179,6 +179,10 @@ async def close_expired_crypto_trades(
             opened_at = trade.get("opened_at")
 
             # ── Exit decision (SL → TP → max_hold) ────────────────
+            # Detection MUST use mid (or last) — TP/SL levels were
+            # configured against unbiased prices. Realised fill is
+            # computed AFTER the trigger fires, when we know the
+            # bot is sending a market order.
             exit_reason = _check_exit_trigger(
                 direction, exit_price, stop_loss, take_profit,
             )
@@ -204,6 +208,17 @@ async def close_expired_crypto_trades(
                     continue
                 exit_reason = "hold_window_expired"
 
+            # ── Exit slippage (close-LONG sells at bid /
+            #     close-SHORT buys at ask) ────────────────────────
+            from services.slippage_simulator import apply_exit_slippage
+            _xslip = apply_exit_slippage(quote, direction)
+            # Use slippage-adjusted fill price as realised exit_price
+            # when bid/ask are present. ``mid_only`` keeps the
+            # mid-priced exit_price unchanged; ``unknown`` would
+            # have been blocked above by the ``exit_price <= 0`` gate.
+            if _xslip.method in ("ask_fill", "bid_fill"):
+                exit_price = _xslip.fill_price
+
             pnl = compute_crypto_pnl(
                 direction=direction,
                 entry_price=entry_price,
@@ -225,6 +240,13 @@ async def close_expired_crypto_trades(
                 "pnl": pnl,
                 "r_multiple": r_multiple,
                 "close_reason": exit_reason,
+                # Exit-side slippage stamp — mirrors entry stamp.
+                "exit_quote_bid": _xslip.bid,
+                "exit_quote_ask": _xslip.ask,
+                "exit_quote_mid": _xslip.mid,
+                "exit_slippage_bps": _xslip.slippage_bps,
+                "exit_slippage_method": _xslip.method,
+                "exit_quote_source": (quote or {}).get("source"),
             }
 
             # Post-trade autopsy — pure overlay describing why this

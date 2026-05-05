@@ -263,7 +263,49 @@ def test_slippage_block_present_when_stamped():
     assert s["fill_method"] == "ask_fill"
     assert s["notional_usd"] == 1000.0
     assert s["quote_source"] == "alpaca"
-    assert s["exit_bps"] is None  # exit-side is future work
+    # No exit stamp on this row → exit_bps None, total = entry only.
+    assert s["exit_bps"] is None
+    assert s["total_bps"] == 50.0
+
+
+def test_slippage_block_includes_exit_when_stamped():
+    """Round-trip: both entry and exit slippage stamped → total
+    correctly aggregates both sides."""
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": 50.0,
+        "close_reason": "take_profit",
+        "shares": 10, "entry_price": 100.0,
+        "slippage_bps": 50.0, "slippage_method": "ask_fill",
+        "exit_slippage_bps": 30.0, "exit_slippage_method": "bid_fill",
+        "exit_quote_bid": 105.0, "exit_quote_ask": 106.0,
+        "exit_quote_mid": 105.5,
+    })
+    s = out["slippage"]
+    assert s["entry_bps"] == 50.0
+    assert s["exit_bps"] == 30.0
+    assert s["exit_method"] == "bid_fill"
+    # 10 × 100 × 30bps = $3 exit drag
+    assert s["exit_dollar_cost"] == pytest.approx(3.0, abs=0.01)
+    # Total = entry + exit = 80bps = $8 on $1000 notional
+    assert s["total_bps"] == 80.0
+    assert s["total_dollar_cost"] == pytest.approx(8.0, abs=0.01)
+
+
+def test_slippage_block_exit_unstamped_keeps_entry_only():
+    """Half-stamped row (pre-2026-05-04 close) — entry stamp lands,
+    exit is None. Total = entry only, no fabricated exit number."""
+    out = build_post_trade_autopsy({
+        "direction": "LONG", "pnl_usd": 50.0,
+        "close_reason": "take_profit",
+        "shares": 10, "entry_price": 100.0,
+        "slippage_bps": 25.0, "slippage_method": "ask_fill",
+        # No exit_slippage_* fields stamped.
+    })
+    s = out["slippage"]
+    assert s["entry_bps"] == 25.0
+    assert s["exit_bps"] is None
+    assert s["exit_dollar_cost"] is None
+    assert s["total_bps"] == 25.0
 
 
 def test_slippage_block_none_when_not_stamped():

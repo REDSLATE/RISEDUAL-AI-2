@@ -314,8 +314,8 @@ def build_post_trade_autopsy(trade_doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def _slippage_attribution(doc: dict[str, Any]) -> dict[str, Any] | None:
-    """Compose the realised slippage cost block from the entry
-    fields stamped at fill time.
+    """Compose the realised slippage cost block from the entry +
+    exit fields stamped at fill time.
 
     Returns ``None`` when the trade row predates the slippage stamp
     (legacy historical rows) so the caller can render "—" instead
@@ -347,13 +347,36 @@ def _slippage_attribution(doc: dict[str, Any]) -> dict[str, Any] | None:
         notional_usd * (abs(entry_bps) / 10_000.0), 4,
     )
 
+    # ── Exit-side slippage (stamped by closers as of 2026-05-04) ──
+    exit_method = doc.get("exit_slippage_method")
+    exit_bps_raw = doc.get("exit_slippage_bps")
+    exit_bps: float | None
+    exit_dollar_cost: float | None
+    if exit_method is None or exit_bps_raw is None:
+        exit_bps = None
+        exit_dollar_cost = None
+    else:
+        exit_bps = round(abs(_as_float(exit_bps_raw)), 2)
+        exit_dollar_cost = round(
+            notional_usd * (exit_bps / 10_000.0), 4,
+        )
+
+    total_bps = round(
+        abs(entry_bps) + (exit_bps if exit_bps is not None else 0.0), 2,
+    )
+    total_dollar_cost = round(
+        entry_dollar_cost + (exit_dollar_cost if exit_dollar_cost is not None else 0.0),
+        4,
+    )
+
     return {
         "entry_bps": round(abs(entry_bps), 2),
         "entry_dollar_cost": entry_dollar_cost,
-        "exit_bps": None,         # exit-side slippage is future work
-        "exit_dollar_cost": None,
-        "total_bps": round(abs(entry_bps), 2),
-        "total_dollar_cost": entry_dollar_cost,
+        "exit_bps": exit_bps,
+        "exit_dollar_cost": exit_dollar_cost,
+        "exit_method": exit_method,
+        "total_bps": total_bps,
+        "total_dollar_cost": total_dollar_cost,
         "fill_method": method,
         "notional_usd": round(notional_usd, 2),
         "quote_source": doc.get("quote_source"),

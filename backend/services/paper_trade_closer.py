@@ -168,6 +168,27 @@ async def close_due_paper_trades(db: Any) -> dict:
                 holds += 1
                 continue
 
+            # Live Alpaca quote at close — needed for exit slippage.
+            # Falls back to mid (current) when bid/ask unavailable.
+            exit_quote: dict | None = None
+            try:
+                from services.alpaca_equity_quotes import get_alpaca_equity_quote
+                exit_quote = await get_alpaca_equity_quote(ticker)
+            except Exception as _eq_exc:  # noqa: BLE001
+                logger.debug(
+                    "[paper-closer] live exit-quote probe failed for %s: %s",
+                    ticker, _eq_exc,
+                )
+
+            from services.slippage_simulator import apply_exit_slippage
+            _xslip = apply_exit_slippage(
+                exit_quote or {"price": current}, direction,
+            )
+            # Realised exit fill — bid for close-LONG, ask for close-SHORT.
+            # ``mid_only`` keeps the existing ``current`` price unchanged.
+            if _xslip.method in ("ask_fill", "bid_fill"):
+                current = _xslip.fill_price
+
             pnl_usd, pnl_pct, outcome = _compute_close(
                 direction, entry, current, shares,
             )
@@ -180,12 +201,17 @@ async def close_due_paper_trades(db: Any) -> dict:
                     build_post_trade_autopsy,
                 )
                 autopsy = build_post_trade_autopsy({
-                    **row,
+                    **t,
                     "pnl_usd": pnl_usd,
                     "pnl_pct": pnl_pct,
                     "outcome": outcome,
                     "close_reason": f"hold_window_{hold_hours}h",
                     "auto_close_reason": f"hold_window_{hold_hours}h",
+                    "exit_slippage_bps": _xslip.slippage_bps,
+                    "exit_slippage_method": _xslip.method,
+                    "exit_quote_bid": _xslip.bid,
+                    "exit_quote_ask": _xslip.ask,
+                    "exit_quote_mid": _xslip.mid,
                 })
             except Exception as _ap_exc:  # noqa: BLE001
                 logger.debug(
@@ -202,6 +228,13 @@ async def close_due_paper_trades(db: Any) -> dict:
                 "outcome": outcome,
                 "auto_closed": True,
                 "auto_close_reason": f"hold_window_{hold_hours}h",
+                # Exit-side slippage stamp — mirrors entry stamp.
+                "exit_quote_bid": _xslip.bid,
+                "exit_quote_ask": _xslip.ask,
+                "exit_quote_mid": _xslip.mid,
+                "exit_slippage_bps": _xslip.slippage_bps,
+                "exit_slippage_method": _xslip.method,
+                "exit_quote_source": (exit_quote or {}).get("source"),
             }
             if autopsy is not None:
                 update_set["autopsy"] = autopsy

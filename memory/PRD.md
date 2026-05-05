@@ -55,6 +55,59 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Exit-Side Slippage Stamping (May 4, 2026)
+
+P2 closes the slippage round-trip — entry was stamped on
+2026-05-04 morning, exit was the gap. Now both closers fetch a
+fresh live quote at close time and apply the directional exit fill:
+
+* **``services/paper_trade_closer.py``** (equity lane):
+  * Pulls live Alpaca quote at close via ``get_alpaca_equity_quote``
+  * Applies ``apply_exit_slippage(quote, direction)``:
+    close-LONG sells at ``bid``, close-SHORT buys at ``ask``
+  * When ``mid_only`` (legacy provider): existing close price kept,
+    slippage stamped as 0.0 bps with method preserved
+  * Realised exit price drives the P&L computation downstream
+  * Stamps ``exit_quote_bid``, ``exit_quote_ask``, ``exit_quote_mid``,
+    ``exit_slippage_bps``, ``exit_slippage_method``,
+    ``exit_quote_source`` on the close update
+  * Bonus: fixed pre-existing ``**row``/``**t`` typo in the autopsy
+    builder call that would have caused a NameError on every close
+
+* **``services/crypto_closer.py``** (crypto lane):
+  * Same shape — live Kraken quote (already fetched for trigger
+    detection) is now reused for exit slippage
+  * Trigger detection (TP/SL/hold-window) still uses mid so
+    pre-configured price levels work as the operator intended;
+    realised fill is applied AFTER the trigger fires
+  * Stamps the same six ``exit_*`` fields
+
+* **``services/post_trade_autopsy._slippage_attribution``**:
+  * Now reads ``exit_slippage_method`` + ``exit_slippage_bps``
+  * Computes ``exit_dollar_cost = notional × exit_bps / 10_000``
+  * ``total_bps`` = entry + exit (round-trip cost)
+  * ``total_dollar_cost`` aggregates both sides
+  * Backwards-compatible: rows without an exit stamp report
+    ``exit_bps=None`` so the UI renders "—" not a fabricated zero
+
+* **Slippage Attribution panel** — drag tile now shows
+  "spread paid (entry+exit)" so the operator sees the round-trip
+  cost rather than just one side. Aggregate endpoint already
+  reads ``total_dollar_cost`` so it auto-includes the exit side
+  going forward.
+
+* **Unit-level smoke (2026-05-04)**:
+  * Input: 10 AAPL shares, $100 entry, 5 bps entry + 7.5 bps exit
+  * Output: ``total_bps=12.5``, ``total_dollar_cost=$1.25``
+    (entry $0.50 + exit $0.75)
+
+* **2 new tests** added (round-trip slippage + half-stamped row).
+  Existing test ``test_slippage_block_present_when_stamped``
+  updated to assert ``exit_bps=None`` on entry-only rows.
+  **177/177 tests green** across all adjacent suites.
+
+
+
 ### Slippage Attribution Panel + Cross-Asset Stress Alarm (May 4, 2026)
 
 * **Slippage attribution panel** (P1) — extends post-trade

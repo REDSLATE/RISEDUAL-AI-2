@@ -109,7 +109,7 @@ const SlippageAttributionPanel = () => {
           <div className="text-2xl font-semibold tabular-nums text-slate-200">
             ${dragUsd.toFixed(2)}
           </div>
-          <div className="text-xs text-slate-500">spread paid</div>
+          <div className="text-xs text-slate-500">spread paid (entry+exit)</div>
         </div>
         <div data-testid="slippage-attribution-avg-bps">
           <div className="text-2xl font-semibold tabular-nums text-slate-200">
