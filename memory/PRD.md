@@ -55,6 +55,50 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Route introspection endpoint + Compression CI Gate frontend testing (Feb, 2026)
+
+Two complementary closeout items — surfaces the decomposition's
+final shape and validates the operator-facing UI tile works.
+
+* **``GET /api/admin/_routes``** in
+  ``routes/admin_introspection.py`` (~110 lines):
+  - Catalogues every registered ``/api/admin/*`` route with
+    HTTP method, source-module (via ``__module__``), gate level
+    (cheap inspector — peeks at ``inspect.getsource()`` for
+    ``_require_owner`` / ``_require_admin`` / ``get_current_user``
+    references), and function name.
+  - **Duplicate detector** — surfaces any path registered twice
+    by multiple routers as the operator's go-to signal that an
+    extraction left a stub behind. Empty list = healthy
+    decomposition.
+  - Skips FastAPI's implicit ``HEAD`` registrations so totals
+    match operator intuition.
+  - Owner-gated, read-only.
+  - **Live-verified**: returns ``total=166`` with
+    ``duplicates=[]``. Top modules: ``routes.admin`` (46),
+    ``routes.admin_news`` (12), ``routes.sovereign_ai`` (9),
+    ``routes.admin_data_integrity`` (8) — confirms the
+    decomposition shape. Gate distribution: 109 owner + 38 admin
+    + 19 auth-only.
+
+* **Compression CI Gate frontend tile — full-flow testing**:
+  - Testing agent ran 13 cases against the live UI:
+    owner login, Admin Panel load, Terminal tab navigation, tile
+    render, header + chip + explanatory paragraph, input
+    placeholders, all 5 window-selector options, Evaluate button,
+    empty-input validation, identical-tag validation, end-to-end
+    INCONCLUSIVE verdict with amber pill + breach text, and
+    re-evaluation state update.
+  - **13/13 PASS, 0 UI bugs, 0 integration issues.**
+  - Tile correctly handles fictional ``v0.1.0 / v0.2.0`` tags by
+    surfacing INCONCLUSIVE with breach text "baseline has only 0
+    resolved predictions (<30)" — proves the full pipeline (auth
+    cookie → endpoint → ``evaluate_gate`` → JSON → React state →
+    color-coded pill rendering) works end-to-end.
+  - Test report: ``/app/test_reports/iteration_166.json``.
+
+
+
 ### Final admin.py decomposition sweep (Feb, 2026)
 
 Closes out the admin.py decomposition project — 4 more cohesive
