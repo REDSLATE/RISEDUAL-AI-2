@@ -6,7 +6,7 @@ here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.m
 
 ## 4. What's Been Implemented (cumulative)
 
-### Regime Memory Retrieval + Event-Aware Regime Labeler (Feb, 2026)
+### Regime Memory Retrieval + Event-Aware Regime Labeler + Performance Tracker (Feb, 2026)
 
 **Regime Memory Retrieval Layer** (`services/regime_memory_retrieval.py`,
 `routes/regime_memory.py`):
@@ -2396,6 +2396,25 @@ queue into a timestamped "Shipped" block.
   - "eval/exec in test_iteration36" → security tests that verify the evaluator
     REJECTS eval/exec strings (intentionally split `"ev"+"al"`).
   - "18 undefined variables" → `pyflakes .` returns empty.
+  - "Hardcoded secrets" → mostly env-var NAMES (`"RESEND_API_KEY="` searched
+    inside .env) or dev-only preview passwords from test_credentials.md.
+* **Genuine cleanups performed**:
+  - `tests/conftest_creds.py`: consolidated — `OWNER_EMAIL` now aliases to
+    `ADMIN_EMAIL` (both point to `admin@risedual.ai`) after Red Slate removal.
+  - `tests/test_iteration134/135`: moved to `os.getenv()` + safe defaults.
+  - `tests/test_iteration135`: removed dead `owner_session` fixture
+    (referenced deleted Red Slate account, never consumed).
+  - `tests/test_iteration42`: updated stale assertion to pass after Red Slate
+    cleanup.
+  - `utils/deepLink.js` + `utils/recentTickers.js`: replaced 6 empty
+    `/* silent */` catch blocks with `console.debug()` so real failures are
+    still observable.
+* **Deferred to post-launch** (refactoring risk vs reward): 207 hook-dependency
+  warnings (~70% false positive), AppContent/Navbar component splits,
+  localStorage "encryption" (already non-sensitive), 544 `is` vs `==` lint
+  nits in tests, type-hint coverage, inline-prop useMemo micro-perf.
+* Regression: `test_share_endpoint.py` 16/16 pass. Lint: 0 issues.
+riables" → `pyflakes .` returns empty.
   - "Hardcoded secrets" → mostly env-var NAMES (`"RESEND_API_KEY="` searched
     inside .env) or dev-only preview passwords from test_credentials.md.
 * **Genuine cleanups performed**:
