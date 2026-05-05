@@ -558,13 +558,13 @@ async def research_company(symbol: str, request: Request):
         if not force_refresh:
             cached = await cache.get(cache_key)
             if cached:
-                result = cached["data"]
-                result["_cache"] = {
-                    "hit": True,
-                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
-                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
-                }
-                return result
+                # AICacheService.get() returns the inner ``data`` dict
+                # directly (see services/ai_cache_service.py:65). The
+                # wrapper's created_at / expires_at are not exposed
+                # through this API — surfacing the cache-hit flag is
+                # what the frontend actually consumes.
+                cached["_cache"] = {"hit": True}
+                return cached
 
         service = CompanyResearchService()
         session_id = f"research_{symbol}_{datetime.now(timezone.utc).isoformat()}"
@@ -623,13 +623,13 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
         if not force_refresh:
             cached = await cache.get(cache_key)
             if cached:
-                result = cached["data"]
-                result["_cache"] = {
-                    "hit": True,
-                    "createdAt": cached.get("created_at", "").isoformat() if hasattr(cached.get("created_at", ""), "isoformat") else str(cached.get("created_at", "")),
-                    "expiresAt": cached.get("expires_at", "").isoformat() if hasattr(cached.get("expires_at", ""), "isoformat") else str(cached.get("expires_at", "")),
-                }
-                return result
+                # AICacheService.get() returns the inner ``data`` dict
+                # directly (see services/ai_cache_service.py:65). The
+                # wrapper's created_at / expires_at are not exposed
+                # through this API — surfacing the cache-hit flag is
+                # what the frontend actually consumes.
+                cached["_cache"] = {"hit": True}
+                return cached
 
         from services.multi_model_hypothesis_service import generate_hypothesis
         api_key = os.environ.get("EMERGENT_LLM_KEY")
