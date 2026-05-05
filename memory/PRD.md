@@ -55,6 +55,68 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Final admin.py decomposition sweep (Feb, 2026)
+
+Closes out the admin.py decomposition project — 4 more cohesive
+modules, 15 routes lifted in one sweep. URLs unchanged.
+
+* **``routes/admin_spread_slippage.py``** (2 routes + helper, ~251 lines):
+  - ``GET /api/admin/spread-watch`` (cross-asset live snapshot)
+  - ``GET /api/admin/slippage-attribution`` (closed-trade drag report)
+  - Carries the ``_market_session_label`` helper that gates the
+    "WIDE" pill behaviour during after-hours.
+
+* **``routes/admin_autopsy_promotion.py``** (4 routes + Pydantic, ~203 lines):
+  - ``GET  /api/admin/post-trade-autopsy/{trade_id}``
+  - ``GET  /api/admin/post-trade-autopsy``
+  - ``GET  /api/admin/promotion-history``
+  - ``POST /api/admin/promotion-history/record``
+
+* **``routes/admin_realtime_infra.py``** (7 routes + Pydantic, ~196 lines):
+  - ``GET  /api/admin/kraken-ws/status``
+  - ``GET  /api/admin/stress-events``
+  - ``POST /api/admin/stress-events/check``
+  - ``GET  /api/admin/tier3-slippage-advisor/proposals``
+  - ``GET  /api/admin/tier3-slippage-advisor/analysis``
+  - ``POST /api/admin/tier3-slippage-advisor/run``
+  - ``POST /api/admin/tier3-slippage-advisor/proposals/status``
+  - Three independent surfaces grouped because they all relate to
+    live realtime infrastructure (push streams, stress monitor,
+    slippage advisor).
+
+* **``routes/admin_notification_lifecycle.py``** (2 routes, ~79 lines):
+  - ``POST /api/admin/notifications/lifecycle/cleanup``
+  - ``GET  /api/admin/notifications/lifecycle/runs``
+  - Pairs with the APScheduler-driven
+    ``notification_lifecycle_sweep`` job in ``server.py``
+    (cron 04:00 + 16:00 UTC) — these endpoints are the
+    manual-trigger + audit-trail companions.
+
+* **``admin.py`` shrank from 2277 → 1689 lines** (-25.8%, -588
+  lines). **Cumulative across the full project: 4049 → 1689**
+  (-58.3%, -2360 lines, **51 routes extracted across 11 modules**).
+  ``admin.py`` is now structurally on par with the largest
+  remaining route files (the admin_conviction.py, admin_news.py
+  modules sit ~520 lines each).
+
+* **Live-verified end-to-end (Feb 2026)**:
+  - ``/notifications/lifecycle/runs`` returns 2 receipts with
+    ``trigger=manual_admin`` — proves the moved endpoint preserves
+    the receipt-write contract.
+  - ``/promotion-history`` returns 3 rows + 4 current core phases
+    (adversarial=shadow, sovereign_equity/crypto=phase_1_shadow_only,
+    equity_shadow_commander=phase_1_logging_only).
+  - ``/kraken-ws/status`` returns 11 tracked symbols with snapshot
+    ages.
+  - All 8 unauth GETs return 401.
+
+* **Tests**: **44/44 green** including the existing
+  ``test_promotion_history.py`` (8 cases) which independently
+  proves the moved promotion-history endpoint contract is
+  preserved post-extraction.
+
+
+
 ### Four-domain admin.py decomposition sprint (Feb, 2026)
 
 Largest single-PR `admin.py` reduction yet — 4 new modules, 11 routes

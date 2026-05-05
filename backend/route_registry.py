@@ -94,6 +94,10 @@ from routes.admin_tier3_bootstrap import router as admin_tier3_bootstrap_router,
 from routes.admin_promotion_gates import router as admin_promotion_gates_router, set_db as set_admin_promotion_gates_db
 from routes.admin_ticker_abandonment import router as admin_ticker_abandonment_router, set_db as set_admin_ticker_abandonment_db
 from routes.admin_day_trade import router as admin_day_trade_router, set_db as set_admin_day_trade_db
+from routes.admin_spread_slippage import router as admin_spread_slippage_router, set_db as set_admin_spread_slippage_db
+from routes.admin_autopsy_promotion import router as admin_autopsy_promotion_router, set_db as set_admin_autopsy_promotion_db
+from routes.admin_realtime_infra import router as admin_realtime_infra_router, set_db as set_admin_realtime_infra_db
+from routes.admin_notification_lifecycle import router as admin_notification_lifecycle_router, set_db as set_admin_notification_lifecycle_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -176,6 +180,10 @@ ALL_ROUTERS = [
     admin_promotion_gates_router,
     admin_ticker_abandonment_router,
     admin_day_trade_router,
+    admin_spread_slippage_router,
+    admin_autopsy_promotion_router,
+    admin_realtime_infra_router,
+    admin_notification_lifecycle_router,
     nl_trading_router,
 ]
 
@@ -246,6 +254,10 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_promotion_gates_db,
         set_admin_ticker_abandonment_db,
         set_admin_day_trade_db,
+        set_admin_spread_slippage_db,
+        set_admin_autopsy_promotion_db,
+        set_admin_realtime_infra_db,
+        set_admin_notification_lifecycle_db,
         set_nl_trading_db,
     ]
     # Module-level db handle for the per-patent policy store so the
