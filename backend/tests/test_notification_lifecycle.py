@@ -222,3 +222,139 @@ async def test_alternate_field_locations_supported():
 async def test_null_db_no_op():
     out = await lc.supersede_stale_toxic_alerts(None)
     assert out == {"checked": 0, "superseded": 0, "kept_active": 0}
+
+
+# ── verdict_change superseder ────────────────────────────────────
+
+
+class _DBWithHypotheses(_DB):
+    def __init__(self):
+        super().__init__()
+        self.hypotheses = _Coll()
+
+
+class _CollWithSort(_Coll):
+    """Minimal subclass that supports ``find_one(sort=...)``."""
+    async def find_one(self, query, projection=None, sort=None):  # noqa: ARG002
+        rows = [r for r in self.rows if _match(r, query)]
+        if sort and sort == [("created_at", -1)]:
+            rows.sort(
+                key=lambda r: r.get("created_at") or "",
+                reverse=True,
+            )
+        return rows[0] if rows else None
+
+
+@pytest.mark.asyncio
+async def test_verdict_change_superseded_when_flipped_again():
+    """Alert says BUY → BEARISH; current hypothesis is now NEUTRAL.
+    The verdict has flipped AGAIN since the alert fired → supersede."""
+    db = _DBWithHypotheses()
+    # Patch the hypotheses collection with the sort-capable variant.
+    db.hypotheses = _CollWithSort()
+    await db.notifications.insert_one({
+        "type": "verdict_change",
+        "symbol": "AAPL",
+        "old_verdict": "BUY",
+        "new_verdict": "BEARISH",
+        "resolved": False,
+    })
+    await db.hypotheses.insert_one({
+        "symbol": "AAPL", "verdict": "NEUTRAL",
+        "created_at": "2026-05-04T20:00:00Z",
+    })
+    out = await lc.supersede_stale_verdict_changes(db)
+    assert out["superseded"] == 1
+
+
+@pytest.mark.asyncio
+async def test_verdict_change_kept_when_still_matches():
+    """Current verdict still equals the alert's ``new_verdict`` →
+    alert is still relevant, leave it active."""
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    await db.notifications.insert_one({
+        "type": "verdict_change",
+        "symbol": "AAPL",
+        "old_verdict": "BUY",
+        "new_verdict": "BEARISH",
+        "resolved": False,
+    })
+    await db.hypotheses.insert_one({
+        "symbol": "AAPL", "verdict": "BEARISH",
+        "created_at": "2026-05-04T20:00:00Z",
+    })
+    out = await lc.supersede_stale_verdict_changes(db)
+    assert out["superseded"] == 0
+    assert out["kept_active"] == 1
+
+
+@pytest.mark.asyncio
+async def test_verdict_change_kept_when_no_current_hypothesis():
+    """Conservative gate — no current hypothesis means we can't
+    prove a flip, so leave the alert alone."""
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    await db.notifications.insert_one({
+        "type": "verdict_change",
+        "symbol": "AAPL",
+        "new_verdict": "BUY",
+        "resolved": False,
+    })
+    out = await lc.supersede_stale_verdict_changes(db)
+    assert out["superseded"] == 0
+    assert out["kept_active"] == 1
+
+
+# ── Dispatcher ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_returns_per_type_breakdown():
+    db = _DBWithHypotheses()
+    db.hypotheses = _CollWithSort()
+    # One toxic_spike (will supersede) + one verdict_change (will keep).
+    await db.notifications.insert_one({
+        "type": "toxic_spike",
+        "metadata": {"affected_tickers": ["AAPL"]},
+        "resolved": False,
+    })
+    await db.predictions.insert_one({"symbol": "AAPL", "outcome": "hit"})
+    await db.notifications.insert_one({
+        "type": "verdict_change",
+        "symbol": "AAPL", "new_verdict": "BUY",
+        "resolved": False,
+    })
+    await db.hypotheses.insert_one({
+        "symbol": "AAPL", "verdict": "BUY",
+        "created_at": "2026-05-04T20:00:00Z",
+    })
+
+    out = await lc.supersede_stale_alerts(db)
+    assert "toxic_spike" in out["by_type"]
+    assert "verdict_change" in out["by_type"]
+    assert out["totals"]["superseded"] == 1
+    assert out["totals"]["kept_active"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_respects_types_filter():
+    db = _DBWithHypotheses()
+    out = await lc.supersede_stale_alerts(db, types=["nonexistent_type"])
+    assert out["by_type"] == {}
+    assert out["totals"] == {"checked": 0, "superseded": 0, "kept_active": 0}
+
+
+def test_lifecycle_defaults_shape():
+    d = lc.lifecycle_defaults()
+    assert d == {"status": "active", "resolved": False}
+
+
+def test_register_superseder_extension_point():
+    async def _no_op(_db):
+        return {"checked": 0, "superseded": 0, "kept_active": 0}
+
+    lc.register_superseder("custom_test_type", _no_op)
+    assert "custom_test_type" in lc._REGISTRY
+    # Cleanup so other tests don't see this entry.
+    lc._REGISTRY.pop("custom_test_type", None)

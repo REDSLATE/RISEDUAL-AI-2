@@ -4483,3 +4483,30 @@ async def tier3_advisor_set_status(
     if res is None:
         raise HTTPException(status_code=404, detail="proposal_not_found")
     return res
+
+
+
+# ============================================================
+# NOTIFICATION LIFECYCLE — manual cleanup trigger
+# ============================================================
+
+
+@router.post("/notifications/lifecycle/cleanup")
+async def notifications_lifecycle_cleanup(
+    request: Request, types: str | None = None,
+):
+    """Manually run the notification-lifecycle cleanup. Optional
+    ``types`` param is a comma-separated list (e.g.
+    ``toxic_spike,verdict_change``) to scope the run; omitting it
+    runs every registered superseder.
+
+    Same code path the regrade backfill calls automatically and
+    the operator's one-shot script invokes from CLI."""
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    from services.notification_lifecycle import supersede_stale_alerts
+    type_list: list[str] | None = None
+    if types:
+        type_list = [t.strip() for t in types.split(",") if t.strip()]
+    return await supersede_stale_alerts(db, types=type_list)

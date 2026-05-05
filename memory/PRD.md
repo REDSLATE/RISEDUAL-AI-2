@@ -55,6 +55,59 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Generalised Notification Lifecycle (May 4, 2026)
+
+P3 extends the lifecycle contract from `toxic_spike`-only to ALL
+notification types via a registry pattern. Future types (regrade,
+drift, stress_event, etc.) inherit the contract by adding a single
+line.
+
+* **``services/notification_lifecycle.py``** — refactored:
+  * **Generic ``supersede_stale_alerts(db, types=...)`` dispatcher**
+    runs every registered superseder and returns
+    ``{by_type: {...}, totals: {...}}``. Optional ``types`` arg
+    scopes the run.
+  * ``_REGISTRY`` is the central type → superseder map. New
+    types register via ``register_superseder(type, fn)``.
+  * **NEW ``supersede_stale_verdict_changes(db)``** — superseder
+    for the ``verdict_change`` type. Cross-references each alert's
+    ``new_verdict`` against the symbol's CURRENT hypothesis
+    verdict. Supersedes only when current verdict exists AND
+    differs (proves a fresh flip). Conservative — missing data
+    leaves the alert alone.
+  * ``lifecycle_defaults()`` helper returns
+    ``{status: "active", resolved: False}`` for new-notification
+    writers.
+
+* **Writers updated** to stamp lifecycle defaults on every new row:
+  * ``routes/ai.py`` ``verdict_change`` writer
+  * ``services/push_service.py`` ``trade_execution`` writer
+  * ``services/market_memory_service.py`` ``toxic_spike`` writer
+    (already on the contract from earlier today)
+
+* **One-shot script** ``supersede_stale_toxic_alerts.py`` —
+  upgraded to call the dispatcher (still safe with the legacy
+  filename for backwards compat). Now reports per-type breakdown.
+
+* **Backfill hook** in ``backfill_strong_direction_grades.py`` —
+  upgraded to call the dispatcher so a regrade pass cleans EVERY
+  type's stale alerts in one shot.
+
+* **NEW admin endpoint** ``POST /api/admin/notifications/lifecycle/cleanup``
+  with optional ``?types=toxic_spike,verdict_change`` filter.
+  Owner-only. **Live-verified**: full run reports
+  ``toxic_spike: 0/0 (already clean)`` + ``verdict_change: 50/0
+  kept_active`` (no symbols have flipped since their alerts
+  fired — correct).
+
+* **7 new tests** added (verdict_change superseder paths +
+  dispatcher per-type breakdown + types filter +
+  ``lifecycle_defaults`` shape + ``register_superseder``
+  extension point). **14/14** in the lifecycle suite.
+  **206/206 green** across all adjacent suites. Lint clean.
+
+
+
 ### Notification Lifecycle (Stale Toxic-Spike Cleanup) — May 4, 2026
 
 Operator alert: 9 stale toxic-spike alerts visible in the drawer

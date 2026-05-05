@@ -247,14 +247,15 @@ async def run_backfill(*, dry_run: bool, days: int | None, run_id: str) -> dict:
     if not dry_run and stats["changes"]:
         try:
             from services.notification_lifecycle import (
-                supersede_stale_toxic_alerts,
+                supersede_stale_alerts,
             )
-            cleanup = await supersede_stale_toxic_alerts(db)
+            cleanup = await supersede_stale_alerts(db)
+            t = cleanup["totals"]
             logger.info(
                 "Notification lifecycle: checked=%d superseded=%d "
-                "kept_active=%d",
-                cleanup["checked"], cleanup["superseded"],
-                cleanup["kept_active"],
+                "kept_active=%d (per-type=%s)",
+                t["checked"], t["superseded"], t["kept_active"],
+                cleanup["by_type"],
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(

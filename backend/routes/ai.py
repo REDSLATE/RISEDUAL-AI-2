@@ -758,6 +758,7 @@ async def _track_verdict_change(user, symbol: str, hypothesis: dict):
 
         wl = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0, "tickers": 1})
         tickers = wl.get("tickers", []) if wl else []
+        from services.notification_lifecycle import lifecycle_defaults
         await db.notifications.insert_one({
             "user_id": user["_id"],
             "type": "verdict_change",
@@ -768,6 +769,7 @@ async def _track_verdict_change(user, symbol: str, hypothesis: dict):
             "in_watchlist": symbol.upper() in tickers,
             "read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            **lifecycle_defaults(),
         })
     except Exception as notif_err:
         logging.warning(f"Notification creation error: {notif_err}")

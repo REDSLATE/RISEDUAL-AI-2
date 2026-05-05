@@ -30,7 +30,7 @@ from pathlib import Path
 # we add the backend dir to sys.path before importing services.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.notification_lifecycle import supersede_stale_toxic_alerts  # noqa: E402
+from services.notification_lifecycle import supersede_stale_alerts  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -43,11 +43,18 @@ async def main() -> None:
     if db is None:
         log.error("DB unavailable — abort.")
         sys.exit(1)
-    result = await supersede_stale_toxic_alerts(db)
+    result = await supersede_stale_alerts(db)
+    totals = result["totals"]
     log.info(
-        "Toxic-spike cleanup: checked=%d superseded=%d kept_active=%d",
-        result["checked"], result["superseded"], result["kept_active"],
+        "Notification lifecycle cleanup — totals: checked=%d "
+        "superseded=%d kept_active=%d",
+        totals["checked"], totals["superseded"], totals["kept_active"],
     )
+    for t, r in result["by_type"].items():
+        log.info(
+            "  %-20s checked=%d superseded=%d kept_active=%d",
+            t, r["checked"], r["superseded"], r["kept_active"],
+        )
 
 
 if __name__ == "__main__":

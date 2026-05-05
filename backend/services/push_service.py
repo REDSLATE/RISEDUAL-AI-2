@@ -227,6 +227,7 @@ async def notify_trade_execution(db: Any, user_id: str, symbol: str, side: str, 
     body = f"Order {order_id} via {broker_id.capitalize()} — Status: {status}"
 
     # In-app notification
+    from services.notification_lifecycle import lifecycle_defaults
     await db.notifications.insert_one({
         "user_id": user_id,
         "type": "trade_execution",
@@ -239,6 +240,7 @@ async def notify_trade_execution(db: Any, user_id: str, symbol: str, side: str, 
         "broker_id": broker_id,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        **lifecycle_defaults(),
     })
 
     # Push notification (to owner's subscriptions only)
