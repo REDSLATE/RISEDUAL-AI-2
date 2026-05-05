@@ -9,8 +9,12 @@ CRITICAL CONTRACT
 -----------------
 * Pure analytics. No writes. No memory promotion. No sizing.
 * Never imported by the live decision stack.
-* Both tags must already exist in ``predictions`` (stamped at insert
-  time by ``services.prediction_tracker.log_prediction``).
+* Both versions must already exist in ``predictions.model_version``
+  (stamped automatically at insert time by
+  ``services.prediction_tracker.log_prediction`` from the
+  ``SIGNAL_MODEL_VERSION`` env var). To compare two models, train +
+  deploy each under a distinct ``SIGNAL_MODEL_VERSION``, then pass
+  those values as ``--baseline-tag`` and ``--candidate-tag``.
 
 OUTCOMES
 --------
@@ -54,10 +58,10 @@ class GateVerdict:
     candidate_summary: dict[str, Any]
 
 
-async def _load_resolved(db, model_tag: str, since: datetime) -> list[dict]:
+async def _load_resolved(db, model_version: str, since: datetime) -> list[dict]:
     cursor = db.predictions.find(
         {
-            "model_tag": model_tag,
+            "model_version": model_version,
             "verified_24h.correct": {"$in": [True, False]},
             "timestamp": {"$gte": since},
         },
@@ -256,8 +260,17 @@ def evaluate_gate(
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--baseline-tag", required=False)
-    parser.add_argument("--candidate-tag", required=False)
+    parser.add_argument(
+        "--baseline-tag",
+        required=False,
+        help="model_version of the baseline model "
+        "(matches predictions.model_version, set via SIGNAL_MODEL_VERSION env)",
+    )
+    parser.add_argument(
+        "--candidate-tag",
+        required=False,
+        help="model_version of the candidate (e.g. quantized / pruned) model",
+    )
     parser.add_argument("--window-days", type=int, default=30)
     parser.add_argument("--fail-on-breach", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

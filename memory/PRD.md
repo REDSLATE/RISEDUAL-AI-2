@@ -55,6 +55,63 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Compression CI Gate — read-only IP guardrail (Feb, 2026)
+
+P0 from the prior fork's handoff. Ships a strictly read-only CI gate
+that compares a candidate (quantized / pruned / distilled) model's
+realised calibration against a baseline model BEFORE any compressed
+variant is allowed near the live decision stack. Reuses the existing
+``model_version`` field already stamped on every prediction (no new
+schema, no new stamping logic, no new env var).
+
+* **``scripts/compression_ci_gate.py``** — pure analytics over
+  ``predictions.model_version`` filtered by a 30-day window:
+  * Loads resolved predictions (those with ``verified_24h.correct``
+    set) for both baseline and candidate model_versions.
+  * Re-labels each row through ``EventAwareRegimeLabeler`` so the
+    comparison is regime-aware (crash / bubble / tightening / normal).
+  * Computes per-event-family calibration gap + weighted-aggregate
+    calibration gap via ``RegimePerformanceTracker.full_report``.
+  * **Two-tier guardrail**:
+    - per-family limit ``GUARDRAIL_CAL_GAP_ABS = 0.04`` (tunable)
+    - weighted-aggregate limit ``GUARDRAIL_WEIGHTED_GAP_ABS = 0.02``
+  * **Sample-size floors** prevent noise-driven false positives:
+    - global ``MIN_RESOLVED_FOR_VERDICT = 30`` per side (else INCONCLUSIVE)
+    - per-bucket ``MIN_FAMILY_SAMPLES = 10`` (skips tiny noisy buckets
+      from BOTH the per-family check AND the weighted aggregate)
+  * **No cross-family monotonicity gate** by design — pinned by
+    ``test_no_cross_family_monotonicity_gate_exists``. False
+    positives on benign reshuffles are the #1 way these gates get
+    disabled by frustrated operators.
+  * Three-state verdict: PASS (exit 0), FAIL (exit 1 with
+    ``--fail-on-breach``, else 0), INCONCLUSIVE (exit 2, never green).
+  * ``--dry-run`` mode loads the gate without touching the DB —
+    useful for CI smoke before any data exists.
+* **``scripts/__init__.py``** — empty marker so
+  ``python -m scripts.compression_ci_gate`` resolves cleanly.
+* **``Makefile``** — two new targets:
+  * ``make compression-baseline BASE=<v> CAND=<v>`` — blocking CI
+    invocation with ``--fail-on-breach``.
+  * ``make compression-dry-run`` — structural smoke.
+* **``tests/test_compression_ci_gate.py``** — 7 cases pinning:
+  inconclusive on small baseline/candidate, PASS on within-tolerance
+  drift (0.01 weighted gap < 0.02 limit), FAIL on per-family
+  worsening (ai_bubble), FAIL on weighted-aggregate worsening,
+  no-monotonicity-gate invariant, and per-family floor skipping
+  tiny noisy buckets from both checks.
+* **No stamping changes** — the gate reuses the existing
+  ``model_version`` field already populated on every prediction by
+  ``services.prediction_tracker.log_prediction`` (line 719) from
+  the ``SIGNAL_MODEL_VERSION`` env var. To compare two models, train
+  + deploy each under a distinct ``SIGNAL_MODEL_VERSION``, then pass
+  those values as ``--baseline-tag`` / ``--candidate-tag``.
+* **Verified**: ``--dry-run`` exits 0, ``pytest
+  tests/test_compression_ci_gate.py`` 7/7 green, regression suites
+  ``test_no_local_direction_tuples.py`` + ``test_proof_chain_e2e.py``
+  still 7/7 green (14/14 combined).
+
+
+
 ### Lifecycle Receipts — `notification_lifecycle_runs` (May 4, 2026)
 
 Operator request: receipt trail per cleanup run so "no stale alerts"
