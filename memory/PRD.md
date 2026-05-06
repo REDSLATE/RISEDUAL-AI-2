@@ -55,6 +55,64 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### P2 backlog clearance + Patent M Phase 2 (Feb, 2026)
+
+Cleared three P2 items and shipped Phase 2 of the Regime-Aware
+Confusion Learning Core in one batch.
+
+**1. Compression CI Gate — recommended-action line + persistence**
+- New helper `_recommended_action` in `routes/admin_compression_gate.py`
+  derives a one-line operator recommendation per verdict (PASS:
+  promote with gap delta; INCONCLUSIVE: keep collecting + first
+  reason; FAIL: hold + worst breach).
+- Every gate run now persists into `compression_gate_runs` Mongo
+  collection (audit trail only — never read by live decision stack).
+  Best-effort write: Mongo failure logged + swallowed, response
+  unaffected.
+- New `GET /api/admin/compression-ci-gate/history?limit=N` endpoint.
+- `CompressionCIGateTile.jsx` renders the recommendation line under
+  the verdict block.
+- 8 new tests in `test_admin_compression_gate_recommendations.py`.
+
+**2. Admin Routes Diagnostic Panel UI**
+- New `frontend/src/components/admin/AdminRoutesPanel.jsx` consuming
+  the existing `GET /api/admin/_routes` endpoint.
+- 4 summary tiles: Total / Source Modules / Owner-Gated / Duplicates.
+  Duplicates tile flips colour rose+ALERT when count > 0 (the exact
+  signal an extraction left a stub behind).
+- Filterable searchable table: method colour-coded, gate badge per
+  row (owner/admin/auth/open/unknown).
+- New "Routes" tab in AdminPanel between Cache and Media. Live
+  data: 167 routes, 33 source modules, 110 owner-gated, 0 duplicates
+  (healthy decomposition confirmed).
+
+**3. Patent M Phase 2 — shadow-hook + Mongo persistence**
+- `services/learning_core_persistence.py` — Mongo persistence for
+  resolved memories. `persist_resolved_memory` upserts by
+  `memory_id` (idempotent), gated on env flag
+  `LEARNING_CORE_PERSISTENCE_ENABLED` (default off). Best-effort
+  writes: Mongo failures logged + swallowed, in-memory state never
+  affected. `rehydrate_resolved_memories` returns last N memories
+  oldest-first for chronological replay on startup.
+- `services/learning_core_shadow_hook.py` — shadow-mode side-channel
+  attachment. Builds `LearningCoreDecisionContext` from the
+  adversarial signal payload, calls `evaluate_context`, attaches
+  result under `payload["learning_core"]`. Gated on env flag
+  `LEARNING_CORE_SHADOW_ENABLED` (default off). Never raises, never
+  mutates the decision, never alters direction. Phase 3 (deferred)
+  will let Commander/Auditor consume the field.
+- One-line wire-up in `services/adversarial_core.py:run_adversarial_decision`
+  — calls `attach_learning_core_context` after `resolve_adversarial`
+  with double-layered try/except (the hook is internally exception-
+  safe; the outer guard is paranoid belt-and-braces).
+- 15 new tests in `test_learning_core_phase2.py` covering doc/memory
+  round-trip, env-gate behaviour, error swallowing, decision-
+  immutability invariant, end-to-end `run_adversarial_decision`
+  payload-shape regression check.
+
+**Tests:** Full suite **2489/2489 passing** (was 2466 → +23 new,
+zero regressions).
+
 ### Patent M — Regime-Aware Confusion Learning Core (Feb, 2026)
 
 Operator-directed orchestration layer combining the original CACL

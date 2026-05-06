@@ -234,6 +234,20 @@ const CompressionCIGateTile = () => {
               ))}
             </div>
           )}
+
+          {result.recommended_action && (
+            <div
+              className="border-t border-slate-700/50 pt-2"
+              data-testid="compression-gate-recommended-action"
+            >
+              <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                Recommended action
+              </div>
+              <div className={`text-xs leading-snug ${verdictCfg.text}`}>
+                {result.recommended_action}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

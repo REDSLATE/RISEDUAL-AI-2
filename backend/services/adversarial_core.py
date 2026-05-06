@@ -593,7 +593,7 @@ async def run_adversarial_decision(
 
     resolution = resolve_adversarial(bull, bear)
 
-    return {
+    payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": signal.get("symbol"),
         "regime": signal.get("regime"),
@@ -602,3 +602,20 @@ async def run_adversarial_decision(
         "bear_case": asdict(bear),
         **resolution,
     }
+
+    # Patent M Phase 2 — shadow-mode side-channel attachment.
+    # Never raises, never mutates the decision; behind env flag
+    # ``LEARNING_CORE_SHADOW_ENABLED`` (default off). See
+    # ``services.learning_core_shadow_hook`` for the contract.
+    try:
+        from services.learning_core_shadow_hook import (
+            attach_learning_core_context,
+        )
+        attach_learning_core_context(payload, signal)
+    except Exception:
+        # The hook itself catches everything internally; this outer
+        # guard is paranoid belt-and-braces against an import-time
+        # failure breaking the live decision.
+        pass
+
+    return payload

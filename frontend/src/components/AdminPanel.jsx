@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -29,6 +29,7 @@ import EngineRegistryPanel from './admin/EngineRegistryPanel';
 import WhatIfReplayPanel from './admin/WhatIfReplayPanel';
 import NewsShockBurnIn from './admin/NewsShockBurnIn';
 import TerminalTopActions from './admin/TerminalTopActions';
+import AdminRoutesPanel from './admin/AdminRoutesPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -55,6 +56,7 @@ const TAB_GROUPS = [
       { id: 'vault',     label: 'Vault',     icon: Lock },
       { id: 'broker',    label: 'Broker',    icon: Key },
       { id: 'cache',     label: 'Cache',     icon: Database },
+      { id: 'routes',    label: 'Routes',    icon: GitBranch },
       { id: 'media',     label: 'Media',     icon: Film },
       { id: 'security',  label: 'Security',  icon: ShieldCheck },
       { id: 'promos',    label: 'Promos',    icon: Gift },
@@ -95,6 +97,7 @@ const TAB_SUBTITLES = {
   vault:          () => 'API keys & secrets',
   broker:         () => 'Alpaca / Kraken OAuth wiring',
   cache:          () => 'MongoDB cache tiers & TTLs',
+  routes:         () => 'FastAPI route registry · duplicate detection · gate audit',
   media:          () => 'Uploaded assets & CDN state',
   security:       () => 'Auth attempts · password breaches · rate limits',
   promos:         () => 'Coupons & credit grants',
@@ -127,6 +130,7 @@ const TAB_COMPONENTS = {
   promos:         () => <PromoManager />,
   broker:         () => <BrokerOAuthConfig />,
   cache:          () => <CacheMonitor />,
+  routes:         () => <AdminRoutesPanel />,
   media:          () => <MediaManager />,
   security:       () => <SecurityAudit />,
   waitlist:       () => <WaitlistAdmin />,
