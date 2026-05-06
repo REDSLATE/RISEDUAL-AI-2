@@ -419,6 +419,28 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Promotion-history boot detector failed (non-critical): {e}")
 
+    # Patent M Phase 3 — rehydrate the learning-core resolved-memory
+    # bank from Mongo so cluster centroids survive process restarts.
+    # Gated on ``LEARNING_CORE_REHYDRATE_ON_STARTUP`` (default off).
+    # Best-effort: a Mongo failure logs a warning and leaves the
+    # core running cold. Never raises.
+    try:
+        from services.learning_core_service import rehydrate_core_from_mongo
+        result = await rehydrate_core_from_mongo(db)
+        if result.get("replayed", 0) > 0:
+            logger.info(
+                "[learning-core] rehydrated %d/%d resolved memories",
+                result["replayed"], result["loaded"],
+            )
+        elif "skipped" in result:
+            logger.info(
+                "[learning-core] rehydrate skipped: %s", result["skipped"],
+            )
+    except Exception as e:
+        logger.warning(
+            f"Learning-core rehydrate failed (non-critical): {e}"
+        )
+
     # Kraken WebSocket streamer — push-based crypto quotes. Drops
     # the 2s REST cache to sub-100ms freshness when the socket is
     # healthy. Falls back to REST automatically on disconnect or

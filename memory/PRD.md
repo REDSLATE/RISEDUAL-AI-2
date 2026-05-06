@@ -55,6 +55,74 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Patent M Phase 3 — consumer + persist/rehydrate plumbing (Feb, 2026)
+
+Phase 2 fed the data; Phase 3 actually **consumes** it (behind a
+default-off env flag) and adds restart-survival for the resolved-
+memory bank.
+
+**1. `services/learning_core_consumer.py` — bounded consumer**
+
+The consumer mutates `payload["confidence"]` and dampens
+`payload["risk_multiplier"]` based on the Phase-2 shadow
+attachment, gated on `LEARNING_CORE_CONSUME_ENABLED` (default off).
+
+Hard invariants — every relaxation requires deleting an explicit
+named test:
+* Never mutates `payload["decision"]` (direction is Commander's
+  sole authority).
+* Never promotes `HOLD` / `UNKNOWN` / non-trade tokens into a trade.
+* Risk multiplier is **one-way down only** — operator preference
+  ("the core can only ever recommend less risk, never more").
+* Confidence delta capped at ±0.10 (tighter than the orchestrator's
+  own ±0.15 cap; outer bound stays conservative until shadow audit
+  proves calibration).
+* Risk multiplier floored at 0.50 (matches the canonical engine's
+  `REGIME_MEMORY_MIN_RISK_MULTIPLIER`).
+* Pre-tell warning damps risk by 15% (×0.85), bounded by floor.
+* Audit trail attached under `payload["learning_core_consumed"]`
+  with before/after, deltas, and all bound constants — operator
+  can always see *why* the values moved.
+* Exception-free (NaN/None/string coercion; never raises).
+
+**2. `services/learning_core_service.py` — process-wide singleton + atom**
+
+* `get_core()` — lazy process-wide singleton, shared between
+  shadow hook and consumer paths so resolved memories are visible
+  to live `evaluate_context` calls.
+* `add_and_persist_memory(db, memory)` — public ingest atom: calls
+  the in-memory engine first (canonical), then opportunistically
+  persists to Mongo. Persistence failure never affects in-memory
+  ingest.
+* `rehydrate_core_from_mongo(db, limit=5000)` — boot-time replay.
+  Loads newest-first, reverses to oldest-first, replays through
+  the singleton. One bad memory does not stop the rest. Gated on
+  `LEARNING_CORE_REHYDRATE_ON_STARTUP` (default off).
+
+**3. Wire-up**
+
+* `adversarial_core.run_adversarial_decision` — Phase 3 call sits
+  immediately after Phase 2's `attach_learning_core_context`,
+  inside its own try/except belt-and-braces guard.
+* `server.py` startup event — `rehydrate_core_from_mongo(db)` runs
+  after the promotion-history boot detector. Logs how many
+  memories were replayed, or a single "skipped: env_flag_off"
+  line on cold boot. Never raises.
+* `learning_core_shadow_hook.py` — refactored to import the
+  shared singleton from `learning_core_service`. Both paths now
+  see the same in-memory state.
+
+**Tests:** `tests/test_learning_core_phase3.py` — 17 cases
+covering 9 consumer invariants + 5 service/singleton/rehydrate
+behaviours + edge cases (NaN, env-flag toggles, bad memory
+during replay). One allowlist entry added to
+`test_no_local_direction_tuples.py` for the consumer's
+post-canonicalisation `{LONG, SHORT}` check. **Full suite
+2506/2506 passing** (was 2489 → +17 new, zero regressions).
+Backend boot logs confirm the rehydrate hook fires cleanly:
+`[learning-core] rehydrate skipped: env_flag_off` on default cold
+boot, exactly as designed.
+
 ### P2 backlog clearance + Patent M Phase 2 (Feb, 2026)
 
 Cleared three P2 items and shipped Phase 2 of the Regime-Aware

@@ -618,4 +618,21 @@ async def run_adversarial_decision(
         # failure breaking the live decision.
         pass
 
+    # Patent M Phase 3 — bounded consumption of the shadow field.
+    # Behind env flag ``LEARNING_CORE_CONSUME_ENABLED`` (default
+    # off). Adjusts ``confidence`` and dampens ``risk_multiplier``
+    # only — never changes ``decision`` (direction stays
+    # Commander's authority), never increases risk, never promotes
+    # HOLD/UNKNOWN. See ``services.learning_core_consumer`` for
+    # the full invariant set.
+    try:
+        from services.learning_core_consumer import (
+            consume_learning_core_into_payload,
+        )
+        consume_learning_core_into_payload(payload)
+    except Exception:
+        # Same belt-and-braces — the consumer is internally
+        # exception-safe but a busted import must never surface.
+        pass
+
     return payload

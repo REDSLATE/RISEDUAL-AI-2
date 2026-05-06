@@ -135,6 +135,13 @@ ALLOWLIST: dict[str, str] = {
         "evaluate_context, so the {LONG, SHORT} compare is purely "
         "validating the canonical output. Patent M layer."
     ),
+    "services/learning_core_consumer.py": (
+        "Post-canonicalisation gate — consumer reads "
+        "learning_core.direction_canonical (already a canonical "
+        "{LONG, SHORT, UNKNOWN} token from the orchestrator) and "
+        "refuses to mutate the payload for non-trade sides. "
+        "Patent M Phase 3."
+    ),
     "services/position_reconciler.py": (
         "Broker-side side comparison ('buy'/'long' from order objects, "
         "not AI verdict tokens)."

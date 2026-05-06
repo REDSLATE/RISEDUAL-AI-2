@@ -36,40 +36,24 @@ import os
 from typing import Any
 
 from services.auto_regime_tagger import RawMacroData
+from services.learning_core_service import get_core, reset_singleton_for_tests as _reset_shared
 from services.risedual_learning_core import (
     LearningCoreDecisionContext,
-    RisedualLearningCore,
 )
 
 
 logger = logging.getLogger(__name__)
 
 
-# Process-local singleton. Lazy because the orchestrator's
-# constructor allocates NumPy weights — cheap, but not free, and
-# we want zero startup-time impact when the flag is off.
-_singleton: RisedualLearningCore | None = None
-
 # Default feature dimensionality. Phase-1 features are picked
 # directly off ``signal`` (confidence, expected_r, vix, etc.) —
-# any extra dims the live signal lacks are zero-filled.
+# any extra dims the live signal lacks are zero-filled. Must
+# match ``services.learning_core_service.DEFAULT_FEATURE_DIM``.
 DEFAULT_FEATURE_DIM = 8
-DEFAULT_N_CLASSES = 3
 
 
 def _shadow_enabled() -> bool:
     return os.getenv("LEARNING_CORE_SHADOW_ENABLED", "false").lower() == "true"
-
-
-def _get_core() -> RisedualLearningCore:
-    """Lazy singleton — only allocated on the first hooked call."""
-    global _singleton
-    if _singleton is None:
-        _singleton = RisedualLearningCore(
-            input_dim=DEFAULT_FEATURE_DIM,
-            n_classes=DEFAULT_N_CLASSES,
-        )
-    return _singleton
 
 
 def _signal_to_macro(signal: dict[str, Any]) -> RawMacroData:
@@ -172,7 +156,7 @@ def attach_learning_core_context(
             macro_history={},
             macro_series=[],  # caller owns history; hook stays stateless
         )
-        result = _get_core().evaluate_context(ctx)
+        result = get_core().evaluate_context(ctx)
         payload["learning_core"] = {
             "direction_canonical": result["direction_canonical"],
             "base_confidence": result["base_confidence"],
@@ -200,6 +184,7 @@ def attach_learning_core_context(
 
 def reset_singleton_for_tests() -> None:
     """Test escape hatch — clears the lazy singleton between tests
-    so prototype state from one test doesn't leak into the next."""
-    global _singleton
-    _singleton = None
+    so prototype state from one test doesn't leak into the next.
+    Delegates to the shared service singleton so both shadow-hook
+    and consumer paths see a clean slate."""
+    _reset_shared()
