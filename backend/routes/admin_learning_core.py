@@ -38,8 +38,7 @@ import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
-
+from fastapi import APIRouter, HTTPException, Query, Request
 
 router = APIRouter(prefix="/api/admin", tags=["admin-learning-core"])
 logger = logging.getLogger(__name__)
@@ -239,3 +238,64 @@ async def list_shadow_deltas(
 
 def _bool_env(name: str) -> bool:
     return os.getenv(name, "false").lower() == "true"
+
+
+@router.post("/learning-core/backfill")
+async def backfill_resolved_paper_trades(
+    request: Request,
+    since_days: int = Query(30, ge=1, le=365),
+    dry_run: bool = Query(True),
+    toxic_threshold_pct: float = Query(-5.0, le=0.0),
+    trust_tier: float = Query(0.25, ge=0.0, le=1.0),
+) -> dict[str, Any]:
+    """Lever 1 — historical resolved paper-trade backfill.
+
+    Walks ``paper_trades`` and ``crypto_paper_trades`` for resolved
+    (closed) trades in the window, runs them through Shelly's
+    live-ingest adapter in chronological order, and reports
+    aggregate statistics.
+
+    Defaults to ``dry_run=true`` per operator spec — caller MUST
+    pass ``dry_run=false`` explicitly to ingest. Persistence is
+    gated separately by ``LEARNING_CORE_PERSISTENCE_ENABLED``
+    (default off); when off, memories are in-memory only and
+    will not survive a backend restart.
+
+    Aborts with 503 if current macro is unavailable — we refuse
+    to feed Shelly fabricated data.
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+
+    from services.shelly_ingest_adapter import _resolve_current_macro
+    from services.shelly_backfill_service import run_backfill
+
+    macro = await _resolve_current_macro(db)
+    if macro is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Current macro snapshot unavailable. Backfill refuses "
+                "to feed Shelly fabricated data — wait for the macro "
+                "cache to populate (typically ≤60s) and retry."
+            ),
+        )
+
+    try:
+        report = await run_backfill(
+            db=db,
+            since_days=since_days,
+            dry_run=dry_run,
+            macro=macro,
+            toxic_threshold_pct=toxic_threshold_pct,
+            trust_tier=trust_tier,
+        )
+    except Exception as exc:
+        logger.exception("shelly_backfill: orchestrator failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"backfill failed: {exc}",
+        ) from exc
+
+    return report

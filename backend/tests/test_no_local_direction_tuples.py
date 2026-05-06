@@ -154,6 +154,13 @@ ALLOWLIST: dict[str, str] = {
         "hypothetical mutations for {LONG, SHORT}. Patent M "
         "rollout step 3."
     ),
+    "services/shelly_backfill_service.py": (
+        "{BUY, SELL} are paper_trades fill-side tokens (not "
+        "directions). Used to FIFO-pair entry/exit fills from "
+        "the paper_trades collection during historical backfill. "
+        "Direction canonicalisation happens downstream in "
+        "shelly_ingest_adapter.paper_trade_to_memory."
+    ),
     "services/position_reconciler.py": (
         "Broker-side side comparison ('buy'/'long' from order objects, "
         "not AI verdict tokens)."

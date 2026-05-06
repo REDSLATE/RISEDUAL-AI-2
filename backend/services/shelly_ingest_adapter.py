@@ -61,53 +61,102 @@ def _ingest_enabled() -> bool:
     return os.getenv("LEARNING_CORE_INGEST_ENABLED", "false").lower() == "true"
 
 
-async def _resolve_current_macro() -> Optional[RawMacroData]:
+async def _resolve_current_macro(db: Optional[Any] = None) -> Optional[RawMacroData]:
     """Best-effort current macro snapshot.
 
-    Reads the cached output of ``fred_service.get_macro_indicators``
-    if available. Returns ``None`` if the cache is cold — better
-    to skip ingestion than feed Shelly garbage.
-
-    The cache is populated by the live admin/dashboard tiles so on
-    a healthy pod this hits at least every minute.
+    Resolution order:
+    1. Live cache populated by ``fred_service.get_macro_indicators``
+       (warm path on a healthy pod).
+    2. Most-recent doc from the ``fred_snapshots`` Mongo collection
+       (works in environments without a FRED API key, and as a
+       fallback during FRED API outages).
+    3. Returns ``None`` if neither path yields data — the backfill
+       refuses to feed Shelly fabricated data.
     """
+    # Path 1: live cache.
     try:
         from services.fred_service import CACHE
         cached = CACHE.get("macro_indicators")
-        if not cached:
-            return None
-        # ``CACHE`` value shape: ``(cached_at_dt, payload_dict)``.
-        if isinstance(cached, tuple) and len(cached) == 2:
-            payload = cached[1]
-        elif isinstance(cached, dict):
-            payload = cached
-        else:
-            return None
-        if not isinstance(payload, dict):
-            return None
+        if cached:
+            payload: Any = None
+            if isinstance(cached, tuple) and len(cached) == 2:
+                payload = cached[1]
+            elif isinstance(cached, dict):
+                payload = cached
+            if isinstance(payload, dict):
+                m = _macro_from_indicators(payload.get("indicators") or [])
+                if m is not None:
+                    return m
+    except Exception as exc:
+        logger.debug("shelly_ingest: live macro cache miss: %s", exc)
 
-        out = RawMacroData(
-            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        )
-        for ind in payload.get("indicators", []) or []:
-            field = _MACRO_FIELD_MAP.get(ind.get("id"))
-            if field is None:
+    # Path 2: fred_snapshots Mongo fallback.
+    if db is not None:
+        try:
+            doc = await db.fred_snapshots.find_one(
+                {}, sort=[("date", -1)],
+            )
+            if doc:
+                inds = doc.get("indicators") or []
+                m = _macro_from_indicators(inds)
+                if m is not None:
+                    return m
+        except Exception as exc:
+            logger.debug("shelly_ingest: fred_snapshots fallback miss: %s", exc)
+
+    return None
+
+
+def _macro_from_indicators(indicators: Any) -> Optional[RawMacroData]:
+    """Pure helper — build a ``RawMacroData`` from indicator data.
+
+    Accepts both shapes the repo uses:
+    * **list of dicts** (live ``fred_service.get_macro_indicators``
+      output): each dict has ``id`` + ``latest_value``.
+    * **dict keyed by series_id** (Mongo ``fred_snapshots`` shape):
+      each value has ``value`` (no ``id`` — the key IS the id).
+
+    Returns ``None`` if no mapped numeric fields were found.
+    """
+    out = RawMacroData(
+        date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    )
+
+    # Normalise both shapes to ``[(series_id, value), ...]``.
+    pairs: list[tuple[str, Any]] = []
+    if isinstance(indicators, list):
+        for ind in indicators:
+            if not isinstance(ind, dict):
                 continue
+            sid = ind.get("id") or ind.get("series_id")
             val = ind.get("latest_value")
             if val is None:
+                val = ind.get("value")
+            if sid:
+                pairs.append((sid, val))
+    elif isinstance(indicators, dict):
+        for sid, ind in indicators.items():
+            if not isinstance(ind, dict):
                 continue
-            try:
-                setattr(out, field, float(val))
-            except (TypeError, ValueError):
-                continue
-
-        # If we couldn't extract even one numeric, treat as a miss.
-        if all(getattr(out, f) is None for f in _MACRO_FIELD_MAP.values()):
-            return None
-        return out
-    except Exception as exc:
-        logger.debug("shelly_ingest: macro resolve failed: %s", exc)
+            val = ind.get("value")
+            if val is None:
+                val = ind.get("latest_value")
+            pairs.append((sid, val))
+    else:
         return None
+
+    for sid, val in pairs:
+        field = _MACRO_FIELD_MAP.get(sid)
+        if field is None or val is None:
+            continue
+        try:
+            setattr(out, field, float(val))
+        except (TypeError, ValueError):
+            continue
+
+    if all(getattr(out, f) is None for f in _MACRO_FIELD_MAP.values()):
+        return None
+    return out
 
 
 def _canonical_for_ingest(direction: str) -> Optional[str]:
@@ -234,7 +283,7 @@ async def feed_shelly_from_closed_trade(
         return {"ok": False, "reason": "env_flag_off"}
 
     try:
-        macro = await _resolve_current_macro()
+        macro = await _resolve_current_macro(db)
         if macro is None:
             return {"ok": False, "reason": "no_macro"}
 
