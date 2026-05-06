@@ -129,6 +129,12 @@ ALLOWLIST: dict[str, str] = {
         "Post-canonicalisation invariant check — signal.action MUST "
         "be one of canonical {BUY, SELL, HOLD} or the IP gate rejects."
     ),
+    "services/risedual_learning_core.py": (
+        "Post-canonicalisation trade-side check — input has already "
+        "been routed through canonical_ai_dir at the top of "
+        "evaluate_context, so the {LONG, SHORT} compare is purely "
+        "validating the canonical output. Patent M layer."
+    ),
     "services/position_reconciler.py": (
         "Broker-side side comparison ('buy'/'long' from order objects, "
         "not AI verdict tokens)."

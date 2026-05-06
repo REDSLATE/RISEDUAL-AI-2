@@ -55,6 +55,81 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Patent M — Regime-Aware Confusion Learning Core (Feb, 2026)
+
+Operator-directed orchestration layer combining the original CACL
+ML, an auto-regime tagger, and the canonical regime memory engine
+into a single learning/context module that **never executes trades**.
+Built per option 1A — the existing `services/regime_memory_retrieval.py`
+(596 lines, 2451-test-covered) was kept untouched and wrapped via
+a thin shim to preserve all its IP-safety wiring.
+
+**New modules:**
+- `services/cacl_original_ml.py` — `ConfusionAwareEmbeddingNetwork`,
+  pure NumPy. Linear projection → L2-normalised embeddings → softmax
+  over cosine similarity to per-class prototypes. `training_step`
+  does (a) EMA prototype updates with adaptive LR, (b) hardest-
+  negative mining + repulsion, (c) confusion-matrix accumulation.
+  Phase-1 deliberately avoids PyTorch — deterministic, lightweight,
+  audit-friendly.
+- `services/auto_regime_tagger.py` — `RegimeTagger` + `RawMacroData`.
+  Pure transform from raw macro snapshots (VIX, 2y/10y yields, DXY,
+  HY-IG OAS, liquidity z-score, optional macro-phase hint) into the
+  canonical `RegimeFingerprint`. `generate_pretell` finds the
+  snapshot N days back and tags it. Stateless, no IO, no Mongo.
+- `services/regime_clustering_layer.py` — thin shim wrapping
+  `RegimeMemoryRetrievalEngine`. Exposes the spec's class/method
+  names (`RegimeClusteringEngine`, `RegimeLabeledMemory`,
+  `assign_regime_cluster`, `detect_pretell_cluster`,
+  `retrieve_regime_context`, `check_pretell_warning`,
+  `get_cluster_report`) without re-implementing any logic.
+  `_ingest_cache` keyed by `memory_id` prevents double-append.
+- `services/risedual_learning_core.py` — `RisedualLearningCore`
+  orchestrator + `LearningCoreDecisionContext` payload.
+
+**Hard IP-safety invariants (all test-pinned):**
+1. `evaluate_context` returns context only — no broker, Mongo,
+   or singleton mutation. (`test_evaluate_context_has_no_side_effects`)
+2. Direction always passed through `canonical_ai_dir` first.
+   (`test_unknown_direction_does_not_get_positive_boost`)
+3. `HOLD`/`UNKNOWN` cannot receive the +0.03 memory boost.
+   (`test_hold_does_not_get_positive_boost`)
+4. Total delta from `base_confidence` bounded to ±0.15
+   (`MAX_CONFIDENCE_DELTA`).
+   (`test_confidence_delta_capped_at_plus_minus_15`)
+5. `adjusted_confidence` always clamped to `[0.0, 1.0]`.
+   (`test_adjusted_confidence_clamped_0_to_1`)
+
+**Architectural placement:**
+```
+Market Data
+   ↓
+Auto Regime Tagger (NEW)
+   ↓
+Regime-Aware Confusion Learning Core (NEW — Patent M)
+   ↓
+Strategist / Auditor
+   ↓
+Commander
+   ↓
+Council Risk Modulator
+   ↓
+Execution
+```
+The new core influences **confidence, warnings, and context** —
+it does NOT place trades, override direction, promote HOLD, or
+bypass Commander/Council. Persistence is in-memory only (option
+5C); MongoDB persistence deferred to Phase 2 once the in-memory
+behaviour proves stable.
+
+**Tests:** `tests/test_risedual_learning_core.py` — 15 cases
+covering all 5 invariants + orchestrator wiring + shim alias
+identity + CACL probability sums + tagger thresholds + double-
+ingest prevention. **Full suite 2466/2466 passing** (was 2451 →
++15 new, zero regressions). One allowlist entry added to
+`tests/test_no_local_direction_tuples.py` with justification
+(the `{LONG, SHORT}` check is post-canonicalisation).
+
 ### Cache Diagnostics Metrics (Feb, 2026)
 
 Operator visibility upgrade for `services.cache.TTLCache`. Five
