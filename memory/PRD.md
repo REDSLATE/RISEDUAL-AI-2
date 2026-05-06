@@ -55,6 +55,48 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Future-Watch — FINRA PDT Rule Change (effective ~March 2026)
+
+Operator-flagged future-state context. The FINRA "$25K Pattern
+Day Trader" rule is being replaced with a dynamic, risk-based
+intraday margin system. Alpha doesn't day-trade today (Camaro
+covers that), but is expected to step into day-trading next month
+once the existing blocker clears.
+
+**Rule changes:**
+* $25K PDT threshold eliminated → ~$2K minimum for margin
+  day-trading.
+* PDT label gone — risk-based "buying-power" check instead.
+* Brokers (Robinhood, Webull, Public.com) will run algorithmic
+  circuit breakers blocking entries that breach proportional
+  margin in real time.
+* Unlimited trades as long as equity covers live exposure.
+* 0DTE options explicitly included.
+* 90-day freeze still applies for repeated 5-day margin
+  deficits; small-deficit exemption (<$1K or 5% of equity).
+
+**Architectural plan for Alpha when day-trading activates:**
+1. **Intraday buying-power tracker** — runs in the Council Risk
+   Modulator. Live exposure vs equity check before every entry,
+   mirroring the broker's circuit-breaker logic so Alpha refuses
+   the trade *before* the broker does (keeps the deficit counter
+   clean).
+2. **Margin deficit counter** — small Mongo collection tracking
+   consecutive sub-required-margin days. Alpha self-halts at
+   day 4 (one day before broker's 5-day freeze trigger).
+   $1K/5% exemption baked in.
+3. **Same-session exit guarantee** — extend the existing closer
+   pattern (`crypto_closer`, `tier3_paper_closer`) with a
+   `must_flat_by_close` exit reason firing N minutes before
+   close regardless of trailing-stop / hold-window state. Day-
+   trade positions never roll overnight by accident.
+4. **0DTE inclusion** — the parked options suite plugs into the
+   same risk gate as equities once new rules land; no special-
+   case path needed.
+
+**Status:** P2 backlog, gated on the existing blocker clearing.
+Camaro continues to carry day-trading load until then.
+
 ### Alpha Rollout Steps 2 + 3 + Shelly Ingestion (Feb, 2026)
 
 Three big rollout pieces shipped together — all gated behind
