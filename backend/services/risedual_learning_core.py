@@ -270,6 +270,7 @@ class RisedualLearningCore:
 
         return {
             "cacl": {
+                "name": cacl.NAME,
                 "input_dim": int(cacl.input_dim),
                 "embedding_dim": int(cacl.embedding_dim),
                 "n_prototypes": int(cacl.n_prototypes),

@@ -76,7 +76,18 @@ class TrainingStepResult:
 
 
 class ConfusionAwareEmbeddingNetwork:
-    """Pure-NumPy CACL embedding + prototype network."""
+    """Pure-NumPy CACL embedding + prototype network — codename
+    **Shelly**, the ML brain sitting over the learning module.
+
+    The class name stays ``ConfusionAwareEmbeddingNetwork`` for
+    import stability across the 2,500+ test suite, but every
+    operator-facing surface (diagnostic endpoint, admin tile, log
+    lines) refers to it as Shelly.
+    """
+
+    # Operator-facing codename — surfaced through ``to_dict()`` so
+    # the diagnostic UI can render it without bytecode-walking.
+    NAME = "Shelly"
 
     def __init__(
         self,
