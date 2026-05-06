@@ -269,6 +269,7 @@ async def run_backfill(
     cluster_count_before = _safe_cluster_count()
 
     ingest_failures = 0
+    canonical_rejected = 0
 
     for _, source, trade in tagged:
         memory = paper_trade_to_memory(trade, macro)
@@ -304,10 +305,18 @@ async def run_backfill(
                 # ``LEARNING_CORE_PERSISTENCE_ENABLED`` — when off
                 # (which is the operator's current posture) the
                 # memory goes into Shelly's in-memory engine only.
+                # The canonical engine itself respects
+                # ``REGIME_MEMORY_ENABLED`` — when off, ingest is
+                # rejected and ``regime_cluster_id`` comes back
+                # ``None``. We surface that as a distinct counter
+                # so the operator can spot the gate state from
+                # the report.
                 from services.learning_core_service import (
                     add_and_persist_memory,
                 )
-                await add_and_persist_memory(db, memory)
+                result = await add_and_persist_memory(db, memory)
+                if not result.get("regime_cluster_id"):
+                    canonical_rejected += 1
             except Exception as exc:  # noqa: BLE001
                 ingest_failures += 1
                 logger.warning(
@@ -332,6 +341,7 @@ async def run_backfill(
         "trust_tier": trust_tier,
         "macro_proxy": "current",
         "ingest_failures": ingest_failures,
+        "canonical_engine_rejected": canonical_rejected,
         # ``approximate_regime_clusters`` is the count of distinct
         # regime fingerprints among eligible memories — the upper
         # bound on cluster count since each fingerprint maps to at

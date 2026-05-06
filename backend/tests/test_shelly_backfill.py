@@ -264,6 +264,7 @@ async def test_backfill_returns_expected_report_shape():
         "by_label", "by_direction", "toxic_count",
         "toxic_threshold_pct", "trust_tier", "macro_proxy",
         "ingest_failures", "approximate_regime_clusters",
+        "canonical_engine_rejected",
         "regime_clusters_before", "regime_clusters_after",
         "regime_clusters_delta", "notes",
     ):
