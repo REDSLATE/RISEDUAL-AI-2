@@ -593,25 +593,7 @@ async def run_adversarial_decision(
 
     resolution = resolve_adversarial(bull, bear)
 
-    # Patent M (Alpha) — DELIBERATELY NOT WIRED INTO THIS FLOW.
-    #
-    # Per the operator's Alpha IP rollout protocol (Feb 2026):
-    #   1. Diagnostic endpoint                         ← shipped
-    #   2. Read-only corridor annotation               ← gated on review
-    #   3. Shadow confidence delta logging             ← gated on review
-    #   4. Review 50–100 cycles                        ← human checkpoint
-    #   5. Gated confidence influence                  ← gated on review
-    #
-    # The learning core's modules (learning_core_shadow_hook,
-    # learning_core_consumer) exist but MUST NOT be called from the
-    # adversarial decision flow until each rollout step is
-    # explicitly approved. Patent M is the IP *learning* layer, not
-    # an execution layer. Direction/size/veto/HOLD-promotion stay
-    # exclusively with Strategist/Auditor/Commander/Council.
-    #
-    # Operator-facing surface today: ``/api/admin/learning-core/diagnostic``
-    # (read-only ``to_dict()`` dump of singleton state).
-    return {
+    payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": signal.get("symbol"),
         "regime": signal.get("regime"),
@@ -620,3 +602,39 @@ async def run_adversarial_decision(
         "bear_case": asdict(bear),
         **resolution,
     }
+
+    # Patent M (Alpha) — Rollout step 2: read-only corridor
+    # annotation. Behind ``LEARNING_CORE_SHADOW_ENABLED``
+    # (default off). Attaches Shelly's ``evaluate_context`` output
+    # under ``payload["learning_core"]`` for operator audit visibility
+    # — Commander/Auditor/Council DO NOT consume this field.
+    #
+    # Hard Alpha rules (verified by
+    # ``test_run_adversarial_decision_corridor_annotation_only``):
+    #   * No ``learning_core_consumed`` envelope is attached.
+    #   * ``decision`` is unchanged.
+    #   * ``risk_multiplier`` is unchanged.
+    #   * ``confidence`` is unchanged.
+    try:
+        from services.learning_core_shadow_hook import (
+            attach_learning_core_context,
+        )
+        attach_learning_core_context(payload, signal)
+    except Exception:
+        # The hook itself catches everything internally; this outer
+        # guard is paranoid belt-and-braces against an import-time
+        # failure breaking the live decision.
+        pass
+
+    # Patent M (Alpha) — Rollout step 3: shadow confidence delta
+    # logging. Behind ``LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED``
+    # (default off). Computes "what would the consumer have done"
+    # WITHOUT applying — persists deltas to Mongo for the human
+    # checkpoint review window. Read-only on the live decision.
+    try:
+        from services.shelly_shadow_logger import log_shadow_delta
+        await log_shadow_delta(db, payload)
+    except Exception:
+        pass
+
+    return payload

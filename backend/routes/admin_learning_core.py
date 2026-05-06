@@ -119,6 +119,12 @@ async def learning_core_diagnostic(request: Request) -> dict[str, Any]:
         "LEARNING_CORE_REHYDRATE_ON_STARTUP": _bool_env(
             "LEARNING_CORE_REHYDRATE_ON_STARTUP",
         ),
+        "LEARNING_CORE_INGEST_ENABLED": _bool_env(
+            "LEARNING_CORE_INGEST_ENABLED",
+        ),
+        "LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED": _bool_env(
+            "LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED",
+        ),
     }
 
     return {
@@ -126,32 +132,108 @@ async def learning_core_diagnostic(request: Request) -> dict[str, Any]:
         # is through a code review that also wires the next layer.
         # Treat this as a self-attesting badge, not a runtime
         # toggle.
-        "rollout_step": 1,
-        "rollout_step_label": "diagnostic",
-        "wired_into_decision_flow": False,
+        #
+        # Step 3 reflects: corridor annotation re-wired into
+        # ``run_adversarial_decision`` (default-off via
+        # ``LEARNING_CORE_SHADOW_ENABLED``) + shadow delta
+        # logging (default-off via
+        # ``LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED``). Steps 4–5
+        # remain operator-gated.
+        "rollout_step": 3,
+        "rollout_step_label": "shadow delta logging",
+        "wired_into_decision_flow": False,  # Annotation rides
+                                            # alongside; no
+                                            # influence still.
         "env_flags": env_flags,
         "core": core_state,
-        # Operator-facing metrics that depend on rollout steps 2/3
+        # Operator-facing metrics that depend on rollout steps 4/5
         # being approved and wired. Surfaced here as explicit
         # "awaiting" envelopes so the Shelly tile can render the
         # rollout state honestly without pretending to have data.
         "awaiting_rollout": {
-            "recent_confidence_deltas": {
-                "available_after_step": 3,
-                "label": "shadow confidence delta logging",
-                "samples": [],
-            },
             "hold_suppression_counts": {
                 "available_after_step": 5,
                 "label": "gated confidence influence",
                 "count": 0,
             },
-            "retrieval_confidence_history": {
-                "available_after_step": 2,
-                "label": "read-only corridor annotation",
-                "samples": [],
+            "review_cycle_status": {
+                "available_after_step": 4,
+                "label": "human checkpoint review window",
+                "samples_observed": 0,
             },
         },
+    }
+
+
+@router.get("/learning-core/shadow-deltas")
+async def list_shadow_deltas(
+    request: Request,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Read-only audit history of Shelly's hypothetical decisions.
+
+    Returns the last ``limit`` rows from ``shelly_shadow_deltas``
+    newest-first plus a summary block (mean confidence delta,
+    median risk delta, count of pretell-warning hits). This is the
+    operator's primary tool for the rollout-step-4 review window:
+    "would Shelly have improved decisions if she'd been wired in?".
+
+    No writes. Excludes ``_id`` per the project-wide MongoDB rule.
+    """
+    await _require_owner(request)
+    if db is None:
+        raise HTTPException(status_code=503, detail="DB not initialised")
+
+    if limit < 1 or limit > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="limit must be in [1, 1000]",
+        )
+
+    from services.shelly_shadow_logger import COLLECTION_NAME
+
+    cursor = db[COLLECTION_NAME].find(
+        {}, {"_id": 0},
+    ).sort("ts", -1).limit(limit)
+    rows = await cursor.to_list(length=limit)
+
+    # Summary stats — operator's at-a-glance view.
+    n = len(rows)
+    if n == 0:
+        return {
+            "total": 0,
+            "summary": {
+                "mean_confidence_delta": 0.0,
+                "mean_risk_multiplier_delta": 0.0,
+                "would_have_consumed_count": 0,
+                "pretell_warning_count": 0,
+            },
+            "rows": [],
+        }
+
+    consumed_rows = [r for r in rows if r.get("would_have_consumed")]
+    pretell_rows = [r for r in rows if r.get("pretell_warning_present")]
+
+    if consumed_rows:
+        mean_conf = sum(
+            float(r.get("confidence_delta") or 0) for r in consumed_rows
+        ) / len(consumed_rows)
+        mean_rm = sum(
+            float(r.get("risk_multiplier_delta") or 0) for r in consumed_rows
+        ) / len(consumed_rows)
+    else:
+        mean_conf = 0.0
+        mean_rm = 0.0
+
+    return {
+        "total": n,
+        "summary": {
+            "mean_confidence_delta": mean_conf,
+            "mean_risk_multiplier_delta": mean_rm,
+            "would_have_consumed_count": len(consumed_rows),
+            "pretell_warning_count": len(pretell_rows),
+        },
+        "rows": rows,
     }
 
 

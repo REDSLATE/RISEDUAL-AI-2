@@ -343,6 +343,38 @@ async def close_due_tier3_paper_trades(db: Any) -> dict:
 
             closed += 1
             reasons[exit_reason] = reasons.get(exit_reason, 0) + 1
+
+            # Patent M (Alpha) — Shelly observation-side ingestion.
+            # Behind ``LEARNING_CORE_INGEST_ENABLED`` (default off).
+            # Best-effort: never raises, never affects the close.
+            #
+            # Tier-3 closes are decoupled — the BUY anchor stays in
+            # ``paper_trades`` while a SELL fill hits separately.
+            # We synthesise a denormalised "trade" doc here so the
+            # adapter sees one row covering entry → exit.
+            try:
+                from services.shelly_ingest_adapter import (
+                    feed_shelly_from_closed_trade,
+                )
+                synthetic = {
+                    "trade_id": (
+                        f"tier3-{user_id}-{symbol}-"
+                        f"{anchor.get('opened_at')}"
+                    ),
+                    "symbol": symbol,
+                    "direction": "LONG",  # Tier-3 closes are exits of LONG accumulation
+                    "entry_price": entry_price,
+                    "exit_price": float(current_price),
+                    "opened_at": anchor.get("opened_at"),
+                    "closed_at": datetime.now(timezone.utc),
+                    # ``pnl_pct`` derives inside the adapter when absent.
+                }
+                await feed_shelly_from_closed_trade(db, synthetic)
+            except Exception as _shelly_exc:
+                logger.debug(
+                    "[tier3-closer] shelly ingest failed (non-critical): %s",
+                    _shelly_exc,
+                )
         except Exception as exc:  # noqa: BLE001
             errors += 1
             logger.exception(

@@ -142,6 +142,18 @@ ALLOWLIST: dict[str, str] = {
         "refuses to mutate the payload for non-trade sides. "
         "Patent M Phase 3."
     ),
+    "services/shelly_ingest_adapter.py": (
+        "Local pre-filter before the canonical engine — only "
+        "{LONG, SHORT, BUY, SELL} eligible for Shelly's regime "
+        "memory bank. The canonical engine still runs its own "
+        "canonical_ai_dir check downstream. Patent M ingest."
+    ),
+    "services/shelly_shadow_logger.py": (
+        "Post-canonicalisation gate — shadow logger reads "
+        "learning_core.direction_canonical and only logs "
+        "hypothetical mutations for {LONG, SHORT}. Patent M "
+        "rollout step 3."
+    ),
     "services/position_reconciler.py": (
         "Broker-side side comparison ('buy'/'long' from order objects, "
         "not AI verdict tokens)."

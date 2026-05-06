@@ -55,6 +55,77 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Alpha Rollout Steps 2 + 3 + Shelly Ingestion (Feb, 2026)
+
+Three big rollout pieces shipped together — all gated behind
+default-OFF env flags so the operator advances each stage at
+their own pace.
+
+**1. Feed Shelly (`services/shelly_ingest_adapter.py`)**
+- Default-OFF behind `LEARNING_CORE_INGEST_ENABLED`.
+- Translates closed paper trades → `RegimeLabeledMemory` and
+  feeds into `add_and_persist_memory`.
+- Hooked into `crypto_closer.py` (after `write_crypto_trade_memory`)
+  and `tier3_paper_closer.py` (after the SELL fill stamp). Both
+  hooks wrapped in try/except — Shelly hiccups can NEVER break
+  a trade close.
+- Reads current macro from `fred_service.CACHE`. If cold/missing,
+  ingestion is skipped (no fabricated data).
+- Pre-filters `HOLD`/`UNKNOWN` so the canonical engine isn't
+  spammed.
+- Macro-at-entry approximation flagged in code: until trade rows
+  stamp macro at entry time, close-time macro is used. Documented
+  for future hardening.
+
+**2. Rollout Step 2 — Read-only corridor annotation**
+- Re-added `attach_learning_core_context(payload, signal)` call
+  in `services.adversarial_core.run_adversarial_decision`.
+- Behind `LEARNING_CORE_SHADOW_ENABLED` (default off).
+- Attaches `learning_core` field to payload for operator audit
+  visibility — Commander/Auditor/Council DO NOT consume it.
+- Hard rule pinned by `test_run_adversarial_decision_corridor_annotation_only`:
+  even with both shadow + consumer flags turned ON, the live
+  payload contains NO `learning_core_consumed` envelope and the
+  `decision`/`risk_multiplier`/`confidence` fields are unchanged.
+- Companion test `test_shadow_disabled_payload_has_no_learning_core_field`
+  confirms the env gate works in the negative.
+
+**3. Rollout Step 3 — Shadow Confidence Delta Logging**
+- New `services/shelly_shadow_logger.py` — computes the
+  hypothetical consumer mutation against a deep-copied payload
+  (so the live payload is provably untouched) and persists one
+  row per evaluation to Mongo collection `shelly_shadow_deltas`.
+- Behind `LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED` (default off).
+- Hard contract: never raises, never mutates payload, never
+  bypasses the canonical caps (±0.10 confidence delta, 0.50 RM
+  floor, RM one-way down only).
+- Wired into `run_adversarial_decision` after the corridor
+  annotation, behind belt-and-braces try/except.
+- New endpoint `GET /api/admin/learning-core/shadow-deltas?limit=N`
+  returns newest-first rows + summary stats (mean confidence
+  delta, mean RM delta, would-have-consumed count, pretell
+  warning count). This is the operator's primary tool for the
+  rollout-step-4 review window.
+
+**Diagnostic endpoint advanced to step 3:**
+- `rollout_step: 3` (label: "shadow delta logging").
+- `wired_into_decision_flow: False` — annotation rides alongside;
+  consumer not wired. Verified by the diagnostic test.
+- 6 env flags now visible (added `LEARNING_CORE_INGEST_ENABLED`
+  and `LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED`).
+- `awaiting_rollout` correctly shows the remaining gates:
+  `review_cycle_status` (step 4), `hold_suppression_counts`
+  (step 5).
+
+**Tests:** `tests/test_shelly_ingest_and_shadow_logger.py` —
+17 cases covering ingest env-flag/macro-availability/direction-
+filtering/PNL-derivation/SHORT-direction handling/never-raises
+defensiveness PLUS shadow-logger env-gate/no-mutation/row-shape/
+Mongo-failure/cap-enforcement/RM-one-way-down. Plus updates to
+`test_learning_core_alpha_diagnostic.py` to encode the new
+corridor-annotation-only invariant. **Full suite 2530/2530
+passing** (was 2513 → +17 new, zero regressions).
+
 ### Shelly Diagnostic Tile + role separation (Feb, 2026)
 
 Operator-recommended next move executed: build the Shelly

@@ -408,6 +408,20 @@ async def close_expired_crypto_trades(
 
             await write_crypto_trade_memory(db, closed_trade)
 
+            # Patent M (Alpha) — Shelly observation-side ingestion.
+            # Behind ``LEARNING_CORE_INGEST_ENABLED`` (default off).
+            # Best-effort: never raises, never affects the close.
+            try:
+                from services.shelly_ingest_adapter import (
+                    feed_shelly_from_closed_trade,
+                )
+                await feed_shelly_from_closed_trade(db, closed_trade)
+            except Exception as _shelly_exc:
+                logger.debug(
+                    "[crypto-closer] shelly ingest failed (non-critical): %s",
+                    _shelly_exc,
+                )
+
             # Adversarial decision outcome attribution. ONLY runs if the
             # trade actually carries a decision_id (i.e. the
             # adversarial layer was active when the fill happened —
