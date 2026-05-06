@@ -147,3 +147,39 @@ class RegimeClusteringEngine:
 
     def get_cluster_report(self) -> Dict[str, Any]:
         return self._engine.report()
+
+    def get_pretell_clusters(self) -> List[Dict[str, Any]]:
+        """Read-only snapshot of pre-tell clusters with full
+        fingerprint + cluster stats. Used by the Shelly diagnostic
+        tile; not consumed by any decision path.
+
+        The canonical engine deliberately limits its ``report()``
+        method to regime clusters; pre-tell views live here in the
+        shim so the diagnostic surface evolves without touching
+        the 596-line tested engine.
+        """
+        out: List[Dict[str, Any]] = []
+        for cluster_id, memories in self._engine.pretell_clusters.items():
+            centroid = self._engine.cluster_centroids.get(cluster_id)
+            stats = self._engine.cluster_stats.get(cluster_id, {})
+            if centroid is None:
+                continue
+            out.append({
+                "cluster_id": cluster_id,
+                "shift_type": stats.get("shift_type", "unknown_shift"),
+                "sample_count": len(memories),
+                "avg_pnl_after_shift": stats.get("avg_pnl_after_shift", 0.0),
+                "avg_days_to_shift": stats.get("avg_days_to_shift", 0.0),
+                "centroid": {
+                    "vix_level": centroid.vix_level,
+                    "yield_curve": centroid.yield_curve,
+                    "dxy_trend": centroid.dxy_trend,
+                    "credit_spreads": centroid.credit_spreads,
+                    "liquidity": centroid.liquidity,
+                    "macro_phase": centroid.macro_phase,
+                },
+            })
+        # Operator wants "most-relevant first" — most samples = most
+        # confident pattern = top of the list.
+        out.sort(key=lambda c: -c["sample_count"])
+        return out

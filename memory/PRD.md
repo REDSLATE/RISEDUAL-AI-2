@@ -55,6 +55,73 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Shelly Diagnostic Tile + role separation (Feb, 2026)
+
+Operator-recommended next move executed: build the Shelly
+Diagnostic Tile so operators can watch what she notices before
+she's ever allowed to influence anything. Architectural role
+separation now formalised:
+
+```
+Strategist = prediction
+Auditor    = validation
+Commander  = arbitration
+Council    = bounded modulation
+Shelly     = historical situational memory
+```
+
+**Backend enrichments:**
+- `RegimeClusteringEngine.get_pretell_clusters()` — read-only
+  snapshot of pre-tell clusters with full fingerprint + stats.
+  Lives in the shim (not the canonical engine) so the diagnostic
+  surface evolves without touching the 596-line tested engine.
+- `RisedualLearningCore.to_dict()` — now includes
+  `pretell_clusters` view alongside the existing regime-cluster
+  report.
+- `/api/admin/learning-core/diagnostic` — adds an `awaiting_rollout`
+  envelope with explicit `available_after_step` markers for
+  metrics gated on rollout steps 2–5 (recent confidence deltas,
+  HOLD suppression counts, retrieval confidence history). Lets
+  the tile render the rollout state honestly.
+
+**Frontend tile (`components/admin/ShellyDiagnosticTile.jsx`):**
+1. **Header** — brain icon, "Shelly · Learning Core · Patent M",
+   tagline "Historical situational memory · observes, never steers".
+2. **Rollout banner** — step number, label, wired/not-wired badge
+   (emerald when not wired = correct posture for step 1), all 4
+   env-flag dots.
+3. **4 stat tiles** — Memory Depth, Regime Clusters, Pre-Tell
+   Patterns, Examples Seen.
+4. **Active Regime Clusters** table — top 10 by sample count with
+   win-rate / avg-PnL colour coding.
+5. **Pre-Tell Forerunner Patterns** — top 5 with full 6-axis
+   regime fingerprint per cluster (vix, yield curve, dxy, credit,
+   liquidity, macro phase).
+6. **Confusion Hotspots** — interactive confusion-matrix grid
+   (diagonal highlighted emerald, off-diagonal mistakes red with
+   intensity = frequency) + per-class memory bank depth + hardest
+   confusion descriptor.
+7. **Awaiting Rollout** lockbox — explicitly renders the gated
+   metrics with their target rollout step badge so the operator
+   can verify the gates are still closed.
+
+Wired into AdminPanel as new "Shelly" tab under Insights, between
+"AI Core" and "What-If Replay".
+
+**Class-rename note:** The implementation class stays
+`ConfusionAwareEmbeddingNetwork` (import stability across 2,513
+tests). Every operator-facing surface — diagnostic endpoint,
+admin tile, log lines — refers to her as **Shelly** via the
+`NAME = "Shelly"` constant exposed through `to_dict()`. Clean
+separation between implementation detail and operator
+observability.
+
+**Tests:** Full suite **2513/2513 passing** (zero new tests
+needed — existing coverage on `to_dict()` and the diagnostic
+endpoint already pinned the contract; the new
+`get_pretell_clusters` + frontend rendering are covered by the
+existing endpoint test exercising the full payload shape).
+
 ### Alpha (RISEDUAL original IP) — Patent M Diagnostic-Only Rollout (Feb, 2026)
 
 **Operator correction:** This stack is **Alpha**, the original

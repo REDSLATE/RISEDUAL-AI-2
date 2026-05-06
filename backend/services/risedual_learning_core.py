@@ -284,6 +284,7 @@ class RisedualLearningCore:
                 "hardest_confusion": cacl._hardest_confusion(),
             },
             "regime_memory": self.regime_memory.get_cluster_report(),
+            "pretell_clusters": self.regime_memory.get_pretell_clusters(),
             "guardrails": {
                 "max_confidence_delta": MAX_CONFIDENCE_DELTA,
                 "feature_dim": int(cacl.input_dim),

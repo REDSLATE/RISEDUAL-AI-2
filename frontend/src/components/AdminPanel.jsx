@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -30,6 +30,7 @@ import WhatIfReplayPanel from './admin/WhatIfReplayPanel';
 import NewsShockBurnIn from './admin/NewsShockBurnIn';
 import TerminalTopActions from './admin/TerminalTopActions';
 import AdminRoutesPanel from './admin/AdminRoutesPanel';
+import ShellyDiagnosticTile from './admin/ShellyDiagnosticTile';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -73,6 +74,7 @@ const TAB_GROUPS = [
       { id: 'shadow',        label: 'Shadow',      icon: Eye },
       { id: 'autopsy',       label: 'Toxic Autopsy', icon: AlertTriangle },
       { id: 'engines',       label: 'AI Core', icon: Activity },
+      { id: 'shelly',        label: 'Shelly',  icon: Brain },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
       { id: 'proof-chain',   label: 'Proof Chain', icon: ShieldCheck },
@@ -112,6 +114,7 @@ const TAB_SUBTITLES = {
   shadow:         () => 'Research shadow — disagreement-conditional accuracy · cost budget',
   autopsy:        () => 'Toxic spike autopsy — WHY high-confidence predictions failed',
   engines:        () => 'AI Core engine registry — live + candidate side-by-side · bucket-lift comparison',
+  shelly:         () => 'Shelly · Patent M Learning Core — situational memory · observation only (rollout step 1/5)',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   'proof-chain':  () => 'Patent J — immutable hash-linked decision audit trail',
@@ -142,6 +145,7 @@ const TAB_COMPONENTS = {
   shadow:         () => <ShadowAccuracyPanel />,
   autopsy:        () => <ToxicSpikeAutopsyPanel />,
   engines:        () => <EngineRegistryPanel />,
+  shelly:         () => <ShellyDiagnosticTile />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
   'proof-chain':  () => <ProofChainExplorer />,

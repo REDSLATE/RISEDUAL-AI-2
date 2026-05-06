@@ -131,6 +131,27 @@ async def learning_core_diagnostic(request: Request) -> dict[str, Any]:
         "wired_into_decision_flow": False,
         "env_flags": env_flags,
         "core": core_state,
+        # Operator-facing metrics that depend on rollout steps 2/3
+        # being approved and wired. Surfaced here as explicit
+        # "awaiting" envelopes so the Shelly tile can render the
+        # rollout state honestly without pretending to have data.
+        "awaiting_rollout": {
+            "recent_confidence_deltas": {
+                "available_after_step": 3,
+                "label": "shadow confidence delta logging",
+                "samples": [],
+            },
+            "hold_suppression_counts": {
+                "available_after_step": 5,
+                "label": "gated confidence influence",
+                "count": 0,
+            },
+            "retrieval_confidence_history": {
+                "available_after_step": 2,
+                "label": "read-only corridor annotation",
+                "samples": [],
+            },
+        },
     }
 
 
