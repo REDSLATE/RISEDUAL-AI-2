@@ -124,6 +124,12 @@ async def learning_core_diagnostic(request: Request) -> dict[str, Any]:
         "LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED": _bool_env(
             "LEARNING_CORE_SHADOW_DELTA_LOG_ENABLED",
         ),
+        # Canonical regime-memory engine gates (predate Patent M).
+        # Surfaced here so the operator can verify the underlying
+        # engine is enabled — a "false" here turns the entire
+        # Patent M flag stack into a silent no-op.
+        "REGIME_MEMORY_ENABLED": _bool_env("REGIME_MEMORY_ENABLED"),
+        "REGIME_MEMORY_MODE": os.getenv("REGIME_MEMORY_MODE", "shadow"),
     }
 
     return {

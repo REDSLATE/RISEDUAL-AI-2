@@ -55,6 +55,62 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Lever 1 — Historical Backfill + Canonical Engine Enabled (Feb, 2026)
+
+Shelly went from 0 memories to **1,279 resolved memories** in
+under a minute. Major operator-approved milestones in this turn.
+
+**1. Backfill endpoint shipped**
+- `POST /api/admin/learning-core/backfill?since_days=N&dry_run=true|false`
+- Reuses live ingest adapter (`paper_trade_to_memory`).
+- Walks both `paper_trades` and `crypto_paper_trades`.
+- FIFO-pairs BUY/SELL fills for paper_trades (multi-buy
+  accumulators correctly produce multiple memories).
+- Crypto trades pass through unchanged (already denormalised).
+- Chronological merge-sort across sources.
+- Dry-run defaults to true; explicit `dry_run=false` required.
+- Aggregate report: scanned/eligible/skipped/by_source/by_label/
+  by_direction/toxic_count/approximate_regime_clusters/
+  ingest_failures/canonical_engine_rejected.
+
+**2. `_resolve_current_macro` upgraded with Mongo fallback**
+- Live FRED cache → `fred_snapshots` Mongo collection → `None`.
+- Handles both indicator shapes (list-of-dicts + dict-keyed-by-id).
+- Means backfill works in environments without a FRED API key
+  AND survives FRED API outages in production.
+
+**3. Canonical engine enabled and labeled**
+- Flipped `REGIME_MEMORY_ENABLED=false → true` (was preventing
+  every Patent M flag from doing anything).
+- `REGIME_MEMORY_MODE=shadow` retained — observation-only,
+  cannot influence sizing/risk.
+- Both flags surfaced in `/api/admin/learning-core/diagnostic.env_flags`
+  and on the Shelly tile (cyan-coloured engine-state callout
+  line + cyan flag dots).
+
+**4. Silent-success bug fixed in backfill orchestrator**
+- Was reporting `eligible: N` even when canonical engine refused.
+- Now reports `canonical_engine_rejected: count` so a misconfigured
+  engine gate is visible in the report.
+
+**5. Live state after write-mode backfill (preview):**
+- Memory depth: 1,279
+- Regime clusters: 1 (single-regime expected from current-macro)
+- Top cluster: 51.6% win rate, +0.31% avg PnL
+- By source: paper_trade 95 + crypto_paper_trade 1,184
+- By label: 496 win / 366 loss / 417 breakeven
+- Toxic count: 29 (2.3% — healthy)
+- Wired into decisions: False (consumer flag still OFF)
+
+**6. Operational caveat (regime clustering)**:
+All 1,279 trades got the same current-macro fingerprint, so the
+regime-cluster signal is degenerate. Win-rate and PnL signals
+are real; cluster *diversity* is not. Future re-backfill needed
+once historical macro lookup is wired.
+
+**Tests:** 14 new in `test_shelly_backfill.py`. **Full suite
+2544/2544 passing**.
+
 ### Future-Watch — FINRA PDT Rule Change (effective ~March 2026)
 
 Operator-flagged future-state context. The FINRA "$25K Pattern

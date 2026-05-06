@@ -152,21 +152,56 @@ const ShellyDiagnosticTile = () => {
             {ROLLOUT_STEP_DESCRIPTIONS[data.rollout_step] || '—'}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-            {Object.entries(data.env_flags || {}).map(([k, v]) => (
-              <div
-                key={k}
-                className="flex items-center gap-1.5 text-[10px]"
-                data-testid={`shelly-env-${k}`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  v ? 'bg-emerald-400' : 'bg-slate-600'
-                }`} />
-                <span className="text-slate-400 font-mono truncate">
-                  {k.replace('LEARNING_CORE_', '').replace('_', ' ').toLowerCase()}
-                </span>
-              </div>
-            ))}
+            {Object.entries(data.env_flags || {}).map(([k, v]) => {
+              const isString = typeof v === 'string';
+              const isCanonical = k.startsWith('REGIME_MEMORY_');
+              const dotClass = isString
+                ? 'bg-cyan-400'
+                : (v ? 'bg-emerald-400' : 'bg-slate-600');
+              const label = isCanonical
+                ? k.replace('REGIME_MEMORY_', 'engine.').toLowerCase()
+                : k.replace('LEARNING_CORE_', '').replace('_', ' ').toLowerCase();
+              const display = isString ? `${label}=${v}` : label;
+              return (
+                <div
+                  key={k}
+                  className="flex items-center gap-1.5 text-[10px]"
+                  data-testid={`shelly-env-${k}`}
+                  title={k}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
+                  <span className={`font-mono truncate ${
+                    isCanonical ? 'text-cyan-300' : 'text-slate-400'
+                  }`}>
+                    {display}
+                  </span>
+                </div>
+              );
+            })}
           </div>
+          {/* Canonical engine state callout — most operationally
+              important flag, labelled prominently. */}
+          {data.env_flags?.REGIME_MEMORY_ENABLED !== undefined && (
+            <p className="text-[10px] text-slate-500 mt-3 pt-3 border-t border-slate-700/40 leading-relaxed" data-testid="shelly-canonical-engine-state">
+              <span className="font-semibold text-cyan-300">Canonical regime-memory engine:</span>{' '}
+              {data.env_flags.REGIME_MEMORY_ENABLED ? (
+                <>
+                  <span className="text-emerald-300">ENABLED</span> · mode={' '}
+                  <span className="font-mono text-slate-300">
+                    {data.env_flags.REGIME_MEMORY_MODE}
+                  </span>
+                  {' '} — Shelly stores memories;{' '}
+                  {data.env_flags.REGIME_MEMORY_MODE === 'shadow'
+                    ? 'shadow mode is observation-only and cannot influence sizing/risk.'
+                    : 'mode is permissive — verify operator intent.'}
+                </>
+              ) : (
+                <span className="text-rose-300">
+                  DISABLED — every Patent M flag above is a silent no-op until this is on.
+                </span>
+              )}
+            </p>
+          )}
         </Card>
       )}
 
