@@ -593,7 +593,25 @@ async def run_adversarial_decision(
 
     resolution = resolve_adversarial(bull, bear)
 
-    payload = {
+    # Patent M (Alpha) — DELIBERATELY NOT WIRED INTO THIS FLOW.
+    #
+    # Per the operator's Alpha IP rollout protocol (Feb 2026):
+    #   1. Diagnostic endpoint                         ← shipped
+    #   2. Read-only corridor annotation               ← gated on review
+    #   3. Shadow confidence delta logging             ← gated on review
+    #   4. Review 50–100 cycles                        ← human checkpoint
+    #   5. Gated confidence influence                  ← gated on review
+    #
+    # The learning core's modules (learning_core_shadow_hook,
+    # learning_core_consumer) exist but MUST NOT be called from the
+    # adversarial decision flow until each rollout step is
+    # explicitly approved. Patent M is the IP *learning* layer, not
+    # an execution layer. Direction/size/veto/HOLD-promotion stay
+    # exclusively with Strategist/Auditor/Commander/Council.
+    #
+    # Operator-facing surface today: ``/api/admin/learning-core/diagnostic``
+    # (read-only ``to_dict()`` dump of singleton state).
+    return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "symbol": signal.get("symbol"),
         "regime": signal.get("regime"),
@@ -602,37 +620,3 @@ async def run_adversarial_decision(
         "bear_case": asdict(bear),
         **resolution,
     }
-
-    # Patent M Phase 2 — shadow-mode side-channel attachment.
-    # Never raises, never mutates the decision; behind env flag
-    # ``LEARNING_CORE_SHADOW_ENABLED`` (default off). See
-    # ``services.learning_core_shadow_hook`` for the contract.
-    try:
-        from services.learning_core_shadow_hook import (
-            attach_learning_core_context,
-        )
-        attach_learning_core_context(payload, signal)
-    except Exception:
-        # The hook itself catches everything internally; this outer
-        # guard is paranoid belt-and-braces against an import-time
-        # failure breaking the live decision.
-        pass
-
-    # Patent M Phase 3 — bounded consumption of the shadow field.
-    # Behind env flag ``LEARNING_CORE_CONSUME_ENABLED`` (default
-    # off). Adjusts ``confidence`` and dampens ``risk_multiplier``
-    # only — never changes ``decision`` (direction stays
-    # Commander's authority), never increases risk, never promotes
-    # HOLD/UNKNOWN. See ``services.learning_core_consumer`` for
-    # the full invariant set.
-    try:
-        from services.learning_core_consumer import (
-            consume_learning_core_into_payload,
-        )
-        consume_learning_core_into_payload(payload)
-    except Exception:
-        # Same belt-and-braces — the consumer is internally
-        # exception-safe but a busted import must never surface.
-        pass
-
-    return payload

@@ -240,6 +240,56 @@ class RisedualLearningCore:
         )
         return wins / len(memories)
 
+    # ─── read-only diagnostic dump ──────────────────────────────
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a JSON-serialisable snapshot of internal state.
+
+        Read-only by design — caller cannot mutate the core through
+        the returned payload. Pure values (Python ints/floats/lists/
+        dicts) only; no NumPy arrays, no class instances.
+
+        Used by the admin diagnostic endpoint
+        (``/api/admin/learning-core/diagnostic``) so an operator can
+        audit the learning core without granting it any execution
+        authority. Does NOT trigger evaluation, does NOT mutate
+        prototypes, does NOT touch Mongo.
+        """
+        cacl = self.embedding_core
+        cm = cacl.confusion_matrix
+        # Total predictions per class (row sum) and per predicted
+        # class (col sum) — the two views operators care about.
+        try:
+            row_sums = cm.sum(axis=1).tolist()
+            col_sums = cm.sum(axis=0).tolist()
+        except Exception:
+            # Defensive — confusion_matrix is normally a NumPy
+            # ndarray, but a future replacement might not be.
+            row_sums = []
+            col_sums = []
+
+        return {
+            "cacl": {
+                "input_dim": int(cacl.input_dim),
+                "embedding_dim": int(cacl.embedding_dim),
+                "n_prototypes": int(cacl.n_prototypes),
+                "proto_lr": float(cacl.proto_lr),
+                "hard_neg_push": float(cacl.hard_neg_push),
+                "temperature": float(cacl.temperature),
+                "n_seen_per_class": [int(x) for x in cacl._n_seen.tolist()],
+                "confusion_matrix": cm.tolist(),
+                "row_sums": row_sums,
+                "col_sums": col_sums,
+                "hardest_confusion": cacl._hardest_confusion(),
+            },
+            "regime_memory": self.regime_memory.get_cluster_report(),
+            "guardrails": {
+                "max_confidence_delta": MAX_CONFIDENCE_DELTA,
+                "feature_dim": int(cacl.input_dim),
+                "n_classes": int(cacl.n_prototypes),
+            },
+        }
+
     @staticmethod
     def _adjust_confidence(
         base_confidence: float,

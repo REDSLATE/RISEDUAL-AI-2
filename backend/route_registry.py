@@ -99,6 +99,7 @@ from routes.admin_autopsy_promotion import router as admin_autopsy_promotion_rou
 from routes.admin_realtime_infra import router as admin_realtime_infra_router, set_db as set_admin_realtime_infra_db
 from routes.admin_notification_lifecycle import router as admin_notification_lifecycle_router, set_db as set_admin_notification_lifecycle_db
 from routes.admin_introspection import router as admin_introspection_router, set_db as set_admin_introspection_db
+from routes.admin_learning_core import router as admin_learning_core_router, set_db as set_admin_learning_core_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -186,6 +187,7 @@ ALL_ROUTERS = [
     admin_realtime_infra_router,
     admin_notification_lifecycle_router,
     admin_introspection_router,
+    admin_learning_core_router,
     nl_trading_router,
 ]
 
@@ -261,6 +263,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_realtime_infra_db,
         set_admin_notification_lifecycle_db,
         set_admin_introspection_db,
+        set_admin_learning_core_db,
         set_nl_trading_db,
     ]
     # Module-level db handle for the per-patent policy store so the

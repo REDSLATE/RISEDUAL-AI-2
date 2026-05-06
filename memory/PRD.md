@@ -55,6 +55,71 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Alpha (RISEDUAL original IP) — Patent M Diagnostic-Only Rollout (Feb, 2026)
+
+**Operator correction:** This stack is **Alpha**, the original
+RISEDUAL IP core. Patent M (Regime-Aware Confusion Learning Core)
+is therefore an **IP learning layer, not an execution layer** — it
+must enter through observation and audit visibility first.
+
+**Approved scope (rollout step 1 of 5):**
+1. **Diagnostic endpoint**                      ← shipped today
+2. Read-only corridor annotation                ← gated on review
+3. Shadow confidence delta logging              ← gated on review
+4. Review 50–100 cycles                         ← human checkpoint
+5. Gated confidence influence                   ← gated on review
+
+**Hard Alpha rules (verified in tests):**
+* Cannot change action / direction / size.
+* Cannot promote `HOLD` / `UNKNOWN`.
+* Cannot bypass Commander or Council.
+* Cannot write execution state.
+* Cannot place orders.
+* No Strategist/Auditor/Council/execution wire-up yet.
+
+**Reverted from previous turn:**
+* Phase-2 `attach_learning_core_context` call removed from
+  `services/adversarial_core.run_adversarial_decision`.
+* Phase-3 `consume_learning_core_into_payload` call removed from
+  the same function.
+* The supporting modules (`learning_core_shadow_hook`,
+  `learning_core_consumer`, `learning_core_service`,
+  `learning_core_persistence`) remain in place — they are the
+  implementation reservoir for rollout steps 2–5, but no caller
+  in the live decision flow imports them. A regression test
+  (`test_run_adversarial_decision_does_not_touch_learning_core`)
+  pins this invariant: even with EVERY learning-core env flag
+  enabled, the adversarial payload contains zero
+  ``learning_core*`` keys.
+
+**New: `routes/admin_learning_core.py`**
+* `GET /api/admin/learning-core/diagnostic` — owner-gated, read-
+  only. Returns `RisedualLearningCore.to_dict()` (pure values,
+  JSON-safe, no NumPy arrays) plus rollout metadata
+  (`rollout_step: 1`, `wired_into_decision_flow: False`,
+  env-flag states).
+* The `rollout_step` field is **hardcoded** in the source — bumping
+  it requires a code review that also wires the next layer. There
+  is no runtime toggle; that would defeat the gate's purpose.
+  Pinned by `test_rollout_step_is_hardcoded_to_one`.
+
+**New: `RisedualLearningCore.to_dict()`**
+* Pure read-only state dump — calling it does not mutate
+  prototypes, the confusion matrix, or memory clusters
+  (`test_to_dict_does_not_mutate_state`).
+* Exposes CACL dimensions/hyperparams, confusion matrix with row/
+  col sums and hardest-confusion descriptor, regime cluster
+  report, guardrail constants.
+
+**Tests:** `tests/test_learning_core_alpha_diagnostic.py` —
+7 cases covering JSON purity, immutability, rollout hardcoding,
+env-flag visibility, and the **Alpha hard rule regression test**
+that prevents an accidental future re-wire from silently
+activating Patent M before its rollout step is approved.
+**Full suite 2513/2513 passing** (was 2506 → +7 new, zero
+regressions). Backend boots clean; diagnostic endpoint live and
+returns expected payload.
+
 ### Patent M Phase 3 — consumer + persist/rehydrate plumbing (Feb, 2026)
 
 Phase 2 fed the data; Phase 3 actually **consumes** it (behind a
