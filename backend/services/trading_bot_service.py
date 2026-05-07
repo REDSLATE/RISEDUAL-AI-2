@@ -355,6 +355,62 @@ async def execute_signal(
     if skip is not None:
         return skip
 
+    # ── Tier 1: Fast Veto Shadow Layer ──
+    # Sub-millisecond classical-ML veto that observes every signal
+    # after the hard kill-switch but before Council/Risk-Modulator.
+    # In shadow mode (default) it logs hypothetical vetoes only; in
+    # enforce mode (operator-gated env flag) it can short-circuit
+    # the Council path with NO_TRADE. Veto-only by construction —
+    # ``FAST_VETO_CAN_APPROVE`` is hard-coded False.
+    fv_result = None
+    try:
+        from services.fast_veto_layer import (
+            FAST_VETO_SHADOW_ENABLED,
+            evaluate_fast_veto,
+            log_fast_veto_delta,
+        )
+        market_state_for_veto = {
+            "spread_bps": (market_data or {}).get("spread_bps"),
+            "volatility_score": (market_data or {}).get("volatility_score")
+                or (signal or {}).get("volatility_score"),
+            "drawdown_pct": (
+                abs(min(0.0, equity_curve[-1] - max(equity_curve)) / max(equity_curve) * 100.0)
+                if equity_curve and max(equity_curve) > 0 else 0.0
+            ),
+            "liquidity_score": (market_data or {}).get("liquidity_score", 1.0),
+        }
+        fv_result = evaluate_fast_veto(
+            signal=signal,
+            market_state=market_state_for_veto,
+            models=None,  # add trained sklearn models post-shadow validation
+        )
+        if fv_result.enforce_veto:
+            # Shadow logging on the enforce path too — proves promotion.
+            db_for_log = _resolve_db_for_shadow()
+            if db_for_log is not None and FAST_VETO_SHADOW_ENABLED:
+                import asyncio as _asyncio
+                _asyncio.create_task(log_fast_veto_delta(
+                    db_for_log,
+                    signal=signal,
+                    market_state=market_state_for_veto,
+                    result=fv_result,
+                    council_result={"action": "NO_TRADE", "source": "fast_veto"},
+                ))
+            return {
+                "skipped": True,
+                "reason": fv_result.reason,
+                "fast_veto": {
+                    "would_veto": fv_result.would_veto,
+                    "enforce_veto": fv_result.enforce_veto,
+                    "reason": fv_result.reason,
+                    "latency_us": fv_result.latency_us,
+                },
+            }
+    except Exception as _fv_exc:  # noqa: BLE001
+        # Fast Veto must never crash the executor. Log and proceed.
+        logger.warning("[fast-veto] evaluation failed (shadow-safe): %s", _fv_exc)
+        fv_result = None
+
     base_size = _extract_trade_size(config)
     if base_size is None or base_size <= 0:
         return {"skipped": True, "reason": "invalid trade_size"}
@@ -406,6 +462,34 @@ async def execute_signal(
     )
 
     _record_kill_switch_outcome(order)
+
+    # Fast Veto shadow log — fire-and-forget so we record what the
+    # veto layer WOULD have done versus what the executor actually
+    # did. Drives the promotion-evidence collection in
+    # ``fast_veto_shadow_deltas``.
+    if fv_result is not None:
+        try:
+            from services.fast_veto_layer import (
+                FAST_VETO_SHADOW_ENABLED,
+                log_fast_veto_delta,
+            )
+            db_for_log = _resolve_db_for_shadow()
+            if db_for_log is not None and FAST_VETO_SHADOW_ENABLED:
+                import asyncio as _asyncio
+                _asyncio.create_task(log_fast_veto_delta(
+                    db_for_log,
+                    signal=signal,
+                    market_state=market_state_for_veto,
+                    result=fv_result,
+                    council_result={
+                        "action": side.upper(),
+                        "confidence": signal.get("confidence"),
+                        "qty": qty,
+                        "filled": isinstance(order, dict) and order.get("error") is None,
+                    },
+                ))
+        except Exception as _fv_log_exc:  # noqa: BLE001
+            logger.warning("[fast-veto] shadow log dispatch failed: %s", _fv_log_exc)
 
     return {
         "order": order,

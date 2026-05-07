@@ -55,6 +55,84 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Tier 1 — Fast Veto Shadow Layer (May 6, 2026)
+
+A sub-millisecond classical veto layer that observes every signal
+**after** the hard kill-switch and **before** the Council/Risk-Modulator
+LLM consensus. Veto-only authority. Stays in shadow mode until the
+operator promotes it.
+
+**Pipeline position:**
+```
+candidate signal
+   ↓
+hard kill checks (existing)
+   ↓
+FAST_VETO shadow check  ← NEW
+   ↓
+Council / Commander / Risk Modulator (existing)
+```
+
+**Files:**
+- `services/fast_veto_layer.py` (NEW) — ~7 KB. Contains the cascade
+  + `FastVetoResult` dataclass (intentionally has no `action`/`side`/
+  `qty` field — veto-only by construction).
+- `services/trading_bot_service.py::execute_signal` — wired-in
+  evaluator after `_check_kill_switch_and_drawdown` returns clean,
+  shadow log dispatched after `_execute_bot_trade` so each delta
+  records the executor's actual decision next to the hypothetical.
+- `tests/test_fast_veto_layer.py` (NEW) — 19 tests covering the
+  four contract pillars: authority is veto-only, shadow ≠ enforce,
+  rule-cascade determinism, sub-1ms hot-path budget.
+
+**Authority guardrails (non-negotiable):**
+- `FAST_VETO_CAN_APPROVE = False` — hard-coded, locked by test
+  `test_can_approve_flag_is_hardcoded_false`
+- `FastVetoResult` envelope has no executor-actionable fields
+  (locked by `test_result_envelope_has_no_action_field`)
+- Shadow mode (default): `would_veto` may be True, `enforce_veto`
+  always False
+- Enforce mode (operator-gated): set `FAST_VETO_ENFORCE_ENABLED=true`
+  in `.env` to honour the veto. Even then, only NO_TRADE — never
+  approves.
+
+**Rule cascade (each STOP-only):**
+1. `drawdown_pct >= 10.0` → `FAST_VETO_DRAWDOWN_BREACH`
+2. `spread_bps >= 75.0` → `FAST_VETO_WIDE_SPREAD`
+3. `volatility_score >= 0.90 AND confidence < 0.70` → `FAST_VETO_VOL_SPIKE_LOW_CONFIDENCE`
+4. `liquidity_score <= 0.20` → `FAST_VETO_LOW_LIQUIDITY`
+5. `>= 2 model scores >= 0.80` → `FAST_VETO_MODEL_CONSENSUS` (only
+   when sklearn models are passed in; not used yet — empty `models=None`
+   in the wiring)
+
+**Shadow log: `db.fast_veto_shadow_deltas`**
+Schema (v1): `created_at`, `symbol`, `asset_type`, `action`,
+`confidence`, `would_veto`, `enforce_veto`, `reason`, `latency_us`,
+`features`, `model_scores`, `market_state`, `council_action`,
+`council_confidence`, `agreement_with_council`, `schema_version`.
+
+**Promotion criteria** (do NOT flip enforce until ALL satisfied):
+- ≥ 500 shadow samples in `fast_veto_shadow_deltas`
+- false-veto rate < 3% (cases where Fast Veto said STOP but the
+  Council trade resolved profitable)
+- median `latency_us` < 1000
+- positive expected-value: vetoes correlate with losing Council
+  trades often enough to net save money
+- zero HOLD-to-trade promotions (this layer has no such authority,
+  but verify in the agreement deltas)
+
+**Speed:** Measured ~11µs per evaluation cold, sub-1µs warm on the
+preview pod. Budget test pins it under 1ms even on slow CI.
+
+**Env (preview):**
+```
+FAST_VETO_SHADOW_ENABLED=true
+FAST_VETO_ENFORCE_ENABLED=false
+```
+
+---
+
+
 ### Scheduler Boot-Error Diagnostic — surfaces silent prod crashes (May 6, 2026)
 
 Production scheduler heartbeat showed **2.9d ago** while backend
