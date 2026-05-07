@@ -223,7 +223,7 @@ def _collect_in_process_scheduler_state() -> dict[str, Any]:
     instead of chasing read-side caching.
     """
     try:
-        from routes.self_test import _scheduler
+        from routes.self_test import _scheduler, _scheduler_boot_error
     except Exception as exc:  # noqa: BLE001
         return {
             "running": False,
@@ -232,7 +232,7 @@ def _collect_in_process_scheduler_state() -> dict[str, Any]:
         }
 
     if _scheduler is None:
-        return {
+        envelope: dict[str, Any] = {
             "running": False,
             "reason": (
                 "scheduler handle is None — _start_schedulers() "
@@ -240,6 +240,13 @@ def _collect_in_process_scheduler_state() -> dict[str, Any]:
             ),
             "jobs_count": 0,
         }
+        # If we captured a boot exception, surface the actual cause.
+        # Without this the operator only sees "handle is None" and
+        # has to grep pod logs to find the real error (production
+        # incident 2026-05-06).
+        if _scheduler_boot_error:
+            envelope["boot_error"] = _scheduler_boot_error
+        return envelope
 
     # ``_scheduler.running`` is the canonical boolean APScheduler
     # exposes for "scheduler.start() succeeded".

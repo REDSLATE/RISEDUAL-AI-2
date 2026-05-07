@@ -255,6 +255,36 @@ const OpsSnapshotPanel = () => {
                 </span>
               </div>
             )}
+            {/* Boot-error block — surfaces the actual exception that
+                killed _start_schedulers() on this pod's most recent
+                boot. Replaces "go grep pod logs" with one glance. */}
+            {snap.scheduler?.in_process?.boot_error && (
+              <div
+                className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2.5 text-[11px]"
+                data-testid="ops-scheduler-boot-error"
+              >
+                <div className="font-mono text-rose-200">
+                  Boot failure ({snap.scheduler.in_process.boot_error.phase}) ·{' '}
+                  <span data-testid="ops-scheduler-boot-error-type">
+                    {snap.scheduler.in_process.boot_error.exc_type}
+                  </span>
+                </div>
+                <div
+                  className="mt-1 break-words font-mono text-rose-100/90"
+                  data-testid="ops-scheduler-boot-error-msg"
+                >
+                  {snap.scheduler.in_process.boot_error.exc_message}
+                </div>
+                {snap.scheduler.in_process.boot_error.traceback_tail && (
+                  <pre
+                    className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-[10px] leading-snug text-rose-100/70"
+                    data-testid="ops-scheduler-boot-error-trace"
+                  >
+                    {snap.scheduler.in_process.boot_error.traceback_tail}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         </Section>
 

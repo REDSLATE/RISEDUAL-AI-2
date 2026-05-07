@@ -17,6 +17,15 @@ router = APIRouter(prefix="/api/admin", tags=["self-test"])
 
 db = None
 _scheduler = None
+# Captured exception trace from the most recent ``_start_schedulers``
+# attempt. ``None`` means "no boot failure recorded". Populated by
+# ``set_scheduler_boot_error`` from ``server.py`` when scheduler
+# startup raises. Surfaced into the Health panel via
+# ``ops_snapshot._collect_in_process_scheduler_state`` so the
+# operator can read the actual failure cause without grepping pod
+# logs. See production incident 2026-05-06 (handle stayed ``None``
+# across redeploys; root cause invisible from the UI).
+_scheduler_boot_error: dict | None = None
 
 
 def set_db(database) -> None:
@@ -26,8 +35,33 @@ def set_db(database) -> None:
 
 def set_scheduler(scheduler) -> None:
     """Called from server.py once the APScheduler instance is started."""
-    global _scheduler
+    global _scheduler, _scheduler_boot_error
     _scheduler = scheduler
+    # A successful start clears any previously recorded boot error so
+    # the Health panel doesn't show stale failure context after a
+    # subsequent successful redeploy.
+    _scheduler_boot_error = None
+
+
+def set_scheduler_boot_error(exc: BaseException, *, phase: str) -> None:
+    """Capture (do NOT raise) the exception from a failed scheduler
+    boot so the Health panel can render it. ``phase`` is a short tag
+    (``startup_event`` or ``_start_schedulers``) telling the operator
+    which try/except layer caught the error.
+    """
+    global _scheduler_boot_error
+    import traceback
+    try:
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        tb_text = "".join(tb)[-1200:]  # tail — root cause lives at the bottom
+    except Exception:  # noqa: BLE001
+        tb_text = ""
+    _scheduler_boot_error = {
+        "phase": phase,
+        "exc_type": type(exc).__name__,
+        "exc_message": str(exc)[:500],
+        "traceback_tail": tb_text,
+    }
 
 
 async def _require_admin(request: Request):

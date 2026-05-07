@@ -55,6 +55,47 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Scheduler Boot-Error Diagnostic — surfaces silent prod crashes (May 6, 2026)
+
+Production scheduler heartbeat showed **2.9d ago** while backend
+uptime was 33m — meaning `_scheduler` stayed `None` after
+`_start_schedulers()` raised silently. The new in-process probe
+correctly reported `NOT RUNNING — handle is None`, but couldn't
+say *why*.
+
+Root cause was invisible because both swallow layers
+(`startup_event` outer, `_start_schedulers` inner) only logged a
+`logger.warning` — no surface for the operator.
+
+**Fix shipped:**
+1. `routes/self_test.py` — new module-level `_scheduler_boot_error`
+   + `set_scheduler_boot_error(exc, phase)` setter. Successful
+   `set_scheduler` now clears any stale recorded error.
+2. `server.py` — both swallow layers (lines ~400, ~1196) call the
+   setter with the captured exception + traceback tail (last 1.2 KB).
+3. `services/ops_snapshot.py::_collect_in_process_scheduler_state` —
+   when `_scheduler is None` and a boot error was recorded, the
+   envelope includes `boot_error: {phase, exc_type, exc_message,
+   traceback_tail}`.
+4. `OpsSnapshotPanel.jsx` — renders a rose-tinted card under the
+   Scheduler row with the exception type, message, and a scrollable
+   `<pre>` trace. Test IDs: `ops-scheduler-boot-error`,
+   `-type`, `-msg`, `-trace`.
+
+**Tests (23/23 green):**
+- `tests/test_ops_snapshot_in_process_state.py` (5 new) — locks all
+  failure branches: handle-None-no-error, handle-None-with-error,
+  set_scheduler clears stale error, healthy telemetry, get_jobs raise.
+- `tests/slow/test_ops_snapshot_api.py::test_ops_snapshot_scheduler_in_process_block`
+  (1 new) — locks the API contract for the `in_process` block.
+
+**Next operator action:** redeploy production, hit the Health panel,
+read the actual boot exception. The triage path goes from
+"grep pod logs" to "look at the screen."
+
+---
+
+
 ### Lever 1 — Historical Backfill + Canonical Engine Enabled (Feb, 2026)
 
 Shelly went from 0 memories to **1,279 resolved memories** in

@@ -402,6 +402,15 @@ async def startup_event():
         logger.info("Schedulers started")
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-critical): {e}")
+        # Surface this to the Health panel so the operator can read
+        # the actual failure cause without grepping pod logs. Boot
+        # incident 2026-05-06: handle stayed None across redeploys
+        # and the only evidence was this swallowed warning.
+        try:
+            from routes.self_test import set_scheduler_boot_error
+            set_scheduler_boot_error(e, phase="startup_event")
+        except Exception:  # noqa: BLE001
+            pass
 
     # AI Promotion History — tamper-evident audit trail. Detect any
     # phase change that happened between the previous boot (env flag
@@ -1195,6 +1204,14 @@ async def _start_schedulers():
         logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), tier3 paper closer (15m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
+        # Pump the traceback to the Health panel — the outer
+        # startup_event handler only catches if THIS handler
+        # re-raises, so we need to record it ourselves here too.
+        try:
+            from routes.self_test import set_scheduler_boot_error
+            set_scheduler_boot_error(e, phase="_start_schedulers")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def _check_smart_orders():

@@ -135,6 +135,41 @@ class TestOpsSnapshotEndpoint:
             assert "age_seconds" in scheduler
             assert scheduler["age_seconds"] > 0
 
+    def test_ops_snapshot_scheduler_in_process_block(self, admin_session):
+        """Scheduler payload always carries in_process diagnostic block.
+
+        Locks in the contract added Feb 2026 so the Health panel can
+        always read live APScheduler state. ``running`` is the
+        smoking-gun field — when False, ``boot_error`` (if present)
+        must include phase + exc_type + exc_message.
+        """
+        resp = admin_session.get(f"{BASE_URL}/api/admin/ops-snapshot")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        scheduler = data["scheduler"]
+        in_proc = scheduler.get("in_process")
+        assert in_proc is not None, "scheduler.in_process is required"
+        assert "running" in in_proc
+        assert isinstance(in_proc["running"], bool)
+        assert "jobs_count" in in_proc
+        assert isinstance(in_proc["jobs_count"], int)
+        # When running, must expose paused/overdue counters too
+        if in_proc["running"]:
+            assert "paused_jobs" in in_proc
+            assert "overdue_jobs" in in_proc
+            assert in_proc["jobs_count"] >= 0
+        # When not running, either reason or boot_error must explain why
+        else:
+            assert in_proc.get("reason") or in_proc.get("boot_error"), (
+                "NOT RUNNING must carry reason or boot_error envelope"
+            )
+            be = in_proc.get("boot_error")
+            if be is not None:
+                assert "phase" in be
+                assert "exc_type" in be
+                assert "exc_message" in be
+
     def test_ops_snapshot_tier3_mirrors_readiness(self, admin_session):
         """Tier3 section has expected fields from fetch_tier_readiness."""
         resp = admin_session.get(f"{BASE_URL}/api/admin/ops-snapshot")
