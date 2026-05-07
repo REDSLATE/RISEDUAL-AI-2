@@ -125,6 +125,51 @@ read for zero measurable perf gain.
    `_reject(...)` helper. Each branch now under 10 complexity and under
    50 lines. Zero behavioural change — same rejection-shape contract.
 
+### Applied 2026-05-06
+
+6. **Index-as-key (round 2)** — same fix pattern applied to three more
+   admin components flagged by a fresh review:
+   - `ShellyDiagnosticTile.jsx:417` → `key={\`class-${i}-${n}\`}`
+   - `CompressionCIGateTile.jsx:229` → `key={\`${i}-${b}\`}`
+   - `AdminRoutesPanel.jsx:161` → `key={\`${d.method}-${d.path}\`}`
+   The other ~95% of the second review were the same false-positive
+   patterns already documented above (circular import substring match,
+   `_pt_exec`/`ast.parse(mode='eval')`, hook-deps overzealous, MD5
+   used for non-cryptographic dedup keys, localStorage for UI prefs,
+   high-complexity working code requiring operator sign-off). See
+   round-2 triage entries below.
+
+### Round 2 — Findings re-rejected on 2026-05-06
+
+**Re-rejected:**
+
+- **"Circular import server.py ↔ route_registry.py ↔ options_trading.py"**
+  → grep shows `route_registry.py` has zero `from server` imports;
+  the 3 `from server import db` calls in `options_trading.py` (lines
+  490, 740, 813) are all inside function bodies. Modules import
+  cleanly. Same substring pattern as round-1 finding #1.
+- **"`exec()`/`eval()` in `ai_core/execution.py:62` and
+  `services/backtester_service.py:197`"** → `_pt_exec` is a function
+  alias; `backtester_service.py:197` matched on a *comment* that
+  literally says "Safe Expression Evaluator (replaces eval())".
+  Tests use `_fake_exec` mocks. All substring matches.
+- **"Hardcoded secrets (36 instances) in tests"** → fake fixture
+  tokens (`sk_test_FAKE`, `AKIA_DUMMY`, etc.). Standard pytest pattern.
+- **"Missing hook deps (303 instances)"** → identical to round-1
+  finding #3; eslint produces zero warnings on the flagged files.
+- **"Weak crypto MD5 in `tier3_slippage_advisor.py:155` and
+  `routes/terminal.py:192`"** → both are non-cryptographic dedup
+  keys (truncated 12-char segment ids; cache-line identity hashes).
+  Not security boundaries. Replacing with SHA-256 is purely cosmetic.
+- **"localStorage security (22 instances)"** → identical to round-1
+  finding #6; auth tokens use httpOnly cookies, localStorage is for
+  UI prefs only.
+- **"AppContent / AIHypothesis / guarded_execute / compute_greeks
+  high complexity"** → working production code; large refactors are
+  deferred per guardrail rule #5 until operator sign-off + behavioural
+  tests pin the contract.
+
+
 ### Real but deferred (operator sign-off required)
 
 4. **`models.py::from_dict` complexity 19** — working dataclass serializer.

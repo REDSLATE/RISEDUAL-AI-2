@@ -414,7 +414,7 @@ const ShellyDiagnosticTile = () => {
                   </div>
                   <div className="space-y-0.5 font-mono text-[11px]">
                     {cacl.n_seen_per_class.map((n, i) => (
-                      <div key={i} className="flex items-center gap-2">
+                      <div key={`class-${i}-${n}`} className="flex items-center gap-2">
                         <span className="text-slate-500">class {i}:</span>
                         <span className="text-white">{n.toLocaleString()}</span>
                       </div>

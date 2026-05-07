@@ -158,7 +158,7 @@ const AdminRoutesPanel = () => {
           <div className="space-y-1.5">
             {data.duplicates.map((d, i) => (
               <div
-                key={i}
+                key={`${d.method}-${d.path}`}
                 className="flex items-center gap-2 text-xs font-mono"
                 data-testid={`admin-routes-dup-${i}`}
               >

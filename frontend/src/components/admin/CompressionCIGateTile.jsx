@@ -226,7 +226,7 @@ const CompressionCIGateTile = () => {
               </div>
               {result.breaches.map((b, i) => (
                 <div
-                  key={i}
+                  key={`${i}-${b}`}
                   className="text-xs text-slate-300 font-mono leading-snug"
                 >
                   · {b}
