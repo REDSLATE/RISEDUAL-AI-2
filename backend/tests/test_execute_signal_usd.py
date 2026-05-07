@@ -23,6 +23,24 @@ from services import trading_bot_service as tbs
 # Fixtures
 # ────────────────────────────────────────────────────────────────────────────────
 
+
+@pytest.fixture(autouse=True)
+def _force_market_open(monkeypatch):
+    """These tests exercise the executor BODY, not the lane gate.
+    Pin the equity market-hours helper to ``True`` so off-hours
+    test runs (e.g. CI on a Sunday) don't hit ``MARKET_CLOSED``
+    and miss the body-level assertions. Lane-gate behaviour has
+    its own dedicated tests in ``test_executor_lanes.py``."""
+    monkeypatch.setattr(
+        "services.executors.equity_executor.is_equity_market_open",
+        lambda *a, **k: True,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Fixtures
+# ────────────────────────────────────────────────────────────────────────────────
+
 @pytest.fixture
 def capture_execution(monkeypatch):
     """Patch `_execute_bot_trade` to capture the call args."""

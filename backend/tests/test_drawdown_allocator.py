@@ -17,6 +17,16 @@ from ai_core import drawdown_allocator as da
 from services import trading_bot_service as tbs
 
 
+@pytest.fixture(autouse=True)
+def _force_market_open(monkeypatch):
+    """Body-level tests bypass the equity market-hours gate. The
+    gate has its own dedicated coverage in ``test_executor_lanes.py``."""
+    monkeypatch.setattr(
+        "services.executors.equity_executor.is_equity_market_open",
+        lambda *a, **k: True,
+    )
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # compute_drawdown
 # ════════════════════════════════════════════════════════════════════════════

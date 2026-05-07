@@ -55,6 +55,76 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Executor Lane Separation — Equity vs Crypto (May 7, 2026)
+
+The `execute_signal` function used to be one lane handling both
+asset classes. Crypto is 24/7, equity isn't — sharing one path
+meant either equity wasn't gated (off-hours signals would routed
+to the broker) or crypto was over-gated. Split into two distinct
+lanes following the neuro-symbolic pattern: each lane owns its
+deterministic constraints (the "logic engine" half) while the
+ML/Council perception half remains shared.
+
+**New layout:**
+```
+services/executors/
+├── __init__.py            (re-exports)
+├── _shared.py             (LaneConfig + lane resolution + thresholds)
+├── equity_executor.py     (execute_equity_signal — market-hours gated)
+└── crypto_executor.py     (execute_crypto_signal — 24/7)
+```
+
+**Per-lane gates and thresholds:**
+
+| Lane | Market hours | Spread max | Liquidity floor | Drawdown cap | Vol max |
+|---|---|---|---|---|---|
+| Equity | **REQUIRED** (Mon–Fri 13:30–21:00 UTC) | 50 bps | 0.30 | 10% | 0.90 |
+| Crypto | None (24/7) | 150 bps | 0.10 | 15% | 0.95 |
+
+Equity gates are tighter because any equity quote 100+ bps wide is
+either after-hours or a venue issue. Crypto is wider because mid-cap
+pair books normally sit at 50–150 bps and pre-existing thresholds
+were producing false vetoes.
+
+**Router:** `execute_signal(...)` is now a thin dispatcher. With
+`lane=None` (legacy callers), it auto-detects lane from
+`signal["asset_type"]`, `signal["lane"]` override, or symbol
+heuristic, then dispatches into the correct lane module. With
+`lane=` pre-set (the lane executors themselves), it skips
+re-dispatch and runs the body. No infinite-loop risk.
+
+**Fast Veto integration:** `evaluate_fast_veto()` accepts an
+optional `thresholds` dict; lane executors pass their lane-specific
+table. `log_fast_veto_delta()` accepts `lane=` and persists it on
+the doc (`schema_version: 2`) so the Fast Veto Tile can disaggregate
+equity vs crypto streams.
+
+**Tests (146 green across 8 affected files):**
+- `tests/test_executor_lanes.py` (NEW) — 18 tests covering lane
+  detection, market-hours gate, threshold disjointness, router
+  dispatch correctness, no-loop on pre-set lane.
+- `test_execute_signal_usd.py`, `test_drawdown_allocator.py`,
+  `test_portfolio_risk_engine.py` — added autouse `_force_market_open`
+  fixture so off-hours CI runs don't hit `MARKET_CLOSED` on body-
+  level tests. Lane gate has its own dedicated coverage.
+
+**Backwards compatibility:** ALL existing callers continue working
+through the auto-detect router. Zero breakage in the 30+ services
+that call `execute_signal`. Lane awareness is opt-in (existing
+callers get it for free via auto-detect; new callers can pass
+`lane=` explicitly).
+
+**Live verified in preview:**
+```
+AAPL stock        → equity (market closed → MARKET_CLOSED skip)
+BTC-USD crypto    → crypto (proceeds 24/7)
+ETHUSDT no type   → crypto (symbol heuristic)
+NVDA no type      → equity (default fallback)
+```
+
+---
+
+
 ### Production Scheduler Stall — Root Cause Found & Fixed (May 6, 2026)
 
 **3-day production scheduler outage resolved on first prod boot of

@@ -318,6 +318,7 @@ async def execute_signal(
     open_positions: list[dict] | None = None,
     equity_curve: list[float] | None = None,
     bot_capital: float | None = None,
+    lane: str | None = None,
 ) -> dict:
     """USD-notional execution path for signal bots.
 
@@ -325,6 +326,17 @@ async def execute_signal(
     already think in dollars (`config.trade_size`) rather than
     shares (`config.qty`). The two paths are compatible — pick one
     per bot, don't mix.
+
+    **Lane parameter (added 2026-05-07):** ``lane`` is the
+    deterministic-constraint half of the neuro-symbolic split
+    (see ``services.executors._shared``). When set to ``"equity"``
+    or ``"crypto"`` it selects per-lane Fast Veto thresholds and
+    tags the shadow-delta log so analytics can disaggregate. When
+    ``None``, this function ALSO acts as a router: it auto-detects
+    the lane from ``signal["asset_type"]`` / symbol heuristic, and
+    if the signal is equity it also enforces the market-hours gate.
+    Direct callers (``execute_equity_signal`` / ``execute_crypto_signal``)
+    pre-set ``lane`` and skip the routing branch.
 
     When `open_positions` is supplied, portfolio-level caps
     (:data:`MAX_PORTFOLIO_EXPOSURE`, :data:`MAX_CONCURRENT_TRADES`)
@@ -351,6 +363,44 @@ async def execute_signal(
     `_execute_bot_trade` returns `{"error": ...}` dicts and we
     surface those to the caller.
     """
+    # ── Lane routing (neuro-symbolic split: deterministic gates) ──
+    # When ``lane`` is None we're being called as the legacy public
+    # entry point. Auto-detect the lane and dispatch into the lane
+    # executor so the equity market-hours gate fires before any
+    # broker-side work. Direct callers (``execute_equity_signal``
+    # / ``execute_crypto_signal``) pre-set ``lane`` and skip this
+    # branch — they've already done the gate check.
+    if lane is None:
+        from services.executors._shared import detect_lane
+        detected = detect_lane(signal)
+        if detected == "equity":
+            from services.executors.equity_executor import execute_equity_signal
+            return await execute_equity_signal(
+                signal=signal,
+                market_data=market_data,
+                tier3_readiness=tier3_readiness,
+                config=config,
+                open_positions=open_positions,
+                equity_curve=equity_curve,
+                bot_capital=bot_capital,
+            )
+        # detected == "crypto"
+        from services.executors.crypto_executor import execute_crypto_signal
+        return await execute_crypto_signal(
+            signal=signal,
+            market_data=market_data,
+            tier3_readiness=tier3_readiness,
+            config=config,
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=bot_capital,
+        )
+
+    # Lane is set — resolve its config once for the rest of the
+    # body to read thresholds + shadow-tag from.
+    from services.executors._shared import lane_config_for
+    _lane_config = lane_config_for(lane)
+
     skip = _check_kill_switch_and_drawdown(equity_curve)
     if skip is not None:
         return skip
@@ -383,6 +433,7 @@ async def execute_signal(
             signal=signal,
             market_state=market_state_for_veto,
             models=None,  # add trained sklearn models post-shadow validation
+            thresholds=_lane_config.fast_veto_thresholds,
         )
         if fv_result.enforce_veto:
             # Shadow logging on the enforce path too — proves promotion.
@@ -395,10 +446,12 @@ async def execute_signal(
                     market_state=market_state_for_veto,
                     result=fv_result,
                     council_result={"action": "NO_TRADE", "source": "fast_veto"},
+                    lane=lane,
                 ))
             return {
                 "skipped": True,
                 "reason": fv_result.reason,
+                "lane": lane,
                 "fast_veto": {
                     "would_veto": fv_result.would_veto,
                     "enforce_veto": fv_result.enforce_veto,
@@ -487,6 +540,7 @@ async def execute_signal(
                         "qty": qty,
                         "filled": isinstance(order, dict) and order.get("error") is None,
                     },
+                    lane=lane,
                 ))
         except Exception as _fv_log_exc:  # noqa: BLE001
             logger.warning("[fast-veto] shadow log dispatch failed: %s", _fv_log_exc)
@@ -498,6 +552,7 @@ async def execute_signal(
         "confidence": signal.get("confidence"),
         "readiness_score": tier3_readiness.get("confidence_score"),
         "base_size": round(base_size, 2),
+        "lane": lane,
     }
 
 

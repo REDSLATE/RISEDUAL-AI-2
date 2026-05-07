@@ -116,18 +116,34 @@ def _write_features_in_place(features: Dict[str, float]) -> np.ndarray:
     return _FEATURE_BUFFER.reshape(1, -1)
 
 
-def _rule_veto(features: Dict[str, float]) -> tuple[bool, str]:
-    """Deterministic fallback. STOP only. Never approves a trade."""
-    if features["drawdown_pct"] >= 10.0:
+def _rule_veto(
+    features: Dict[str, float],
+    thresholds: Optional[Dict[str, float]] = None,
+) -> tuple[bool, str]:
+    """Deterministic fallback. STOP only. Never approves a trade.
+
+    ``thresholds`` is an optional per-lane override map. Missing
+    keys fall back to the historical defaults documented inline so
+    a caller can tighten just one rule (e.g. equity tightens the
+    spread cap to 50 bps without touching anything else).
+    """
+    t = thresholds or {}
+    drawdown_max = t.get("drawdown_pct_max", 10.0)
+    spread_max = t.get("spread_bps_max", 75.0)
+    vol_max = t.get("vol_score_max", 0.90)
+    vol_low_conf = t.get("vol_low_conf_floor", 0.70)
+    liquidity_min = t.get("liquidity_score_min", 0.20)
+
+    if features["drawdown_pct"] >= drawdown_max:
         return True, "FAST_VETO_DRAWDOWN_BREACH"
 
-    if features["spread_bps"] >= 75.0:
+    if features["spread_bps"] >= spread_max:
         return True, "FAST_VETO_WIDE_SPREAD"
 
-    if features["volatility_score"] >= 0.90 and features["confidence"] < 0.70:
+    if features["volatility_score"] >= vol_max and features["confidence"] < vol_low_conf:
         return True, "FAST_VETO_VOL_SPIKE_LOW_CONFIDENCE"
 
-    if features["liquidity_score"] <= 0.20:
+    if features["liquidity_score"] <= liquidity_min:
         return True, "FAST_VETO_LOW_LIQUIDITY"
 
     return False, "FAST_VETO_PASS_SHADOW"
@@ -137,6 +153,7 @@ def evaluate_fast_veto(
     signal: Dict[str, Any],
     market_state: Optional[Dict[str, Any]] = None,
     models: Optional[Dict[str, Any]] = None,
+    thresholds: Optional[Dict[str, float]] = None,
 ) -> FastVetoResult:
     """Main entry point.
 
@@ -148,6 +165,12 @@ def evaluate_fast_veto(
       - ``enforce_veto`` can only become true when
         ``FAST_VETO_ENFORCE_ENABLED=true``
       - still veto-only — guarded by ``FAST_VETO_CAN_APPROVE = False``
+
+    ``thresholds`` is an optional per-lane override (see
+    ``services.executors._shared.LaneConfig.fast_veto_thresholds``).
+    Missing keys fall back to the historical defaults so the
+    no-lane callers (e.g. the standalone unit tests) keep their
+    original behaviour.
     """
     started = time.perf_counter_ns()
 
@@ -168,7 +191,7 @@ def evaluate_fast_veto(
             except Exception:
                 model_scores[name] = -1.0
 
-    rule_veto, rule_reason = _rule_veto(features)
+    rule_veto, rule_reason = _rule_veto(features, thresholds)
 
     model_veto = False
     model_reason = ""
@@ -207,10 +230,16 @@ async def log_fast_veto_delta(
     market_state: Optional[Dict[str, Any]],
     result: FastVetoResult,
     council_result: Optional[Dict[str, Any]] = None,
+    lane: Optional[str] = None,
 ) -> None:
     """Logs shadow deltas for Shelly / Health panel / later
     promotion proof. Never raises — the executor must not be
     affected by a logging failure.
+
+    ``lane`` (``"equity"`` / ``"crypto"`` / ``None``) is persisted
+    on the doc so the Fast Veto Tile can disaggregate per-lane
+    metrics (24/5 vs 24/7 streams have very different sample
+    densities and shouldn't be averaged together).
     """
     if not FAST_VETO_SHADOW_ENABLED:
         return
@@ -220,6 +249,7 @@ async def log_fast_veto_delta(
     try:
         doc = {
             "created_at": datetime.now(timezone.utc),
+            "lane": lane,
             "symbol": signal.get("symbol"),
             "asset_type": signal.get("asset_type", "equity"),
             "action": signal.get("action") or signal.get("direction"),
@@ -234,7 +264,7 @@ async def log_fast_veto_delta(
             "council_action": (council_result or {}).get("action"),
             "council_confidence": (council_result or {}).get("confidence"),
             "agreement_with_council": _agreement_with_council(result, council_result),
-            "schema_version": 1,
+            "schema_version": 2,
         }
         await db.fast_veto_shadow_deltas.insert_one(doc)
     except Exception as exc:  # noqa: BLE001
