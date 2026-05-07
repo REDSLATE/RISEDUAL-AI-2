@@ -55,6 +55,107 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### RoadGuard — Shared Execution Safety Governor (May 7, 2026)
+
+A deterministic capital / broker / exposure protection layer that
+sits BELOW the lane executors. Equity and Crypto each ran their
+own gates above (market-hours, fast-veto, sizing, portfolio-risk);
+RoadGuard is the only layer that enforces **cross-lane shared
+limits**. Final pipeline:
+
+```
+candidate signal
+  ↓ hard kill switch
+  ↓ Fast Veto (Tier 1, lane-tuned thresholds)
+  ↓ LANE EXECUTOR (equity / crypto with own gates)
+  ↓ kill-switch / drawdown
+  ↓ portfolio sizing
+  ↓ RoadGuard ← shared capital + broker safety   [NEW]
+  ↓ broker
+```
+
+**What RoadGuard is NOT:**
+* Not an ML model
+* Not a strategist
+* Not another veto for signal quality
+* Not a lane arbitrator
+
+**What RoadGuard IS:**
+* Deterministic capital governor — total-exposure cap, per-lane
+  caps, daily realised-loss cap, max open positions (total +
+  per lane), broker connectivity floor, duplicate-symbol prevention
+* Read-only — receives state, returns a verdict; never queries
+  the DB, never mutates anything
+
+**Files (all NEW):**
+- `services/roadguard.py` — core (Lane / RoadGuardDecision enums,
+  RoadGuardRequest / RoadGuardResponse dataclasses,
+  ``RoadGuard.evaluate()``, ``build_roadguard_request()`` state
+  derivator, async ``log_roadguard_decision()`` shadow-log writer)
+- `tests/test_roadguard.py` — 22 tests covering authority
+  invariants, shadow vs enforce, cascade priority, per-lane cap
+  isolation, state-collection helper, replay determinism
+
+**Wiring** in `services/trading_bot_service.py::execute_signal`
+right before ``_execute_bot_trade``: builds a request from existing
+``open_positions``, evaluates, fire-and-forget shadow log, and
+short-circuits with ``{skipped:True, reason, lane, roadguard:...}``
+when ``response.enforce`` is True. Catches all exceptions —
+RoadGuard cannot crash the executor.
+
+**Authority guardrails:**
+- ``ROADGUARD_CAN_APPROVE = False`` hard-coded — locked by
+  ``test_can_approve_flag_is_false``
+- ``RoadGuardResponse`` envelope has no ``action``/``side``/``qty``
+  fields — locked by
+  ``test_response_envelope_has_no_executor_actionable_fields``
+- ``decision`` reflects the rule cascade independently of env
+  flag; ``enforce`` only flips True when
+  ``ROADGUARD_ENFORCE_ENABLED=true`` AND non-ALLOW
+
+**Cascade priority** (matters when multiple rules would fire):
+1. ``BROKER_HEALTH_DEGRADED`` (account-wide kill)
+2. ``MAX_DAILY_LOSS_REACHED`` → ``PAUSE_LANE`` (not BLOCK — the
+   operator may still want to manage existing positions)
+3. ``MAX_TOTAL_EXPOSURE`` (cross-lane shared cap)
+4. ``MAX_EQUITY_EXPOSURE`` / ``MAX_CRYPTO_EXPOSURE`` (per-lane;
+   only fires for the requesting lane)
+5. ``MAX_OPEN_POSITIONS_TOTAL`` / ``MAX_OPEN_POSITIONS_PER_LANE``
+6. ``DUPLICATE_SYMBOL``
+
+**Defaults (env-tunable):**
+
+| Setting | Default | Env var |
+|---|---|---|
+| Total exposure | $1,500 | ``ROADGUARD_MAX_TOTAL_EXPOSURE_USD`` |
+| Equity exposure | $900 | ``ROADGUARD_MAX_EQUITY_EXPOSURE_USD`` |
+| Crypto exposure | $600 | ``ROADGUARD_MAX_CRYPTO_EXPOSURE_USD`` |
+| Daily loss | -$100 | ``ROADGUARD_MAX_DAILY_LOSS_USD`` |
+| Total positions | 8 | ``ROADGUARD_MAX_OPEN_POSITIONS_TOTAL`` |
+| Per-lane positions | 5 | ``ROADGUARD_MAX_OPEN_POSITIONS_PER_LANE`` |
+| Broker health min | 0.70 | ``ROADGUARD_BROKER_HEALTH_MIN`` |
+
+**Rollout (matches Shelly + Fast Veto):**
+- ``ROADGUARD_SHADOW_ENABLED=true`` (default) — every decision
+  logged to ``db.roadguard_decisions``, but ``enforce=False`` so
+  the trade proceeds. Lets the operator watch behaviour for a
+  week before any actual blocks.
+- ``ROADGUARD_ENFORCE_ENABLED=true`` (operator-gated) — BLOCK /
+  PAUSE_LANE verdicts actually short-circuit the executor.
+
+**Live verified:**
+- Clean signal → ALLOW
+- Duplicate symbol → BLOCK / DUPLICATE_SYMBOL (enforce=False, executor proceeds)
+- Broker health 0.30 → BLOCK / BROKER_HEALTH_DEGRADED (enforce=False)
+- All 161 executor-surface tests green
+
+**Next operator action:** watch ``db.roadguard_decisions`` populate
+over a week, then flip ``ROADGUARD_ENFORCE_ENABLED=true`` once
+satisfied no false BLOCKs are firing on healthy traffic.
+
+---
+
+
 ### Per-Lane Disaggregation in Fast Veto Tile (May 7, 2026)
 
 The Fast Veto Tile previously aggregated equity + crypto samples

@@ -487,6 +487,64 @@ async def execute_signal(
     side = "buy" if str(signal.get("direction", "LONG")).upper() == "LONG" else "sell"
     synthetic_bot = _bot_from_config(config, symbol)
 
+    # ── RoadGuard — shared capital / broker / exposure governor ──
+    # Sits BELOW the lane executors. Equity and crypto each ran
+    # their own gates above (market hours, fast veto, sizing,
+    # portfolio constraints) but RoadGuard is the only layer that
+    # enforces cross-lane shared limits — total exposure cap,
+    # daily loss limit, broker-health floor, and duplicate-symbol
+    # prevention. Authority is veto-only; ``ROADGUARD_CAN_APPROVE``
+    # is hard-coded False.
+    rg_response = None
+    try:
+        from services.roadguard import (
+            ROADGUARD_ENFORCE_ENABLED,
+            ROADGUARD_SHADOW_ENABLED,
+            RoadGuard,
+            build_roadguard_request,
+            log_roadguard_decision,
+        )
+        rg_request = build_roadguard_request(
+            symbol=symbol,
+            lane=lane,
+            requested_notional_usd=float(adjusted_size),
+            open_positions=open_positions,
+            # ``daily_realized_pnl_usd`` and ``broker_health_score``
+            # default to safe values (0 PnL, 1.0 health) until the
+            # executor wires real telemetry probes. The cascade is
+            # designed to stay quiet on missing data, not block.
+            daily_realized_pnl_usd=0.0,
+            broker_health_score=1.0,
+        )
+        rg_response = RoadGuard().evaluate(rg_request)
+
+        # Shadow log every decision (fire-and-forget) so the
+        # operator can audit promotion-readiness without waiting
+        # for an enforce flip.
+        if ROADGUARD_SHADOW_ENABLED:
+            db_for_log = _resolve_db_for_shadow()
+            if db_for_log is not None:
+                import asyncio as _asyncio
+                _asyncio.create_task(log_roadguard_decision(
+                    db_for_log,
+                    request=rg_request,
+                    response=rg_response,
+                ))
+
+        if rg_response.enforce:
+            # Enforce mode + non-ALLOW decision = short-circuit
+            # the executor before the broker call.
+            return {
+                "skipped": True,
+                "reason": rg_response.reason,
+                "lane": lane,
+                "roadguard": rg_response.as_dict(),
+            }
+    except Exception as _rg_exc:  # noqa: BLE001
+        # RoadGuard must never crash the executor. Log and proceed.
+        logger.warning("[roadguard] evaluation failed (shadow-safe): %s", _rg_exc)
+        rg_response = None
+
     _fire_equity_shadow(
         synthetic_bot=synthetic_bot,
         signal=signal,
@@ -553,6 +611,7 @@ async def execute_signal(
         "readiness_score": tier3_readiness.get("confidence_score"),
         "base_size": round(base_size, 2),
         "lane": lane,
+        "roadguard": rg_response.as_dict() if rg_response is not None else None,
     }
 
 
