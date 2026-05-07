@@ -77,6 +77,13 @@ async def fast_veto_stats(
     - ``latency_us``: ``count``, ``p50``, ``p95``, ``min``, ``max``
     - ``shadow_enabled`` / ``enforce_enabled``: live env flag values
     - ``rows``: last ``limit`` deltas, newest-first
+    - ``by_lane``: same shape as the top-level summary, broken out
+      per lane (``equity`` / ``crypto`` / ``unknown``). Lets the
+      Fast Veto Tile render two parallel metric strips so the
+      operator can spot lane-specific anomalies in one glance.
+      ``unknown`` covers schema_version=1 docs that pre-date lane
+      tagging; the bucket stays visible so the gap is impossible
+      to miss.
 
     No writes. Excludes ``_id`` per project-wide MongoDB rule.
     """
@@ -92,15 +99,85 @@ async def fast_veto_stats(
 
     coll = db.fast_veto_shadow_deltas
 
-    # Lifetime total + would_veto distribution
-    total = await coll.count_documents({})
-    would_veto_count = await coll.count_documents({"would_veto": True})
+    # Aggregate (no lane filter) + per-lane buckets share one
+    # summarisation routine so the response shape stays stable
+    # whether a lane has 0 or 50,000 samples.
+    aggregate_summary = await _summarise_bucket(coll, lane_filter=None)
+    by_lane = {
+        "equity":  await _summarise_bucket(coll, lane_filter="equity"),
+        "crypto":  await _summarise_bucket(coll, lane_filter="crypto"),
+        # ``unknown`` covers schema_version=1 docs (created before
+        # lane tagging was introduced) plus any future ingester
+        # that forgets to set the tag. Keeping the bucket visible
+        # makes the gap impossible to ignore.
+        "unknown": await _summarise_bucket(coll, lane_filter="__unknown__"),
+    }
 
-    # Per-reason histogram for vetoed signals.
-    # Aggregation stays small — bounded by the small set of
-    # cascade reason strings (~5 today; max ~10 long-term).
+    # Most recent rows for spot-checking. Newest first.
+    rows_cursor = (
+        coll.find({}, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(limit)
+    )
+    rows = await rows_cursor.to_list(length=limit)
+
+    return {
+        "shadow_enabled": FAST_VETO_SHADOW_ENABLED,
+        "enforce_enabled": FAST_VETO_ENFORCE_ENABLED,
+        "can_approve": FAST_VETO_CAN_APPROVE,
+        # Aggregate fields preserved at top level for backward
+        # compatibility with the v1 tile layout and the existing
+        # contract tests in ``test_fast_veto_stats_api.py``.
+        "total": aggregate_summary["total"],
+        "would_veto_count": aggregate_summary["would_veto_count"],
+        "would_veto_rate": aggregate_summary["would_veto_rate"],
+        "reason_counts": aggregate_summary["reason_counts"],
+        "council_agreement": aggregate_summary["council_agreement"],
+        "latency_us": aggregate_summary["latency_us"],
+        "promotion_checklist": aggregate_summary["promotion_checklist"],
+        # New per-lane disaggregation. Each bucket is the same
+        # shape as the aggregate summary above so the UI tile can
+        # render them with the same components.
+        "by_lane": by_lane,
+        "rows": rows,
+    }
+
+
+async def _summarise_bucket(
+    coll: Any,
+    *,
+    lane_filter: str | None,
+) -> dict[str, Any]:
+    """Compute the full summary block for one lane bucket (or the
+    aggregate when ``lane_filter`` is ``None``).
+
+    ``lane_filter`` semantics:
+      * ``None``  → no filter, sums across all docs
+      * ``"equity"`` / ``"crypto"`` → exact match on ``lane`` field
+      * ``"__unknown__"`` → docs with ``lane`` missing or null
+        (schema_version=1 pre-lane-tagging docs)
+    """
+    base_query: dict[str, Any]
+    if lane_filter is None:
+        base_query = {}
+    elif lane_filter == "__unknown__":
+        # ``$or`` covers both "field missing" and "field is null".
+        base_query = {
+            "$or": [
+                {"lane": {"$exists": False}},
+                {"lane": None},
+            ]
+        }
+    else:
+        base_query = {"lane": lane_filter}
+
+    total = await coll.count_documents(base_query)
+    would_veto_count = await coll.count_documents(
+        {**base_query, "would_veto": True}
+    )
+
     reason_pipeline = [
-        {"$match": {"would_veto": True}},
+        {"$match": {**base_query, "would_veto": True}},
         {"$group": {"_id": "$reason", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
     ]
@@ -109,22 +186,18 @@ async def fast_veto_stats(
         rid = d.get("_id") or "UNKNOWN"
         reason_counts[rid] = int(d.get("count") or 0)
 
-    # Council-agreement buckets — only meaningful for vetoed
-    # signals, which are the ones we'd actually be "saving".
     agree_count = await coll.count_documents(
-        {"would_veto": True, "agreement_with_council": True}
+        {**base_query, "would_veto": True, "agreement_with_council": True}
     )
     disagree_count = await coll.count_documents(
-        {"would_veto": True, "agreement_with_council": False}
+        {**base_query, "would_veto": True, "agreement_with_council": False}
     )
     unknown_count = await coll.count_documents(
-        {"would_veto": True, "agreement_with_council": None}
+        {**base_query, "would_veto": True, "agreement_with_council": None}
     )
 
-    # Latency histogram. Pull only the latency_us field to keep
-    # the round-trip small even on large collections.
     latency_cursor = coll.find(
-        {"latency_us": {"$exists": True}},
+        {**base_query, "latency_us": {"$exists": True}},
         {"_id": 0, "latency_us": 1},
     )
     latencies: list[float] = []
@@ -142,18 +215,7 @@ async def fast_veto_stats(
         "max": latencies[-1] if latencies else 0.0,
     }
 
-    # Most recent rows for spot-checking. Newest first.
-    rows_cursor = (
-        coll.find({}, {"_id": 0})
-        .sort("created_at", -1)
-        .limit(limit)
-    )
-    rows = await rows_cursor.to_list(length=limit)
-
     return {
-        "shadow_enabled": FAST_VETO_SHADOW_ENABLED,
-        "enforce_enabled": FAST_VETO_ENFORCE_ENABLED,
-        "can_approve": FAST_VETO_CAN_APPROVE,
         "total": int(total),
         "would_veto_count": int(would_veto_count),
         "would_veto_rate": (
@@ -164,7 +226,6 @@ async def fast_veto_stats(
             "agree": int(agree_count),
             "disagree": int(disagree_count),
             "unknown": int(unknown_count),
-            # Agreement rate over the cases where we have a verdict
             "rate": (
                 float(agree_count) / float(agree_count + disagree_count)
                 if (agree_count + disagree_count) > 0
@@ -172,7 +233,6 @@ async def fast_veto_stats(
             ),
         },
         "latency_us": latency_summary,
-        "rows": rows,
         "promotion_checklist": _promotion_checklist(
             total=total,
             agree_count=agree_count,

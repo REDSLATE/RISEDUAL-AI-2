@@ -58,9 +58,42 @@ def test_fast_veto_stats_returns_envelope_shape(admin_session):
         "latency_us",
         "rows",
         "promotion_checklist",
+        # Per-lane disaggregation (added 2026-05-07).
+        "by_lane",
     }
     missing = expected - set(d.keys())
     assert not missing, f"missing top-level keys: {missing}"
+
+
+def test_fast_veto_stats_by_lane_buckets_present(admin_session):
+    """Three buckets are always present — equity, crypto, unknown.
+    Locks the contract that the UI tile renders three lane summary
+    cards regardless of whether any lane has samples yet."""
+    r = admin_session.get(f"{BASE_URL}/api/admin/fast-veto/stats")
+    assert r.status_code == 200
+    by_lane = r.json()["by_lane"]
+    assert {"equity", "crypto", "unknown"} <= set(by_lane.keys())
+
+
+def test_fast_veto_stats_by_lane_bucket_shape_matches_aggregate(admin_session):
+    """Each lane bucket has the same key set as the aggregate
+    summary — UI components are reused across both."""
+    r = admin_session.get(f"{BASE_URL}/api/admin/fast-veto/stats")
+    assert r.status_code == 200
+    d = r.json()
+    expected_bucket_keys = {
+        "total",
+        "would_veto_count",
+        "would_veto_rate",
+        "reason_counts",
+        "council_agreement",
+        "latency_us",
+        "promotion_checklist",
+    }
+    for lane in ("equity", "crypto", "unknown"):
+        bucket = d["by_lane"][lane]
+        missing = expected_bucket_keys - set(bucket.keys())
+        assert not missing, f"by_lane.{lane} missing keys: {missing}"
 
 
 def test_fast_veto_stats_can_approve_is_false(admin_session):

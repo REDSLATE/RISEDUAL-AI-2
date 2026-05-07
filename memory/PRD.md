@@ -55,6 +55,62 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Per-Lane Disaggregation in Fast Veto Tile (May 7, 2026)
+
+The Fast Veto Tile previously aggregated equity + crypto samples
+into a single metric strip. After the executor lane separation
+shipped earlier today, every shadow-delta doc carries a ``lane``
+field — so the tile can now slice the dashboard.
+
+**Backend change** — `routes/admin_fast_veto.py`:
+- Refactored the stats endpoint into a reusable
+  ``_summarise_bucket(coll, lane_filter=...)`` helper.
+- New ``by_lane`` block in the response with three buckets:
+  ``equity``, ``crypto``, ``unknown`` (last covers schema_version=1
+  pre-tag docs and any future ingester that forgets the tag).
+- Each bucket has the SAME shape as the top-level aggregate
+  summary (``total``, ``would_veto_rate``, ``reason_counts``,
+  ``council_agreement``, ``latency_us``, ``promotion_checklist``)
+  so the UI components are reused across both.
+- Top-level aggregate fields preserved for backward compat with
+  v1 contract tests.
+
+**Frontend change** — `frontend/src/components/admin/FastVetoTile.jsx`:
+- New 3-card lane summary header at the top (Equity / Crypto / Unknown)
+  with sample count, would-veto rate, and p50 latency at-a-glance.
+- New scope toggle row (Aggregate / Equity / Crypto). Clicking a
+  lane summary card or scope button drills the metric strip,
+  reason histogram, promotion checklist, AND row table into that
+  lane's slice.
+- Empty-lane states show "no equity samples yet" instead of
+  rendering all-zero metrics that look like passing checks.
+- Recent-rows table gained a `Lane` column and filters by scope
+  when one is selected.
+- Equity gets an amber accent dot, crypto gets cyan — colour
+  coding matches the lane convention used in shadow logs.
+
+**Tests:** `tests/slow/test_fast_veto_stats_api.py` gained 2 new
+contract tests:
+- `test_fast_veto_stats_by_lane_buckets_present` — locks the
+  three-bucket invariant
+- `test_fast_veto_stats_by_lane_bucket_shape_matches_aggregate`
+  — locks per-bucket shape parity so the UI tile can swap
+  components freely
+
+10/10 tests pass; full test surface (executor lanes + fast veto
+unit + fast veto API) at 48/48 green.
+
+**Operator value:** The "all our wide-spread vetoes are equity
+after-hours, all our liquidity vetoes are altcoins" pattern that
+was previously hidden by aggregation now shows up at first
+glance. Promotion criteria are also evaluated per lane — a lane
+might hit `ready_to_enforce` independently before the aggregate
+does, which is what we want (equity has 6.5h/day of signal flow,
+crypto has 24h, so crypto will calibrate first).
+
+---
+
+
 ### Executor Lane Separation — Equity vs Crypto (May 7, 2026)
 
 The `execute_signal` function used to be one lane handling both
