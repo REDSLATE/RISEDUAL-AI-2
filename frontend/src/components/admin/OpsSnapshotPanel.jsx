@@ -81,6 +81,15 @@ const OpsSnapshotPanel = () => {
 
   useEffect(() => { fetchSnap(); }, [fetchSnap]);
 
+  // Auto-poll every 60s so the panel never shows a stale snapshot
+  // after a redeploy / scheduler restart. 60s is the same cadence
+  // the backend heartbeat job runs at; faster polling would just
+  // burn DB reads without adding signal.
+  useEffect(() => {
+    const id = setInterval(fetchSnap, 60_000);
+    return () => clearInterval(id);
+  }, [fetchSnap]);
+
   if (loading && !snap) {
     return <div className="p-6 text-slate-400 text-sm" data-testid="ops-loading">Loading ops snapshot…</div>;
   }
@@ -195,6 +204,57 @@ const OpsSnapshotPanel = () => {
                   : (snap.scheduler?.error || '—')}
               </span>
             </div>
+            {/* In-process scheduler diagnostic — the smoking gun
+                when heartbeat is stale. ``running: false`` means
+                _start_schedulers() raised on boot; operator goes
+                straight to logs instead of chasing a caching
+                ghost. Surfaced unconditionally so a healthy state
+                ("running · 14 jobs · next: morning_brief 23m")
+                also reads as reassuring confirmation. */}
+            {snap.scheduler?.in_process && (
+              <div
+                className="flex items-center justify-between pl-4"
+                data-testid="ops-scheduler-in-process"
+              >
+                <span className="text-slate-500 text-[11px]">
+                  ↳ in-process
+                </span>
+                <span className="text-[11px] font-mono">
+                  {snap.scheduler.in_process.running ? (
+                    <span data-testid="ops-scheduler-running" className="text-emerald-300">
+                      running · {snap.scheduler.in_process.jobs_count ?? 0} jobs
+                      {snap.scheduler.in_process.next_job_id && (
+                        <span className="text-slate-500">
+                          {' '}· next: {snap.scheduler.in_process.next_job_id}
+                          {snap.scheduler.in_process.next_job_at &&
+                            ` ${fmtAge(
+                              Math.max(
+                                0,
+                                Math.floor(
+                                  (new Date(snap.scheduler.in_process.next_job_at).getTime()
+                                    - Date.now()) / 1000,
+                                ),
+                              ),
+                            )}`}
+                        </span>
+                      )}
+                      {snap.scheduler.in_process.overdue_jobs > 0 && (
+                        <span className="text-amber-300">
+                          {' '}· {snap.scheduler.in_process.overdue_jobs} overdue
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span data-testid="ops-scheduler-not-running" className="text-rose-300">
+                      NOT RUNNING
+                      {snap.scheduler.in_process.reason && (
+                        <span className="text-slate-500"> · {snap.scheduler.in_process.reason}</span>
+                      )}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
         </Section>
 

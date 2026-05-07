@@ -133,6 +133,15 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
     Fallback: if the dedicated doc is missing (e.g. just deployed,
     first 60s of new pod), fall back to the freshest of three proxy
     collections. Any one of them being recent is also conclusive.
+
+    Enrichment (Feb 2026): also includes ``in_process`` block with
+    the live scheduler handle's state (``running``, ``jobs_count``,
+    ``paused_jobs``, ``overdue_jobs``, ``next_job_at``,
+    ``next_job_id``). This is the smoking gun when heartbeat is
+    stale: if ``in_process.running`` is ``False`` the scheduler
+    never started, and the operator sees that immediately on the
+    Health panel without having to curl
+    ``/api/admin/scheduler/status``.
     """
     if db is None:
         return {"ok": False, "error": "db_unavailable"}
@@ -142,6 +151,8 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
             {"_id": "main"},
             {"_id": 0, "last_beat_at": 1, "beat_count": 1, "host_pid": 1},
         )
+        in_process = _collect_in_process_scheduler_state()
+
         if hb and isinstance(hb.get("last_beat_at"), datetime):
             ts = hb["last_beat_at"]
             if ts.tzinfo is None:
@@ -154,6 +165,7 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
                 "source": "dedicated_heartbeat",
                 "beat_count": hb.get("beat_count"),
                 "host_pid": hb.get("host_pid"),
+                "in_process": in_process,
             }
 
         # ── Fallback: proxy across three high-frequency collections ──
@@ -185,6 +197,7 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
                     "whether the scheduler started at all."
                 ),
                 "source": "proxy",
+                "in_process": in_process,
             }
         age_s = (datetime.now(timezone.utc) - latest).total_seconds()
         return {
@@ -192,9 +205,80 @@ async def _collect_scheduler_heartbeat(db: Any) -> dict[str, Any]:
             "last_signal_at": latest.isoformat(),
             "age_seconds": int(age_s),
             "source": "proxy_fallback",
+            "in_process": in_process,
         }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:120]}
+
+
+def _collect_in_process_scheduler_state() -> dict[str, Any]:
+    """Read live state from the APScheduler handle living in
+    ``routes.self_test``.
+
+    NEVER raises — every failure path returns a structured envelope
+    so the Health panel always renders. The most operationally
+    important field is ``running``: ``False`` here is the smoking
+    gun for "scheduler heartbeat stale". When ``running`` is
+    ``False`` the operator knows to grab boot logs immediately
+    instead of chasing read-side caching.
+    """
+    try:
+        from routes.self_test import _scheduler
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "running": False,
+            "reason": f"import_failed: {type(exc).__name__}: {exc}"[:120],
+            "jobs_count": 0,
+        }
+
+    if _scheduler is None:
+        return {
+            "running": False,
+            "reason": (
+                "scheduler handle is None — _start_schedulers() "
+                "either raised on boot or has not been called yet"
+            ),
+            "jobs_count": 0,
+        }
+
+    # ``_scheduler.running`` is the canonical boolean APScheduler
+    # exposes for "scheduler.start() succeeded".
+    running = bool(getattr(_scheduler, "running", False))
+
+    try:
+        jobs = _scheduler.get_jobs()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "running": running,
+            "reason": f"get_jobs raised: {type(exc).__name__}: {exc}"[:120],
+            "jobs_count": 0,
+        }
+
+    paused = sum(1 for j in jobs if j.next_run_time is None)
+    now = datetime.now(timezone.utc)
+    overdue = 0
+    next_at: Optional[datetime] = None
+    next_id: Optional[str] = None
+    for j in jobs:
+        nrt = j.next_run_time
+        if nrt is None:
+            continue
+        if nrt.tzinfo is None:
+            nrt = nrt.replace(tzinfo=timezone.utc)
+        if nrt < now:
+            overdue += 1
+        if next_at is None or nrt < next_at:
+            next_at = nrt
+            next_id = j.id
+
+    return {
+        "running": running,
+        "jobs_count": len(jobs),
+        "paused_jobs": paused,
+        "overdue_jobs": overdue,
+        "next_job_at": next_at.isoformat() if next_at else None,
+        "next_job_id": next_id,
+    }
 
 
 async def _collect_tier3_progress(db: Any) -> dict[str, Any]:
