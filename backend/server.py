@@ -672,7 +672,18 @@ async def _start_schedulers():
             )
             if owner is not None:
                 owner_id = str(owner["_id"])
-                from datetime import datetime, timezone
+                # NOTE: do NOT re-import ``datetime``/``timezone`` here.
+                # They're already imported at the module level (line 15).
+                # A redundant ``from datetime import datetime, timezone``
+                # inside this conditional block makes ``datetime`` a
+                # FUNCTION-LOCAL name for the entire ~550-line
+                # ``_start_schedulers`` body — which means if this
+                # ``if`` branch is skipped (no owner, or seed disabled),
+                # the local stays unbound, and 500 lines later the
+                # ``next_run_time=datetime.now(...)`` call raises
+                # ``UnboundLocalError`` and the scheduler never starts.
+                # Production incident 2026-05-06: scheduler stalled
+                # 3 days because of exactly this shadow.
                 from uuid import uuid4
                 created: list[str] = []
                 base_config = {
@@ -1171,7 +1182,11 @@ async def _start_schedulers():
         # dead even though it was firing every minute).
         async def _write_scheduler_heartbeat():
             try:
-                from datetime import datetime, timezone
+                # Module-level ``from datetime import datetime, timezone``
+                # already covers this scope. No inner re-import (see
+                # 2026-05-06 incident — function-local datetime imports
+                # in the parent scope took the scheduler down for 3
+                # days). Defensive consistency: do not re-introduce.
                 await db.scheduler_heartbeat.update_one(
                     {"_id": "main"},
                     {

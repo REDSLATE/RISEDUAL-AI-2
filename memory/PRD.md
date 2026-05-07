@@ -55,6 +55,67 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Production Scheduler Stall — Root Cause Found & Fixed (May 6, 2026)
+
+**3-day production scheduler outage resolved on first prod boot of
+the boot-error diagnostic.** The new `boot_error` card on the
+Health panel surfaced the exact traceback in one glance:
+
+```
+Boot failure (_start_schedulers) · UnboundLocalError
+cannot access local variable 'datetime' where it is not
+associated with a value
+File "/app/backend/server.py", line 1193, in _start_schedulers
+    next_run_time=datetime.now(timezone.utc)
+                  ^^^^^^^^
+```
+
+**Root cause:** Line 675 had `from datetime import datetime, timezone`
+inside an `if owner is not None:` branch within
+`_start_schedulers()`. In Python, any `from X import Y` anywhere in
+a function body makes `Y` a function-LOCAL name for the entire
+function scope — even if the import line never executes at runtime.
+
+When the auto-seed Tier3 branch was skipped (no owner row in prod,
+or the owner lookup failed silently), the inner import never ran —
+but `datetime` was still bound as a function-local at compile time.
+500 lines later, the heartbeat job registration's
+`next_run_time=datetime.now(timezone.utc)` looked up `datetime` as
+a local variable, found it unbound, and raised `UnboundLocalError`.
+The whole scheduler boot died. The module-level
+`from datetime import datetime, timezone` at line 15 was shadowed
+and unreachable.
+
+**Why it took 3 days to find:** the only evidence was a single
+swallowed `logger.warning("Scheduler startup failed (non-critical):
+...")` in pod stdout. No alert. No surface.
+
+**Fix (5 lines):**
+1. Removed the redundant inner import at server.py:675
+2. Removed a second redundant inner import inside
+   `_write_scheduler_heartbeat` closure at server.py:1185 (didn't
+   cause this incident — closure has its own scope — but defensive
+   consistency)
+3. Added regression test
+   `tests/test_server_start_schedulers_no_datetime_shadow.py` (2
+   tests) — fails loudly if anyone re-introduces a nested datetime
+   import inside `_start_schedulers`, AND fails if the module-level
+   datetime import is removed.
+
+**Verification:**
+- Backend restarted clean
+- `/api/admin/ops-snapshot` returns: `running: True`, `jobs: 60`,
+  `boot_error: NONE (healthy)`, next job `smart_order_monitor` 30s
+- 2/2 regression tests pass
+
+**Observability lesson:** the 1-hour investment in the boot-error
+diagnostic earned its keep on its first production boot. Without
+it, this would have been "scheduler is None" with no traceback,
+likely days more of redeploys + guessing.
+
+---
+
+
 ### Fast Veto Tile + Scheduler Health UI Refactor (May 6, 2026)
 
 Two visualisation layers shipped alongside the Tier 1 Fast Veto.
