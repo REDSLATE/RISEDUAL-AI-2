@@ -196,12 +196,27 @@ const OpsSnapshotPanel = () => {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-300 flex items-center gap-2">
-                <StatusDot ok={snap.scheduler?.ok} /> Scheduler heartbeat
+                {/* Primary scheduler-health signal: in-process status.
+                    Was: ``snap.scheduler?.ok`` from the heartbeat-doc
+                    chain — that path passes through APScheduler →
+                    motor → Mongo write → eventually-consistent read,
+                    any of which can silently fail and surface as
+                    "scheduler dead" even when it isn't. The in-process
+                    check passes through one Python global. */}
+                <StatusDot ok={
+                  snap.scheduler?.in_process
+                    ? !!snap.scheduler.in_process.running
+                    : snap.scheduler?.ok
+                } /> Scheduler
               </span>
               <span className="text-slate-400" data-testid="ops-scheduler-status">
-                {snap.scheduler?.last_signal_at
-                  ? fmtAge(snap.scheduler.age_seconds)
-                  : (snap.scheduler?.error || '—')}
+                {snap.scheduler?.in_process?.running
+                  ? `${snap.scheduler.in_process.jobs_count ?? 0} jobs`
+                  : snap.scheduler?.in_process
+                    ? 'NOT RUNNING'
+                    : (snap.scheduler?.last_signal_at
+                        ? fmtAge(snap.scheduler.age_seconds)
+                        : (snap.scheduler?.error || '—'))}
               </span>
             </div>
             {/* In-process scheduler diagnostic — the smoking gun
@@ -255,6 +270,27 @@ const OpsSnapshotPanel = () => {
                 </span>
               </div>
             )}
+            {/* Mongo-write canary — only meaningful when the
+                scheduler IS running but the heartbeat doc hasn't
+                been updated. That points at the Mongo write path,
+                not at the scheduler itself. Hidden when in-process
+                and heartbeat agree, because both being green is
+                redundant noise. */}
+            {snap.scheduler?.in_process?.running &&
+              snap.scheduler?.last_signal_at &&
+              snap.scheduler?.age_seconds > 180 && (
+                <div
+                  className="flex items-center justify-between pl-4"
+                  data-testid="ops-scheduler-mongo-canary"
+                >
+                  <span className="text-slate-500 text-[11px]">
+                    ↳ heartbeat-doc canary
+                  </span>
+                  <span className="text-[11px] font-mono text-amber-300">
+                    Mongo write stale · {fmtAge(snap.scheduler.age_seconds)}
+                  </span>
+                </div>
+              )}
             {/* Boot-error block — surfaces the actual exception that
                 killed _start_schedulers() on this pod's most recent
                 boot. Replaces "go grep pod logs" with one glance. */}

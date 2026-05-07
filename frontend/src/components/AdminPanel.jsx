@@ -31,6 +31,7 @@ import NewsShockBurnIn from './admin/NewsShockBurnIn';
 import TerminalTopActions from './admin/TerminalTopActions';
 import AdminRoutesPanel from './admin/AdminRoutesPanel';
 import ShellyDiagnosticTile from './admin/ShellyDiagnosticTile';
+import FastVetoTile from './admin/FastVetoTile';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -115,6 +116,7 @@ const TAB_SUBTITLES = {
   autopsy:        () => 'Toxic spike autopsy — WHY high-confidence predictions failed',
   engines:        () => 'AI Core engine registry — live + candidate side-by-side · bucket-lift comparison',
   shelly:         () => 'Shelly · Patent M Learning Core — situational memory · observation only (rollout step 1/5)',
+  'fast-veto':    () => 'Tier 1 Fast Veto — sub-ms classical guardrail · veto-only · shadow mode',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   'proof-chain':  () => 'Patent J — immutable hash-linked decision audit trail',
@@ -146,6 +148,7 @@ const TAB_COMPONENTS = {
   autopsy:        () => <ToxicSpikeAutopsyPanel />,
   engines:        () => <EngineRegistryPanel />,
   shelly:         () => <ShellyDiagnosticTile />,
+  'fast-veto':    () => <FastVetoTile />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
   'proof-chain':  () => <ProofChainExplorer />,

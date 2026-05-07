@@ -55,6 +55,60 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### Fast Veto Tile + Scheduler Health UI Refactor (May 6, 2026)
+
+Two visualisation layers shipped alongside the Tier 1 Fast Veto.
+
+**1. Fast Veto Tile** — `frontend/src/components/admin/FastVetoTile.jsx`
+new admin tab under `Fast Veto` (icon: ShieldCheck, sits next to
+Shelly). Reads `/api/admin/fast-veto/stats` and renders the
+promotion-evidence dashboard:
+
+- Top metric strip: samples / would-veto rate / Council-agreement / latency p50 (+p95 sub)
+- Veto-reason histogram bars
+- Promotion checklist (≥500 samples, false-veto rate <3%, p50 <1ms, ready_to_enforce flag)
+- Last-25 row table with veto/pass + reason + latency
+
+Backend: `routes/admin_fast_veto.py` (NEW) — owner-gated read of
+`fast_veto_shadow_deltas` with mongo aggregations for the
+histogram, agreement bucketing, and a hand-rolled p50/p95
+calculator (no numpy on the hot path). Wired into
+`route_registry.ALL_ROUTERS`.
+
+Tests: `tests/slow/test_fast_veto_stats_api.py` (NEW) — 8 tests
+covering envelope shape, can_approve invariant, council-agreement
+shape, latency shape, promotion-checklist shape, limit param
+validation, auth gate.
+
+**2. Scheduler Health Row — Take The Heartbeat-Doc Line Down**
+The previous row's red dot was driven by `snap.scheduler.ok` which
+itself came from a 4-hop chain: APScheduler job → motor write →
+Mongo round-trip → eventually-consistent read. Any one of those
+hops silently failing surfaced as "scheduler dead". On prod that
+yielded a misleading "2.9d ago" stale-heartbeat indicator even
+when the alternate failure mode was the Mongo write path itself.
+
+Refactor in `OpsSnapshotPanel.jsx`:
+
+- **Primary signal is now `in_process.running`** — passes through
+  one Python global. Green dot when the scheduler is alive, red
+  when it isn't. Label demoted from "Scheduler heartbeat" to
+  just "Scheduler".
+- **Heartbeat-age becomes a Mongo-write canary** — only renders
+  when `in_process.running=true` AND `age_seconds > 180`. That
+  cleanly isolates the failure mode: scheduler healthy + canary
+  red = the Mongo write path is what's broken, not the scheduler.
+- Hidden when both in-process and heartbeat agree (no redundant
+  noise).
+
+New testid: `ops-scheduler-mongo-canary`.
+
+This is the alternate path you asked for — observability that
+doesn't pass through the very thing it's trying to observe.
+
+---
+
+
 ### Tier 1 — Fast Veto Shadow Layer (May 6, 2026)
 
 A sub-millisecond classical veto layer that observes every signal
