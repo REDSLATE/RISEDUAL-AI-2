@@ -55,6 +55,62 @@ adversarial trading platform with:
 
 ## 3. What's Been Implemented (latest first)
 
+### RoadGuard Tile (May 7, 2026)
+
+Dedicated Health-panel tile for the shared execution safety
+governor shipped earlier today. Same shape as the Fast Veto
+Tile so the two diagnostics feel identical to operate.
+
+**Files:**
+- `routes/admin_roadguard.py` (NEW) — `GET /api/admin/roadguard/stats?limit=N`
+  with envelope: shadow/enforce flags, config readout, total +
+  decision_counts (ALLOW/BLOCK/PAUSE_LANE), reason histogram,
+  by_lane buckets (equity/crypto/unknown), recent rows,
+  promotion checklist with the 7 user-spec'd items.
+- `route_registry.py` wired the new router.
+- `frontend/src/components/admin/RoadGuardTile.jsx` (NEW) — lane
+  summary header, scope toggle (Aggregate / Equity / Crypto),
+  4-cell decision counters, reason histogram with rose-tinted
+  bars, promotion checklist, recent rows table with
+  decision-coloured badges (emerald/rose/amber).
+- `AdminPanel.jsx` — new `RoadGuard` tab in the Insights group
+  (also fixed the previously-missing Fast Veto tab entry).
+- `tests/slow/test_roadguard_stats_api.py` (NEW) — 12 contract
+  tests covering envelope shape, can_approve invariant,
+  decision_counts/by_lane/config/promotion_checklist shapes,
+  empty state, limit param validation, read-only contract.
+
+**Promotion checklist** (all 7 items + final ``ready_to_enforce``):
+
+| Item | Pass condition |
+|---|---|
+| shadow_enabled | `ROADGUARD_SHADOW_ENABLED=true` |
+| enforce_disabled | `ROADGUARD_ENFORCE_ENABLED=false` |
+| samples_500_plus | total ≥ 500 |
+| zero_false_blocks | no `false_block_marked` docs |
+| broker_health_rule_observed | `BROKER_HEALTH_DEGRADED` count > 0 |
+| duplicate_symbol_rule_observed | `DUPLICATE_SYMBOL` count > 0 |
+| exposure_cap_rule_observed | any `MAX_*_EXPOSURE` count > 0 |
+| ready_to_enforce | all of the above + shadow_enabled |
+
+**Authority guardrail:** Tile is read-only. Cannot flip
+`ROADGUARD_ENFORCE_ENABLED`. The "ready to enforce" badge only
+INSTRUCTS the operator to flip the env var manually. Locked by
+``test_roadguard_stats_no_mutation``.
+
+**Tests: 34/34 green** (12 new API contract + 22 unit).
+
+**Live verified empty state:** total=0, all counters 0, shadow
+enabled, enforce disabled, ready_to_enforce=False (correctly
+gated on rule-observation pass).
+
+**Operator note:** RoadGuard kept in shadow for at least one full
+week of clean decisions before considering enforcement, per the
+explicit operator directive.
+
+---
+
+
 ### RoadGuard — Shared Execution Safety Governor (May 7, 2026)
 
 A deterministic capital / broker / exposure protection layer that
