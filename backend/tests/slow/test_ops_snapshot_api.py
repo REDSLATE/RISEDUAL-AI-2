@@ -1,7 +1,7 @@
 """API-level tests for the ops-snapshot, calibration ECE, and shadow stats endpoints.
 
 Tests:
-- GET /api/admin/ops-snapshot (admin-only, full payload, no key leakage)
+- GET / (admin-only, full payload, no key leakage)
 - GET /api/admin/conviction/calibration (ECE + notes)
 - GET /api/admin/shadow/stats (notes array)
 """
