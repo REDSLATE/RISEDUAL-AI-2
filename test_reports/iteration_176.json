@@ -1,0 +1,60 @@
+{
+  "summary": "ML Artifacts Tile - All tests passed. Backend: 14/14 pytest tests pass. Frontend: All UI elements render correctly with proper data-testid attributes. Tile is read-only (no promote buttons, no input fields). Sorting, refresh, badges, and banners all working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_artifact_inventory.py",
+    "/app/test_reports/pytest/artifact_inventory_results_176.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MLArtifactsTile correctly implements read-only contract - NO promote/set-active buttons",
+    "NO input fields in tile - purely display-only",
+    "All 8 columns render with correct data-testid attributes",
+    "Green dot (artifact-active-yes) renders for active artifacts",
+    "Red STALE badge (artifact-stale-badge) renders ONLY for active+stale (age_hours > 72)",
+    "Yellow NO MANIFEST badge (artifact-no-manifest-badge) renders for manifest_present=false",
+    "STALE ACTIVE ARTIFACT banner (artifacts-banner-stale-active) appears when any active artifact is stale",
+    "Type badges render with correct colors: strategist=cyan, auditor=violet, unknown=slate",
+    "Refresh button works and triggers re-fetch",
+    "Column sorting works - clicking header toggles sort direction",
+    "60s auto-refresh interval is set via setInterval in useEffect"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (14/14 pytest tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "Created test artifacts in /app/backend/data/models/ for UI testing (cleaned up after tests): strategist_abc_20260508T220000Z.joblib (active+fresh+manifest), auditor_def_20260504T120000Z.joblib (active+stale), strategist_xyz_20260507T120000Z.joblib (no manifest), legacy_old.joblib (unknown type)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ML Artifacts Tile fully tested. Key findings: (1) Tile renders at /admin -> Kanban tab below MLHeartbeatTile, (2) data-testid='ml-artifacts-tile' is the main container, (3) All 8 columns have data-testid='artifact-col-{key}', (4) Active rows show green dot (artifact-active-yes), inactive show gray dash (artifact-active-no), (5) STALE badge only appears for active+stale rows, (6) NO MANIFEST badge appears for manifest_present=false, (7) STALE ACTIVE ARTIFACT banner appears when any active artifact is stale, (8) Type badges: artifact-type-strategist (cyan), artifact-type-auditor (violet), artifact-type-unknown (slate), (9) Refresh button: artifacts-refresh-btn, (10) Empty state: artifacts-empty-state with text 'No model artifacts found.'",
+  "verified_acceptance_criteria": {
+    "tile_renders_at_admin_kanban": "PASS - data-testid='ml-artifacts-tile' found below MLHeartbeatTile",
+    "empty_state_renders": "PASS - artifacts-empty-state with 'No model artifacts found.' (verified via API when models dir empty)",
+    "sortable_table_with_8_columns": "PASS - All columns found: model_type, filename, sha_from_filename, timestamp_from_filename, size_bytes, age_hours, manifest_present, currently_pointed_to_by_env",
+    "default_sort_newest_first": "PASS - Default sortKey='mtime', sortDir='desc'",
+    "green_dot_for_active": "PASS - 2 artifact-active-yes elements found for active artifacts",
+    "gray_dash_for_inactive": "PASS - 2 artifact-active-no elements found for inactive artifacts",
+    "red_stale_badge_for_active_stale": "PASS - 1 artifact-stale-badge found for auditor artifact (96h > 72h threshold)",
+    "yellow_no_manifest_badge": "PASS - 2 artifact-no-manifest-badge found for artifacts without manifest",
+    "stale_active_banner": "PASS - artifacts-banner-stale-active found when active artifact is stale",
+    "manual_refresh_button": "PASS - artifacts-refresh-btn found and clickable",
+    "60s_auto_refresh": "PASS - setInterval(load, 60000) in useEffect",
+    "type_badges_colors": "PASS - strategist=cyan, auditor=violet, unknown=slate",
+    "negative_no_promote_button": "PASS - No 'Promote', 'Set Active', 'Make Active', 'Activate' text in tile",
+    "negative_no_input_fields": "PASS - 0 input/textarea/select elements in tile",
+    "negative_only_get_requests": "PASS - Tile only calls GET /api/admin/ml/artifacts",
+    "backend_pytest_14_tests": "PASS - All 14 tests in test_artifact_inventory.py passed",
+    "make_lint_fast": "PASS - 7 passed + 119 passed"
+  },
+  "lint_fast_result": "PASS (7 passed + 119 passed)"
+}

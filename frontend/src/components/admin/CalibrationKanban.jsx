@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import MLHeartbeatTile from './MLHeartbeatTile';
+import MLArtifactsTile from './MLArtifactsTile';
 
 const API = `${getApiBase()}/api`;
 
@@ -292,6 +293,7 @@ const CalibrationKanban = () => {
   return (
     <div className="space-y-4" data-testid="calibration-kanban-tile">
       <MLHeartbeatTile />
+      <MLArtifactsTile />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
