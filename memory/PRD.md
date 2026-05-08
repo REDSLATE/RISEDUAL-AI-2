@@ -30,6 +30,32 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 6 prep — ML Artifacts tile on Calibration Kanban (2026-05-08)
+
+**Read-only Artifacts tile** (`frontend/src/components/admin/MLArtifactsTile.jsx`). UI-only surface; backend endpoint unchanged.
+
+  - Renders below `MLHeartbeatTile` on the Calibration Kanban admin page.
+  - `GET /api/admin/ml/artifacts` → sortable table (8 columns: Type, Filename, SHA, Timestamp, Size, Age, Manifest, Active).
+  - **Default sort**: newest first by mtime. Click any column header to toggle/switch sort key.
+  - **Visual cues** (read-only, no promotion power):
+    * Green dot when `currently_pointed_to_by_env=true`.
+    * Red `STALE` badge when active artifact has `age_hours > 72`.
+    * Yellow `NO MANIFEST` badge when `manifest_present=false`.
+    * Header banner `STALE ACTIVE ARTIFACT` when any active+stale row exists.
+    * Cyan badge for `model_type=strategist`, violet for `auditor`, slate for `unknown`.
+  - **Empty state**: "No model artifacts found." with the resolved `models_dir` path.
+  - **Manual refresh button** + 60s auto-refresh interval.
+
+**Hard-rule invariants** (verified):
+  - NO promote button, NO set-active button, NO env-editing controls, NO write endpoints called, NO joblib loading.
+  - All controls are read-only — only GET `/api/admin/ml/artifacts` is fetched.
+
+**Verified**:
+  - Backend: 14/14 pytest tests pass (`test_artifact_inventory.py`).
+  - Frontend: testing_agent_v3_fork 100% pass — all UI elements render with proper `data-testid` attributes; sorting, refresh, badges, and banners all working; tile is read-only.
+  - Live smoke (main agent): 4 seeded artifacts exercising all 4 cases (active+fresh+manifest, active+96h stale, inactive+no-manifest, unknown type) rendered correctly with green dot, red STALE badge, yellow NO MANIFEST badge, and `STALE ACTIVE ARTIFACT` header banner.
+  - Test pollution cleaned up: empty `data/models/` and pristine `.env` after smoke test.
+
 ### Phase 6 prep — `GET /api/admin/ml/artifacts` (2026-05-08)
 
 **Read-only artifact inventory**. File-stat + env-read only. Surfaces every `.joblib` under `/app/backend/data/models/` (override via `ALPHA_MODELS_DIR`).
