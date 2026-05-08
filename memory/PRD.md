@@ -30,6 +30,31 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5d Wedge alerter — heartbeat-driven paging (2026-05-08)
+
+**Notification-only** wedge alerter (`services/wedge_alerter.py`). NO promotion, NO enforcement, NO broker calls, NO scheduler restart, NO automatic remediation.
+
+**Trigger rules**:
+  - **T1** `any_frozen=true` for >`WEDGE_FROZEN_THRESHOLD_MIN` min (default 30) — tracked per-lane via `frozen_started_at`.
+  - **T2** `top_clamp_block_reason == STRATEGIST_FEATURE_HEALTH_LOW` with `top_clamp_block_count > WEDGE_FEATURE_HEALTH_THRESHOLD` (default 50) in last 1h.
+
+**Behavior**:
+  - Posts ONE alert to `OPS_ALERT_WEBHOOK_URL` (Slack/Discord/generic-compatible JSON).
+  - Cooldown: `WEDGE_ALERT_COOLDOWN_HOURS` (default 4h) suppresses duplicate `(lane, rule)` alerts.
+  - Audit row written to `wedge_alerter_history` regardless of webhook success.
+  - Missing webhook logs `OPS_ALERT_WEBHOOK_URL_MISSING` once per tick — never crashes.
+  - Lane recovery clears the frozen-timer in `wedge_alerter_state.lane_frozen_started_at`.
+  - Tier-3 firewall: only writes to `wedge_alerter_state` + `wedge_alerter_history`, NEVER to `alpha_decision_log` / `roadguard_*` / `phase5b_intents` / `paper_trades`.
+
+**New scheduler job**: `wedge_alerter_tick` interval=5min — safe to schedule even without webhook (logs and returns).
+
+**New admin endpoints** (`ml_safety_router`, all read-only):
+  - `GET /api/admin/ml/wedge-alerter/status` — config flag + persisted state shape.
+  - `GET /api/admin/ml/wedge-alerter/history?limit&lane` — audit rows.
+  - `POST /api/admin/ml/wedge-alerter/run-now` — manual one-tick trigger.
+
+**Tests**: `tests/test_wedge_alerter.py` (10 unit) + `tests/slow/test_wedge_alerter_api.py` (26 API). Combined Phase 5d suite: **79 passed** end-to-end. Hard stop on Phase 5b promotion remains in effect.
+
 ### Phase 5d cleanup — Tech-debt batch (2026-05-08)
 
 **Direction-tuple cleanup**: replaced 5 literal direction tuples with the canonical `Verdict` enum / `canonical_ai_dir` helper. No allowlist additions.
