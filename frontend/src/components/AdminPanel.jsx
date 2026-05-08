@@ -33,6 +33,7 @@ import AdminRoutesPanel from './admin/AdminRoutesPanel';
 import ShellyDiagnosticTile from './admin/ShellyDiagnosticTile';
 import FastVetoTile from './admin/FastVetoTile';
 import RoadGuardTile from './admin/RoadGuardTile';
+import CalibrationKanban from './admin/CalibrationKanban';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -79,6 +80,7 @@ const TAB_GROUPS = [
       { id: 'shelly',        label: 'Shelly',  icon: Brain },
       { id: 'fast-veto',     label: 'Fast Veto', icon: ShieldCheck },
       { id: 'roadguard',     label: 'RoadGuard', icon: ShieldCheck },
+      { id: 'kanban',        label: 'Kanban',    icon: ShieldCheck },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
       { id: 'proof-chain',   label: 'Proof Chain', icon: ShieldCheck },
@@ -121,6 +123,7 @@ const TAB_SUBTITLES = {
   shelly:         () => 'Shelly · Patent M Learning Core — situational memory · observation only (rollout step 1/5)',
   'fast-veto':    () => 'Tier 1 Fast Veto — sub-ms classical guardrail · veto-only · shadow mode',
   roadguard:      () => 'RoadGuard — shared capital + broker safety governor · veto-only · shadow mode',
+  kanban:         () => 'Calibration Kanban — per-lane promotion readiness · Shadow → Calibrate → Enforce · read-only',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
   'proof-chain':  () => 'Patent J — immutable hash-linked decision audit trail',
@@ -154,6 +157,7 @@ const TAB_COMPONENTS = {
   shelly:         () => <ShellyDiagnosticTile />,
   'fast-veto':    () => <FastVetoTile />,
   roadguard:      () => <RoadGuardTile />,
+  kanban:         () => <CalibrationKanban />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
   'proof-chain':  () => <ProofChainExplorer />,

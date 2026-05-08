@@ -174,6 +174,22 @@ async def roadguard_recent_decisions(
     return {"items": items, "count": len(items), "lane": lane, "collection": coll}
 
 
+# ── Calibration Kanban (read-only promotion-readiness tile) ──────
+
+
+@router.get("/calibration/kanban")
+async def calibration_kanban(request: Request) -> Dict[str, Any]:
+    """Per-lane promotion-readiness snapshot for the admin tile.
+
+    Read-only. NEVER mutates flags. NEVER calls a broker. Buttons on
+    the tile only display ``Eligible`` / ``Blocked`` / ``Ready for
+    Review`` — they do not flip enforcement.
+    """
+    await _require_admin(request)
+    from services.calibration_kanban import get_kanban
+    return await get_kanban(_db)
+
+
 # ── Synthetic dry-run ────────────────────────────────────────────
 
 

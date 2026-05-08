@@ -1,0 +1,108 @@
+{
+  "summary": "Completed comprehensive backend testing of Calibration Kanban endpoint (GET /api/admin/ml/v2/calibration/kanban). All 23 test cases passed successfully. Verified READ-ONLY guarantee, lane isolation, checklist structure, and regression on existing endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/slow/test_calibration_kanban_endpoint.py",
+    "/app/test_reports/pytest/calibration_kanban_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Calibration Kanban endpoint correctly implements READ-ONLY behavior - no writes to any collection",
+    "Lane isolation is correct: equity uses roadguard_equity_decisions, crypto uses roadguard_crypto_decisions",
+    "Checklist has exactly 6 items in correct order: min_receipts, zero_contamination, zero_false_blocks, broker_health_stable, correct_collection, enforce_off",
+    "Each checklist item has correct shape: {key, label, status (pass|fail|n/a), value, threshold, note}",
+    "enforce_flag correctly defaults to false on both lanes (from .env)",
+    "Phase derivation working correctly: Shadow phase with sparse data, Blocked promotion_state with min_receipts blocker"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_calibration_kanban_endpoint.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Calibration Kanban endpoint fully tested. Key findings: (1) Endpoint returns version=1, sample_window (7 days), promotion_thresholds, and lanes (equity/crypto), (2) Each lane card has correct structure with phase, enforce_flag, promotion_state, blockers, metrics, and 6-item checklist, (3) READ-ONLY guarantee verified - doc counts unchanged after multiple calls, (4) Lane isolation verified - equity uses roadguard_equity_decisions, crypto uses roadguard_crypto_decisions, (5) Current state: both lanes in Shadow phase, Blocked promotion_state with min_receipts blocker (equity has 3 receipts, crypto has 2, need 200), (6) Regression tests passed - boot-receipts returns 7 ready, pair-status works correctly.",
+  "test_cases_executed": [
+    {"test": "Auth: kanban requires auth (401/403 without cookie)", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/calibration/kanban returns 200 with admin auth", "status": "PASS"},
+    {"test": "Response has version=1, generated_at, sample_window, promotion_thresholds, lanes", "status": "PASS"},
+    {"test": "sample_window has days, from, to", "status": "PASS"},
+    {"test": "promotion_thresholds has min_receipts_per_lane, broker_health_block_ratio_max", "status": "PASS"},
+    {"test": "lanes contains equity and crypto keys", "status": "PASS"},
+    {"test": "Equity card has all required fields (lane, phase, enforce_flag, promotion_state, blockers, receipts_collection, rg_collection, sample_window, metrics, checklist)", "status": "PASS"},
+    {"test": "Crypto card has all required fields", "status": "PASS"},
+    {"test": "Equity rg_collection is 'roadguard_equity_decisions'", "status": "PASS"},
+    {"test": "Crypto rg_collection is 'roadguard_crypto_decisions'", "status": "PASS"},
+    {"test": "No cross-talk between lanes (different collections)", "status": "PASS"},
+    {"test": "Equity metrics has receipts and roadguard sub-objects with correct structure", "status": "PASS"},
+    {"test": "Checklist has exactly 6 items per lane", "status": "PASS"},
+    {"test": "Checklist keys in exact order: min_receipts, zero_contamination, zero_false_blocks, broker_health_stable, correct_collection, enforce_off", "status": "PASS"},
+    {"test": "Checklist item shape: {key, label, status (pass|fail|n/a), value, threshold, note}", "status": "PASS"},
+    {"test": "Equity phase is 'Shadow' with sparse data", "status": "PASS"},
+    {"test": "Equity promotion_state is 'Blocked' with sparse data", "status": "PASS"},
+    {"test": "Equity blockers contains 'min_receipts'", "status": "PASS"},
+    {"test": "enforce_flag is false on both lanes", "status": "PASS"},
+    {"test": "READ-ONLY: doc counts unchanged after 5 kanban calls", "status": "PASS"},
+    {"test": "READ-ONLY: enforce_flag unchanged after kanban access", "status": "PASS"},
+    {"test": "Regression: /boot-receipts returns 7 ready receipts", "status": "PASS"},
+    {"test": "Regression: /roadguard/pair-status still works", "status": "PASS"}
+  ],
+  "verified_features": {
+    "calibration_kanban": {
+      "endpoint": "GET /api/admin/ml/v2/calibration/kanban",
+      "auth": "Admin required (401/403 without cookie)",
+      "response_structure": {
+        "version": 1,
+        "generated_at": "ISO timestamp",
+        "sample_window": {"days": 7, "from": "ISO", "to": "ISO"},
+        "promotion_thresholds": {"min_receipts_per_lane": 200, "broker_health_block_ratio_max": 0.05},
+        "lanes": {"equity": "...", "crypto": "..."}
+      },
+      "lane_card_structure": {
+        "lane": "equity|crypto",
+        "phase": "Shadow|Calibrate|Enforce",
+        "enforce_flag": "bool",
+        "promotion_state": "Eligible|Blocked|Ready for Review",
+        "blockers": "list of failing checklist keys",
+        "receipts_collection": "alpha_decision_log",
+        "rg_collection": "roadguard_{lane}_decisions",
+        "sample_window": "same as top-level",
+        "metrics": {"receipts": "...", "roadguard": "..."},
+        "checklist": "6 items"
+      },
+      "checklist_keys": ["min_receipts", "zero_contamination", "zero_false_blocks", "broker_health_stable", "correct_collection", "enforce_off"],
+      "read_only_guarantee": "VERIFIED - no writes to any collection",
+      "lane_isolation": "VERIFIED - equity uses roadguard_equity_decisions, crypto uses roadguard_crypto_decisions"
+    }
+  },
+  "current_state_snapshot": {
+    "equity": {
+      "phase": "Shadow",
+      "promotion_state": "Blocked",
+      "blockers": ["min_receipts"],
+      "receipts_total": 3,
+      "rg_total": 1,
+      "enforce_flag": false
+    },
+    "crypto": {
+      "phase": "Shadow",
+      "promotion_state": "Blocked",
+      "blockers": ["min_receipts"],
+      "receipts_total": 2,
+      "rg_total": 1,
+      "enforce_flag": false
+    }
+  }
+}
