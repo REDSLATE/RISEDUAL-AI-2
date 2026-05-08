@@ -30,6 +30,29 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 6 prep — `scripts/retrain_alpha_models.py` (2026-05-08)
+
+**Artifact-only retraining scaffold**. NO live promotion, NO env mutation, NO broker calls, NO executor wiring changes.
+
+**Script** (`/app/backend/scripts/retrain_alpha_models.py`):
+  - Reads `paper_trades` + `crypto_paper_trades` (outcome labels) + `alpha_decision_log` (feature reconstruction) within a configurable window.
+  - Reconstructs the same 10-dim Strategist feature vector used at inference time (perception 6 sub-scores, avg confidence, shelly recall pos/neg ratios, intent encoded).
+  - Strategist labels: realised P&L > 0 → BUY, < 0 → SELL, ≈ 0 → NO_TRADE. Auditor labels: losing trades → BLOCK.
+  - Trains two `RandomForestClassifier` instances; reports `accuracy / precision_weighted / recall_weighted / ECE_10bin` plus class balance, train/test split, skip reasons.
+  - Versioned outputs: `data/models/strategist_<git_sha>_<timestamp>.joblib` + `auditor_<...>.joblib` + `manifest_<...>.json` (source-tagged `alpha_retrain`).
+  - Default mode is dry-run; `--write-artifact` persists files.
+  - `--window-days N` (default 14), `--seed`, `--out-dir`, `--json /path` for machine-readable report.
+  - Returns clean status `NOT_ENOUGH_ROWS` when `rows_used < 50`.
+  - Returns clean status `NO_DB` when server db unimportable (no crash).
+
+**Tests** (`/app/backend/tests/test_retrain_alpha_models.py`): 17 unit tests covering all 6 acceptance criteria — no rows → NOT_ENOUGH_ROWS, missing-features classification, versioned paths, dry-run no-write, stable schema, no env mutation — plus pure-helper coverage (label_from_outcome, class_balance, ECE, fit_classifier).
+
+**Verified**:
+  - 17/17 unit tests pass.
+  - CLI smoke run against preview Mongo correctly returned NOT_ENOUGH_ROWS (172 trades scanned, 0 paired with decision logs in 1-day window).
+  - testing_agent_v3_fork: 100% pass, zero issues.
+  - Full pytest: **2782 passed, 0 failed**.
+
 ### Phase 5d guard rails — `make lint-arch` / `make lint-fast` + opt-in pre-push hook (2026-05-08)
 
 **Goal**: protect the green-CI baseline as Phase 6 prep touches more files.
