@@ -30,6 +30,30 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5d — Stale-model / Feature-health / Heartbeat safety patch (2026-05-08)
+
+**Stale-Model Protection** (`services/ml/model_age.py`):
+  - `evaluate_artifact(path)` returns `(stale, age_hours, max_age)`. Threshold via `MAX_MODEL_AGE_HOURS` env (default 72).
+  - `ModelBootReceipt` extended with `model_age_hours: Optional[float]` and `stale: bool`.
+  - When stale, Strategist/Auditor/Executor boot flips `ready=False` with reason `MODEL_STALE_OBSERVE_ONLY:age=Xh>max=72h`. Layer.decide() then returns NO_TRADE — no override flag exists.
+
+**Feature-Health Weighting** (`services/ml/feature_health.py`):
+  - `compute_feature_health(frame)` returns `(score, diagnostics)` with components: perception confidence (50%), market completeness (30%), data freshness (20%).
+  - Strategist clamps `effective_confidence = raw_confidence * feature_health_score`.
+  - Below `FEATURE_HEALTH_HOLD_THRESHOLD` (default 0.3) → forces NO_TRADE with reason `STRATEGIST_FEATURE_HEALTH_LOW`.
+  - Reason flips to `STRATEGIST_CONFIRM_CLAMPED` / `STRATEGIST_FLIP_CLAMPED` when clamping is active.
+
+**Executor Heartbeat** (`services/ml/executor_heartbeat.py`):
+  - Thread-safe in-process tracker. Records every `pipeline.decide()` per lane.
+  - Surfaces `last_pipeline_run_at`, `last_signal_at`, `signals_1h`, `holds_1h`, `feature_health_avg`, `model_age_hours`, `frozen`.
+  - Frozen heuristic: no run in `EXECUTOR_HEARTBEAT_FREEZE_AFTER_MIN` minutes (default 15) OR (signals_1h=0 AND avg health < 0.3).
+
+**New admin endpoints** (`/api/admin/ml` prefix, separate `ml_safety_router`):
+  - `GET /api/admin/ml/heartbeat` — per-lane state with frozen flag, model_stale flag.
+  - `GET /api/admin/ml/pipeline/receipts?limit&lane` — recent decision-log entries.
+
+**Tests**: `tests/test_phase5d_safety.py` (14 unit) + `tests/slow/test_phase5d_safety_api.py` (26 API). All 40 passing. **Hard stop on Phase 5b promotion remains in effect** — no broker wiring changes, no BUY/SELL enablement.
+
 ### Phase 5c — sklearn-backed Strategist + Auditor, live features, Camaro bridge
 
 **Real Strategist + Auditor ML** (`services/ml/strategist/base.py`, `services/ml/auditor/base.py`):
