@@ -280,10 +280,16 @@ def _agreement_with_council(
 
     council_action = str(council_result.get("action", "")).upper()
 
+    # NO_TRADE-side synonyms — different namespace from AI verdict
+    # tokens, so an explicit set is appropriate here.
     if result.would_veto and council_action in {"HOLD", "NO_TRADE", "VETO", "SKIP", "SKIPPED"}:
         return True
 
-    if result.would_veto and council_action in {"BUY", "SELL", "LONG", "SHORT"}:
+    # Directional check: route any verdict-token spelling
+    # (BUY/SELL/LONG/SHORT/STRONG_*/etc.) through the canonical helper.
+    # Any non-UNKNOWN canonical means the council picked a side.
+    from services.prediction_tracker import canonical_ai_dir
+    if result.would_veto and canonical_ai_dir(council_action) != "UNKNOWN":
         return False
 
     return None

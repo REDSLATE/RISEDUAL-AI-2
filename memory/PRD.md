@@ -30,6 +30,20 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5d cleanup — Tech-debt batch (2026-05-08)
+
+**Direction-tuple cleanup**: replaced 5 literal direction tuples with the canonical `Verdict` enum / `canonical_ai_dir` helper. No allowlist additions.
+  - `services/alpha_decision_log.py:131` → `(Verdict.BUY.value, Verdict.SELL.value)`
+  - `services/ml/shadow_wiring.py:199, 248, 278` → `(Verdict.BUY.value, Verdict.SELL.value)`
+  - `services/fast_veto_layer.py:286` → `canonical_ai_dir(council_action) != "UNKNOWN"`
+
+**RoadGuardTile.jsx split** (was 525 lines, now 412): extracted 3 sub-components without behavior change.
+  - `RoadGuardLaneCard.jsx` — per-lane summary card
+  - `RoadGuardStatsRow.jsx` — `Metric` + `ScopeButton` primitives
+  - `RoadGuardReasonBadge.jsx` — `DecisionBadge` + `ChecklistRow` primitives
+
+**Tests**: `test_no_local_direction_tuples.py` (4/4) + `test_code_size.py` (3/3) now passing. Full pytest: **2755 passed, 0 failed**. UI smoke screenshot confirms RoadGuardTile renders identically.
+
 ### Phase 5d — Stale-model / Feature-health / Heartbeat safety patch (2026-05-08)
 
 **Stale-Model Protection** (`services/ml/model_age.py`):

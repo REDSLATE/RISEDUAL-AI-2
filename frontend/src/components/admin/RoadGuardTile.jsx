@@ -15,12 +15,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import {
-  RefreshCw,
-  Shield,
-  AlertTriangle,
-  CheckCircle2,
-} from 'lucide-react';
+import { RefreshCw, Shield, CheckCircle2 } from 'lucide-react';
+
+import { RoadGuardLaneCard } from './RoadGuardLaneCard';
+import { Metric, ScopeButton } from './RoadGuardStatsRow';
+import { DecisionBadge, ChecklistRow } from './RoadGuardReasonBadge';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -149,7 +148,7 @@ export const RoadGuardTile = () => {
             className="grid grid-cols-3 gap-2"
             data-testid="rg-lane-summary"
           >
-            <LaneSummary
+            <RoadGuardLaneCard
               label="Equity"
               bucket={data.by_lane?.equity}
               active={scope === 'equity'}
@@ -157,7 +156,7 @@ export const RoadGuardTile = () => {
               testid="rg-lane-equity"
               dotColor="bg-amber-400"
             />
-            <LaneSummary
+            <RoadGuardLaneCard
               label="Crypto"
               bucket={data.by_lane?.crypto}
               active={scope === 'crypto'}
@@ -165,7 +164,7 @@ export const RoadGuardTile = () => {
               testid="rg-lane-crypto"
               dotColor="bg-cyan-400"
             />
-            <LaneSummary
+            <RoadGuardLaneCard
               label="Unknown"
               bucket={data.by_lane?.unknown}
               active={false}
@@ -409,116 +408,5 @@ export const RoadGuardTile = () => {
     </Card>
   );
 };
-
-const Metric = ({ label, value, sub, accent, testid }) => {
-  const accentClass =
-    accent === 'emerald'
-      ? 'text-emerald-300'
-      : accent === 'rose'
-        ? 'text-rose-300'
-        : accent === 'amber'
-          ? 'text-amber-300'
-          : 'text-slate-100';
-  return (
-    <div
-      className="rounded-lg border border-slate-700/40 bg-slate-800/30 p-2"
-      data-testid={testid}
-    >
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <div className={`text-base font-mono ${accentClass}`}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-500 font-mono">{sub}</div>}
-    </div>
-  );
-};
-
-const LaneSummary = ({ label, bucket, active, onClick, testid, dotColor, dim }) => {
-  const total = bucket?.total || 0;
-  const blocks = bucket?.decision_counts?.BLOCK || 0;
-  const pauses = bucket?.decision_counts?.PAUSE_LANE || 0;
-  const blockRate = total ? (blocks + pauses) / total : 0;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={testid}
-      disabled={dim || !total}
-      className={[
-        'rounded-lg border p-2 text-left transition-colors',
-        active
-          ? 'border-emerald-500/60 bg-emerald-500/10'
-          : 'border-slate-700/40 bg-slate-800/30 hover:bg-slate-800/60',
-        dim ? 'opacity-50 cursor-default' : 'cursor-pointer',
-        !total && !dim ? 'opacity-60' : '',
-      ].join(' ')}
-    >
-      <div className="flex items-center gap-2">
-        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-        <span className="text-[10px] uppercase tracking-wide text-slate-400">
-          {label}
-        </span>
-      </div>
-      <div className="mt-1 flex items-baseline justify-between">
-        <span className="text-base font-mono text-slate-100">
-          {fmtNum(total)}
-        </span>
-        <span className="text-[10px] font-mono text-slate-500">
-          {(blockRate * 100).toFixed(0)}% block
-        </span>
-      </div>
-      {total > 0 && (
-        <div className="text-[10px] font-mono text-slate-500">
-          A {bucket?.decision_counts?.ALLOW ?? 0} · B {blocks} · P {pauses}
-        </div>
-      )}
-    </button>
-  );
-};
-
-const ScopeButton = ({ label, active, onClick, testid, disabled }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    data-testid={testid}
-    className={[
-      'px-2 py-0.5 rounded font-mono transition-colors',
-      active
-        ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
-        : 'text-slate-400 border border-transparent hover:bg-slate-800/60',
-      disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
-    ].join(' ')}
-  >
-    {label}
-  </button>
-);
-
-const DecisionBadge = ({ value }) => {
-  if (value === 'ALLOW') {
-    return <span className="text-emerald-300">ALLOW</span>;
-  }
-  if (value === 'BLOCK') {
-    return <span className="text-rose-300">BLOCK</span>;
-  }
-  if (value === 'PAUSE_LANE') {
-    return <span className="text-amber-300">PAUSE</span>;
-  }
-  return <span className="text-slate-400">{value || '—'}</span>;
-};
-
-const ChecklistRow = ({ label, pass, detail }) => (
-  <div className="flex items-center justify-between text-xs">
-    <span className="flex items-center gap-2 text-slate-300">
-      {pass ? (
-        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-      ) : (
-        <AlertTriangle className="w-3 h-3 text-amber-400" />
-      )}
-      {label}
-    </span>
-    <span className="font-mono text-slate-400">{detail}</span>
-  </div>
-);
 
 export default RoadGuardTile;

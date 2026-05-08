@@ -22,7 +22,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from services.ml.contracts import DECISION_STAGES
+from services.ml.contracts import DECISION_STAGES, Verdict
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def record_pipeline_decision(db, pipeline_decision) -> Optional[str]:
     final = pipeline_decision.final
     is_approved = (
         pipeline_decision.blocked_at is None
-        and final.decision in ("BUY", "SELL")
+        and final.decision in (Verdict.BUY.value, Verdict.SELL.value)
     )
     decision = "APPROVED" if is_approved else "NO_TRADE"
     return await record_decision(

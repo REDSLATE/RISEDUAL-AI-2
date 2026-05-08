@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from services import alpha_decision_log
-from services.ml.contracts import FeatureFrame
+from services.ml.contracts import FeatureFrame, Verdict
 from services.ml.pipeline import get_pipeline
 from services.ml.roadguard import (
     AccountSnapshot,
@@ -196,7 +196,7 @@ async def run_shadow_pipeline(
             )
             # Use the pipeline's final decision when we have one,
             # else fall back to BUY/SELL inferred from the signal.
-            if decision.final.decision in ("BUY", "SELL"):
+            if decision.final.decision in (Verdict.BUY.value, Verdict.SELL.value):
                 side = decision.final.decision
             else:
                 side = (
@@ -245,7 +245,7 @@ async def run_shadow_pipeline(
                 symbol=frame.symbol,
                 side=(
                     decision.final.decision
-                    if decision.final.decision in ("BUY", "SELL")
+                    if decision.final.decision in (Verdict.BUY.value, Verdict.SELL.value)
                     else (
                         "BUY" if str(signal.get("direction", "LONG")).upper() == "LONG"
                         else "SELL"
@@ -275,7 +275,7 @@ async def run_shadow_pipeline(
         # Write ONE receipt capturing the chain.
         is_approved = (
             receipt_blocked_at is None
-            and decision.final.decision in ("BUY", "SELL")
+            and decision.final.decision in (Verdict.BUY.value, Verdict.SELL.value)
         )
         await alpha_decision_log.record_decision(
             db,
