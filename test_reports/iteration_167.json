@@ -1,0 +1,66 @@
+{
+  "summary": "Completed comprehensive backend testing of Admin ML v2 endpoints (Phase 0-5a + closed-loop RoadGuard pair). All 18 test cases passed successfully.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/slow/test_admin_ml_v2_endpoints.py",
+    "/app/test_reports/pytest/admin_ml_v2_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Code is well-structured with proper separation of concerns between pipeline, roadguard, and shadow_wiring modules",
+    "Closed-loop RoadGuard pair correctly isolates equity and crypto lanes with separate collections (roadguard_equity_decisions, roadguard_crypto_decisions)",
+    "All endpoints properly require admin authentication via _require_admin()",
+    "Pipeline dry-run correctly does NOT write to RoadGuard collections (only shadow_wiring flow does)",
+    "Lane validation uses regex pattern ^(equity|crypto)$ returning 422 for invalid lanes"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_admin_ml_v2_endpoints.py"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin ML v2 endpoints fully tested. Key findings: (1) boot-receipts returns 7 ready receipts with 2 executor layers, (2) RoadGuard pair-status correctly shows isolated collections, (3) Pipeline blocks at perception with EVENT_SHOCK_ACTIVE or LIQUIDITY_THIN (expected shadow-mode behavior), (4) All auth checks working correctly.",
+  "test_cases_executed": [
+    {"test": "Auth: boot-receipts requires auth", "status": "PASS"},
+    {"test": "Auth: decisions/summary requires auth", "status": "PASS"},
+    {"test": "Auth: decisions/recent requires auth", "status": "PASS"},
+    {"test": "Auth: pipeline/decide requires auth", "status": "PASS"},
+    {"test": "Auth: roadguard/pair-status requires auth", "status": "PASS"},
+    {"test": "Auth: roadguard/decisions/recent requires auth", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/boot-receipts returns 7 ready receipts", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/decisions/summary returns correct structure", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/decisions/recent returns list", "status": "PASS"},
+    {"test": "POST /api/admin/ml/v2/pipeline/decide equity AAPL", "status": "PASS"},
+    {"test": "POST /api/admin/ml/v2/pipeline/decide crypto BTC-USD", "status": "PASS"},
+    {"test": "POST /api/admin/ml/v2/pipeline/decide bad lane returns 400", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/roadguard/pair-status structure", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/roadguard/pair-status no cross-contamination", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/roadguard/decisions/recent equity lane", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/roadguard/decisions/recent crypto lane", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/roadguard/decisions/recent invalid lane returns 422", "status": "PASS"},
+    {"test": "End-to-end: pipeline/decide does not write to RG collections", "status": "PASS"}
+  ],
+  "verified_features": {
+    "boot_receipts": "7 ready receipts (perception, strategist, auditor, fast_veto, shadow, 2x executor)",
+    "decisions_summary": "Returns {approved, by_stage:{shelly_recall, perception, strategist, auditor, fast_veto, shadow, executor, roadguard}, total}",
+    "decisions_recent": "Returns {items, count} list of receipts",
+    "pipeline_decide": "Returns {pipeline:{symbol, lane, final, trail, blocked_at, timestamp}, roadguard_v2:null, recorded:false}",
+    "roadguard_pair_status": "Returns {pair:{equity:{lane:'equity', collection:'roadguard_equity_decisions', ...}, crypto:{lane:'crypto', collection:'roadguard_crypto_decisions', ...}}}",
+    "roadguard_decisions_recent": "Returns {items, count, lane, collection} with lane-specific filtering",
+    "lane_validation": "Invalid lane (options) returns 422 with pattern mismatch error",
+    "closed_loop_isolation": "Equity and crypto RoadGuards write to separate collections with NO cross-contamination"
+  }
+}

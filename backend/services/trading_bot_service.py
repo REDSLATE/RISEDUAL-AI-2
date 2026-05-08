@@ -545,6 +545,31 @@ async def execute_signal(
         logger.warning("[roadguard] evaluation failed (shadow-safe): %s", _rg_exc)
         rg_response = None
 
+    # ── Phase 5a: receipt-only ML pipeline observation ──
+    # Runs the new RisedualMLPipeline + RoadGuardV2 against the same
+    # signal and writes ONE alpha_decision_log receipt + a
+    # roadguard_v2_decisions row. NEVER affects routing — fire-and-
+    # forget. The legacy execute_signal flow continues regardless.
+    try:
+        from services.ml.shadow_wiring import run_shadow_pipeline
+        db_for_log = _resolve_db_for_shadow()
+        import asyncio as _asyncio_p5a
+        _asyncio_p5a.create_task(run_shadow_pipeline(
+            db_for_log,
+            signal=signal,
+            market_data=market_data,
+            lane=lane,
+            requested_notional_usd=float(adjusted_size),
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=bot_capital or 0.0,
+        ))
+    except Exception as _p5a_exc:  # noqa: BLE001
+        logger.warning(
+            "[ml.phase5a] shadow wiring failed to start (executor-safe): %s",
+            _p5a_exc,
+        )
+
     _fire_equity_shadow(
         synthetic_bot=synthetic_bot,
         signal=signal,

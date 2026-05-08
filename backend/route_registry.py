@@ -102,6 +102,7 @@ from routes.admin_introspection import router as admin_introspection_router, set
 from routes.admin_learning_core import router as admin_learning_core_router, set_db as set_admin_learning_core_db
 from routes.admin_fast_veto import router as admin_fast_veto_router, set_db as set_admin_fast_veto_db
 from routes.admin_roadguard import router as admin_roadguard_router, set_db as set_admin_roadguard_db
+from routes.admin_ml_v2 import router as admin_ml_v2_router, set_db as set_admin_ml_v2_db
 from services.natural_language_trading import router as nl_trading_router, set_db as set_nl_trading_db
 # Side-effect import: registers all ``BaseETLJob`` subclasses with
 # the ETL framework registry. Must run before
@@ -192,6 +193,7 @@ ALL_ROUTERS = [
     admin_learning_core_router,
     admin_fast_veto_router,
     admin_roadguard_router,
+    admin_ml_v2_router,
     nl_trading_router,
 ]
 
@@ -270,6 +272,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_learning_core_db,
         set_admin_fast_veto_db,
         set_admin_roadguard_db,
+        set_admin_ml_v2_db,
         set_nl_trading_db,
     ]
     # Module-level db handle for the per-patent policy store so the
@@ -426,6 +429,19 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             pass  # no running loop during sync init — indexes get created on first write anyway
     except Exception as e:
         logger.warning(f"Rejection log DB wire failed: {e}")
+
+    # Phase 5a — alpha_decision_log + daily_mandate indexes.
+    try:
+        from services import alpha_decision_log as _adl, alpha_daily_mandate as _adm
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(_adl.ensure_indexes(db))
+            loop.create_task(_adm.ensure_indexes(db))
+        except RuntimeError:
+            pass
+    except Exception as e:
+        logger.warning(f"Phase 5a alpha indexes wire failed: {e}")
 
     # Initialize Object Storage
     try:
