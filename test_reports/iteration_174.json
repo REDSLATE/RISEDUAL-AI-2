@@ -1,0 +1,113 @@
+{
+  "summary": "Phase 6 prep script retrain_alpha_models.py - All 17 unit tests passed + CLI smoke test + manual verification of all acceptance criteria. Script correctly generates versioned .joblib artifacts for Strategist + Auditor models with calibration report and training manifest. NO broker calls, NO env mutation, NO executor wiring.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_retrain_alpha_models.py",
+    "/app/test_reports/pytest/retrain_alpha_models_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Script correctly implements dry-run default mode - no artifacts written unless --write-artifact flag is passed",
+    "Versioned paths follow correct format: strategist_<sha>_<UTC-stamp>.joblib and auditor_<sha>_<UTC-stamp>.joblib",
+    "Report schema stable with all 15 required keys: status, source, git_sha, timestamp, window_days, rows_scanned, rows_used, rows_skipped, skip_reasons, feature_count, class_balance_strategist, class_balance_auditor, strategist, auditor, artifacts",
+    "Manifest JSON contains all required fields: source='alpha_retrain', git_sha, timestamp, window_days, rows_used, strategist_metrics, auditor_metrics",
+    "NO forbidden imports: script does NOT import services.alpaca_client, services.kraken_client, services.broker_registry, services.smart_order_service, services.ml.broker_wire, services.ml.executors, services.ml.pipeline",
+    "NO env mutation: STRATEGIST_ARTIFACT, AUDITOR_ARTIFACT, PHASE6_ENFORCE_*, ALPACA_API_KEY, KRAKEN_API_KEY unchanged after write-artifact run",
+    "skip_reasons counter correctly classifies: missing_symbol, no_decision_log, missing_features, missing_pnl",
+    "reconstruct_features returns None when any of the 6 perception sub-scores (event_shock, regime, drawdown, liquidity, system_health, pacing) is missing",
+    "label_from_outcome correctly maps: pnl > 0 → BUY/AUDIT_OK, pnl < 0 → SELL/AUDIT_BLOCK, pnl ≈ 0 → NO_TRADE/AUDIT_OK",
+    "STATUS_NOT_ENOUGH_ROWS returned when rows_used < DEFAULT_MIN_ROWS=50 (clean exit, no crash)",
+    "make lint-fast passes (no regression on Phase 6 invariant bundle)"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (17 unit tests passed + CLI smoke test + manual verification)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": "N/A (no HTTP endpoints - pure CLI/script)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "retrain_alpha_models.py is a Phase 6 prep CLI script. Key findings: (1) Default mode is dry-run (no artifacts written), (2) --write-artifact flag persists strategist + auditor + manifest to versioned paths, (3) --window-days controls cutoff for paper_trades + alpha_decision_log lookup, (4) --json writes report to file, (5) Live preview pod returned NOT_ENOUGH_ROWS (172 trades scanned, 0 paired with decision logs in 1-day window - expected since no alpha_decision_log entries exist), (6) No HTTP endpoints - test via CLI or by importing run_retrain() with synthetic ExtractionResult",
+  "test_cases_executed": [
+    {"test": "test_no_rows_returns_not_enough_rows", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_below_min_rows_returns_not_enough_rows", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_extract_rows_counts_missing_features", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_extract_rows_classifies_other_skip_reasons", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_reconstruct_features_returns_10_dim_vector", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_artifact_path_is_versioned", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_dry_run_does_not_write_artifact", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_cli_dry_run_is_default", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_report_schema_stable_for_empty_input", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_report_schema_stable_for_dry_run", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_report_schema_stable_for_write_artifact", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_no_env_mutation", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_label_from_outcome", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_class_balance", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_expected_calibration_error_returns_float", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_fit_classifier_metrics_well_formed", "status": "PASS", "file": "test_retrain_alpha_models.py"},
+    {"test": "test_build_report_handles_none_metrics", "status": "PASS", "file": "test_retrain_alpha_models.py"}
+  ],
+  "verified_features": {
+    "cli_flags": {
+      "--write-artifact": "Persists strategist + auditor + manifest to versioned paths (default: dry-run)",
+      "--window-days": "Controls cutoff for paper_trades + alpha_decision_log lookup (default: 14)",
+      "--json": "Writes report JSON to specified path",
+      "--seed": "Random seed for reproducibility (default: 4242)",
+      "--out-dir": "Output directory for artifacts (default: /app/backend/data/models)"
+    },
+    "status_codes": {
+      "OK": "Training completed successfully with >= 50 rows",
+      "NOT_ENOUGH_ROWS": "rows_used < 50 (clean exit, no crash)",
+      "NO_DB": "server.db is None / unimportable (clean exit, no crash)"
+    },
+    "versioned_paths": {
+      "strategist": "strategist_<sha>_<UTC-stamp>.joblib",
+      "auditor": "auditor_<sha>_<UTC-stamp>.joblib",
+      "manifest": "manifest_<sha>_<UTC-stamp>.json"
+    },
+    "report_schema": {
+      "required_keys": ["status", "source", "git_sha", "timestamp", "window_days", "rows_scanned", "rows_used", "rows_skipped", "skip_reasons", "feature_count", "class_balance_strategist", "class_balance_auditor", "strategist", "auditor", "artifacts"],
+      "artifacts_sub_keys": ["write_artifact", "strategist_path", "auditor_path", "manifest_path"]
+    },
+    "manifest_schema": {
+      "required_keys": ["source", "git_sha", "timestamp", "window_days", "feature_count", "rows_used", "strategist_path", "auditor_path", "strategist_metrics", "auditor_metrics"]
+    },
+    "skip_reasons": {
+      "missing_symbol": "Trade has no symbol or empty symbol",
+      "no_decision_log": "No matching decision log entry for (symbol, lane)",
+      "missing_features": "Decision doc missing any of 6 perception sub-scores",
+      "missing_pnl": "Trade has no usable P&L signal"
+    },
+    "label_mapping": {
+      "pnl > 0": "(LABEL_BUY=2, AUDIT_OK=0)",
+      "pnl < 0": "(LABEL_SELL=0, AUDIT_BLOCK=1)",
+      "pnl ≈ 0": "(LABEL_NO_TRADE=1, AUDIT_OK=0)"
+    },
+    "no_broker_imports": {
+      "verified": true,
+      "forbidden_modules": ["services.alpaca_client", "services.kraken_client", "services.broker_registry", "services.smart_order_service", "services.ml.broker_wire", "services.ml.executors", "services.ml.pipeline"]
+    },
+    "no_env_mutation": {
+      "verified": true,
+      "protected_vars": ["STRATEGIST_ARTIFACT", "AUDITOR_ARTIFACT", "PHASE6_ENFORCE_EQUITY", "PHASE6_ENFORCE_CRYPTO", "ALPACA_API_KEY", "KRAKEN_API_KEY"]
+    }
+  },
+  "live_cli_output": {
+    "command": "python -m scripts.retrain_alpha_models --window-days 1 --json /tmp/retrain_report.json",
+    "status": "NOT_ENOUGH_ROWS",
+    "rows_scanned": 172,
+    "rows_used": 0,
+    "skip_reasons": {"no_decision_log": 172},
+    "note": "Expected - preview pod has paper_trades but no alpha_decision_log entries to pair with"
+  },
+  "lint_fast_result": "PASS (7 passed + 119 passed)"
+}
