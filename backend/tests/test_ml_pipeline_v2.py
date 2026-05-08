@@ -46,18 +46,30 @@ def test_strategist_no_trade_inheritance():
 
 def test_strategist_memory_negative_downgrades():
     f = _frame()
-    f.perception = {"symbolic": {"decision": "BUY", "reason": "PASS"}}
-    f.shelly_recall = {"negative_count": 5, "summary": "many losses"}
+    f.perception = {"symbolic": {"decision": "BUY", "reason": "PASS"},
+                    "scores": {k: {"score": 0.5, "confidence": 0.5} for k in
+                               ("event_shock","regime","drawdown","liquidity",
+                                "system_health","pacing")}}
+    f.shelly_recall = {"episodes_found": 10, "negative_count": 8, "positive_count": 0}
     v = StrategistML().decide(f)
-    assert v.decision == Verdict.NO_TRADE.value
-    assert v.reason == "STRATEGIST_MEMORY_NEGATIVE"
+    # New sklearn classifier may downgrade or flip — must NOT remain BUY.
+    assert v.decision in (Verdict.NO_TRADE.value, Verdict.SELL.value)
 
 
 def test_strategist_confirm_when_clean():
     f = _frame()
-    f.perception = {"symbolic": {"decision": "BUY", "reason": "PASS"}}
-    f.shelly_recall = {"negative_count": 0}
+    f.perception = {"symbolic": {"decision": "BUY", "reason": "PASS"},
+                    "scores": {
+                        "event_shock":   {"score": 0.1, "confidence": 0.9},
+                        "regime":        {"score": 0.8, "confidence": 0.9},
+                        "drawdown":      {"score": 0.3, "confidence": 0.9},
+                        "liquidity":     {"score": 0.8, "confidence": 0.9},
+                        "system_health": {"score": 0.8, "confidence": 0.9},
+                        "pacing":        {"score": 0.7, "confidence": 0.9},
+                    }}
+    f.shelly_recall = {"episodes_found": 0, "negative_count": 0, "positive_count": 0}
     v = StrategistML().decide(f)
+    # Clean signal → confirm BUY.
     assert v.decision == Verdict.BUY.value
     assert v.reason == "STRATEGIST_CONFIRM"
 
@@ -74,40 +86,45 @@ def test_auditor_passes_through_no_trade():
 
 def test_auditor_low_confidence_downgrade():
     f = _frame()
-    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.7}
+    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.2}  # low
     f.perception = {"scores": {
-        k: {"confidence": 0.1} for k in (
+        k: {"confidence": 0.05, "score": 0.5} for k in (
             "event_shock", "regime", "drawdown",
             "liquidity", "system_health", "pacing",
         )
     }}
     v = AuditorML().decide(f)
     assert v.decision == Verdict.NO_TRADE.value
-    assert v.reason == "AUDITOR_LOW_CONFIDENCE"
+    assert v.reason == "AUDITOR_DOWNGRADE"
 
 
 def test_auditor_drawdown_danger():
     f = _frame()
-    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.7}
+    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.3}
     f.perception = {"scores": {
-        k: {"confidence": 0.7, "score": 0.5} for k in (
+        k: {"confidence": 0.4, "score": 0.4} for k in (
             "event_shock", "regime", "drawdown",
             "liquidity", "system_health", "pacing",
         )
     }}
-    f.perception["scores"]["drawdown"] = {"confidence": 0.7, "score": 0.95}
+    f.perception["scores"]["drawdown"] = {"confidence": 0.4, "score": 0.95}
+    f.perception["scores"]["system_health"] = {"confidence": 0.4, "score": 0.2}
     v = AuditorML().decide(f)
-    assert v.reason == "AUDITOR_DD_DANGER"
+    # Severe drawdown + low system health -> downgrade.
+    assert v.decision == Verdict.NO_TRADE.value
+    assert v.reason == "AUDITOR_DOWNGRADE"
 
 
 def test_auditor_confirm_when_clean():
     f = _frame()
-    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.7}
+    f.strategist = {"decision": "BUY", "reason": "OK", "confidence": 0.9}
     f.perception = {"scores": {
-        k: {"confidence": 0.7, "score": 0.5} for k in (
-            "event_shock", "regime", "drawdown",
-            "liquidity", "system_health", "pacing",
-        )
+        "event_shock":   {"score": 0.1, "confidence": 0.9},
+        "regime":        {"score": 0.7, "confidence": 0.9},
+        "drawdown":      {"score": 0.2, "confidence": 0.9},
+        "liquidity":     {"score": 0.7, "confidence": 0.9},
+        "system_health": {"score": 0.7, "confidence": 0.9},
+        "pacing":        {"score": 0.7, "confidence": 0.9},
     }}
     v = AuditorML().decide(f)
     assert v.decision == Verdict.BUY.value

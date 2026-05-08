@@ -60,57 +60,24 @@ def _build_feature_frame(
     open_positions: Optional[List[Dict[str, Any]]],
     equity_curve: Optional[List[float]],
 ) -> FeatureFrame:
-    """Translate live executor inputs into a FeatureFrame.
-
-    Best-effort: missing fields default to neutral values. The
-    extractors normalise everything to [0, 1] so out-of-range values
-    are clipped automatically.
+    """Synchronous frame skeleton — caller fills market via
+    :func:`services.ml.feature_extraction.extract_live_features`
+    before passing to the pipeline.
     """
-    market = market_data or {}
     sig = signal or {}
-
-    # Drawdown features
     if equity_curve and max(equity_curve) > 0:
         dd_pct = abs(min(0.0, equity_curve[-1] - max(equity_curve)) / max(equity_curve) * 100.0)
     else:
         dd_pct = 0.0
 
+    market = dict(market_data or {})
+    market.setdefault("dd_pct", dd_pct)
+
     return FeatureFrame(
         symbol=str(sig.get("symbol") or "UNKNOWN"),
         lane=lane,
         timestamp=datetime.now(timezone.utc).isoformat(),
-        market={
-            # Liquidity
-            "rel_volume": market.get("rel_volume", 1.0),
-            "spread_bps": market.get("spread_bps", 5.0),
-            "depth_top_5": market.get("depth_top_5", 1.0),
-            "time_of_day": market.get("time_of_day", 0.5),
-            # Drawdown
-            "dd_pct": dd_pct,
-            "dd_velocity": market.get("dd_velocity", 0.0),
-            "atr_norm": market.get("atr_norm", 1.0),
-            # Regime
-            "vix": market.get("vix", 16.0),
-            "breadth": market.get("breadth", 0.5),
-            "momentum": market.get("momentum", 0.0),
-            "sector_rotation": market.get("sector_rotation", 0.0),
-            "dispersion": market.get("dispersion", 0.0),
-            # Event shock
-            "news_count": market.get("news_count", 0.0),
-            "news_sentiment": market.get("news_sentiment", 0.0),
-            "catalyst_present": market.get("catalyst_present", 0.0),
-            "hours_to_event": market.get("hours_to_event", 24.0),
-            # System health (executor passes 1.0 unless probe data lands)
-            "broker_uptime": market.get("broker_uptime", 1.0),
-            "data_lag_ms": market.get("data_lag_ms", 50.0),
-            "error_rate": market.get("error_rate", 0.0),
-            "pipeline_latency_ms": market.get("pipeline_latency_ms", 100.0),
-            # Pacing
-            "intraday_progress": market.get("intraday_progress", 0.5),
-            "vol_progress": market.get("vol_progress", 0.5),
-            "range_progress": market.get("range_progress", 0.5),
-            "trade_progress": market.get("trade_progress", 0.5),
-        },
+        market=market,
         extra={
             "intent_hint": (
                 "BUY" if str(sig.get("direction", "LONG")).upper() == "LONG"
@@ -200,6 +167,16 @@ async def run_shadow_pipeline(
             open_positions=open_positions,
             equity_curve=equity_curve,
         )
+        # Fill in live data wherever the caller didn't pre-supply.
+        try:
+            from services.ml.feature_extraction import extract_live_features
+            live = await extract_live_features(
+                symbol=frame.symbol, lane=lane, db=db, base=frame.market,
+            )
+            frame.market = live
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[ml.phase5a] live feature extraction failed: %s", exc)
+
         pipeline = get_pipeline()
         decision = pipeline.decide(frame)
 

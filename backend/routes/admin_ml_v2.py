@@ -269,6 +269,32 @@ async def phase5b_recent(
     return {"items": items, "count": len(items)}
 
 
+# ── Camaro → Shelly bridge ───────────────────────────────────────
+
+
+@router.get("/camaro/bridge/status")
+async def camaro_bridge_status(
+    request: Request,
+    limit: int = Query(10, ge=1, le=100),
+) -> Dict[str, Any]:
+    """Read-only — last N bridge runs."""
+    await _require_admin(request)
+    from services.ml.camaro_shelly_bridge import get_bridge_status
+    return await get_bridge_status(_db, limit=limit)
+
+
+@router.post("/camaro/bridge/run")
+async def camaro_bridge_run(
+    request: Request,
+    lookback_hours: int = Query(24, ge=1, le=168),
+) -> Dict[str, Any]:
+    """Trigger a Camaro→Shelly ingestion run. Idempotent — re-runs
+    are no-ops on already-ingested ``trade_id``s."""
+    await _require_admin(request)
+    from services.ml.camaro_shelly_bridge import run_bridge
+    return await run_bridge(_db, lookback_hours=lookback_hours)
+
+
 # ── Synthetic dry-run ────────────────────────────────────────────
 
 

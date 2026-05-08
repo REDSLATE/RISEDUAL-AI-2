@@ -1,0 +1,119 @@
+{
+  "summary": "Completed comprehensive backend testing of Iteration 170: Camaro→Shelly bridge + Strategist/Auditor sklearn classifiers. All 33 API tests + 13 local unit tests passed (46 total). Verified boot receipts show placeholder_classifier, camaro bridge endpoints work with auth/validation, and pipeline short-circuit behavior is correct.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/slow/test_iteration170_camaro_strategist_auditor.py",
+    "/app/test_reports/pytest/iteration170_camaro_strategist_auditor_results.xml",
+    "/app/backend/tests/test_phase5c_features_and_camaro.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Strategist/Auditor correctly use RandomForestClassifier with artifact-gating (STRATEGIST_ARTIFACT/AUDITOR_ARTIFACT env vars)",
+    "Boot receipts correctly show reason='placeholder_classifier' when no artifact is loaded (was 'placeholder_deterministic' before)",
+    "Camaro→Shelly bridge correctly sets source='camaro' on all ingested payloads (verified via code-level test)",
+    "Pipeline short-circuit behavior is CORRECT: when perception returns NO_TRADE, strategist/auditor are NOT invoked (this is intentional design)",
+    "Camaro bridge audit trail correctly persists to camaro_shelly_bridge_log collection with counts per lane",
+    "Live feature extraction degrades gracefully when external services (Alpaca/Kraken/news/FRED) are unreachable",
+    "All validation constraints work: lookback_hours 1-168, limit 1-100"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_iteration170_camaro_strategist_auditor.py"
+  ],
+  "success_rate": {
+    "backend": "100% (33 API tests + 13 unit tests = 46 total passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required - camaro bridge runs against existing paper_trades/crypto_paper_trades collections (seen=0 is expected with no closed day-trades)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 170 fully tested. Key findings: (1) Boot receipts now show reason='placeholder_classifier' for Strategist/Auditor (was 'placeholder_deterministic'), (2) Camaro bridge endpoints work: POST /run returns {equity:{counts}, crypto:{counts}, lookback_hours, ran_at}, GET /status returns {runs:[], count}, (3) Both endpoints require admin auth (401/403 without), (4) Validation: lookback_hours 1-168 (422 for 0 or 999), limit 1-100 (422 for 200), (5) Pipeline short-circuit is CORRECT: when perception blocks with NO_TRADE, strategist/auditor are NOT in trail (this is intentional), (6) Camaro source label verified: _build_regime_payload sets source='camaro', (7) Regression tests passed: calibration/kanban returns both lanes, phase5b/summary returns total + by_lane, (8) Safety invariants verified: no FIRED intents, all intents have fired=False with default env.",
+  "test_cases_executed": [
+    {"test": "Boot receipts returns 200", "status": "PASS"},
+    {"test": "Strategist boot receipt has reason='placeholder_classifier'", "status": "PASS"},
+    {"test": "Auditor boot receipt has reason='placeholder_classifier'", "status": "PASS"},
+    {"test": "Strategist has can_approve=True", "status": "PASS"},
+    {"test": "Auditor has can_approve=True", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run requires auth (401/403)", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run returns 200", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run response has equity/crypto/lookback_hours/ran_at", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run default lookback_hours=24", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run?lookback_hours=48 respected", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run?lookback_hours=999 returns 422", "status": "PASS"},
+    {"test": "POST /camaro/bridge/run?lookback_hours=0 returns 422", "status": "PASS"},
+    {"test": "GET /camaro/bridge/status requires auth (401/403)", "status": "PASS"},
+    {"test": "GET /camaro/bridge/status returns 200", "status": "PASS"},
+    {"test": "GET /camaro/bridge/status response has runs/count", "status": "PASS"},
+    {"test": "GET /camaro/bridge/status?limit=5 respected", "status": "PASS"},
+    {"test": "GET /camaro/bridge/status?limit=200 returns 422", "status": "PASS"},
+    {"test": "Bridge run creates audit rows (at least 2 per run)", "status": "PASS"},
+    {"test": "Audit row has ran_at/collection/lane/counts/lookback_hours", "status": "PASS"},
+    {"test": "POST /pipeline/decide returns 200", "status": "PASS"},
+    {"test": "Pipeline decide has trail array", "status": "PASS"},
+    {"test": "Perception always in trail", "status": "PASS"},
+    {"test": "When blocked at perception, strategist NOT in trail (correct)", "status": "PASS"},
+    {"test": "Trail structure correct when blocked", "status": "PASS"},
+    {"test": "Strategist has diagnostics when invoked", "status": "PASS"},
+    {"test": "Auditor has diagnostics when invoked", "status": "PASS"},
+    {"test": "Regression: calibration/kanban returns 200", "status": "PASS"},
+    {"test": "Regression: calibration/kanban has equity/crypto lanes", "status": "PASS"},
+    {"test": "Regression: phase5b/summary returns 200", "status": "PASS"},
+    {"test": "Regression: phase5b/summary has total + by_lane", "status": "PASS"},
+    {"test": "Safety: no FIRED intents with default env", "status": "PASS"},
+    {"test": "Safety: all intents have fired=False", "status": "PASS"},
+    {"test": "Camaro source label: _build_regime_payload sets source='camaro'", "status": "PASS"}
+  ],
+  "verified_features": {
+    "boot_receipts_strategist_auditor": {
+      "strategist": {
+        "layer": "strategist",
+        "ready": true,
+        "reason": "placeholder_classifier",
+        "can_approve": true,
+        "artifact_present": false
+      },
+      "auditor": {
+        "layer": "auditor",
+        "ready": true,
+        "reason": "placeholder_classifier",
+        "can_approve": true,
+        "artifact_present": false
+      }
+    },
+    "camaro_bridge_run": {
+      "endpoint": "POST /api/admin/ml/v2/camaro/bridge/run",
+      "auth": "Admin required (401/403 without cookie)",
+      "query_params": {
+        "lookback_hours": "1-168, default 24 (422 for out of range)"
+      },
+      "response_structure": {
+        "equity": {"seen": "int", "ingested": "int", "skipped": "int", "errors": "int", "positive": "int", "negative": "int", "neutral": "int"},
+        "crypto": "same as equity",
+        "lookback_hours": "int",
+        "ran_at": "ISO timestamp"
+      }
+    },
+    "camaro_bridge_status": {
+      "endpoint": "GET /api/admin/ml/v2/camaro/bridge/status",
+      "auth": "Admin required (401/403 without cookie)",
+      "query_params": {
+        "limit": "1-100, default 10 (422 for >100)"
+      },
+      "response_structure": {
+        "runs": "list of audit rows",
+        "count": "int"
+      }
+    },
+    "camaro_source_label": "VERIFIED - _build_regime_payload sets source='camaro' on all payloads",
+    "pipeline_short_circuit": "VERIFIED - when perception returns NO_TRADE, strategist/auditor are NOT invoked (correct design)"
+  },
+  "mocked_apis_note": "Alpaca/Kraken/news_shock_service/FRED feature extraction calls degrade silently if unreachable - this is INTENTIONAL design, NOT a bug"
+}
