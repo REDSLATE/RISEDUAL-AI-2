@@ -30,6 +30,31 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 6 prep — `GET /api/admin/ml/artifacts` (2026-05-08)
+
+**Read-only artifact inventory**. File-stat + env-read only. Surfaces every `.joblib` under `/app/backend/data/models/` (override via `ALPHA_MODELS_DIR`).
+
+**Module** (`/app/backend/services/ml/artifact_inventory.py`):
+  - `list_artifacts(models_dir=...)` returns one dict per `.joblib`:
+    `{filename, full_path, size_bytes, mtime, age_hours, sha_from_filename, timestamp_from_filename, model_type, manifest_present, manifest_path, currently_pointed_to_by_env, env_var}`.
+  - Newest-first by mtime.
+  - Recognises canonical retrain pattern `<type>_<sha>_<UTCstamp>.joblib`; legacy / non-canonical names tagged `model_type='unknown'`.
+  - Flags `currently_pointed_to_by_env=true` only when `STRATEGIST_ARTIFACT` / `AUDITOR_ARTIFACT` env value's resolved path matches the file AND the model_type lines up. Cross-type mismatches and unknown rows always stay `false`.
+  - **Module-level invariant**: never imports `joblib`, broker, executor, or pipeline modules — verified by source-level test.
+  - Missing / unreadable directory returns `[]`, no crash.
+
+**Endpoint** (`/api/admin/ml/artifacts` on `ml_safety_router`):
+  - Admin-gated via `_require_admin`. Returns `{models_dir, items, count}`.
+  - **Strict invariants**: no `joblib.load`, no env mutation, no broker/executor/pipeline calls, no promotion, no restart.
+
+**Tests** (`/app/backend/tests/test_artifact_inventory.py`): 14 tests covering all 8 acceptance criteria — unauth blocked, admin 200, empty dir, strategist + auditor recognition, env-pointed flagging, no joblib load, no env mutation — plus cross-type-mismatch + unknown-type + ALPHA_MODELS_DIR override + source-level forbidden-import audit.
+
+**Verified**:
+  - 14/14 unit + 9 HTTP integration = **23/23 passing** via testing_agent_v3_fork.
+  - Live curl: unauth → 401, admin → 200, empty `/data/models/` → `count: 0`, seeded artifact → correctly tagged.
+  - Pre-existing pydantic `regex=` → `pattern=` deprecation warnings cleaned up at the same time (admin_ml_v2.py 5 sites).
+  - Full pytest: **2796 passed, 0 failed**.
+
 ### Phase 6 prep — `scripts/retrain_alpha_models.py` (2026-05-08)
 
 **Artifact-only retraining scaffold**. NO live promotion, NO env mutation, NO broker calls, NO executor wiring changes.

@@ -154,7 +154,7 @@ async def roadguard_pair_status(request: Request) -> Dict[str, Any]:
 @router.get("/roadguard/decisions/recent")
 async def roadguard_recent_decisions(
     request: Request,
-    lane: str = Query(..., regex="^(equity|crypto)$"),
+    lane: str = Query(..., pattern="^(equity|crypto)$"),
     limit: int = Query(50, ge=1, le=500),
 ) -> Dict[str, Any]:
     await _require_admin(request)
@@ -243,9 +243,9 @@ async def phase5b_summary(
 @router.get("/phase5b/recent")
 async def phase5b_recent(
     request: Request,
-    lane: Optional[str] = Query(None, regex="^(equity|crypto)$"),
+    lane: Optional[str] = Query(None, pattern="^(equity|crypto)$"),
     classification: Optional[str] = Query(
-        None, regex="^(SHADOW_ONLY|GATE_BLOCK|WOULD_HAVE_FIRED|FIRED)$"
+        None, pattern="^(SHADOW_ONLY|GATE_BLOCK|WOULD_HAVE_FIRED|FIRED)$"
     ),
     limit: int = Query(50, ge=1, le=500),
 ) -> Dict[str, Any]:
@@ -342,7 +342,7 @@ async def pipeline_heartbeat(request: Request) -> Dict[str, Any]:
 async def pipeline_receipts(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
-    lane: Optional[str] = Query(None, regex="^(equity|crypto)$"),
+    lane: Optional[str] = Query(None, pattern="^(equity|crypto)$"),
 ) -> Dict[str, Any]:
     """Most recent pipeline decision-log receipts. Alias for
     /decisions/recent with optional lane filter.
@@ -425,7 +425,7 @@ async def wedge_alerter_status(request: Request) -> Dict[str, Any]:
 async def wedge_alerter_history(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
-    lane: Optional[str] = Query(None, regex="^(equity|crypto)$"),
+    lane: Optional[str] = Query(None, pattern="^(equity|crypto)$"),
 ) -> Dict[str, Any]:
     """Read-only — last N audit rows from wedge_alerter_history."""
     await _require_admin(request)
