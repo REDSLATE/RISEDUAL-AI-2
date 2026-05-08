@@ -331,7 +331,6 @@ PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
     "backend/routes/ml_orchestrator.py":    (594,  "api-route"),
     "backend/routes/public_api.py":         (580,  "api-route"),
     "backend/routes/risk_calculator.py":    (575,  "api-route"),
-    "backend/routes/admin_ml_v2.py":        (543,  "api-route"),
     "backend/routes/analytics.py":          (533,  "api-route"),
     "backend/routes/admin_news.py":         (527,  "api-route"),
     "backend/routes/admin_conviction.py":   (522,  "api-route"),

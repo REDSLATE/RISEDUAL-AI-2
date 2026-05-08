@@ -30,6 +30,34 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Step 2 — `admin_ml_v2.py` authority-boundary split (2026-05-08)
+
+**543-line route file → 7 small modules, largest 206 lines.** Zero behavior change. Compatibility shim preserves every existing import.
+
+**New package** `routes/admin_ml/`:
+| File | Lines | Authority |
+|---|---:|---|
+| `_routers.py` | 35 | APIRouter + DB handle (no endpoints) |
+| `_auth.py` | 25 | Late-bound `require_admin` (test-monkeypatch compatible) |
+| `__init__.py` | 60 | Side-effect imports + re-exports |
+| `v2_pipeline.py` | 84 | Synthetic pipeline dry-run |
+| `kanban.py` | 104 | RoadGuard pair + calibration kanban |
+| `receipts.py` | 189 | Boot receipts + decision log + Phase 5b + Camaro |
+| `safety.py` | 206 | Heartbeat + pipeline receipts + promotion checklist + artifacts + wedge alerter |
+| **`admin_ml_v2.py`** | **62** | **Compatibility shim — re-exports public surface** |
+
+**Compatibility preserved**:
+- `route_registry.py`'s `from routes.admin_ml_v2 import (router, ml_safety_router, set_db, ...)` still works.
+- Test sites that `monkeypatch.setattr(admin_ml_v2, "_require_admin", ...)` still work — `_auth.require_admin` resolves through `sys.modules["routes.admin_ml_v2"]` at every call.
+- Direct test imports (`admin_ml_v2.list_artifacts_endpoint`, `admin_ml_v2.promotion_checklist`) re-exported.
+
+**Verified**:
+- 15 endpoint routes live-curl tested: every one returns 200 with auth, 401 without (same paths, same shapes).
+- `lint-arch` 9 passed · `lint-fast` 119 passed · `lint-safety` 72 passed.
+- Targeted suites: `test_artifact_inventory` + `test_promotion_checklist` + `test_phase5d_safety` + `test_wedge_alerter` + `test_code_size` = **60 passed**.
+- Full pytest: **2824 passed, 0 failed** (same count as before split).
+- `admin_ml_v2.py` removed from `PREFERRED_BASELINE` (62 ≤ 500 ceiling — ratchet worked exactly as designed).
+
 ### Architecture-as-policy — module-type aware code-size lint (2026-05-08)
 
 **Two-tier policy** encoded in `tests/test_code_size.py`:
