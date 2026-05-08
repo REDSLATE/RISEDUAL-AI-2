@@ -30,55 +30,56 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
-### 8-ML stack rebuild + closed-loop RoadGuard pair (Phase 0–5a)
+### Phase 5b — broker wire (4-gate defense in depth) + Promotion Diff UI
 
-**Phase 0** — `services/ml/` boundary scaffold: `FeatureFrame`, `MLVerdict`, `ModelBootReceipt`, `LaneDisabledError`, sealed `ShadowMLLayer`, fail-fast `BaseMLLayer`. Boot receipts registry per process.
+**Phase 5b broker wire** (`services/ml/broker_wire.py`):
+  - Sits AFTER `RoadGuard.evaluate` in `shadow_wiring.py`
+  - Computes `will_actually_fire` from FOUR gates ALL closed by default:
+    - Gate 1 — `EQUITY_EXECUTOR_ENFORCE_ENABLED` / `CRYPTO_EXECUTOR_ENFORCE_ENABLED` (per lane)
+    - Gate 2 — `BROKER_LIVE_ORDER_ENABLED` (global kill-switch)
+    - Gate 3 — `RISEDUAL_LIVE_EXECUTION=1` (legacy opt-in)
+    - Gate 4 — Calibration Kanban readiness (lane must be `Eligible`)
+  - `_dispatch_to_broker` is a **NO-OP placeholder body** — even with all 4 gates open, no broker SDK is contacted (intentional safety)
+  - Persists ONE `phase5b_intents` row per signal with classification `SHADOW_ONLY | GATE_BLOCK | WOULD_HAVE_FIRED | FIRED`
+  - Admin endpoints: `/api/admin/ml/v2/phase5b/{summary, recent}`
+  - 30-day TTL on `phase5b_intents`
 
-**Phase 1** — Perception ML: 6 sklearn sub-models + symbolic engine.
-  - EventShockModel, RegimeStateModel, DrawdownDistanceModel, LiquidityModel, SystemHealthModel, PacingModel
-  - All artifact-gated (env vars: `PERCEPTION_*_ARTIFACT`); missing artifact → `LaneDisabledError` → `NO_TRADE`
-  - Domain-informed dummy training (RandomForest binary, Random Forest multi-class, Random Forest regressor)
-  - 5 symbolic rules: `R1 SYSTEM_DEGRADED`, `R2 EVENT_SHOCK_ACTIVE`, `R3 LIQUIDITY_THIN`, `R4 DRAWDOWN_DEEP`, `R5 REGIME_RISK_OFF`
-  - Feature extractors normalise inputs to `[0, 1]`
+**Promotion Diff UI**:
+  - Inline expandable RG verdict log on each Kanban LaneCard
+  - "Show last 50 RG verdicts" button → fetches from existing `/api/admin/ml/v2/roadguard/decisions/recent?lane=X&limit=50`
+  - Sticky-header table with When / Symbol / Decision / Gate / Reason
+  - Colour-coded decisions (PASS=emerald, REDUCE=amber, BLOCK=rose)
+  - data-testids on every row for testability
 
-**Phase 2** — Two distinct executor MLs:
-  - `EquityExecutorML` (lane="equity", artifact env `EQUITY_EXECUTOR_ARTIFACT`)
-  - `CryptoExecutorML`  (lane="crypto",  artifact env `CRYPTO_EXECUTOR_ARTIFACT`)
-  - LANE_MISMATCH gate prevents cross-lane signal flow
-  - Respects upstream fast_veto verdict; passthrough on AUDITOR_CONFIRM
+### 8-ML stack (Phase 0–4.5) — rebuilt from scratch this session
+[Previous architecture preserved — see git history for details]
 
-**Phase 3** — Pipeline orchestration: `StrategistML`, `AuditorML`, `FastVetoMLLayer` (veto-only), `ShadowML` (observe-only), `RisedualMLPipeline.decide()` runs the canonical 8-step chain.
+### Closed-loop RoadGuard pair (Phase 4 — user spec)
+  - `EquityRoadGuard` + `CryptoRoadGuard` — each pinned to its lane via G00 LANE_MISMATCH
+  - Independent envs (`ROADGUARD_EQUITY_*` vs `ROADGUARD_CRYPTO_*`)
+  - Lane-specific decision collections: `roadguard_equity_decisions`, `roadguard_crypto_decisions`
+  - Zero cross-contamination — pinned by tests
 
-**Phase 4 — Closed-loop RoadGuard pair (per user spec)**:
-  - `EquityRoadGuard` — dedicated to equity executor; reads `ROADGUARD_EQUITY_*` envs; writes to `roadguard_equity_decisions`
-  - `CryptoRoadGuard` — dedicated to crypto executor; reads `ROADGUARD_CRYPTO_*` envs; writes to `roadguard_crypto_decisions`
-  - Each pair has its own enforce flag (`*_ENFORCE_ENABLED`)
-  - 11 gates per RG: G00 (LANE_MISMATCH), G01 broker health, G02 daily loss, G09 min ticket, G03 total exposure, G04 lane exposure, G05/G06 max positions, G07 duplicate symbol, G08 cash floor, G10 kill-switch
-  - Both PASS/REDUCE/BLOCK only — `ROADGUARD_CAN_APPROVE = False` invariant
-  - `RoadGuardV2` dispatcher kept for back-compat (routes by `intent.lane`)
+### Phase 5a — receipt-only ML pipeline wiring
+  - `services/ml/shadow_wiring.py` runs the full 8-ML pipeline + lane-RG + Phase 5b on every executor signal
+  - Writes ONE `alpha_decision_log` receipt + ONE `roadguard_<lane>_decisions` row + ONE `phase5b_intents` row per signal
+  - **NEVER calls a broker. NEVER places an order.**
 
-**Phase 4.5** — Shelly client: `ShellyClient` adapter on top of `services/market_memory_service.py`. `recall(frame)` returns `ShellyRecall` summary; `remember(frame, verdict)` persists `source="organic"` episodes. **No `.veto`/`.size`/`.execute`/`.place_order`/`.request_order` methods** — pinned by tests.
+### Calibration Kanban (read-only admin tile)
+  - Per-lane Shadow → Calibrate → Enforce promotion ladder
+  - 6-item checklist: min_receipts, zero_contamination, zero_false_blocks, broker_health_stable, correct_collection, enforce_off
+  - States: Eligible / Ready for Review / Blocked
+  - Buttons display state, NEVER flip enforcement
 
-**Phase 5a — Receipt-only wiring**:
-  - `services/ml/shadow_wiring.py` — fire-and-forget hook called from `trading_bot_service.execute_signal`
-  - Builds `FeatureFrame` from live signal + market_data, runs the 8-ML pipeline, evaluates the matching lane RG, writes ONE `alpha_decision_log` receipt + ONE lane-specific RG decision row
-  - **NEVER calls a broker. NEVER places an order.** `will_hit_live_broker=False` hard-coded
-  - Admin endpoints: `/api/admin/ml/v2/{boot-receipts, decisions/summary, decisions/recent, pipeline/decide, roadguard/pair-status, roadguard/decisions/recent}`
-
-### Alpha helpers (observability primitives, independent of ML stack)
-- `services/alpha_decision_log.py` — 8-stage NO_TRADE receipts, 30-day TTL, `record_decision()` + `summary()`
-- `services/alpha_weight_calibrator.py` — sizes from `min(equity, cash)`, **NEVER** buying_power. `$500` abs cap / 5 slots → `$100`/trade default
-- `services/alpha_daily_mandate.py` — ≥20 round-trips/day target, 0.70→0.60 pressure curve, `should_block_new_open(15:30 ET)`, `should_force_flat(15:55 ET)`
+### Alpha helpers
+  - `alpha_decision_log` (8-stage receipts, 30d TTL)
+  - `alpha_weight_calibrator` (sizes from `min(equity, cash)`, NEVER buying_power; $500 cap / 5 slots)
+  - `alpha_daily_mandate` (≥20 RT/day target, 0.70→0.60 pressure curve, 15:30 ET no-open, 15:55 force-flat)
 
 ### Tests
-**Total: 199 tests passing** (60 ML pipeline + 16 lane-pair RG + 13 alpha helpers + 16 boundary + 11 perception + existing suite preserved)
+**Total: 218 backend pytest passing** (60 pipeline + 16 lane-pair + 11 kanban + 15 broker_wire + 13 alpha + 16 boundary + 11 perception + 76 existing)
 
-Files:
-- `tests/test_ml_boundary.py`
-- `tests/test_ml_perception.py`
-- `tests/test_ml_pipeline_v2.py`
-- `tests/test_roadguard_pair.py` (closed-loop pair invariants)
-- `tests/test_alpha_helpers.py`
+Test files: `test_ml_boundary.py`, `test_ml_perception.py`, `test_ml_pipeline_v2.py`, `test_roadguard_pair.py`, `test_calibration_kanban.py`, `test_broker_wire.py`, `test_alpha_helpers.py`
 
 ## Critical Invariants (do not break)
 1. Alpha must size from `min(equity, cash)`. **NEVER** buying_power.
