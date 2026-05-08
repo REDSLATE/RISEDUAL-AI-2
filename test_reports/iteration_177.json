@@ -1,0 +1,71 @@
+{
+  "summary": "ML Promotion Checklist Tile - All tests passed. Backend: 17/17 pytest tests pass. Frontend: All UI elements render correctly with proper data-testid attributes. Tile is read-only (NO promote buttons, NO 'Promote now' text). 8 checklist rows with traffic-light icons and status pills all working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_promotion_checklist.py",
+    "/app/test_reports/pytest/promotion_checklist_results_177.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MLPromotionChecklistTile correctly implements read-only contract - NO promote/set-active buttons",
+    "NO 'Promote now' text anywhere in tile - only 'Ready for review' when all GREEN",
+    "All 8 checklist rows render with correct data-testid='checklist-row-{id}'",
+    "Status pills render with data-testid='checklist-status-{id}' and valid status (GREEN/YELLOW/RED)",
+    "Traffic-light icons: CheckCircle2 (GREEN), AlertTriangle (YELLOW), AlertCircle (RED)",
+    "Banner reflects overall_status with data-testid='checklist-banner-{GREEN|YELLOW|RED}'",
+    "Banner shows ready_for_review boolean value",
+    "Refresh button (data-testid='checklist-refresh-btn') triggers re-fetch with spinner",
+    "60s auto-refresh interval set via setInterval in useEffect",
+    "Active/latest artifacts sections render with data-testid='checklist-active-{strategist|auditor}'",
+    "Tile renders below Heartbeat and above Artifacts on Calibration Kanban",
+    "Source-level audit: promotion_checklist.py does NOT import joblib, alpaca_client, kraken_client, broker_registry, smart_order_service, smart_router, ml.broker_wire, ml.executors, ml.pipeline",
+    "No env mutation during build - sentinel env vars unchanged after request"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (17/17 pytest tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None - tested with current state (models dir empty, heartbeat frozen)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ML Promotion Checklist Tile fully tested. Key findings: (1) Tile renders at /admin -> Kanban tab between MLHeartbeatTile and MLArtifactsTile, (2) data-testid='ml-promotion-checklist-tile' is the main container, (3) 8 checklist rows with IDs: manifest_present, latest_newer_than_active, active_on_disk, env_type_matches, heartbeat_not_frozen, no_flood_1h, active_age, shadow_receipts, (4) Each row has data-testid='checklist-row-{id}', data-testid='checklist-status-{id}', data-testid='checklist-label-{id}', data-testid='checklist-detail-{id}', (5) Banner: data-testid='checklist-banner-{GREEN|YELLOW|RED}', (6) Refresh button: data-testid='checklist-refresh-btn', (7) Active artifacts: data-testid='checklist-active-strategist', data-testid='checklist-active-auditor', (8) Latest artifacts: data-testid='checklist-latest-strategist', data-testid='checklist-latest-auditor', (9) as_of timestamp: data-testid='checklist-as-of'",
+  "verified_acceptance_criteria": {
+    "backend_401_unauth": "PASS - GET /api/admin/ml/promotion-checklist returns 401 without auth",
+    "backend_admin_returns_full_shape": "PASS - Response contains as_of, overall_status, ready_for_review, message, checks[8], active_artifacts, latest_artifacts, any_frozen, thresholds",
+    "backend_every_check_has_required_fields": "PASS - Each check has {id, label, status, detail} with status in {GREEN, YELLOW, RED}",
+    "backend_missing_models_dir_no_500": "PASS - manifest_present=YELLOW, latest_newer_than_active=YELLOW, no 500 error",
+    "backend_stale_active_artifact_red": "PASS - active_age=RED when age > 72h, overall=RED",
+    "backend_frozen_heartbeat_red": "PASS - heartbeat_not_frozen=RED when frozen, overall=RED",
+    "backend_missing_manifest_yellow": "PASS - manifest_present=YELLOW when no manifest",
+    "backend_clean_state_all_green": "PASS - All 8 GREEN, overall=GREEN, ready_for_review=true, message='Ready for review.'",
+    "backend_env_type_mismatch_red": "PASS - env_type_matches=RED when STRATEGIST_ARTIFACT points at auditor file",
+    "backend_env_path_missing_red": "PASS - active_on_disk=RED when env points at missing file",
+    "backend_shadow_receipts_thin_yellow": "PASS - shadow_receipts=YELLOW when count < min",
+    "backend_no_promote_now_in_response": "PASS - Response NEVER contains 'Promote now', 'promote_now', 'promote_action', 'set_active'",
+    "backend_no_env_mutation": "PASS - Sentinel env vars unchanged after request",
+    "backend_source_audit_no_forbidden_imports": "PASS - Module does not import joblib, alpaca_client, kraken_client, broker_registry, smart_order_service, smart_router, ml.broker_wire, ml.executors, ml.pipeline",
+    "frontend_tile_renders_correct_position": "PASS - data-testid='ml-promotion-checklist-tile' renders below Heartbeat, above Artifacts",
+    "frontend_8_checklist_rows": "PASS - 8 rows with data-testid='checklist-row-{id}' and proper traffic-light icons",
+    "frontend_status_pills": "PASS - data-testid='checklist-status-{id}' with valid status values",
+    "frontend_banner_reflects_overall": "PASS - data-testid='checklist-banner-{GREEN|YELLOW|RED}' shows ready_for_review",
+    "frontend_refresh_button": "PASS - data-testid='checklist-refresh-btn' triggers re-fetch with spinner",
+    "frontend_60s_auto_refresh": "PASS - setInterval(load, 60000) in useEffect",
+    "frontend_artifacts_sections": "PASS - data-testid='checklist-active-{strategist|auditor}' render",
+    "frontend_negative_no_promote_now": "PASS - ZERO occurrences of 'Promote now' in tile",
+    "frontend_negative_no_promote_buttons": "PASS - ZERO buttons matching /promote|set active|activate/i",
+    "frontend_negative_only_get_requests": "PASS - Tile only makes GET /api/admin/ml/promotion-checklist",
+    "backend_pytest_17_tests": "PASS - All 17 tests in test_promotion_checklist.py passed",
+    "make_lint_fast": "PASS - 7 passed + 119 passed"
+  },
+  "lint_fast_result": "PASS (7 passed + 119 passed)"
+}

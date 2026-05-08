@@ -8,6 +8,7 @@ import {
 import { Button } from '../ui/button';
 import MLHeartbeatTile from './MLHeartbeatTile';
 import MLArtifactsTile from './MLArtifactsTile';
+import MLPromotionChecklistTile from './MLPromotionChecklistTile';
 
 const API = `${getApiBase()}/api`;
 
@@ -293,6 +294,7 @@ const CalibrationKanban = () => {
   return (
     <div className="space-y-4" data-testid="calibration-kanban-tile">
       <MLHeartbeatTile />
+      <MLPromotionChecklistTile />
       <MLArtifactsTile />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">

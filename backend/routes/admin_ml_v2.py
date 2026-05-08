@@ -368,6 +368,26 @@ async def pipeline_receipts(
     return {"items": items, "count": len(items)}
 
 
+# ── Promotion checklist (read-only Phase 6 readiness aggregator) ─
+
+
+@ml_safety_router.get("/promotion-checklist")
+async def promotion_checklist(request: Request) -> Dict[str, Any]:
+    """Read-only Phase 6 readiness aggregator. 8 checks pulled from
+    existing surfaces (artifacts inventory + heartbeat + boot
+    receipts + alpha_decision_log).
+
+    Hard-rule invariants:
+      * Never mutates env, artifacts, or pipeline state.
+      * Never loads joblib.
+      * Never calls broker/executor/pipeline.
+      * May say 'Ready for review'. MUST NOT say 'Promote now'.
+    """
+    await _require_admin(request)
+    from services.ml.promotion_checklist import build_checklist
+    return await build_checklist(db=_db)
+
+
 # ── Artifact inventory (read-only file-stat) ────────────────────
 
 
