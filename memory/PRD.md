@@ -30,6 +30,43 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5c — sklearn-backed Strategist + Auditor, live features, Camaro bridge
+
+**Real Strategist + Auditor ML** (`services/ml/strategist/base.py`, `services/ml/auditor/base.py`):
+  - `StrategistML` — `RandomForestClassifier`, 10-feature vector (perception scores + Shelly recall ratios + intent hint), 3-class output (BUY/SELL/NO_TRADE)
+  - `AuditorML` — `RandomForestClassifier`, 8-feature vector, binary output (CONFIRM/DOWNGRADE — never flips direction)
+  - Both artifact-gated via `STRATEGIST_ARTIFACT` / `AUDITOR_ARTIFACT` env vars
+  - Falls back to balanced synthetic-trained placeholders when no artifact set
+  - Boot receipts now show `placeholder_classifier` (was `placeholder_deterministic`)
+
+**Live feature extraction** (`services/ml/feature_extraction.py`):
+  - Pulls from existing services: `alpaca_equity_quotes`, `kraken_crypto_quotes`, `news_shock_service`, FRED snapshot via `fred_snapshots` Mongo collection
+  - Wired into `shadow_wiring.run_shadow_pipeline` after `_build_feature_frame`
+  - NEVER raises — every fetch is try/except, missing data falls into the safe middle of each model's training distribution
+  - Caller-supplied `base` market dict wins over live data (synthetic dry-runs stable)
+
+**Camaro → Shelly bridge** (`services/ml/camaro_shelly_bridge.py`):
+  - Reads closed day-trade rows from `paper_trades` + `crypto_paper_trades` where `source="day_trade_scanner"` and `status="closed"`
+  - Transforms each into a regime payload with `source="camaro"` (the canonical user-requested label)
+  - Idempotent `prediction_id`: `camaro::<trade_id>::<closed_at>`
+  - Calls `market_memory_service.save_regime` (Shelly's ChromaDB)
+  - Audit trail in `camaro_shelly_bridge_log` collection
+  - Admin endpoints: `POST /api/admin/ml/v2/camaro/bridge/run?lookback_hours=24`, `GET /api/admin/ml/v2/camaro/bridge/status?limit=10`
+
+**Real .joblib artifacts** (`backend/scripts/train_ml_artifacts.py`):
+  - Produces 8 artifacts under `/app/artifacts/ml/` (6 perception + Strategist + Auditor)
+  - Wire into `.env` via `PERCEPTION_*_ARTIFACT` / `STRATEGIST_ARTIFACT` / `AUDITOR_ARTIFACT` paths to swap from in-process placeholders to disk-loaded models
+  - Re-runs of the script use synthetic-realistic data; replace the training data builder when receipts mature into labeled data
+
+**OPS_ALERT_WEBHOOK_URL**: wiring already correct in `services/ops_alerter.py`. Operator action: set `OPS_ALERT_WEBHOOK_URL=<slack-or-discord-webhook>` in prod `.env` and the alerter activates on next tick.
+
+### Tests
+**Total: 252 backend pytest passing** (208 + 13 phase5c features+camaro + 31 verified by testing agent for endpoints)
+
+This iteration adds: `tests/test_phase5c_features_and_camaro.py`
+
+## What's Implemented (continued)
+
 ### Phase 5b — broker wire (4-gate defense in depth) + Promotion Diff UI
 
 **Phase 5b broker wire** (`services/ml/broker_wire.py`):
