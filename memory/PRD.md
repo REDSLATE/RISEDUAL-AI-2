@@ -30,6 +30,28 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5d guard rails — `make lint-arch` + opt-in pre-push hook (2026-05-08)
+
+**Goal**: protect the green-CI baseline as Phase 6 prep touches more files.
+
+**`Makefile` target** (`/app/Makefile`):
+  - `make lint-arch` runs ONLY `tests/test_no_local_direction_tuples.py` + `tests/test_code_size.py`.
+  - Read-only, no file mutations, ~1s execution. Exits non-zero on failure.
+  - `make help` lists all targets.
+
+**Opt-in pre-push hook** (`/app/scripts/install-pre-push-hook.sh`):
+  - `./scripts/install-pre-push-hook.sh` writes `.git/hooks/pre-push` that calls `make lint-arch`.
+  - `./scripts/install-pre-push-hook.sh --uninstall` removes it (refuses to remove non-managed hooks).
+  - Backs up any existing non-managed hook before overwriting.
+  - Idempotent re-install. Uninstall-when-absent is a safe no-op.
+  - Bypass once: `git push --no-verify`.
+  - **Not installed automatically** — operator opt-in only.
+
+**Verified**:
+  - Smoke-tested with a synthetic violation → `make lint-arch` exits non-zero, identifies file/line/tokens.
+  - Hook executes via `bash .git/hooks/pre-push` and passes the existing baseline.
+  - No allowlist additions, no behavior code changes.
+
 ### Phase 5d Wedge alerter — heartbeat-driven paging (2026-05-08)
 
 **Notification-only** wedge alerter (`services/wedge_alerter.py`). NO promotion, NO enforcement, NO broker calls, NO scheduler restart, NO automatic remediation.
