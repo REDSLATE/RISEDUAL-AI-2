@@ -1,0 +1,66 @@
+{
+  "summary": "Iteration 75: Confirmation-Gated Paper Trading - All 13 tests passed. Verified the 2-step order flow (place_paper_order_intent → confirm_paper_order) works correctly via chat endpoint. AI creates proposals with unique IDs (po_XXXXXXXX), validates cash/positions before proposal creation, and only executes trades after explicit user confirmation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration75_confirmation_gated_orders.py",
+    "/app/test_reports/pytest/iteration75_confirmation_gated_orders_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "place_paper_order_intent (lines 235-291): Correctly validates cash for BUY and position for SELL before creating proposal. Returns error if validation fails.",
+    "confirm_paper_order (lines 294-322): Properly checks proposal exists and status is PENDING_CONFIRMATION before executing trade. Updates status to CONFIRMED after execution.",
+    "Portfolio agent tool definitions (lines 89-141): Well-structured OpenAI function calling schema with clear descriptions for place_paper_order_intent and confirm_paper_order.",
+    "PORTFOLIO_KEYWORDS regex (ai.py line 21-27): Correctly includes confirm|proposal|po_|order patterns to route confirmation messages to portfolio agent.",
+    "System prompt (lines 144-163): Clear instructions for AI to ALWAYS create proposal first, never execute directly, and only confirm after explicit user approval."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration75_confirmation_gated_orders.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 tests passed)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "Admin account has existing positions: AAPL (5 shares), NVDA (3 shares), BTC (0.001), MSFT (varies due to test trades). Cash ~$90,000-96,000 (varies due to test trades).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 75 verified the confirmation-gated paper trading flow. Key flows tested: (1) 'buy X shares of Y' creates proposal with po_XXXXXXXX ID, does NOT execute immediately, (2) 'confirm po_XXXXXXXX' executes the trade and updates portfolio, (3) Insufficient cash returns error in proposal stage, (4) Sell validation checks position exists and quantity available, (5) Portfolio queries still work via get_portfolio_snapshot tool, (6) Non-portfolio queries use standard AI, (7) Manual paper trading endpoints (/api/paper/trade, /api/paper/portfolio) still work. MongoDB pending_orders collection stores proposals with status PENDING_CONFIRMATION → CONFIRMED.",
+  "verified_features": {
+    "confirmation_gated_orders": {
+      "buy_creates_proposal": "PASS - 'buy 10 AAPL' creates proposal, portfolio unchanged",
+      "full_buy_flow": "PASS - Create proposal → confirm → trade executes, cash decreases",
+      "sell_creates_proposal": "PASS - 'sell 3 NVDA' creates SELL proposal",
+      "insufficient_cash_error": "PASS - 'buy 999999 AAPL' returns cash check failure with shortfall amount",
+      "sell_more_than_owned": "PASS - 'sell 1000 AAPL' returns error (only hold 5)",
+      "sell_nonexistent_position": "PASS - 'sell 5 NFLX' returns no position error",
+      "invalid_proposal_id": "PASS - 'confirm po_invalid123' handled gracefully"
+    },
+    "existing_flows_preserved": {
+      "portfolio_query": "PASS - 'How is my portfolio?' returns actual position data",
+      "non_portfolio_chat": "PASS - 'What is options theta decay?' uses standard AI",
+      "paper_portfolio_endpoint": "PASS - GET /api/paper/portfolio returns snapshot",
+      "paper_trade_endpoint": "PASS - POST /api/paper/trade executes directly (manual endpoint)"
+    },
+    "mongodb_status_tracking": {
+      "proposal_stored": "PASS - Proposals stored in pending_orders with PENDING_CONFIRMATION status",
+      "status_updated_on_confirm": "PASS - Status updated to CONFIRMED after confirmation"
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": [
+      "Real broker trade execution (paper trading uses live prices but simulated execution)",
+      "Watchlist news tool (returns tracked tickers, not real headlines)"
+    ]
+  }
+}

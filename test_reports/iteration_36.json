@@ -1,0 +1,97 @@
+{
+  "summary": "Iteration 36: Code Quality Fixes verified. All 22 backend tests passed. Cookie-based auth working (login/register/refresh/logout set httpOnly cookies). Backtester safe evaluator correctly handles basic comparisons, compound conditions, arithmetic, chained comparisons, and rejects dangerous inputs (__import__, exec, open, eval, lambda). CORS allows credentials. Frontend login/logout flow works. BrokerConnect modal opens correctly with all broker cards visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Main dashboard",
+        "issues": ["Emergent badge in bottom-right corner can intercept clicks on user avatar - minor z-index issue"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration36_code_quality.py",
+    "/app/test_reports/pytest/iteration36_code_quality_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Cookie-based auth correctly implemented: set_auth_cookies() called in login (line 176), register (line 155), refresh sets access_token cookie (line 219)",
+    "Backtester _safe_eval_node() uses AST parsing with whitelisted indicators only - no eval() anywhere",
+    "CORS configured with allow_credentials=True and specific frontend origin from FRONTEND_URL env var",
+    "BrokerConnect catch blocks now have console.error for: handleSync, handleCancelOrder, fetchConnections, handleDisconnect",
+    "AuthContext uses credentials:'include' for all fetch calls to send cookies automatically"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration36_code_quality.py"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 tests passed)",
+    "frontend": "100% (login, logout, broker modal all working)"
+  },
+  "test_credentials": {
+    "owner_pro": {
+      "email": "managingdirector@redslateholdings.com",
+      "password": "RedSlate2026!",
+      "role": "owner",
+      "subscription": "pro"
+    },
+    "admin": {
+      "email": "admin@risedual.ai",
+      "password": "RiseDual2026!",
+      "role": "admin"
+    }
+  },
+  "seed_data_creation": "None - used existing seeded admin/owner accounts",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Code quality fixes verified: 1) eval() replaced with AST-based _safe_eval_node() in backtester - rejects dangerous inputs. 2) Auth now sets httpOnly cookies on login/register/refresh while keeping localStorage as fallback. 3) CORS updated to allow_credentials=True with specific frontend origin. 4) BrokerConnect catch blocks have console.error logging. All features working correctly.",
+  "verified_features": {
+    "cookie_based_auth": {
+      "login_sets_cookies": "PASS - access_token and refresh_token cookies set",
+      "me_works_with_cookies": "PASS - /api/auth/me works without Authorization header",
+      "refresh_reads_cookie": "PASS - /api/auth/refresh reads refresh_token from cookie",
+      "logout_clears_cookies": "PASS - cookies cleared, /me returns 401 after logout",
+      "register_sets_cookies": "PASS - new user registration sets cookies"
+    },
+    "backtester_safe_evaluator": {
+      "basic_comparisons": "PASS - rsi_14 < 30, rsi_14 > 70",
+      "compound_conditions": "PASS - and/or operators work",
+      "arithmetic": "PASS - close - sma_20 > 0",
+      "chained_comparisons": "PASS - 30 < rsi_14 < 70",
+      "rejects_import": "PASS - __import__ rejected",
+      "rejects_exec": "PASS - exec rejected",
+      "rejects_open": "PASS - open rejected",
+      "rejects_eval": "PASS - eval rejected",
+      "rejects_lambda": "PASS - lambda rejected",
+      "handles_nan": "PASS - returns False for NaN indicators",
+      "rejects_unknown": "PASS - unknown indicator names rejected"
+    },
+    "cors_configuration": {
+      "allows_credentials": "PASS - access-control-allow-credentials: true",
+      "specific_origin": "PASS - uses FRONTEND_URL env var"
+    },
+    "bearer_token_fallback": {
+      "still_works": "PASS - Authorization: Bearer header still accepted"
+    },
+    "broker_connect_error_handling": {
+      "handleSync": "PASS - console.error on line 198",
+      "handleCancelOrder": "PASS - console.error on line 229",
+      "fetchConnections": "PASS - console.error on line 422",
+      "handleDisconnect": "PASS - console.error on line 443"
+    },
+    "frontend_auth_flow": {
+      "login_modal_opens": "PASS",
+      "login_succeeds": "PASS - modal closes after login",
+      "pro_badge_visible": "PASS - owner has PRO subscription",
+      "broker_modal_opens": "PASS - shows Alpaca, Schwab, IBKR"
+    }
+  },
+  "mocked_apis": {
+    "note": "No mocked APIs - all services connected to real APIs"
+  }
+}

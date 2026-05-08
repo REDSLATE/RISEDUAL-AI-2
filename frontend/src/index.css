@@ -1,0 +1,346 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── War Room Theme Tokens ── */
+:root {
+    --brand-navy: #060E1F;
+    --brand-navy-light: #0C1A33;
+    --brand-deep-blue: #155F85;
+    --brand-teal: #3DE8D9;
+    --brand-teal-light: #7AEEE0;
+
+    --wr-bg: 248 250 252;
+    --wr-surface-1: 255 255 255;
+    --wr-surface-2: 241 245 249;
+    --wr-surface-3: 226 232 240;
+    --wr-border: 15 23 42;
+    --wr-text: 15 23 42;
+    --wr-text-muted: 100 116 139;
+
+    --wr-badge-official-bg: 16 185 129;
+    --wr-badge-official-text: 6 78 59;
+    --wr-badge-official-border: 16 185 129;
+    --wr-badge-search-bg: 14 165 233;
+    --wr-badge-search-text: 12 74 110;
+    --wr-badge-search-border: 14 165 233;
+    --wr-badge-fallback-bg: 245 158 11;
+    --wr-badge-fallback-text: 120 53 15;
+    --wr-badge-fallback-border: 245 158 11;
+    --wr-badge-cached-bg: 139 92 246;
+    --wr-badge-cached-text: 76 29 149;
+    --wr-badge-cached-border: 139 92 246;
+
+    --wr-status-live-bg: 20 184 166;
+    --wr-status-live-text: 17 94 89;
+    --wr-status-live-border: 20 184 166;
+    --wr-status-partial-bg: 234 179 8;
+    --wr-status-partial-text: 113 63 18;
+    --wr-status-partial-border: 234 179 8;
+    --wr-status-timeout-bg: 249 115 22;
+    --wr-status-timeout-text: 124 45 18;
+    --wr-status-timeout-border: 249 115 22;
+    --wr-status-error-bg: 244 63 94;
+    --wr-status-error-text: 136 19 55;
+    --wr-status-error-border: 244 63 94;
+}
+
+.dark, [data-theme="dark"] {
+    --wr-bg: 10 18 34;
+    --wr-surface-1: 11 20 38;
+    --wr-surface-2: 16 26 49;
+    --wr-surface-3: 22 34 61;
+    --wr-border: 255 255 255;
+    --wr-text: 241 245 249;
+    --wr-text-muted: 148 163 184;
+
+    --wr-badge-official-bg: 16 185 129;
+    --wr-badge-official-text: 209 250 229;
+    --wr-badge-official-border: 52 211 153;
+    --wr-badge-search-bg: 14 165 233;
+    --wr-badge-search-text: 224 242 254;
+    --wr-badge-search-border: 56 189 248;
+    --wr-badge-fallback-bg: 245 158 11;
+    --wr-badge-fallback-text: 254 243 199;
+    --wr-badge-fallback-border: 251 191 36;
+    --wr-badge-cached-bg: 139 92 246;
+    --wr-badge-cached-text: 237 233 254;
+    --wr-badge-cached-border: 167 139 250;
+
+    --wr-status-live-bg: 20 184 166;
+    --wr-status-live-text: 204 251 241;
+    --wr-status-live-border: 45 212 191;
+    --wr-status-partial-bg: 234 179 8;
+    --wr-status-partial-text: 254 249 195;
+    --wr-status-partial-border: 250 204 21;
+    --wr-status-timeout-bg: 249 115 22;
+    --wr-status-timeout-text: 255 237 213;
+    --wr-status-timeout-border: 251 146 60;
+    --wr-status-error-bg: 244 63 94;
+    --wr-status-error-text: 255 228 230;
+    --wr-status-error-border: 251 113 133;
+}
+
+/* ── War Room Utilities ── */
+.wr-shell { background-color: rgb(var(--wr-bg) / 1); color: rgb(var(--wr-text) / 1); }
+.wr-surface { background-color: rgb(var(--wr-surface-1) / 1); border-color: rgb(var(--wr-border) / 0.1); color: rgb(var(--wr-text) / 1); }
+.wr-surface-2 { background-color: rgb(var(--wr-surface-2) / 1); border-color: rgb(var(--wr-border) / 0.08); }
+.wr-surface-3 { background-color: rgb(var(--wr-surface-3) / 1); border-color: rgb(var(--wr-border) / 0.08); }
+.wr-text { color: rgb(var(--wr-text) / 1); }
+.wr-muted { color: rgb(var(--wr-text-muted) / 1); }
+
+.wr-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    border-width: 1px;
+    padding: 0.25rem 0.625rem;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.wr-badge-official { background-color: rgb(var(--wr-badge-official-bg) / 0.12); color: rgb(var(--wr-badge-official-text) / 1); border-color: rgb(var(--wr-badge-official-border) / 0.28); }
+.wr-badge-search { background-color: rgb(var(--wr-badge-search-bg) / 0.12); color: rgb(var(--wr-badge-search-text) / 1); border-color: rgb(var(--wr-badge-search-border) / 0.28); }
+.wr-badge-fallback { background-color: rgb(var(--wr-badge-fallback-bg) / 0.12); color: rgb(var(--wr-badge-fallback-text) / 1); border-color: rgb(var(--wr-badge-fallback-border) / 0.28); }
+.wr-badge-cached { background-color: rgb(var(--wr-badge-cached-bg) / 0.12); color: rgb(var(--wr-badge-cached-text) / 1); border-color: rgb(var(--wr-badge-cached-border) / 0.28); }
+
+.wr-status-live { background-color: rgb(var(--wr-status-live-bg) / 0.12); color: rgb(var(--wr-status-live-text) / 1); border-color: rgb(var(--wr-status-live-border) / 0.28); }
+.wr-status-partial { background-color: rgb(var(--wr-status-partial-bg) / 0.12); color: rgb(var(--wr-status-partial-text) / 1); border-color: rgb(var(--wr-status-partial-border) / 0.28); }
+.wr-status-timeout { background-color: rgb(var(--wr-status-timeout-bg) / 0.12); color: rgb(var(--wr-status-timeout-text) / 1); border-color: rgb(var(--wr-status-timeout-border) / 0.28); }
+.wr-status-error { background-color: rgb(var(--wr-status-error-bg) / 0.12); color: rgb(var(--wr-status-error-text) / 1); border-color: rgb(var(--wr-status-error-border) / 0.28); }
+
+.wr-card {
+    border-radius: 1rem;
+    border-width: 1px;
+    background-color: rgb(var(--wr-surface-1) / 1);
+    border-color: rgb(var(--wr-border) / 0.1);
+    color: rgb(var(--wr-text) / 1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+}
+.dark .wr-card, [data-theme="dark"] .wr-card {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+}
+
+
+html,
+body,
+#root {
+    margin: 0;
+    padding: 0;
+    background-color: var(--brand-navy) !important;
+    min-height: 100vh;
+    -webkit-overflow-scrolling: touch;
+}
+
+body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--brand-navy) !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+code, .font-mono {
+    font-family: 'JetBrains Mono', source-code-pro, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Safe area padding for notched devices */
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Custom scrollbar for all platforms */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.3);
+    border-radius: 4px;
+}
+
+/* Responsive table wrapper */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Hide desktop chat FAB on mobile (bottom nav handles it) */
+@media (max-width: 767px) {
+    /* Ensure modals are above bottom nav */
+    [role="dialog"] {
+        z-index: 60 !important;
+    }
+    /* Prevent horizontal overflow */
+    body, #root {
+        overflow-x: hidden;
+    }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+    button, a, [role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    input, select, textarea {
+        font-size: 16px !important; /* Prevent iOS zoom */
+    }
+}
+
+@layer base {
+    :root {
+        --background: 222 47% 11%;
+        --foreground: 210 40% 98%;
+        --card: 217 33% 17%;
+        --card-foreground: 210 40% 98%;
+        --popover: 217 33% 17%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 221 100% 50%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 217 19% 27%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217 19% 27%;
+        --muted-foreground: 215 16% 62%;
+        --accent: 217 19% 27%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 217 19% 27%;
+        --input: 217 19% 27%;
+        --ring: 221 100% 50%;
+        --chart-1: 221 100% 50%;
+        --chart-2: 142 72% 29%;
+        --chart-3: 197 37% 24%;
+        --chart-4: 43 74% 66%;
+        --chart-5: 27 87% 67%;
+        --radius: 0.75rem;
+    }
+    .dark {
+        --background: 222 47% 11%;
+        --foreground: 210 40% 98%;
+        --card: 217 33% 17%;
+        --card-foreground: 210 40% 98%;
+        --popover: 217 33% 17%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 221 100% 50%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 217 19% 27%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217 19% 27%;
+        --muted-foreground: 215 16% 62%;
+        --accent: 217 19% 27%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 217 19% 27%;
+        --input: 217 19% 27%;
+        --ring: 221 100% 50%;
+        --chart-1: 221 100% 50%;
+        --chart-2: 142 72% 29%;
+        --chart-3: 30 80% 55%;
+        --chart-4: 280 65% 60%;
+        --chart-5: 340 75% 55%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}
+
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.animate-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Viewport entrance animation */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-enter {
+  animation: fadeSlideUp 0.5s ease-out both;
+}
+.animate-enter-d1 { animation-delay: 0.08s; }
+.animate-enter-d2 { animation-delay: 0.16s; }
+.animate-enter-d3 { animation-delay: 0.24s; }
+.animate-enter-d4 { animation-delay: 0.32s; }
+
+/* Skeleton pulse */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(51,65,85,0.3) 0%, rgba(71,85,105,0.5) 50%, rgba(51,65,85,0.3) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* Scroll-to-top FAB transition */
+.scroll-fab {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+
+/* Hide scrollbar on horizontal tab bars */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -1,0 +1,533 @@
+"""Referral attribution tracking.
+
+- POST /api/analytics/ref — anonymous pixel-style hit; logs one row per referral
+  landing into ``referral_hits``. Dedupes per-visitor per-ref per-day so a reload
+  doesn't inflate counts.
+- GET /api/analytics/ref-leaderboard — aggregates top 5 sharers.
+- GET /api/analytics/ref-me — returns the authenticated user's share stats.
+"""
+from __future__ import annotations
+
+import hashlib
+import logging
+import re
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+
+from services.auth_helpers import get_current_user
+from services.referral_rewards import scan_hit_threshold_rewards, scan_monthly_leaderboard_rewards
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+db = None
+
+# Accepted ref pattern: share-u{8 alphanumeric} OR share-anon{8 digits}
+REF_RE = re.compile(r"^share-(?:u[a-zA-Z0-9]{1,12}|anon\d{6,10})$")
+
+
+def set_db(database) -> None:
+    global db
+    db = database
+
+
+async def _get_current_user_optional(request: Request):
+    """Wrap get_current_user to return None instead of raising for anon users."""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
+
+
+class RefHit(BaseModel):
+    ref: str
+    path: Optional[str] = None
+
+
+def _visitor_hash(request: Request, ref: str) -> str:
+    """Compute a per-day dedup key for a single visitor + ref."""
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or request.client.host if request.client else "unknown")
+    ua = request.headers.get("user-agent", "")
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    raw = f"{ip}|{ua}|{ref}|{day}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+
+@router.post("/ref")
+async def log_ref_hit(payload: RefHit, request: Request) -> dict:
+    """Log a single referral landing. Idempotent per visitor per day."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    ref = (payload.ref or "").strip().lower()
+    if not ref or not REF_RE.match(ref):
+        # Silently ignore invalid refs — don't give attackers feedback
+        return {"ok": True, "recorded": False}
+
+    vhash = _visitor_hash(request, ref)
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        result = await db.referral_hits.update_one(
+            {"visitor_hash": vhash},
+            {"$setOnInsert": {
+                "ref": ref,
+                "visitor_hash": vhash,
+                "path": (payload.path or "/")[:200],
+                "timestamp": now,
+            }},
+            upsert=True,
+        )
+        recorded = result.upserted_id is not None
+    except Exception as e:
+        logger.warning(f"ref log error: {e}")
+        recorded = False
+    return {"ok": True, "recorded": recorded}
+
+
+@router.get("/ref-leaderboard")
+async def ref_leaderboard(limit: int = 5) -> dict:
+    """Top N sharers by unique-visitor hit count over the last 90 days."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    n = max(1, min(limit, 20))
+    pipeline = [
+        {"$group": {"_id": "$ref", "hits": {"$sum": 1}}},
+        {"$sort": {"hits": -1}},
+        {"$limit": n},
+    ]
+    rows = await db.referral_hits.aggregate(pipeline).to_list(n)
+
+    out = []
+    rank = 1
+    for r in rows:
+        ref = r["_id"] or ""
+        # Try to resolve the sharer's display name (admin-safe; anonymized otherwise)
+        user_suffix = ""
+        m = re.match(r"^share-u([a-zA-Z0-9]+)$", ref)
+        if m:
+            user_suffix = m.group(1)
+        out.append({
+            "rank": rank,
+            "ref": ref,
+            "user_suffix": user_suffix,
+            "hits": r["hits"],
+        })
+        rank += 1
+    return {"leaderboard": out, "count": len(out)}
+
+
+@router.get("/ref-me")
+async def my_ref_stats(request: Request) -> dict:
+    """Return the authenticated user's share stats: their ref code + total hits +
+    current rank in the global leaderboard."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Must match the frontend construction: u{sanitized-last-8}
+    identifier = user.get("id") or user.get("_id") or user.get("email") or ""
+    raw_id = re.sub(r"[^a-zA-Z0-9]", "", str(identifier))[-8:]
+    my_ref = f"share-u{raw_id}" if raw_id else None
+
+    if not my_ref:
+        return {"ref": None, "hits": 0, "rank": None}
+
+    my_hits = await db.referral_hits.count_documents({"ref": my_ref})
+
+    # Count how many refs have strictly more hits than mine
+    pipeline = [
+        {"$group": {"_id": "$ref", "hits": {"$sum": 1}}},
+        {"$match": {"hits": {"$gt": my_hits}}},
+        {"$count": "above"},
+    ]
+    above = await db.referral_hits.aggregate(pipeline).to_list(1)
+    rank = (above[0]["above"] + 1) if above else 1
+
+    # Also surface most-recent reward for the user
+    recent_reward = await db.referral_rewards.find_one(
+        {"user_id": user["_id"]},
+        {"_id": 0, "tier": 1, "kind": 1, "amount": 1, "period": 1, "granted_at": 1, "trial_expires_at": 1},
+        sort=[("granted_at", -1)],
+    )
+    return {"ref": my_ref, "hits": my_hits, "rank": rank, "recent_reward": recent_reward}
+
+
+@router.post("/ref-scan-hits")
+async def trigger_hit_scan(request: Request) -> dict:
+    """Admin-only: run the rolling-month hit-threshold reward scan now."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"ok": True, "summary": await scan_hit_threshold_rewards(db)}
+
+
+@router.post("/ref-scan-monthly")
+async def trigger_monthly_scan(request: Request) -> dict:
+    """Admin-only: run the prior-month leaderboard reward scan now (for testing)."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    return {"ok": True, "summary": await scan_monthly_leaderboard_rewards(db)}
+
+
+# ── Help Center search telemetry ──
+class HelpSearchEvent(BaseModel):
+    q: str
+    results_count: int = 0
+    context_hub: Optional[str] = None
+
+
+@router.post("/help-search")
+async def log_help_search(payload: HelpSearchEvent, request: Request) -> dict:
+    """Fire-and-forget telemetry for Help Center searches.
+
+    Tracks every non-trivial query so the admin panel can surface zero-result
+    searches — the single best signal for feature gaps / doc gaps.
+    """
+    if db is None:
+        return {"ok": False, "reason": "db_not_ready"}
+    q = (payload.q or "").strip().lower()
+    if not q or len(q) < 2 or len(q) > 120:
+        return {"ok": False, "reason": "skip"}
+
+    user = await _get_current_user_optional(request)
+    doc = {
+        "q": q,
+        "results_count": max(0, int(payload.results_count or 0)),
+        "context_hub": (payload.context_hub or "").strip()[:24] or None,
+        "user_id": str(user["_id"]) if user else None,
+        "is_anon": user is None,
+        "ts": datetime.now(timezone.utc),
+    }
+    await db.help_search_events.insert_one(doc)
+    return {"ok": True}
+
+
+@router.get("/help-search/stats")
+async def help_search_stats(request: Request, days: int = 30, limit: int = 20) -> dict:
+    """Admin-only: top zero-result queries + overall volume for the last N days."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+
+    total = await db.help_search_events.count_documents({"ts": {"$gte": since}})
+    zero_total = await db.help_search_events.count_documents(
+        {"ts": {"$gte": since}, "results_count": 0}
+    )
+
+    # Top zero-result queries
+    zero_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "results_count": 0}},
+        {"$group": {"_id": "$q", "count": {"$sum": 1},
+                    "last_seen": {"$max": "$ts"},
+                    "hubs": {"$addToSet": "$context_hub"}}},
+        {"$sort": {"count": -1, "last_seen": -1}},
+        {"$limit": max(1, min(limit, 100))},
+    ]
+    zero_top = []
+    async for row in db.help_search_events.aggregate(zero_pipeline):
+        zero_top.append({
+            "q": row["_id"],
+            "count": row["count"],
+            "last_seen": row["last_seen"].isoformat() if row.get("last_seen") else None,
+            "hubs": [h for h in (row.get("hubs") or []) if h],
+        })
+
+    # Overall top queries (any result count) for context
+    top_pipeline = [
+        {"$match": {"ts": {"$gte": since}}},
+        {"$group": {"_id": "$q", "count": {"$sum": 1},
+                    "avg_results": {"$avg": "$results_count"}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 100))},
+    ]
+    top_queries = []
+    async for row in db.help_search_events.aggregate(top_pipeline):
+        top_queries.append({
+            "q": row["_id"],
+            "count": row["count"],
+            "avg_results": round(row.get("avg_results") or 0, 1),
+        })
+
+    return {
+        "window_days": days,
+        "total_events": total,
+        "zero_result_events": zero_total,
+        "zero_result_rate": round((zero_total / total) if total else 0, 3),
+        "zero_result_top": zero_top,
+        "top_queries": top_queries,
+    }
+
+
+@router.get("/help-search/suggestions")
+async def help_search_suggestions(q: str, request: Request) -> dict:
+    """Given a user's query, return:
+
+    * ``similar_answered`` — top queries that match and have returned results
+      (these are known-answered paths the user can click).
+    * ``gap_signal`` — if this query (or very similar) has appeared 3+ times as a
+      zero-result search in the last 30 days, flag it as a documented gap so
+      the UI can show transparency ("others hit this wall too").
+
+    Public-readable — no user data leaked. Safe to call from authed or anon
+    chat/help surfaces.
+    """
+    query = (q or "").strip().lower()
+    if not query or len(query) < 2:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+    if db is None:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+
+    # Tokenise the query for loose matching.
+    tokens = [t for t in query.split() if len(t) >= 2][:6]
+    if not tokens:
+        return {"query": query, "similar_answered": [], "gap_signal": None}
+
+    # Find queries that share at least one token AND returned results.
+    answered_pipeline = [
+        {"$match": {
+            "ts": {"$gte": since},
+            "results_count": {"$gt": 0},
+            "$or": [{"q": {"$regex": t, "$options": "i"}} for t in tokens],
+        }},
+        {"$group": {
+            "_id": "$q",
+            "count": {"$sum": 1},
+            "avg_results": {"$avg": "$results_count"},
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 5},
+    ]
+    similar_answered = []
+    async for row in db.help_search_events.aggregate(answered_pipeline):
+        q_val = row["_id"]
+        if q_val == query:
+            continue
+        similar_answered.append({
+            "q": q_val,
+            "count": row["count"],
+            "avg_results": round(row.get("avg_results") or 0, 1),
+        })
+
+    # Check if this query is itself a documented gap (3+ zero-result hits).
+    gap_pipeline = [
+        {"$match": {
+            "ts": {"$gte": since},
+            "results_count": 0,
+            "$or": [{"q": query}] + [{"q": {"$regex": t, "$options": "i"}} for t in tokens],
+        }},
+        {"$group": {
+            "_id": None,
+            "count": {"$sum": 1},
+            "users": {"$addToSet": "$user_id"},
+            "queries": {"$addToSet": "$q"},
+        }},
+    ]
+    gap_signal = None
+    async for row in db.help_search_events.aggregate(gap_pipeline):
+        count = row.get("count") or 0
+        uu = len([u for u in (row.get("users") or []) if u])
+        if count >= 3:
+            sample = [qq for qq in (row.get("queries") or []) if qq != query][:3]
+            gap_signal = {
+                "count": count,
+                "unique_users": uu,
+                "sample_queries": sample,
+            }
+
+    return {"query": query, "similar_answered": similar_answered[:3], "gap_signal": gap_signal}
+
+
+# ── Chat Follow-up Chip Adoption Telemetry ──
+
+class ChipEvent(BaseModel):
+    action: str  # "shown" | "clicked"
+    chip_text: str
+    message_idx: Optional[int] = None
+    context_hub: Optional[str] = None
+
+
+@router.post("/chip-event")
+async def log_chip_event(payload: ChipEvent, request: Request) -> dict:
+    """Fire-and-forget telemetry for AI chat follow-up chips + deep-link actions.
+
+    Accepted ``action`` values:
+    - ``shown`` / ``clicked`` — Level-1 follow-up chips.
+    - ``action-shown`` / ``action-clicked`` — Level-2 inline deep-link actions
+      (e.g. "Open AAPL Research"). Used to compute separate CTR for actions vs chips.
+    """
+    if db is None:
+        return {"ok": False, "reason": "db_not_ready"}
+    action = (payload.action or "").strip().lower()
+    if action not in ("shown", "clicked", "action-shown", "action-clicked"):
+        return {"ok": False, "reason": "bad_action"}
+    chip = (payload.chip_text or "").strip()
+    if not chip or len(chip) > 120:
+        return {"ok": False, "reason": "skip"}
+    user = await _get_current_user_optional(request)
+    await db.chip_events.insert_one({
+        "action": action,
+        "chip_text": chip,
+        "message_idx": payload.message_idx,
+        "context_hub": (payload.context_hub or "").strip()[:24] or None,
+        "user_id": str(user["_id"]) if user else None,
+        "is_anon": user is None,
+        "ts": datetime.now(timezone.utc),
+    })
+    return {"ok": True}
+
+
+@router.get("/chip-events/stats")
+async def chip_events_stats(request: Request, days: int = 30, limit: int = 15) -> dict:
+    """Admin-only. Returns chip impression/click counts, CTR, and top chips."""
+    user = await _get_current_user_optional(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+
+    shown = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "shown"})
+    clicked = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "clicked"})
+    ctr = round(clicked / shown, 3) if shown else 0
+
+    # Level-2 deep-link actions — separate funnel. Split raw "action-clicked"
+    # events into forward-clicks and undo-clicks (chip_text starts with
+    # "Undo ") so we can compute a misclick rate per source/hub.
+    action_shown = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-shown"})
+    action_clicked_total = await db.chip_events.count_documents({"ts": {"$gte": since}, "action": "action-clicked"})
+    undo_count = await db.chip_events.count_documents({
+        "ts": {"$gte": since},
+        "action": "action-clicked",
+        "chip_text": {"$regex": "^Undo "},
+    })
+    action_clicked = max(0, action_clicked_total - undo_count)  # true forward clicks
+    action_ctr = round(action_clicked / action_shown, 3) if action_shown else 0
+    misclick_rate = round(undo_count / action_clicked, 3) if action_clicked else 0
+
+    # Top clicked chips
+    clicked_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "action": "clicked"}},
+        {"$group": {"_id": "$chip_text", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 50))},
+    ]
+    top_clicked = []
+    async for row in db.chip_events.aggregate(clicked_pipeline):
+        top_clicked.append({"chip": row["_id"], "count": row["count"]})
+
+    # Top clicked actions (Level-2) — exclude undo events so the leaderboard
+    # shows what users actually want to open, not what they bounce from.
+    action_pipeline = [
+        {"$match": {
+            "ts": {"$gte": since},
+            "action": "action-clicked",
+            "chip_text": {"$not": {"$regex": "^Undo "}},
+        }},
+        {"$group": {"_id": "$chip_text", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": max(1, min(limit, 50))},
+    ]
+    top_actions = []
+    async for row in db.chip_events.aggregate(action_pipeline):
+        top_actions.append({"chip": row["_id"], "count": row["count"]})
+
+    # Per-hub adoption breakdown — groups by context_hub AND splits forward
+    # vs undo action-clicks so the admin can see which surfaces have the
+    # highest misclick rate (= "this tile confuses users").
+    hub_pipeline = [
+        {"$match": {"ts": {"$gte": since}, "context_hub": {"$ne": None}}},
+        {"$group": {
+            "_id": {
+                "hub": "$context_hub",
+                "action": "$action",
+                "is_undo": {"$regexMatch": {"input": {"$ifNull": ["$chip_text", ""]}, "regex": "^Undo "}},
+            },
+            "count": {"$sum": 1},
+        }},
+    ]
+    hub_totals = {}
+    async for row in db.chip_events.aggregate(hub_pipeline):
+        hub = row["_id"].get("hub") or "unknown"
+        act = row["_id"].get("action") or ""
+        is_undo = bool(row["_id"].get("is_undo"))
+        hub_totals.setdefault(hub, {
+            "shown": 0, "clicked": 0,
+            "action_shown": 0, "action_clicked": 0, "undo_clicked": 0,
+        })
+        if act == "shown":
+            hub_totals[hub]["shown"] += row["count"]
+        elif act == "clicked":
+            hub_totals[hub]["clicked"] += row["count"]
+        elif act == "action-shown":
+            hub_totals[hub]["action_shown"] += row["count"]
+        elif act == "action-clicked":
+            if is_undo:
+                hub_totals[hub]["undo_clicked"] += row["count"]
+            else:
+                hub_totals[hub]["action_clicked"] += row["count"]
+    by_hub = []
+    for hub, t in hub_totals.items():
+        l1_ctr = round((t["clicked"] / t["shown"]) if t["shown"] else 0, 3)
+        l2_ctr = round((t["action_clicked"] / t["action_shown"]) if t["action_shown"] else 0, 3)
+        misclick = round((t["undo_clicked"] / t["action_clicked"]) if t["action_clicked"] else 0, 3)
+        total_events = sum(t.values())
+        by_hub.append({
+            "hub": hub,
+            "shown": t["shown"],
+            "clicked": t["clicked"],
+            "l1_ctr": l1_ctr,
+            "action_shown": t["action_shown"],
+            "action_clicked": t["action_clicked"],
+            "l2_ctr": l2_ctr,
+            "undo_clicked": t["undo_clicked"],
+            "misclick_rate": misclick,
+            "total_events": total_events,
+        })
+    by_hub.sort(key=lambda r: r["total_events"], reverse=True)
+
+    return {
+        "window_days": days,
+        "shown": shown,
+        "clicked": clicked,
+        "ctr": ctr,
+        "action_shown": action_shown,
+        "action_clicked": action_clicked,
+        "action_ctr": action_ctr,
+        "undo_count": undo_count,
+        "misclick_rate": misclick_rate,
+        "top_clicked": top_clicked,
+        "top_actions": top_actions,
+        "by_hub": by_hub,
+    }
+
+
+@router.post("/help-search/send-digest")
+async def trigger_help_search_digest(request: Request) -> dict:
+    """Admin-only: manually trigger the weekly Help-Search digest email."""
+    user = await _get_current_user_optional(request)
+    if not user or user.get("role") not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    from services.help_search_digest import send_help_search_digest
+    return await send_help_search_digest(db)

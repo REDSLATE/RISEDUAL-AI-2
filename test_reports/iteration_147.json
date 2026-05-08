@@ -1,0 +1,82 @@
+{
+  "summary": "Iteration 147: Toxic Spike Autopsy feature - All 23 backend tests pass (5 unit + 11 API + 7 sector resolver). Frontend verified: Admin Panel -> Toxic Autopsy tab renders all six breakdown sections, top offenders table, raw samples table. Interactive elements (days select, min-conf select, refresh button, samples toggle) all working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_toxic_autopsy.py",
+    "/app/backend/tests/test_toxic_autopsy_api.py",
+    "/app/backend/tests/test_symbol_sector_resolver.py",
+    "/app/test_reports/pytest/iteration147_toxic_autopsy_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED: ToxicSpikeAutopsyPanel import was missing in AdminPanel.jsx - added import statement",
+    "VERIFIED: Confidence scale normalization working correctly - avg_confidence_pct is in 0-100 range (85.69% observed)",
+    "VERIFIED: NEUTRAL grade predictions excluded from total_failures (verified_24h.correct must be False)",
+    "VERIFIED: Low-confidence misses below min_confidence threshold excluded from total_failures",
+    "VERIFIED: days + min_confidence query params honored (tested days=1,7,14 and min_conf=70,80,90)",
+    "VERIFIED: top_offenders items have all required fields (symbol, count, avg_confidence_pct, sector, grades, failure_codes, features)",
+    "VERIFIED: samples array capped at 200 rows max with all required fields (sector, failure_code, grade, prediction_id, price_at_prediction, price_verified)",
+    "VERIFIED: GET /api/admin/ops-snapshot still works (regression check passed)",
+    "VERIFIED: Admin-only access enforced (401 for unauthenticated, 403 for non-admin)",
+    "VERIFIED: All six breakdown sections render (by_failure_code, by_feature, by_confidence_bucket, by_direction, by_sector, by_model_version)",
+    "VERIFIED: Top Offenders table shows QQQ/NVDA/SPY with failure counts and failure modes",
+    "VERIFIED: Raw Failures table expands/collapses with samples toggle"
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/AdminPanel.jsx",
+    "/app/backend/tests/test_toxic_autopsy_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests - 5 unit + 11 API + 7 sector resolver)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing prediction data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 147 added Toxic Spike Autopsy feature. The feature allows admins to drill down into WHY high-confidence predictions failed, grouped by failure_code, feature (agent origin), confidence bucket, direction, sector, and model version. All 23 tests pass. The ToxicSpikeAutopsyPanel import was missing in AdminPanel.jsx and was fixed during testing. The deep-link bridge (risedual:open-admin-autopsy event) was not tested as no toxic_spike notification was present, but the Admin -> Insights -> Toxic Autopsy tab renders correctly.",
+  "features_tested": {
+    "backend_toxic_autopsy_endpoint": {
+      "endpoint": "GET /api/admin/toxic-spike/autopsy",
+      "auth": "admin-only (401 unauth, 403 non-admin)",
+      "query_params": ["days (1-30)", "min_confidence (0-100)"],
+      "response_schema": ["total_failures", "total_misses_in_window", "avg_confidence_pct", "unique_symbols", "window", "by_failure_code", "by_feature", "by_confidence_bucket", "by_direction", "by_sector", "by_model_version", "by_grade", "top_offenders", "samples", "generated_at"]
+    },
+    "frontend_toxic_autopsy_panel": {
+      "location": "AdminPanel > Insights > Toxic Autopsy tab",
+      "testid": "toxic-spike-autopsy-panel",
+      "breakdown_sections": ["autopsy-by-failure-code", "autopsy-by-feature", "autopsy-by-confidence-bucket", "autopsy-by-direction", "autopsy-by-sector", "autopsy-by-model-version"],
+      "interactive_elements": ["autopsy-days-select", "autopsy-min-conf-select", "autopsy-refresh-btn", "autopsy-samples-toggle"],
+      "tables": ["autopsy-top-offenders", "Raw Failures (expandable)"]
+    },
+    "unit_tests_coverage": {
+      "build_autopsy_empty_db": "Returns valid payload with 0 failures",
+      "build_autopsy_filters_and_groups": "Filters by confidence, groups by all dimensions",
+      "build_autopsy_handles_none_db": "Returns error payload when db unavailable",
+      "bucket_for_boundaries": "Confidence bucket boundaries correct",
+      "direction_family_mapping": "Direction normalization (BUY->BULLISH, SELL->BEARISH)"
+    },
+    "api_tests_coverage": {
+      "auth": "401 for unauthenticated, 200 for admin",
+      "schema": "All required fields present, avg_confidence_pct in 0-100 range",
+      "query_params": "days and min_confidence honored",
+      "regression": "ops-snapshot still works"
+    },
+    "sector_resolver_tests": {
+      "cache_hit": "Short-circuits before static map / Finnhub",
+      "static_map": "Returns correct sector and writes through to cache",
+      "finnhub_fallback": "Returns finnhubIndustry when cache and static map miss",
+      "unknown_symbol": "Degrades to 'Unknown' without raising",
+      "stale_cache": "Treated as cache miss (>7d)",
+      "bulk_resolve": "Bounded concurrency, returns dict"
+    }
+  }
+}

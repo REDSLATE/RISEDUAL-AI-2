@@ -1,0 +1,67 @@
+{
+  "summary": "Iteration 148: Full regression smoke test for Dual-Stack Architecture, AI Core Learning Engine, Toxic Spike Autopsy, What-If Replay, ChromaDB rebuild, and Council Risk Modulator. All 98 focused tests pass. No ObjectId leakage detected. Backend healthy, auth working with httpOnly cookies.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dual_stack_invariants.py",
+    "/app/backend/tests/test_ai_core_engine.py",
+    "/app/backend/tests/test_ai_core_registry.py",
+    "/app/backend/tests/test_ai_core_routes.py",
+    "/app/backend/tests/test_toxic_autopsy.py",
+    "/app/backend/tests/test_toxic_autopsy_api.py",
+    "/app/backend/tests/test_toxic_count_consistency.py",
+    "/app/backend/tests/test_whatif_replay.py",
+    "/app/backend/tests/test_council_risk_modulator.py",
+    "/app/backend/tests/test_council_bridge_integration.py",
+    "/app/test_reports/pytest/iteration148_dual_stack_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: Backend supervisor RUNNING, GET /api/ returns 200",
+    "VERIFIED: Auth flow with admin@risedual.ai / RiseDual2026! works - httpOnly cookies set (access_token + refresh_token)",
+    "VERIFIED: /api/auth/me returns user profile correctly",
+    "VERIFIED: firewall.py, promotion_bridge.py, ai_core_engine.py all import cleanly",
+    "VERIFIED: Dual-Stack invariants - 18 tests pass (DTD/PRD isolation, bridge registry, firewall rejects)",
+    "VERIFIED: AI Core Engine - 10 tests pass (canon_outcome, bucket_confidence, record_trade, reset)",
+    "VERIFIED: AI Core Registry - 11 tests pass (live+candidate engines, promote, broadcast, reset_all)",
+    "VERIFIED: AI Core Routes - 7 tests pass (unauth blocked, stats, record_trade, nightly_sweep, reject, pagination)",
+    "VERIFIED: Toxic Spike Autopsy - 5 unit + 11 API + 3 count consistency tests pass",
+    "VERIFIED: What-If Replay - 6 tests pass (project_engine, bucket_lift)",
+    "VERIFIED: Council Risk Modulator - 23 tests pass (bucket_gate, cache, agreement, disagreement, bounds)",
+    "VERIFIED: Council Bridge Integration - 4 tests pass (modulator unchanged when no bridge, applies bridge when active)",
+    "VERIFIED: GET /api/ai-core/engines/compare returns 200 with live + candidate engines, no _id leakage",
+    "VERIFIED: GET /api/admin/toxic-spike/autopsy returns 200 with 101 failures, no _id key leakage",
+    "VERIFIED: GET /api/admin/replay/whatif returns 200 with projection data, no _id leakage",
+    "VERIFIED: POST /api/accuracy/memory/rebuild-from-mongo returns 200, rebuilt 264 records"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (98/98 tests - 18 dual-stack + 10 ai-core-engine + 11 ai-core-registry + 7 ai-core-routes + 19 toxic + 6 whatif + 23 council-modulator + 4 council-bridge)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 148 confirmed no regression after Dual-Stack Architecture session. All 98 focused tests pass. Key endpoints verified: /api/ai-core/engines/compare, /api/admin/toxic-spike/autopsy, /api/admin/replay/whatif, /api/accuracy/memory/rebuild-from-mongo. No ObjectId leakage in any response. httpOnly cookies working correctly for auth.",
+  "endpoints_verified": {
+    "GET /api/": {"status": 200, "description": "Health check"},
+    "POST /api/auth/login": {"status": 200, "description": "Auth with httpOnly cookies"},
+    "GET /api/auth/me": {"status": 200, "description": "User profile"},
+    "GET /api/ai-core/engines/compare": {"status": 200, "description": "Live + candidate engines comparison"},
+    "GET /api/admin/toxic-spike/autopsy": {"status": 200, "description": "Toxic spike autopsy with breakdowns"},
+    "GET /api/admin/replay/whatif": {"status": 200, "description": "What-If projection"},
+    "POST /api/accuracy/memory/rebuild-from-mongo": {"status": 200, "description": "ChromaDB rebuild from MongoDB"}
+  },
+  "objectid_leakage_check": {
+    "ai_core_engines_compare": "CLEAN - no _id keys",
+    "toxic_spike_autopsy": "CLEAN - no _id keys (prediction_id values contain '_id' substring but not as keys)",
+    "whatif_replay": "CLEAN - no _id keys"
+  }
+}

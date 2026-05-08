@@ -1,0 +1,81 @@
+{
+  "summary": "Iteration 65: Order Flow / Institutional Wall Detection Testing Complete. All 16 backend tests passed (100%). All frontend UI tests passed. The new Order Flow system correctly analyzes intraday volume profiles to detect institutional walls (3x+ median volume). API endpoints return volume profiles with walls, POC, and institutional bias. Frontend OrderFlowPanel renders correctly with ticker selector, bias badges, and volume bars.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration65_order_flow.py",
+    "/app/test_reports/pytest/iteration65_order_flow_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "order_flow_service.py: Correctly uses 3x median (WALL_MULTIPLIER=3.0) for wall detection, 5x for major walls",
+    "order_flow_service.py: Crypto tickers (BTC, ETH, etc.) properly converted to -USD format for yfinance",
+    "order_flow_service.py: get_order_flow_context() returns well-formatted text with wall descriptions and implications",
+    "order_flow_service.py: Institutional bias calculated from support/resistance volume ratio (>65% = BID, <35% = ASK)",
+    "market.py: GET /api/order-flow/{symbol} endpoint correctly strips profile from response to keep payload light",
+    "crew_definitions.py: All 3 crews (war_room, hypothesis, prediction) fetch and inject order_flow_context",
+    "crew_definitions.py: Memory injection includes INSTITUTIONAL ORDER FLOW section with adversarial checks",
+    "market_prediction_service.py: Fetches SPY order flow for market-level prediction",
+    "OrderFlowPanel.jsx: All 7 ticker buttons have data-testid attributes for testing",
+    "OrderFlowPanel.jsx: WallBar component shows price, volume, ratio, and strength (M/m badge)",
+    "OrderFlowPanel.jsx: Bias badge uses correct colors (emerald for BID, red for ASK, slate for BALANCED)",
+    "App.js: OrderFlowPanel correctly placed after LiveInsightsFeed in the layout"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration65_order_flow.py"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": {
+    "note": "Order Flow endpoint does NOT require authentication"
+  },
+  "seed_data_creation": "None - yfinance provides real-time data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 65 verified the Order Flow / Institutional Wall Detection system. Key findings: (1) GET /api/order-flow/{symbol} returns volume profile with walls, summary, POC, and institutional bias, (2) Crypto tickers (BTC, ETH) auto-convert to -USD format, (3) Wall detection uses 3x median threshold (minor) and 5x for major walls, (4) Institutional bias: INSTITUTIONAL_BID (>65% support volume), INSTITUTIONAL_ASK (<35%), BALANCED otherwise, (5) All 3 AI crews (war_room, hypothesis, prediction) inject order_flow_context into synthesizer prompts, (6) Frontend OrderFlowPanel has data-testid attributes: order-flow-panel, order-flow-toggle, flow-ticker-{SPY|AAPL|TSLA|NVDA|MSFT|BTC|ETH}, flow-refresh, wall-list, (7) Volume bars show price, volume (in M), ratio (Nx), and strength badge (M=major, m=minor), (8) Bias badge shows 'Institutional Buying' (green), 'Institutional Selling' (red), or 'Balanced Flow' (gray).",
+  "verified_features": {
+    "backend_api": {
+      "GET_order_flow_AAPL": "PASS - Returns volume profile with 2 support walls, INSTITUTIONAL_BID bias",
+      "GET_order_flow_SPY": "PASS - Returns data with support/resistance wall counts",
+      "GET_order_flow_BTC": "PASS - Crypto converted to BTC-USD, returns 5 resistance walls, INSTITUTIONAL_ASK bias",
+      "wall_structure": "PASS - Walls have price, volume, ratio, type, strength, distance_pct",
+      "price_range": "PASS - Returns low/high price range",
+      "metadata_fields": "PASS - period=2d, interval=5m, total_bars, analyzed_at, median_volume"
+    },
+    "order_flow_service": {
+      "get_volume_profile": "PASS - Returns dict with walls, summary, POC",
+      "get_order_flow_context": "PASS - Returns formatted text with wall descriptions and implications",
+      "crypto_ticker_conversion": "PASS - BTC/ETH/SOL etc. convert to -USD format",
+      "wall_detection_threshold": "PASS - WALL_MULTIPLIER=3.0, SIGNIFICANT_WALL=5.0"
+    },
+    "crew_integration": {
+      "run_war_room_crew": "PASS - Fetches order_flow_context for symbol, injects into prompt",
+      "run_hypothesis_crew": "PASS - Fetches order_flow_context for symbol, injects into prompt",
+      "run_prediction_crew": "PASS - Accepts order_flow_context parameter, injects into prompt",
+      "market_prediction_service": "PASS - Fetches SPY order flow for market-level prediction"
+    },
+    "frontend_ui": {
+      "OrderFlowPanel_renders": "PASS - Panel found with data-testid",
+      "ticker_selector": "PASS - All 7 tickers (SPY, AAPL, TSLA, NVDA, MSFT, BTC, ETH) have buttons",
+      "institutional_bias_badge": "PASS - Shows Institutional Buying/Selling/Balanced",
+      "volume_bars": "PASS - Shows price, volume, ratio, strength (M/m)",
+      "ticker_switching": "PASS - Clicking different tickers fetches new data",
+      "POC_display": "PASS - Point of Control price shown",
+      "support_resistance_counts": "PASS - Support and Resistance counts displayed"
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "yfinance provides real intraday data (free API)"
+  }
+}

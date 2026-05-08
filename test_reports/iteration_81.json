@@ -1,0 +1,106 @@
+{
+  "summary": "Iteration 81: About Us Page Testing - All features PASSED. Tested both embedded mode (landing page) and overlay mode (logged-in dashboard). No regressions found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_81.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AboutUs.jsx correctly implements dual-mode rendering (embedded prop for landing page, overlay for logged-in users)",
+    "useModals.js properly exports showAbout/setShowAbout state",
+    "App.js correctly destructures showAbout from useModals and renders AboutUs overlay",
+    "Navbar.jsx correctly passes onOpenAbout prop and includes About button in Resources dropdown and mobile menu",
+    "LandingPage.jsx correctly includes About Us in NAV_ITEMS and embeds AboutUs component between Features and Pricing"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only test)",
+    "frontend": "100% - All About Us features verified"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 81 verified About Us page implementation. All features working: (1) Landing page nav has 'About Us' link between Features and Pricing, (2) Clicking link scrolls to embedded About section, (3) About section shows Mission, Stats bar (8+, 2X, 24/7, 12K+), Core Values (4 cards), Platform Capabilities (6 cards), Team bios (4 members), (4) Logged-in dashboard Resources dropdown has 'About RISEDUAL AI' button, (5) Clicking opens full-screen overlay with header bar and close button (X), (6) Close button returns to dashboard, (7) Mobile menu has 'About Us' button that opens overlay. No regressions: Dashboard loads after login, Fear & Greed gauge visible (68 Greed), Congress tab shows Lobbying Filings (12189).",
+  "verified_features": {
+    "landing_page_about_us": {
+      "nav_link": {
+        "status": "PASS",
+        "details": "About Us link visible in nav bar between Features and Pricing"
+      },
+      "scroll_to_section": {
+        "status": "PASS",
+        "details": "Clicking About Us link scrolls to embedded section"
+      },
+      "embedded_section": {
+        "status": "PASS",
+        "details": "About Us section embedded between Features and Pricing sections",
+        "content_verified": ["Mission statement", "Stats bar (8+, 2X, 24/7, 12K+)", "Core Values (4 cards)", "Platform Capabilities (6 cards)", "Team bios (4 members)"]
+      }
+    },
+    "logged_in_about_overlay": {
+      "resources_dropdown": {
+        "status": "PASS",
+        "details": "Resources dropdown contains 'About RISEDUAL AI' button with data-testid='nav-about-btn'"
+      },
+      "overlay_opens": {
+        "status": "PASS",
+        "details": "Clicking button opens full-screen overlay with z-[60]"
+      },
+      "overlay_header": {
+        "status": "PASS",
+        "details": "Header bar shows 'About RISEDUAL AI' with Rocket icon"
+      },
+      "close_button": {
+        "status": "PASS",
+        "details": "Close button (X) with data-testid='about-close-btn' returns to dashboard"
+      },
+      "overlay_content": {
+        "status": "PASS",
+        "details": "All sections visible: Mission, Stats, Values, Capabilities, Team, CTA"
+      },
+      "cta_button": {
+        "status": "PASS",
+        "details": "'Back to Dashboard' button with data-testid='about-cta-btn' visible"
+      }
+    },
+    "mobile_menu": {
+      "about_button": {
+        "status": "PASS",
+        "details": "About Us button visible in mobile hamburger menu with data-testid='mobile-about-btn'"
+      },
+      "overlay_from_mobile": {
+        "status": "PASS",
+        "details": "Clicking mobile About Us button opens overlay correctly"
+      }
+    },
+    "no_regressions": {
+      "dashboard_loads": {
+        "status": "PASS",
+        "details": "Dashboard loads after login without ErrorBoundary crash"
+      },
+      "fear_greed_gauge": {
+        "status": "PASS",
+        "details": "Fear & Greed gauge visible showing 68 (Greed), 7d Avg 66.5, 30d Avg 69.1"
+      },
+      "congress_tab_lobbying": {
+        "status": "PASS",
+        "details": "Congress tab shows Lobbying Filings: 12189, Congressional Trades: 12, Fed Announcements: 10, SEC Insider Filings: 20"
+      }
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

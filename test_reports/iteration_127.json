@@ -1,0 +1,66 @@
+{
+  "summary": "Iteration 127: Provider Badges & Service Extensions - 10/10 BACKEND TESTS PASSED. Fixed 2 bugs in routes/ai.py: (1) cache.set() used wrong parameter 'endpoint' instead of 'namespace', (2) stale cache fallback incorrectly accessed stale['data'] when get_stale() already returns the data directly. Frontend UI verified: login works, dashboard loads, War Room analysis runs successfully with Strategist/Auditor/Data Feeds/Retraining/Synthesis stages.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration127_provider_badges.py",
+    "/app/test_reports/pytest/iteration127_provider_badges_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/routes/ai.py",
+    "/app/backend/tests/test_iteration127_provider_badges.py"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 tests passed)",
+    "frontend": "100% (login, dashboard, War Room verified)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 127 tested provider badges and service extensions. All backend tests pass: (1) POST /api/chat with non-portfolio message returns provider metadata with lane, name, type, model fields, (2) POST /api/chat with portfolio message (buy/sell keywords) goes through portfolio agent path, (3) GET /api/research/{symbol} returns synthesis as string (not dict) with provider metadata, (4) GET /api/market/prediction returns _cache info with hit field for instant/live badge, (5) POST /api/web-intel/war-room returns brief with sources_used for badges. Fixed bugs: cache.set() parameter name (endpoint->namespace), stale cache fallback data access. Frontend verified: login modal works with Enter key, dashboard loads with AI War Room, Sector Rotation, Fear & Greed Index. War Room analysis runs through all stages (Strategist, Auditor, Data Feeds, Retraining, Synthesis).",
+  "verified_features": {
+    "POST /api/chat - non-portfolio returns provider metadata": "PASS",
+    "POST /api/chat - portfolio message (buy/sell) path": "PASS",
+    "POST /api/chat - sell keyword triggers portfolio path": "PASS",
+    "GET /api/research/{symbol} - synthesis is string": "PASS",
+    "GET /api/research/{symbol} - provider badge data": "PASS",
+    "GET /api/market/prediction - cache info for source badge": "PASS",
+    "GET /api/market/prediction/{symbol} - ticker prediction cache": "PASS",
+    "POST /api/web-intel/war-room - sources_used for badges": "PASS",
+    "API accessibility check": "PASS",
+    "Auth login": "PASS",
+    "Frontend - Login modal": "PASS",
+    "Frontend - Dashboard loads": "PASS",
+    "Frontend - War Room analysis runs": "PASS"
+  },
+  "bugs_fixed": [
+    {
+      "file": "/app/backend/routes/ai.py",
+      "line": 408,
+      "issue": "cache.set() used 'endpoint' parameter instead of 'namespace'",
+      "fix": "Changed endpoint='research' to namespace='research'"
+    },
+    {
+      "file": "/app/backend/routes/ai.py",
+      "line": 424,
+      "issue": "Stale cache fallback incorrectly accessed stale['data'] when get_stale() already returns data directly",
+      "fix": "Changed stale['data'] to stale with isinstance check"
+    }
+  ],
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

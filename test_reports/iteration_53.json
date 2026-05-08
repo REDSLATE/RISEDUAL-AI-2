@@ -1,0 +1,123 @@
+{
+  "summary": "Iteration 53: Broker OAuth 2.0 Infrastructure & Historical Sentiment Tracking Testing Complete. All 14 backend tests passed (100%). Frontend testing verified BrokerConnect OAuth status handling, SectorHeatmap AI tab with sparkline trends, and URL parameter handling for OAuth callbacks.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration53_oauth_sentiment_history.py",
+    "/app/test_reports/pytest/iteration53_oauth_sentiment_history_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/broker/oauth/alpaca/status correctly returns available:false, configured:false when ALPACA_OAUTH_CLIENT_ID is not set",
+    "GET /api/broker/oauth/kraken/status correctly returns available:false with reason 'OAuth not supported for this broker'",
+    "GET /api/sectors/sentiment/history returns proper structure with snapshots_count, sector_trends, latest_rotation_call, latest_risk_regime",
+    "GET /api/sectors/sentiment/history?limit=5 correctly respects the limit parameter",
+    "BrokerConnect.jsx correctly hides OAuth button when OAuth is not configured (no client ID)",
+    "BrokerConnect.jsx shows manual API key inputs with Paper Trading toggle for Alpaca",
+    "SectorHeatmap.jsx AI tab shows Multi-Agent Consensus header with 4 agents badge and risk regime",
+    "SectorHeatmap.jsx displays sparkline SVGs for each sector when history has 2+ snapshots",
+    "URL parameter ?broker_connected=alpaca triggers success message and auto-opens broker modal"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration53_oauth_sentiment_history.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": {
+    "admin": {
+      "email": "admin@risedual.ai",
+      "password": "RiseDual2026!",
+      "role": "admin",
+      "subscription": "pro"
+    }
+  },
+  "seed_data_creation": "None - used existing seeded accounts",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 53 verified NEW broker OAuth 2.0 infrastructure and historical sentiment tracking. Key findings: (1) GET /api/broker/oauth/{broker_id}/status returns OAuth availability - alpaca returns available:false (no client ID configured), kraken returns 'not supported', (2) GET /api/sectors/sentiment/history returns snapshots_count, sector_trends with timestamp/score/heatmap_value/label per sector, latest_rotation_call, latest_risk_regime, (3) Frontend BrokerConnect.jsx correctly hides OAuth button when not configured, shows manual API key form, (4) SectorHeatmap.jsx AI tab shows Multi-Agent Consensus with 4 agents badge, mixed risk regime, 4 snapshots badge, sparkline trends for each sector, (5) URL param ?broker_connected=alpaca triggers success message 'Successfully connected alpaca via OAuth!' and auto-opens modal, (6) All 8 brokers displayed: Alpaca (recommended), Charles Schwab, Interactive Brokers, MooMoo, Webull, Robinhood, Public.com, Kraken.",
+  "verified_features": {
+    "backend": {
+      "oauth_status_new": {
+        "GET /api/broker/oauth/alpaca/status": "PASS - 200, returns available:false, configured:false (no client ID)",
+        "GET /api/broker/oauth/kraken/status": "PASS - 200, returns available:false, reason:'OAuth not supported for this broker'",
+        "GET /api/broker/oauth/schwab/status": "PASS - 200, returns available:false (not in OAUTH_CONFIGS)",
+        "GET /api/broker/oauth/nonexistent/status": "PASS - 200, returns available:false"
+      },
+      "sentiment_history_new": {
+        "GET /api/sectors/sentiment/history": "PASS - 200, returns snapshots_count, sector_trends, latest_rotation_call, latest_risk_regime",
+        "GET /api/sectors/sentiment/history?limit=5": "PASS - 200, respects limit parameter",
+        "sector_trends_structure": "PASS - Each sector has array of {timestamp, score, heatmap_value, label}"
+      },
+      "broker_connect_regression": {
+        "POST /api/broker/connect (no auth)": "PASS - 401 Unauthorized",
+        "GET /api/broker/connections": "PASS - 200, returns list without encrypted keys",
+        "POST /api/broker/connect (invalid keys)": "PASS - 400 with error detail"
+      },
+      "sector_heatmap_regression": {
+        "GET /api/sectors/heatmap": "PASS - 200, returns 11 sectors with real prices",
+        "market_summary": "PASS - includes best_sector, worst_sector, total_sectors=11"
+      },
+      "sector_sentiment_regression": {
+        "GET /api/sectors/sentiment": "PASS - 200, returns AI sentiment for all sectors"
+      },
+      "auth_regression": {
+        "POST /api/auth/login": "PASS - 200, returns access_token and user email"
+      }
+    },
+    "frontend": {
+      "broker_connect_component": {
+        "data-testid='broker-connect-trigger'": "PASS - Connect Broker button in header",
+        "data-testid='broker-modal'": "PASS - Modal opens on click",
+        "data-testid='broker-card-alpaca'": "PASS - Alpaca card with 'Recommended' badge",
+        "data-testid='broker-connect-btn-alpaca'": "PASS - Connect button opens form",
+        "data-testid='broker-oauth-btn-alpaca'": "NOT SHOWN - OAuth not configured (expected)",
+        "data-testid='broker-key-input-alpaca'": "PASS - API Key ID input field",
+        "data-testid='broker-secret-input-alpaca'": "PASS - API Secret Key input field",
+        "data-testid='broker-paper-toggle-alpaca'": "PASS - Paper Trading checkbox (checked by default)",
+        "data-testid='broker-connect-submit-alpaca'": "PASS - Connect submit button"
+      },
+      "sector_heatmap_ai_tab": {
+        "data-testid='period-ai_sentiment'": "PASS - AI tab with Brain icon",
+        "multi_agent_consensus_header": "PASS - Shows 'MULTI-AGENT CONSENSUS' with purple theme",
+        "agents_badge": "PASS - Shows '4 agents' badge",
+        "risk_regime_badge": "PASS - Shows 'mixed' badge",
+        "snapshots_badge": "PASS - Shows '4 snapshots' badge",
+        "rotation_call_text": "PASS - Displays sector rotation recommendation",
+        "sector_tiles_ai_mode": "PASS - 11 tiles with score/100, label badge, reasoning text",
+        "sparkline_svgs": "PASS - 11 sparkline SVGs showing trend history"
+      },
+      "oauth_url_param_handling": {
+        "?broker_connected=alpaca": "PASS - Auto-opens broker modal",
+        "success_message": "PASS - Shows 'Successfully connected alpaca via OAuth!'",
+        "url_cleanup": "PASS - Removes broker_connected param from URL"
+      }
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": ["broker-oauth-e2e", "dark-pool", "options"],
+    "note": "OAuth flow cannot be tested end-to-end without Alpaca Client credentials. OAuth status endpoints work correctly."
+  },
+  "sample_ai_sentiment_data": {
+    "XLI_industrials": {"score": 80, "label": "Bullish"},
+    "XLE_energy": {"score": 73, "label": "Bullish"},
+    "XLB_materials": {"score": 72, "label": "Bullish"},
+    "XLP_staples": {"score": 71, "label": "Bullish"},
+    "XLU_utilities": {"score": 70, "label": "Bullish"},
+    "XLRE_real_estate": {"score": 61, "label": "Neutral"},
+    "XLK_technology": {"score": 55, "label": "Neutral"},
+    "XLY_consumer_disc": {"score": 48, "label": "Cautious"},
+    "XLF_financials": {"score": 47, "label": "Cautious"},
+    "XLC_communication": {"score": 41, "label": "Cautious"},
+    "XLV_healthcare": {"score": 40, "label": "Bearish"}
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "summary": "Iteration 67: SSE Order Flow Heatmap Streaming - All tests passed. Backend: 16/16 tests passed (100%). Frontend: All UI elements verified. The real-time order flow heatmap streaming feature is fully functional with SSE delivering live Binance L2 data for crypto tickers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration67_sse_orderflow.py",
+    "/app/test_reports/pytest/iteration67_sse_orderflow_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "orderflow_ws_service.py: Correctly manages Binance US WebSocket connections with auto-reconnect",
+    "orderflow_ws_service.py: Log-scaled intensities using np.log1p for visible heatmap cells",
+    "orderflow_ws_service.py: Wall detection with WALL_MULTIPLIER=3.0 and SIGNIFICANT_WALL=5.0",
+    "orderflow_ws_service.py: Wall events (appeared/vanished) tracked by comparing snapshots",
+    "orderflow_stream.py: SSE endpoint correctly validates crypto tickers before streaming",
+    "orderflow_stream.py: Returns JSON error for non-crypto tickers (AAPL, SPY, etc.)",
+    "OrderFlowHeatmap.jsx: EventSource connects to SSE endpoint and handles snapshot events",
+    "OrderFlowHeatmap.jsx: Heatmap grid with 24 price bins and 60-second rolling window",
+    "OrderFlowHeatmap.jsx: Mid-price indicator with yellow border (border-y border-yellow-500/40)",
+    "OrderFlowPanel.jsx: Live tab only shown for crypto tickers (CRYPTO_SET check)",
+    "OrderFlowPanel.jsx: Auto-switches to Snapshot tab when non-crypto ticker selected"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration67_sse_orderflow.py"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": {
+    "note": "Order Flow endpoints do NOT require authentication"
+  },
+  "seed_data_creation": "None - Binance US WebSocket provides real-time data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 67 verified the SSE Order Flow Heatmap Streaming feature. Key findings: (1) GET /api/stream/orderflow/BTC returns SSE stream with snapshot events containing bids, asks, walls, bias, bid_pct, (2) GET /api/stream/orderflow/AAPL returns JSON error (not crypto), (3) SSE snapshot intensity values are log-scaled (range 0.2-1.0), (4) Frontend OrderFlowPanel shows Snapshot and Live tabs for crypto (BTC, ETH), (5) Live tab is hidden for non-crypto tickers (AAPL, SPY), (6) Heatmap shows green (bid) and red (ask) bands with mid-price yellow border separator, (7) Active Walls section shows detected walls with prices and ratios, (8) Pressure bar shows bid/ask ratio, (9) Static /api/order-flow/{symbol} still works for both crypto (Binance L2) and stocks (yfinance).",
+  "verified_features": {
+    "backend_api": {
+      "GET_stream_orderflow_BTC": "PASS - Returns SSE stream with snapshot events",
+      "GET_stream_orderflow_ETH": "PASS - Returns SSE stream (ETH is supported crypto)",
+      "GET_stream_orderflow_AAPL": "PASS - Returns error (not crypto)",
+      "GET_stream_orderflow_SOL": "PASS - Returns SSE stream (SOL is supported crypto)",
+      "GET_stream_orderflow_MSFT": "PASS - Returns error (not crypto)",
+      "GET_stream_orderflow_SPY": "PASS - Returns error (not crypto)",
+      "SSE_snapshot_structure": "PASS - Contains type, symbol, ts, mid, spread, bids, asks, walls, bias, bid_pct",
+      "SSE_intensity_log_scaled": "PASS - Intensities range 0.2-1.0 (log-scaled)",
+      "SSE_bids_asks_structure": "PASS - Each level has price, intensity, qty",
+      "SSE_walls_structure": "PASS - Each wall has price, qty, value, ratio, side, strength",
+      "SSE_spread_fields": "PASS - spread and spread_pct present",
+      "SSE_bid_ask_totals": "PASS - bid_total and ask_total present",
+      "SSE_wall_events": "PASS - wall_events field present (appeared/vanished)",
+      "GET_order_flow_BTC": "PASS - Static endpoint still works (Binance L2)",
+      "GET_order_flow_AAPL": "PASS - Static endpoint still works (yfinance)",
+      "GET_order_flow_ETH": "PASS - Static endpoint still works (Binance L2)"
+    },
+    "frontend_ui": {
+      "OrderFlowPanel_renders": "PASS - Panel found with data-testid",
+      "BTC_Snapshot_tab": "PASS - Snapshot tab visible for BTC",
+      "BTC_Live_tab": "PASS - Live tab visible for BTC (crypto)",
+      "ETH_Live_tab": "PASS - Live tab visible for ETH (crypto)",
+      "AAPL_no_Live_tab": "PASS - Live tab hidden for AAPL (non-crypto)",
+      "SPY_no_Live_tab": "PASS - Live tab hidden for SPY (non-crypto)",
+      "OrderFlowHeatmap_renders": "PASS - Heatmap component found",
+      "WS_status_indicator": "PASS - Shows LIVE when connected",
+      "pressure_bar": "PASS - Shows bid/ask ratio",
+      "mid_price_indicator": "PASS - Yellow border separator found",
+      "active_walls_section": "PASS - Shows detected walls with prices and ratios",
+      "legend": "PASS - Shows Bid Volume, Ask Volume, Wall indicators",
+      "heatmap_green_red_bands": "PASS - Green (bid) and red (ask) bands visible"
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": [],
+    "note": "Binance US WebSocket provides REAL-TIME data (no mocking)"
+  }
+}

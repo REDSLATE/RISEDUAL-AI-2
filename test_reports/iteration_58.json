@@ -1,0 +1,79 @@
+{
+  "summary": "Iteration 58: Memory Cleanup Feature Testing Complete. All 12 backend tests passed (100%). Verified nightly memory cleanup feature: POST /api/accuracy/memory/cleanup (Pro only), GET /api/accuracy/memory/cleanup/history, and memory stats showing 2919 episodes after cleanup removed 55 toxic outliers (2974->2919). APScheduler job configured for 2:00 AM UTC.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration58_memory_cleanup.py",
+    "/app/test_reports/pytest/iteration58_memory_cleanup_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "nightly_cleanup() in market_memory_service.py correctly deletes toxic outliers (outcome='miss' AND confidence>80%) and obsolete data (>90 days)",
+    "POST /api/accuracy/memory/cleanup endpoint properly requires Pro auth (returns 403 without)",
+    "GET /api/accuracy/memory/cleanup/history returns cleanup run history from MongoDB memory_cleanup_log collection",
+    "GET /api/accuracy/memory now includes last_cleanup info showing toxic_removed, obsolete_removed, run_at",
+    "APScheduler job _run_memory_cleanup scheduled at 2:00 AM UTC in server.py startup",
+    "Cleanup run verified: 55 toxic outliers removed (2974->2919 episodes), 0 obsolete (cutoff_date=2026-01-10)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration58_memory_cleanup.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests passed)",
+    "frontend": "N/A (backend only testing requested)"
+  },
+  "test_credentials": {
+    "admin": {
+      "email": "admin@risedual.ai",
+      "password": "RiseDual2026!",
+      "role": "admin",
+      "subscription": "pro"
+    }
+  },
+  "seed_data_creation": "None - used existing seeded accounts and 2919 memory episodes",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 58 verified Memory Cleanup feature. Key findings: (1) nightly_cleanup() removes toxic outliers (miss + >80% confidence) and obsolete data (>90 days), (2) Cleanup already ran once: 55 toxic removed (2974->2919), 0 obsolete, (3) Memory stats: 2919 episodes, initialized=true, last_cleanup info present, (4) All regression tests passed: fear-greed (value present, VIX 19.49), sectors/heatmap (11 sectors), stocks/quote/AAPL, auth/login. NOTE: Did NOT run cleanup again per review request.",
+  "verified_features": {
+    "memory_cleanup": {
+      "POST /api/accuracy/memory/cleanup": "Endpoint exists, returns 403 without auth (Pro only)",
+      "GET /api/accuracy/memory/cleanup/history": "PASS - 200, returns 1 cleanup run",
+      "cleanup_run_details": {
+        "toxic_removed": 55,
+        "obsolete_removed": 0,
+        "total_before": 2974,
+        "total_after": 2919,
+        "cutoff_date": "2026-01-10",
+        "confidence_threshold": 80,
+        "run_at": "2026-04-10T07:17:42.536732+00:00"
+      }
+    },
+    "memory_stats": {
+      "GET /api/accuracy/memory": "PASS - 200 (requires auth)",
+      "total_episodes": 2919,
+      "initialized": true,
+      "collection_name": "market_regimes",
+      "embedding_model": "all-MiniLM-L6-v2 (local)",
+      "last_cleanup": "Present with full details"
+    },
+    "regression_tests": {
+      "GET /api/sentiment/fear-greed": "PASS - 200, returns fear_greed and vix",
+      "GET /api/sectors/heatmap": "PASS - 200, 11 sectors",
+      "GET /api/stocks/quote/AAPL": "PASS - 200, returns price data",
+      "POST /api/auth/login": "PASS - 200, returns access_token",
+      "POST /api/auth/login (invalid)": "PASS - 401 Unauthorized"
+    }
+  },
+  "mocked_apis": {
+    "has_mocked_apis": true,
+    "mocked_apis_list": ["dark-pool", "options"],
+    "note": "Dark pool and options data are mock-generated as noted in review request"
+  }
+}

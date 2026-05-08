@@ -1,0 +1,500 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import Tier3ProgressDetailCard from './Tier3ProgressDetailCard';
+
+const API = process.env.REACT_APP_BACKEND_URL;
+
+/**
+ * Shadow Accuracy Panel — disagreement-conditional metrics for the
+ * Research Shadow framework.
+ *
+ * Architecture
+ * ------------
+ * Pure read-only — no admin actions. Three numbers per (engine,
+ * asset_type) bucket:
+ *
+ *   1. dissent_count      — how many times shadow disagreed with active
+ *   2. win_rate           — of scored dissents, what fraction did
+ *                           shadow's hypothetical fill BEAT active's
+ *                           realised P&L (the only number that earns
+ *                           an engine a Tier-3 promotion)
+ *   3. total_$_delta      — cumulative $ value shadow added/subtracted
+ *
+ * Plus an "actionable" badge: green pill once `scored_dissent_count
+ * >= 30` (the maturity guardrail). Below that threshold the win rate
+ * is statistical noise and the operator should not make decisions
+ * on it.
+ *
+ * Below the bucket grid, a cost-budget strip shows per-bot rolling
+ * 24h LLM spend with full / degraded / paused tier classification.
+ * Reuses the same poll cadence (30s) — banner colours flip in real
+ * time as bots cross thresholds.
+ *
+ * Polls every 30s. Mirrors CryptoAdversarialDashboard's auth +
+ * empty-state conventions.
+ */
+export default function ShadowAccuracyPanel() {
+  const [stats, setStats] = useState(null);
+  const [budget, setBudget] = useState(null);
+  const [costHistory, setCostHistory] = useState(null);
+  const [error, setError] = useState(null);
+  const [hoursFilter, setHoursFilter] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (hoursFilter) params.set('hours', hoursFilter);
+      const qs = params.toString() ? `?${params}` : '';
+
+      const [statsRes, budgetRes, historyRes] = await Promise.all([
+        fetch(`${API}/api/admin/shadow/stats${qs}`, { credentials: 'include' }),
+        fetch(`${API}/api/admin/shadow/cost-budget`, { credentials: 'include' }),
+        fetch(`${API}/api/admin/shadow/cost-history?days=14`, { credentials: 'include' }),
+      ]);
+      if (!statsRes.ok) throw new Error(`stats HTTP ${statsRes.status}`);
+      if (!budgetRes.ok) throw new Error(`budget HTTP ${budgetRes.status}`);
+      if (!historyRes.ok) throw new Error(`history HTTP ${historyRes.status}`);
+      const [statsJson, budgetJson, historyJson] = await Promise.all([
+        statsRes.json(), budgetRes.json(), historyRes.json(),
+      ]);
+      setStats(statsJson);
+      setBudget(budgetJson);
+      setCostHistory(historyJson);
+      setError(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, [hoursFilter]);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  if (error) {
+    return (
+      <div
+        className="rounded-xl border border-red-700/40 bg-red-950/30 p-5 text-red-300 text-sm"
+        data-testid="shadow-accuracy-error"
+      >
+        Shadow stats unavailable: {error}
+      </div>
+    );
+  }
+
+  if (!stats || !budget || !costHistory) {
+    return (
+      <div
+        className="rounded-xl border border-slate-700 bg-slate-900/40 p-6 text-slate-500 text-sm"
+        data-testid="shadow-accuracy-loading"
+      >
+        Loading shadow stats…
+      </div>
+    );
+  }
+
+  const buckets = stats.buckets || [];
+  const isDormant = buckets.length === 0;
+
+  return (
+    <div className="space-y-4" data-testid="shadow-accuracy-panel">
+      <Header isDormant={isDormant} hoursFilter={hoursFilter} setHoursFilter={setHoursFilter} />
+      {/* Tier 3 progress detail — six-gate decomposition of the
+          composite readiness score. Sits above the disagreement
+          buckets because the operator's first question on this
+          panel is "are we close to flipping Council on?". */}
+      <Tier3ProgressDetailCard />
+      {isDormant ? (
+        <DormantBanner />
+      ) : (
+        <BucketGrid buckets={buckets} minSamples={stats.min_dissent_samples_required} />
+      )}
+      <CostBudgetStrip budget={budget} />
+      <CostTrendSparklineStrip history={costHistory} />
+    </div>
+  );
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+const Header = ({ isDormant, hoursFilter, setHoursFilter }) => (
+  <div className="flex items-center justify-between gap-3 text-xs">
+    <div className="flex items-center gap-2">
+      <span className={`w-2.5 h-2.5 rounded-full ${isDormant ? 'bg-slate-500' : 'bg-cyan-400'}`} />
+      <span className="text-slate-300 font-semibold text-sm uppercase tracking-wider">
+        Research Shadow — Disagreement Accuracy
+      </span>
+    </div>
+    <select
+      value={hoursFilter}
+      onChange={(e) => setHoursFilter(e.target.value)}
+      className="bg-slate-900 border border-slate-700 text-slate-300 rounded px-2 py-1"
+      data-testid="shadow-hours-filter"
+    >
+      <option value="">All-time</option>
+      <option value="24">Last 24h</option>
+      <option value="168">Last 7 days</option>
+      <option value="720">Last 30 days</option>
+    </select>
+  </div>
+);
+
+const DormantBanner = () => (
+  <div
+    className="rounded-xl border border-slate-700 bg-slate-900/60 p-5"
+    data-testid="shadow-dormant-banner"
+  >
+    <div className="text-slate-300 font-semibold text-sm mb-2">
+      DORMANT — no shadow decisions logged yet
+    </div>
+    <p className="text-slate-500 text-xs leading-relaxed">
+      Set <code className="text-slate-400 bg-slate-800 px-1 rounded">CRYPTO_RESEARCH_SHADOW_ENGINE=adversarial</code>{' '}
+      (crypto fleet) or{' '}
+      <code className="text-slate-400 bg-slate-800 px-1 rounded">bot.shadow_engine = "council"</code>{' '}
+      (per equity bot) to start observation. Tier-3 firewall enforced —
+      shadow writes only to <code className="text-slate-400">research_shadow_decisions</code>.
+    </p>
+  </div>
+);
+
+const BucketGrid = ({ buckets, minSamples }) => (
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" data-testid="shadow-bucket-grid">
+    {buckets.map((b) => (
+      <BucketCard key={`${b.shadow_engine}-${b.asset_type}`} bucket={b} minSamples={minSamples} />
+    ))}
+  </div>
+);
+
+const BucketCard = ({ bucket, minSamples }) => {
+  const winPct = bucket.win_rate !== null && bucket.win_rate !== undefined
+    ? `${(bucket.win_rate * 100).toFixed(1)}%`
+    : '—';
+  const deltaSign = (bucket.total_delta_usd || 0) >= 0 ? '+' : '';
+  const deltaTone = (bucket.total_delta_usd || 0) > 0
+    ? 'text-emerald-300'
+    : (bucket.total_delta_usd || 0) < 0
+      ? 'text-rose-300'
+      : 'text-slate-400';
+
+  return (
+    <div
+      className="rounded-xl border border-slate-700 bg-slate-900/60 p-4"
+      data-testid={`shadow-bucket-${bucket.shadow_engine}-${bucket.asset_type}`}
+    >
+      {/* Bucket header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-slate-200 font-semibold text-sm uppercase tracking-wider">
+          {bucket.shadow_engine} · {bucket.asset_type}
+        </div>
+        <ActionableBadge actionable={bucket.actionable} scored={bucket.scored_dissent_count} minSamples={minSamples} />
+      </div>
+
+      {/* Three primary columns */}
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <Metric label="Dissents" value={bucket.dissent_count} sub={`${bucket.scored_dissent_count} scored`} />
+        <Metric
+          label="Win rate"
+          value={winPct}
+          sub={bucket.actionable ? 'actionable' : 'too few samples'}
+          valueTone={bucket.actionable ? 'text-cyan-300' : 'text-slate-500'}
+        />
+        <Metric
+          label="Δ $ total"
+          value={`${deltaSign}$${(bucket.total_delta_usd || 0).toFixed(2)}`}
+          sub="after fill costs"
+          valueTone={deltaTone}
+        />
+      </div>
+
+      {/* Footnote: total decisions for context */}
+      <div className="text-slate-600 text-xs mt-3 pt-2 border-t border-slate-800">
+        {bucket.total_decisions} cycles observed · {bucket.dissent_count} dissents (
+        {bucket.total_decisions > 0
+          ? ((bucket.dissent_count / bucket.total_decisions) * 100).toFixed(0)
+          : '0'}
+        % disagreement rate)
+      </div>
+
+      {/* Phase breakdown — entry vs cycle vs exit. The mid-trade exit
+          dissent is the highest-value scenario; this strip surfaces
+          whether the shadow adds tactical (entry), positional (cycle),
+          or strategic (exit) alpha. */}
+      {bucket.phase_breakdown && (
+        <PhaseBreakdownStrip phaseBreakdown={bucket.phase_breakdown} />
+      )}
+    </div>
+  );
+};
+
+
+const PhaseBreakdownStrip = ({ phaseBreakdown }) => {
+  const phases = [
+    { key: 'entry', label: 'Entry', sub: 'tactical' },
+    { key: 'cycle', label: 'Cycle', sub: 'positional' },
+    { key: 'exit',  label: 'Exit',  sub: 'strategic' },
+  ];
+  return (
+    <div
+      className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-slate-800"
+      data-testid="shadow-phase-breakdown"
+    >
+      {phases.map(({ key, label, sub }) => {
+        const rec = phaseBreakdown[key] || { dissents: 0, scored: 0, win_rate: null };
+        const winPct = rec.win_rate !== null && rec.win_rate !== undefined
+          ? `${(rec.win_rate * 100).toFixed(0)}%`
+          : '—';
+        const tone = rec.scored > 0
+          ? (rec.win_rate > 0.5 ? 'text-emerald-400' : 'text-rose-400')
+          : 'text-slate-600';
+        return (
+          <div
+            key={key}
+            className="text-center"
+            data-testid={`shadow-phase-${key}`}
+          >
+            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+              {label} <span className="text-slate-700">· {sub}</span>
+            </div>
+            <div className={`text-sm font-bold ${tone}`}>
+              {rec.dissents} <span className="text-slate-600 font-normal">·</span>{' '}
+              <span className="text-xs">{winPct}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const Metric = ({ label, value, sub, valueTone = 'text-slate-100' }) => (
+  <div>
+    <div className="text-slate-500 text-xs uppercase tracking-wider mb-1">{label}</div>
+    <div className={`text-xl font-bold ${valueTone}`}>{value}</div>
+    <div className="text-slate-600 text-xs mt-0.5">{sub}</div>
+  </div>
+);
+
+const ActionableBadge = ({ actionable, scored, minSamples }) => {
+  if (actionable) {
+    return (
+      <span
+        className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold border border-emerald-500/40 bg-emerald-950/40 text-emerald-300"
+        data-testid="shadow-actionable-badge"
+      >
+        Actionable
+      </span>
+    );
+  }
+  const remaining = Math.max(0, (minSamples || 30) - (scored || 0));
+  return (
+    <span
+      className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold border border-slate-700 bg-slate-900/60 text-slate-400"
+      data-testid="shadow-pending-badge"
+    >
+      Need {remaining} more
+    </span>
+  );
+};
+
+const CostBudgetStrip = ({ budget }) => {
+  const bots = budget.bots || [];
+  const ceiling = budget.ceiling_usd_per_day || 0;
+
+  // Pick the worst tier across all bots — that's what the banner tone
+  // reflects (one paused bot pages the operator faster than five
+  // healthy ones look reassuring).
+  const worstTier = bots.reduce((acc, b) => {
+    if (b.tier === 'paused') return 'paused';
+    if (b.tier === 'degraded' && acc !== 'paused') return 'degraded';
+    return acc;
+  }, 'full');
+
+  const banner = {
+    paused: { tone: 'border-rose-700/40 bg-rose-950/30 text-rose-300', label: 'BUDGET EXHAUSTED — shadows paused' },
+    degraded: { tone: 'border-amber-700/40 bg-amber-950/30 text-amber-300', label: 'DEGRADED — entry/exit only' },
+    full: { tone: 'border-slate-700 bg-slate-900/60 text-slate-300', label: 'WITHIN BUDGET' },
+  }[worstTier];
+
+  return (
+    <div className={`rounded-xl border p-4 ${banner.tone}`} data-testid="shadow-cost-budget-strip">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs uppercase tracking-wider font-semibold">{banner.label}</span>
+        <span className="text-xs text-slate-500">
+          ceiling ${ceiling.toFixed(2)}/day · degraded @ {((budget.degraded_frac || 0.8) * 100).toFixed(0)}%
+        </span>
+      </div>
+      {bots.length === 0 ? (
+        <div className="text-slate-600 text-xs">No LLM-backed shadows running yet (Adversarial v1 is free; Council v1 is rule-based).</div>
+      ) : (
+        <table className="w-full text-xs" data-testid="shadow-cost-budget-table">
+          <thead>
+            <tr className="text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-800">
+              <th className="text-left py-1">Bot</th>
+              <th className="text-left py-1">Engine</th>
+              <th className="text-right py-1">24h cycles</th>
+              <th className="text-right py-1">24h spend</th>
+              <th className="text-right py-1">Tier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bots.map((b) => (
+              <tr
+                key={`${b.bot_id}-${b.engine}`}
+                className="border-b border-slate-900"
+                data-testid={`shadow-cost-row-${b.bot_id}`}
+              >
+                <td className="py-1 text-slate-300">{b.bot_id}</td>
+                <td className="py-1 text-slate-400">{b.engine}</td>
+                <td className="py-1 text-right text-slate-300">{b.decisions_24h}</td>
+                <td className="py-1 text-right text-slate-300">${b.spend_24h_usd.toFixed(4)}</td>
+                <td className="py-1 text-right">
+                  <TierPill tier={b.tier} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
+const TierPill = ({ tier }) => {
+  const colors = {
+    paused: 'border-rose-500/40 bg-rose-950/40 text-rose-300',
+    degraded: 'border-amber-500/40 bg-amber-950/40 text-amber-300',
+    full: 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300',
+  }[tier] || 'border-slate-700 bg-slate-900 text-slate-400';
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold border ${colors}`}>
+      {tier}
+    </span>
+  );
+};
+
+
+
+/**
+ * LLM Cost Trend Sparkline Strip
+ *
+ * Shows a 14-day spend history per (bot, engine) pair as a tight
+ * inline SVG sparkline. The reference line at the daily ceiling
+ * makes "are we close to the cap" instantly readable. Daily spend
+ * vs ceiling lets the operator answer "is bumping the cap safe?"
+ * before flipping COUNCIL_SHADOW_MODE=llm for steady-state.
+ *
+ * Hidden when there are no rows (no LLM-backed shadow has fired)
+ * — saves vertical real estate during the rule-mode era.
+ */
+const CostTrendSparklineStrip = ({ history }) => {
+  const bots = history.bots || [];
+  if (bots.length === 0) {
+    return null;
+  }
+  const ceiling = history.ceiling_usd_per_day || 0;
+
+  return (
+    <div
+      className="rounded-xl border border-slate-700 bg-slate-900/40 p-4"
+      data-testid="shadow-cost-trend-strip"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs uppercase tracking-wider font-semibold text-slate-300">
+          LLM Cost Trend · {history.days || 14}d
+        </span>
+        <span className="text-[10px] text-slate-600">
+          dashed = daily ceiling (${ceiling.toFixed(2)})
+        </span>
+      </div>
+      <div className="space-y-2" data-testid="shadow-cost-trend-list">
+        {bots.map((b) => (
+          <CostSparklineRow key={`${b.bot_id}-${b.engine}`} bot={b} ceiling={ceiling} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+const CostSparklineRow = ({ bot, ceiling }) => {
+  const series = bot.series || [];
+  const peakSpend = Math.max(
+    ceiling,
+    ...series.map((p) => p.spend_usd || 0),
+  );
+  // Sparkline geometry. Width is fluid via viewBox; stroke is fixed.
+  const width = 240;
+  const height = 32;
+  const pad = 2;
+  const xStep = series.length > 1 ? (width - pad * 2) / (series.length - 1) : 0;
+  const yScale = peakSpend > 0
+    ? (height - pad * 2) / peakSpend
+    : 0;
+
+  const polyPoints = series
+    .map((p, i) => `${pad + i * xStep},${height - pad - (p.spend_usd || 0) * yScale}`)
+    .join(' ');
+
+  // Ceiling reference line.
+  const ceilingY = height - pad - ceiling * yScale;
+
+  // Color the area+stroke by today's tier.
+  const tone = {
+    paused: 'stroke-rose-400 fill-rose-500/10',
+    degraded: 'stroke-amber-400 fill-amber-500/10',
+    full: 'stroke-emerald-400 fill-emerald-500/10',
+  }[bot.tier_today] || 'stroke-slate-500 fill-slate-700/20';
+
+  return (
+    <div
+      className="grid grid-cols-[160px_1fr_120px] items-center gap-3 text-xs"
+      data-testid={`shadow-cost-spark-${bot.bot_id}`}
+    >
+      <div className="truncate">
+        <div className="text-slate-300 font-mono text-[11px]">{bot.bot_id}</div>
+        <div className="text-slate-600 text-[10px] uppercase">{bot.engine}</div>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="w-full h-8"
+      >
+        {/* Ceiling reference line */}
+        {ceiling > 0 && (
+          <line
+            x1={pad} x2={width - pad}
+            y1={ceilingY} y2={ceilingY}
+            className="stroke-slate-700"
+            strokeWidth="0.5"
+            strokeDasharray="2 2"
+          />
+        )}
+        {/* Filled area below curve */}
+        {series.length > 1 && (
+          <polygon
+            className={tone}
+            strokeWidth="1"
+            points={`${pad},${height - pad} ${polyPoints} ${pad + (series.length - 1) * xStep},${height - pad}`}
+          />
+        )}
+        {/* Curve itself */}
+        {series.length > 1 && (
+          <polyline
+            className={tone}
+            fill="none"
+            strokeWidth="1.5"
+            points={polyPoints}
+          />
+        )}
+      </svg>
+      <div className="text-right">
+        <div className="text-slate-300 font-semibold">
+          ${bot.total_spend_usd.toFixed(4)}
+        </div>
+        <div className="text-slate-600 text-[10px]">
+          tier: {bot.tier_today}
+        </div>
+      </div>
+    </div>
+  );
+};

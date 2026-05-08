@@ -1,0 +1,64 @@
+{
+  "summary": "Iteration 150: Trading Mode Switch Phase 2 - Backend guards and frontend banners. All 53 pytest tests pass. Backend: 5 guard tests + 15 mode tests + 18 dual-stack + 10 ai-core + 5 toxic-autopsy. Frontend: Trading mode pill visible, Paper Trading panel shows 'PAPER MODE' active banner, Smart Orders panel shows 'PAPER MODE' banner with mode dropdown synced, Trading Bots panel shows mismatch banner with 'Switch to LIVE' CTA. Fixed missing imports in PaperTrading.jsx (TradingModeBanner, formatDetail).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Console", "issues": ["React key warning: 'Encountered two children with the same key' - appears frequently for bid-* keys, likely in order book or bid/ask components"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_trading_mode_guards.py",
+    "/app/backend/tests/test_trading_mode.py",
+    "/app/backend/tests/test_dual_stack_invariants.py",
+    "/app/backend/tests/test_ai_core_engine.py",
+    "/app/backend/tests/test_toxic_autopsy.py",
+    "/app/test_reports/pytest/iteration150_trading_mode_phase2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED: PaperTrading.jsx was missing imports for TradingModeBanner and formatDetail - added them",
+    "VERIFIED: Backend pytest - 53/53 tests pass (5 guards + 15 mode + 18 dual-stack + 10 ai-core + 5 toxic-autopsy)",
+    "VERIFIED: POST /api/paper/trade in PAPER mode returns 200 with trade details",
+    "VERIFIED: POST /api/paper/trade in LIVE mode returns 403 with detail.code='wrong_mode' and detail.required_mode='paper'",
+    "VERIFIED: POST /api/crypto/paper-trade in LIVE mode returns 403 wrong_mode",
+    "VERIFIED: POST /api/smart-orders with mode:'paper' in LIVE mode returns 403 with message containing 'PAPER but your account is in LIVE'",
+    "VERIFIED: POST /api/options/order in PAPER mode returns 403 wrong_mode (requires LIVE)",
+    "VERIFIED: POST /api/options/order in LIVE mode goes through to broker (fails due to market hours, not mode)",
+    "VERIFIED: Frontend - Trading mode pill visible in navbar with data-testid='trading-mode-pill' and data-mode='paper'",
+    "VERIFIED: Frontend - Paper Trading panel shows 'PAPER MODE' active banner (data-testid='trading-mode-banner-paper-active')",
+    "VERIFIED: Frontend - Smart Orders panel shows 'PAPER MODE' banner and Mode dropdown defaults to 'Paper'",
+    "VERIFIED: Frontend - Trading Bots panel shows mismatch banner (data-testid='trading-mode-banner-mismatch-live') with 'Switch to LIVE' CTA"
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/PaperTrading.jsx"
+  ],
+  "success_rate": {
+    "backend": "100% (53/53 pytest tests + 6 curl API tests)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing admin user",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Trading Mode Switch Phase 2 complete. All backend guards working: require_live_mode and require_paper_mode dependencies gate order routes correctly. Frontend banners show active/mismatch states based on user's trading mode. The 30s cooldown is enforced between mode switches. Admin user is currently in PAPER mode. Phase 3 (per-bot mode override) is NOT in scope.",
+  "endpoints_verified": {
+    "POST /api/paper/trade (PAPER mode)": {"status": 200, "description": "Returns trade details with filled status"},
+    "POST /api/paper/trade (LIVE mode)": {"status": 403, "description": "Returns wrong_mode with required_mode='paper'"},
+    "POST /api/crypto/paper-trade (LIVE mode)": {"status": 403, "description": "Returns wrong_mode with required_mode='paper'"},
+    "POST /api/smart-orders (mode:paper in LIVE)": {"status": 403, "description": "Returns wrong_mode with message about PAPER vs LIVE mismatch"},
+    "POST /api/options/order (PAPER mode)": {"status": 403, "description": "Returns wrong_mode with required_mode='live'"},
+    "POST /api/options/order (LIVE mode)": {"status": 422, "description": "Goes through to broker, fails due to market hours"}
+  },
+  "frontend_elements_verified": {
+    "trading-mode-pill": "Visible in navbar, shows 'PAPER' mode",
+    "trading-mode-banner-paper-active": "Visible in Paper Trading panel when user is in PAPER mode",
+    "trading-mode-banner-mismatch-live": "Visible in Trading Bots panel when user is in PAPER mode (panel needs LIVE)",
+    "smart-order-panel": "Mode dropdown defaults to user's current trading mode (Paper)",
+    "trading-bot-panel": "Shows mismatch banner with 'Switch to LIVE' CTA"
+  }
+}

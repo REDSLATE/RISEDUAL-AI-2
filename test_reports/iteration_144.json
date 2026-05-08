@@ -1,0 +1,73 @@
+{
+  "summary": "P1/P2 Backlog Clearance Testing Complete - All 5 items verified: (#2) Paper-trader duplicate-insert race fix via Mongo unique partial index, (#4) Backtest/Live data labeling via PUBLIC_DATA_FLOOR_DATE, (#1) /api/crypto/sltp-expectancy analytics endpoint, (#5) Polygon.io adapter wired into market_data_pool. All 114 backend tests passed. Frontend verified: MLPaperPnL.jsx renders Backtest badges correctly, Admin Panel tabs (Users, Shadow, Patent Watch) all render.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Console",
+        "issues": ["React key warning: 'Encountered two children with the same key' for bid-1.21, bid-1.39 - non-blocking but should be fixed"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration144_p1p2_backlog.py",
+    "/app/backend/tests/test_data_source_labeler.py",
+    "/app/backend/tests/test_ml_paper_trader_idempotency.py",
+    "/app/backend/tests/test_market_data_pool_polygon.py",
+    "/app/backend/tests/test_crypto_sltp_expectancy.py",
+    "/app/backend/tests/test_patent_watch.py",
+    "/app/backend/tests/test_patent_watch_api.py",
+    "/app/test_reports/pytest/pytest_results_iteration144.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_iteration144_p1p2_backlog.py"
+  ],
+  "success_rate": {
+    "backend": "100% (114/114 tests passed)",
+    "frontend": "100% (all verified features working)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All P1/P2 backlog items verified. Key test files: test_iteration144_p1p2_backlog.py covers API tests for data_source labeling, sltp-expectancy, and Polygon pool config. Existing test files cover unit tests. MLPaperPnL.jsx Backtest badge verified with 5 backtest trades visible. Admin Panel tabs (Users, Shadow, Patent Watch) all render correctly.",
+  "features_verified": {
+    "backend_2_paper_trader_idempotency": {
+      "status": "PASS",
+      "details": "Mongo paper_trades_idempotency index with keys (ticker, direction, prediction_id, time_bucket), unique=true, partialFilterExpression verified. ensure_indexes is no-op when db is None and idempotent on repeat calls."
+    },
+    "backend_4_data_source_labeling": {
+      "status": "PASS",
+      "details": "GET /api/ml/paper-trades returns data_floor_date='2026-04-23' and every row has data_source field. Rows with opened_at < 2026-04-23 are 'backtest', >= are 'live'. GET /api/accuracy/history also returns data_floor_date and data_source fields."
+    },
+    "backend_1_sltp_expectancy": {
+      "status": "PASS",
+      "details": "GET /api/crypto/sltp-expectancy?days=365 returns full payload with expectancy_r, win_rate, by_close_reason, by_direction, by_regime, tp_tightening, sl_tightening, headline. Returns 401 for non-admin."
+    },
+    "backend_5_polygon_adapter": {
+      "status": "PASS",
+      "details": "POLYGON_API_KEY in env auto-registers polygon-ab provider with priority 4. MARKET_DATA_POLYGON_PRIORITY env override supported. _dispatch_quote and _dispatch_daily route polygon provider correctly."
+    },
+    "frontend_4_backtest_badge": {
+      "status": "PASS",
+      "details": "MLPaperPnL.jsx renders 'Backtest' badge (data-testid 'ml-trade-{i}-backtest-badge') on rows where data_source==='backtest'. 5 backtest badges visible in Recent ML Trades section."
+    },
+    "frontend_regression_admin_panel": {
+      "status": "PASS",
+      "details": "Admin Panel loads cleanly with all tabs (Users, Shadow, Patent Watch, etc.) rendering correctly."
+    },
+    "regression_patent_watch": {
+      "status": "PASS",
+      "details": "All 36 Patent Watch tests pass. Tests are env-agnostic about USPTO_API_KEY."
+    }
+  }
+}

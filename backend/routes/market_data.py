@@ -1,0 +1,693 @@
+"""Market data routes: scraping endpoints, macro data, predictions."""
+from typing import Any
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+import os
+import uuid
+import logging
+from datetime import datetime, timezone, timedelta
+
+router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
+
+db = None
+
+def set_db(database) -> None:
+    global db
+    db = database
+
+
+# ── Prediction job helpers ──
+
+PREDICTION_SCOPE = "market_overview"
+PREDICTION_TTL_MINUTES = 15
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
+async def _get_latest_prediction(scope: str = PREDICTION_SCOPE):
+    if db is None:
+        return None
+    return await db.prediction_cache.find_one(
+        {"scope": scope}, sort=[("updatedAt", -1)], projection={"_id": 0}
+    )
+
+
+async def _get_running_job(scope: str = PREDICTION_SCOPE):
+    if db is None:
+        return None
+    return await db.prediction_jobs.find_one(
+        {"scope": scope, "status": {"$in": ["pending", "running"]}},
+        sort=[("createdAt", -1)], projection={"_id": 0}
+    )
+
+
+async def _create_job(scope: str, requested_by: str = "system") -> str:
+    job_id = str(uuid.uuid4())
+    now = _utcnow()
+    await db.prediction_jobs.insert_one({
+        "jobId": job_id,
+        "scope": scope,
+        "status": "pending",
+        "requestedBy": requested_by,
+        "createdAt": now.isoformat(),
+        "updatedAt": now.isoformat(),
+        "completedAt": None,
+        "error": None,
+    })
+    return job_id
+
+
+async def run_prediction_job(job_id: str, scope: str = PREDICTION_SCOPE):
+    """Background task: run the full prediction engine and store results."""
+    await db.prediction_jobs.update_one(
+        {"jobId": job_id},
+        {"$set": {"status": "running", "updatedAt": _utcnow().isoformat()}},
+    )
+    try:
+        scrape_results = await _collect_all_scrape_data(include_real_estate=True)
+        prediction = await _run_prediction_model(scrape_results)
+        _enrich_prediction_metadata(prediction, scrape_results)
+
+        prediction["realEstateSummary"] = {
+            "housingHealth": scrape_results.get("real_estate", {}).get("housing", {}).get("market_health", "unknown"),
+            "commercialTrend": "mixed",
+            "dataSources": len(scrape_results.get("real_estate", {}).get("housing", {}).get("sources", [])),
+            "implications": scrape_results.get("real_estate", {}).get("trends", {}).get("market_implications", []),
+        }
+        prediction["macroData"] = {
+            "worldEvents": {
+                "total": scrape_results.get("world_events", {}).get("total_events", 0),
+                "highImpact": scrape_results.get("world_events", {}).get("high_impact_count", 0),
+                "topSectors": scrape_results.get("world_events", {}).get("affected_sectors", [])[:5],
+            },
+            "foreignMarkets": {
+                "correlationSignals": scrape_results.get("foreign_markets", {}).get("correlation_signals", [])[:5],
+                "totalIndices": len(
+                    scrape_results.get("foreign_markets", {}).get("asia", [])
+                    + scrape_results.get("foreign_markets", {}).get("europe", [])
+                    + scrape_results.get("foreign_markets", {}).get("americas", [])
+                ),
+            },
+            "govFilings": {
+                "congressionalTrades": scrape_results.get("gov_filings", {}).get("congressional_count", 0),
+                "fedAnnouncements": scrape_results.get("gov_filings", {}).get("fed_count", 0),
+                "insiderTrades": scrape_results.get("gov_filings", {}).get("insider_count", 0),
+            },
+        }
+
+        now = _utcnow()
+        doc = {
+            "scope": scope,
+            "status": "ready",
+            "jobId": job_id,
+            "prediction": prediction,
+            "isStale": False,
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+            "expiresAt": (now + timedelta(minutes=PREDICTION_TTL_MINUTES)).isoformat(),
+            "lastError": None,
+        }
+        await db.prediction_cache.update_one({"scope": scope}, {"$set": doc}, upsert=True)
+        await db.prediction_jobs.update_one(
+            {"jobId": job_id},
+            {"$set": {"status": "ready", "updatedAt": now.isoformat(), "completedAt": now.isoformat()}},
+        )
+
+        # Log for accuracy tracking
+        if prediction.get("overall_direction"):
+            try:
+                from services.prediction_tracker import log_market_prediction
+                await log_market_prediction(db, prediction["overall_direction"], prediction.get("confidence_score", 0))
+            except Exception:
+                pass
+
+        logger.info(f"Prediction job {job_id} completed: {prediction.get('overall_direction')} @ {prediction.get('confidence_score')}")
+
+    except Exception as e:
+        now = _utcnow()
+        err_msg = str(e)[:1000]
+        await db.prediction_jobs.update_one(
+            {"jobId": job_id},
+            {"$set": {"status": "failed", "updatedAt": now.isoformat(), "completedAt": now.isoformat(), "error": err_msg}},
+        )
+        await db.prediction_cache.update_one(
+            {"scope": scope},
+            {"$set": {"isStale": True, "updatedAt": now.isoformat(), "lastError": err_msg}},
+            upsert=True,
+        )
+        logger.error(f"Prediction job {job_id} failed: {e}")
+
+
+async def ensure_prediction_refresh():
+    """Called by APScheduler every 10 minutes to keep predictions warm."""
+    if db is None:
+        return
+    latest = await _get_latest_prediction()
+    running = await _get_running_job()
+    if running:
+        return
+    now = _utcnow()
+    if latest:
+        expires_at = latest.get("expiresAt")
+        if expires_at:
+            try:
+                if datetime.fromisoformat(expires_at) > now:
+                    return
+            except Exception:
+                pass
+    job_id = await _create_job(PREDICTION_SCOPE, "scheduler")
+    await run_prediction_job(job_id, PREDICTION_SCOPE)
+
+
+# --- World Events & Macro ---
+@router.get("/world-events")
+async def get_world_events() -> dict[str, Any]:
+    try:
+        from services.cache import cache
+        from services.world_events_service import WorldEventsService
+        return await cache.get_or_fetch(
+            "world_events",
+            WorldEventsService().scrape_world_events,
+            ttl=300,
+        )
+    except Exception as e:
+        logger.error(f"Error fetching world events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/foreign-markets")
+async def get_foreign_markets() -> dict[str, Any]:
+    try:
+        from services.cache import cache
+        from services.foreign_markets_service import ForeignMarketsService
+        return await cache.get_or_fetch(
+            "foreign_markets",
+            ForeignMarketsService().get_foreign_markets,
+            ttl=60,
+        )
+    except Exception as e:
+        logger.error(f"Error fetching foreign markets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/gov-filings")
+async def get_gov_filings() -> dict[str, Any]:
+    try:
+        from services.cache import cache
+        from services.gov_filings_service import GovFilingsService
+        return await cache.get_or_fetch(
+            "gov_filings",
+            GovFilingsService().get_all_gov_data,
+            ttl=600,
+        )
+    except Exception as e:
+        logger.error(f"Error fetching gov filings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Scraping Data Endpoints ---
+
+# --- Lobbying Data ---
+@router.get("/lobbying")
+async def get_lobbying_summary() -> dict[str, Any]:
+    """Get lobbying data summary with top spenders and recent filings."""
+    try:
+        from services.lobbying_service import LobbyingService
+        return await LobbyingService().get_summary()
+    except Exception as e:
+        logger.error(f"Error fetching lobbying data: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching lobbying data")
+
+
+@router.get("/lobbying/ticker/{ticker}")
+async def get_lobbying_by_ticker(ticker: str) -> dict[str, Any]:
+    """Get lobbying activity for a specific stock ticker."""
+    try:
+        from services.lobbying_service import LobbyingService
+        filings = await LobbyingService().get_lobbying_by_ticker(ticker)
+        return {"ticker": ticker.upper(), "filings": filings, "count": len(filings)}
+    except Exception as e:
+        logger.error(f"Error fetching lobbying for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching lobbying data")
+
+
+@router.get("/lobbying/top-spenders")
+async def get_top_lobby_spenders() -> dict[str, Any]:
+    """Get top corporate lobbying spenders."""
+    try:
+        from services.lobbying_service import LobbyingService
+        spenders = await LobbyingService().get_top_spenders(20)
+        return {"top_spenders": spenders}
+    except Exception as e:
+        logger.error(f"Error fetching top spenders: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching top spenders")
+
+
+# --- Fear & Greed Index ---
+@router.get("/fear-greed")
+async def get_fear_greed() -> dict[str, Any]:
+    """Get current Fear & Greed index + historical data."""
+    try:
+        from services.fear_greed_service import FearGreedService
+        return await FearGreedService().get_full_summary()
+    except Exception as e:
+        logger.error(f"Error fetching fear & greed: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching fear & greed")
+
+
+# --- Scraping Data Endpoints (News, Social, Insider) ---
+@router.get("/market/news")
+async def get_financial_news() -> list[dict[str, Any]]:
+    try:
+        from services.cache import cache
+        from services.financial_scraping_service import FinancialScrapingService
+        return await cache.get_or_fetch(
+            "financial_news",
+            FinancialScrapingService().scrape_financial_news,
+            ttl=300,
+        )
+    except Exception as e:
+        logger.error(f"Error fetching news: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching news")
+
+
+@router.get("/market/social-sentiment")
+async def get_social_sentiment() -> dict[str, Any]:
+    try:
+        from services.cache import cache
+        from services.financial_scraping_service import FinancialScrapingService
+        return await cache.get_or_fetch(
+            "social_sentiment",
+            FinancialScrapingService().scrape_reddit_sentiment,
+            ttl=300,
+        )
+    except Exception as e:
+        logger.error(f"Error fetching social sentiment: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching social sentiment")
+
+
+@router.get("/market/insider-trades")
+async def get_insider_trades() -> list[dict[str, Any]]:
+    """Return the latest insider trades scraped from OpenInsider.
+
+    Response is a list of trade dicts — caller can wrap in a `{items: ...}`
+    envelope if desired, but the shape matches other scrape endpoints
+    (`/market/news`, `/market/social-sentiment`) for consistency.
+    Cache TTL is 5 min; OpenInsider's landing URL only refreshes a
+    handful of rows in that window so 300s keeps us fresh without
+    hammering them.
+    """
+    try:
+        from services.cache import cache
+        from services.financial_scraping_service import FinancialScrapingService
+        result = await cache.get_or_fetch(
+            "insider_trades",
+            FinancialScrapingService().scrape_insider_trades,
+            ttl=300,
+        )
+        # Defensive coerce — legacy callers may have put a dict envelope
+        # in the cache; always return a list.
+        if isinstance(result, dict):
+            return result.get("items", [])
+        return result or []
+    except Exception as e:
+        logger.error(f"Error fetching insider trades: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching insider trades")
+
+
+@router.get("/market/crypto-data")
+async def get_crypto_market_data() -> dict[str, Any]:
+    try:
+        from services.crypto_scraping_service import CryptoScrapingService
+        scraper = CryptoScrapingService()
+        return {
+            'exchange_data': await scraper.get_exchange_data(),
+            'whale_transactions': await scraper.get_whale_transactions(),
+            'sentiment': await scraper.get_crypto_sentiment()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching crypto data: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching crypto data")
+
+
+@router.get("/market/real-estate")
+async def get_real_estate_data() -> dict[str, Any]:
+    try:
+        from services.real_estate_scraping_service import RealEstateScrapingService
+        return await RealEstateScrapingService().scrape_all_real_estate_data()
+    except Exception as e:
+        logger.error(f"Error fetching real estate data: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching real estate data")
+
+
+# --- Market Prediction (MongoDB sliding cache) ---
+PREDICTION_TTL_SECONDS = 300
+PREDICTION_MAX_AGE_SECONDS = 900
+
+@router.get("/market/prediction")
+async def get_market_prediction(request: Request, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Cache-first prediction: returns instantly, refreshes in background if stale."""
+    from services.auth_helpers import get_optional_user, enforce_credits
+
+    user = await get_optional_user(request)
+    await enforce_credits(user, "prediction")
+
+    force_refresh = request.query_params.get("force_refresh") == "true"
+    now = _utcnow()
+
+    latest = await _get_latest_prediction()
+    running = await _get_running_job()
+
+    # If we have a cached prediction and not forcing refresh
+    if latest and not force_refresh:
+        expires_at = latest.get("expiresAt")
+        is_stale = True
+        if expires_at:
+            try:
+                is_stale = datetime.fromisoformat(expires_at) <= now
+            except Exception:
+                is_stale = True
+
+        # Return the prediction data directly (not nested under "prediction")
+        result = latest.get("prediction", latest)
+        if isinstance(result, dict):
+            result["isStale"] = is_stale
+            result["jobRunning"] = bool(running)
+            result["_cache"] = {
+                "hit": True,
+                "policy": "stale-while-revalidate",
+                "stale": is_stale,
+                "ttlMinutes": PREDICTION_TTL_MINUTES,
+            }
+
+        # Kick off background refresh if stale
+        if is_stale and not running:
+            user_id = str(user.get("_id", "")) if user else "system"
+            job_id = await _create_job(PREDICTION_SCOPE, user_id)
+            background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+            if isinstance(result, dict):
+                result["jobRunning"] = True
+                result["jobId"] = job_id
+
+        return result
+
+    # No cached prediction — check if a job is running
+    if running and not force_refresh:
+        return {
+            "status": "pending",
+            "jobId": running["jobId"],
+            "jobRunning": True,
+            "isStale": True,
+            "overall_direction": None,
+            "confidence_score": 0,
+            "_cache": {"hit": False, "policy": "stale-while-revalidate"},
+        }
+
+    # Start a new job
+    user_id = str(user.get("_id", "")) if user else "system"
+    job_id = await _create_job(PREDICTION_SCOPE, user_id)
+    background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+
+    return {
+        "status": "pending",
+        "jobId": job_id,
+        "jobRunning": True,
+        "isStale": True,
+        "overall_direction": None,
+        "confidence_score": 0,
+        "_cache": {"hit": False, "policy": "stale-while-revalidate"},
+    }
+
+
+@router.get("/market/prediction/status/{job_id}")
+async def get_prediction_status(job_id: str, request: Request):
+    """Check the status of a prediction job."""
+    from services.auth_helpers import get_optional_user
+    await get_optional_user(request)
+    job = await db.prediction_jobs.find_one({"jobId": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Prediction job not found")
+    return job
+
+
+@router.post("/market/prediction/refresh")
+async def refresh_prediction(request: Request, background_tasks: BackgroundTasks):
+    """Manually trigger a prediction refresh."""
+    from services.auth_helpers import get_current_user
+    user = await get_current_user(request)
+
+    running = await _get_running_job()
+    if running:
+        return {"status": "already_running", "jobId": running["jobId"]}
+
+    user_id = str(user.get("_id", "")) if user else "user"
+    job_id = await _create_job(PREDICTION_SCOPE, user_id)
+    background_tasks.add_task(run_prediction_job, job_id, PREDICTION_SCOPE)
+    return {"status": "started", "jobId": job_id}
+
+
+async def _fetch_ticker_context(symbol: str) -> str:
+    """Fetch current price/volume context for a specific ticker."""
+    try:
+        from services.price_provider import get_quote
+        quote = await get_quote(symbol)
+        if quote:
+            return (
+                f"\n{symbol} CURRENT: ${quote.get('price', 'N/A')} | Change: {quote.get('change_percent', 'N/A')}%"
+                f" | Volume: {quote.get('volume', 'N/A')} | Prev Close: ${quote.get('previous_close', 'N/A')}"
+            )
+    except Exception as e:
+        logger.warning(f"Ticker quote fetch failed for {symbol}: {e}")
+    return ""
+
+
+async def _log_ticker_prediction(request: Request, prediction: dict, symbol: str) -> None:
+    """Log a ticker prediction for accuracy tracking."""
+    try:
+        from services.prediction_tracker import log_market_prediction
+        from services.auth_helpers import get_optional_user
+        user = await get_optional_user(request)
+        uid = str(user.get("_id", "")) if user else None
+        await log_market_prediction(
+            request.app.state.db,
+            prediction["overall_direction"],
+            prediction.get("confidence_score", 0),
+            user_id=uid,
+            symbol=symbol,
+        )
+    except Exception:
+        pass
+
+
+TICKER_PREDICTION_TTL_SECONDS = 300
+TICKER_PREDICTION_MAX_AGE_SECONDS = 900
+
+@router.get("/market/prediction/{symbol}")
+async def get_ticker_prediction(symbol: str, request: Request) -> dict[str, Any]:
+    """Generate an AI market prediction focused on a specific ticker/asset."""
+    symbol = symbol.strip().upper()
+    if not symbol or len(symbol) > 10:
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+
+    from services.auth_helpers import get_optional_user, enforce_credits
+    from services.ai_cache_service import AICacheService
+
+    user = await get_optional_user(request)
+    await enforce_credits(user, "prediction")
+
+    force_refresh = request.query_params.get("force_refresh") == "true"
+    cache = AICacheService(request.app.state.db)
+    cache_key = cache.build_key("prediction", {"scope": "ticker", "symbol": symbol})
+
+    if not force_refresh:
+        cached = await cache.get(
+            cache_key,
+            ttl_seconds=TICKER_PREDICTION_TTL_SECONDS,
+            sliding=True,
+            max_age_seconds=TICKER_PREDICTION_MAX_AGE_SECONDS,
+        )
+        if cached:
+            cached["_cache"] = {
+                "hit": True,
+                "policy": "sliding",
+                "ttlSeconds": TICKER_PREDICTION_TTL_SECONDS,
+                "maxAgeSeconds": TICKER_PREDICTION_MAX_AGE_SECONDS,
+            }
+            return cached
+
+    try:
+        scrape_results = await _collect_all_scrape_data(include_real_estate=False)
+        ticker_context = await _fetch_ticker_context(symbol)
+
+        from services.market_prediction_service import MarketPredictionService
+        from services.provider_registry import get_ai_provider_pool
+        pool = get_ai_provider_pool()
+        api_key = pool[0]["api_key"] if pool else os.environ.get('EMERGENT_LLM_KEY')
+        all_crypto = scrape_results["crypto_data"] + [scrape_results["crypto_sentiment"]] + scrape_results["whale_txns"]
+        prediction_service = MarketPredictionService(api_key)
+
+        if scrape_results.get("fear_greed"):
+            prediction_service._fear_greed = scrape_results["fear_greed"]
+
+        prediction_service._ticker_focus = symbol
+        prediction_service._ticker_context = ticker_context
+
+        prediction = await prediction_service.analyze_market(
+            financial_news=scrape_results["news"],
+            crypto_data=all_crypto,
+            insider_trades=scrape_results["insider_trades"],
+            social_sentiment=scrape_results["social"],
+            world_events=scrape_results["world_events"],
+            foreign_markets=scrape_results["foreign_markets"],
+            gov_filings=scrape_results["gov_filings"],
+        )
+
+        prediction["symbol"] = symbol
+        prediction["ticker_focused"] = True
+        _enrich_prediction_metadata(prediction, {**scrape_results, "real_estate": {}})
+        prediction["_cache"] = {
+            "hit": False,
+            "policy": "sliding",
+            "ttlSeconds": TICKER_PREDICTION_TTL_SECONDS,
+            "maxAgeSeconds": TICKER_PREDICTION_MAX_AGE_SECONDS,
+        }
+
+        await cache.set(
+            cache_key,
+            namespace="prediction",
+            data=prediction,
+            ttl_seconds=TICKER_PREDICTION_TTL_SECONDS,
+            meta={"scope": "ticker", "symbol": symbol},
+        )
+
+        if prediction.get("overall_direction"):
+            await _log_ticker_prediction(request, prediction, symbol)
+
+        return prediction
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating ticker prediction for {symbol}: {e}")
+        stale = await cache.get_stale(cache_key)
+        if stale:
+            stale["_cache"] = {"hit": True, "stale": True}
+            return stale
+        raise HTTPException(status_code=500, detail=f"Error generating prediction for {symbol}")
+
+
+async def _collect_all_scrape_data(include_real_estate: bool = False) -> dict[str, Any]:
+    """Collect all scraped macro data from services."""
+    from services.financial_scraping_service import FinancialScrapingService
+    from services.crypto_scraping_service import CryptoScrapingService
+    from services.world_events_service import WorldEventsService
+    from services.foreign_markets_service import ForeignMarketsService
+    from services.gov_filings_service import GovFilingsService
+
+    financial = FinancialScrapingService()
+    crypto = CryptoScrapingService()
+
+    result = {
+        "news": await financial.scrape_financial_news(),
+        "social": await financial.scrape_reddit_sentiment(),
+        "insider_trades": await financial.scrape_insider_trades(),
+        "crypto_data": await crypto.get_exchange_data(),
+        "whale_txns": await crypto.get_whale_transactions(),
+        "crypto_sentiment": await crypto.get_crypto_sentiment(),
+        "world_events": await WorldEventsService().scrape_world_events(),
+        "foreign_markets": await ForeignMarketsService().get_foreign_markets(),
+        "gov_filings": await GovFilingsService().get_all_gov_data(),
+    }
+
+    # Fear & Greed Index
+    try:
+        from services.fear_greed_service import FearGreedService
+        result["fear_greed"] = await FearGreedService().get_full_summary()
+    except Exception as e:
+        logger.warning(f"Fear & Greed fetch failed: {e}")
+        result["fear_greed"] = None
+
+    if include_real_estate:
+        from services.real_estate_scraping_service import RealEstateScrapingService
+        result["real_estate"] = await RealEstateScrapingService().scrape_all_real_estate_data()
+
+    # Inject stored headlines from the pipeline (last 6 hours)
+    try:
+        from services.headlines_pipeline import HeadlinesPipeline
+        pipeline = HeadlinesPipeline(db)
+        result["headlines_digest"] = await pipeline.get_for_prediction(hours=6)
+    except Exception:
+        result["headlines_digest"] = ""
+
+    return result
+
+
+async def _run_prediction_model(data: dict[str, Any]) -> dict[str, Any]:
+    """Run the AI market prediction model on collected data."""
+    from services.market_prediction_service import MarketPredictionService
+    from services.provider_registry import get_ai_provider_pool
+
+    # Get the best available AI key from the provider pool
+    pool = get_ai_provider_pool()
+    api_key = pool[0]["api_key"] if pool else os.environ.get('EMERGENT_LLM_KEY')
+
+    all_crypto = data["crypto_data"] + [data["crypto_sentiment"]] + data["whale_txns"]
+    prediction_service = MarketPredictionService(api_key)
+
+    # Attach fear & greed data so the prompt builder can use it
+    if data.get("fear_greed"):
+        prediction_service._fear_greed = data["fear_greed"]
+
+    return await prediction_service.analyze_market(
+        financial_news=data["news"],
+        crypto_data=all_crypto,
+        insider_trades=data["insider_trades"],
+        social_sentiment=data["social"],
+        real_estate_data=data.get("real_estate", {}),
+        world_events=data["world_events"],
+        foreign_markets=data["foreign_markets"],
+        gov_filings=data["gov_filings"],
+    )
+
+
+def _enrich_prediction_metadata(prediction: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """Add real estate and macro data summaries to prediction response."""
+    re = data.get("real_estate", {})
+    prediction['real_estate_summary'] = {
+        'housing_health': re.get('housing', {}).get('market_health', 'unknown'),
+        'commercial_trend': 'mixed',
+        'data_sources': len(re.get('housing', {}).get('sources', [])),
+        'implications': re.get('trends', {}).get('market_implications', {}),
+    }
+
+    we = data["world_events"]
+    fm = data["foreign_markets"]
+    gf = data["gov_filings"]
+    prediction['macro_data'] = {
+        'world_events': {
+            'total': we.get('total_events', 0),
+            'high_impact': we.get('high_impact_count', 0),
+            'top_sectors': [s['sector'] for s in we.get('affected_sectors', [])[:5]],
+        },
+        'foreign_markets': {
+            'correlation_signals': fm.get('correlation_signals', [])[:5],
+            'total_indices': len(fm.get('asia', []) + fm.get('europe', []) + fm.get('americas', [])),
+        },
+        'gov_filings': {
+            'congressional_trades': gf.get('congressional_count', 0),
+            'fed_announcements': gf.get('fed_count', 0),
+            'insider_trades': gf.get('insider_count', 0),
+            'lobbying_spenders': gf.get('lobbying_count', 0),
+        },
+    }
+
+    # Fear & Greed
+    fg = data.get("fear_greed")
+    if fg:
+        prediction['fear_greed'] = {
+            'current': fg.get('current', {}).get('value'),
+            'label': fg.get('current', {}).get('label'),
+            'avg_7d': fg.get('avg_7d'),
+            'avg_30d': fg.get('avg_30d'),
+        }

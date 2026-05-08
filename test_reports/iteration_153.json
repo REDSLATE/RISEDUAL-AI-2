@@ -1,0 +1,80 @@
+{
+  "summary": "Iteration 153: Frontend testing for Paper/Live mode consolidation, CryptoPaperDashboard re-skin, and OrderFlowHeatmap duplicate-key fix. All requested features verified working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard/Main App",
+        "issues": ["Console warnings: 'Encountered two children with the same key' with bid-X.XX/ask-X.XX patterns - these are from external Emergent script (emergent-main.js), NOT from app code. The OrderFlowHeatmap fix (row-${ri}-${row.price}) is correctly implemented."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/frontend/src/components/CryptoPaperDashboard.jsx",
+    "/app/frontend/src/components/SmartOrderPanel.jsx",
+    "/app/frontend/src/components/TradingBotPanel.jsx",
+    "/app/frontend/src/components/OrderFlowHeatmap.jsx"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: CryptoPaperDashboard has slate-themed design with bg-slate-800/40, border-slate-700/40",
+    "VERIFIED: Run Bot button has cyan styling (bg-[#3DE8D9]) - data-testid='crypto-run-bot-btn'",
+    "VERIFIED: Close Due Trades button has slate variant styling (bg-slate-700/60) - data-testid='crypto-close-trades-btn'",
+    "VERIFIED: crypto-paper-dashboard data-testid present and component renders correctly",
+    "VERIFIED: SmartOrderPanel has read-only mode badge (data-testid='smart-order-mode-display') with data-mode attribute matching global navbar mode",
+    "VERIFIED: SmartOrderPanel has NO Paper/Live/Preview dropdown - correctly replaced with read-only badge",
+    "VERIFIED: TradingBotPanel CreateBotForm has read-only mode badge (data-testid='create-bot-mode-display') with data-mode attribute matching global navbar mode",
+    "VERIFIED: TradingBotPanel CreateBotForm has NO Paper/Live dropdown - correctly replaced with read-only badge",
+    "VERIFIED: OrderFlowHeatmap key fix implemented at line 213: key={`row-${ri}-${row.price}`} includes row index",
+    "VERIFIED: Admin → Adversarial tab renders CryptoAdversarialDashboard correctly",
+    "VERIFIED: Admin → Shadow tab renders ShadowAccuracyPanel correctly",
+    "VERIFIED: Admin → Proof Chain tab renders ProofChainExplorer correctly",
+    "VERIFIED: Run Bot button functional - POST succeeds and dashboard refreshes with updated data",
+    "VERIFIED: Close Due Trades button functional - POST succeeds and dashboard refreshes"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (all 8 test cases passed)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Paper/Live mode consolidation complete. Global navbar TradingModePill is the single source of truth for trading mode. SmartOrderPanel and TradingBotPanel CreateBotForm both use read-only mode badges that inherit from the global mode. CryptoPaperDashboard has been re-skinned with slate-* + brand-cyan #3DE8D9 palette. OrderFlowHeatmap duplicate-key warning fixed by including row index in key. Note: Console still shows duplicate key warnings but these are from external Emergent script (emergent-main.js) with bid-X.XX/ask-X.XX patterns, not from app code.",
+  "features_tested": {
+    "crypto_paper_dashboard_slate_theme": true,
+    "crypto_run_bot_btn_cyan_styling": true,
+    "crypto_close_trades_btn_slate_styling": true,
+    "crypto_paper_dashboard_testid": true,
+    "smart_order_mode_display_badge": true,
+    "smart_order_no_mode_dropdown": true,
+    "create_bot_mode_display_badge": true,
+    "create_bot_no_mode_dropdown": true,
+    "mode_badges_match_global_mode": true,
+    "orderflow_heatmap_key_fix": true,
+    "admin_adversarial_tab_renders": true,
+    "admin_shadow_tab_renders": true,
+    "admin_proof_chain_tab_renders": true,
+    "run_bot_button_functional": true,
+    "close_due_trades_button_functional": true
+  },
+  "test_data_observed": {
+    "global_trading_mode": "paper",
+    "smart_order_mode_badge": "paper (matches global)",
+    "create_bot_mode_badge": "paper (matches global)",
+    "crypto_dashboard_stats": {
+      "open_trades": "36-38 (changed after Run Bot)",
+      "closed_trades": "152-154 (changed after Close Due Trades)",
+      "pnl": "$81.95-$83.61",
+      "win_rate": "64.5%-64.9%"
+    },
+    "proof_chain_blocks": 18,
+    "duplicate_key_warnings": "Present but from external Emergent script, not app code"
+  }
+}

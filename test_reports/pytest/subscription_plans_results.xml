@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="13" time="95.070" timestamp="2026-04-02T18:13:30.029838+00:00" hostname="agent-env-2eb0cc47-bb53-4d7f-9f83-1098068dc5e0"><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_monthly_checkout_returns_200" time="0.789" /><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_monthly_checkout_returns_valid_url" time="0.575" /><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_annual_checkout_returns_200" time="0.476" /><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_annual_checkout_returns_valid_url" time="0.437" /><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_default_plan_is_monthly" time="0.462" /><testcase classname="tests.test_subscription_plans.TestSubscriptionCheckout" name="test_invalid_plan_defaults_to_monthly" time="0.490" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_returns_200" time="3.106" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_has_asia" time="2.796" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_has_europe" time="2.922" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_has_americas" time="60.121"><failure message="requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)">/root/.venv/lib/python3.11/site-packages/requests/models.py:976: in json
+    return complexjson.loads(self.text, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:355: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+tests/test_subscription_plans.py:115: in test_foreign_markets_has_americas
+    data = response.json()
+           ^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/models.py:980: in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+E   requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</failure></testcase><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_has_commodities" time="17.090" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_foreign_markets_has_currencies" time="2.945" /><testcase classname="tests.test_subscription_plans.TestForeignMarketsEndpoint" name="test_market_data_has_required_fields" time="2.752" /></testsuite></testsuites>

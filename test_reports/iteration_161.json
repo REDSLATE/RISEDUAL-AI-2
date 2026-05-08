@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 161 - Data Integrity, Alert Rules, LLM Budget Banner, Drift Alert Watcher. All 4 backlog items verified: (1) LLM budget banner code path verified in ai_service.py, routes/ai.py, useChat.js, ChatMessages.jsx - HTTP 402 with error_code='llm_budget_exceeded' renders amber pill with 'Top up Universal Key' link, (2) Data Integrity Panel renders correctly with stat grid (unknown_tokens, backfills, le_repairs, toxic_lessons, brute_force) and 14-day sparklines, (3) Alert Rules Editor CRUD fully functional - create/list/evaluate/delete all working, (4) Backend APIs all passing - 19/19 pytest tests green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["React key warning: 'Encountered two children with the same key' for bid-0, bid-1.19, ask-1.38 etc - likely in order book or price display component"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration161_data_integrity.py",
+    "/app/test_reports/pytest/iteration161_data_integrity_results.xml"
+  ],
+  "action_items": [
+    "Fix React key warnings in order book/price display component (non-critical, cosmetic)"
+  ],
+  "critical_code_review_comments": [
+    "LLM budget banner implementation is clean - HTTP 402 → structured payload → useChat.js maps to error_code → ChatMessages.jsx renders amber pill",
+    "Data Integrity Panel correctly fetches /api/admin/data-integrity/summary and /timeseries?days=14",
+    "Alert Rules Editor has proper validation - invalid metric returns 400 with supported metrics list, malformed channel returns 400",
+    "Drift alert watcher _dispatch_slack correctly returns None when SLACK_WEBHOOK_URL is unset"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration161_data_integrity.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Data Integrity Panel and Alert Rules Editor are in Admin Panel → Tools tab (last tab in Insights group). LLM budget banner cannot be tested by actually exhausting budget - verify code path only. All 4 backlog items from this iteration are complete and verified.",
+  "features_verified": {
+    "llm_budget_banner": {
+      "status": "VERIFIED",
+      "details": "Code path verified: ai_service.py detects 'Budget has been exceeded' → returns {error: 'llm_budget_exceeded'} → routes/ai.py maps to HTTP 402 with structured payload → useChat.js handles 402 and creates message with error_code → ChatMessages.jsx renders amber pill with data-testid='message-budget-*' and 'budget-topup-link-*'"
+    },
+    "data_integrity_panel": {
+      "status": "VERIFIED",
+      "details": "Panel renders with stat grid showing: UNKNOWN TOKENS 24H/7D, GRADE BACKFILLS 7D, LE REPAIRS 7D, TOXIC LESSONS 7D, SUPERSEDED TOTAL, LOCKOUTS 24H/7D. Sparklines visible under stats. 'All invariants passing' badge and 'Run audit now' button present."
+    },
+    "alert_rules_editor": {
+      "status": "VERIFIED",
+      "details": "Full CRUD tested: Create rule (TEST_ui_rule_playwright) → appears in rules-list → Evaluate now (shows 'Evaluated 1 rules · fired 0 · throttled 0') → Delete rule → rule removed from list. Form elements: rule_id, metric dropdown, comparator, threshold, window_hours, throttle_hours, channel, enabled checkbox, Save rule button, Evaluate now button."
+    },
+    "drift_alert_watcher_slack": {
+      "status": "VERIFIED",
+      "details": "Unit test confirms _dispatch_slack returns None when SLACK_WEBHOOK_URL is unset. Skips non-allowlisted alert types."
+    },
+    "backend_apis": {
+      "status": "VERIFIED",
+      "details": "GET /api/admin/data-integrity/summary returns expected shape with unknown_direction_tokens, backfills, toxic_lessons, brute_force. GET /api/admin/data-integrity/timeseries?days=14 returns 14 days of bucket data. Alert rules CRUD: GET/POST/DELETE /api/admin/data-integrity/alert-rules, POST /evaluate-now, GET /alert-events all working. Invalid metric returns 400, malformed channel returns 400."
+    }
+  }
+}

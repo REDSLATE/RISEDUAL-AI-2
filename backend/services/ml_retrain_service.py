@@ -1,0 +1,951 @@
+"""Nightly ML retrain — drives the signal model's continuous learning.
+
+Purpose
+-------
+Previously the model was trained once and never updated. The labeler
+diligently populated `outcome` fields on 276K+ snapshots, but nothing
+consumed those labels. This service reads labeled snapshots from
+`features_snapshots`, retrains :class:`SignalModel`, and saves a new
+versioned artefact to disk. Scheduled via APScheduler at 02:30 UTC
+nightly (after the memory cleanup job).
+
+Design choices
+--------------
+* **Binary target = is_correct.** The existing `SignalModel.fit()`
+  contract trains on ``y=1 when prediction was correct``. We build that
+  from the labeler's 3-class outcome (`up`/`down`/`flat`) by comparing
+  the predicted direction (stored elsewhere) to the realised outcome.
+  For v1 we approximate: if outcome=='up' treat as correct (simple
+  monotonic improvement — we'll refine when the features_snapshots
+  schema persists `predicted_direction` too).
+* **Incremental version bump.** Artefacts land in
+  ``/app/backend/models/signal_model_v{N+1}.joblib`` where N is the
+  highest existing version. This preserves the audit trail of prior
+  models so a regression can roll back by pointing the loader at v{N}.
+* **Training log.** Each run writes a row to `ml_training_log` with
+  sample count, AUC, feature importances, and the new version string.
+  The `/api/admin/ml-training-history` owner endpoint surfaces these.
+* **Lookback cap.** To keep memory bounded we train on the most recent
+  ``MAX_SAMPLES`` labeled rows. 50K samples is more than enough for
+  XGBoost to converge and caps runtime at ~2 min.
+"""
+from __future__ import annotations
+
+# ── Defensive CPU thread cap (see: 02:30 UTC retrain, 8-core pod) ─────────────
+# xgboost/OpenBLAS/MKL default to grabbing every core. Cap at 4 of 8 so a
+# stray request that lands mid-retrain (or a colocated job) doesn't queue
+# behind a tree-fitting loop. setdefault means an explicit env override still
+# wins. These must be set BEFORE numpy/sklearn/xgboost initialise their
+# native threadpools — so they sit at the top of the module.
+import os as _os
+_os.environ.setdefault("OMP_NUM_THREADS", "4")
+_os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
+_os.environ.setdefault("MKL_NUM_THREADS", "4")
+
+import logging
+import re
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
+
+from typing import Any
+from motor.motor_asyncio import AsyncIOMotorDatabase  # noqa: F401
+
+# Make risedual_core importable without side effects at module import time.
+_RISEDUAL_CORE_PATH = Path(__file__).parent.parent / "risedual_core"
+if str(_RISEDUAL_CORE_PATH) not in sys.path:
+    sys.path.insert(0, str(_RISEDUAL_CORE_PATH))
+
+logger = logging.getLogger(__name__)
+
+MODELS_DIR = Path("/app/backend/models")
+MODEL_ARTIFACT_PREFIX = "signal_model_v"
+MAX_SAMPLES = 50_000
+MIN_SAMPLES_FOR_TRAINING = 200
+TRAINING_LOG_COLLECTION = "ml_training_log"
+
+
+def _next_version_number() -> int:
+    """Scan the models directory and return N+1 where N is the current max."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    pattern = re.compile(rf"^{re.escape(MODEL_ARTIFACT_PREFIX)}(\d+)\.joblib$")
+    max_n = 0
+    for f in MODELS_DIR.glob(f"{MODEL_ARTIFACT_PREFIX}*.joblib"):
+        m = pattern.match(f.name)
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+    return max_n + 1
+
+
+async def _load_training_dataframe(
+    db: Any, max_samples: int
+) -> tuple[Any, Any, Any, Any, int, dict, Any]:
+    """Pull labeled snapshots and return
+    ``(X_df, y_series, w_final, w_severity_only, n_rows, r_drift,
+    outcomes_df)``.
+
+    Tuple is ``(pandas.DataFrame, pandas.Series[int],
+    pandas.Series[float], pandas.Series[float], int, dict,
+    pandas.DataFrame)`` — the fourth element is the severity-only
+    weights (pre-regime multiply), exposed for drift-logging. The
+    sixth is a dict of R-weighting adoption metrics
+    (``r_eligible_frac``, ``r_skipped_frac``) for the retrain log.
+    The seventh is a slim outcomes frame carrying ``r_multiple``
+    (when present) and ``return_1d`` — used by
+    :func:`estimate_adaptation_impact` for counterfactual ΔR
+    without having to re-load the snapshots or expose the full
+    training ``df`` to the caller. Callers that only care about
+    training can ignore elements 6 and 7.
+
+    The `w_final` series is a **severity × regime-relevance**
+    sample weight:
+      * severity comes from `return_1d` (see `_severity_weights`) —
+        a -5% blown trade contributes 4× a -0.5% stop-out.
+      * regime comes from `regime_label` — rows captured under a
+        regime different from the current regime are down-weighted
+        0.5× (see `ai_core.learning_upgrade.compute_regime_weight`).
+    Missing columns default to neutral 1.0 — never less training
+    signal than the legacy uniform path.
+    """
+    import pandas as pd
+
+    from risedual_core.ml.features import FEATURE_COLUMNS
+
+    projection = {
+        "_id": 0, "outcome": 1, "return_1d": 1, "regime_label": 1,
+        # Execution-economics block (schema_version >= 4) — enables
+        # R-multiple-weighted training. Rows missing these fields
+        # fall back to magnitude-based severity weighting.
+        "schema_version": 1, "entry_price": 1, "exit_price": 1,
+        "stop_loss": 1, "direction": 1,
+        **{c: 1 for c in FEATURE_COLUMNS},
+    }
+    cursor = (
+        db.features_snapshots
+        .find({"outcome": {"$in": ["up", "down", "flat"]}}, projection)
+        .sort("captured_at", -1)
+        .limit(max_samples)
+    )
+    rows = await cursor.to_list(length=max_samples)
+    if not rows:
+        empty_w = pd.Series(dtype=float)
+        return (pd.DataFrame(), pd.Series(dtype=int), empty_w, empty_w, 0,
+                {"r_eligible_frac": 0.0, "r_skipped_frac": 0.0},
+                pd.DataFrame())
+
+    df = pd.DataFrame(rows)
+    y = (df["outcome"] == "up").astype(int)
+    X = df[[c for c in FEATURE_COLUMNS if c in df.columns]]
+    severity = _severity_weights(df)
+    w_final = _apply_regime_weighting(
+        severity, df, current_regime=await _resolve_current_regime(db),
+    )
+    # Compute R-adoption drift metrics while df is still in scope.
+    r_elig_mask, r_w = _r_eligible_mask_and_weights(df)
+    n = len(rows)
+    elig_count = int(r_elig_mask.sum())
+    if elig_count > 0:
+        skipped_frac = float((r_w.loc[r_elig_mask] == 0.0).mean())
+    else:
+        skipped_frac = 0.0
+    r_drift = {
+        "r_eligible_frac": elig_count / n if n else 0.0,
+        "r_skipped_frac": skipped_frac,
+    }
+    # Slim outcomes frame for counterfactual impact calc — carries
+    # r_multiple + return_1d only so we don't drag the full rows
+    # payload (raw features, artefacts) around.
+    outcome_cols = [c for c in ("r_multiple", "return_1d", "outcome") if c in df.columns]
+    outcomes_df = df[outcome_cols].copy() if outcome_cols else pd.DataFrame(index=df.index)
+    return X, y, w_final, severity, n, r_drift, outcomes_df
+
+
+async def _resolve_current_regime(db: Any) -> str | None:
+    """Best-effort fetch of the CURRENT regime label so we can
+    down-weight training rows captured under a different regime.
+
+    Reads from the latest `features_snapshots` row (captured_at DESC)
+    — whichever regime the most recent snapshot landed in is the
+    regime we're about to predict under. Returns None if the collection
+    has no regime labels yet (warm-start case), which keeps regime
+    weighting a no-op until the backfill lands."""
+    try:
+        latest = await db.features_snapshots.find_one(
+            {"regime_label": {"$nin": [None, ""]}},
+            {"_id": 0, "regime_label": 1},
+            sort=[("captured_at", -1)],
+        )
+    except Exception:
+        return None
+    if not latest:
+        return None
+    label = latest.get("regime_label")
+    return str(label) if label else None
+
+
+def _apply_regime_weighting(
+    severity: Any,
+    df: Any,
+    *,
+    current_regime: str | None,
+) -> Any:
+    """Multiply severity weights by per-row regime-match weight.
+
+    Returns severity unchanged when regime info is missing — a
+    warm-start model shouldn't silently cut all weights by half
+    just because `regime_label` isn't backfilled yet.
+    """
+    if "regime_label" not in df.columns or current_regime is None:
+        return severity
+    from ai_core.learning_upgrade import compute_regime_weight
+
+    regime_weights = df["regime_label"].apply(
+        lambda r: compute_regime_weight(r if isinstance(r, str) else None, current_regime)
+    )
+    return (severity * regime_weights).astype(float)
+
+
+# Severity-weighting thresholds (abs return_1d).
+#   <1% → noise; 1-3% → weak directional; ≥3% → strong directional.
+# Chosen to match the retail trader's "that was a real move" intuition
+# and the `GRADE_WEIGHTS` ±2.0 asymmetry on the conviction side.
+_WEAK_THRESHOLD = 0.01
+_STRONG_THRESHOLD = 0.03
+# Cap the training weight at 2.0 so a single outlier 20% mover
+# doesn't swamp the gradient.
+_WEIGHT_CAP = 2.0
+# Sign-aware loss amplifier — duplicated from
+# `ai_core.learning_upgrade._LOSS_AMPLIFIER` to avoid a circular
+# import at module load time (learning_upgrade → conviction_service
+# → some services → ml_retrain_service). Pinned identical by
+# `test_loss_amplifier_matches_scalar_module` so a drift on either
+# side fails fast.
+from ai_core.learning_upgrade import _LOSS_AMPLIFIER  # noqa: E402
+
+
+def _r_eligible_mask_and_weights(df: Any) -> tuple[Any, Any]:
+    """Identify rows carrying the full execution-economics block
+    (``schema_version >= 4`` AND all four of entry_price, exit_price,
+    stop_loss, direction populated) and compute their R-based
+    training weights.
+
+    Returns ``(boolean_mask, weights_series)``. For non-eligible
+    rows the weight is ``NaN`` — callers must blend with the
+    magnitude fallback. For eligible rows with ``|R| < 0.25`` the
+    weight is ``0.0`` (XGBoost treats 0-weight samples as
+    effectively dropped from the gradient — equivalent to row
+    skipping without breaking index alignment with X/y).
+
+    The weight upper bound matches the magnitude pipeline's
+    ``2.0 × 1.25 = 2.5`` so switching between the two paths leaves
+    the downstream 10× clip untriggered either way.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from ai_core.risk_weighting import (
+        compute_r_multiple,
+        compute_sample_weight_from_trade,
+        should_skip_row_by_r,
+    )
+
+    required = ("schema_version", "entry_price", "exit_price",
+                "stop_loss", "direction")
+    if not all(c in df.columns for c in required):
+        return (
+            pd.Series([False] * len(df), index=df.index),
+            pd.Series([np.nan] * len(df), index=df.index),
+        )
+
+    eligible = (
+        (pd.to_numeric(df["schema_version"], errors="coerce").fillna(0) >= 4)
+        & df["entry_price"].notna()
+        & df["exit_price"].notna()
+        & df["stop_loss"].notna()
+        & df["direction"].isin(["LONG", "SHORT"])
+    )
+
+    weights = pd.Series([np.nan] * len(df), index=df.index, dtype=float)
+    for idx in df.index[eligible]:
+        row = df.loc[idx]
+        r = compute_r_multiple(
+            entry_price=row["entry_price"],
+            exit_price=row["exit_price"],
+            stop_loss=row["stop_loss"],
+            direction=row["direction"],
+        )
+        if should_skip_row_by_r(r):
+            # Zero-weight equals dropped-from-gradient in XGBoost.
+            # Preserve index alignment so X/y stay in lockstep.
+            weights.loc[idx] = 0.0
+        else:
+            weights.loc[idx] = compute_sample_weight_from_trade(
+                entry_price=row["entry_price"],
+                exit_price=row["exit_price"],
+                stop_loss=row["stop_loss"],
+                direction=row["direction"],
+            )
+    return eligible, weights
+
+
+
+def estimate_adaptation_impact(
+    df: Any,
+    base_weights: Any,
+    adapted_weights: Any,
+    r_col: str = "r_multiple",
+) -> dict:
+    """Estimate how the just-applied adaptations would have shifted
+    the training distribution's expected outcome.
+
+    First-order counterfactual: re-weights the existing R-multiple
+    outcomes (no second model.fit). Returns empty dict if the
+    training frame doesn't carry an R column (warm-start / legacy
+    rows). This is a cheap proxy, not a full backtest — see
+    ``adaptation_impact`` in the retrain log for caveats.
+
+    Returns keys: ``baseline_mean_r``, ``adapted_mean_r``,
+    ``delta_mean_r``, ``baseline_win_rate``, ``adapted_win_rate``,
+    ``delta_win_rate``.
+    """
+    import numpy as np
+
+    r = df.get(r_col) if hasattr(df, "get") else None
+    if r is None or len(r) == 0:
+        return {}
+
+    r_arr = np.asarray(r, dtype=float)
+    w0 = np.asarray(base_weights, dtype=float)
+    w1 = np.asarray(adapted_weights, dtype=float)
+
+    valid = np.isfinite(r_arr) & np.isfinite(w0) & np.isfinite(w1)
+    if not valid.any():
+        return {}
+
+    r_arr = r_arr[valid]
+    w0 = w0[valid]
+    w1 = w1[valid]
+
+    def _wmean(x: Any, w: Any) -> float:
+        s = float(w.sum())
+        return float((x * w).sum() / max(s, 1e-9))
+
+    baseline_r = _wmean(r_arr, w0)
+    adapted_r = _wmean(r_arr, w1)
+    wins = (r_arr > 0).astype(float)
+    baseline_wr = _wmean(wins, w0)
+    adapted_wr = _wmean(wins, w1)
+
+    return {
+        "baseline_mean_r": baseline_r,
+        "adapted_mean_r": adapted_r,
+        "delta_mean_r": adapted_r - baseline_r,
+        "baseline_win_rate": baseline_wr,
+        "adapted_win_rate": adapted_wr,
+        "delta_win_rate": adapted_wr - baseline_wr,
+        # Used to detect "too-broad" adaptations at the UI layer:
+        # if coverage == 1.0 every row got touched → the rule is
+        # not actually selective (see market-leader's note below).
+        "rows_covered_frac": float((w0 != w1).sum() / max(len(w0), 1)),
+    }
+
+
+def _severity_weights(df: Any) -> Any:
+    """Map `return_1d` → per-row training weight.
+
+    Formula mirrors `GRADE_WEIGHTS`:
+      |r| < 1%   → 0.5   (NEUTRAL-ish — barely a move)
+      1-3%       → ramp 1.0 → 2.0   (WEAK → STRONG)
+      ≥ 3%       → 2.0   (STRONG — capped)
+      missing    → 1.0   (fallback to uniform weight)
+
+    After the magnitude-based weight, losses (`return_1d < 0`) are
+    amplified by `_LOSS_AMPLIFIER` (1.25×) — see
+    `ai_core.learning_upgrade.compute_signed_weight` for the
+    rationale. The amplifier compounds with severity so the largest
+    single-row weight is 2.0 × 1.25 = 2.5; `SignalModel.fit` still
+    clips at 10× before handing to XGBoost.
+
+    Implementing with clip+scaling keeps the mapping continuous
+    enough for gradient boosters without discrete step jumps that
+    destabilise calibration.
+
+    R-weighted override: rows carrying ``schema_version >= 4`` with
+    full execution data (entry/exit/stop/direction) bypass the
+    magnitude path entirely and use
+    :func:`ai_core.risk_weighting.compute_sample_weight_from_trade`.
+    Rows with ``|R| < 0.25`` are zero-weighted (drop from gradient).
+    Legacy/unenriched rows stay on the magnitude path — no
+    regression in the warm-start period before the
+    features_snapshots backfill catches up.
+    """
+    import pandas as pd
+
+    if "return_1d" not in df.columns:
+        magnitude = pd.Series([1.0] * len(df), index=df.index)
+    else:
+        # Absolute magnitude of the move, NaN-safe.
+        mag = df["return_1d"].abs().fillna(_WEAK_THRESHOLD)
+
+        # Piecewise mapping. `pandas.cut`-style would also work but the
+        # explicit formula is easier to inspect in future drift audits.
+        weights = mag.copy()
+        weights[mag < _WEAK_THRESHOLD] = 0.5
+        # Linear ramp 1.0 → 2.0 across the [1%, 3%] band so a 2%
+        # mover sits at ~1.5 — the ramp smoothness matters for XGBoost.
+        ramp_mask = (mag >= _WEAK_THRESHOLD) & (mag < _STRONG_THRESHOLD)
+        weights[ramp_mask] = 1.0 + (
+            (mag[ramp_mask] - _WEAK_THRESHOLD)
+            / (_STRONG_THRESHOLD - _WEAK_THRESHOLD)
+        )
+        weights[mag >= _STRONG_THRESHOLD] = _WEIGHT_CAP
+
+        # Sign-aware amplification: losses weighted 1.25× higher than
+        # wins of the same magnitude. Vectorised per-row multiply — no
+        # per-row Python callback. NaN returns are treated as
+        # non-negative (amplifier stays at 1.0) so we don't double-
+        # penalise the fallback path.
+        is_loss = (df["return_1d"].fillna(0.0) < 0).astype(float)
+        amplifier = 1.0 + is_loss * (_LOSS_AMPLIFIER - 1.0)
+        magnitude = (weights * amplifier).astype(float)
+
+    # Blend: R-based weights take precedence for eligible rows.
+    # Non-eligible rows keep the magnitude-based weight.
+    r_eligible, r_weights = _r_eligible_mask_and_weights(df)
+    final = magnitude.astype(float).copy()
+    # Boolean-mask assignment keeps index aligned; `.loc` selects
+    # the eligible rows and replaces their magnitude weight with
+    # the R-derived one (including 0.0 for noise-floor drops).
+    if r_eligible.any():
+        final.loc[r_eligible] = r_weights.loc[r_eligible].astype(float)
+    return final
+
+
+async def _collect_rejection_context(db: Any) -> dict:
+    """Summarise rejections since the most recent successful retrain.
+
+    The retrainer doesn't join rejections into its training set yet (we'd
+    need a feature-snapshot replay at the time of rejection for that), but
+    surfacing the counts in every training-log row gives immediate
+    visibility into *what the pipeline filtered out* between runs. A
+    spike in `orchestrator_tier_locked` or `ai_signal_validator`
+    rejections is usually the first sign the gate or the Auditor needs
+    tuning. Later we can add a `features_replay` join to use these as
+    hard-negatives at train time.
+    """
+    try:
+        # Anchor window to the last successful retrain; fall back to 24h
+        # for a cold-start deployment where the log is empty.
+        last = await db[TRAINING_LOG_COLLECTION].find_one(
+            {"status": "success"}, sort=[("finished_at", -1)]
+        )
+        since_iso = (last or {}).get("finished_at")
+        if since_iso:
+            since = datetime.fromisoformat(since_iso.replace("Z", "+00:00"))
+        else:
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        pipeline = [
+            {"$match": {"logged_at": {"$gte": since}}},
+            {"$group": {"_id": "$source", "n": {"$sum": 1}}},
+        ]
+        by_source: dict[str, int] = {}
+        total = 0
+        async for row in db.rejected_signals.aggregate(pipeline):
+            by_source[row["_id"]] = row["n"]
+            total += row["n"]
+        return {
+            "since": since.isoformat(),
+            "total": total,
+            "by_source": by_source,
+        }
+    except Exception as e:
+        logger.warning(f"[ml_retrain] rejection-context pull failed: {e}")
+        return {"total": 0, "by_source": {}, "error": str(e)[:200]}
+
+
+async def run_nightly_retrain(
+    db: Any,
+    max_samples: int = MAX_SAMPLES,
+) -> dict:
+    """Retrain ``SignalModel`` on freshly labeled snapshots. Writes a new
+    artefact, appends to the training log, returns the log row as a dict.
+
+    Safe to run multiple times per day (each run produces a new artefact
+    version; prior versions are kept). Never mutates older models.
+    """
+    started_at = datetime.now(timezone.utc)
+    # perf_counter for monotonic wall-time; datetime subtraction would also
+    # work but this is immune to NTP skew and cheaper.
+    t0_wall = time.perf_counter()
+    log_row: dict = {
+        "started_at": started_at.isoformat(),
+        "status": "pending",
+    }
+
+    try:
+        from risedual_core.ml.signal_model import SignalModel, SignalModelConfig
+        from services.model_adaptation import (
+            apply_adaptations_to_weights,
+            detect_and_create_adaptations,
+        )
+
+        # Detect + create bounded adaptations from recent toxic-alert
+        # failure patterns BEFORE the heavy lifting. This plants the
+        # "retrain_adaptation_planned" narrative into the feed so admins
+        # see what's about to change. Always safe to call — every
+        # guardrail (cooldown, MAX_ACTIVE_ADAPTATIONS, evidence floor)
+        # lives inside the function.
+        try:
+            await detect_and_create_adaptations(db)
+        except Exception as e:
+            logger.warning(f"[retrain] adaptation detection failed: {e}")
+
+        X, y, w, w_severity_only, n, r_drift, outcomes_df = await _load_training_dataframe(db, max_samples)
+        log_row["samples"] = n
+        log_row["rejections_since_last_run"] = await _collect_rejection_context(db)
+
+        if n < MIN_SAMPLES_FOR_TRAINING:
+            log_row.update({
+                "status": "skipped",
+                "reason": f"insufficient_samples ({n} < {MIN_SAMPLES_FOR_TRAINING})",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "total_wall_seconds": round(time.perf_counter() - t0_wall, 3),
+            })
+            logger.warning(f"ML retrain skipped: {log_row['reason']}")
+            try:
+                from services.agent_activity_service import log_retrain_gated
+                await log_retrain_gated(reason=str(log_row['reason']))
+            except Exception:
+                pass
+            await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
+            return log_row
+
+        pos_rate = float(y.mean()) if n > 0 else 0.0
+        log_row["positive_rate"] = round(pos_rate, 4)
+        # Expose training-weight statistics so drift is visible in
+        # the retrain log without pulling the sample_weight array:
+        #   mean_sample_weight — drop = training on more noise/flat
+        #     days (weaker signal); spike = high-magnitude regime.
+        #   severity_strong_frac — fraction of rows at the 2.0
+        #     severity cap BEFORE regime weighting. Pure magnitude
+        #     signal so the metric is comparable across retrains
+        #     regardless of current regime.
+        #   regime_match_frac — fraction of rows whose regime
+        #     matches the current regime. A value near 1.0 means
+        #     the training set is regime-homogeneous; near 0.5 means
+        #     half the rows are from a different regime and being
+        #     down-weighted accordingly.
+        if n > 0:
+            log_row["mean_sample_weight"] = round(float(w.mean()), 4)
+            log_row["severity_strong_frac"] = round(
+                float((w_severity_only >= _WEIGHT_CAP).mean()), 4,
+            )
+            # R-weighting adoption + signal-purity metrics. As the
+            # features_snapshots backfill catches up and the live
+            # resolve path stamps execution economics, these values
+            # climb from 0 → stabilise at the coverage the trading
+            # book supports. r_skipped_frac is the fraction of
+            # R-eligible rows dropped via the 0.25 noise floor — a
+            # spike here means lots of stop-outs / tiny exits in the
+            # recent book, worth investigating.
+            log_row["r_eligible_frac"] = round(float(r_drift.get("r_eligible_frac", 0.0)), 4)
+            log_row["r_skipped_frac"] = round(float(r_drift.get("r_skipped_frac", 0.0)), 4)
+            # Infer regime match by dividing final weights by
+            # severity-only weights. Rows where the ratio is ~1.0
+            # kept full regime weight (match); ratio ~0.5 means
+            # regime mismatch. Runtime-safe division via
+            # `replace(0, 1)` for any severity-zero rows.
+            safe_sev = w_severity_only.replace(0, 1.0)
+            regime_ratio = (w / safe_sev).clip(0.0, 1.0)
+            log_row["regime_match_frac"] = round(
+                float((regime_ratio >= 0.99).mean()), 4,
+            )
+            # Data-driven vol regime derived from severity_strong_frac
+            # — complementary to the HMM regime_label. High_vol means
+            # we're training on a lot of ≥3% movers and should probably
+            # tighten position sizing downstream.
+            from ai_core.learning_upgrade import (
+                classify_vol_regime,
+                should_skip_retrain_low_signal,
+            )
+            log_row["vol_regime"] = classify_vol_regime(
+                log_row["severity_strong_frac"]
+            )
+
+            # Retrain quality gate — abort if the training set is
+            # mostly noise. Better to keep the previous model in
+            # production than push a regression trained on flat
+            # days. Threshold 0.8 lives in `learning_upgrade`.
+            if should_skip_retrain_low_signal(log_row["mean_sample_weight"]):
+                log_row.update({
+                    "status": "skipped",
+                    "reason": (
+                        f"low_signal_quality "
+                        f"(mean_sample_weight={log_row['mean_sample_weight']:.3f} < 0.8)"
+                    ),
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "total_wall_seconds": round(time.perf_counter() - t0_wall, 3),
+                })
+                logger.warning(f"ML retrain skipped: {log_row['reason']}")
+                await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
+                return log_row
+
+        version_n = _next_version_number()
+        new_version_tag = f"0.1.{version_n}"  # bumps the patch number
+        cfg = SignalModelConfig(model_version=new_version_tag)
+        model = SignalModel(config=cfg)
+
+        logger.info(
+            f"ML retrain: fitting v{version_n} on {n} samples "
+            f"(positive rate={pos_rate:.3f}, "
+            f"mean weight={log_row.get('mean_sample_weight', 1.0):.3f})"
+        )
+
+        # ── ADAPTATION HOOK (isolated, reversible, env-gated) ──
+        # Only line that touches sample_weight between _severity_weights
+        # output and model.fit. When ML_ADAPTATION_ENABLED=false the
+        # call runs in dry-run mode: summary computed for telemetry,
+        # weights returned unchanged. Errors never block the fit.
+        try:
+            import numpy as _np
+            w_mean_before = float(_np.asarray(w).mean()) if n > 0 else 0.0
+            w_pre = _np.asarray(w).copy()  # snapshot for impact calc
+            w, adaptation_summary, per_ad_masks = await apply_adaptations_to_weights(
+                db, X, w, y=y, return_masks=True,
+            )
+            if adaptation_summary:
+                w_mean_after = float(_np.asarray(w).mean()) if n > 0 else 0.0
+                log_row["adaptations_applied"] = adaptation_summary
+                log_row["adaptation_mean_weight_before"] = round(w_mean_before, 4)
+                log_row["adaptation_mean_weight_after"] = round(w_mean_after, 4)
+                log_row["adaptation_weight_delta_mean"] = round(
+                    w_mean_after - w_mean_before, 4,
+                )
+                # ── Counterfactual impact (ΔR, Δwin_rate) ──
+                # First-order proxy: re-weights existing R-multiple
+                # outcomes. Cheap (no second model.fit). Empty dict
+                # when the training frame doesn't carry r_multiple
+                # (warm-start / legacy rows).
+                impact = estimate_adaptation_impact(outcomes_df, w_pre, _np.asarray(w))
+                if impact:
+                    log_row["adaptation_impact"] = {
+                        k: round(v, 4) if isinstance(v, (int, float)) else v
+                        for k, v in impact.items()
+                    }
+                    logger.info(
+                        "[adaptation-impact] ΔR=%+.4f Δwin_rate=%+.3f "
+                        "coverage=%.2f",
+                        impact["delta_mean_r"],
+                        impact["delta_win_rate"],
+                        impact["rows_covered_frac"],
+                    )
+                    # Per-adaptation attribution: which specific rule
+                    # actually moved the needle? Enriches each summary
+                    # row with its own delta_mean_r / delta_win_rate.
+                    # Cost is O(n_adaptations × n_rows) — negligible.
+                    for i_ad, ad_row in enumerate(adaptation_summary):
+                        if i_ad >= len(per_ad_masks):
+                            break
+                        m = per_ad_masks[i_ad]
+                        try:
+                            m_arr = _np.asarray(m).astype(bool)
+                        except Exception:
+                            continue
+                        if not m_arr.any():
+                            continue
+                        # Counterfactual: set THIS adaptation's rows
+                        # back to their pre-adaptation weight while
+                        # keeping others at their adapted value.
+                        w_only = _np.asarray(w).copy()
+                        w_only[m_arr] = w_pre[m_arr]
+                        ad_impact = estimate_adaptation_impact(
+                            outcomes_df, w_only, _np.asarray(w),
+                        )
+                        if ad_impact:
+                            ad_row["delta_mean_r"] = round(
+                                ad_impact["delta_mean_r"], 4,
+                            )
+                            ad_row["delta_win_rate"] = round(
+                                ad_impact["delta_win_rate"], 4,
+                            )
+                logger.info(
+                    f"ML retrain: adaptation hook — "
+                    f"mean_weight {w_mean_before:.4f} → {w_mean_after:.4f} "
+                    f"({len(adaptation_summary)} active, "
+                    f"{sum(int(s.get('rows_matched', 0)) for s in adaptation_summary)} rows affected)"
+                )
+        except Exception as e:
+            logger.warning(f"[retrain] adaptation apply failed: {e}")
+
+        # ── Time the fit itself (the piece the 4-thread cap acts on) ──
+        # fit_wall_seconds     — monotonic wall-clock around model.fit().
+        # fit_cpu_seconds      — process-wide user+sys CPU time (captures
+        #                        xgboost's native thread pool).
+        # fit_cpu_threads_equiv — cpu/wall ratio. With n_jobs=4 we expect
+        #                        ~3.5-4.0 during tree-building phases and
+        #                        lower averages because CalibratedClassifierCV
+        #                        serialises its 5 folds. A sudden drop toward
+        #                        1.0 across runs signals thread-binding
+        #                        regression (e.g., a missing env override
+        #                        after a redeploy).
+        _t_fit_wall_start = time.perf_counter()
+        _t_fit_cpu_start = time.process_time()
+        model.fit(X, y, sample_weight=w)
+        fit_wall = time.perf_counter() - _t_fit_wall_start
+        fit_cpu = time.process_time() - _t_fit_cpu_start
+        log_row["fit_wall_seconds"] = round(fit_wall, 3)
+        log_row["fit_cpu_seconds"] = round(fit_cpu, 3)
+        log_row["fit_cpu_threads_equiv"] = round(fit_cpu / max(fit_wall, 1e-3), 2)
+
+        artefact_path = MODELS_DIR / f"{MODEL_ARTIFACT_PREFIX}{version_n}.joblib"
+        model.save(artefact_path)
+
+        # Top-10 feature importances for the log (dicts are ordered in py3.7+)
+        imps = dict(sorted(
+            model._feature_importances.items(),
+            key=lambda kv: kv[1],
+            reverse=True,
+        )[:10])
+
+        log_row.update({
+            "status": "success",
+            "model_version": new_version_tag,
+            "artefact_path": str(artefact_path),
+            "top_feature_importances": imps,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        })
+        logger.info(
+            f"ML retrain complete: {artefact_path} ({n} samples, "
+            f"fit_wall={fit_wall:.1f}s cpu={fit_cpu:.1f}s "
+            f"threads_equiv={log_row['fit_cpu_threads_equiv']:.2f})"
+        )
+        try:
+            from services.agent_activity_service import log_retrain_complete
+            await log_retrain_complete(
+                samples=n,
+                mean_weight=float(log_row.get("mean_sample_weight") or 0.0),
+                r_eligible_frac=float(log_row.get("r_eligible_frac") or 0.0),
+            )
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.exception("ML retrain failed")
+        log_row.update({
+            "status": "error",
+            "error": str(e)[:500],
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    # Stamp end-to-end wall-time on the success + error paths (the two skip
+    # paths stamped their own before returning). Placed here so every row
+    # that reaches MongoDB carries the metric — makes regressions spottable
+    # with a single `sort({"total_wall_seconds": -1})`.
+    log_row.setdefault(
+        "total_wall_seconds", round(time.perf_counter() - t0_wall, 3)
+    )
+
+    await db[TRAINING_LOG_COLLECTION].insert_one(log_row.copy())
+
+    # ── Auto-revert safety rail ──
+    # Runs AFTER the log row lands so ``evaluate_auto_revert_candidates``
+    # can count this retrain toward the 3-run window. Opt-in via
+    # ``ML_ADAPTATION_AUTO_REVERT_ENABLED``; fire-and-forget so
+    # a revert glitch can never corrupt the training log. See
+    # ``services.model_adaptation`` module docstring for gate
+    # semantics (epsilon, coverage, risk-compression).
+    try:
+        from services.model_adaptation import evaluate_auto_revert_candidates
+        reverted = await evaluate_auto_revert_candidates(db)
+        if reverted:
+            logger.info(
+                f"[auto-revert] disabled {len(reverted)} adaptation"
+                f"{'s' if len(reverted) != 1 else ''} based on negative "
+                f"ΔR history: {[r['metric'] for r in reverted]}"
+            )
+    except Exception as auto_revert_err:
+        logger.warning(f"[auto-revert] scan failed: {auto_revert_err}")
+
+    return log_row
+
+
+async def run_backfill_labeling(
+    db: Any,
+) -> dict:
+    """Force a manual labeler run (wraps the existing job for admin trigger)."""
+    from services.prediction_labeler import label_pending_snapshots
+    before = await db.features_snapshots.count_documents({"outcome": None})
+    await label_pending_snapshots(db)
+    after = await db.features_snapshots.count_documents({"outcome": None})
+    return {"labeled": before - after, "still_pending": after}
+
+
+async def get_training_history(
+    db: Any, limit: int = 20
+) -> list[dict]:
+    """Most-recent training runs, newest first. Owner-only surface."""
+    cursor = (
+        db[TRAINING_LOG_COLLECTION]
+        .find({}, {"_id": 0})
+        .sort("started_at", -1)
+        .limit(max(1, min(limit, 200)))
+    )
+    return await cursor.to_list(length=limit)
+
+
+def _classify_thread_binding_health(
+    recent_threads_equiv: list[float],
+) -> dict:
+    """Turn the last few `fit_cpu_threads_equiv` values into a health
+    verdict the UI can render without business logic.
+
+    With ``n_jobs=4`` on XGBoost + serialised ``CalibratedClassifierCV`` folds
+    we expect a per-run equivalent of ~2.5–3.5. Interpretation:
+
+    * mean >= 2.3  → ``ok``       (thread cap is binding as intended)
+    * mean >= 1.5  → ``warn``     (partial binding — investigate)
+    * mean <  1.5  → ``degraded`` (likely env overrides dropped or
+                                   ``n_jobs`` stripped from the estimator)
+    * <3 runs      → ``unknown``  (not enough samples to decide yet)
+    """
+    if len(recent_threads_equiv) < 3:
+        return {
+            "status": "unknown",
+            "reason": f"need 3+ runs with timing, have {len(recent_threads_equiv)}",
+            "window_mean": None,
+        }
+    mean = sum(recent_threads_equiv) / len(recent_threads_equiv)
+    if mean >= 2.3:
+        status, reason = "ok", "thread cap binding as expected (~2.3+)"
+    elif mean >= 1.5:
+        status, reason = "warn", "partial thread binding — worth a look"
+    else:
+        status, reason = (
+            "degraded",
+            "threads_equiv near 1.0 — n_jobs / env overrides may be missing",
+        )
+    return {
+        "status": status,
+        "reason": reason,
+        "window_mean": round(mean, 2),
+    }
+
+
+async def get_retrain_cost_trend(
+    db: Any, limit: int = 30
+) -> dict:
+    """Return the last N successful retrains' cost metrics plus aggregates.
+
+    Powers ``/api/admin/ml-retrain-cost-trend``. Only rows that carry the
+    timing fields added in the retrain-log improvement are included — pre-
+    telemetry legacy rows are counted but not plotted, so a newly-deployed
+    instance shows a clean "gathering baseline" state instead of spiky
+    charts with half the points missing.
+
+    The aggregates are deliberately scalar and chart-friendly so the UI
+    can render a sparkline + verdict badge without any client-side math.
+    """
+    limit = max(1, min(limit, 500))
+
+    # Pull only what the trend needs. Chronological (oldest → newest) so
+    # the UI can render left-to-right without re-sorting.
+    cursor = (
+        db[TRAINING_LOG_COLLECTION]
+        .find(
+            {"status": "success"},
+            {
+                "_id": 0,
+                "started_at": 1,
+                "model_version": 1,
+                "samples": 1,
+                "total_wall_seconds": 1,
+                "fit_wall_seconds": 1,
+                "fit_cpu_seconds": 1,
+                "fit_cpu_threads_equiv": 1,
+            },
+        )
+        .sort("started_at", -1)
+        .limit(limit)
+    )
+    recent_first = await cursor.to_list(length=limit)
+    rows = list(reversed(recent_first))  # oldest first for plotting
+
+    timed = [r for r in rows if isinstance(r.get("fit_wall_seconds"), (int, float))]
+    runs_without_timing = len(rows) - len(timed)
+
+    # Derived throughput: samples trained per second of fit wall-time.
+    # Stable across dataset-size shifts — the cleanest "did training get
+    # slower?" signal.
+    for r in timed:
+        fw = r.get("fit_wall_seconds") or 0.0
+        n = r.get("samples") or 0
+        r["samples_per_fit_second"] = round(n / fw, 1) if fw > 0 else None
+
+    aggregates: dict[str, Any] = {
+        "runs_with_timing": len(timed),
+        "runs_without_timing": runs_without_timing,
+    }
+    if timed:
+        fit_walls = sorted(float(r["fit_wall_seconds"]) for r in timed)
+        # Integer-index p95 — avoids the numpy dependency for a 4-line calc.
+        p95_idx = max(0, int(round(0.95 * (len(fit_walls) - 1))))
+        threads = [
+            float(r["fit_cpu_threads_equiv"]) for r in timed
+            if isinstance(r.get("fit_cpu_threads_equiv"), (int, float))
+        ]
+        throughputs = [
+            float(r["samples_per_fit_second"]) for r in timed
+            if isinstance(r.get("samples_per_fit_second"), (int, float))
+        ]
+        aggregates.update({
+            "mean_fit_wall_seconds": round(sum(fit_walls) / len(fit_walls), 2),
+            "p95_fit_wall_seconds": round(fit_walls[p95_idx], 2),
+            "mean_threads_equiv": (
+                round(sum(threads) / len(threads), 2) if threads else None
+            ),
+            "mean_samples_per_fit_second": (
+                round(sum(throughputs) / len(throughputs), 1)
+                if throughputs else None
+            ),
+        })
+
+    # Health check uses the 3 most recent runs (newest-first slice).
+    # Latency-to-detection trumps stability here — a cap regression should
+    # surface on the first night after the bad deploy, not after a week of
+    # averaging.
+    recent_threads = [
+        float(r["fit_cpu_threads_equiv"]) for r in timed[-3:]
+        if isinstance(r.get("fit_cpu_threads_equiv"), (int, float))
+    ]
+
+    return {
+        "runs": timed,
+        "count": len(timed),
+        "aggregates": aggregates,
+        "thread_binding_health": _classify_thread_binding_health(recent_threads),
+    }
+
+
+def get_latest_model_info() -> Optional[dict]:
+    """Walk the models directory and report the highest-version artefact."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    pattern = re.compile(rf"^{re.escape(MODEL_ARTIFACT_PREFIX)}(\d+)\.joblib$")
+    latest_n = 0
+    latest_path: Optional[Path] = None
+    for f in MODELS_DIR.glob(f"{MODEL_ARTIFACT_PREFIX}*.joblib"):
+        m = pattern.match(f.name)
+        if m and int(m.group(1)) > latest_n:
+            latest_n = int(m.group(1))
+            latest_path = f
+    if latest_path is None:
+        return None
+    stat = latest_path.stat()
+    return {
+        "version": f"0.1.{latest_n}",
+        "path": str(latest_path),
+        "size_bytes": stat.st_size,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+    }

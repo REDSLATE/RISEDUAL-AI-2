@@ -1,0 +1,80 @@
+{
+  "summary": "Iteration 115: OnboardingTour Feature Testing - Found and FIXED critical bug in tour step 2 selector. All tour features now working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Console", "issues": ["React duplicate key warnings for 'bid-1.xx' - existing issue in OrderFlowPanel, not related to OnboardingTour"]}
+    ]
+  },
+  "bugs_found_and_fixed": [
+    {
+      "file": "/app/frontend/src/components/OnboardingTour.jsx",
+      "line": 14,
+      "issue": "Invalid CSS selector using jQuery :contains() pseudo-selector",
+      "original": "[data-testid=\"watchlist\"],.animate-enter:has(h3:contains(\"Watchlist\"))",
+      "fixed_to": "[data-testid=\"watchlist-section\"]",
+      "root_cause": "The :contains() selector is jQuery-specific, not valid CSS. When tour advanced to step 2, document.querySelector() threw SyntaxError causing ErrorBoundary to catch and show 'Something went wrong' page.",
+      "additional_fix": "Added data-testid='watchlist-section' to Watchlist wrapper div in App.js line 116"
+    }
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_115.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/frontend/src/components/OnboardingTour.jsx (line 14 - fixed invalid CSS selector)",
+    "/app/frontend/src/App.js (line 116 - added data-testid='watchlist-section')"
+  ],
+  "success_rate": {
+    "backend": "N/A - frontend only testing",
+    "frontend": "100% - All OnboardingTour features working after fix"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 115 tested and fixed OnboardingTour feature. The tour has 10 steps with localStorage key 'risedual_tour_completed'. Key data-testids: 'onboarding-tour' (overlay), 'tour-tooltip' (tooltip card), 'tour-skip', 'tour-prev', 'tour-next', 'nav-tour-btn' (navbar button to re-trigger). Tour auto-triggers 2s after first login when localStorage key not set. Navbar also has 'nav-bots-shortcut' and 'nav-help-btn' buttons visible for logged-in users.",
+  "verified_features": {
+    "Landing page renders for unauthenticated users": "PASS",
+    "Login flow with admin credentials": "PASS",
+    "OnboardingTour auto-triggers on first login (2s delay)": "PASS",
+    "Tour does NOT auto-trigger when localStorage key is set": "PASS",
+    "Tour tooltip renders with correct step count (10 steps)": "PASS",
+    "Tour progress bar visible and updates": "PASS",
+    "Tour 'Next' button advances through all 10 steps": "PASS",
+    "Tour 'Back' button goes to previous step": "PASS",
+    "Tour 'Skip Tour' button closes tour and sets localStorage": "PASS",
+    "Tour completion sets localStorage key": "PASS",
+    "Navbar 'Tour' button (data-testid='nav-tour-btn') visible": "PASS",
+    "Navbar 'Tour' button manually re-triggers tour": "PASS",
+    "Navbar 'Bots' shortcut (data-testid='nav-bots-shortcut') visible": "PASS",
+    "Navbar 'Help' button (data-testid='nav-help-btn') visible": "PASS",
+    "Dashboard renders correctly after login": "PASS",
+    "All 10 tour steps display correct titles": "PASS"
+  },
+  "tour_steps_verified": [
+    "Step 1: Welcome to RISEDUAL AI (centered, no target)",
+    "Step 2: Live Market Data (targets watchlist-section)",
+    "Step 3: AI War Room (targets #ai-war-room)",
+    "Step 4: AI Investment Hypothesis (targets #ai-hypothesis)",
+    "Step 5: Sector Heatmap (targets #sector-heatmap)",
+    "Step 6: Whale Radar (targets #whale-radar)",
+    "Step 7: Trading Bots (targets bots-dashboard)",
+    "Step 8: Quick Access: Bots (targets nav-bots-shortcut)",
+    "Step 9: Help Center (targets nav-help-btn)",
+    "Step 10: You're All Set! (centered, final step)"
+  ],
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "summary": "Iteration 154: Guard Shadow Panel Frontend Testing - All features verified working. Admin Panel → Guard Shadow tab renders GuardShadowPanel component with live data. Summary grid shows 3 stats (Shadow Mode=ENFORCING, Decisions Logged=3, Would-Block Rate=0%). Window selector buttons (24h/3d/7d/30d) work correctly. By Source card shows crypto_bot with 3 allow/0 block. Filter inputs (source, entity, only-blocked checkbox, Apply button) all functional. Decisions list shows 3 entries with expandable rows showing detailed fields (would_notional, executed_action, executed_notional, risk_multiplier, proof_hashes). Proof Chain tab regression verified working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/src/components/admin/GuardShadowPanel.jsx",
+    "/app/frontend/src/components/AdminPanel.jsx",
+    "/app/backend/routes/admin_guard_shadow.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: Guard Shadow tab renders in Admin Panel at position 22 (Insights group: ...Proof Chain, Guard Shadow, Tools)",
+    "VERIFIED: GuardShadowPanel component loads with header 'Decision Pipeline Guard — Shadow Mode'",
+    "VERIFIED: Summary grid shows 3 stats with correct data-testids (guard-shadow-stat-mode, guard-shadow-stat-total, guard-shadow-stat-block-rate)",
+    "VERIFIED: Shadow Mode stat shows 'ENFORCING' badge (GUARD_SHADOW_MODE=0 — guard verdicts are live)",
+    "VERIFIED: Decisions Logged stat shows '3' with '3 allow · 0 block' breakdown",
+    "VERIFIED: Would-Block Rate stat shows '0%' with 'Low — safe to enforce' tone (green/emerald color)",
+    "VERIFIED: Window selector buttons (24h/3d/7d/30d) present with correct data-testids (guard-shadow-window-{24,72,168,720})",
+    "VERIFIED: Clicking window buttons changes selection and re-fetches data",
+    "VERIFIED: Refresh button (data-testid=guard-shadow-refresh) re-fetches summary and decisions",
+    "VERIFIED: By Source card (data-testid=guard-shadow-by-source) shows 'crypto_bot' with '3 ✓ 0 ✗ 0% blk'",
+    "VERIFIED: Filter inputs present - source filter, entity filter, only-blocked checkbox, Apply button",
+    "VERIFIED: Decisions list (data-testid=guard-shadow-decisions-list) shows 3 entries",
+    "VERIFIED: Decision rows have correct data-testids (guard-shadow-decision-{entity_id})",
+    "VERIFIED: Clicking decision row expands to show detailed fields (would_notional=$113.75, executed_action=SHORT, executed_notional=$325.00, risk_multiplier=0.35, proof_hashes)",
+    "VERIFIED: Proof Chain tab regression - renders correctly with 84 total blocks",
+    "VERIFIED: Crypto Bots tab - Run Bot button present and functional"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (17/17 test cases passed)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing shadow log data from previous bot runs (3 crypto_bot entries)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Guard Shadow Panel frontend is fully functional. The component is wired into AdminPanel at line 25 (import) and line 136 (renderer). Tab definition at line 73. All data-testids prefixed with 'guard-shadow-' are working correctly. The backend endpoints (/api/admin/guard-shadow/summary, /decisions) return valid data. GUARD_SHADOW_MODE is currently 0 (enforcing mode). The panel shows 3 shadow log entries from crypto_bot source with 0% would-block rate.",
+  "features_tested": {
+    "guard_shadow_tab_renders": true,
+    "summary_grid_displays": true,
+    "shadow_mode_stat_shows_enforcing": true,
+    "decisions_logged_stat_shows_count": true,
+    "would_block_rate_stat_shows_percentage": true,
+    "window_selector_buttons_present": true,
+    "window_selector_click_works": true,
+    "refresh_button_works": true,
+    "by_source_card_displays": true,
+    "filter_source_input_present": true,
+    "filter_entity_input_present": true,
+    "filter_only_blocked_checkbox_present": true,
+    "filter_apply_button_works": true,
+    "decisions_list_renders": true,
+    "decision_row_expansion_works": true,
+    "expanded_row_shows_detailed_fields": true,
+    "proof_chain_tab_regression_passes": true
+  },
+  "test_data_observed": {
+    "shadow_mode": "ENFORCING (GUARD_SHADOW_MODE=0)",
+    "total_decisions": 3,
+    "would_allow": 3,
+    "would_block": 0,
+    "would_block_rate": "0%",
+    "by_source": {
+      "crypto_bot": "3 ✓ 0 ✗ 0% blk"
+    },
+    "decision_entries": [
+      "crypto:SOL - crypto_bot - 2026-04-30 02:57:50 - SELL",
+      "crypto:ETH - crypto_bot - 2026-04-30 02:57:50 - SELL",
+      "crypto:SOL - crypto_bot - 2026-04-30 02:17:04 - SELL"
+    ],
+    "expanded_row_fields": {
+      "would_notional": "$113.75",
+      "executed_action": "SHORT",
+      "executed_notional": "$325.00",
+      "risk_multiplier": "0.35",
+      "proof_hashes": "b50fdc8439b80ba5888f6fda..."
+    },
+    "proof_chain_total_blocks": 84,
+    "admin_tab_order": "...Proof Chain (21), Guard Shadow (22), Tools (23)"
+  }
+}

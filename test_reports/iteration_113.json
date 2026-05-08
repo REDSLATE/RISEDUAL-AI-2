@@ -1,0 +1,96 @@
+{
+  "summary": "Iteration 113: Trading Bots (Phase 4) - Grid Bot, Signal Bot, TradingView Webhook Bot. Backend: 15/15 tests PASSED after fixing bug in _build_config. Frontend: All features working. All bots default to enabled=false as per user requirement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Console", "issues": ["React duplicate key warnings for 'bid-1.14' - existing issue in other components, not related to Trading Bots"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration113_trading_bots.py",
+    "/app/test_reports/pytest/iteration113_trading_bots_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BUG FIX: trading_bot_service.py _build_config() crashed when config was None. Added null check: if cfg is None: cfg = {}",
+    "POST /api/auth/login with admin returns 200 - PASS",
+    "POST /api/bots with type=grid creates bot with enabled=false - PASS",
+    "POST /api/bots with type=signal creates bot with enabled=false - PASS",
+    "POST /api/bots with type=webhook creates bot with webhook_secret and enabled=false - PASS",
+    "GET /api/bots returns list of user bots - PASS",
+    "PATCH /api/bots/{bot_id}/toggle with enabled=true activates bot - PASS",
+    "PATCH /api/bots/{bot_id}/toggle with enabled=false deactivates bot - PASS",
+    "DELETE /api/bots/{bot_id} deletes a bot - PASS",
+    "POST /api/bots/webhook/{bot_id}/{secret} executes trade when bot enabled - PASS",
+    "POST /api/bots/webhook/{bot_id}/{secret} returns error when bot disabled - PASS",
+    "POST /api/bots/webhook/{bot_id}/wrong_secret returns error for invalid secret - PASS",
+    "POST /api/bots without auth returns 401 - PASS",
+    "POST /api/bots/signal/process requires auth - PASS",
+    "POST /api/bots/signal/process processes signal through signal bots - PASS",
+    "POST /api/bots with invalid type returns 400 - PASS",
+    "Frontend: Login → Dashboard loads - PASS",
+    "Frontend: User menu has 'Trading Bots' option (data-testid='nav-bots-btn') - PASS",
+    "Frontend: Trading Bots panel opens with My Bots / Create tabs - PASS",
+    "Frontend: Create form shows Grid Bot / Signal Bot / Webhook type selector - PASS",
+    "Frontend: Create button shows 'Create Bot (OFF by default)' - PASS",
+    "Frontend: Bot cards show ON/OFF toggle, stats (Trades/Signals/P&L), config summary - PASS",
+    "Frontend: Toggle switch defaults to OFF (bg-slate-700) - PASS",
+    "Frontend: Toggle can be clicked to turn ON (bg-lime-500) - PASS"
+  ],
+  "updated_files": [
+    "/app/backend/services/trading_bot_service.py (BUG FIX: Added null check for cfg in _build_config)",
+    "/app/backend/tests/test_iteration113_trading_bots.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 tests passed)",
+    "frontend": "100% - All Trading Bots UI components visible and functional"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!",
+    "owner": "managingdirector@redslateholdings.com / RedSlate2026!"
+  },
+  "seed_data_creation": "None - tests create and cleanup their own bots",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 113 verified Trading Bots (Phase 4). Backend endpoints: POST /api/bots (creates bot with enabled=false), GET /api/bots (list user bots), PATCH /api/bots/{id}/toggle (toggle on/off), DELETE /api/bots/{id}, POST /api/bots/webhook/{id}/{secret} (webhook receiver - no auth, uses secret), POST /api/bots/signal/process (requires auth). Frontend: Trading Bots accessible via user menu dropdown (data-testid='nav-bots-btn'). Panel has My Bots/Create tabs (data-testid='bot-tab-list'/'bot-tab-create'). Create form has 3 type buttons (create-bot-type-grid/signal/webhook), name input (create-bot-name), create button (create-bot-submit) that says 'Create Bot (OFF by default)'. Bot cards show toggle (bot-toggle-{id}), stats (trades/signals/pnl), and config summary. Webhook bots get a unique webhook_secret and can copy the URL. Grid bots run every 30s via APScheduler when enabled.",
+  "verified_features": {
+    "admin_login_200": "PASS",
+    "create_grid_bot_enabled_false": "PASS",
+    "create_signal_bot_enabled_false": "PASS",
+    "create_webhook_bot_with_secret_enabled_false": "PASS",
+    "get_bots_returns_list": "PASS",
+    "toggle_bot_on": "PASS",
+    "toggle_bot_off": "PASS",
+    "delete_bot": "PASS",
+    "webhook_executes_when_enabled": "PASS",
+    "webhook_fails_when_disabled": "PASS",
+    "webhook_fails_wrong_secret": "PASS",
+    "bots_without_auth_401": "PASS",
+    "signal_process_requires_auth": "PASS",
+    "signal_process_with_auth": "PASS",
+    "invalid_bot_type_400": "PASS",
+    "frontend_login_dashboard_loads": "PASS",
+    "frontend_trading_bots_menu_item": "PASS",
+    "frontend_panel_opens": "PASS",
+    "frontend_my_bots_create_tabs": "PASS",
+    "frontend_type_selector": "PASS",
+    "frontend_off_by_default_button": "PASS",
+    "frontend_bot_cards_with_toggle": "PASS",
+    "frontend_toggle_defaults_off": "PASS"
+  },
+  "bug_fixed": {
+    "file": "/app/backend/services/trading_bot_service.py",
+    "issue": "AttributeError: 'NoneType' object has no attribute 'get' in _build_config",
+    "root_cause": "When creating a bot without config parameter, cfg was None instead of empty dict",
+    "fix": "Added null check at start of _build_config: if cfg is None: cfg = {}"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

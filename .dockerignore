@@ -1,0 +1,12 @@
+# Docker ignore patterns
+node_modules
+.git
+.emergent
+*.pyc
+__pycache__
+.env.local
+test_reports/
+memory/
+*.pdf
+*.md
+!README.md

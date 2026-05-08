@@ -1,0 +1,65 @@
+{
+  "summary": "Iteration 131: ML Paper Trading PnL Dashboard & Calibration Curve Visualization - 12/12 BACKEND TESTS PASSED, ALL FRONTEND UI TESTS PASSED. Both new ML enhancements verified working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "ML Controls",
+        "issues": ["Transient 'Failed to load ML status' toast appeared during testing - known pre-existing timing issue from iteration 130, APIs verified working"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration131_ml_paper_calibration.py",
+    "/app/test_reports/pytest/iteration131_ml_paper_calibration_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "React key warning: 'Encountered two children with the same key' for bid components - pre-existing issue not related to new ML features"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration131_ml_paper_calibration.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": {
+    "admin": "admin@risedual.ai / RiseDual2026!"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 131 tested two new ML enhancements: (1) ML Paper Trading PnL Dashboard at GET /api/ml/paper-trades - returns trades array, summary (total_trades, open_trades, closed_trades, total_pnl_usd, win_rate), cumulative_pnl array, position_sizing. Currently returns 0 trades as no ML autonomous trades exist (Tier 2 locked). (2) Calibration Curve Visualization at GET /api/ml/calibration-curve - returns status='no_model', empty curve_data and summary when no trained model exists. Frontend components MLPaperPnL.jsx and CalibrationChart.jsx are lazy-loaded in MLControls.jsx. Both show appropriate empty states: 'No ML paper trades yet' and 'Awaiting trained model'. ML Controls tab is in WorkspaceHub (Workspace > ML Controls tab, data-testid='workspace-tab-ml').",
+  "verified_features": {
+    "GET /api/ml/paper-trades returns 200": "PASS",
+    "paper-trades has trades array": "PASS",
+    "paper-trades has summary with total_trades, open_trades, closed_trades, total_pnl_usd, win_rate": "PASS",
+    "paper-trades has cumulative_pnl array": "PASS",
+    "paper-trades has position_sizing with avg_size_usd, max_size_usd, min_size_usd": "PASS",
+    "paper-trades limit parameter works": "PASS",
+    "paper-trades returns 0 ML trades (Tier 2 locked)": "PASS",
+    "GET /api/ml/calibration-curve returns 200": "PASS",
+    "calibration-curve has status field": "PASS",
+    "calibration-curve has curve_data array": "PASS",
+    "calibration-curve has summary object": "PASS",
+    "calibration-curve returns no_model status (no trained model)": "PASS",
+    "ML endpoints consistency check passes": "PASS",
+    "Frontend: ML Controls tab accessible in Workspace hub": "PASS",
+    "Frontend: ML Paper PnL section visible with data-testid='ml-paper-pnl'": "PASS",
+    "Frontend: 'No ML paper trades yet' empty state displayed": "PASS",
+    "Frontend: '0 trades' badge displayed": "PASS",
+    "Frontend: ML Paper Refresh button present with data-testid='ml-paper-refresh'": "PASS",
+    "Frontend: Calibration Chart section visible with data-testid='calibration-no-model'": "PASS",
+    "Frontend: 'Awaiting trained model' message displayed": "PASS"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}

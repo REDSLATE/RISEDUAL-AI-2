@@ -1,0 +1,41 @@
+# Pre-commit hooks for RISEDUAL AI.
+#
+# Install locally (one-time):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Runs automatically on `git commit`. CI mirrors these hooks in
+# `.github/workflows/ci.yml` so PRs that skip pre-commit still get
+# caught before merge.
+#
+# The single most important hook here is the direction-tuple lint —
+# it statically prevents the 2026-05-01 bug class from returning.
+
+repos:
+  - repo: local
+    hooks:
+      - id: no-local-direction-tuples
+        name: Ban hardcoded direction tuples
+        description: >-
+          Fails commit if a .py file introduces a literal tuple/set/list
+          containing 2+ direction tokens (BUY/LONG/BULLISH/STRONG_BUY/etc.)
+          outside the explicit allowlist in
+          backend/tests/test_no_local_direction_tuples.py. Route direction
+          interpretation through services.prediction_tracker.canonical_ai_dir.
+        entry: python -m pytest backend/tests/test_no_local_direction_tuples.py -q --no-header
+        language: system
+        pass_filenames: false
+        files: '^backend/.*\.py$'
+        stages: [pre-commit]
+
+      - id: direction-grading-regression
+        name: Pin STRONG_*/WEAK_* grading contract
+        description: >-
+          Runs the direction-grading regression suite on every commit
+          that touches backend/ Python — guarantees canonical_ai_dir
+          keeps recognising STRONG_*/WEAK_* / BULLISH / UP / etc.
+        entry: python -m pytest backend/tests/test_strong_direction_grading.py -q --no-header
+        language: system
+        pass_filenames: false
+        files: '^backend/.*\.py$'
+        stages: [pre-commit]

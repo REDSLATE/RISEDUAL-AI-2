@@ -1,0 +1,78 @@
+name: Data-Integrity Gate
+
+# The single job below runs the two structural contracts from the
+# 2026-05-01 direction-token cleanup on every PR:
+#
+#   1. test_no_local_direction_tuples — AST-level lint that bans new
+#      hardcoded direction tuples anywhere in backend/. Any PR adding
+#      a new one must either route through canonical_ai_dir or add an
+#      allowlist entry with a one-line justification.
+#
+#   2. test_strong_direction_grading — pinning the STRONG_*/WEAK_* →
+#      LONG/SHORT mapping so the canonical_ai_dir contract can't
+#      silently regress.
+#
+# If either check fails, the PR is blocked from merging. This is the
+# mechanical gate that makes the bug class structurally impossible
+# to reintroduce via drift.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**/*.py'
+      - '.github/workflows/data-integrity-gate.yml'
+  push:
+    branches: [ main ]
+
+jobs:
+  direction-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend test deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          # PyTorch CPU wheel index is added as an extra index so any
+          # transitive `torch` dep resolves to the CPU build instead
+          # of pulling the multi-GB CUDA wheel — keeps the runner fast
+          # and avoids OOM on free-tier CI. Harmless when nothing in
+          # requirements.txt actually pulls torch (the resolver just
+          # ignores the extra index).
+          #
+          # The second extra-index is the Emergent CDN, which is
+          # where `emergentintegrations` is served. PyPI returns 404
+          # for that package by design (it's an internal SDK), so
+          # without this line CI fails with:
+          #   "ERROR: No matching distribution found for emergentintegrations"
+          pip install \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
+            -r requirements.txt
+          # Belt-and-braces: pytest is pinned in requirements.txt
+          # already, but keeping this line guarantees CI never breaks
+          # if someone reorders the requirements file or adds a
+          # constraint that delays pytest resolution.
+          pip install pytest
+
+      - name: Run direction-tuple lint
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/test_no_local_direction_tuples.py -v --no-header
+
+      - name: Run direction-grading regression
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/test_strong_direction_grading.py -v --no-header

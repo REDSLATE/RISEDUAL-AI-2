@@ -1,0 +1,84 @@
+{
+  "summary": "Iteration 140: Magnitude-path retirement evaluation, Digest preview modal, Terminal Mode polish, Admin duplicate-button audit. All 33 backend tests passed (14 new + 19 regression). Frontend verified: Terminal Mode with splitters, double-click reset, status bar; Admin MLHealthStrip with R-adoption card; Admin tabs switching works correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "UserWorkspace modal access",
+        "issue": "The UserWorkspace modal (containing DigestToggle with 'Preview & send' button) is not accessible from the current UI. The 'My Workspace' menu item navigates to the workspace view instead of opening the modal.",
+        "affected_selectors": ["[data-testid=\"user-workspace\"]", "[data-testid=\"digest-preview-modal\"]"],
+        "priority": "MEDIUM",
+        "note": "Backend endpoints /api/digest/my-preview and /api/digest/send-now are working correctly. The modal component exists but needs a UI trigger."
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration140_magnitude_digest_terminal.py",
+    "/app/backend/tests/test_iteration59_toxic_spikes_alert.py",
+    "/app/backend/tests/test_signal_model_sample_weight.py",
+    "/app/backend/tests/test_adaptation_why_endpoint.py"
+  ],
+  "action_items": [
+    "Add UI trigger to open UserWorkspace modal (currently 'My Workspace' navigates to workspace view instead of opening the modal containing DigestToggle)"
+  ],
+  "critical_code_review_comments": [
+    "GET /api/admin/tier3-progress correctly returns r_adoption.history[] with {at, r_eligible_frac, r_skipped_frac, samples} and verdict with {threshold:0.7, required_consecutive:3, consecutive_stable_runs, latest_r_eligible_frac, magnitude_retirement_ready, runs_tracked}",
+    "GET /api/digest/my-preview correctly returns content_summary, preview (overview_headline, top_predictions[3], top_smart_money[3], alert_titles[3]), email, generated_at - available to ALL authed users",
+    "MLHealthStrip renders 6 cards including new R-weighting adoption card with percentage, sparkline, and verdict copy",
+    "Terminal Mode splitters use pointer events (pointerdown/pointermove/pointerup), 1.5px wide bars with grip dots on hover, double-click resets to default (52/55)",
+    "Terminal status bar shows 'Layout modified' + Reset button when splits are non-default",
+    "Admin panel 12 tabs all switch correctly with scoped refresh and close button working"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration140_magnitude_digest_terminal.py"
+  ],
+  "success_rate": {
+    "backend": "100% (33/33 tests passed - 14 new + 19 regression)",
+    "frontend": "95% - Terminal Mode, MLHealthStrip, Admin tabs all working. UserWorkspace modal not accessible from UI."
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 140 complete. New features: (1) r_adoption block in tier3-progress with history and verdict for magnitude retirement evaluation, (2) /api/digest/my-preview endpoint for user-level preview, (3) MLHealthStrip R-adoption card, (4) Terminal Mode with pointer events, double-click reset, status bar Reset button. One issue: UserWorkspace modal (containing DigestToggle with Preview & send button) is not accessible from UI - the modal component exists but needs a trigger.",
+  "verified_features": {
+    "r_adoption_endpoint": {
+      "endpoint": "GET /api/admin/tier3-progress",
+      "new_fields": ["r_adoption.history[]", "r_adoption.verdict"],
+      "verdict_fields": ["threshold", "required_consecutive", "consecutive_stable_runs", "latest_r_eligible_frac", "magnitude_retirement_ready", "runs_tracked"],
+      "auth_gate": "owner-gated"
+    },
+    "digest_my_preview": {
+      "endpoint": "GET /api/digest/my-preview",
+      "response_fields": ["content_summary", "preview", "email", "generated_at"],
+      "preview_fields": ["overview_headline", "top_predictions[3]", "top_smart_money[3]", "alert_titles[3]"],
+      "auth_gate": "all authed users (not admin-only)"
+    },
+    "terminal_mode": {
+      "splitters": "pointer events (pointerdown/pointermove/pointerup)",
+      "splitter_width": "1.5px with grip dots on hover",
+      "double_click_reset": "resets to DEFAULT_H=52, DEFAULT_V=55",
+      "status_bar": "shows 'Layout modified' + Reset button when dirty",
+      "touch_support": "touch-none class prevents mobile scroll interference",
+      "data_testids": ["terminal-mode-hub", "terminal-grid", "terminal-status-bar", "terminal-splitter-horizontal", "terminal-splitter-vertical", "terminal-clock", "terminal-reset-layout"]
+    },
+    "ml_health_strip": {
+      "grid": "lg:grid-cols-6",
+      "r_adoption_card": {
+        "icon": "Layers",
+        "shows": "percentage + sparkline + verdict copy",
+        "data_testid": "ml-health-r-adoption"
+      }
+    },
+    "admin_tabs": {
+      "tabs_tested": ["users", "waitlist", "providers", "vault", "broker", "cache", "media", "security", "promos", "help-search", "conviction", "tools"],
+      "all_switching": true,
+      "close_button": "working"
+    }
+  }
+}

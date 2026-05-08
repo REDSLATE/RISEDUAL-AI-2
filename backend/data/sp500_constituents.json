@@ -1,0 +1,31 @@
+{
+  "_source": "Curated S&P 500-adjacent US large/mid-cap seed list. Used by services/top_universe_service.py as the candidate pool for market-cap ranking. Not intended to be an official index snapshot — just a well-diversified set large enough to produce meaningful top-100/200/300 tiers after ranking. Safe to re-generate from en.wikipedia.org/wiki/List_of_S%26P_500_companies if desired.",
+  "_updated_at": "2026-02-01",
+  "tickers": [
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","GOOG","META","BRK.B","LLY","TSM","AVGO","TSLA","WMT","JPM","V","XOM","UNH","MA","COST","ORCL",
+    "PG","JNJ","HD","ABBV","NFLX","BAC","KO","CVX","CRM","AMD","MRK","PEP","TMUS","LIN","CSCO","ADBE","ACN","ABT","MCD","WFC",
+    "IBM","PM","GE","TXN","ISRG","VZ","NOW","CAT","DIS","AXP","QCOM","INTU","MS","GS","T","AMGN","PFE","BKNG","SPGI","SYK",
+    "BLK","NEE","RTX","PGR","HON","C","BSX","LOW","LMT","UBER","ETN","DHR","TJX","COP","BA","ADP","VRTX","MU","SCHW","PLD",
+    "ANET","GILD","UPS","MDT","NKE","FI","DE","KKR","CB","MMC","REGN","ADI","PANW","AMT","ICE","SBUX","KLAC","INTC","SO","LRCX",
+    "CI","CMG","TT","GEV","PH","ZTS","DUK","MDLZ","EQIX","ELV","APH","BMY","CDNS","MO","SNPS","WM","SHW","AON","PYPL","CME",
+    "WELL","USB","MCO","CRWD","CTAS","CVS","NOC","MMM","ITW","CL","MCK","TDG","EOG","TGT","ORLY","PNC","CEG","MSI","APD","FDX",
+    "CSX","FCX","ABNB","EMR","SLB","GD","MAR","HCA","ADSK","WMB","PSX","ROP","BDX","NSC","COF","APO","AJG","NXPI","AFL","AZO",
+    "ECL","FTNT","KMB","MNST","PCAR","DLR","MPC","OXY","TFC","TEL","ROST","PSA","SRE","TRV","HLT","SPG","BK","CHTR","O","ALL",
+    "PAYX","DHI","MET","AEP","STZ","AIG","LHX","URI","KMI","DFS","LEN","EW","KVUE","IQV","FIS","FAST","CMI","HES","D","GM",
+    "VLO","F","JCI","GWW","AMP","COR","CTSH","VMC","GIS","OTIS","CARR","CPRT","EXC","ROK","MSCI","IR","PRU","XEL","CTVA","KR",
+    "CBRE","YUM","OKE","A","DAL","DD","MLM","VRSK","HUM","AME","CNC","ACGL","DOW","MPWR","KDP","PCG","SYY","NUE","IT","MCHP",
+    "HWM","GLW","ODFL","VST","FICO","NEM","EA","TTWO","MTB","ON","IDXX","EXR","AXON","BIIB","KHC","ED","WEC","DVN","IRM","WTW",
+    "CSGP","TRGP","ANSS","EFX","EIX","DLTR","GEHC","GRMN","CHD","PPG","STT","NVR","FITB","LULU","EBAY","WAB","RSG","LYB","CDW","EL",
+    "AWK","PWR","ETR","KEYS","TSCO","HIG","PHM","RMD","HBAN","WBD","HPQ","ROL","CAH","DECK","FE","STLD","TROW","WY","STE","FANG",
+    "VLTO","ZBH","CNP","TYL","BRO","CINF","MTD","GPN","NTAP","ES","ATO","ADM","HSY","PPL","PTC","DOV","CMS","WAT","EXPE","ULTA",
+    "MOH","VTR","AEE","SW","SBAC","DRI","BALL","PKG","LH","EQT","ALGN","DG","RF","JBHT","TDY","WST","ARE","WDC","STX","K",
+    "CFG","FSLR","CTRA","BAX","WRB","GDDY","ILMN","ESS","RJF","IFF","DGX","BLDR","EG","NDAQ","CNH","J","MAA","EPAM","PNR","NTRS",
+    "LYV","LDOS","VRSN","BBY","INVH","DPZ","COO","AVB","ZBRA","PFG","AVY","EXPD","APTV","CLX","TER","CCL","L","CBOE","LNT","EXPE",
+    "UAL","WBA","FOX","FOXA","MKC","SWK","CHRW","TXT","OMC","SWKS","CF","SYF","CPAY","FFIV","HST","WYNN","KIM","POOL","AMCR","BG",
+    "UDR","MAS","JKHY","AKAM","DVA","JBL","BXP","TAP","CRL","HRL","HAS","AOS","TPR","IP","TECH","NCLH","LW","AES","FMC","SOLV",
+    "PAYC","HII","NWSA","NWS","RVTY","CPT","PODD","IEX","BEN","REG","EVRG","MRNA","HOLX","DOC","INCY","AIZ","SMCI","NI","ZM","GEN",
+    "CZR","HPE","ALB","MGM","RL","MKTX","TFX","VTRS","UHS","GNRC","PARA","DAY","MOS","EMN","WRK","MHK","ENPH","HSIC","CE","CTLT",
+    "RCL","MTCH","HBI","GPS","NDSN","HAL","BWA","IVZ","AAL","AAP","FLT","COIN","PLTR","SOFI","HOOD","SNAP","PINS","RBLX","U","RIVN",
+    "LCID","DASH","ABNB","DKNG","HUBS","DOCU","TWLO","OKTA","ZS","DDOG","NET","SHOP","SQ","PATH","FSLY","BILL","CFLT","SNOW","MDB","ASAN"
+  ]
+}

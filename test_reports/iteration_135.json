@@ -1,0 +1,63 @@
+{
+  "summary": "Level-2 AI Chat Actions feature fully tested. Backend: 17/17 tests passed. Frontend: Chat L2 action buttons render correctly with cyan accent and arrow suffix, clicking routes to Research hub and closes chat. Admin Panel Chip CTR tab shows 5 KPIs (Shown, Clicked, L1 CTR, L2 CTR amber, Signal) plus two tables (Top Clicked Chips, Top Clicked Deep-Link Actions).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/analytics/chip-event", "issue": "Accepts case-insensitive action values (SHOWN, Clicked work) - not a bug per se, just FYI"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["React key warnings for bid-* elements (duplicate keys) - pre-existing, not related to this feature"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration135_l2_chat_actions.py",
+    "/app/test_reports/pytest/iteration135_l2_chat_actions_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Duplicate trigger_help_search_digest decorators in analytics.py (lines 277 and 461) - noted as legacy per main agent",
+    "Owner account (managingdirector@redslateholdings.com) is deactivated in test environment"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration135_l2_chat_actions.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (all L2 features verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "Chip events created during testing for telemetry verification",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Level-2 AI Chat Actions fully implemented and tested. Key selectors: [data-testid='actions-<idx>'] for action rows, [data-testid='action-btn-<idx>-<n>'] for action buttons, [data-testid='followups-<idx>'] for chip rows, [data-testid='followup-chip-<idx>-<n>'] for chips. Admin Panel Chip CTR tab accessible via user menu -> Admin Panel -> Chip CTR tab.",
+  "verified_features": {
+    "POST /api/chat/followups": {
+      "status": "PASS",
+      "details": "Returns {chips:[3 strings], actions:[0-2 items]}. Ticker-specific replies get research+watchlist actions. Generic replies get empty actions."
+    },
+    "POST /api/analytics/chip-event": {
+      "status": "PASS",
+      "details": "Accepts shown/clicked/action-shown/action-clicked. Invalid actions return {ok:false, reason:'bad_action'}. Events persist to MongoDB chip_events collection."
+    },
+    "GET /api/analytics/chip-events/stats": {
+      "status": "PASS",
+      "details": "Returns window_days, shown, clicked, ctr, action_shown, action_clicked, action_ctr, top_clicked[], top_actions[]. Admin/owner role required."
+    },
+    "Frontend L2 Action Buttons": {
+      "status": "PASS",
+      "details": "Cyan-accented buttons with arrow (→) suffix render in 'Go' row above gray L1 chips in 'Next' row. Clicking routes to target hub and closes chat."
+    },
+    "Admin Panel Chip CTR Tab": {
+      "status": "PASS",
+      "details": "5 KPI grid (Shown, Clicked, L1 CTR, L2 CTR amber, Signal High/Medium/Low) + Top Clicked Chips table + Top Clicked Deep-Link Actions table."
+    },
+    "L1 Chip Click Behavior": {
+      "status": "PASS",
+      "details": "Clicking followup chip sets input and fires 'clicked' telemetry. Auto-send behavior verified in code."
+    }
+  }
+}

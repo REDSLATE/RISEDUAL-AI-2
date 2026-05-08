@@ -1,0 +1,82 @@
+{
+  "summary": "Iteration 145: RISEDUAL CLI Prototype Port - Ops Snapshot, ECE Calibration, Shadow Stats Notes. All 50 tests pass (33 unit + 17 API). Frontend Health tab verified with all 8 data-testid elements present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ops_snapshot.py",
+    "/app/backend/tests/test_calibration_ece.py",
+    "/app/backend/tests/test_shadow_stats_notes.py",
+    "/app/backend/tests/test_ops_snapshot_api.py",
+    "/app/test_reports/pytest/iteration145_ops_snapshot_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SECURITY VERIFIED: ops-snapshot endpoint never leaks API key values - tested for sk_live, sk_test, olyznuucpx, sk-emergent patterns",
+    "All 9 KNOWN_FLAGS are always present in operator_flags array even when unset (set: false, value: null)",
+    "Mongo probe returns real ping_ms (0.4ms observed) - not just config check",
+    "Scheduler heartbeat correctly reads from research_shadow_decisions/crypto_paper_trades/paper_trades collections",
+    "ECE calculation matches RISEDUAL CLI prototype formula - sample-weighted bucket midpoint vs win-rate gap",
+    "Notes arrays are always non-empty - either heuristic warnings or 'All gauges nominal.' / 'healthy' messages"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ops_snapshot_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (50/50 tests)",
+    "frontend": "100% (all 8 OpsSnapshotPanel elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - all tests use existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 145 added three patterns from RISEDUAL CLI prototype: (A) GET /api/admin/ops-snapshot with full health/config readout, (B) ECE + notes in GET /api/admin/conviction/calibration, (C) notes array in GET /api/admin/shadow/stats. All endpoints are admin-only, read-only, no schema changes. Frontend OpsSnapshotPanel renders in AdminPanel Health tab with data-testid='admin-tab-ops'. All 50 tests pass.",
+  "features_tested": {
+    "backend_a_ops_snapshot": {
+      "endpoint": "GET /api/admin/ops-snapshot",
+      "auth": "admin-only (403 for non-admin, 401 unauth)",
+      "payload_keys": ["generated_at", "runtime", "operator_flags", "extra_flags", "integrations", "mongo", "scheduler", "tier3", "notes"],
+      "security": "VERIFIED - no API key values leak (tested sk_live, sk_test, olyznuucpx patterns)",
+      "mongo_probe": "Real Motor ping - 0.4ms observed",
+      "scheduler_heartbeat": "21m ago - reads from research_shadow_decisions/crypto_paper_trades/paper_trades",
+      "tier3": "Mirrors fetch_tier_readiness - 32.4% progress, tier3_unlocked=false, adversarial_phase=shadow",
+      "notes": "Always non-empty - 'All gauges nominal.' when healthy"
+    },
+    "backend_b_calibration_ece": {
+      "endpoint": "GET /api/admin/conviction/calibration?days=30",
+      "ece_object": "Present with conviction and confidence numeric/null fields",
+      "notes_array": "Present with ECE warnings (>0.10 = poor, >0.05 = borderline) + monotonicity warnings",
+      "coexistence": "Both ECE and monotonicity checks present in response"
+    },
+    "backend_c_shadow_stats_notes": {
+      "endpoint": "GET /api/admin/shadow/stats",
+      "notes_array": "Present with heuristic guidance (no decisions, sample size, win-rate, healthy)",
+      "heuristic_branches": "5 branches covered in test_shadow_stats_notes.py"
+    },
+    "frontend_a_health_tab": {
+      "location": "AdminPanel > Operations group > Health tab",
+      "tab_testid": "admin-tab-ops",
+      "icon": "HeartPulse",
+      "panel_elements_verified": [
+        "ops-snapshot-panel",
+        "ops-notes-list",
+        "ops-mongo-status",
+        "ops-scheduler-status",
+        "ops-tier3-progress",
+        "ops-integrations-list",
+        "ops-flags-list",
+        "ops-refresh-btn"
+      ]
+    },
+    "regression": {
+      "other_admin_tabs": "Users, Waitlist, Providers, Vault, Broker, Cache, Media, Security, Promos, Help Search, Chip CTR, Conviction, Crypto Bots, Adversarial, Shadow, Patents, Tools - all still accessible",
+      "unit_tests": "33 unit tests pass (test_ops_snapshot.py, test_calibration_ece.py, test_shadow_stats_notes.py)"
+    }
+  }
+}

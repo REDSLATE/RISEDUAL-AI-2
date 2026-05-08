@@ -1,0 +1,265 @@
+
+import React from "react";
+import {
+  ShieldCheck,
+  Search,
+  Database,
+  Clock3,
+  AlertTriangle,
+  XCircle,
+  CheckCircle2,
+} from "lucide-react";
+
+const trustBadgeMap = {
+  official: {
+    label: "Official",
+    icon: ShieldCheck,
+    tone: "wr-badge-official",
+  },
+  search: {
+    label: "Search",
+    icon: Search,
+    tone: "wr-badge-search",
+  },
+  fallback: {
+    label: "Fallback",
+    icon: Database,
+    tone: "wr-badge-fallback",
+  },
+  cached: {
+    label: "Cached",
+    icon: Clock3,
+    tone: "wr-badge-cached",
+  },
+};
+
+const statusBadgeMap = {
+  live: {
+    label: "Live",
+    icon: CheckCircle2,
+    tone: "wr-status-live",
+  },
+  partial: {
+    label: "Partial",
+    icon: AlertTriangle,
+    tone: "wr-status-partial",
+  },
+  timeout: {
+    label: "Timeout",
+    icon: Clock3,
+    tone: "wr-status-timeout",
+  },
+  error: {
+    label: "Error",
+    icon: XCircle,
+    tone: "wr-status-error",
+  },
+};
+
+function getTrustKind(result) {
+  if (result.cached) return "cached";
+  if (result.engine === "sec" || result.engine === "fred") return "official";
+  if (result.engine === "ddg" || result.engine === "ddg_news") return "search";
+  return "fallback";
+}
+
+function getStatusKind(result) {
+  if (result.status === "ok" || result.status === "cached") return "live";
+  if (result.status === "timeout") return "timeout";
+  if (result.status === "error") return "error";
+  return "partial";
+}
+
+function Badge({ icon: Icon, label, tone }) {
+  return (
+    <span className={`wr-badge ${tone}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  );
+}
+
+function formatFreshness(seconds) {
+  if (seconds == null) return "Unknown freshness";
+  if (seconds < 60) return `${seconds}s old`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m old`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h old`;
+  return `${Math.floor(seconds / 86400)}d old`;
+}
+
+export function WarRoomSourceCard({ result }) {
+  const trustKind = getTrustKind(result);
+  const statusKind = getStatusKind(result);
+  const trustConfig = trustBadgeMap[trustKind];
+  const statusConfig = statusBadgeMap[statusKind];
+
+  return (
+    <div className="group rounded-2xl border border-white/10 bg-[#0B1426] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all duration-200 hover:border-white/15 hover:bg-[#101a31]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-semibold text-white">
+              {result.title || result.engine?.toUpperCase()}
+            </h3>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Source: <span className="uppercase tracking-wide">{result.engine}</span>
+          </p>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Badge
+            icon={trustConfig.icon}
+            label={trustConfig.label}
+            tone={trustConfig.tone}
+          />
+          <Badge
+            icon={statusConfig.icon}
+            label={statusConfig.label}
+            tone={statusConfig.tone}
+          />
+        </div>
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-slate-200">
+        {result.summary || "No summary available."}
+      </p>
+
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-400">
+        <span>
+          Confidence: <span className="text-slate-200">{Math.round((result.confidence || 0) * 100)}%</span>
+        </span>
+        <span>
+          Items: <span className="text-slate-200">{result.items?.length || 0}</span>
+        </span>
+        <span>
+          Freshness: <span className="text-slate-200">{formatFreshness(result.freshness_seconds)}</span>
+        </span>
+      </div>
+
+      {result.error && (
+        <div className="mt-4 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-200">
+          {result.error}
+        </div>
+      )}
+
+      {!!result.items?.length && (
+        <div className="mt-4 rounded-xl border border-white/[0.08] bg-white/5 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Top items
+          </p>
+          <div className="space-y-2">
+            {result.items.slice(0, 3).map((item, idx) => (
+              <div
+                key={item.url || item.accession || `item-${idx}`}
+                className="rounded-lg border border-white/[0.06] bg-[#0E1830] px-3 py-2"
+              >
+                <p className="text-xs font-medium text-slate-100">
+                  {item.title || item.form || item.date || `Item ${idx + 1}`}
+                </p>
+                {(item.snippet || item.filingDate || item.value) && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    {item.snippet || item.filingDate || item.value}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WarRoomBriefHeader({ brief, degraded }) {
+  const headerStatus = degraded ? statusBadgeMap.partial : statusBadgeMap.live;
+
+  return (
+    <div className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(25,37,62,0.96),rgba(10,18,34,0.96))] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+            Search War Room
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">
+            {brief.headline}
+          </h2>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Badge
+            icon={headerStatus.icon}
+            label={headerStatus.label}
+            tone={headerStatus.tone}
+          />
+        </div>
+      </div>
+
+      <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200">
+        {brief.summary}
+      </p>
+
+      {!!brief.signals?.length && (
+        <div className="mt-5 flex flex-wrap gap-2">
+          {brief.signals.map((signal, idx) => (
+            <span
+              key={`signal-${idx}`}
+              className="inline-flex items-center rounded-full border border-cyan-400/15 bg-cyan-400/[0.08] px-3 py-1.5 text-xs text-cyan-100"
+            >
+              {signal}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!!brief.risks?.length && (
+        <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-500/[0.08] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/80">
+            Caveats
+          </p>
+          <ul className="mt-2 space-y-1">
+            {brief.risks.map((risk, idx) => (
+              <li key={`risk-${idx}`} className="text-sm text-amber-100">
+                {risk}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!!brief.sources_used?.length && (
+        <div className="mt-4 flex flex-wrap items-center gap-1.5" data-testid="warroom-source-badges">
+          <span className="text-[10px] text-slate-500 mr-1">Sources:</span>
+          {brief.sources_used.map((src, idx) => (
+            <span
+              key={`src-${idx}`}
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                src.includes('ai_analysis') ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border border-[#3DE8D9]/20'
+                : 'bg-slate-800/60 text-slate-400 border border-slate-700/40'
+              }`}
+            >
+              {src.replace('ai_analysis:', '')}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function WarRoomResults({ data }) {
+  const results = data?.engine_results || [];
+  const brief = data?.brief;
+
+  return (
+    <section className="space-y-5">
+      {brief && <WarRoomBriefHeader brief={brief} degraded={data?.degraded} />}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {results.map((result, idx) => (
+          <WarRoomSourceCard key={`${result.engine}-${idx}`} result={result} />
+        ))}
+      </div>
+    </section>
+  );
+}

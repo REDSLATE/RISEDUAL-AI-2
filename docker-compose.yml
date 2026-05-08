@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # MongoDB
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - backend/.env
+    environment:
+      - MONGO_URL=mongodb://mongodb:27017/risedual_ai
+      - DB_NAME=risedual_ai
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  # React Frontend (served via Nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:

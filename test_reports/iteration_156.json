@@ -1,0 +1,98 @@
+{
+  "summary": "Iteration 156: Per-Patent Enforcement Policy + Conviction Calibration Polish - All features verified working. Backend: GET/POST /api/admin/guard-shadow/policy endpoints work correctly for promote/demote/clear operations. Frontend: Guard Shadow tab shows Per-Patent Enforcement section with 5 rows (K/Aud/Auth/M/I), Demote/Promote/Clear buttons work, status pills update correctly. Conviction tab: 3-card stats grid removed, counts inlined as subtitle, fallback section is collapsible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Panel",
+        "issues": ["React key warning: 'Encountered two children with the same key' for bid-* elements - non-blocking but should be fixed"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration156_guard_policy.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VERIFIED: GET /api/admin/guard-shadow/policy returns {effective, overrides, env_defaults, history, valid_flags}",
+    "VERIFIED: POST /api/admin/guard-shadow/policy/promote with {flag, value, note} returns {ok:true, applied:{...}}",
+    "VERIFIED: POST /api/admin/guard-shadow/policy/clear with {flag} returns {ok:true, cleared:flag}",
+    "VERIFIED: Invalid flag returns 400 with detail message",
+    "VERIFIED: Frontend Guard Shadow tab shows Per-Patent Enforcement section (data-testid=guard-shadow-policy)",
+    "VERIFIED: 5 policy rows visible (K, Aud, Auth, M, I) with data-testid=guard-shadow-policy-row-{flag}",
+    "VERIFIED: Demote button changes status to SHADOW (amber), shows 'override' label, Clear button appears",
+    "VERIFIED: Clear button reverts to ENFORCING (green), removes override label",
+    "VERIFIED: Recent changes expander shows history with timestamp, flag, value, actor, note",
+    "VERIFIED: Conviction tab counts line shows '· 101 verified · 33 tagged' as subtitle (data-testid=conviction-counts-line)",
+    "VERIFIED: 3-card stats grid is REMOVED (data-testid=conviction-stats-grid not found)",
+    "VERIFIED: 'By raw confidence (fallback)' is collapsible <details> (data-testid=conviction-fallback-details)",
+    "VERIFIED: Fallback section closed by default when conviction data exists (open=None)",
+    "VERIFIED: QualityKPIsStrip renders above conviction buckets",
+    "VERIFIED: Smart orders POST /api/smart-orders with mode=paper still works",
+    "VERIFIED: Regression endpoints all working: /api/admin/guard-shadow/summary, /api/admin/conviction/quality-kpis, /api/admin/proof-chain/stats"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration156_guard_policy.py"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests passed)",
+    "frontend": "100% (all UI elements verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Per-Patent Enforcement Policy is fully functional. The Guard Shadow tab in Admin panel shows 5 policy rows with Promote/Demote/Clear buttons. The policy state is persisted in MongoDB (guard_policy_state collection) and read by the IP contract via a 30s process-local cache. Conviction Calibration tab has been polished: stats grid removed, counts inlined, fallback section collapsible. Smart orders with mode=paper bypass the guard (paper trading is sandboxed). The proof_chain_entity_id is persisted on smart order rows for OUTCOME_VERIFIED tracking on close.",
+  "features_tested": {
+    "guard_shadow_policy_get": true,
+    "guard_shadow_policy_promote": true,
+    "guard_shadow_policy_clear": true,
+    "guard_shadow_policy_invalid_flag_400": true,
+    "guard_shadow_policy_ui_section": true,
+    "guard_shadow_policy_5_rows": true,
+    "guard_shadow_demote_button": true,
+    "guard_shadow_clear_button": true,
+    "guard_shadow_status_pill_update": true,
+    "guard_shadow_override_label": true,
+    "guard_shadow_history_expander": true,
+    "conviction_counts_inline": true,
+    "conviction_stats_grid_removed": true,
+    "conviction_fallback_collapsible": true,
+    "conviction_fallback_closed_by_default": true,
+    "smart_orders_paper_mode": true,
+    "regression_guard_shadow_summary": true,
+    "regression_quality_kpis": true,
+    "regression_proof_chain_stats": true
+  },
+  "test_data_observed": {
+    "policy_response": {
+      "effective": {
+        "enforce_adversarial": true,
+        "enforce_auditor": true,
+        "enforce_authority": true,
+        "enforce_failure_mode": true,
+        "enforce_risk_budget": true
+      },
+      "valid_flags": ["enforce_adversarial", "enforce_auditor", "enforce_authority", "enforce_failure_mode", "enforce_risk_budget"]
+    },
+    "conviction_counts": "· 101 verified · 33 tagged",
+    "guard_shadow_summary": {
+      "total": 3,
+      "would_allow": 3,
+      "would_block": 0,
+      "by_source": {"crypto_bot": {"would_allow": 3, "would_block": 0}}
+    }
+  },
+  "code_review_notes": {
+    "guard_policy_store": "Mongo-backed override store with 30s TTL cache. VALID_FLAGS set enforces flag validation. History capped at 50 entries.",
+    "risedual_ip_logic": "EnforcementPolicy.from_env() merges env defaults with cached Mongo overrides. refresh_cache_if_stale() called once per decision.",
+    "admin_guard_shadow": "3 new endpoints: GET /policy, POST /policy/promote, POST /policy/clear. All owner-only. Force cache refresh after promote/clear.",
+    "smart_order_service": "proof_chain_entity_id persisted on order row. cancel_smart_order calls record_manual_order_outcome for OUTCOME_VERIFIED.",
+    "conviction_calibration": "Stats grid removed, counts inlined as subtitle, fallback section wrapped in <details> with open={!hasConvictionData}."
+  }
+}
