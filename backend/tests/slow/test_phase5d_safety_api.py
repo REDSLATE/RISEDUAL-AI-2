@@ -148,6 +148,56 @@ class TestHeartbeatEndpoint:
             assert isinstance(lane["model_stale"], bool), "model_stale should be bool"
         print(f"PASS: model_stale flags present in both lanes")
 
+    def test_heartbeat_buy_sell_1h_field(self, admin_session):
+        """Each lane has buy_sell_1h field (BUY/SELL subset of signals)."""
+        resp = admin_session.get(f"{BASE_URL}/api/admin/ml/heartbeat")
+        assert resp.status_code == 200
+        data = resp.json()
+        
+        for lane_name in ("equity", "crypto"):
+            lane = data["lanes"][lane_name]
+            assert "buy_sell_1h" in lane, f"Missing 'buy_sell_1h' in {lane_name}"
+            assert isinstance(lane["buy_sell_1h"], int), f"buy_sell_1h should be int, got {type(lane['buy_sell_1h'])}"
+            # buy_sell_1h should be <= signals_1h (subset)
+            assert lane["buy_sell_1h"] <= lane["signals_1h"], "buy_sell_1h should be <= signals_1h"
+        print(f"PASS: buy_sell_1h fields present and valid in both lanes")
+
+    def test_heartbeat_top_clamp_block_reason_field(self, admin_session):
+        """Each lane has top_clamp_block_reason and top_clamp_block_count fields."""
+        resp = admin_session.get(f"{BASE_URL}/api/admin/ml/heartbeat")
+        assert resp.status_code == 200
+        data = resp.json()
+        
+        for lane_name in ("equity", "crypto"):
+            lane = data["lanes"][lane_name]
+            assert "top_clamp_block_reason" in lane, f"Missing 'top_clamp_block_reason' in {lane_name}"
+            assert "top_clamp_block_count" in lane, f"Missing 'top_clamp_block_count' in {lane_name}"
+            # top_clamp_block_reason can be None or string
+            reason = lane["top_clamp_block_reason"]
+            assert reason is None or isinstance(reason, str), f"top_clamp_block_reason should be None or str"
+            # top_clamp_block_count should be int
+            count = lane["top_clamp_block_count"]
+            assert isinstance(count, int), f"top_clamp_block_count should be int, got {type(count)}"
+            # If reason is None, count should be 0
+            if reason is None:
+                assert count == 0, "top_clamp_block_count should be 0 when reason is None"
+        print(f"PASS: top_clamp_block_reason and top_clamp_block_count fields present in both lanes")
+
+    def test_heartbeat_signals_1h_semantic_change(self, admin_session):
+        """signals_1h is now total pipeline runs (BUY+SELL+NO_TRADE), not just BUY/SELL."""
+        resp = admin_session.get(f"{BASE_URL}/api/admin/ml/heartbeat")
+        assert resp.status_code == 200
+        data = resp.json()
+        
+        for lane_name in ("equity", "crypto"):
+            lane = data["lanes"][lane_name]
+            signals = lane["signals_1h"]
+            buy_sell = lane["buy_sell_1h"]
+            holds = lane["holds_1h"]
+            # signals_1h should equal buy_sell_1h + holds_1h (total = BUY/SELL + NO_TRADE)
+            assert signals == buy_sell + holds, f"signals_1h ({signals}) should equal buy_sell_1h ({buy_sell}) + holds_1h ({holds})"
+        print(f"PASS: signals_1h = buy_sell_1h + holds_1h (semantic change verified)")
+
 
 # ── Pipeline Receipts Endpoint Tests ─────────────────────────────
 

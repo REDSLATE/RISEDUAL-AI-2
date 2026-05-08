@@ -6,6 +6,7 @@ import {
   RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import MLHeartbeatTile from './MLHeartbeatTile';
 
 const API = `${getApiBase()}/api`;
 
@@ -290,6 +291,8 @@ const CalibrationKanban = () => {
 
   return (
     <div className="space-y-4" data-testid="calibration-kanban-tile">
+      <MLHeartbeatTile />
+
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-lg font-semibold text-slate-100">Calibration Kanban</h3>

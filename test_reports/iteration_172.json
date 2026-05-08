@@ -1,0 +1,144 @@
+{
+  "summary": "Phase 5d ML Heartbeat Tile - All 43 tests passed (14 unit + 29 API). Verified: (a) New backend fields buy_sell_1h, top_clamp_block_reason, top_clamp_block_count in heartbeat endpoint, (b) signals_1h semantic change (now total runs = BUY+SELL+NO_TRADE), (c) MLHeartbeatTile renders at top of Calibration Kanban with all required data-testids, (d) 30s auto-refresh interval configured, (e) Refresh button works, (f) Status banner shows 'All lanes alive' vs 'Frozen lane', (g) READ-ONLY contract verified - no promotion buttons, no flip-enforcement controls, no broker-write controls.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase5d_safety.py",
+    "/app/backend/tests/slow/test_phase5d_safety_api.py",
+    "/app/test_reports/pytest/phase5d_safety_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "executor_heartbeat.py correctly implements new fields: buy_sell_1h (BUY/SELL count), signals_1h (total runs), holds_1h (NO_TRADE count), top_clamp_block_reason, top_clamp_block_count",
+    "signals_1h semantic change verified: signals_1h = buy_sell_1h + holds_1h (total pipeline runs)",
+    "MLHeartbeatTile.jsx correctly renders all required data-testids: ml-heartbeat-tile, heartbeat-lane-{equity|crypto}, heartbeat-{signals|buysell|holds|health|modelage|stale|top-reason|status}-{lane}",
+    "30s auto-refresh interval configured via REFRESH_INTERVAL_MS = 30_000 and setInterval in useEffect",
+    "Refresh button (heartbeat-refresh-btn) triggers immediate reload via load() callback",
+    "Status banner correctly shows heartbeat-banner-live ('All lanes alive') or heartbeat-banner-frozen ('Frozen lane') based on any_frozen field",
+    "READ-ONLY contract verified: only 1 button in tile (refresh), no promotion/flip/broker controls",
+    "CalibrationKanban.jsx correctly imports and renders MLHeartbeatTile at top (line 294)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_phase5d_safety_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14 unit tests + 29 API tests = 43 total passed)",
+    "frontend": "100% (all data-testids found, refresh button works, read-only contract verified)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 5d ML Heartbeat Tile fully tested. Key findings: (1) GET /api/admin/ml/heartbeat now returns new fields: buy_sell_1h, top_clamp_block_reason, top_clamp_block_count, (2) signals_1h semantic changed from BUY/SELL count to total pipeline runs (BUY+SELL+NO_TRADE), (3) MLHeartbeatTile renders at top of Calibration Kanban with all required data-testids, (4) 30s auto-refresh interval works, (5) Refresh button triggers immediate reload, (6) Status banner shows 'All lanes alive' or 'Frozen lane' based on any_frozen, (7) READ-ONLY contract verified - no promotion buttons, no flip-enforcement controls, no broker-write controls. To navigate: login → dispatch window event 'risedual:open-admin-autopsy' or set sessionStorage 'risedual_admin_initial_tab=kanban'.",
+  "test_cases_executed": [
+    {"test": "test_model_age_returns_none_for_missing_path", "status": "PASS"},
+    {"test": "test_model_age_evaluate_fresh", "status": "PASS"},
+    {"test": "test_model_age_evaluate_stale", "status": "PASS"},
+    {"test": "test_stale_reason_format", "status": "PASS"},
+    {"test": "test_strategist_boot_flips_to_observe_only_when_artifact_stale", "status": "PASS"},
+    {"test": "test_strategist_boot_ready_when_artifact_fresh", "status": "PASS"},
+    {"test": "test_feature_health_empty_frame_low_score", "status": "PASS"},
+    {"test": "test_feature_health_full_frame_high_score", "status": "PASS"},
+    {"test": "test_strategist_force_hold_when_feature_health_low", "status": "PASS"},
+    {"test": "test_strategist_confidence_clamped_by_feature_health", "status": "PASS"},
+    {"test": "test_heartbeat_records_runs_and_signals", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_when_no_recent_run", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_when_long_dry_with_low_health", "status": "PASS"},
+    {"test": "test_pipeline_emits_heartbeat_on_decide", "status": "PASS"},
+    {"test": "test_heartbeat_requires_auth", "status": "PASS"},
+    {"test": "test_pipeline_receipts_requires_auth", "status": "PASS"},
+    {"test": "test_boot_receipts_requires_auth", "status": "PASS"},
+    {"test": "test_pipeline_decide_requires_auth", "status": "PASS"},
+    {"test": "test_heartbeat_returns_200", "status": "PASS"},
+    {"test": "test_heartbeat_has_lanes", "status": "PASS"},
+    {"test": "test_heartbeat_lane_structure", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_flag_is_boolean", "status": "PASS"},
+    {"test": "test_heartbeat_any_frozen_flag", "status": "PASS"},
+    {"test": "test_heartbeat_model_stale_flag", "status": "PASS"},
+    {"test": "test_heartbeat_buy_sell_1h_field", "status": "PASS"},
+    {"test": "test_heartbeat_top_clamp_block_reason_field", "status": "PASS"},
+    {"test": "test_heartbeat_signals_1h_semantic_change", "status": "PASS"},
+    {"test": "test_pipeline_receipts_returns_200", "status": "PASS"},
+    {"test": "test_pipeline_receipts_lane_filter", "status": "PASS"},
+    {"test": "test_pipeline_receipts_limit", "status": "PASS"},
+    {"test": "test_boot_receipts_returns_200", "status": "PASS"},
+    {"test": "test_boot_receipts_have_stale_fields", "status": "PASS"},
+    {"test": "test_boot_receipts_have_required_fields", "status": "PASS"},
+    {"test": "test_boot_receipts_strategist_auditor_present", "status": "PASS"},
+    {"test": "test_pipeline_decide_returns_200", "status": "PASS"},
+    {"test": "test_pipeline_decide_has_trail", "status": "PASS"},
+    {"test": "test_pipeline_decide_strategist_diagnostics", "status": "PASS"},
+    {"test": "test_pipeline_decide_crypto_lane", "status": "PASS"},
+    {"test": "test_pipeline_decide_invalid_lane_returns_400", "status": "PASS"},
+    {"test": "test_pipeline_run_updates_heartbeat", "status": "PASS"},
+    {"test": "test_equity_run_does_not_affect_crypto_heartbeat", "status": "PASS"},
+    {"test": "test_pipeline_decide_is_dry_run", "status": "PASS"},
+    {"test": "test_heartbeat_is_read_only", "status": "PASS"}
+  ],
+  "verified_features": {
+    "new_heartbeat_fields": {
+      "buy_sell_1h": "BUY/SELL subset of signals in last 1h",
+      "top_clamp_block_reason": "Most frequent NO_TRADE or *_CLAMPED reason in last 1h",
+      "top_clamp_block_count": "Count of top_clamp_block_reason occurrences"
+    },
+    "signals_1h_semantic_change": {
+      "old": "BUY/SELL count only",
+      "new": "Total pipeline runs (BUY+SELL+NO_TRADE)",
+      "formula": "signals_1h = buy_sell_1h + holds_1h"
+    },
+    "ml_heartbeat_tile": {
+      "location": "Top of Calibration Kanban (CalibrationKanban.jsx:294)",
+      "data_testids": [
+        "ml-heartbeat-tile",
+        "heartbeat-lane-equity",
+        "heartbeat-lane-crypto",
+        "heartbeat-signals-{lane}",
+        "heartbeat-buysell-{lane}",
+        "heartbeat-holds-{lane}",
+        "heartbeat-health-{lane}",
+        "heartbeat-modelage-{lane}",
+        "heartbeat-stale-{lane}",
+        "heartbeat-top-reason-{lane}",
+        "heartbeat-status-{lane}",
+        "heartbeat-refresh-btn",
+        "heartbeat-banner-live",
+        "heartbeat-banner-frozen"
+      ],
+      "auto_refresh": "30s interval (REFRESH_INTERVAL_MS = 30_000)",
+      "read_only": true
+    }
+  },
+  "live_endpoint_response": {
+    "heartbeat": {
+      "as_of": "2026-05-08T21:04:27.520353+00:00",
+      "any_frozen": false,
+      "lanes": {
+        "equity": {
+          "signals_1h": 6,
+          "buy_sell_1h": 0,
+          "holds_1h": 6,
+          "top_clamp_block_reason": "EVENT_SHOCK_ACTIVE",
+          "top_clamp_block_count": 6,
+          "frozen": false,
+          "model_stale": false
+        },
+        "crypto": {
+          "signals_1h": 1,
+          "buy_sell_1h": 0,
+          "holds_1h": 1,
+          "top_clamp_block_reason": "EVENT_SHOCK_ACTIVE",
+          "top_clamp_block_count": 1,
+          "frozen": false,
+          "model_stale": false
+        }
+      }
+    }
+  }
+}

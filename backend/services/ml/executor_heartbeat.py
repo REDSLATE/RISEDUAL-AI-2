@@ -96,6 +96,7 @@ class _Tracker:
                 "ts": ts,
                 "decision": decision,
                 "blocked_at": blocked_at,
+                "reason": reason,
                 "feature_health": feature_health,
             })
             self._prune(state, ts)
@@ -115,7 +116,7 @@ class _Tracker:
         with self._lock:
             for lane, state in self._lanes.items():
                 self._prune(state, now_ts)
-                signals = sum(
+                buy_sell = sum(
                     1 for e in state.events
                     if e["decision"] in (Verdict.BUY.value, Verdict.SELL.value)
                 )
@@ -123,11 +124,29 @@ class _Tracker:
                     1 for e in state.events
                     if e["decision"] == Verdict.NO_TRADE.value
                 )
+                signals = len(state.events)  # total pipeline runs in window
                 healths = [
                     e["feature_health"] for e in state.events
                     if isinstance(e.get("feature_health"), (int, float))
                 ]
                 fh_avg = (sum(healths) / len(healths)) if healths else None
+
+                # Top clamp / block reason in the window. Counts NO_TRADE
+                # reasons (block reasons) and *_CLAMPED reasons together,
+                # since both are degradation signals worth surfacing.
+                reason_counts: Dict[str, int] = {}
+                for e in state.events:
+                    reason = e.get("reason") or ""
+                    decision = e.get("decision")
+                    if decision == Verdict.NO_TRADE.value or "CLAMPED" in reason:
+                        if reason:
+                            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                top_reason = None
+                top_reason_count = 0
+                if reason_counts:
+                    top_reason, top_reason_count = max(
+                        reason_counts.items(), key=lambda kv: kv[1],
+                    )
 
                 # Freeze heuristic.
                 last_run = state.last_pipeline_run_at
@@ -137,7 +156,7 @@ class _Tracker:
                 )
                 long_dry = (
                     last_run is not None
-                    and signals == 0
+                    and buy_sell == 0
                     and (fh_avg is not None and fh_avg < 0.3)
                 )
                 frozen = bool(no_recent_run or long_dry)
@@ -152,12 +171,15 @@ class _Tracker:
                     "last_blocked_at": state.last_blocked_at,
                     "last_reason": state.last_reason,
                     "signals_1h": signals,
+                    "buy_sell_1h": buy_sell,
                     "holds_1h": holds,
-                    "events_1h": len(state.events),
+                    "events_1h": signals,
                     "feature_health_avg": fh_avg,
                     "model_age_hours": model_age,
                     "frozen": frozen,
                     "freeze_after_min": _freeze_after_min(),
+                    "top_clamp_block_reason": top_reason,
+                    "top_clamp_block_count": top_reason_count,
                 }
         return {
             "as_of": _iso(now_ts),

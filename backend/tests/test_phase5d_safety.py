@@ -209,12 +209,17 @@ def test_heartbeat_records_runs_and_signals():
     snap = executor_heartbeat.get_snapshot()
     eq = snap["lanes"]["equity"]
     cr = snap["lanes"]["crypto"]
-    assert eq["signals_1h"] == 1
+    # signals_1h = total runs (BUY + SELL + NO_TRADE).
+    assert eq["signals_1h"] == 2
+    assert eq["buy_sell_1h"] == 1
     assert eq["holds_1h"] == 1
     assert eq["last_decision"] == "NO_TRADE"
     assert eq["last_signal_at"] is not None
-    assert cr["signals_1h"] == 0
+    # Top reason on equity is the NO_TRADE one.
+    assert eq["top_clamp_block_reason"] == "AUDITOR_DOWNGRADE"
+    assert cr["buy_sell_1h"] == 0
     assert cr["holds_1h"] == 1
+    assert cr["top_clamp_block_reason"] == "STRATEGIST_FEATURE_HEALTH_LOW"
     assert cr["feature_health_avg"] is not None and cr["feature_health_avg"] < 0.2
 
 
@@ -236,7 +241,9 @@ def test_heartbeat_frozen_when_long_dry_with_low_health():
         )
     snap = executor_heartbeat.get_snapshot()
     assert snap["lanes"]["equity"]["frozen"] is True
-    assert snap["lanes"]["equity"]["signals_1h"] == 0
+    assert snap["lanes"]["equity"]["buy_sell_1h"] == 0
+    assert snap["lanes"]["equity"]["signals_1h"] == 5  # total runs
+    assert snap["lanes"]["equity"]["holds_1h"] == 5
 
 
 def test_pipeline_emits_heartbeat_on_decide():
