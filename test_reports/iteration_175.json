@@ -1,0 +1,86 @@
+{
+  "summary": "GET /api/admin/ml/artifacts endpoint - All 23 tests passed (14 unit + 9 HTTP integration). Endpoint correctly lists .joblib artifacts with metadata, recognizes strategist/auditor/unknown types, detects manifest siblings, flags env-pointed artifacts, and handles empty/missing dirs gracefully.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/admin/ml/v2/*", "issue": "DeprecationWarning: `regex` has been deprecated, please use `pattern` instead in Query() params (lines 157, 246, 247, 345, 428)"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_artifact_inventory.py",
+    "/app/backend/tests/test_artifact_inventory_http.py",
+    "/app/test_reports/pytest/artifact_inventory_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Endpoint correctly implements read-only file-stat + env-read only contract",
+    "NO joblib.load call - verified via source-level check and runtime sentinel patch",
+    "NO env mutation - verified via sentinel env vars unchanged after request",
+    "NO broker/executor/pipeline imports - verified via source-level check",
+    "Missing/empty models dir returns {models_dir, items:[], count:0} - no 500 error",
+    "Strategist artifacts correctly parsed: model_type='strategist', sha_from_filename, timestamp_from_filename",
+    "Auditor artifacts correctly parsed: model_type='auditor', sha_from_filename, timestamp_from_filename",
+    "Legacy/unknown artifacts: model_type='unknown', sha_from_filename=null, timestamp_from_filename=null",
+    "Manifest sibling detection works: manifest_present=true with manifest_path when sibling exists",
+    "Env-pointed detection works: currently_pointed_to_by_env=true, env_var='STRATEGIST_ARTIFACT'/'AUDITOR_ARTIFACT'",
+    "Cross-type env mismatch handled: STRATEGIST_ARTIFACT pointing at auditor file does NOT flag either artifact",
+    "Unknown model_type never flagged as env-pointed even if STRATEGIST_ARTIFACT matches path",
+    "ALPHA_MODELS_DIR env var override is respected for custom dir"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_artifact_inventory_http.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23 tests passed - 14 unit + 9 HTTP integration)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "Created test artifacts in /app/backend/data/models/ for manual verification (cleaned up after tests)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "GET /api/admin/ml/artifacts endpoint is fully tested. Key findings: (1) Endpoint at /api/admin/ml/artifacts (NOT /v2), (2) Returns {models_dir, items, count}, (3) Each item has: filename, full_path, size_bytes, mtime, age_hours, sha_from_filename, timestamp_from_filename, model_type, manifest_present, manifest_path, currently_pointed_to_by_env, env_var, (4) model_type is 'strategist'|'auditor'|'unknown', (5) Versioned filename pattern: <type>_<sha>_<UTCstamp>.joblib, (6) Manifest sibling pattern: manifest_<sha>_<UTCstamp>.json, (7) ALPHA_MODELS_DIR env var overrides default /app/backend/data/models",
+  "verified_acceptance_criteria": {
+    "1_unauth_blocked": "PASS - 401 returned for unauthenticated requests",
+    "2_admin_gets_200": "PASS - 200 with {models_dir, items, count}",
+    "3_empty_dir_returns_empty": "PASS - count=0, items=[] (no 500)",
+    "4_strategist_recognized": "PASS - model_type='strategist', sha_from_filename, timestamp_from_filename parsed",
+    "5_auditor_recognized": "PASS - model_type='auditor', sha_from_filename, timestamp_from_filename parsed",
+    "6_env_pointed_flagged": "PASS - currently_pointed_to_by_env=true, env_var set correctly",
+    "7_no_joblib_load": "PASS - source-level + runtime sentinel verified",
+    "8_no_env_mutation": "PASS - sentinel env vars unchanged after request",
+    "bonus_no_broker_imports": "PASS - artifact_inventory does NOT import broker/executor/pipeline modules"
+  },
+  "manual_verification": {
+    "strategist_artifact": {
+      "filename": "strategist_abc123_20260508T120000Z.joblib",
+      "model_type": "strategist",
+      "sha_from_filename": "abc123",
+      "timestamp_from_filename": "20260508T120000Z",
+      "manifest_present": true,
+      "manifest_path": "/app/backend/data/models/manifest_abc123_20260508T120000Z.json"
+    },
+    "auditor_artifact": {
+      "filename": "auditor_def456_20260508T130000Z.joblib",
+      "model_type": "auditor",
+      "sha_from_filename": "def456",
+      "timestamp_from_filename": "20260508T130000Z",
+      "manifest_present": false
+    },
+    "legacy_artifact": {
+      "filename": "legacy_old.joblib",
+      "model_type": "unknown",
+      "sha_from_filename": null,
+      "timestamp_from_filename": null,
+      "currently_pointed_to_by_env": false,
+      "env_var": null
+    },
+    "env_pointed_test": "PASS - STRATEGIST_ARTIFACT and AUDITOR_ARTIFACT correctly flag matching artifacts",
+    "cross_type_mismatch_test": "PASS - STRATEGIST_ARTIFACT pointing at auditor file does NOT flag either artifact"
+  },
+  "lint_fast_result": "PASS (7 passed + 119 passed)"
+}

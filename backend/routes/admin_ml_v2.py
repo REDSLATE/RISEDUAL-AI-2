@@ -368,6 +368,27 @@ async def pipeline_receipts(
     return {"items": items, "count": len(items)}
 
 
+# ── Artifact inventory (read-only file-stat) ────────────────────
+
+
+@ml_safety_router.get("/artifacts")
+async def list_artifacts_endpoint(request: Request) -> Dict[str, Any]:
+    """List every .joblib under data/models/ with metadata.
+
+    Strict read-only: file-stat + env-read only. NEVER calls
+    joblib.load, NEVER mutates env, NEVER promotes / restarts /
+    calls broker. Missing models dir returns empty list, not 500.
+    """
+    await _require_admin(request)
+    from services.ml.artifact_inventory import list_artifacts, _models_dir
+    items = list_artifacts()
+    return {
+        "models_dir": str(_models_dir()),
+        "items": items,
+        "count": len(items),
+    }
+
+
 # ── Wedge alerter (heartbeat-driven, notification-only) ─────────
 
 
