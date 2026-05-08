@@ -1,52 +1,57 @@
 """
 Source-file size lint — keep code reviewable.
 
-Why this exists
+Two-tier policy
 ───────────────
-Same discipline as ``test_docs_size.py``, applied to the codebase.
-Files past a certain size stop being read end-to-end during review,
-so subtle bugs and stale logic accumulate in them silently.
+**Hard ceiling** (failing): files past this size stop being read end-
+to-end during review, so subtle bugs accumulate silently.
+  * Python  (.py)              — 800 lines.
+  * Frontend (.jsx/.js/.ts/.tsx) — 500 lines.
 
-Per-language ceilings (chosen for review-velocity, not aesthetics):
+Override the hard ceiling by adding the path to ``ALLOWLIST`` with a
+one-line justification (reviewers gate the addition).
 
-* **Python** (``.py``)         — 800 lines.
-* **JSX/JS/TS/TSX** (frontend) — 500 lines. React components past
-  this size almost always have multiple responsibilities that should
-  be extracted into sub-components.
+**Preferred ceiling** (drift indicator): module-type aware,
+intentionally tighter than the hard cap. Reflects authority-boundary
+expectations:
 
-How to fix a failure
-────────────────────
-1. **Preferred** — split the file. For routes, split per-domain
-   (e.g. ``routes/admin/{users,billing,terminal}.py``). For services,
-   pull cohesive sub-systems into their own module. For React,
-   extract sub-components.
-2. **If splitting genuinely doesn't help** (e.g. a single SQL/HTML
-   blob, a one-off generator script, a comprehensive test suite for
-   one cohesive subsystem) — add the path to ``ALLOWLIST`` with a
-   one-line justification. Reviewers gate that addition.
+  * api-route          — 500 (one route file = one domain)
+  * ui-tile            — 400 (one tile = one read-only view)
+  * ui-component       — 500
+  * ui-admin-component — 500
+  * core-governance    — 600 (orchestrators that coordinate lanes)
+  * shared-utility     — 300 (helper modules stay focused)
+  * script             — 400
+  * test               — 800
+  * default            — 800
 
-Existing oversized files are allowlisted with a justification that
-either documents known refactor debt (``admin.py``, ``server.py``)
-or explains why the file is legitimately large (``generate_pdf``,
-mature multi-endpoint service modules). Refactors land one file at
-a time — this lint pins the size invariant going forward and stops
-new code from inheriting the same pattern.
+Existing files that already breach their preferred ceiling are
+captured in ``PREFERRED_BASELINE``; the lint fails on **new**
+breaches but grandfathers the snapshot. As old files shrink below
+their preferred ceiling, baseline entries become stale and the
+lint asks for them to be removed — ratcheting the bar tighter
+over time.
+
+Hard rules:
+  * No allowlist expansion unless clearly justified.
+  * Compatibility exports keep imports stable across splits.
+  * No behavior changes from this lint itself — only diagnostics.
 """
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
-# ── Configuration ──────────────────────────────────────────────────
+# ── Configuration: hard ceilings (failing) ─────────────────────────
 
 PY_MAX_LINES: int = 800
 FRONTEND_MAX_LINES: int = 500
 
 _FRONTEND_EXTS = {".jsx", ".js", ".ts", ".tsx"}
 
-# Directory components to skip entirely. Mirrors ``test_docs_size``
-# plus generated/build directories that legitimately contain large
-# bundled output.
+# Directory components to skip entirely.
 _SKIP_DIR_NAMES = {
     ".git",
     "node_modules",
@@ -62,9 +67,90 @@ _SKIP_DIR_NAMES = {
     "coverage",
 }
 
-# Allowlist — each entry MUST have a one-line justification.
-# Reviewers gate additions. Entries documenting refactor debt should
-# track the planned split so the debt doesn't drift.
+
+# ── Configuration: preferred ceilings (drift indicator) ────────────
+
+
+@dataclass(frozen=True)
+class ModuleClass:
+    label: str
+    preferred: int
+    matcher: Callable[[str], bool]
+
+
+# Order matters — first match wins. More-specific patterns first.
+_MODULE_CLASSES: tuple[ModuleClass, ...] = (
+    ModuleClass(
+        "api-route", 500,
+        lambda p: p.startswith("backend/routes/"),
+    ),
+    ModuleClass(
+        "ui-tile", 400,
+        lambda p: (p.startswith("frontend/src/components/admin/")
+                   and p.endswith("Tile.jsx")),
+    ),
+    ModuleClass(
+        "ui-admin-component", 500,
+        lambda p: p.startswith("frontend/src/components/admin/"),
+    ),
+    ModuleClass(
+        "ui-component", 500,
+        lambda p: p.startswith("frontend/src/components/"),
+    ),
+    ModuleClass(
+        "core-governance", 600,
+        lambda p: p.startswith("backend/services/"),
+    ),
+    ModuleClass(
+        "script", 400,
+        lambda p: p.startswith("backend/scripts/"),
+    ),
+    ModuleClass(
+        "test", 800,
+        lambda p: p.startswith("backend/tests/"),
+    ),
+    ModuleClass(
+        "default", 800,
+        lambda _p: True,
+    ),
+)
+
+
+def _classify(rel_path: str) -> ModuleClass:
+    for cls in _MODULE_CLASSES:
+        if cls.matcher(rel_path):
+            return cls
+    # Last entry is the default catch-all; loop above always matches.
+    return _MODULE_CLASSES[-1]
+
+
+# ── Exempt patterns ───────────────────────────────────────────────
+#
+# Files matching any predicate here are skipped by BOTH lints
+# (hard cap + preferred ceiling). Use sparingly — only for files
+# whose size is structurally meaningless: generated code, schema
+# snapshots, migration timelines, static constant registries.
+#
+# Each predicate must come with a one-line comment.
+_EXEMPT_PREDICATES: tuple[Callable[[str], bool], ...] = (
+    # Generated egg-info metadata (when not skipped by directory).
+    lambda p: p.endswith(".egg-info"),
+    # Migration timelines — chronological by design.
+    lambda p: "/migrations/" in p,
+    # Schema snapshot files — auto-generated and immutable.
+    lambda p: p.endswith("_schema.py") or p.endswith(".schema.json"),
+)
+
+
+def _is_exempt(rel_path: str) -> bool:
+    return any(pred(rel_path) for pred in _EXEMPT_PREDICATES)
+
+
+# ── Hard-cap allowlist (existing) ─────────────────────────────────
+#
+# Files allowed to exceed the HARD ceiling. Reviewers gate every
+# addition. Entries documenting refactor debt should track the
+# planned split so the debt doesn't drift.
 ALLOWLIST: dict[str, str] = {
     # ── Backend Python — refactor debt (planned splits) ────────────
     "backend/routes/admin.py": (
@@ -221,6 +307,97 @@ ALLOWLIST: dict[str, str] = {
 }
 
 
+# ── Preferred-ceiling baseline ────────────────────────────────────
+#
+# Snapshot of files that breach their preferred (module-type-aware)
+# ceiling at the moment this lint was tightened. New files in the
+# corresponding paths must respect the preferred ceiling — the
+# baseline grandfathers existing tech debt without expanding the
+# hard-cap allowlist.
+#
+# The shape is ``rel_path: (line_count_at_snapshot, label)``.
+#
+# As old files are split or shrink below their preferred ceiling,
+# the lint will fail with a "stale baseline entry" message and
+# remind you to remove it — ratcheting the bar tighter over time.
+PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
+    # ── api-route (preferred 500) ────────────────────────────────
+    "backend/routes/admin.py":              (1689, "api-route"),
+    "backend/routes/broker.py":             (1061, "api-route"),
+    "backend/routes/ai.py":                 (931,  "api-route"),
+    "backend/routes/options_trading.py":    (855,  "api-route"),
+    "backend/routes/auth.py":               (710,  "api-route"),
+    "backend/routes/market_data.py":        (693,  "api-route"),
+    "backend/routes/ml_orchestrator.py":    (594,  "api-route"),
+    "backend/routes/public_api.py":         (580,  "api-route"),
+    "backend/routes/risk_calculator.py":    (575,  "api-route"),
+    "backend/routes/admin_ml_v2.py":        (543,  "api-route"),
+    "backend/routes/analytics.py":          (533,  "api-route"),
+    "backend/routes/admin_news.py":         (527,  "api-route"),
+    "backend/routes/admin_conviction.py":   (522,  "api-route"),
+
+    # ── core-governance (preferred 600) ──────────────────────────
+    "backend/services/trading_bot_service.py":         (1575, "core-governance"),
+    "backend/services/market_memory_service.py":       (1357, "core-governance"),
+    "backend/services/model_adaptation.py":            (1315, "core-governance"),
+    "backend/services/broker_service.py":              (1302, "core-governance"),
+    "backend/services/prediction_tracker.py":          (1296, "core-governance"),
+    "backend/services/crypto_paper_trader.py":         (1232, "core-governance"),
+    "backend/services/terminal_aggregator.py":         (1084, "core-governance"),
+    "backend/services/sec_13f_service.py":             (1075, "core-governance"),
+    "backend/services/natural_language_trading.py":    (1047, "core-governance"),
+    "backend/services/ml_retrain_service.py":          (951,  "core-governance"),
+    "backend/services/research_shadow_stats.py":       (914,  "core-governance"),
+    "backend/services/ml_paper_trader.py":             (842,  "core-governance"),
+    "backend/services/email_service.py":               (835,  "core-governance"),
+    "backend/services/sovereign_ai_core.py":           (746,  "core-governance"),
+    "backend/services/digest_service.py":              (701,  "core-governance"),
+    "backend/services/kraken_equity_shadow_service.py":(699,  "core-governance"),
+    "backend/services/research_shadow_engines.py":     (695,  "core-governance"),
+    "backend/services/options_universe_service.py":    (684,  "core-governance"),
+    "backend/services/agent_activity_service.py":      (665,  "core-governance"),
+    "backend/services/risedual_ip_logic.py":           (659,  "core-governance"),
+    "backend/services/position_reconciler.py":         (654,  "core-governance"),
+    "backend/services/adversarial_core.py":            (640,  "core-governance"),
+    "backend/services/ai_core_engine.py":              (629,  "core-governance"),
+    "backend/services/top_universe_service.py":        (613,  "core-governance"),
+    "backend/services/price_provider.py":              (608,  "core-governance"),
+
+    # ── default (preferred 800) ───────────────────────────────────
+    "backend/server.py":                               (2003, "default"),
+    "generate_pdf.py":                                 (883,  "default"),
+
+    # ── script (preferred 400) ────────────────────────────────────
+    "backend/scripts/backfill_historical.py":          (743,  "script"),
+    "backend/scripts/backfill_sentiment.py":           (683,  "script"),
+    "backend/scripts/retrain_alpha_models.py":         (606,  "script"),
+    "backend/scripts/backfill_insider_edgar.py":       (524,  "script"),
+    "backend/scripts/train_signal_model.py":           (472,  "script"),
+    "backend/scripts/backtest.py":                     (471,  "script"),
+
+    # ── test (preferred 800) ──────────────────────────────────────
+    "backend/tests/test_research_shadow.py":           (1098, "test"),
+
+    # ── ui-admin-component (preferred 500) ───────────────────────
+    "frontend/src/components/admin/MemoryDriftCard.jsx":      (787, "ui-admin-component"),
+    "frontend/src/components/admin/ModelAdaptationsPanel.jsx":(589, "ui-admin-component"),
+    "frontend/src/components/admin/GuardShadowPanel.jsx":     (579, "ui-admin-component"),
+    "frontend/src/components/admin/MLHealthStrip.jsx":        (511, "ui-admin-component"),
+
+    # ── ui-component (preferred 500) ─────────────────────────────
+    "frontend/src/components/BrokerConnect.jsx":      (899, "ui-component"),
+    "frontend/src/components/UserWorkspace.jsx":      (800, "ui-component"),
+    "frontend/src/components/LandingPage.jsx":        (797, "ui-component"),
+    "frontend/src/components/AgentActivityFeed.jsx":  (703, "ui-component"),
+    "frontend/src/components/LegalPages.jsx":         (570, "ui-component"),
+
+    # ── ui-tile (preferred 400) ──────────────────────────────────
+    "frontend/src/components/admin/FastVetoTile.jsx":         (485, "ui-tile"),
+    "frontend/src/components/admin/ShellyDiagnosticTile.jsx": (477, "ui-tile"),
+    "frontend/src/components/admin/RoadGuardTile.jsx":        (412, "ui-tile"),
+}
+
+
 # ── Helpers ────────────────────────────────────────────────────────
 
 
@@ -229,20 +406,21 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _source_files() -> list[tuple[Path, int]]:
-    """Return (path, ceiling) for every file the lint should scan."""
+def _python_files_to_scan() -> list[Path]:
+    """Return every (.py / frontend) file the lints should consider."""
     root = _repo_root()
-    out: list[tuple[Path, int]] = []
+    out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
         for fn in filenames:
             ext = Path(fn).suffix
-            full = Path(dirpath) / fn
-            if ext == ".py":
-                out.append((full, PY_MAX_LINES))
-            elif ext in _FRONTEND_EXTS:
-                out.append((full, FRONTEND_MAX_LINES))
+            if ext == ".py" or ext in _FRONTEND_EXTS:
+                out.append(Path(dirpath) / fn)
     return out
+
+
+def _hard_ceiling(path: Path) -> int:
+    return PY_MAX_LINES if path.suffix == ".py" else FRONTEND_MAX_LINES
 
 
 def _line_count(path: Path) -> int:
@@ -252,12 +430,12 @@ def _line_count(path: Path) -> int:
         return 0
 
 
-# ── The actual test ────────────────────────────────────────────────
+# ── Tier 1: hard-ceiling lint (failing) ────────────────────────────
 
 
 def test_source_files_under_max_lines():
     """Every tracked source file outside the allowlist must stay
-    under its per-language ceiling.
+    under its per-language hard ceiling.
 
     To fix a failure: split the file (preferred), or add it to
     ``ALLOWLIST`` with a one-line justification documenting why
@@ -267,10 +445,13 @@ def test_source_files_under_max_lines():
     root = _repo_root()
     failures: list[str] = []
 
-    for path, ceiling in _source_files():
+    for path in _python_files_to_scan():
         rel = path.relative_to(root).as_posix()
         if rel in ALLOWLIST:
             continue
+        if _is_exempt(rel):
+            continue
+        ceiling = _hard_ceiling(path)
         n = _line_count(path)
         if n > ceiling:
             failures.append(
@@ -283,7 +464,75 @@ def test_source_files_under_max_lines():
     )
 
 
-# ── Self-tests for the allowlist itself ────────────────────────────
+# ── Tier 2: preferred-ceiling lint (drift indicator) ──────────────
+
+
+def test_no_new_preferred_ceiling_breaches():
+    """Module-type aware preferred-ceiling lint.
+
+    Fails when:
+      * a NEW file (not in PREFERRED_BASELINE) exceeds its
+        module-type preferred ceiling
+      * a baseline entry no longer exceeds its preferred ceiling
+        (ratchet — remove the entry)
+      * a baseline entry no longer exists at the recorded path
+
+    Does NOT fail when an existing baseline entry's line count
+    grows; that's a soft drift signal we can revisit if it becomes
+    a problem.
+
+    Hard cap (PY_MAX_LINES / FRONTEND_MAX_LINES) is enforced
+    separately by ``test_source_files_under_max_lines``.
+    """
+    root = _repo_root()
+    new_breaches: list[str] = []
+    stale_baseline_now_clean: list[str] = []
+    stale_baseline_missing: list[str] = []
+
+    seen_baseline_keys: set[str] = set()
+
+    for path in _python_files_to_scan():
+        rel = path.relative_to(root).as_posix()
+        if _is_exempt(rel):
+            continue
+        cls = _classify(rel)
+        n = _line_count(path)
+        baseline_entry = PREFERRED_BASELINE.get(rel)
+        if baseline_entry is not None:
+            seen_baseline_keys.add(rel)
+            # Ratchet: shrunk below the bar — drop the entry.
+            if n <= cls.preferred:
+                stale_baseline_now_clean.append(
+                    f"{rel}: now {n} lines (≤{cls.preferred} for "
+                    f"{cls.label}). Remove from PREFERRED_BASELINE."
+                )
+            continue
+        # File not in baseline → must respect the preferred ceiling.
+        if n > cls.preferred:
+            new_breaches.append(
+                f"{rel}: {n} lines (>{cls.preferred} for "
+                f"{cls.label}). Split per the authority-boundary "
+                f"pattern, or document why and add to "
+                f"PREFERRED_BASELINE with a one-line justification."
+            )
+
+    # Baseline entries pointing at files that no longer exist.
+    for rel in PREFERRED_BASELINE.keys():
+        if rel in seen_baseline_keys:
+            continue
+        if not (root / rel).is_file():
+            stale_baseline_missing.append(
+                f"{rel}: file missing — remove from PREFERRED_BASELINE."
+            )
+
+    failures = new_breaches + stale_baseline_now_clean + stale_baseline_missing
+    assert not failures, (
+        "Module-type preferred-ceiling drift:\n  "
+        + "\n  ".join(failures)
+    )
+
+
+# ── Self-tests for the allowlist / baseline ────────────────────────
 
 
 def test_allowlist_entries_all_exist():
@@ -300,4 +549,22 @@ def test_allowlist_justifications_are_non_empty():
     assert not bad, (
         f"ALLOWLIST entries without a real justification: {bad}. "
         f"Each entry needs a one-line explanation."
+    )
+
+
+def test_preferred_baseline_labels_match_classifier():
+    """The label recorded in PREFERRED_BASELINE must match what
+    the classifier produces today — otherwise a path drifted
+    classes (e.g. moved directories) and the snapshot is stale."""
+    mismatches: list[str] = []
+    for rel, (_n, recorded_label) in PREFERRED_BASELINE.items():
+        actual = _classify(rel).label
+        if actual != recorded_label:
+            mismatches.append(
+                f"{rel}: baseline label '{recorded_label}' "
+                f"vs current classifier '{actual}'."
+            )
+    assert not mismatches, (
+        "PREFERRED_BASELINE labels out of sync:\n  "
+        + "\n  ".join(mismatches)
     )

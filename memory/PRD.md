@@ -30,6 +30,42 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Architecture-as-policy — module-type aware code-size lint (2026-05-08)
+
+**Two-tier policy** encoded in `tests/test_code_size.py`:
+
+  - **Hard ceiling** (failing): unchanged — Python 800, frontend 500. Existing `ALLOWLIST` still works; no allowlist expansion.
+  - **Preferred ceiling** (drift indicator): module-type aware, snapshot-based. Catches new code that violates authority-boundary expectations without breaking the green baseline.
+
+**Module classification** by path predicate:
+
+| Class | Preferred | Path |
+|---|---:|---|
+| `api-route` | 500 | `backend/routes/` |
+| `ui-tile` | 400 | `frontend/src/components/admin/*Tile.jsx` |
+| `ui-admin-component` | 500 | `frontend/src/components/admin/` |
+| `ui-component` | 500 | `frontend/src/components/` |
+| `core-governance` | 600 | `backend/services/` |
+| `script` | 400 | `backend/scripts/` |
+| `test` | 800 | `backend/tests/` |
+| `default` | 800 | _fallback_ |
+
+**Snapshot baseline** (`PREFERRED_BASELINE`): 59 existing breaches grandfathered with their line count + label. New files in those paths must respect the preferred ceiling. As old files shrink below their preferred ceiling, the lint fails with a "Remove from PREFERRED_BASELINE" message — ratcheting the bar tighter over time.
+
+**Exempt patterns**: `migrations/`, `*_schema.py`, `*.schema.json`, `.egg-info/` — bypass both lints (no allowlist needed).
+
+**Two new tests** added (lift count from 3 → 5):
+  - `test_no_new_preferred_ceiling_breaches` — fails on new breaches OR stale baseline entries (file shrunk below ceiling, file moved/deleted).
+  - `test_preferred_baseline_labels_match_classifier` — catches path drift (e.g. directory moves).
+
+**Verified**:
+  - All 5 tests pass (was 3); baseline cleanly captures today's breaches.
+  - Synthetic drift smoke: new oversized api-route → fails with exact class+ceiling message; new oversized ui-tile → same; shrinking a baseline entry → "remove from baseline" message. Restoring → green.
+  - `make lint-arch` 9 passed, `make lint-fast` 128 passed, `make lint-safety` 72 passed.
+  - Full pytest: **2824 passed, 0 failed**.
+
+**Set the bar for the upcoming Phase 6 prep splits**: `admin_ml_v2.py` (next), `_start_schedulers()`, `day_trade_executor.py` (last) — each must land within or move toward their preferred ceiling.
+
 ### Phase 5d/6 governance — `make lint-safety` (2026-05-08)
 
 **Single-command verification of the entire Phase 5d/6 read-only safety surface**.
