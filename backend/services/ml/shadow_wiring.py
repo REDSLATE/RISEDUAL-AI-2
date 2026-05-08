@@ -256,6 +256,31 @@ async def run_shadow_pipeline(
         except Exception as exc:  # noqa: BLE001
             logger.warning("[ml.phase5a] roadguard_v2 eval failed: %s", exc)
 
+        # ── Phase 5b — broker wire (4-gate defense in depth) ──
+        # Always called. Always shadow-only by default — every gate
+        # defaults closed. Persists a phase5b_intents row that the
+        # operator reviews before promoting.
+        try:
+            from services.ml.broker_wire import run_broker_wire
+            await run_broker_wire(
+                db,
+                lane=lane,
+                symbol=frame.symbol,
+                side=(
+                    decision.final.decision
+                    if decision.final.decision in ("BUY", "SELL")
+                    else (
+                        "BUY" if str(signal.get("direction", "LONG")).upper() == "LONG"
+                        else "SELL"
+                    )
+                ),
+                notional_usd=float(requested_notional_usd),
+                pipeline_decision=decision,
+                rg_verdict=rg_verdict,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[ml.phase5b] broker_wire failed (degrading): %s", exc)
+
         # Adjust the receipt's blocked_at if RoadGuard would have
         # blocked the otherwise-approved trade. Receipts capture the
         # FIRST gate that would have stopped the trade — so a

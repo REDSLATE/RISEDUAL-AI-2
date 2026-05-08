@@ -190,6 +190,85 @@ async def calibration_kanban(request: Request) -> Dict[str, Any]:
     return await get_kanban(_db)
 
 
+# ── Phase 5b broker wire — observability ─────────────────────────
+
+
+@router.get("/phase5b/summary")
+async def phase5b_summary(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+) -> Dict[str, Any]:
+    """Per-lane breakdown of phase5b_intents rows. Reports how many
+    signals would have fired vs how many were gate-blocked."""
+    await _require_admin(request)
+    if _db is None:
+        return {"by_lane": {}, "total": 0}
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    out = {
+        "by_lane": {
+            "equity": {"total": 0, "by_classification": {}},
+            "crypto": {"total": 0, "by_classification": {}},
+        },
+        "total": 0,
+    }
+    try:
+        cursor = _db["phase5b_intents"].aggregate([
+            {"$match": {"created_at": {"$gte": cutoff}}},
+            {"$group": {
+                "_id": {"lane": "$lane", "classification": "$classification"},
+                "n": {"$sum": 1},
+            }},
+        ])
+        async for row in cursor:
+            n = int(row.get("n") or 0)
+            lane = row["_id"].get("lane")
+            cls = row["_id"].get("classification") or "UNKNOWN"
+            out["total"] += n
+            if lane in out["by_lane"]:
+                out["by_lane"][lane]["total"] += n
+                out["by_lane"][lane]["by_classification"][cls] = (
+                    out["by_lane"][lane]["by_classification"].get(cls, 0) + n
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[ml.v2.admin] phase5b/summary failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+    return out
+
+
+@router.get("/phase5b/recent")
+async def phase5b_recent(
+    request: Request,
+    lane: Optional[str] = Query(None, regex="^(equity|crypto)$"),
+    classification: Optional[str] = Query(
+        None, regex="^(SHADOW_ONLY|GATE_BLOCK|WOULD_HAVE_FIRED|FIRED)$"
+    ),
+    limit: int = Query(50, ge=1, le=500),
+) -> Dict[str, Any]:
+    """Last N phase5b_intents rows for review."""
+    await _require_admin(request)
+    if _db is None:
+        return {"items": [], "count": 0}
+    q: Dict[str, Any] = {}
+    if lane:
+        q["lane"] = lane
+    if classification:
+        q["classification"] = classification
+    items: List[Dict[str, Any]] = []
+    try:
+        cursor = _db["phase5b_intents"].find(
+            q, projection={"_id": 0},
+        ).sort("created_at", -1).limit(limit)
+        async for doc in cursor:
+            ca = doc.get("created_at")
+            if hasattr(ca, "isoformat"):
+                doc["created_at"] = ca.isoformat()
+            items.append(doc)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"items": items, "count": len(items)}
+
+
 # ── Synthetic dry-run ────────────────────────────────────────────
 
 

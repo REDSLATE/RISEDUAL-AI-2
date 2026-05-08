@@ -1,22 +1,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
-import { TrendingUp, Bitcoin, Shield, AlertTriangle, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
+import {
+  TrendingUp, Bitcoin, Shield, AlertTriangle, CheckCircle2, Clock,
+  RefreshCw, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import { Button } from '../ui/button';
 
 const API = `${getApiBase()}/api`;
 
-// Phase pill colour map.
 const PHASE_STYLES = {
-  Shadow:    { bg: 'bg-slate-800',  border: 'border-slate-600',  text: 'text-slate-200', dot: 'bg-slate-400' },
-  Calibrate: { bg: 'bg-amber-950',  border: 'border-amber-700',  text: 'text-amber-200', dot: 'bg-amber-400' },
+  Shadow:    { bg: 'bg-slate-800',   border: 'border-slate-600',   text: 'text-slate-200',   dot: 'bg-slate-400' },
+  Calibrate: { bg: 'bg-amber-950',   border: 'border-amber-700',   text: 'text-amber-200',   dot: 'bg-amber-400' },
   Enforce:   { bg: 'bg-emerald-950', border: 'border-emerald-700', text: 'text-emerald-200', dot: 'bg-emerald-400' },
 };
 
 const STATE_STYLES = {
   'Eligible':         { bg: 'bg-emerald-950', text: 'text-emerald-200', border: 'border-emerald-700' },
-  'Ready for Review': { bg: 'bg-amber-950',  text: 'text-amber-200',  border: 'border-amber-700' },
-  'Blocked':          { bg: 'bg-rose-950',   text: 'text-rose-200',   border: 'border-rose-800' },
+  'Ready for Review': { bg: 'bg-amber-950',   text: 'text-amber-200',   border: 'border-amber-700' },
+  'Blocked':          { bg: 'bg-rose-950',    text: 'text-rose-200',    border: 'border-rose-800' },
 };
 
 const STATUS_ICON = {
@@ -25,10 +27,7 @@ const STATUS_ICON = {
   'n/a': <Clock className="w-4 h-4 text-slate-400" />,
 };
 
-const LANE_ICON = {
-  equity: TrendingUp,
-  crypto: Bitcoin,
-};
+const LANE_ICON = { equity: TrendingUp, crypto: Bitcoin };
 
 const formatNumber = (v) => {
   if (typeof v !== 'number') return String(v);
@@ -46,9 +45,7 @@ const ChecklistRow = ({ item }) => (
       <div className="text-[11px] text-slate-500 mt-0.5">
         value: <span className="font-mono text-slate-400">{formatNumber(item.value)}</span>
         {item.threshold !== null && item.threshold !== undefined ? (
-          <>
-            {' '}· target: <span className="font-mono text-slate-400">{formatNumber(item.threshold)}</span>
-          </>
+          <> · target: <span className="font-mono text-slate-400">{formatNumber(item.threshold)}</span></>
         ) : null}
         {item.note ? <span className="ml-2 text-amber-400">· {item.note}</span> : null}
       </div>
@@ -62,6 +59,118 @@ const Metric = ({ label, value, testid }) => (
     <span className="text-base font-mono text-slate-100">{formatNumber(value ?? 0)}</span>
   </div>
 );
+
+// Inline RG verdict log shown when the operator expands the diff.
+const PromotionDiff = ({ lane }) => {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+
+  const load = useCallback(async () => {
+    if (data || loading) return;
+    setLoading(true); setErr(null);
+    try {
+      const resp = await authFetch(`${API}/admin/ml/v2/roadguard/decisions/recent?lane=${lane}&limit=50`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      setData(await resp.json());
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [data, loading, lane]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) load();
+  };
+
+  return (
+    <>
+      <button
+        onClick={toggle}
+        data-testid={`kanban-diff-toggle-${lane}`}
+        className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs transition-colors"
+      >
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        {open ? 'Hide promotion diff' : 'Show last 50 RG verdicts'}
+      </button>
+      {open ? (
+        <div
+          className="mt-3 bg-slate-950 border border-slate-800 rounded-md max-h-[420px] overflow-y-auto"
+          data-testid={`kanban-diff-${lane}`}
+        >
+          {loading ? (
+            <div className="text-xs text-slate-500 px-3 py-4 text-center" data-testid={`kanban-diff-loading-${lane}`}>
+              Loading…
+            </div>
+          ) : null}
+          {err ? (
+            <div className="text-xs text-rose-300 px-3 py-3" data-testid={`kanban-diff-error-${lane}`}>
+              Failed: {err}
+            </div>
+          ) : null}
+          {data ? (
+            <table className="w-full text-[11px]">
+              <thead className="bg-slate-900/80 sticky top-0">
+                <tr className="text-slate-500 uppercase tracking-wider">
+                  <th className="text-left py-1.5 px-2.5 font-medium">When</th>
+                  <th className="text-left py-1.5 px-2.5 font-medium">Symbol</th>
+                  <th className="text-left py-1.5 px-2.5 font-medium">Decision</th>
+                  <th className="text-left py-1.5 px-2.5 font-medium">Gate</th>
+                  <th className="text-left py-1.5 px-2.5 font-medium">Reason</th>
+                </tr>
+              </thead>
+              <tbody data-testid={`kanban-diff-table-${lane}`}>
+                {(data.items || []).length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="text-slate-500 px-2.5 py-3 text-center">
+                      No RG verdicts in window.
+                    </td>
+                  </tr>
+                ) : null}
+                {(data.items || []).map((doc, i) => {
+                  const v = doc.verdict || {};
+                  const decClass = (
+                    v.decision === 'PASS' ? 'text-emerald-400'
+                    : v.decision === 'REDUCE' ? 'text-amber-400'
+                    : v.decision === 'BLOCK' ? 'text-rose-400'
+                    : 'text-slate-300'
+                  );
+                  const ts = doc.created_at ? doc.created_at.split('T')[1]?.slice(0, 8) : '—';
+                  return (
+                    <tr
+                      key={(doc.created_at || i) + '_' + i}
+                      className="border-t border-slate-900/80 hover:bg-slate-900/40"
+                      data-testid={`kanban-diff-row-${lane}-${i}`}
+                    >
+                      <td className="px-2.5 py-1.5 font-mono text-slate-500">{ts}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-slate-300">{doc.symbol}</td>
+                      <td className={`px-2.5 py-1.5 font-mono font-medium ${decClass}`}>
+                        {v.decision || '—'}
+                      </td>
+                      <td className="px-2.5 py-1.5 font-mono text-slate-400">{v.gate || '—'}</td>
+                      <td className="px-2.5 py-1.5 text-slate-400 truncate max-w-[220px]">
+                        {v.reason || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
+          {data ? (
+            <div className="text-[10px] text-slate-600 font-mono px-2.5 py-1.5 border-t border-slate-900/60 text-right">
+              {data.count || 0} of last 50 · {data.collection}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+};
 
 const LaneCard = ({ card }) => {
   if (!card) return null;
@@ -87,9 +196,7 @@ const LaneCard = ({ card }) => {
             <div className="text-base font-semibold text-slate-100 capitalize" data-testid={`kanban-lane-${lane}`}>
               {lane}
             </div>
-            <div className="text-[11px] text-slate-500 font-mono">
-              {card.rg_collection}
-            </div>
+            <div className="text-[11px] text-slate-500 font-mono">{card.rg_collection}</div>
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
@@ -151,6 +258,8 @@ const LaneCard = ({ card }) => {
         <p className="text-[10px] text-slate-500 mt-2 text-center">
           Read-only · this button does not flip enforcement
         </p>
+
+        <PromotionDiff lane={lane} />
       </div>
     </div>
   );
@@ -162,16 +271,14 @@ const CalibrationKanban = () => {
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const resp = await authFetch(`${API}/admin/ml/v2/calibration/kanban`);
       if (!resp.ok) {
         const text = await resp.text();
         throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
       }
-      const payload = await resp.json();
-      setData(payload);
+      setData(await resp.json());
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -179,9 +286,7 @@ const CalibrationKanban = () => {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-4" data-testid="calibration-kanban-tile">
@@ -189,7 +294,8 @@ const CalibrationKanban = () => {
         <div>
           <h3 className="text-lg font-semibold text-slate-100">Calibration Kanban</h3>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Per-lane promotion-readiness journey: <span className="text-slate-300">Shadow → Calibrate → Enforce</span>.
+            Per-lane promotion-readiness journey:{' '}
+            <span className="text-slate-300">Shadow → Calibrate → Enforce</span>.
             Read-only tile — buttons display state but never flip enforcement, never call a broker.
           </p>
         </div>

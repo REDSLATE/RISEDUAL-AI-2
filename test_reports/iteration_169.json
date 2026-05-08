@@ -1,0 +1,121 @@
+{
+  "summary": "Completed comprehensive backend testing of Phase 5b broker wire endpoints and safety invariants. All 23 API tests + 15 local unit tests passed (38 total). Verified 4-gate defense-in-depth safety design with default env.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/slow/test_phase5b_broker_wire_endpoints.py",
+    "/app/test_reports/pytest/phase5b_broker_wire_results.xml",
+    "/app/backend/tests/test_broker_wire.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Phase 5b broker_wire.py:_dispatch_to_broker is correctly implemented as NO-OP placeholder (returns None) - this is INTENTIONAL per user requirement",
+    "4-gate defense-in-depth correctly implemented: Gate1 (per-lane enforce), Gate2 (broker kill-switch), Gate3 (legacy live execution), Gate4 (Kanban eligibility)",
+    "All 4 gates default to closed/False - verified in both unit tests and live API tests",
+    "Classification logic correct: SHADOW_ONLY (upstream blocked), GATE_BLOCK (upstream clear but gates closed), WOULD_HAVE_FIRED (all gates open but broker returns None), FIRED (broker returned order_id)",
+    "phase5b_intents doc shape verified with all required fields including gates sub-object",
+    "READ-ONLY guarantee verified - GET endpoints don't create docs",
+    "Lane validation uses regex ^(equity|crypto)$ returning 422 for invalid lanes like 'options'",
+    "Classification validation uses regex returning 422 for invalid values like 'BOGUS'"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_phase5b_broker_wire_endpoints.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23 API tests + 15 unit tests = 38 total passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required - used existing phase5b_intents docs from smoke test (2 signals: AAPL equity, BTC-USD crypto)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 5b broker wire fully tested. Key findings: (1) Both endpoints /phase5b/summary and /phase5b/recent work correctly with admin auth, (2) Safety invariants verified: all intents have classification in {SHADOW_ONLY, GATE_BLOCK}, fired=False, order_id=None, all 4 gates closed, (3) No FIRED or WOULD_HAVE_FIRED intents exist (broker NO-OP confirmed), (4) READ-ONLY guarantee verified, (5) Regression tests passed for calibration/kanban (returns lanes with equity/crypto), boot-receipts (7 ready), and roadguard/decisions/recent.",
+  "test_cases_executed": [
+    {"test": "Auth: phase5b/summary requires auth (401/403)", "status": "PASS"},
+    {"test": "Auth: phase5b/recent requires auth (401/403)", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/phase5b/summary returns 200", "status": "PASS"},
+    {"test": "phase5b/summary structure: {by_lane:{equity, crypto}, total}", "status": "PASS"},
+    {"test": "phase5b/summary accepts days param", "status": "PASS"},
+    {"test": "GET /api/admin/ml/v2/phase5b/recent returns 200", "status": "PASS"},
+    {"test": "phase5b/recent structure: {items, count}", "status": "PASS"},
+    {"test": "phase5b/recent lane=equity filter works", "status": "PASS"},
+    {"test": "phase5b/recent lane=crypto filter works", "status": "PASS"},
+    {"test": "phase5b/recent classification filters work (all 4 values)", "status": "PASS"},
+    {"test": "phase5b/recent lane=options returns 422", "status": "PASS"},
+    {"test": "phase5b/recent classification=BOGUS returns 422", "status": "PASS"},
+    {"test": "SAFETY: phase5b_intents doc shape verified", "status": "PASS"},
+    {"test": "SAFETY: classification in {SHADOW_ONLY, GATE_BLOCK} with default env", "status": "PASS"},
+    {"test": "SAFETY: fired=False for all intents", "status": "PASS"},
+    {"test": "SAFETY: order_id=None for all intents", "status": "PASS"},
+    {"test": "SAFETY: all 4 gates closed with default env", "status": "PASS"},
+    {"test": "READ-ONLY: GET endpoints don't create docs", "status": "PASS"},
+    {"test": "Regression: calibration/kanban returns 200 with lanes", "status": "PASS"},
+    {"test": "Regression: boot-receipts returns 7 ready", "status": "PASS"},
+    {"test": "Regression: roadguard/decisions/recent still works", "status": "PASS"},
+    {"test": "Broker NO-OP: no FIRED intents exist", "status": "PASS"},
+    {"test": "Broker NO-OP: no WOULD_HAVE_FIRED with default gates", "status": "PASS"}
+  ],
+  "verified_features": {
+    "phase5b_summary": {
+      "endpoint": "GET /api/admin/ml/v2/phase5b/summary",
+      "auth": "Admin required (401/403 without cookie)",
+      "response_structure": {
+        "by_lane": {
+          "equity": {"total": "int", "by_classification": "dict"},
+          "crypto": {"total": "int", "by_classification": "dict"}
+        },
+        "total": "int"
+      }
+    },
+    "phase5b_recent": {
+      "endpoint": "GET /api/admin/ml/v2/phase5b/recent",
+      "auth": "Admin required (401/403 without cookie)",
+      "query_params": {
+        "limit": "1-500, default 50",
+        "lane": "equity|crypto (regex validated, 422 on invalid)",
+        "classification": "SHADOW_ONLY|GATE_BLOCK|WOULD_HAVE_FIRED|FIRED (regex validated, 422 on invalid)"
+      },
+      "response_structure": {
+        "items": "list of phase5b_intents docs",
+        "count": "int"
+      }
+    },
+    "phase5b_intents_doc_shape": {
+      "lane": "equity|crypto",
+      "symbol": "string",
+      "side": "BUY|SELL",
+      "requested_notional_usd": "float",
+      "classification": "SHADOW_ONLY|GATE_BLOCK|WOULD_HAVE_FIRED|FIRED",
+      "fired": "bool",
+      "order_id": "string|null",
+      "gates": {
+        "gate1_enforce_flag": "bool",
+        "gate2_broker_live_order_enabled": "bool",
+        "gate3_legacy_live_execution": "bool",
+        "gate4_kanban_eligible": "bool",
+        "gate4_kanban_state": "string|null"
+      },
+      "diagnostics": "dict",
+      "created_at": "ISO timestamp",
+      "schema_version": 1
+    },
+    "safety_invariants_verified": {
+      "all_gates_default_closed": true,
+      "classification_safe_with_defaults": true,
+      "fired_false_with_defaults": true,
+      "order_id_none_with_defaults": true,
+      "no_fired_intents_exist": true,
+      "no_would_have_fired_with_defaults": true,
+      "broker_dispatch_is_noop": "CONFIRMED - _dispatch_to_broker returns None (placeholder)"
+    },
+    "read_only_guarantee": "VERIFIED - GET endpoints don't create phase5b_intents docs"
+  },
+  "mocked_apis_note": "services/ml/broker_wire.py:_dispatch_to_broker is a NO-OP placeholder by design - this is INTENTIONAL Phase 5b safety design, NOT a bug"
+}
