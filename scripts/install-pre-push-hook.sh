@@ -4,11 +4,13 @@
 # Optional installer for the architecture-lint git pre-push hook.
 #
 # Usage:
-#   ./scripts/install-pre-push-hook.sh           # install
+#   ./scripts/install-pre-push-hook.sh           # install (lint-arch)
+#   ./scripts/install-pre-push-hook.sh --fast    # install (lint-fast)
 #   ./scripts/install-pre-push-hook.sh --uninstall
 #
 # What it does (install):
-#   * Writes .git/hooks/pre-push that calls `make lint-arch`.
+#   * Writes .git/hooks/pre-push that calls `make lint-arch`
+#     (or `make lint-fast` with --fast).
 #   * Backs up any existing pre-push hook to pre-push.backup.<ts>.
 #   * Idempotent — re-running install replaces the managed hook.
 #
@@ -46,6 +48,8 @@ uninstall() {
 }
 
 install_hook() {
+    local make_target="${1:-lint-arch}"
+
     if [ ! -d "$REPO_ROOT/.git/hooks" ]; then
         echo "[pre-push] ERROR: $REPO_ROOT/.git/hooks not found — is this a git repo?"
         exit 1
@@ -60,25 +64,26 @@ install_hook() {
         echo "[pre-push] existing hook backed up → $backup"
     fi
 
-    cat > "$HOOK_PATH" <<'EOF'
+    cat > "$HOOK_PATH" <<EOF
 #!/usr/bin/env bash
 # risedual-arch-lint-managed-hook
+# target=${make_target}
 #
 # Runs the architecture lint guards before every git push.
-# Read-only. Fast (<2s typically). Bypass with `git push --no-verify`.
+# Read-only. Bypass with \`git push --no-verify\`.
 
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT"
+REPO_ROOT="\$(git rev-parse --show-toplevel)"
+cd "\$REPO_ROOT"
 
 if ! command -v make >/dev/null 2>&1; then
     echo "[pre-push] WARNING: 'make' not on PATH — skipping arch lint."
     exit 0
 fi
 
-echo "[pre-push] running 'make lint-arch'…"
-if ! make lint-arch; then
+echo "[pre-push] running 'make ${make_target}'…"
+if ! make ${make_target}; then
     echo
     echo "[pre-push] FAILED. Push blocked by architecture lint."
     echo "[pre-push] Fix the offending file(s) above, or bypass with"
@@ -89,7 +94,7 @@ echo "[pre-push] arch lint passed ✓"
 EOF
     chmod +x "$HOOK_PATH"
     echo "[pre-push] installed managed hook at $HOOK_PATH"
-    echo "[pre-push] runs 'make lint-arch' on every git push."
+    echo "[pre-push] runs 'make ${make_target}' on every git push."
     echo "[pre-push] uninstall: ./scripts/install-pre-push-hook.sh --uninstall"
 }
 
@@ -97,10 +102,13 @@ case "${1:-install}" in
     --uninstall|-u|uninstall)
         uninstall
         ;;
+    --fast|fast)
+        install_hook "lint-fast"
+        ;;
     --help|-h|help)
-        sed -n '2,20p' "$0"
+        sed -n '2,22p' "$0"
         ;;
     *)
-        install_hook
+        install_hook "lint-arch"
         ;;
 esac

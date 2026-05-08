@@ -30,26 +30,27 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
-### Phase 5d guard rails — `make lint-arch` + opt-in pre-push hook (2026-05-08)
+### Phase 5d guard rails — `make lint-arch` / `make lint-fast` + opt-in pre-push hook (2026-05-08)
 
 **Goal**: protect the green-CI baseline as Phase 6 prep touches more files.
 
-**`Makefile` target** (`/app/Makefile`):
-  - `make lint-arch` runs ONLY `tests/test_no_local_direction_tuples.py` + `tests/test_code_size.py`.
-  - Read-only, no file mutations, ~1s execution. Exits non-zero on failure.
-  - `make help` lists all targets.
+**`Makefile` targets** (`/app/Makefile`):
+  - `make lint-arch` — direction-tuple drift + oversized files. 7 tests, ~1s.
+  - `make lint-fast` — superset: lint-arch PLUS the Phase 6 invariant bundle (dual-stack, kill-switch, authority/risk-budget, RoadGuard pair, RoadGuard, fast-veto, executor lanes). 126 tests, ~1.5s total. Read-only, no Mongo writes, no broker calls. Stops at first failure via Make dependency chain.
+  - `make help` documents both targets.
 
 **Opt-in pre-push hook** (`/app/scripts/install-pre-push-hook.sh`):
-  - `./scripts/install-pre-push-hook.sh` writes `.git/hooks/pre-push` that calls `make lint-arch`.
-  - `./scripts/install-pre-push-hook.sh --uninstall` removes it (refuses to remove non-managed hooks).
-  - Backs up any existing non-managed hook before overwriting.
-  - Idempotent re-install. Uninstall-when-absent is a safe no-op.
-  - Bypass once: `git push --no-verify`.
-  - **Not installed automatically** — operator opt-in only.
+  - `./scripts/install-pre-push-hook.sh` → installs `lint-arch` hook (default; quick drift check).
+  - `./scripts/install-pre-push-hook.sh --fast` → installs `lint-fast` hook (broader Phase 6 safety check).
+  - Hook embeds `target=...` marker so the operator can see which mode is active.
+  - Re-install in either mode swaps targets idempotently. `--uninstall` removes only managed hooks.
+  - Bypass once: `git push --no-verify`. **Not installed automatically.**
 
 **Verified**:
-  - Smoke-tested with a synthetic violation → `make lint-arch` exits non-zero, identifies file/line/tokens.
-  - Hook executes via `bash .git/hooks/pre-push` and passes the existing baseline.
+  - `make lint-arch`: 7 passed in ~1s.
+  - `make lint-fast`: 7 + 119 = 126 passed in ~1.5s.
+  - Synthetic violation: detected at `lint-arch` step, dependency chain stops `lint-fast` early, exit non-zero.
+  - Hook lifecycle: install (default) → install (--fast) → re-install plain → uninstall → uninstall-when-absent (safe no-op).
   - No allowlist additions, no behavior code changes.
 
 ### Phase 5d Wedge alerter — heartbeat-driven paging (2026-05-08)
