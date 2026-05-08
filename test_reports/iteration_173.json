@@ -1,0 +1,145 @@
+{
+  "summary": "Wedge Alerter Phase 5d Follow-up - All 79 tests passed (10 unit wedge_alerter + 14 unit phase5d_safety + 29 API phase5d_safety + 26 API wedge_alerter). Verified: (a) 3 new wedge-alerter endpoints working with admin auth gate, (b) Scheduler registered 'wedge_alerter_tick' at 5-min interval, (c) Notification-only contract verified - no broker calls, no promotion, no enforcement, (d) No regression in existing phase5d_safety tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wedge_alerter.py",
+    "/app/backend/tests/test_phase5d_safety.py",
+    "/app/backend/tests/slow/test_phase5d_safety_api.py",
+    "/app/backend/tests/slow/test_wedge_alerter_api.py",
+    "/app/test_reports/pytest/wedge_alerter_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "wedge_alerter.py correctly implements notification-only contract: NO promotion, NO enforcement, NO broker calls, NO scheduler restart, NO automatic remediation",
+    "Trigger rules implemented: T1 (frozen >30min per-lane via frozen_started_at), T2 (STRATEGIST_FEATURE_HEALTH_LOW with count >50 in 1h)",
+    "Webhook contract verified: posts JSON {text, content, kind: 'alert', alerts: [payload], instance, timestamp} compatible with Slack/Discord/generic",
+    "Audit row shape verified: {alert_key, rule, lane, detail, duration_seconds, payload, webhook_posted, webhook_configured, created_at}",
+    "Cooldown dedup working: default 4h window via WEDGE_ALERT_COOLDOWN_HOURS env",
+    "Missing webhook gracefully handled: logs OPS_ALERT_WEBHOOK_URL_MISSING but does not crash",
+    "Scheduler registered: 'wedge_alerter_tick' at interval=5min in server.py line 1093-1095",
+    "All 3 endpoints require admin role via _require_admin: /status, /history, /run-now",
+    "Collections used: wedge_alerter_state (single doc id='state'), wedge_alerter_history (append-only audit log)"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_wedge_alerter_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (10 unit wedge_alerter + 14 unit phase5d_safety + 29 API phase5d_safety + 26 API wedge_alerter = 79 total passed)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Wedge Alerter fully tested. Key findings: (1) GET /api/admin/ml/wedge-alerter/status returns {configured: bool, lane_frozen_started_at: {}, alert_history: {}}, (2) GET /api/admin/ml/wedge-alerter/history returns audit rows with optional lane filter, (3) POST /api/admin/ml/wedge-alerter/run-now performs one tick and returns {configured, snapshot_at, any_frozen, candidates, fresh_alerts, suppressed_cooldown, failed_posts}, (4) All 3 endpoints require admin role, (5) Scheduler registered 'wedge_alerter_tick' at 5-min interval, (6) Webhook configured=false in preview (expected - no OPS_ALERT_WEBHOOK_URL set), (7) Notification-only contract verified - no broker calls, no promotion, no enforcement.",
+  "test_cases_executed": [
+    {"test": "test_frozen_lane_over_threshold_fires_alert", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_frozen_under_threshold_no_alert", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_feature_health_flood_fires_alert", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_feature_health_at_threshold_no_alert", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_duplicate_alert_suppressed_by_cooldown", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_missing_webhook_does_not_crash", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_alerter_does_not_mutate_pipeline_or_boot_receipts", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_alerter_does_not_import_broker_or_executor", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_alerter_does_not_call_broker_at_runtime", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_lane_recovery_clears_frozen_timer", "status": "PASS", "file": "test_wedge_alerter.py"},
+    {"test": "test_status_requires_auth", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_requires_auth", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_requires_auth", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_returns_200", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_has_configured_flag", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_has_lane_frozen_started_at", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_has_alert_history", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_configured_false_in_preview", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_returns_200", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_respects_limit", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_lane_filter_equity", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_lane_filter_crypto", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_invalid_lane_returns_422", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_returns_200", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_configured_flag", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_snapshot_at", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_any_frozen_flag", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_candidates_list", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_fresh_alerts_list", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_suppressed_cooldown_list", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_has_failed_posts_list", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_is_read_only_operation", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_status_is_read_only", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_history_is_read_only", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_candidate_has_required_fields", "status": "PASS", "file": "test_wedge_alerter_api.py"},
+    {"test": "test_run_now_reflects_heartbeat_frozen_state", "status": "PASS", "file": "test_wedge_alerter_api.py"}
+  ],
+  "verified_features": {
+    "wedge_alerter_endpoints": {
+      "status": {
+        "path": "GET /api/admin/ml/wedge-alerter/status",
+        "response": "{configured: bool, lane_frozen_started_at: {}, alert_history: {}, updated_at: str}",
+        "auth_required": true
+      },
+      "history": {
+        "path": "GET /api/admin/ml/wedge-alerter/history",
+        "params": "?limit=50&lane=equity|crypto",
+        "response": "{items: [], count: int}",
+        "auth_required": true
+      },
+      "run_now": {
+        "path": "POST /api/admin/ml/wedge-alerter/run-now",
+        "response": "{configured, snapshot_at, any_frozen, candidates, fresh_alerts, suppressed_cooldown, failed_posts}",
+        "auth_required": true
+      }
+    },
+    "trigger_rules": {
+      "T1_frozen_lane": "any_frozen=true for >30 minutes (per-lane via frozen_started_at)",
+      "T2_feature_health_flood": "top_clamp_block_reason == STRATEGIST_FEATURE_HEALTH_LOW with top_clamp_block_count > 50 in last 1h"
+    },
+    "scheduler": {
+      "job_id": "wedge_alerter_tick",
+      "interval": "5 minutes",
+      "location": "server.py line 1093-1095"
+    },
+    "webhook_contract": {
+      "shape": "{text, content, kind: 'alert', alerts: [payload], instance, timestamp}",
+      "compatible_with": ["Slack", "Discord", "generic receivers"]
+    },
+    "audit_row_shape": {
+      "fields": ["alert_key", "rule", "lane", "detail", "duration_seconds", "payload", "webhook_posted", "webhook_configured", "created_at"]
+    },
+    "notification_only_contract": {
+      "no_promotion": true,
+      "no_enforcement": true,
+      "no_broker_calls": true,
+      "no_scheduler_restart": true,
+      "no_automatic_remediation": true
+    }
+  },
+  "live_endpoint_responses": {
+    "status": {
+      "configured": false,
+      "lane_frozen_started_at": {"equity": "2026-05-08T21:29:36.423326+00:00", "crypto": "2026-05-08T21:29:36.423326+00:00"},
+      "alert_history": {},
+      "updated_at": "2026-05-08T21:29:36.423377+00:00"
+    },
+    "history": {
+      "items": [],
+      "count": 0
+    },
+    "run_now": {
+      "configured": false,
+      "snapshot_at": "2026-05-08T21:31:26.893113+00:00",
+      "any_frozen": false,
+      "candidates": [],
+      "fresh_alerts": [],
+      "suppressed_cooldown": [],
+      "failed_posts": []
+    }
+  }
+}

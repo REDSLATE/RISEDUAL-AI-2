@@ -305,6 +305,25 @@ async def _run_ops_alerter_tick():
         logger.warning(f"Ops alerter tick failed: {e}")
 
 
+async def _run_wedge_alerter_tick():
+    """Heartbeat-driven wedge alerter — pages on frozen lanes /
+    feature-health flood. Notification-only; no broker, no enforce.
+    Always safe to schedule — no-ops gracefully when webhook is
+    missing (logs OPS_ALERT_WEBHOOK_URL_MISSING once per tick)."""
+    try:
+        from services.wedge_alerter import run_tick
+        result = await run_tick(db)
+        if result.get("fresh_alerts"):
+            logger.info(
+                "[wedge-alerter] tick: fresh=%s suppressed=%s any_frozen=%s",
+                [a.get("alert_key") for a in result.get("fresh_alerts") or []],
+                [a.get("alert_key") for a in result.get("suppressed_cooldown") or []],
+                result.get("any_frozen"),
+            )
+    except Exception as e:
+        logger.warning(f"Wedge alerter tick failed: {e}")
+
+
 async def _run_ai_core_nightly():
     """AI Core nightly sweep — pulls newly resolved trades from
     `paper_trades` + verified `predictions` and emits a dedup-safe
@@ -1064,6 +1083,15 @@ async def _start_schedulers():
         # always schedule.
         scheduler.add_job(_run_ops_alerter_tick, 'interval',
                           minutes=15, id='ops_alerter_tick',
+                          replace_existing=True)
+        # ── ML heartbeat wedge alerter (every 5 min) ──
+        # Notification-only. Posts to OPS_ALERT_WEBHOOK_URL when a
+        # lane stays frozen >30 min OR feature-health-low repeats
+        # >50× in 1h. NEVER promotes, NEVER calls a broker. Safe to
+        # schedule even without the webhook env (logs once and
+        # returns).
+        scheduler.add_job(_run_wedge_alerter_tick, 'interval',
+                          minutes=5, id='wedge_alerter_tick',
                           replace_existing=True)
         # ── AI Core nightly sweep (02:45 UTC) ──
         # Runs after memory cleanup (02:00) and ML retrain (02:30) so
