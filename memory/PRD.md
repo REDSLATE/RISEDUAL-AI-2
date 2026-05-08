@@ -30,6 +30,31 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 6 prep — Promotion Checklist endpoint + tile (2026-05-08)
+
+**Read-only Phase 6 readiness aggregator**. Pulls from existing surfaces (artifact_inventory + executor_heartbeat + alpha_decision_log) and emits an 8-check status report with GREEN/YELLOW/RED.
+
+**Module** (`/app/backend/services/ml/promotion_checklist.py`):
+  - `build_checklist(db)` returns `{as_of, overall_status, ready_for_review, message, checks[8], active_artifacts, latest_artifacts, any_frozen, thresholds}`.
+  - 8 checks: `manifest_present`, `latest_newer_than_active`, `active_on_disk`, `env_type_matches`, `heartbeat_not_frozen`, `no_flood_1h`, `active_age`, `shadow_receipts`.
+  - **Severity**: RED wins overall → `ready_for_review=false`. YELLOW only → `ready_for_review=false` ("Items need review."). All GREEN → `ready_for_review=true` ("Ready for review.").
+  - **Hard-rule invariants**: response NEVER contains "Promote now" / "promote_now" / "promote_action" / "set_active". No env mutation. No joblib load. No broker / executor / pipeline imports.
+
+**Endpoint** (`/api/admin/ml/promotion-checklist` on `ml_safety_router`): admin-gated, GET-only.
+
+**Frontend tile** (`MLPromotionChecklistTile.jsx`): rendered between Heartbeat and Artifacts on the Calibration Kanban.
+  - 60s auto-refresh + manual refresh.
+  - Per-row icon + status pill matching the colour scheme. Banner shows the overall message.
+  - Footer surfaces active vs latest artifact filenames per type.
+  - **Hard rule verified**: zero "Promote now" occurrences, zero promote/set-active/activate buttons in the tile.
+
+**Tests**: `tests/test_promotion_checklist.py` (17 tests covering all 6 acceptance criteria + edge cases). Frontend testing_agent_v3_fork: 100% pass.
+
+**Verified**:
+  - 17/17 backend pytest pass.
+  - Live smoke: 8 rows render (RED on heartbeat_not_frozen, GREEN on env_type_matches/no_flood/shadow_receipts=7, YELLOW on the rest because models dir + env unset). Banner reads "Blockers present — review the RED checks." / `overall=RED · ready_for_review=false`.
+  - Full pytest: **2822 passed, 0 failed**.
+
 ### Phase 6 prep — ML Artifacts tile on Calibration Kanban (2026-05-08)
 
 **Read-only Artifacts tile** (`frontend/src/components/admin/MLArtifactsTile.jsx`). UI-only surface; backend endpoint unchanged.
