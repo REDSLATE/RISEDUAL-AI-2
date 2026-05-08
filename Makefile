@@ -31,17 +31,40 @@ FAST_INVARIANT_TESTS := \
 	tests/test_fast_veto_layer.py \
 	tests/test_executor_lanes.py
 
-.PHONY: help lint-arch lint-fast install-pre-push-hook uninstall-pre-push-hook
+# Phase 5d/6 read-only governance surface. Each line is a single
+# test file so any move/rename surfaces here as a hard miss.
+#
+# Inclusion criteria:
+#   * tests one of the read-only governance surfaces:
+#       heartbeat / wedge alerter / artifact inventory /
+#       promotion checklist / retrain scaffold
+#   * no broker calls, no env mutation, no joblib loading,
+#     no backend restart, no promotion actions
+#   * sub-second runtime per file (verify with `make lint-safety`)
+SAFETY_TESTS := \
+	tests/test_phase5d_safety.py \
+	tests/test_wedge_alerter.py \
+	tests/test_artifact_inventory.py \
+	tests/test_promotion_checklist.py \
+	tests/test_retrain_alpha_models.py
+
+.PHONY: help lint-arch lint-fast lint-safety install-pre-push-hook uninstall-pre-push-hook
 
 help:
 	@echo "Available targets:"
-	@echo "  make lint-arch                 Architecture lint only — direction-tuple"
-	@echo "                                 drift + oversized files (~1s)."
-	@echo "  make lint-fast                 lint-arch + Phase 6 invariant bundle"
+	@echo "  make lint-arch                 Architecture drift check —"
+	@echo "                                 direction-tuple drift + oversized files (~1s)."
+	@echo "  make lint-fast                 lint-arch + Phase 6 runtime invariant bundle"
 	@echo "                                 (kill-switch, authority, lane separation,"
 	@echo "                                 RoadGuard pair, fast-veto, dual-stack)."
+	@echo "  make lint-safety               Phase 5d/6 governance surface —"
+	@echo "                                 heartbeat + wedge alerter + artifact inventory"
+	@echo "                                 + promotion checklist + retrain scaffold."
+	@echo "                                 Run before any future promotion / post-refactor /"
+	@echo "                                 pre-deploy safety review."
 	@echo "  make install-pre-push-hook     Optionally install the pre-push hook"
-	@echo "                                 (runs lint-arch by default)."
+	@echo "                                 (runs lint-arch by default;"
+	@echo "                                  see scripts/install-pre-push-hook.sh --help)."
 	@echo "  make uninstall-pre-push-hook   Remove the pre-push hook."
 
 # ── Architecture lint ────────────────────────────────────────────
@@ -76,6 +99,38 @@ lint-arch:
 # opt in via `./scripts/install-pre-push-hook.sh --fast`.
 lint-fast: lint-arch
 	@cd $(BACKEND_DIR) && $(PYTEST) $(FAST_INVARIANT_TESTS) -q
+
+# ── Phase 5d/6 governance safety surface ─────────────────────────
+#
+# Single-command verification of the entire Phase 5d/6 read-only
+# safety contract:
+#   * stale-model + feature-health + executor heartbeat
+#     (test_phase5d_safety.py)
+#   * wedge alerter (notification-only paging)
+#   * artifact inventory (file-stat + env-read)
+#   * promotion checklist (8-check aggregator)
+#   * retrain scaffold (artifact-only, dry-run by default)
+#
+# Same constraints as lint-arch / lint-fast: read-only, no broker
+# calls, no env mutation, no joblib loading, no backend restart,
+# no promotion actions. Whole bundle runs in ~3s.
+#
+# Stops at the first failing file via pytest's -x flag and prints
+# the failing test node so the operator can see exactly which
+# safety layer regressed.
+#
+# Intended uses:
+#   * pre-promotion verification
+#   * post-refactor sanity check
+#   * pre-deploy safety review
+#
+# NOT installed into the pre-push hook by default — operator opts
+# in via `./scripts/install-pre-push-hook.sh --safety`.
+lint-safety:
+	@cd $(BACKEND_DIR) && $(PYTEST) -x $(SAFETY_TESTS) -q --no-header || \
+		(echo ""; echo "[lint-safety] FAILED in one of:"; \
+		 for f in $(SAFETY_TESTS); do echo "    $$f"; done; \
+		 exit 1)
 
 # ── Pre-push hook (opt-in) ───────────────────────────────────────
 

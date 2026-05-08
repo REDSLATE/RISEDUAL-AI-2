@@ -30,6 +30,39 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08)
 
+### Phase 5d/6 governance — `make lint-safety` (2026-05-08)
+
+**Single-command verification of the entire Phase 5d/6 read-only safety surface**.
+
+**Three-tier separation now established**:
+  - `make lint-arch`   — architecture drift (~1s, 7 tests)
+  - `make lint-fast`   — runtime invariants (~1.5s, 126 tests, includes lint-arch)
+  - `make lint-safety` — Phase 5d/6 governance surface (~3s, 72 tests)
+
+**`lint-safety` bundle**:
+  - `test_phase5d_safety.py` — stale-model + feature-health + executor heartbeat
+  - `test_wedge_alerter.py` — notification-only paging + cooldown
+  - `test_artifact_inventory.py` — file-stat + env-read endpoint
+  - `test_promotion_checklist.py` — 8-check aggregator
+  - `test_retrain_alpha_models.py` — artifact-only dry-run scaffold
+
+**Constraints honoured**: read-only, no broker calls, no env mutation, no joblib loading, no backend restart, no promotion actions. Stops at first failing file via `pytest -x`. On failure, prints the failing test node AND the full list of bundled layers so the operator immediately knows which surface regressed.
+
+**Hook installer extended** with `--safety`:
+  - `./scripts/install-pre-push-hook.sh --safety` → `make lint-safety` mode
+  - Hook embeds `target=lint-safety` marker.
+  - Re-install across all three modes (default / `--fast` / `--safety`) is idempotent.
+
+**Intended uses**:
+  - Pre-promotion verification.
+  - Post-refactor sanity check.
+  - Pre-deploy safety review.
+
+**Verified**:
+  - `make lint-safety`: 72 passed in 2.72s.
+  - Synthetic failure smoke test: correctly stops after first failure, names the test node, lists all 5 bundled layers, exits non-zero.
+  - All three speeds (`lint-arch` / `lint-fast` / `lint-safety`) work standalone and as hook installers.
+
 ### Phase 6 prep — Promotion Checklist endpoint + tile (2026-05-08)
 
 **Read-only Phase 6 readiness aggregator**. Pulls from existing surfaces (artifact_inventory + executor_heartbeat + alpha_decision_log) and emits an 8-check status report with GREEN/YELLOW/RED.

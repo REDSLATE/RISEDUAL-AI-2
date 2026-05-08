@@ -6,11 +6,14 @@
 # Usage:
 #   ./scripts/install-pre-push-hook.sh           # install (lint-arch)
 #   ./scripts/install-pre-push-hook.sh --fast    # install (lint-fast)
+#   ./scripts/install-pre-push-hook.sh --safety  # install (lint-safety)
 #   ./scripts/install-pre-push-hook.sh --uninstall
 #
 # What it does (install):
-#   * Writes .git/hooks/pre-push that calls `make lint-arch`
-#     (or `make lint-fast` with --fast).
+#   * Writes .git/hooks/pre-push that calls one of:
+#       make lint-arch    (default — quick drift check)
+#       make lint-fast    (--fast: runtime invariant bundle)
+#       make lint-safety  (--safety: Phase 5d/6 governance surface)
 #   * Backs up any existing pre-push hook to pre-push.backup.<ts>.
 #   * Idempotent — re-running install replaces the managed hook.
 #
@@ -105,8 +108,11 @@ case "${1:-install}" in
     --fast|fast)
         install_hook "lint-fast"
         ;;
+    --safety|safety)
+        install_hook "lint-safety"
+        ;;
     --help|-h|help)
-        sed -n '2,22p' "$0"
+        sed -n '2,24p' "$0"
         ;;
     *)
         install_hook "lint-arch"
