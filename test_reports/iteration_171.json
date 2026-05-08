@@ -1,0 +1,124 @@
+{
+  "summary": "Phase 5d Safety Protections - All 40 tests passed (14 unit + 26 API). Verified: (a) Stale-Model Protection with model_age_hours/stale fields in boot receipts, (b) Feature-Health Weighting with effective_confidence = raw * health, (c) Executor Heartbeat with frozen lanes and per-lane isolation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase5d_safety.py",
+    "/app/backend/tests/slow/test_phase5d_safety_api.py",
+    "/app/test_reports/pytest/phase5d_safety_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Stale-model protection correctly implemented: evaluate_artifact() returns (stale, age_hours, max_age), boot receipts flip ready=False when stale=True",
+    "Feature-health weighting correctly implemented: compute_feature_health() returns score in [0,1], effective_confidence = raw_confidence * feature_health_score",
+    "Executor heartbeat correctly tracks per-lane state: frozen flag, signals_1h, holds_1h, feature_health_avg, model_age_hours",
+    "All admin endpoints correctly gated via _require_admin (401/403 without auth)",
+    "Pipeline decide is dry-run by default (recorded=False), no live broker calls",
+    "Lane isolation verified: equity pipeline run does not affect crypto heartbeat",
+    "Boot receipts now include model_age_hours and stale fields per ModelBootReceipt schema"
+  ],
+  "updated_files": [
+    "/app/backend/tests/slow/test_phase5d_safety_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14 unit tests + 26 API tests = 40 total passed)",
+    "frontend": "N/A (backend-only testing)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "None required",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 5d safety protections fully tested. Key findings: (1) GET /api/admin/ml/heartbeat returns per-lane state with frozen, signals_1h, holds_1h, model_age_hours, model_stale fields, (2) GET /api/admin/ml/pipeline/receipts returns recent alpha_decision_log items with optional lane filter, (3) POST /api/admin/ml/v2/pipeline/decide dry-run returns Strategist diagnostics with feature_health_score, raw_confidence, effective_confidence, clamped when model runs, (4) GET /api/admin/ml/v2/boot-receipts includes model_age_hours and stale fields, (5) Pipeline runs update heartbeat for the lane (frozen flips to False after run), (6) Brand-new tracker reports frozen=true for both lanes, (7) Equity-only run leaves crypto frozen state unchanged (lane isolation), (8) All admin endpoints require admin role, (9) No live broker calls / no enforce flag changes. Note: Pipeline currently blocked at perception (EVENT_SHOCK_ACTIVE) so Strategist diagnostics only visible when perception passes.",
+  "test_cases_executed": [
+    {"test": "test_model_age_returns_none_for_missing_path", "status": "PASS"},
+    {"test": "test_model_age_evaluate_fresh", "status": "PASS"},
+    {"test": "test_model_age_evaluate_stale", "status": "PASS"},
+    {"test": "test_stale_reason_format", "status": "PASS"},
+    {"test": "test_strategist_boot_flips_to_observe_only_when_artifact_stale", "status": "PASS"},
+    {"test": "test_strategist_boot_ready_when_artifact_fresh", "status": "PASS"},
+    {"test": "test_feature_health_empty_frame_low_score", "status": "PASS"},
+    {"test": "test_feature_health_full_frame_high_score", "status": "PASS"},
+    {"test": "test_strategist_force_hold_when_feature_health_low", "status": "PASS"},
+    {"test": "test_strategist_confidence_clamped_by_feature_health", "status": "PASS"},
+    {"test": "test_heartbeat_records_runs_and_signals", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_when_no_recent_run", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_when_long_dry_with_low_health", "status": "PASS"},
+    {"test": "test_pipeline_emits_heartbeat_on_decide", "status": "PASS"},
+    {"test": "test_heartbeat_requires_auth", "status": "PASS"},
+    {"test": "test_pipeline_receipts_requires_auth", "status": "PASS"},
+    {"test": "test_boot_receipts_requires_auth", "status": "PASS"},
+    {"test": "test_pipeline_decide_requires_auth", "status": "PASS"},
+    {"test": "test_heartbeat_returns_200", "status": "PASS"},
+    {"test": "test_heartbeat_has_lanes", "status": "PASS"},
+    {"test": "test_heartbeat_lane_structure", "status": "PASS"},
+    {"test": "test_heartbeat_frozen_flag_is_boolean", "status": "PASS"},
+    {"test": "test_heartbeat_any_frozen_flag", "status": "PASS"},
+    {"test": "test_heartbeat_model_stale_flag", "status": "PASS"},
+    {"test": "test_pipeline_receipts_returns_200", "status": "PASS"},
+    {"test": "test_pipeline_receipts_lane_filter", "status": "PASS"},
+    {"test": "test_pipeline_receipts_limit", "status": "PASS"},
+    {"test": "test_boot_receipts_returns_200", "status": "PASS"},
+    {"test": "test_boot_receipts_have_stale_fields", "status": "PASS"},
+    {"test": "test_boot_receipts_have_required_fields", "status": "PASS"},
+    {"test": "test_boot_receipts_strategist_auditor_present", "status": "PASS"},
+    {"test": "test_pipeline_decide_returns_200", "status": "PASS"},
+    {"test": "test_pipeline_decide_has_trail", "status": "PASS"},
+    {"test": "test_pipeline_decide_strategist_diagnostics", "status": "PASS"},
+    {"test": "test_pipeline_decide_crypto_lane", "status": "PASS"},
+    {"test": "test_pipeline_decide_invalid_lane_returns_400", "status": "PASS"},
+    {"test": "test_pipeline_run_updates_heartbeat", "status": "PASS"},
+    {"test": "test_equity_run_does_not_affect_crypto_heartbeat", "status": "PASS"},
+    {"test": "test_pipeline_decide_is_dry_run", "status": "PASS"},
+    {"test": "test_heartbeat_is_read_only", "status": "PASS"}
+  ],
+  "verified_features": {
+    "stale_model_protection": {
+      "description": "Joblib artifact older than MAX_MODEL_AGE_HOURS (72h) forces observe-only",
+      "implementation": "model_age.py: evaluate_artifact() returns (stale, age_hours, max_age)",
+      "boot_receipt_fields": ["model_age_hours", "stale"],
+      "behavior": "When stale=True, boot receipt ready=False, decide() returns NO_TRADE with MODEL_STALE_OBSERVE_ONLY reason"
+    },
+    "feature_health_weighting": {
+      "description": "Strategist confidence clamped by feature health score",
+      "implementation": "feature_health.py: compute_feature_health() returns (score, diagnostics)",
+      "formula": "effective_confidence = raw_confidence * feature_health_score",
+      "hold_threshold": "FEATURE_HEALTH_HOLD_THRESHOLD env (default 0.3)",
+      "behavior": "If health < 0.3, force NO_TRADE with STRATEGIST_FEATURE_HEALTH_LOW reason"
+    },
+    "executor_heartbeat": {
+      "description": "Per-lane pipeline heartbeat surfaces frozen lanes",
+      "implementation": "executor_heartbeat.py: record_pipeline_run(), get_snapshot()",
+      "endpoint": "GET /api/admin/ml/heartbeat",
+      "fields": ["last_pipeline_run_at", "last_signal_at", "signals_1h", "holds_1h", "feature_health_avg", "model_age_hours", "frozen", "model_stale"],
+      "frozen_heuristic": "No run in > FREEZE_AFTER_MIN (15) OR (signals=0 AND avg_health < 0.3)"
+    },
+    "admin_auth_gate": {
+      "description": "All admin endpoints require admin role",
+      "implementation": "_require_admin from routes.admin",
+      "endpoints_protected": ["/api/admin/ml/heartbeat", "/api/admin/ml/pipeline/receipts", "/api/admin/ml/v2/boot-receipts", "/api/admin/ml/v2/pipeline/decide"]
+    }
+  },
+  "live_endpoint_responses": {
+    "heartbeat": {
+      "as_of": "2026-05-08T20:53:18.523147+00:00",
+      "any_frozen": false,
+      "lanes": {
+        "equity": {"frozen": false, "signals_1h": 0, "holds_1h": 6, "model_stale": false},
+        "crypto": {"frozen": false, "signals_1h": 0, "holds_1h": 1, "model_stale": false}
+      }
+    },
+    "boot_receipts": {
+      "count": 7,
+      "ready": 7,
+      "disabled": 0,
+      "layers": ["perception", "strategist", "auditor", "fast_veto", "shadow", "executor(equity)", "executor(crypto)"]
+    }
+  }
+}

@@ -35,6 +35,7 @@ from services.ml.contracts import (
 )
 from services.ml.executors import CryptoExecutorML, EquityExecutorML
 from services.ml.fast_veto import FastVetoMLLayer
+from services.ml import executor_heartbeat
 from services.ml.perception import PerceptionML
 from services.ml.shadow import ShadowML
 from services.ml.shelly import ShellyClient
@@ -200,6 +201,18 @@ class RisedualMLPipeline:
         if blocked_at is not None and blocked_at not in DECISION_STAGES:
             logger.warning("[ml.pipeline] unknown blocked_at=%r; coercing to None", blocked_at)
             blocked_at = None
+        # Heartbeat — record every run so a frozen lane is visible.
+        try:
+            fh = (frame.extra or {}).get("feature_health_score")
+            executor_heartbeat.record_pipeline_run(
+                lane=frame.lane,
+                decision=final.decision,
+                blocked_at=blocked_at,
+                reason=final.reason,
+                feature_health=float(fh) if isinstance(fh, (int, float)) else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[ml.pipeline] heartbeat record failed: %s", exc)
         return PipelineDecision(
             symbol=frame.symbol,
             lane=frame.lane,

@@ -29,6 +29,10 @@ from services.ml.roadguard import (
 )
 
 router = APIRouter(prefix="/api/admin/ml/v2", tags=["admin", "ml-v2"])
+# Phase 5d safety surface — exposed at the simpler /api/admin/ml
+# prefix (no /v2) so operators can curl heartbeat/receipts without
+# guessing the version path.
+ml_safety_router = APIRouter(prefix="/api/admin/ml", tags=["admin", "ml-safety"])
 logger = logging.getLogger(__name__)
 
 
@@ -293,6 +297,75 @@ async def camaro_bridge_run(
     await _require_admin(request)
     from services.ml.camaro_shelly_bridge import run_bridge
     return await run_bridge(_db, lookback_hours=lookback_hours)
+
+
+@ml_safety_router.get("/heartbeat")
+async def pipeline_heartbeat(request: Request) -> Dict[str, Any]:
+    """Per-lane pipeline heartbeat — surfaces frozen lanes.
+
+    Read-only. Reports rolling 1h signals/holds, last_signal_at,
+    last_pipeline_run_at, feature_health_avg, and the current
+    executor model age (from the boot receipts). Combines:
+
+      * in-process executor_heartbeat tracker
+      * latest boot-receipt model_age_hours per lane
+
+    No broker calls, no DB writes.
+    """
+    await _require_admin(request)
+    from services.ml import executor_heartbeat
+
+    # Ensure pipeline is constructed so receipts exist.
+    get_pipeline()
+    age_by_lane: Dict[str, float] = {}
+    for r in boot_receipts.get_all_receipts():
+        if r.layer != "executor" or not r.lane:
+            continue
+        if r.model_age_hours is not None:
+            age_by_lane[r.lane] = r.model_age_hours
+    snap = executor_heartbeat.get_snapshot(model_age_by_lane=age_by_lane)
+    # Augment with boot-stale flags so the operator can see the cause
+    # of an observe-only lane at a glance.
+    stale_by_lane: Dict[str, bool] = {}
+    for r in boot_receipts.get_all_receipts():
+        if r.layer == "executor" and r.lane:
+            stale_by_lane[r.lane] = bool(r.stale)
+    for lane, info in snap.get("lanes", {}).items():
+        info["model_stale"] = stale_by_lane.get(lane, False)
+    return snap
+
+
+# ── Pipeline receipts (alias surfacing live decisions for ops) ───
+
+
+@ml_safety_router.get("/pipeline/receipts")
+async def pipeline_receipts(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    lane: Optional[str] = Query(None, regex="^(equity|crypto)$"),
+) -> Dict[str, Any]:
+    """Most recent pipeline decision-log receipts. Alias for
+    /decisions/recent with optional lane filter.
+    """
+    await _require_admin(request)
+    if _db is None:
+        return {"items": [], "count": 0}
+    q: Dict[str, Any] = {}
+    if lane:
+        q["lane"] = lane
+    items: List[Dict[str, Any]] = []
+    try:
+        cursor = _db[alpha_decision_log.COLLECTION].find(
+            q, projection={"_id": 0},
+        ).sort("created_at", -1).limit(limit)
+        async for doc in cursor:
+            ca = doc.get("created_at")
+            if hasattr(ca, "isoformat"):
+                doc["created_at"] = ca.isoformat()
+            items.append(doc)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"items": items, "count": len(items)}
 
 
 # ── Synthetic dry-run ────────────────────────────────────────────

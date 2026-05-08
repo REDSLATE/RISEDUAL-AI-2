@@ -101,6 +101,13 @@ class ModelBootReceipt:
     reason: Optional[str]
     can_approve: bool
     shadow_only: bool
+    # Stale-model protection (Phase 5d safety):
+    # ``model_age_hours`` is the artifact mtime delta at boot time.
+    # ``stale`` is True iff age exceeded ``MAX_MODEL_AGE_HOURS``; in
+    # that case ``ready`` is forced False and ``reason`` carries the
+    # canonical ``MODEL_STALE_OBSERVE_ONLY:...`` prefix.
+    model_age_hours: Optional[float] = None
+    stale: bool = False
     booted_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )

@@ -148,18 +148,31 @@ class AuditorML(BaseMLLayer):
             self._artifact_loaded = False
 
     def boot(self) -> ModelBootReceipt:
-        ready = self._model is not None
+        from services.ml.model_age import evaluate_artifact, stale_reason
+
+        artifact_path = os.getenv("AUDITOR_ARTIFACT")
+        stale, age_hours, max_age = evaluate_artifact(artifact_path)
+
+        ready = self._model is not None and not stale
+        reason = self._init_error
+        if stale and not reason:
+            reason = stale_reason(age_hours, max_age)
+        elif not reason:
+            reason = (
+                "artifact_loaded" if self._artifact_loaded else "placeholder_classifier"
+            )
+
         receipt = ModelBootReceipt(
             layer=self.layer_id,
             lane=None,
             ready=ready,
-            artifact_path=os.getenv("AUDITOR_ARTIFACT"),
+            artifact_path=artifact_path,
             artifact_present=self._artifact_loaded,
-            reason=self._init_error or (
-                "artifact_loaded" if self._artifact_loaded else "placeholder_classifier"
-            ),
+            reason=reason,
             can_approve=self.can_approve,
             shadow_only=self.shadow_only,
+            model_age_hours=age_hours,
+            stale=stale,
         )
         self._boot_receipt = receipt
         boot_receipts.register(receipt)

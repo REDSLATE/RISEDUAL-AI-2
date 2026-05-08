@@ -68,10 +68,15 @@ def test_strategist_confirm_when_clean():
                         "pacing":        {"score": 0.7, "confidence": 0.9},
                     }}
     f.shelly_recall = {"episodes_found": 0, "negative_count": 0, "positive_count": 0}
+    # Add minimal market frame so feature_health doesn't force HOLD.
+    f.market = {
+        "broker_uptime": 1.0, "data_lag_ms": 50.0,
+        "error_rate": 0.0, "spread_bps": 5.0, "vix": 18.0,
+    }
     v = StrategistML().decide(f)
-    # Clean signal → confirm BUY.
+    # Clean signal → confirm BUY (clamping may rename to *_CLAMPED).
     assert v.decision == Verdict.BUY.value
-    assert v.reason == "STRATEGIST_CONFIRM"
+    assert v.reason in ("STRATEGIST_CONFIRM", "STRATEGIST_CONFIRM_CLAMPED")
 
 
 # ── Auditor ──────────────────────────────────────────────────────

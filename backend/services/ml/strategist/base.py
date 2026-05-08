@@ -163,18 +163,33 @@ class StrategistML(BaseMLLayer):
             self._artifact_loaded = False
 
     def boot(self) -> ModelBootReceipt:
-        ready = self._model is not None
+        from services.ml.model_age import evaluate_artifact, stale_reason
+
+        artifact_path = os.getenv("STRATEGIST_ARTIFACT")
+        stale, age_hours, max_age = evaluate_artifact(artifact_path)
+
+        # Stale-model protection: even if the artifact loaded fine,
+        # an old .joblib forces observe-only.
+        ready = self._model is not None and not stale
+        reason = self._init_error
+        if stale and not reason:
+            reason = stale_reason(age_hours, max_age)
+        elif not reason:
+            reason = (
+                "artifact_loaded" if self._artifact_loaded else "placeholder_classifier"
+            )
+
         receipt = ModelBootReceipt(
             layer=self.layer_id,
             lane=None,
             ready=ready,
-            artifact_path=os.getenv("STRATEGIST_ARTIFACT"),
+            artifact_path=artifact_path,
             artifact_present=self._artifact_loaded,
-            reason=self._init_error or (
-                "artifact_loaded" if self._artifact_loaded else "placeholder_classifier"
-            ),
+            reason=reason,
             can_approve=self.can_approve,
             shadow_only=self.shadow_only,
+            model_age_hours=age_hours,
+            stale=stale,
         )
         self._boot_receipt = receipt
         boot_receipts.register(receipt)
@@ -199,28 +214,58 @@ class StrategistML(BaseMLLayer):
                 diagnostics={"upstream": "perception", "model_skipped": True},
             )
 
+        # ── Feature-health weighting (Phase 5d safety) ──
+        # Stash on the frame so heartbeat / decision-log receipts can read
+        # the same score the Strategist used.
+        from services.ml.feature_health import compute_feature_health, should_force_hold
+        feature_health_score, fh_diag = compute_feature_health(frame)
+        frame.extra["feature_health_score"] = feature_health_score
+        frame.extra["feature_health_diag"] = fh_diag
+
+        if should_force_hold(feature_health_score):
+            return MLVerdict(
+                layer=self.layer_id,
+                decision=Verdict.NO_TRADE.value,
+                confidence=0.0,
+                reason="STRATEGIST_FEATURE_HEALTH_LOW",
+                can_approve=self.can_approve,
+                diagnostics={
+                    "feature_health_score": feature_health_score,
+                    "feature_health": fh_diag,
+                    "model_skipped": True,
+                },
+            )
+
         feats = _build_features(frame).reshape(1, -1)
         proba = self._model.predict_proba(feats)[0]
         cls = int(np.argmax(proba))
         decision = _LABELS.get(cls, Verdict.NO_TRADE.value)
-        conf = float(proba[cls])
+        raw_conf = float(proba[cls])
+        # Clamp confidence by feature health.
+        effective_conf = raw_conf * feature_health_score
+        clamped = effective_conf < raw_conf - 1e-9
         # Reason carries the dominant class + confidence delta.
         if decision == upstream_decision:
-            reason = "STRATEGIST_CONFIRM"
+            reason = "STRATEGIST_CONFIRM_CLAMPED" if clamped else "STRATEGIST_CONFIRM"
         elif decision == Verdict.NO_TRADE.value:
             reason = "STRATEGIST_DOWNGRADE"
         else:
-            reason = "STRATEGIST_FLIP"
+            reason = "STRATEGIST_FLIP_CLAMPED" if clamped else "STRATEGIST_FLIP"
 
         return MLVerdict(
             layer=self.layer_id,
             decision=decision,
-            confidence=conf,
+            confidence=effective_conf,
             reason=reason,
             can_approve=self.can_approve,
             diagnostics={
                 "proba": proba.tolist(),
                 "feature_dim": _FEATURE_DIM,
                 "artifact_loaded": self._artifact_loaded,
+                "raw_confidence": raw_conf,
+                "effective_confidence": effective_conf,
+                "feature_health_score": feature_health_score,
+                "feature_health": fh_diag,
+                "clamped": clamped,
             },
         )

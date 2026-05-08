@@ -69,18 +69,30 @@ class _BaseExecutorML(BaseMLLayer):
             self._init_error = exc.reason
 
     def boot(self) -> ModelBootReceipt:
-        ready = self._init_error is None
+        from services.ml.model_age import evaluate_artifact, stale_reason
+
+        stale, age_hours, max_age = evaluate_artifact(self._artifact_path)
+
+        ready = self._init_error is None and not stale
+        reason = self._init_error
+        if stale and not reason:
+            reason = stale_reason(age_hours, max_age)
+        elif not reason:
+            reason = (
+                "artifact_loaded" if self._artifact_path else "placeholder_deterministic"
+            )
+
         receipt = ModelBootReceipt(
             layer=self.layer_id,
             lane=self.lane,
             ready=ready,
             artifact_path=self._artifact_path,
             artifact_present=bool(self._artifact_path),
-            reason=self._init_error or (
-                "artifact_loaded" if self._artifact_path else "placeholder_deterministic"
-            ),
+            reason=reason,
             can_approve=self.can_approve,
             shadow_only=self.shadow_only,
+            model_age_hours=age_hours,
+            stale=stale,
         )
         self._boot_receipt = receipt
         boot_receipts.register(receipt)
