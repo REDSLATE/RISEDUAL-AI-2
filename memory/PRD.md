@@ -45,14 +45,19 @@ market data
 
 **Executor Heartbeat** (`services/ml/executor_heartbeat.py`):
   - Thread-safe in-process tracker. Records every `pipeline.decide()` per lane.
-  - Surfaces `last_pipeline_run_at`, `last_signal_at`, `signals_1h`, `holds_1h`, `feature_health_avg`, `model_age_hours`, `frozen`.
-  - Frozen heuristic: no run in `EXECUTOR_HEARTBEAT_FREEZE_AFTER_MIN` minutes (default 15) OR (signals_1h=0 AND avg health < 0.3).
+  - Surfaces `last_pipeline_run_at`, `last_signal_at`, `signals_1h` (total runs), `buy_sell_1h`, `holds_1h`, `feature_health_avg`, `model_age_hours`, `model_stale`, `top_clamp_block_reason`, `top_clamp_block_count`, `frozen`.
+  - Frozen heuristic: no run in `EXECUTOR_HEARTBEAT_FREEZE_AFTER_MIN` minutes (default 15) OR (buy_sell_1h=0 AND avg health < 0.3).
+
+**ML Heartbeat tile** (`frontend/src/components/admin/MLHeartbeatTile.jsx`):
+  - Top row of Calibration Kanban admin page. 30s auto-refresh + manual refresh button.
+  - Shows lane / frozen / last_run / signals_1h / buy_sell_1h / holds_1h / health_avg / model_age / stale / top reason.
+  - Strict read-only: no promotion buttons, no flip-enforcement controls, no broker-write controls.
 
 **New admin endpoints** (`/api/admin/ml` prefix, separate `ml_safety_router`):
   - `GET /api/admin/ml/heartbeat` — per-lane state with frozen flag, model_stale flag.
   - `GET /api/admin/ml/pipeline/receipts?limit&lane` — recent decision-log entries.
 
-**Tests**: `tests/test_phase5d_safety.py` (14 unit) + `tests/slow/test_phase5d_safety_api.py` (26 API). All 40 passing. **Hard stop on Phase 5b promotion remains in effect** — no broker wiring changes, no BUY/SELL enablement.
+**Tests**: `tests/test_phase5d_safety.py` (14 unit) + `tests/slow/test_phase5d_safety_api.py` (29 API). All 43 passing. **Hard stop on Phase 5b promotion remains in effect** — no broker wiring changes, no BUY/SELL enablement.
 
 ### Phase 5c — sklearn-backed Strategist + Auditor, live features, Camaro bridge
 
