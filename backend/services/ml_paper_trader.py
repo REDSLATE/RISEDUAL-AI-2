@@ -765,6 +765,43 @@ async def maybe_paper_trade(
         )
 
     try:
+        # ── ADL-6: APPROVED success-path receipt (fire-and-forget) ──
+        # Captures every APPROVED equity paper trade in
+        # ``alpha_decision_log`` with source="ml_paper_trader" so
+        # the v2 retrain join sees both APPROVED trades AND the
+        # NO_TRADE / blocked decisions ADL-2/3/4/5 already cover.
+        # The diagnostic on 2026-05-09 surfaced 0 APPROVED rows
+        # because this writer never produced a receipt — every
+        # paper_trades row was orphaned from the ADL stream. Runs
+        # OUT-OF-BAND on the event loop; NEVER blocks the trade
+        # write, NEVER mutates ``trade_doc``, NEVER raises out.
+        try:
+            from services.ml.receipt_dispatch import (
+                schedule_shadow_receipt,
+            )
+            _adl_signal = {
+                "symbol": ticker,
+                "direction": direction_val,
+                "confidence": float(signal.confidence),
+                "prediction_id": signal.prediction_id,
+                "regime": regime,
+                "trade_id": trade_id,
+                "source_layer": "ml_paper_trader",
+            }
+            schedule_shadow_receipt(
+                db,
+                signal=_adl_signal,
+                market_data=None,
+                lane="equity",
+                requested_notional_usd=float(position_usd or 0.0),
+                source="ml_paper_trader",
+            )
+        except Exception as _adl_exc:  # noqa: BLE001
+            log.debug(
+                "[ml_paper] ADL receipt schedule skipped for %s: %s",
+                ticker, _adl_exc,
+            )
+
         await db["paper_trades"].insert_one(trade_doc)
     except DuplicateKeyError:
         # Same prediction firing twice in the same minute — return

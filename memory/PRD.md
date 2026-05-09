@@ -30,6 +30,64 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-6 — APPROVED success-path receipts in `ml_paper_trader` (2026-05-09)
+
+**Closes Gap A surfaced by the 2026-05-09 diagnostic.** The day-of-deploy diagnostic showed `paper_trades` had 152 rows in 24h but `alpha_decision_log` had only 1 equity row, all `NO_TRADE` — meaning every APPROVED equity paper trade was orphaned from the ADL stream. v2 retrain join was structurally blind to APPROVED outcomes regardless of how long we waited.
+
+**Root cause**: `services/ml_paper_trader.py:maybe_paper_trade` writes `paper_trades` rows but never called `schedule_shadow_receipt`. ADL-1 baseline at `trading_bot_service.execute_signal` only fires for the legacy webhook path; the ML orchestrator path (which produces ~all real equity paper trades) goes through `ml_paper_trader.maybe_paper_trade` directly.
+
+**Patch site**: `services/ml_paper_trader.py:maybe_paper_trade` — single fire-and-forget `schedule_shadow_receipt` call IMMEDIATELY before `db["paper_trades"].insert_one(trade_doc)` so the receipt always lands first in the ADL stream (or fires even when the insert is a duplicate-key no-op).
+
+**Call shape**:
+```python
+schedule_shadow_receipt(
+    db,
+    signal={
+        "symbol": ticker,
+        "direction": direction_val,
+        "confidence": float(signal.confidence),
+        "prediction_id": signal.prediction_id,
+        "regime": regime,
+        "trade_id": trade_id,
+        "source_layer": "ml_paper_trader",
+    },
+    market_data=None,
+    lane="equity",
+    requested_notional_usd=float(position_usd or 0.0),
+    source="ml_paper_trader",
+)
+```
+Wrapped in defensive belt+braces try/except — debug log on failure, never blocks the trade write.
+
+**Hard rails (pinned by tests)**:
+- 6-test net `tests/test_ml_paper_trader_adl_receipts.py` covers: receipt call IMMEDIATELY precedes the `paper_trades.insert_one` (within 80 lines, same try block), `lane="equity"` and `source="ml_paper_trader"` static check, defensive try/except wrapper static check, no broker imports added, signal payload contains all required keys (symbol/direction/confidence/prediction_id/regime/trade_id/source_layer), helper failure does NOT propagate.
+- All execution paths byte-equivalent: trade_doc shape, idempotency (duplicate-key handling), reasoning overlay, brake/sovereign/penalty meta — preserved.
+- Adjacent suites still pass: `test_ml_paper_trader_idempotency` 6/6, all 5 prior ADL suites (63 tests total).
+
+**Verified**:
+- `tests/test_ml_paper_trader_adl_receipts.py`: **6 passed** in 0.11s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **3115 passed, 0 failed** (was 3109 + 6 new = 3115 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":572}`.
+
+**Cumulative ADL coverage now spans SIX entry points**:
+1. **Equity paper trades** (APPROVED success) — `ml_paper_trader.maybe_paper_trade` (**ADL-6 — closes the APPROVED gap**).
+2. **Equity executor** (legacy webhook success) — `trading_bot_service.execute_signal` (ADL-0 baseline).
+3. **Crypto paper bot** — `crypto_paper_trader.run_crypto_symbol` (ADL-2).
+4. **Day-trade scanner** — `day_trade_scanner.run_scan` per-candidate (ADL-3).
+5. **Options paper agent** — `trading_agents.options_paper.run` per-ticker (ADL-4).
+6. **Upstream gate-blocked decisions** — six sites in `trading_bot_service` (ADL-5).
+
+**Expected impact at May 13 checkpoint**:
+- Per-lane equity coverage: 0.66% → ~100% (every paper_trade row gets a receipt).
+- by_decision: NO_TRADE-only → mix of APPROVED + NO_TRADE.
+- Criterion #4 (APPROVED + blocked both present): ❌ → ✅.
+- Criterion #1 (receipt-vs-trade > 90%): equity will lift dramatically; crypto stays at ~63% naturally because `crypto_paper_trader.run_crypto_symbol` only fires receipts when there's a strategist signal (most loop iterations have no signal), so the gap is real-but-expected for the crypto lane.
+
+**What ADL-6 does NOT fix** (still organic-window dependent):
+- Gap B (day-trade + options 0 receipts) — ADL-3/4 hooks are correct; the agents just haven't produced signals yet in the 7h post-deploy window.
+- Gap C (history pre-dating ADL persistence) — heals automatically over the next 30d.
+
 ### Bulk Replay — pre-ingest CSV firewall scanner (2026-05-09)
 
 **Pre-ingest sanity check** for historical paper-trade CSVs. Operator drag-drops a file, every row passes through the existing Chevelle Memory Labeling Firewall, response includes per-row verdicts + aggregate summary. **NO** writes, **NO** training, **NO** promotion, **NO** broker calls — read-only by construction.
