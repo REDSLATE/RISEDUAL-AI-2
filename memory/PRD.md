@@ -30,6 +30,71 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Chevelle Memory Labeler — read-side firewall (2026-05-09)
+
+**Pre-Chevelle infrastructure**: a pure label-resolution layer that
+gates every memory before it can flow into Chevelle's training /
+observation engine. Composes the existing labelers
+(`event_aware_regime_labeler`, `data_source_labeler`, the failure
+classifier shape conventions) and fills the four gaps the survey
+identified: trust-weight scalar, `trainable` boolean, `QUARANTINED`
+state (vs. delete), and required-field rejection contract.
+
+**Module layout** (authority-boundary 3-file split, all under
+`core-governance` 600-line preferred ceiling):
+| File | Lines | Authority |
+|---|---:|---|
+| `services/chevelle_memory_labels.py` | 79 | enums + trust-ladder constants (data only) |
+| `services/_chevelle_resolvers.py` | 324 | pure label-resolver helpers (era / lane / source / outcome / failure / quality / trust) |
+| `services/chevelle_memory_labeler.py` | 305 | dataclass + public API (`label_memory`, `label_memories`, `trainable_only`, `quarantined_only`) |
+
+**The 10 operator-mandated hard rules** — pinned by tests:
+1. Every memory must have `source` (or be quarantined).
+2. Every memory must have `opened_at`/`closed_at` (or be quarantined).
+3. Every memory must have a `lane` (`equity`/`crypto`/`options`/`macro`/`unknown`).
+4. Every memory must have a normalized `symbol` (or be quarantined).
+5. Old trades get an `event_era` (9-bucket: GFC_2008 / FLASH_CRASH_2010 / CHINA_DEVAL_2015 / VOL_SPIKE_2018 / COVID_2020 / RATE_HIKE_2022 / AI_BUBBLE_2024_2025 / CURRENT_REGIME / UNKNOWN_ERA).
+6. Bad/ambiguous rows are `QUARANTINED` (trust=0.0, trainable=False), NEVER deleted.
+7. Toxic/failure labels REDUCE trust (0.10 floor), never delete.
+8. Chevelle MAY observe quarantined memories (`chevelle_can_observe=True`) but `trainable_only(...)` filters them out.
+9. NO BUY/SELL verdicts emitted from labels (static check pinned).
+10. NO broker/executor/Strategist/RoadGuard/FastVeto/kill-switch imports (static check pinned).
+
+**Trust ladder** (operator-specified values, encoded as module-level constants):
+| Source / state | Weight |
+|---|---:|
+| `live_real_fill` (alpaca / kraken / webull / live) | 1.00 |
+| `recent_paper_trade` (≤30 days) | 0.50 |
+| `historical_paper_trade` (>30 days) | 0.25 |
+| `current_macro_proxy` (lane=macro / fred) | 0.15 |
+| `toxic_memory` (BLOWUP / TOXIC_HIGH_CONFIDENCE / REGIME_MISMATCH / DATA_INTEGRITY) | 0.10 |
+| `synthetic_backtest` (yfinance / pre-cutover) | 0.05 |
+| `quarantined` (missing required fields) | 0.00 |
+
+**Failure-mode taxonomy** (coarse-grained projection of the live
+`services.failure_mode_classifier` taxonomy, suitable for training
+gates): `NONE` / `BLOWUP` / `REGIME_MISMATCH` /
+`TOXIC_HIGH_CONFIDENCE` / `DATA_INTEGRITY` / `UNKNOWN`.
+
+**Test net** (`tests/test_chevelle_memory_labeler.py`, **56 tests**):
+- All 10 hard rules covered (1-4 rejection paths, 5 era-mapping, 6 quarantine bucket, 7 toxic-not-deleted, 8 trainable filter, 9 no-verdict static check, 10 no-broker-import static check across all 3 split files).
+- Trust ladder pinned per-tier.
+- Symbol normalization (`BTC-USD` → `BTC`, `BTC/USDT` → `BTC`, etc.).
+- Era mapping for all 9 buckets including pre-2008 → UNKNOWN.
+- Idempotence + non-mutation of input dict.
+- `non_dict_input` / `None` input quarantined (never raises).
+- Recent vs. historical paper-trade boundary at 30 days.
+- High-conviction loss → toxic_high_confidence inferred when no explicit failure marker.
+- DB-write static check (no `.insert_*` / `.update_*` / `.delete_*` / `.bulk_write` / `.drop` anywhere in the 3 files).
+
+**NOT integrated yet** — this is the labeler (the contract). Chevelle's training/observation engine itself still has to be built, and it MUST consume only `trainable_only(label_memories(...))`. No live call sites yet — by design, until Chevelle is ready.
+
+**Verified**:
+- `tests/test_chevelle_memory_labeler.py`: **56 passed** in 0.16s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **3054 passed, 0 failed** (was 2998 + 56 new = 3054 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":569}`.
+
 ### ADL-5 — upstream blocked-decision receipts in `trading_bot_service` (2026-05-09)
 
 **Final micro-phase of the operator-mandated ADL persistence-coverage fix.** Captures gate-blocked decisions BEFORE they short-circuit the executor — the original ADL-1 success-path receipt only fired AFTER all gates passed, leaving every kill-switch / drawdown / fast-veto / sizing / RoadGuard ENFORCE block invisible to retraining.
