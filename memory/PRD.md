@@ -30,6 +30,53 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### `alpha_decision_log` persistence diagnostic + findings (2026-05-09)
+
+**Operator-mandated upstream investigation** of the bottleneck the previous diagnostic surfaced. Read-only — no writes, no env mutation, no schema mutation, no retrain, no Phase 6 changes.
+
+**New tool**: `python -m scripts.diagnose_alpha_decision_log_persistence --window-hours N`. Probes (read-only):
+- Static call-site survey (which files invoke `record_decision` / `record_pipeline_decision` / `run_shadow_pipeline`?)
+- ADL TTL + index inspection
+- Write breakdown by lane / decision / blocked_at stage / symbol
+- Per-lane gap analysis (paper trades vs ADL receipts)
+- Recent supervisor-log scan for swallowed-exception warnings
+- 8-hypothesis classifier + actionable recommendations
+
+**Files**:
+- `scripts/diagnose_alpha_decision_log_persistence.py` (267 lines, runnable CLI).
+- `services/diagnostics/alpha_decision_log_persistence.py` (555 lines, probe/classifier library — under the 600 `core-governance` ceiling).
+- `tests/test_diagnose_alpha_decision_log_persistence.py` (**16 tests passing in 0.43s**).
+
+**Live findings (window=24h)**:
+| Probe | Verdict |
+|---|---|
+| A. Persist hook never called? | NO — 2 call sites total (1× `run_shadow_pipeline`, 1× `record_pipeline_decision`) |
+| **B. Single chokepoint?** | **YES** — only ONE caller (`trading_bot_service.execute_signal:428`, fire-and-forget). Every other executor (crypto_paper_trader, day_trade scanner/executor, options paper bot, signal-bot dispatcher tail) bypasses the hook. |
+| **C. NO_TRADE silently dropped?** | **INVERTED** — every recorded receipt is NO_TRADE (perception-blocked). 0 APPROVED rows. The success path never produces receipts. |
+| D. Lane imbalance? | NO — equity=4, crypto=3 (both lanes can produce rows when the hook is hit) |
+| **E. Executors writing trades without receipts?** | **YES** — equity 4/185 (2.16%), crypto 3/214 (1.40%). ~98% of trades fire without producing any receipt. |
+| F. TTL purge pressure? | NO — TTL 30.0d, well above any sensible window |
+| G. Swallowed exceptions in logs? | NO observed (but absence of warnings is NOT proof — exceptions are silently caught in `record_decision` + the create_task callback) |
+| **H. Narrow symbol coverage?** | **YES** — only 2 distinct symbols (AAPL, BTC-USD) ever produced a receipt |
+
+**Root cause confirmed**:
+1. `record_decision` is called from EXACTLY ONE place (`shadow_wiring.py:280`).
+2. `run_shadow_pipeline` is called from EXACTLY ONE place (`trading_bot_service.execute_signal:428`).
+3. That call site is `_asyncio_p5a.create_task(...)` — fire-and-forget, never awaited.
+4. The legacy executor path is the only entry to the shadow wiring. Every other executor (crypto_paper_trader, day-trade pipeline, options paper bot, signal-bot tail paths) writes paper trades but produces ZERO ADL receipts.
+
+**Recommendations surfaced (priority order)**:
+1. **PRIMARY**: Add fire-and-forget `run_shadow_pipeline` calls at every executor entry point — crypto_paper_trader, day_trade scanner/executor, options paper bot, signal-bot dispatcher (where it bypasses execute_signal).
+2. Crypto executor specifically — confirm by inspection then patch.
+3. Equity day-trade executor — same.
+4. (Auto-suppressed when not applicable): NO_TRADE-decisions-only inversion → move the persist call EARLIER in the pipeline so upstream gates (kill_switch, risk guard, sector cap) ALSO produce receipts.
+
+**Verified**:
+- `tests/test_diagnose_alpha_decision_log_persistence.py`: **16 passed** in 0.43s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2941 passed, 0 failed**.
+- Live CLI reproduces every finding.
+
 ### `no_decision_log` skip-rate diagnostic + findings (2026-05-09)
 
 **Operator-mandated diagnosis** of why retraining only matched 5/1445 paper trades. Built a read-only `python -m scripts.diagnose_alpha_retrain_join` tool that probes all 8 hypothesis questions verbatim. **No writes, no env mutation, no schema mutation, no retrain promotion** — strict observation.
