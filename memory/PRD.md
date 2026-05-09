@@ -30,6 +30,39 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Step 4D — `trading_bot_service.py` decision-rules extraction (2026-05-09)
+
+**Micro-phase 4 of 5**. Pure decision rules only — zero behaviour change. No DB, no broker, no mutation, no kill-switch state changes. Skip/block reasons unchanged.
+
+`services/trading_bot_service.py`: 1402 → **1338 lines** (-64).
+
+**Moved** to `services/trading_bot/_decision_rules.py` (108 lines):
+| Function | Authority |
+|---|---|
+| `get_total_exposure` | Sum USD-notional size across open positions. Pure. |
+| `get_open_trade_count` | `len(open_positions)`. Pure. |
+| `get_sector_exposure` | Sector-share ratio (0.0–1.0). Pure. |
+| `apply_portfolio_constraints` | Eligibility/headroom check returning a non-negative trade size (0 = block, "portfolio limits reached" reason left in caller). Pure. |
+
+**Skipped from 4D scope** (deferred — not pure):
+- `_check_kill_switch_and_drawdown` — calls `kill_switch.activate(...)` (state mutation; hybrid decision+activation).
+- `_compute_adjusted_size`, `_resolve_qty`, `_extract_trade_size` — sizing math (out of "decision rules" scope per operator constraint).
+- `_bot_from_config` — execution-prep synthetic-bot builder.
+
+**Constants**: `MAX_CONCURRENT_TRADES`, `MAX_PORTFOLIO_EXPOSURE`, `MAX_SECTOR_EXPOSURE_PCT` imported from `_constants` directly inside the moved module. No existing test monkeypatches `tbs.MAX_*`, so this is byte-equivalent for all current callers and tests.
+
+**Compatibility shim**: re-imported under public names so `test_portfolio_risk_engine.py` (`tbs.get_total_exposure`, `tbs.apply_portfolio_constraints`, etc.) and all in-module bare-name calls work unchanged.
+
+**Verified**:
+- `make lint-arch` 9 passed · `make lint-fast` 128 passed · `make lint-safety` 72 passed.
+- `test_portfolio_risk_engine.py`: 35/35 passed.
+- Targeted superset (execute_signal + executor_lanes + roadguard + fast_veto + trading_bot + portfolio_risk + adaptive_sizing + drawdown): **202 passed**.
+- Full pytest: **2824 passed, 0 failed** (identical pre/post extraction).
+
+**Cumulative trading_bot_service.py**: 1575 → 1338 lines (-237, -15%) across 4A + 4B + 4C + 4D.
+
+**Remaining**: 4E (broker calls — LAST, riskiest slice). Operator-mandated PAUSE before 4E.
+
 ### Step 4C — `trading_bot_service.py` data-access extraction (2026-05-09)
 
 **Micro-phase 3 of 5**. Bot-CRUD helpers only — zero behaviour change. No broker calls, no decision logic, no sizing, no Mongo query / update / response shape changes.
