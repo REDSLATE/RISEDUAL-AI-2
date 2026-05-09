@@ -214,9 +214,9 @@ class AIService:
                 span_update(
                     gen_span,
                     output={"text_preview": str(routed.get("result") or "")[:600]},
-                    model=routed.get("provider"),
                     metadata={"routed_to": "standard_chat", "ok": True,
-                              "provider": routed.get("provider")},
+                              "provider": routed.get("provider"),
+                              "model": routed.get("provider")},
                 )
                 return {
                     "text": routed["result"],

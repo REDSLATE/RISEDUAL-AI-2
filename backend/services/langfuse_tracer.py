@@ -237,13 +237,19 @@ def span_update(
     cost_details: Optional[dict[str, float]] = None,
     level: Optional[str] = None,
     status_message: Optional[str] = None,
+    **_extra: Any,
 ) -> None:
     """Update a span's output / metadata / cost. No-op on ``None``.
 
     The Langfuse v4.x API exposes ``update`` on the live
     observation handle. We accept the kwargs we actually use in
     this codebase (output, metadata, usage_details, cost_details,
-    level, status_message) and ignore everything else.
+    level, status_message). Unknown kwargs are silently absorbed
+    via ``**_extra`` so an observability call site can never crash
+    the surrounding business logic — incident 2026-05-09 was a
+    ``model=`` kwarg leaking from a call site that flipped the
+    successful LLM response into a "technical difficulties"
+    message via the outer try/except.
     """
     if span is None:
         return

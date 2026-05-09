@@ -100,6 +100,26 @@ def test_span_update_swallows_sdk_exceptions():
     span_update(bad_span, output={"x": 1})
 
 
+def test_span_update_absorbs_unknown_kwargs():
+    """Regression for 2026-05-09: a stray ``model=`` kwarg leaked
+    from an ai_service call site and raised a TypeError that the
+    outer try/except converted to a "technical difficulties"
+    message. ``span_update`` MUST silently absorb unknown kwargs
+    so observability can never sink business logic."""
+    from services.langfuse_tracer import span_update
+    span = MagicMock()
+    # Should not raise.
+    span_update(span, output={"x": 1}, model="gpt-5.2", tools=["a"], unknown=42)
+    # The known kwargs still flow through.
+    assert span.update.called
+    call_kwargs = span.update.call_args.kwargs
+    assert "output" in call_kwargs
+    # Unknown kwargs absorbed, NOT forwarded.
+    assert "model" not in call_kwargs
+    assert "tools" not in call_kwargs
+    assert "unknown" not in call_kwargs
+
+
 def test_flush_with_no_client_is_noop(monkeypatch):
     """Calling ``flush()`` before any client exists must be safe —
     the shutdown hook in tests + scripts shouldn't have to check
