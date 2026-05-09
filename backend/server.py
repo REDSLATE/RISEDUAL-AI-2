@@ -135,6 +135,17 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(DynamicCORSMiddleware)
 
+# Public-access lockout middleware — returns 503 to non-admin /api
+# traffic when ``PUBLIC_ACCESS_ENABLED`` (or the runtime override)
+# is false. Auth + health + system-access endpoints stay reachable.
+# Registered AFTER CORS so 503 responses still carry CORS headers.
+from services.public_access_middleware import PublicAccessMiddleware
+app.add_middleware(PublicAccessMiddleware)
+
+# Public-access route (GET state, POST flip — owner/admin only).
+from routes.system_access import router as system_access_router
+app.include_router(system_access_router, prefix="/api")
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,

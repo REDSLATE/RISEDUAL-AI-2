@@ -30,6 +30,50 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Public-Access Lockout — "Technical Difficulties" mode (2026-05-09)
+
+**Operator decree**: while the ML stack is in its organic data-collection
+window (May 8 → ~May 22, 2026), the public site shows a "Technical
+Difficulties" page. Owner / admin can still sign in and reach the
+dashboard.
+
+**Backend**:
+- `routes/system_access.py` — public `GET /api/system/access` returns lockout state + whether caller is admin; owner-only `POST /api/system/access` flips at runtime (no redeploy).
+- `services/public_access_middleware.py` — Starlette middleware that returns 503 with stable JSON `{"error":"service_unavailable","reason":"scheduled_maintenance","message":"..."}` for non-admin `/api/*` traffic when locked. **Always-reachable**: `/api/health`, `/api/auth/*`, `/api/system/access`, all non-`/api/*` paths (so the SPA can render its own lockout page).
+- Admin bypass: JWT email matched against `ADMIN_EMAILS` env allowlist (default `admin@risedual.ai`). Only access tokens (`type=access`) count — refresh tokens do NOT bypass.
+- **Fail-open** on internal errors (DB hiccup → middleware does NOT hard-lock the site).
+- State precedence: Mongo `system_settings.public_access` runtime override → `PUBLIC_ACCESS_ENABLED` env flag (default `true`).
+
+**Frontend**:
+- `hooks/useSystemAccess.js` — polls `/api/system/access` on mount + every 30s. Exposes `{ ready, publicAccess, isAdmin, message, refresh }`.
+- `components/MaintenancePage.jsx` — full-screen "Technical Difficulties" view with RISEDUAL branding, pulsing status dot, your operator copy, and "Owner sign-in" entry point that opens `AuthModal`.
+- `App.js` gate — when locked AND not admin AND no signed-in user, renders `MaintenancePage` instead of the normal SPA. Re-polls access whenever auth state changes (admin login → lockout disappears without page reload).
+
+**Tests** (27 new, `tests/test_public_access_middleware.py`):
+- Bypass paths reachable while locked (`/api/health`, `/api/auth/*`, `/api/system/access`).
+- Anonymous `/api/*` traffic gets 503 with stable JSON shape (`error`, `reason`, `message` keys).
+- Frontend assets (non-`/api/*`) pass through under lockout.
+- Admin via cookie OR `Authorization: Bearer` header bypasses.
+- Non-admin email JWT does NOT bypass (even if perfectly valid).
+- Refresh tokens do NOT bypass — only access tokens carry admin claim.
+- Invalid / garbage JWT → no bypass.
+- Resolver exception → fail open.
+- Env-default truthy/falsy token table.
+- ADMIN_EMAILS allowlist parses comma-separated, lowercases, strips whitespace.
+
+**Verified**:
+- 27 new tests pass. Full pytest **3089 passed, 0 failed** (was 3062 + 27 new = 3089 ✓).
+- E2E smoke: anonymous `/api/dashboard` → 503; admin `/api/dashboard` → bypasses; `/api/health` always 200; `/api/auth/login` always reachable.
+- Maintenance page screenshot renders cleanly with branding intact.
+
+**Operator runbook**:
+- **Engage lockout**: `POST /api/system/access {"enabled": false}` (auth as admin first).
+- **Disengage lockout**: `POST /api/system/access {"enabled": true}`.
+- **Inspect state** (no auth): `GET /api/system/access`.
+- **Add additional admins**: set `ADMIN_EMAILS=admin@risedual.ai,other@example.com` in `backend/.env` and restart backend.
+
+**Current state at session end**: lockout is **ON** per operator decree. Public sees the maintenance page; admin signs in via "Owner sign-in" link at the bottom of the page.
+
 ### Chevelle Memory Labeler — read-side firewall (2026-05-09)
 
 **Pre-Chevelle infrastructure**: a pure label-resolution layer that

@@ -2,9 +2,13 @@ import React from 'react';
 import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import useReferralCapture from './hooks/useReferralCapture';
+import useSystemAccess from './hooks/useSystemAccess';
 import ErrorBoundary from './components/ErrorBoundary';
 import PreAuthRouter from './components/PreAuthRouter';
 import AuthenticatedShell from './components/AuthenticatedShell';
+import MaintenancePage from './components/MaintenancePage';
+import AuthModal from './components/AuthModal';
+import { Toaster } from './components/ui/sonner';
 import { STORAGE_KEY as TOUR_KEY } from './components/OnboardingTour';
 import useModals from './hooks/useModals';
 import useV2Nav from './hooks/useV2Nav';
@@ -112,6 +116,56 @@ function AppContent() {
     showWaitlist, setShowWaitlist,
     showDemo, setShowDemo,
   };
+
+  // ── Public-access lockout ─────────────────────────────────────
+  // While the ML stack is in its organic data-collection window,
+  // public visitors see a "Technical Difficulties" page. Owner /
+  // admin emails (per backend ADMIN_EMAILS allowlist) and any
+  // signed-in user (so admins can sign in via the lockout page)
+  // bypass the gate. Frontend fails OPEN — a polling failure
+  // never locks the user out of an otherwise-healthy site.
+  const sysAccess = useSystemAccess();
+  const [maintenanceLoginOpen, setMaintenanceLoginOpen] = React.useState(false);
+
+  // Re-poll the lockout state once auth state changes — admin
+  // login should make the lockout disappear without a page reload.
+  React.useEffect(() => {
+    if (user) {
+      sysAccess.refresh();
+      setMaintenanceLoginOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  if (
+    sysAccess.ready &&
+    !sysAccess.publicAccess &&
+    !sysAccess.isAdmin &&
+    !user
+  ) {
+    return (
+      <>
+        <MaintenancePage
+          message={sysAccess.message}
+          onAdminLogin={() => setMaintenanceLoginOpen(true)}
+        />
+        {maintenanceLoginOpen && (
+          <AuthModal
+            onClose={() => {
+              setMaintenanceLoginOpen(false);
+              // After modal closes (whether via successful login
+              // or cancel), re-poll access. If the user logged in
+              // as admin, the AuthContext's user becomes truthy
+              // and the useEffect above will refresh again — but
+              // a redundant refresh here is harmless and faster.
+              sysAccess.refresh();
+            }}
+          />
+        )}
+        <Toaster position="top-right" />
+      </>
+    );
+  }
 
   // Pre-auth surfaces (OAuth demo, compliance, landing) intercept
   // before the authed shell renders. PreAuthRouter returns null
