@@ -80,6 +80,7 @@ from routes.trading_mode import router as trading_mode_router, set_db as set_tra
 from routes.admin_proof_chain import router as admin_proof_chain_router, set_db as set_admin_proof_chain_db
 from routes.admin_guard_shadow import router as admin_guard_shadow_router, set_db as set_admin_guard_shadow_db
 from routes.admin_blocks_prevented import router as admin_blocks_prevented_router, set_db as set_admin_blocks_prevented_db
+from routes.admin_bulk_replay import router as admin_bulk_replay_router
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
@@ -175,6 +176,7 @@ ALL_ROUTERS = [
     admin_proof_chain_router,
     admin_guard_shadow_router,
     admin_blocks_prevented_router,
+    admin_bulk_replay_router,
     admin_position_reconciler_router,
     admin_memory_drift_router,
     admin_etl_router,

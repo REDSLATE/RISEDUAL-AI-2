@@ -30,6 +30,53 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Bulk Replay — pre-ingest CSV firewall scanner (2026-05-09)
+
+**Pre-ingest sanity check** for historical paper-trade CSVs. Operator drag-drops a file, every row passes through the existing Chevelle Memory Labeling Firewall, response includes per-row verdicts + aggregate summary. **NO** writes, **NO** training, **NO** promotion, **NO** broker calls — read-only by construction.
+
+**Backend** (`routes/admin_bulk_replay.py`):
+- `POST /api/admin/bulk-replay/scan` (owner-only) — multipart upload, returns:
+  - `aggregate`: total_rows, trainable_count, quarantined_count, toxic_count, avg_trust_weight, by_source, by_lane, by_event_era, by_failure_mode, by_data_quality.
+  - `rows`: per-row `{csv_row_index, symbol, opened_at, closed_at, source, lane, event_era, failure_mode, data_quality, trust_weight, trainable, rejection_reason, rule_trace, grade}`.
+  - `parse_errors`: row-level CSV parse failures kept SEPARATE from labeler quarantines so the operator can distinguish "bad CSV" from "bad data semantics".
+  - `warnings`: high-quarantine and high-toxic rate flags.
+- **Caps**: `MAX_ROWS_PER_UPLOAD=500` (cap-overflow rows reported via `parse_errors`), `MAX_FILE_BYTES=2 MiB` (over-cap → 413).
+- **Grade tags**: `GREEN` (trainable, no failure mode), `AMBER` (toxic — trainable at trust=0.10), `RED` (quarantined, trust=0.0).
+
+**Frontend** (`components/admin/BulkReplayPanel.jsx`):
+- Drag-drop file zone + "Choose a file" fallback, "Scan" button.
+- Five aggregate stat tiles (Total / Trainable / Toxic / Quarantined / Avg Trust).
+- Five breakdown tables (source / lane / event_era / failure_mode / data_quality).
+- Filter chips (All / Green / Amber / Red).
+- Per-row table with color-coded grade badges.
+- Footer note explicitly states the read-only nature.
+- Wired into `AdminPanel` → Insights group as "Bulk Replay" tab.
+
+**Test net** (`tests/test_admin_bulk_replay.py`, **20 tests**):
+- Auth: non-owner gets 403.
+- Clean CSV → all GREEN / trainable.
+- Toxic rows → AMBER, trust=0.10, still trainable (rule 7).
+- Inferred toxic_high_confidence on 0.92-conf 60% loss with no explicit failure tag.
+- Missing source → RED, rejection_reason=`missing_source`.
+- Missing timestamps → RED, rejection_reason=`missing_timestamps`.
+- Missing symbol → RED, rejection_reason=`missing_symbol`.
+- Aggregate breakdowns present (all 5 dimensions).
+- avg_trust_weight computed correctly.
+- Empty CSV / header-only CSV → 200 with zero rows.
+- Partial malformed row mixed with good rows → endpoint stays 200, bad row quarantines.
+- Invalid UTF-8 bytes handled gracefully (decoder uses `errors="replace"`).
+- Row cap enforced (600 rows uploaded → 500 scanned + cap-overflow error reported).
+- File-size cap enforced (>2 MiB → 413).
+- Response includes caps for operator visibility.
+- Per-row payload has all required fields.
+- Static authority firewall: NO DB writes, NO broker/executor/training imports, NO `import_into_memory`/`train_all`/`force_train` route definitions.
+
+**Verified**:
+- 20 new tests pass. Full pytest **3109 passed, 0 failed** (was 3089 + 20 new = 3109 ✓).
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86. Frontend lint clean.
+- E2E live test: 4-row CSV with 1 clean / 1 toxic / 1 missing-source / 1 yfinance returned exact expected verdicts (GREEN 0.50 / AMBER 0.10 / RED 0.00 / GREEN 0.05) and breakdowns.
+- Maintenance page → Owner sign-in → admin dashboard renders normally with the new "Bulk Replay" tab visible in the Insights group.
+
 ### Public-Access Lockout — "Technical Difficulties" mode (2026-05-09)
 
 **Operator decree**: while the ML stack is in its organic data-collection
