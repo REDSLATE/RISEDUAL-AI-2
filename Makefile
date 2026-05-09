@@ -29,7 +29,8 @@ FAST_INVARIANT_TESTS := \
 	tests/test_roadguard_pair.py \
 	tests/test_roadguard.py \
 	tests/test_fast_veto_layer.py \
-	tests/test_executor_lanes.py
+	tests/test_executor_lanes.py \
+	tests/test_trading_bot_broker_contract.py
 
 # Phase 5d/6 read-only governance surface. Each line is a single
 # test file so any move/rename surfaces here as a hard miss.
@@ -90,6 +91,9 @@ lint-arch:
 #   * RoadGuard pair (lane-isolated equity vs crypto)
 #   * Fast Veto pass-through / authority
 #   * executor lane separation (no cross-lane bleed)
+#   * trading-bot broker-call contract net (pre-Step-4E safety
+#     harness — pins paper/live router, broker call order, kwargs
+#     shape, error paths, and risk-guard pre-flight discipline)
 #
 # Same constraints as lint-arch: read-only, no Mongo writes, no
 # broker calls, no slow/integration paths. Whole bundle should run

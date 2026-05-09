@@ -30,6 +30,38 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Pre-4E broker-call contract net (2026-05-09)
+
+**Operator-mandated stabilization pass** before the riskiest slice. Step 4E is **PAUSED** until this safety harness exists. Goal: pin the observable contract of the broker call surface so any future move/refactor that drifts it fails loud and fast.
+
+**New file** `tests/test_trading_bot_broker_contract.py` — **14 tests, 0.78s**, fully mocked at the boundary (zero real broker calls, zero Mongo, zero env mutation).
+
+**Snapshot scope** (per operator brief):
+1. **Broker call ORDER**: `db.broker_connections.find_one` → `_get_user_broker` → `_get_or_refresh_client` → `place_order`. Pinned by spy log assertion.
+2. **place_order kwargs SHAPE**: `{symbol, qty, side=lower(), order_type="market", time_in_force="day"}`. Pinned by `call_args.kwargs` exact match.
+3. **Sync-call discipline**: `place_order` is wrapped in `asyncio.to_thread`. Direct-await regression would fail the test.
+4. **Error paths** (every short-circuit branch):
+   * `_db is None` → `{"error": "DB unavailable"}` (no broker import attempted — tripwire monkeypatched).
+   * No broker connection → `{"error": "No broker connected for live trading"}`.
+   * Falsy `place_order` result → `{"error": "Broker rejected order"}`.
+   * Any exception → `{"error": f"Live execution failed: {e}"}` (sanitized; raw exception never escapes).
+   * Unknown mode → `{"error": "Unknown bot mode: <mode>"}`.
+5. **Return shapes** (success): `{"status": "filled", "broker_order_id", "symbol", "side", "qty"}` exact match.
+6. **Paper-mode firewall**: paper path passes `side.upper()`, forwards SL/TP, AND must NOT touch `broker_connections` or import `routes.broker`. Pinned by spy + tripwire.
+7. **Risk-guard pre-flight**: runs strictly BEFORE any broker lookup; adjusted qty propagates to `place_order`. `_apply_bot_risk_guards` independently pinned: DB-None fail-open, halve-on-trip with floor 1.0, exception fail-open with original qty preserved.
+
+**Synthetic regression smoke test** (verified): replacing `side=side.lower()` with `side.upper()` in the live branch failed 2 contract tests by name; restoring → all 14 green again.
+
+**Wired into `make lint-fast`**: net now runs as part of the broader Phase 6 architectural-invariant bundle (was 119 tests, now **133** — +14, sub-second runtime preserved at 0.95s).
+
+**Hard rails honoured**:
+- No broker code moved.
+- `BROKER_LIVE_ORDER_ENABLED` unchanged (stays `false`).
+- Phase 6 promotion stays blocked.
+- No env mutation, no schema change, no allowlist additions.
+
+**Step 4E remains PAUSED** until operator command. The contract net is now the gate it must clear.
+
 ### Step 4D — `trading_bot_service.py` decision-rules extraction (2026-05-09)
 
 **Micro-phase 4 of 5**. Pure decision rules only — zero behaviour change. No DB, no broker, no mutation, no kill-switch state changes. Skip/block reasons unchanged.
