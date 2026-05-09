@@ -30,6 +30,44 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-2 — wire `crypto_paper_trader.py` to the shared receipt helper (2026-05-09)
+
+**Micro-phase 2 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the diagnosed crypto-lane gap (was 1.40% receipt coverage — 3/214 trades). Single early-fire `schedule_shadow_receipt` call covers APPROVED, HOLD, and gate-blocked paths uniformly.
+
+**Patch site**: `services/crypto_paper_trader.py:run_crypto_symbol`. Insertion point is right after `signal = {**raw_signal, "symbol": symbol, "regime": ..., "failure_context": ...}` and BEFORE the "Early HOLD evaluation" branch. Because the call sits BEFORE every downstream gate (failure-memory cooldown, dynamic-confidence gate, adversarial veto, integrity mitigation, Patent J/K/M/I guard, Patent I legacy fallback, size-zero clamp, quote check), one call covers every decision path that actually has a strategist signal.
+
+**Call shape** (verbatim):
+```python
+schedule_shadow_receipt(
+    db,
+    signal=signal,
+    market_data=None,            # let extract_live_features fill live values
+    lane="crypto",
+    requested_notional_usd=0.0,  # pre-sizing snapshot
+    source="crypto_paper_trader",
+)
+```
+Wrapped in a defensive belt+braces `try/except` that logs `[crypto_paper] ADL receipt schedule skipped` at DEBUG and continues — even though `schedule_shadow_receipt` already swallows its own failures.
+
+**Pre-signal early returns** (db_missing / not_crypto_symbol / insufficient_bars / ticker abandonment) deliberately do NOT call the helper — those have no signal to log.
+
+**Hard rails (pinned by tests)**:
+- 11-test net `tests/test_crypto_paper_trader_adl_receipts.py` covers: helper called on normal uptrend, lane=`"crypto"`, source=`"crypto_paper_trader"`, signal-with-symbol forwarded, `market_data=None`, `requested_notional_usd=0.0`, helper-NOT-called for db_missing / non-crypto / insufficient-bars, raising helper does NOT crash `run_crypto_symbol`, helper return=`False` does NOT branch caller, and a static check that the bot uses `schedule_shadow_receipt` (never `run_shadow_pipeline` directly).
+- Crypto execution path is byte-equivalent: signal dict, sizing math, trade-row schema, audit-log writes, return shape — all unchanged.
+- Code-size: `crypto_paper_trader.py` 1232 → 1256 lines (+24, soft-baseline drift only — preferred-ceiling test does NOT fail on growth of existing baseline entries).
+
+**Verified**:
+- `tests/test_crypto_paper_trader_adl_receipts.py`: **11 passed** in 0.78s.
+- Targeted superset (test_crypto_paper_bot + test_crypto_paper_trading + test_crypto_paper_trader_adl_receipts + test_receipt_dispatch): **66 passed** in 2.30s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2961 passed, 0 failed** (was 2950 + 11 new = 2961 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":569}`.
+
+**Remaining ADL micro-phases**:
+- **ADL-3**: Wire day-trade scanner/executor (lane="equity").
+- **ADL-4**: Wire options paper bot if present.
+- **ADL-5**: Move/duplicate receipt earlier so kill_switch / risk_guard / sector_cap / max_trades_per_day / RoadGuard ENFORCE blocked decisions also produce receipts.
+
 ### ADL-1 — shared fire-and-forget receipt helper (2026-05-09)
 
 **Micro-phase 1 of 5** of the operator-mandated ADL persistence-coverage fix. Pure helper extraction — zero behaviour change at the only existing call site, but makes ADL-2/3/4/5 trivial drop-in additions.

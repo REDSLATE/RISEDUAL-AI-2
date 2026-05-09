@@ -311,6 +311,30 @@ async def run_crypto_symbol(
         "failure_context": infer_failure_context(raw_signal),
     }
 
+    # ── ADL-2: Shadow receipt (fire-and-forget) ────────────────────────────
+    # Captures EVERY crypto-lane decision in ``alpha_decision_log`` so the
+    # v2 retrain join has visibility into the crypto path (was 1.40%
+    # coverage). Runs OUT-OF-BAND on the event loop — NEVER blocks the
+    # caller, NEVER mutates ``signal`` or downstream state, NEVER raises.
+    # The shadow pipeline runs its own 8-layer ML chain independently
+    # of the bot's gates below, so a single early-fire call covers the
+    # APPROVED, HOLD, and gate-blocked paths uniformly.
+    try:
+        from services.ml.receipt_dispatch import schedule_shadow_receipt
+        schedule_shadow_receipt(
+            db,
+            signal=signal,
+            market_data=None,  # let extract_live_features fill live values
+            lane="crypto",
+            requested_notional_usd=0.0,
+            source="crypto_paper_trader",
+        )
+    except Exception as _adl_exc:  # noqa: BLE001 — defensive belt+braces
+        logger.debug(
+            "[crypto_paper] ADL receipt schedule skipped for %s: %s",
+            symbol, _adl_exc,
+        )
+
     # ── Early HOLD evaluation ─────────────────────────────────────────────
     # NOTE: we do NOT short-circuit on HOLD anymore. The adversarial layer
     # in ``full`` phase can override a HOLD into a trade — that override
