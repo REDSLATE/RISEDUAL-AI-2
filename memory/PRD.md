@@ -30,6 +30,54 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### v2 retraining schema — `alpha_v2_fundamentals_technicals` (2026-05-09)
+
+**Operator-mandated next step** after the feature builders. Extends `scripts/retrain_alpha_models.py` to consume `frame.market.fundamentals.*` + `frame.market.technicals.*` while leaving live inference completely untouched.
+
+**Schema layout**:
+| Schema | Dim | Layout |
+|---|---:|---|
+| `alpha_v1` (DEFAULT, unchanged) | 10 | perception 6 sub-scores + avg_conf + recall ±ratios + intent_encoded |
+| `alpha_v2_fundamentals_technicals` | **40** | v1 (10) + fundamentals (16, equity-only) + technicals (14, both lanes) |
+
+**Lane semantics (pinned by tests)**:
+- **Equity rows**: fundamentals + technicals both expected; missing → 0.0 fills + counter bumped.
+- **Crypto rows**: fundamentals NOT required (no skip, no counter bump); technicals expected.
+- **Pre-feature-builder historical rows** (no `frame.market` payload): trainable under v2 — slots fill 0.0, counters bump. Historical training data is NEVER abandoned.
+- **v1 contract preserved**: `_FEATURE_DIM == 10` Strategist invariant still pinned. v1 default everywhere.
+
+**Files**:
+- `scripts/retrain_alpha_models.py`: 607 → 755 lines (under the 800 architectural ceiling).
+- `scripts/_retrain_v2_schema.py`: new, 218 lines. Strangler-split holds the v2 schema constants + ordered feature names + `reconstruct_features_v2`. Re-exported from the main script — external imports unchanged.
+
+**Report / manifest enrichment** (always present, zero on v1):
+- `feature_schema_version`
+- `feature_count` + `feature_count_v1_baseline`
+- `feature_names` (full ordered list)
+- `missing_fundamentals_count` (equity-only)
+- `missing_technicals_count`
+- Manifest filename includes the schema tag (`strategist_alpha_v2_fundamentals_technicals_<sha>_<ts>.joblib`) — operator can never confuse v1/v2 by inspection.
+- Manifest field `promotion_blocked_reason="v2_schema_requires_matching_inference_adapter"` for v2; `null` for v1.
+
+**Hard rails (pinned by tests)**:
+- v2 retrain MUST NOT mutate `STRATEGIST_ARTIFACT` / `AUDITOR_ARTIFACT` env vars (sentinel test).
+- No broker / executor / RoadGuard / FastVeto / pipeline / kill-switch imports in either script (static check).
+- No `Verdict.X` / `set_active` / `promote_now` / `.place_order` markers (static check).
+- v2 artifacts NEVER auto-promoted. Live inference stays on v1 until a v2 inference adapter is explicitly built.
+
+**CLI**:
+```
+python -m scripts.retrain_alpha_models --feature-schema alpha_v2_fundamentals_technicals \
+    [--window-days N] [--write-artifact] [--json out.json]
+```
+Default schema is `alpha_v1` so existing automation is byte-equivalent.
+
+**Verified**:
+- `tests/test_retrain_alpha_models.py`: **31 passed** (17 v1 baseline preserved + 14 new v2 tests).
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2897 passed, 0 failed**.
+- Live CLI smoke (`--feature-schema alpha_v2_fundamentals_technicals --window-days 30`): runs cleanly, prints `feature count: 40 (v1 baseline = 10)`, prints the v2 promotion-block warning at the bottom of the report.
+
 ### Feature builders — fundamentals + technicals (2026-05-09)
 
 **Operator directive**: P/E + SMA logic must be a **feature/input layer**, never a decision authority. Built two new modules under `services/ml/features/` that emit structured feature dicts for the ML perception/strategist layers to consume during retraining.

@@ -387,3 +387,366 @@ def test_build_report_handles_none_metrics(tmp_path):
         write_artifact=False,
     )
     _assert_schema(rep)
+
+
+# ──────────────────────────────────────────────────────────────────
+# v2 schema — alpha_v2_fundamentals_technicals
+# ──────────────────────────────────────────────────────────────────
+
+from scripts.retrain_alpha_models import (  # noqa: E402
+    DEFAULT_FEATURE_SCHEMA,
+    FEATURE_DIM_V2,
+    FEATURE_NAMES_BY_SCHEMA,
+    FEATURE_NAMES_V1,
+    FEATURE_NAMES_V2,
+    FEATURE_NAMES_V2_FUNDAMENTALS,
+    FEATURE_NAMES_V2_TECHNICALS,
+    FEATURE_SCHEMA_V1,
+    FEATURE_SCHEMA_V2,
+    feature_dim_for,
+    reconstruct_features_v2,
+)
+
+
+def test_v1_remains_default_schema():
+    """If this fails, v1 production behaviour has shifted under us.
+    The Strategist artifact (10-dim vector) requires v1 to stay
+    canonical until a v2 inference adapter is wired."""
+    assert DEFAULT_FEATURE_SCHEMA == FEATURE_SCHEMA_V1
+    assert feature_dim_for(FEATURE_SCHEMA_V1) == FEATURE_DIM
+    assert feature_dim_for(FEATURE_SCHEMA_V2) == FEATURE_DIM_V2
+    assert FEATURE_DIM_V2 == 40
+    assert FEATURE_NAMES_V2[:FEATURE_DIM] == FEATURE_NAMES_V1
+
+
+def test_v2_feature_names_are_stable_and_ordered():
+    """Manifest consumers depend on the order. Pin it explicitly so
+    a future "tidy-up" reordering is caught immediately.
+    """
+    assert FEATURE_NAMES_V2_FUNDAMENTALS[0] == "fundamentals.pe_ratio"
+    assert FEATURE_NAMES_V2_FUNDAMENTALS[-1] == "fundamentals.dividend_payer"
+    assert FEATURE_NAMES_V2_TECHNICALS[0] == "technicals.rsi14"
+    assert FEATURE_NAMES_V2_TECHNICALS[-1] == "technicals.macd_bearish"
+    # Lookup table includes both schemas
+    assert FEATURE_NAMES_BY_SCHEMA[FEATURE_SCHEMA_V1] == FEATURE_NAMES_V1
+    assert FEATURE_NAMES_BY_SCHEMA[FEATURE_SCHEMA_V2] == FEATURE_NAMES_V2
+
+
+def test_reconstruct_v2_equity_with_full_features_returns_40_dim():
+    doc = _decision_doc(symbol="AAPL", lane="equity")
+    doc["market"] = {
+        "fundamentals": {
+            "pe_ratio": 28.4, "forward_pe": 26.0, "peg_ratio": 2.1,
+            "eps": 6.4, "dividend_yield": 0.005, "profit_margin": 0.25,
+            "return_on_equity": 1.45, "price_to_book": 55.2, "beta": 1.25,
+            "revenue_growth_yoy": 0.08, "earnings_growth_yoy": 0.12,
+            "pe_in_value_band": 0, "pe_in_growth_band": 1,
+            "pe_in_speculative": 0, "negative_eps": 0, "dividend_payer": 1,
+        },
+        "technicals": {
+            "rsi14": 62.0, "macd": 0.5, "macd_signal": 0.3, "macd_hist": 0.2,
+            "price_above_sma20": 1, "price_above_sma50": 1,
+            "price_above_sma200": 1, "sma20_above_sma50": 1,
+            "sma50_above_sma200": 1, "rsi_oversold": 0,
+            "rsi_overbought": 0, "rsi_neutral": 1,
+            "macd_bullish": 1, "macd_bearish": 0,
+        },
+    }
+    result = reconstruct_features_v2(doc, "equity")
+    assert result is not None
+    feats, presence = result
+    assert len(feats) == FEATURE_DIM_V2
+    # Last dim is macd_bearish == 0
+    assert feats[-1] == 0.0
+    # Slot 11 (offset by 10 v1 features) is fundamentals.pe_ratio
+    assert feats[FEATURE_DIM] == 28.4
+    assert presence == {
+        "fundamentals": True, "technicals": True,
+        "expected_fundamentals": True,
+    }
+
+
+def test_reconstruct_v2_crypto_without_fundamentals_fills_zero():
+    """Crypto rows MUST NOT require fundamentals — missing fields
+    fill 0.0, presence flags fundamentals=False but the row is
+    NOT lost. ``expected_fundamentals`` is False so the
+    missing-fundamentals counter never bumps for crypto.
+    """
+    doc = _decision_doc(symbol="BTC-USD", lane="crypto")
+    doc["market"] = {
+        "technicals": {
+            "rsi14": 55.0, "macd": 0.1, "macd_signal": 0.05, "macd_hist": 0.05,
+            "price_above_sma20": 1, "price_above_sma50": 0,
+            "price_above_sma200": 0, "sma20_above_sma50": 1,
+            "sma50_above_sma200": 0, "rsi_oversold": 0,
+            "rsi_overbought": 0, "rsi_neutral": 1,
+            "macd_bullish": 1, "macd_bearish": 0,
+        },
+        # No fundamentals key at all — common on crypto rows
+    }
+    result = reconstruct_features_v2(doc, "crypto")
+    assert result is not None
+    feats, presence = result
+    assert len(feats) == FEATURE_DIM_V2
+    # All 16 fundamentals slots → 0.0
+    fund_offset = FEATURE_DIM
+    for i in range(16):
+        assert feats[fund_offset + i] == 0.0, \
+            f"crypto fundamentals slot {i} should be 0.0"
+    assert presence["fundamentals"] is False
+    assert presence["expected_fundamentals"] is False
+
+
+def test_reconstruct_v2_equity_without_fundamentals_fills_zero():
+    """Equity rows whose decision log lacks fundamentals are still
+    trainable — the row is NOT skipped, slots fill 0.0, and the
+    caller bumps ``missing_fundamentals_count``."""
+    doc = _decision_doc(symbol="AAPL", lane="equity")
+    doc["market"] = {"technicals": {"rsi14": 50.0}}
+    result = reconstruct_features_v2(doc, "equity")
+    assert result is not None
+    feats, presence = result
+    assert len(feats) == FEATURE_DIM_V2
+    assert presence["fundamentals"] is False
+    assert presence["expected_fundamentals"] is True
+
+
+def test_reconstruct_v2_no_market_keys_at_all_fills_zero():
+    """Old rows that pre-date the feature-builder wiring have no
+    ``frame.market`` payload at all. They must still train under v2
+    (slots fill 0.0). Ensures the v2 retrain doesn't suddenly
+    abandon historical training data."""
+    doc = _decision_doc(symbol="AAPL", lane="equity")
+    # No "market" / "market_features" / "feature_frame" key
+    result = reconstruct_features_v2(doc, "equity")
+    assert result is not None
+    feats, presence = result
+    assert len(feats) == FEATURE_DIM_V2
+    assert feats[FEATURE_DIM:] == [0.0] * 30
+    assert presence == {
+        "fundamentals": False, "technicals": False,
+        "expected_fundamentals": True,
+    }
+
+
+def test_reconstruct_v2_returns_none_when_v1_base_unrecoverable():
+    """If the perception sub-scores are missing, v2 must fail the
+    SAME way v1 fails — return None, caller bumps
+    ``missing_features``. v2 does NOT silently lower the bar.
+    """
+    doc = {"symbol": "AAPL", "lane": "equity"}  # no perception key
+    assert reconstruct_features_v2(doc, "equity") is None
+
+
+def test_extract_rows_v2_counts_missing_fundamentals_for_equity_only():
+    """Build a mixed dataset and verify that:
+      * equity rows without fundamentals bump ``missing_fundamentals``
+      * crypto rows without fundamentals do NOT bump it
+      * both lanes bump ``missing_technicals`` when technicals absent
+    """
+    from scripts.retrain_alpha_models import extract_rows
+
+    decisions = {
+        ("AAPL", "equity"): _decision_doc(symbol="AAPL", lane="equity"),
+        ("MSFT", "equity"): _decision_doc(symbol="MSFT", lane="equity"),
+        ("BTC-USD", "crypto"): _decision_doc(symbol="BTC-USD", lane="crypto"),
+        ("ETH-USD", "crypto"): _decision_doc(symbol="ETH-USD", lane="crypto"),
+    }
+    # AAPL has both nested dicts; MSFT has only technicals;
+    # BTC-USD has only technicals; ETH-USD has nothing.
+    decisions[("AAPL", "equity")]["market"] = {
+        "fundamentals": {"pe_ratio": 28.0},
+        "technicals": {"rsi14": 50.0},
+    }
+    decisions[("MSFT", "equity")]["market"] = {
+        "technicals": {"rsi14": 55.0},
+    }
+    decisions[("BTC-USD", "crypto")]["market"] = {
+        "technicals": {"rsi14": 60.0},
+    }
+    # ETH-USD: no market key at all
+
+    trades = [
+        {"symbol": "AAPL", "lane": "equity", "realized_pnl_usd": 10,
+         "closed_at": "2026-05-08"},
+        {"symbol": "MSFT", "lane": "equity", "realized_pnl_usd": -5,
+         "closed_at": "2026-05-08"},
+        {"symbol": "BTC-USD", "lane": "crypto", "realized_pnl_usd": 100,
+         "closed_at": "2026-05-08"},
+        {"symbol": "ETH-USD", "lane": "crypto", "realized_pnl_usd": -50,
+         "closed_at": "2026-05-08"},
+    ]
+    extraction = extract_rows(
+        paper_trades=trades, decision_lookup=decisions,
+        feature_schema=FEATURE_SCHEMA_V2,
+    )
+    # All 4 rows trained
+    assert extraction.rows_used == 4
+    # Only the 1 equity row missing fundamentals (MSFT) bumps the counter
+    assert extraction.missing_fundamentals_count == 1
+    # 1 row is missing technicals (ETH-USD)
+    assert extraction.missing_technicals_count == 1
+
+
+def test_extract_rows_v1_default_does_not_set_v2_counters():
+    """v1 path leaves v2 counters at zero — pinning the
+    additive-only contract."""
+    from scripts.retrain_alpha_models import extract_rows
+
+    decisions = {("AAPL", "equity"): _decision_doc(symbol="AAPL", lane="equity")}
+    trades = [{"symbol": "AAPL", "lane": "equity",
+               "realized_pnl_usd": 10, "closed_at": "2026-05-08"}]
+    extraction = extract_rows(
+        paper_trades=trades, decision_lookup=decisions,
+    )  # no feature_schema arg → v1 default
+    assert extraction.rows_used == 1
+    assert extraction.missing_fundamentals_count == 0
+    assert extraction.missing_technicals_count == 0
+
+
+def test_v2_report_includes_schema_metadata(tmp_path):
+    """Report payload exposes schema_version, count, names, counters."""
+    extraction = _build_dataset(DEFAULT_MIN_ROWS + 2)
+    # Force the v2 dim on the rows so run_retrain can fit
+    for r in extraction.rows:
+        r.features = r.features + [0.0] * (FEATURE_DIM_V2 - FEATURE_DIM)
+    extraction.missing_fundamentals_count = 7
+    extraction.missing_technicals_count = 3
+    report = run_retrain(
+        extraction=extraction,
+        out_dir=tmp_path / "models",
+        window_days=14,
+        write_artifact=False,
+        feature_schema=FEATURE_SCHEMA_V2,
+    )
+    assert report["status"] == STATUS_OK
+    assert report["feature_schema_version"] == FEATURE_SCHEMA_V2
+    assert report["feature_count"] == FEATURE_DIM_V2
+    assert report["feature_count_v1_baseline"] == FEATURE_DIM
+    assert report["feature_names"][:FEATURE_DIM] == FEATURE_NAMES_V1
+    assert report["feature_names"][-1] == "technicals.macd_bearish"
+    assert report["missing_fundamentals_count"] == 7
+    assert report["missing_technicals_count"] == 3
+
+
+def test_v2_artifact_manifest_records_schema_and_blocks_promotion(tmp_path):
+    """Writing a v2 artifact must:
+      * tag the filename with the schema name
+      * include feature_schema_version + feature_names in manifest
+      * set ``promotion_blocked_reason`` to a non-null operator-readable
+        string so an inventory tool can NEVER mistake it for a v1
+        artifact safe to promote.
+    """
+    extraction = _build_dataset(DEFAULT_MIN_ROWS + 2)
+    for r in extraction.rows:
+        r.features = r.features + [0.0] * (FEATURE_DIM_V2 - FEATURE_DIM)
+
+    out_dir = tmp_path / "models"
+    report = run_retrain(
+        extraction=extraction,
+        out_dir=out_dir,
+        window_days=14,
+        write_artifact=True,
+        feature_schema=FEATURE_SCHEMA_V2,
+    )
+    manifest_path = report["artifacts"]["manifest_path"]
+    assert manifest_path is not None
+    manifest = json.loads(Path(manifest_path).read_text())
+    assert manifest["feature_schema_version"] == FEATURE_SCHEMA_V2
+    assert manifest["feature_count"] == FEATURE_DIM_V2
+    assert manifest["feature_names"][-1] == "technicals.macd_bearish"
+    assert manifest["promotion_blocked_reason"] == \
+        "v2_schema_requires_matching_inference_adapter"
+    # Filenames carry the schema tag (operator-readable)
+    assert FEATURE_SCHEMA_V2 in manifest["strategist_path"]
+    assert FEATURE_SCHEMA_V2 in manifest["auditor_path"]
+    # v1 manifest field promotion_blocked_reason is None
+    extraction_v1 = _build_dataset(DEFAULT_MIN_ROWS + 2)
+    report_v1 = run_retrain(
+        extraction=extraction_v1,
+        out_dir=out_dir,
+        window_days=14,
+        write_artifact=True,
+        # default v1
+    )
+    manifest_v1 = json.loads(Path(report_v1["artifacts"]["manifest_path"]).read_text())
+    assert manifest_v1["feature_schema_version"] == FEATURE_SCHEMA_V1
+    assert manifest_v1["promotion_blocked_reason"] is None
+    # And the v1 filename does NOT carry the schema tag (back-compat)
+    assert FEATURE_SCHEMA_V2 not in manifest_v1["strategist_path"]
+
+
+def test_v2_cli_flag_parses():
+    args = parse_args(["--feature-schema", FEATURE_SCHEMA_V2,
+                       "--write-artifact"])
+    assert args.feature_schema == FEATURE_SCHEMA_V2
+    assert args.write_artifact is True
+
+    args_default = parse_args([])
+    assert args_default.feature_schema == FEATURE_SCHEMA_V1
+
+
+def test_v2_no_broker_or_executor_imports():
+    """The retrain script (and v2 reconstructor) MUST NOT import
+    anything from the broker/executor/RoadGuard chain. Pinned by
+    static check — same fence the feature builders sit behind.
+    """
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "scripts/retrain_alpha_models.py"
+    ).read_text()
+    forbidden = [
+        "from services.broker_service",
+        "from services.trading_bot_service",
+        "from services.crypto_paper_trader",
+        "from services.paper_trading_service",
+        "from routes.broker",
+        "from services.ml.executors",
+        "from services.ml.roadguard",
+        "from services.ml.fast_veto",
+        "from services.ml.shadow_wiring",
+        "from services.ml.pipeline",
+        "from services.ml.broker_wire",
+        # Decision-issuing / authority verbs. Note: BUY / SELL /
+        # NO_TRADE bare-string tokens ARE legitimate here — the
+        # script encodes them as integer labels (intent_encoded
+        # in v1; persisted decision-log lookup). It's the
+        # ``Verdict.X``/``set_active``/``promote_now`` verbs
+        # below that signal "this script issues decisions" —
+        # which it MUST NEVER do.
+        "Verdict.BUY", "Verdict.SELL", "Verdict.NO_TRADE",
+        "set_active", "promote_now", ".place_order",
+    ]
+    for needle in forbidden:
+        assert needle not in src, (
+            f"retrain_alpha_models.py contains forbidden authority "
+            f"marker '{needle}'"
+        )
+
+
+def test_v2_does_not_mutate_strategist_artifact_env(monkeypatch):
+    """Pinned: running v2 retrain MUST NOT touch
+    ``STRATEGIST_ARTIFACT`` / ``AUDITOR_ARTIFACT`` env vars even
+    on --write-artifact. The artifact is written to disk only;
+    pointing env at it is a separate, manual operator step.
+    """
+    sentinel_strat = "SENTINEL_STRAT_PATH"
+    sentinel_audit = "SENTINEL_AUDIT_PATH"
+    monkeypatch.setenv("STRATEGIST_ARTIFACT", sentinel_strat)
+    monkeypatch.setenv("AUDITOR_ARTIFACT", sentinel_audit)
+
+    extraction = _build_dataset(DEFAULT_MIN_ROWS + 2)
+    for r in extraction.rows:
+        r.features = r.features + [0.0] * (FEATURE_DIM_V2 - FEATURE_DIM)
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        run_retrain(
+            extraction=extraction,
+            out_dir=Path(td),
+            window_days=14,
+            write_artifact=True,
+            feature_schema=FEATURE_SCHEMA_V2,
+        )
+
+    assert os.environ.get("STRATEGIST_ARTIFACT") == sentinel_strat
+    assert os.environ.get("AUDITOR_ARTIFACT") == sentinel_audit

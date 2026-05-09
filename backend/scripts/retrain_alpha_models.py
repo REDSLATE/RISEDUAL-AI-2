@@ -78,6 +78,49 @@ DEFAULT_OUT_DIR = Path("/app/backend/data/models")
 FEATURE_DIM = 10
 
 
+# ── Feature schema versions ─────────────────────────────────────
+#
+# v1 — the live Strategist's 10-dim vector. _FEATURE_DIM == 10 in
+#      services/ml/strategist/base.py is the artifact contract.
+#      Default for every call site so existing artifacts and tests
+#      keep working.
+#
+# v2 — alpha_v2_fundamentals_technicals. Adds the new nested
+#      ``frame.market.fundamentals`` and ``frame.market.technicals``
+#      surfaces from services/ml/features/. EQUITY rows MAY include
+#      fundamentals (missing → 0.0 fills + missing_fundamentals
+#      counter incremented). CRYPTO rows MUST NOT require
+#      fundamentals (missing → 0.0 fills, NEVER counted as a skip).
+#      Technicals apply to BOTH lanes (missing → 0.0 fills,
+#      missing_technicals counter incremented).
+#
+# v2 artifacts are NEVER auto-pointed to STRATEGIST_ARTIFACT /
+# AUDITOR_ARTIFACT. Live inference stays on v1 until a v2 inference
+# adapter is explicitly wired in a separate change.
+#
+# Schema constants + the v2 reconstructor live in
+# ``scripts/_retrain_v2_schema.py`` (split out 2026-05-09 to keep
+# this script under the 800-line architectural ceiling). Re-export
+# every name here so external callers (CLI, tests, manifests) see
+# the same import surface they always have.
+
+from scripts._retrain_v2_schema import (  # noqa: E402,F401
+    DEFAULT_FEATURE_SCHEMA,
+    FEATURE_DIM_V2,
+    FEATURE_NAMES_BY_SCHEMA,
+    FEATURE_NAMES_V1,
+    FEATURE_NAMES_V2,
+    FEATURE_NAMES_V2_FUNDAMENTALS,
+    FEATURE_NAMES_V2_TECHNICALS,
+    FEATURE_SCHEMA_V1,
+    FEATURE_SCHEMA_V2,
+    feature_dim_for,
+)
+from scripts._retrain_v2_schema import (
+    reconstruct_features_v2 as _reconstruct_features_v2_inner,
+)
+
+
 # ── Status strings (stable schema) ──────────────────────────────
 
 
@@ -106,6 +149,10 @@ class ExtractionResult:
     rows_scanned: int = 0
     rows_used: int = 0
     skip_reasons: Dict[str, int] = field(default_factory=dict)
+    # v2-specific counters. Always present (zero on v1 paths) so
+    # the report schema stays stable across schemas.
+    missing_fundamentals_count: int = 0
+    missing_technicals_count: int = 0
 
     def add_skip(self, reason: str) -> None:
         self.skip_reasons[reason] = self.skip_reasons.get(reason, 0) + 1
@@ -178,6 +225,22 @@ def reconstruct_features(decision_doc: Dict[str, Any]) -> Optional[List[float]]:
     return feats
 
 
+def reconstruct_features_v2(
+    decision_doc: Dict[str, Any], lane: str,
+) -> Optional[Tuple[List[float], Dict[str, bool]]]:
+    """Thin wrapper around the schema-module's pure reconstructor —
+    injects the v1 base extractor + safe-float coercer so the
+    schema module stays free of circular imports.
+
+    Same return contract: ``(features, presence)`` or ``None``.
+    """
+    return _reconstruct_features_v2_inner(
+        decision_doc, lane,
+        base_extractor=reconstruct_features,
+        safe_float=_safe_float,
+    )
+
+
 def label_from_outcome(trade: Dict[str, Any]) -> Optional[Tuple[int, int]]:
     """Returns ``(strategist_label, auditor_label)``.
 
@@ -214,12 +277,21 @@ def extract_rows(
     *,
     paper_trades: List[Dict[str, Any]],
     decision_lookup: Dict[Tuple[str, str], Dict[str, Any]],
+    feature_schema: str = DEFAULT_FEATURE_SCHEMA,
 ) -> ExtractionResult:
     """Pure extractor. ``decision_lookup`` is keyed by
     ``(symbol_upper, lane)`` → most-recent matching decision doc.
 
     Counts every input row, classifies skips by reason, and
     returns the assembled training rows.
+
+    ``feature_schema`` defaults to v1 so existing callers/tests
+    are unaffected. v2 adds nested fundamentals + technicals
+    slots; presence of those features is tracked in
+    ``ExtractionResult.missing_*_count`` instead of skipping
+    rows that lack them (per Step-prep operator brief: equity
+    fundamentals are *optional*; crypto fundamentals are *not
+    required*; technicals apply to both lanes).
     """
     out = ExtractionResult()
     for trade in paper_trades:
@@ -235,10 +307,26 @@ def extract_rows(
         if not decision:
             out.add_skip("no_decision_log")
             continue
-        feats = reconstruct_features(decision)
-        if feats is None:
-            out.add_skip("missing_features")
-            continue
+
+        if feature_schema == FEATURE_SCHEMA_V2:
+            v2 = reconstruct_features_v2(decision, lane)
+            if v2 is None:
+                out.add_skip("missing_features")
+                continue
+            feats, presence = v2
+            # Equity-only: count missing fundamentals so the operator
+            # sees the actual coverage rate. Crypto rows are NEVER
+            # counted as missing — they're not expected to have it.
+            if presence["expected_fundamentals"] and not presence["fundamentals"]:
+                out.missing_fundamentals_count += 1
+            if not presence["technicals"]:
+                out.missing_technicals_count += 1
+        else:
+            feats = reconstruct_features(decision)
+            if feats is None:
+                out.add_skip("missing_features")
+                continue
+
         labels = label_from_outcome(trade)
         if labels is None:
             out.add_skip("missing_pnl")
@@ -386,8 +474,18 @@ def build_report(
     git_sha: str,
     timestamp: str,
     write_artifact: bool,
+    feature_schema: str = DEFAULT_FEATURE_SCHEMA,
 ) -> Dict[str, Any]:
-    """Stable schema. Never crashes on missing fields."""
+    """Stable schema. Never crashes on missing fields.
+
+    Adds (always present, zero on v1) v2 telemetry:
+      * ``feature_schema_version`` — schema string used for training
+      * ``feature_count``          — actual dim for that schema
+      * ``feature_names``          — ordered list (operator-readable)
+      * ``missing_fundamentals_count``
+      * ``missing_technicals_count``
+    """
+    feature_names = FEATURE_NAMES_BY_SCHEMA.get(feature_schema, FEATURE_NAMES_V1)
     return {
         "status": status,
         "source": SOURCE_TAG,
@@ -398,7 +496,12 @@ def build_report(
         "rows_used": extraction.rows_used,
         "rows_skipped": extraction.rows_scanned - extraction.rows_used,
         "skip_reasons": dict(extraction.skip_reasons),
-        "feature_count": FEATURE_DIM,
+        "feature_schema_version": feature_schema,
+        "feature_count": len(feature_names),
+        "feature_names": list(feature_names),
+        "feature_count_v1_baseline": FEATURE_DIM,
+        "missing_fundamentals_count": extraction.missing_fundamentals_count,
+        "missing_technicals_count": extraction.missing_technicals_count,
         "class_balance_strategist": class_balance(
             [r.strategist_label for r in extraction.rows],
         ),
@@ -421,6 +524,7 @@ def print_report(report: Dict[str, Any]) -> None:
     print("─" * 64)
     print(f" alpha-retrain · {report['source']} · sha={report['git_sha']} · {report['timestamp']}")
     print(f" status: {report['status']}    window_days={report['window_days']}")
+    print(f" feature_schema : {report['feature_schema_version']}")
     print("─" * 64)
     print(f" rows scanned   : {report['rows_scanned']}")
     print(f" rows used      : {report['rows_used']}")
@@ -429,7 +533,12 @@ def print_report(report: Dict[str, Any]) -> None:
         for reason, count in sorted(report["skip_reasons"].items(),
                                     key=lambda kv: -kv[1]):
             print(f"   · {reason:<24s} {count}")
-    print(f" feature count  : {report['feature_count']}")
+    print(f" feature count  : {report['feature_count']}  "
+          f"(v1 baseline = {report['feature_count_v1_baseline']})")
+    if report.get("missing_fundamentals_count") or report.get("missing_technicals_count"):
+        print(f" missing fund   : {report['missing_fundamentals_count']}  "
+              f"(equity-only — crypto rows do not require fundamentals)")
+        print(f" missing tech   : {report['missing_technicals_count']}")
     print(f" class balance  : strategist={report['class_balance_strategist']}")
     print(f"                  auditor={report['class_balance_auditor']}")
     if report["strategist"]:
@@ -454,6 +563,9 @@ def print_report(report: Dict[str, Any]) -> None:
     print("─" * 64)
     print(" ⚠️  artifacts NOT promoted. Operator must manually point")
     print("    STRATEGIST_ARTIFACT / AUDITOR_ARTIFACT after review.")
+    if report["feature_schema_version"] == FEATURE_SCHEMA_V2:
+        print("    v2 schema — DO NOT point env at this artifact until a")
+        print("    matching v2 inference adapter is wired in services/ml/.")
     print("─" * 64)
 
 
@@ -467,6 +579,7 @@ def run_retrain(
     window_days: int,
     seed: int = 4242,
     write_artifact: bool = False,
+    feature_schema: str = DEFAULT_FEATURE_SCHEMA,
 ) -> Dict[str, Any]:
     """Pure-ish entry point used by both the CLI and the tests.
 
@@ -475,6 +588,9 @@ def run_retrain(
     """
     git_sha = _git_sha()
     timestamp = _utc_stamp()
+    feature_names = FEATURE_NAMES_BY_SCHEMA.get(
+        feature_schema, FEATURE_NAMES_V1,
+    )
 
     if extraction.rows_used < DEFAULT_MIN_ROWS:
         return build_report(
@@ -489,6 +605,7 @@ def run_retrain(
             git_sha=git_sha,
             timestamp=timestamp,
             write_artifact=write_artifact,
+            feature_schema=feature_schema,
         )
 
     X = np.array([r.features for r in extraction.rows], dtype=float)
@@ -503,9 +620,12 @@ def run_retrain(
     manifest_path: Optional[str] = None
     if write_artifact:
         out_dir.mkdir(parents=True, exist_ok=True)
-        strategist_path = str(out_dir / f"strategist_{git_sha}_{timestamp}.joblib")
-        auditor_path = str(out_dir / f"auditor_{git_sha}_{timestamp}.joblib")
-        manifest_path = str(out_dir / f"manifest_{git_sha}_{timestamp}.json")
+        # v2 artifacts get a schema tag in the filename so an operator
+        # can never confuse them with v1 by inspection alone.
+        schema_tag = "" if feature_schema == FEATURE_SCHEMA_V1 else f"_{feature_schema}"
+        strategist_path = str(out_dir / f"strategist{schema_tag}_{git_sha}_{timestamp}.joblib")
+        auditor_path = str(out_dir / f"auditor{schema_tag}_{git_sha}_{timestamp}.joblib")
+        manifest_path = str(out_dir / f"manifest{schema_tag}_{git_sha}_{timestamp}.json")
         joblib.dump(strat_clf, strategist_path)
         joblib.dump(audit_clf, auditor_path)
         manifest = {
@@ -513,12 +633,25 @@ def run_retrain(
             "git_sha": git_sha,
             "timestamp": timestamp,
             "window_days": window_days,
-            "feature_count": FEATURE_DIM,
+            "feature_schema_version": feature_schema,
+            "feature_count": len(feature_names),
+            "feature_names": list(feature_names),
+            "feature_count_v1_baseline": FEATURE_DIM,
             "rows_used": extraction.rows_used,
+            "missing_fundamentals_count": extraction.missing_fundamentals_count,
+            "missing_technicals_count": extraction.missing_technicals_count,
             "strategist_path": strategist_path,
             "auditor_path": auditor_path,
             "strategist_metrics": strat_metrics,
             "auditor_metrics": audit_metrics,
+            # Operator-readable warning so a future agent can NEVER point
+            # STRATEGIST_ARTIFACT at this file without a v2 inference
+            # adapter being wired first. The artifact-inventory tile and
+            # promotion-checklist endpoints both surface this string.
+            "promotion_blocked_reason": (
+                None if feature_schema == FEATURE_SCHEMA_V1
+                else "v2_schema_requires_matching_inference_adapter"
+            ),
         }
         Path(manifest_path).write_text(json.dumps(manifest, indent=2))
 
@@ -534,6 +667,7 @@ def run_retrain(
         git_sha=git_sha,
         timestamp=timestamp,
         write_artifact=write_artifact,
+        feature_schema=feature_schema,
     )
 
 
@@ -559,6 +693,7 @@ async def _main_async(args: argparse.Namespace) -> int:
             git_sha=_git_sha(),
             timestamp=_utc_stamp(),
             write_artifact=args.write_artifact,
+            feature_schema=args.feature_schema,
         )
     else:
         trades, decision_lookup = await _fetch_inputs(
@@ -566,6 +701,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         )
         extraction = extract_rows(
             paper_trades=trades, decision_lookup=decision_lookup,
+            feature_schema=args.feature_schema,
         )
         report = run_retrain(
             extraction=extraction,
@@ -573,6 +709,7 @@ async def _main_async(args: argparse.Namespace) -> int:
             window_days=args.window_days,
             seed=args.seed,
             write_artifact=args.write_artifact,
+            feature_schema=args.feature_schema,
         )
 
     if args.json:
@@ -590,6 +727,18 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
                    help="Persist the trained .joblib files. Default is dry-run.")
     p.add_argument("--json", default=None,
                    help="Write the report JSON to this path.")
+    p.add_argument(
+        "--feature-schema",
+        default=DEFAULT_FEATURE_SCHEMA,
+        choices=[FEATURE_SCHEMA_V1, FEATURE_SCHEMA_V2],
+        help=("Feature schema to train against. Default 'alpha_v1' "
+              "matches the live Strategist's 10-dim vector exactly. "
+              "'alpha_v2_fundamentals_technicals' adds nested "
+              "fundamentals (equity-only) + technicals (both lanes) "
+              "from services/ml/features/. v2 artifacts are NEVER "
+              "auto-promoted; live inference stays on v1 until a "
+              "v2 inference adapter is wired separately."),
+    )
     return p.parse_args(argv)
 
 
