@@ -991,6 +991,7 @@ Test files: `test_ml_boundary.py`, `test_ml_perception.py`, `test_ml_pipeline_v2
 - `SwallowedExceptionMonitor` to catch silent background-job failures
 - Train + persist real `.joblib` artifacts for the 6 perception sub-models + 2 executor MLs
 - Strangler split of large IP files (e.g., `crypto_paper_trader.py`)
+- **Fundamental + Technical Feature Enrichment Engine** (saved 2026-05-09, NOT wired). File: `services/ml/features/_backlog/fundamental_technical_engine.py`. Combined dataclass output (PE/EPS, SMA5/20, slopes, volatility, regime tag, feature health). Open questions before wiring: where does `net_income`/`shares_outstanding` come from at runtime, does `regime_tag` replace or supplement existing tagger, does its `feature_health` override `services/ml/feature_health.py`. Operator decree: review against existing `fundamentals.py`/`technicals.py` overlap before any wiring.
 
 ### Backlog
 - Alpha rollout 4 & 5: shadow → enforce after delta-log review
