@@ -209,4 +209,25 @@ async def extract_live_features(
         for k, v in source.items():
             out.setdefault(k, v)
 
+    # ── Feature builders (observation-only, nested keys) ──
+    # Output lands at ``frame.market.fundamentals`` and
+    # ``frame.market.technicals``. The current Strategist
+    # (10-dim vector locked to artifact shape) does NOT read
+    # these; they exist as feature signals for the next
+    # retraining pass and for offline analytics. Strict
+    # observation-only — no decision authority, no broker.
+    try:
+        from services.ml.features.fundamentals import build_fundamentals_features
+        from services.ml.features.technicals import build_technicals_features
+        fundamentals = await build_fundamentals_features(symbol, lane)
+        technicals = await build_technicals_features(symbol, lane)
+        if fundamentals:
+            out.setdefault("fundamentals", fundamentals)
+        if technicals:
+            out.setdefault("technicals", technicals)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "[feature_ext] feature-builders failed for %s: %s", symbol, exc,
+        )
+
     return out

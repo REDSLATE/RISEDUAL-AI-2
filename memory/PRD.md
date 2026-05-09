@@ -30,6 +30,35 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Feature builders — fundamentals + technicals (2026-05-09)
+
+**Operator directive**: P/E + SMA logic must be a **feature/input layer**, never a decision authority. Built two new modules under `services/ml/features/` that emit structured feature dicts for the ML perception/strategist layers to consume during retraining.
+
+**New package** `services/ml/features/`:
+| File | Lines | Authority |
+|---|---:|---|
+| `__init__.py` | 41 | Package docstring + authority-boundary contract |
+| `fundamentals.py` | 168 | Equity-only AV-OVERVIEW shaper (P/E, EPS, PEG, dividend yield, ROE, profit margin, growth YOY, beta, book value, EV/EBITDA, …) + binary band flags (`pe_in_value_band`, `pe_in_growth_band`, `pe_in_speculative`, `negative_eps`, `dividend_payer`) |
+| `technicals.py` | 123 | Universal (equity + crypto) wrapper around `services.universe_technicals.compute_technicals` — RSI14, MACD, SMA20/50/200 + binary flags (`price_above_sma20/50/200`, `sma20_above_sma50` golden-cross proxy, `rsi_oversold` / `rsi_overbought` / `rsi_neutral`, `macd_bullish` / `macd_bearish`) |
+
+**Wiring**: nested into `extract_live_features` as observation-only keys (`frame.market.fundamentals`, `frame.market.technicals`). Empty results are omitted (no littering the frame with empty dicts).
+
+**Hard rails (pinned by tests)**:
+- **Authority firewall**: feature builders import NOTHING from `broker_service`, `trading_bot_service`, `crypto_paper_trader`, `paper_trading_service`, `routes.broker`, `services.ml.{executors, roadguard, fast_veto, shadow_wiring, pipeline, broker_wire}`, `services.alpha_decision_log`, `ai_core.kill_switch`. Pinned by source-level regex check.
+- **No verdicts**: source contains no `BUY` / `SELL` / `NO_TRADE` / `Verdict.*` / `set_active` / `promote_now` / `place_order` / `broker.execute`. Pinned by static substring check.
+- **Equity-only firewall on fundamentals**: crypto / unknown / blank lanes return `{}` (no garbage P/E for digital assets). Pinned in 5 tests.
+- **Never raises**: provider exception, `None` return, empty dict, blank symbol — all yield `{}`. Pinned in 6 tests.
+- **Strategist vector dim unchanged**: `_FEATURE_DIM == 10` invariant test pinned. Static check that `_build_features` source does NOT read `fundamentals` / `technicals`. Existing artifact compatibility preserved — these features are observation-only today; available for the next retrain.
+
+**Verified**:
+- `tests/test_ml_feature_builders.py`: **45 passed** in 1.45s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 72.
+- Full pytest: **2883 passed, 0 failed** (was 2838 + 45 new tests).
+- Live smoke: `extract_live_features("AAPL", "equity")` returns nested `fundamentals` (19 numerics + 5 band flags) and `technicals` (9 indicators + 10 flags) on top of the existing flat keys (`broker_uptime`, `intraday_progress`, …) — no shadowing.
+- Backend boots clean.
+
+**Aligns with**: dual-stack architecture, adversarial layering, RoadGuard separation, shadow-first rollout, artifact-based retraining flow. Avoids the "single hardcoded brain" failure mode the user spent weeks removing from Camaro.
+
 ### Pre-4E broker-call contract net (2026-05-09)
 
 **Operator-mandated stabilization pass** before the riskiest slice. Step 4E is **PAUSED** until this safety harness exists. Goal: pin the observable contract of the broker call surface so any future move/refactor that drifts it fails loud and fast.
