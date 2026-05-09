@@ -181,6 +181,51 @@ from services.trading_bot._telemetry import (  # noqa: F401
 )
 
 
+# ── ADL-5: blocked-decision receipt helper ──────────────────────────
+# Fire-and-forget hook for upstream gate-blocked decisions (kill
+# switch / drawdown / fast veto enforce / sizing chain / RoadGuard
+# enforce). Each blocked branch produces exactly ONE receipt before
+# returning; the success-path receipt (line ~430) also fires exactly
+# ONCE — no duplicates. The helper tags the signal payload with
+# ``blocked_at`` (gate stage) and ``block_reason`` (preserved skip
+# reason) on a COPY of the caller's dict — never mutates the
+# caller's signal. Receipt-write failure NEVER alters the
+# ``execute_signal`` return value (defensive belt+braces).
+def _schedule_blocked_receipt(
+    *,
+    signal: dict,
+    market_data: dict | None,
+    lane: str,
+    blocked_at: str,
+    reason: str,
+    requested_notional_usd: float = 0.0,
+    open_positions: list[dict] | None = None,
+    equity_curve: list[float] | None = None,
+    bot_capital: float | None = None,
+) -> None:
+    try:
+        from services.ml.receipt_dispatch import schedule_shadow_receipt
+        sig = dict(signal or {})
+        sig["blocked_at"] = blocked_at
+        sig["block_reason"] = reason
+        schedule_shadow_receipt(
+            _resolve_db_for_shadow(),
+            signal=sig,
+            market_data=market_data,
+            lane=lane,
+            requested_notional_usd=float(requested_notional_usd or 0.0),
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=float(bot_capital or 0.0),
+            source="execute_signal_blocked",
+        )
+    except Exception as _adl_exc:  # noqa: BLE001
+        logger.debug(
+            "[execute_signal] ADL blocked receipt skipped (%s): %s",
+            blocked_at, _adl_exc,
+        )
+
+
 async def execute_signal(
     signal: dict,
     market_data: dict,
@@ -274,6 +319,18 @@ async def execute_signal(
 
     skip = _check_kill_switch_and_drawdown(equity_curve)
     if skip is not None:
+        # ADL-5: receipt for kill_switch / drawdown blocks.
+        _schedule_blocked_receipt(
+            signal=signal,
+            market_data=market_data,
+            lane=lane,
+            blocked_at="kill_switch_or_drawdown",
+            reason=str(skip.get("reason") or ""),
+            requested_notional_usd=0.0,
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=bot_capital,
+        )
         return skip
 
     # ── Tier 1: Fast Veto Shadow Layer ──
@@ -319,6 +376,18 @@ async def execute_signal(
                     council_result={"action": "NO_TRADE", "source": "fast_veto"},
                     lane=lane,
                 ))
+            # ADL-5: receipt for fast_veto ENFORCE blocks.
+            _schedule_blocked_receipt(
+                signal=signal,
+                market_data=market_data,
+                lane=lane,
+                blocked_at="fast_veto_enforce",
+                reason=str(fv_result.reason or ""),
+                requested_notional_usd=0.0,
+                open_positions=open_positions,
+                equity_curve=equity_curve,
+                bot_capital=bot_capital,
+            )
             return {
                 "skipped": True,
                 "reason": fv_result.reason,
@@ -348,10 +417,39 @@ async def execute_signal(
         bot_capital=bot_capital,
     )
     if skip_reason is not None:
+        # ADL-5: receipt for sizing-chain blocks. The skip_reason
+        # discriminates between portfolio caps (sector_cap /
+        # max_concurrent_trades / max_portfolio_exposure all map
+        # to "portfolio limits reached"), drawdown allocator
+        # ("risk control"), and confidence-floor ("low confidence
+        # / risk filter").
+        _schedule_blocked_receipt(
+            signal=signal,
+            market_data=market_data,
+            lane=lane,
+            blocked_at="size_chain",
+            reason=str(skip_reason),
+            requested_notional_usd=float(adjusted_size or 0.0),
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=bot_capital,
+        )
         return {"skipped": True, "reason": skip_reason}
 
     qty, price, qty_skip = _resolve_qty(adjusted_size, signal, market_data)
     if qty_skip is not None:
+        # ADL-5: receipt for quote / price-resolution blocks.
+        _schedule_blocked_receipt(
+            signal=signal,
+            market_data=market_data,
+            lane=lane,
+            blocked_at="resolve_qty",
+            reason=str(qty_skip),
+            requested_notional_usd=float(adjusted_size or 0.0),
+            open_positions=open_positions,
+            equity_curve=equity_curve,
+            bot_capital=bot_capital,
+        )
         return {"skipped": True, "reason": qty_skip}
 
     symbol = signal["symbol"]
@@ -405,6 +503,18 @@ async def execute_signal(
         if rg_response.enforce:
             # Enforce mode + non-ALLOW decision = short-circuit
             # the executor before the broker call.
+            # ADL-5: receipt for RoadGuard ENFORCE blocks.
+            _schedule_blocked_receipt(
+                signal=signal,
+                market_data=market_data,
+                lane=lane,
+                blocked_at="roadguard_enforce",
+                reason=str(rg_response.reason or ""),
+                requested_notional_usd=float(adjusted_size or 0.0),
+                open_positions=open_positions,
+                equity_curve=equity_curve,
+                bot_capital=bot_capital,
+            )
             return {
                 "skipped": True,
                 "reason": rg_response.reason,
@@ -777,6 +887,23 @@ async def process_signal_for_bots(user_id: str, signal: dict) -> list[dict]:
                 f"[signal-bot] {bot.get('name')} skipped {symbol} — "
                 f"daily cap reached ({trades_today}/{max_per_day})"
             )
+            # ADL-5: receipt for max_trades_per_day cap at the
+            # dispatcher layer (pre-execute_signal block).
+            try:
+                from services.executors._shared import detect_lane
+                _dispatch_lane = detect_lane(signal) or "equity"
+            except Exception:  # noqa: BLE001
+                _dispatch_lane = "equity"
+            _schedule_blocked_receipt(
+                signal=signal,
+                market_data=None,
+                lane=_dispatch_lane,
+                blocked_at="max_trades_per_day",
+                reason=(
+                    f"daily cap reached ({trades_today}/{max_per_day})"
+                ),
+                requested_notional_usd=0.0,
+            )
             continue
 
         # Execute via Smart Order or direct paper trade
@@ -1148,6 +1275,33 @@ async def process_webhook(user_id: str, bot_id: str, webhook_secret: str, payloa
         cfg["trades_today"] = 0
         cfg["last_trade_date"] = today
     if cfg["trades_today"] >= cfg.get("max_trades_per_day", 10):
+        # ADL-5: receipt for webhook max_trades_per_day cap.
+        try:
+            from services.executors._shared import detect_lane
+            _wh_signal = {
+                "symbol": str(payload.get("symbol")
+                              or payload.get("ticker") or "").upper(),
+                "direction": str(payload.get("action") or "").upper(),
+            }
+            _wh_lane = detect_lane(_wh_signal) or "equity"
+        except Exception:  # noqa: BLE001
+            _wh_signal = {
+                "symbol": str(payload.get("symbol")
+                              or payload.get("ticker") or "").upper(),
+            }
+            _wh_lane = "equity"
+        _schedule_blocked_receipt(
+            signal=_wh_signal,
+            market_data=None,
+            lane=_wh_lane,
+            blocked_at="max_trades_per_day",
+            reason=(
+                f"webhook daily cap reached "
+                f"({cfg['trades_today']}/"
+                f"{cfg.get('max_trades_per_day', 10)})"
+            ),
+            requested_notional_usd=0.0,
+        )
         return {"error": "Daily trade limit reached"}
 
     # Parse webhook payload

@@ -30,6 +30,52 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-5 — upstream blocked-decision receipts in `trading_bot_service` (2026-05-09)
+
+**Final micro-phase of the operator-mandated ADL persistence-coverage fix.** Captures gate-blocked decisions BEFORE they short-circuit the executor — the original ADL-1 success-path receipt only fired AFTER all gates passed, leaving every kill-switch / drawdown / fast-veto / sizing / RoadGuard ENFORCE block invisible to retraining.
+
+**New helper** `services/trading_bot_service.py:_schedule_blocked_receipt(...)` (50 lines):
+- Module-level fire-and-forget wrapper around `schedule_shadow_receipt`.
+- Tags signal payload with `blocked_at` (gate stage) + `block_reason` (verbatim skip reason) on a COPY of the caller's dict — never mutates.
+- Source tag: `"execute_signal_blocked"` (vs `"execute_signal"` for the success-path receipt) so retrain joins can disaggregate at the source level.
+- Defensive belt+braces try/except — a raising or False-returning helper can NEVER alter `execute_signal`'s return value.
+
+**Hooked at six gate sites in `trading_bot_service.py`**:
+| Gate stage tag | Site | Coverage |
+|---|---|---|
+| `kill_switch_or_drawdown` | `_check_kill_switch_and_drawdown` skip path | kill switch active, kill switch trip on drawdown |
+| `fast_veto_enforce` | Fast Veto enforce-mode path | shadow-promoted veto enforcement |
+| `size_chain` | `_compute_adjusted_size` skip path | sector_cap / max_concurrent_trades / max_portfolio_exposure (all map to "portfolio limits reached"), drawdown allocator ("risk control"), low-confidence floor |
+| `resolve_qty` | `_resolve_qty` skip path | invalid price / quote unavailable |
+| `roadguard_enforce` | RoadGuard enforce-mode path | shared cross-lane caps, broker health, daily loss limit |
+| `max_trades_per_day` | `process_signal_for_bots` dispatcher cap (line ~885) AND `process_webhook` daily cap (line ~1260) | daily trade rate limit at both entry points |
+
+**Hard rails (pinned by tests)**:
+- 12-test net `tests/test_execute_signal_adl_blocked_receipts.py` covers: each gate produces ONE receipt with correct `blocked_at`/`block_reason`/`lane`/`source`, caller's signal dict is NEVER mutated (deep-copy assertion), helper failure preserves the return shape, success path still produces ONLY the existing single `source="execute_signal"` receipt with no `blocked_at` key, kill-switch trip prevents downstream gates from running (no double-log), broker is NEVER called on a blocked path (tripwire on `_execute_bot_trade`), helper unit tests pin source tag + non-mutation + exception swallowing, static check that the helper uses the shared dispatcher and never invokes `run_shadow_pipeline` directly.
+- All execution paths byte-equivalent: every skip dict, every error dict, every order shape, every loop's `continue` semantics — preserved.
+- Code-size: `trading_bot_service.py` 1336 → 1490 lines (+154, well under existing 1575 baseline; allowlisted with documented justification).
+
+**Verified**:
+- `tests/test_execute_signal_adl_blocked_receipts.py`: **12 passed** in 0.19s.
+- Targeted superset (test_execute_signal_usd + test_trading_bot_broker_contract + test_trading_bot_adaptive_sizing + test_executor_lanes + test_portfolio_risk_engine + test_execute_signal_adl_blocked_receipts + test_receipt_dispatch): **114 passed** in 1.42s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2998 passed, 0 failed** (was 2986 + 12 new = 2998 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":569}`.
+
+**Cumulative ADL coverage now spans FIVE entry points across SIX gate stages**:
+1. **Equity executor** — `trading_bot_service.execute_signal` success path (ADL-0 baseline).
+2. **Crypto paper bot** — `crypto_paper_trader.run_crypto_symbol` (ADL-2).
+3. **Day-trade scanner** — `day_trade_scanner.run_scan` per-candidate (ADL-3).
+4. **Options paper agent** — `trading_agents.options_paper.run` per-ticker (ADL-4).
+5. **Upstream gate-blocked decisions** — six sites in `trading_bot_service` (ADL-5): kill_switch_or_drawdown, fast_veto_enforce, size_chain (sector_cap / max_concurrent / max_portfolio / risk_control / low_confidence), resolve_qty, roadguard_enforce, max_trades_per_day (dispatcher + webhook).
+
+**ADL persistence-coverage fix is COMPLETE.** Operator decree: let receipts accumulate organically for 24–48h, then re-run `python -m scripts.diagnose_alpha_decision_log_persistence` and `python -m scripts.diagnose_alpha_retrain_join` to confirm:
+- Per-lane receipt-vs-trade ratios > 90%.
+- Receipt distribution across `blocked_at` stages.
+- Retrain-join coverage rises from 2.50% → ≥ 50% in the next 30-day window.
+
+**ADL Coverage Tile** remains held until that organic window passes.
+
 ### ADL-4 — wire `options_paper` agent to the shared receipt helper (2026-05-09)
 
 **Micro-phase 4 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the options-lane gap.
