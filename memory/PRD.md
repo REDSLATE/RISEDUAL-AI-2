@@ -28,7 +28,37 @@ market data
   -> [broker — disabled]
 ```
 
-## What's Implemented (this fork — 2026-05-08)
+## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
+
+### Step 3 — `_start_schedulers()` strangler split (2026-05-09)
+
+**`server.py` shrinks from 2004 → 1537 lines (-467).** Job registration moved verbatim to `services/scheduling/jobs.py`. Zero behaviour change: every job ID, interval, cron expression, `replace_existing`, and `next_run_time` kwarg preserved. Live scheduler still registers **61 jobs** (57 static + 4 dynamic ETL).
+
+**New package** `services/scheduling/`:
+| File | Lines | Authority |
+|---|---:|---|
+| `__init__.py` | 15 | Re-exports `register_all` |
+| `jobs.py` | 523 | All `scheduler.add_job(...)` calls + inline closures |
+
+**`server._start_schedulers` retains** (unchanged authority):
+- AsyncIOScheduler instantiation
+- ``scheduler.start()``
+- self-test scheduler wiring (`set_scheduler(scheduler)`)
+- Health-panel error pump (`set_scheduler_boot_error`)
+- Auto-seed Tier3 universe block (startup data seed, NOT job registration)
+
+**Design decision — `server_mod` injection**:
+- `register_all(scheduler, db, server_mod)` accepts the live `server` module so it can reach module-level callbacks (`_check_smart_orders`, `_run_grid_bots`, `_run_etl_job`, ~40 others) without a circular import. Inline async closures (`_run_ticker_abandonment_snapshot`, `_run_kraken_shadow_compare`, `_write_scheduler_heartbeat`, etc.) close over the `db` parameter exactly as they did inside the old enclosing scope.
+
+**Verified**:
+- Boot: Schedulers started — same log line, same 61 jobs.
+- `make lint-arch` 9 passed · `make lint-fast` 128 passed · `make lint-safety` 72 passed.
+- Targeted suite (scheduler/self_test/wedge/phase5d): 50 passed.
+- `test_code_size.py`: 5/5 passed (jobs.py 523 ≤ core-governance preferred 600; no baseline drift).
+- Full pytest: **2824 passed, 0 failed** (identical count pre/post split).
+- Live `/api/admin/self-test`: scheduler check PASS, 61 jobs registered.
+
+**Architecture Split Steps 1, 2, 3 now complete. Step 4 (split `day_trade_executor.py` ~1100 lines) remains.**
 
 ### Step 2 — `admin_ml_v2.py` authority-boundary split (2026-05-08)
 
