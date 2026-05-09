@@ -30,6 +30,57 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-3 — wire `day_trade_scanner.py` to the shared receipt helper (2026-05-09)
+
+**Micro-phase 3 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the day-trade scanner gap — every scanned candidate now produces an `alpha_decision_log` receipt regardless of whether the gates approve or block it.
+
+**Patch site**: `services/day_trade_scanner.py:run_scan` per-candidate loop. Insertion point is INSIDE the iteration, AFTER `apply_gates` resolves the gate verdict (passed/blocker/inputs) and AFTER the `gate_passed` / `gate_blocker` / `chosen` book-keeping. The original `if not passed: ... continue` was restructured to an `if/else` so both branches fall through to a single shared receipt-scheduling block — APPROVED candidates AND blocked candidates both get one receipt per scan iteration.
+
+**Call shape** (verbatim):
+```python
+schedule_shadow_receipt(
+    db,
+    signal={
+        "symbol": c.symbol,
+        "direction": c.direction,
+        "confidence": float(c.score),
+        "score": float(c.score),
+        "rank": c.rank,
+        "asset_class": c.asset_class,
+        "gate_passed": c.gate_passed,
+        "gate_blocker": c.gate_blocker,
+        "prediction_id": c.prediction_id,
+        "scan_id": scan_id,
+        "source_layer": "day_trade_scanner",
+    },
+    market_data=None,
+    lane="equity",
+    requested_notional_usd=0.0,
+    source="day_trade",
+)
+```
+Wrapped in a defensive belt+braces `try/except` that logs `[day-trade-scan] ADL receipt schedule skipped` at DEBUG and continues. Lane is hard-coded `"equity"` per operator brief — the source tag `"day_trade"` is the primary discriminator from `crypto_paper_trader` and `trading_bot_service` ADL streams.
+
+**Pre-signal early returns** (db missing → `scan_universe` returns `[]`, empty universe, db None) deliberately skip the loop entirely so no receipts are scheduled when no candidate exists.
+
+**Hard rails (pinned by tests)**:
+- 12-test net `tests/test_day_trade_scanner_adl_receipts.py` covers: APPROVED candidate produces receipt, blocked candidate (`below_min_score`, `non_directional_prediction`, `already_holding`) still produces receipt, signal payload contains `gate_passed`/`gate_blocker`, multi-candidate fan-out (3 candidates → 3 receipts), empty universe → 0 receipts, `db=None` → 0 receipts, raising helper does NOT alter `run_scan` result, helper return=`False` does NOT branch caller, plus two static checks (no `run_shadow_pipeline` direct call, no broker/executor imports anywhere in the file).
+- Day-trade execution path is byte-equivalent: ScanResult shape, target writes, scan-log writes, gate iteration order — all unchanged.
+- Code-size: `day_trade_scanner.py` 412 → 454 lines (+42, well under `core-governance` 600 preferred / 800 hard ceiling).
+
+**Verified**:
+- `tests/test_day_trade_scanner_adl_receipts.py`: **12 passed** in 0.15s.
+- Targeted superset (test_day_trade_scanner + test_day_trade_scanner_adl_receipts + test_receipt_dispatch + test_crypto_paper_trader_adl_receipts): **50 passed** in 1.55s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2973 passed, 0 failed** (was 2961 + 12 new = 2973 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":569}`.
+
+**Cumulative ADL coverage now spans**: equity executor (ADL-0 baseline at `trading_bot_service.execute_signal`), crypto paper bot (ADL-2 at `crypto_paper_trader.run_crypto_symbol`), day-trade scanner (ADL-3 at `day_trade_scanner.run_scan`).
+
+**Remaining ADL micro-phases**:
+- **ADL-4**: Wire options paper bot if present (`lane="options"`).
+- **ADL-5**: Move/duplicate receipt earlier so kill_switch / risk_guard / sector_cap / max_trades_per_day / RoadGuard ENFORCE blocked decisions also produce receipts.
+
 ### ADL-2 — wire `crypto_paper_trader.py` to the shared receipt helper (2026-05-09)
 
 **Micro-phase 2 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the diagnosed crypto-lane gap (was 1.40% receipt coverage — 3/214 trades). Single early-fire `schedule_shadow_receipt` call covers APPROVED, HOLD, and gate-blocked paths uniformly.

@@ -385,13 +385,55 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
             c.gate_passed = False
             c.gate_blocker = blocker
             blocked += 1
-            continue
-        c.gate_passed = True
-        c.gate_blocker = None
-        if chosen is None:
-            chosen = c
-        # Continue iterating so every candidate has its gate verdict
-        # recorded in the scan log — but only ONE is chosen.
+        else:
+            c.gate_passed = True
+            c.gate_blocker = None
+            if chosen is None:
+                chosen = c
+            # Continue iterating so every candidate has its gate
+            # verdict recorded in the scan log — but only ONE is
+            # chosen.
+
+        # ── ADL-3: Shadow receipt (fire-and-forget) ──────────────
+        # Every candidate gets one alpha_decision_log receipt
+        # tagged ``source="day_trade"``. APPROVED candidates
+        # (gate_passed=True) AND skipped/blocked candidates
+        # (gate_passed=False) both produce a receipt. The shadow
+        # pipeline runs OUT-OF-BAND; never mutates ``c`` or the
+        # scan flow, never raises out. Pre-signal early returns
+        # (``scan_universe`` returns []) skip the loop entirely so
+        # no receipt is logged when no candidate exists.
+        try:
+            from services.ml.receipt_dispatch import (
+                schedule_shadow_receipt,
+            )
+            _scanner_signal = {
+                "symbol": c.symbol,
+                "direction": c.direction,
+                "confidence": float(c.score),
+                "score": float(c.score),
+                "rank": c.rank,
+                "asset_class": c.asset_class,
+                "gate_passed": c.gate_passed,
+                "gate_blocker": c.gate_blocker,
+                "prediction_id": c.prediction_id,
+                "scan_id": scan_id,
+                "source_layer": "day_trade_scanner",
+            }
+            schedule_shadow_receipt(
+                db,
+                signal=_scanner_signal,
+                market_data=None,
+                lane="equity",
+                requested_notional_usd=0.0,
+                source="day_trade",
+            )
+        except Exception as _adl_exc:  # noqa: BLE001
+            logger.debug(
+                "[day-trade-scan] ADL receipt schedule skipped "
+                "for %s: %s",
+                c.symbol, _adl_exc,
+            )
 
     # Phase 4: write the target (only if a winner exists).
     if chosen is not None:
