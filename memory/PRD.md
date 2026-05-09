@@ -30,6 +30,34 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Step 4C — `trading_bot_service.py` data-access extraction (2026-05-09)
+
+**Micro-phase 3 of 5**. Bot-CRUD helpers only — zero behaviour change. No broker calls, no decision logic, no sizing, no Mongo query / update / response shape changes.
+
+`services/trading_bot_service.py`: 1506 → **1402 lines** (-104).
+
+**Moved** to `services/trading_bot/_data_access.py` (171 lines):
+| Function | Authority |
+|---|---|
+| `create_bot` | Insert bot doc (defaults OFF). |
+| `_build_config` | Per-bot-type config validator/builder (no DB). |
+| `toggle_bot` | Flip ``enabled`` flag. |
+| `update_bot_config` | Merge config patch. |
+| `delete_bot` | Delete by `(user_id, bot_id)`. |
+| `get_user_bots` | List user's bots. |
+
+**Compatibility shim**: re-imported under the original public names so external callers (`routes/trading_bots.py` does `from services.trading_bot_service import create_bot` etc.) and tests are unchanged. The moved helpers fetch the live `_db` via the existing `_resolve_db_for_shadow` getter (deferred import to break the circular dep — same pattern as 4B). Mongo queries, projections, sort orders, and return shapes are byte-equivalent.
+
+**Verified**:
+- `make lint-arch` 9 passed · `make lint-fast` 128 passed · `make lint-safety` 72 passed.
+- Targeted suite (execute_signal + executor_lanes + roadguard + fast_veto + trading_bot + portfolio_risk + adaptive_sizing + drawdown + webhook + grid): **207 passed**.
+- Full pytest: **2824 passed, 0 failed** (identical pre/post extraction).
+- Backend boots clean.
+
+**Cumulative trading_bot_service.py**: 1575 → 1402 lines (-173, -11%) across 4A + 4B + 4C.
+
+**Remaining**: 4D (decision rules), 4E (broker calls — LAST).
+
 ### Step 4B — `trading_bot_service.py` telemetry/receipts extraction (2026-05-09)
 
 **Micro-phase 2 of 5**. Telemetry/receipts only — zero behaviour change, no broker calls, no decision logic, no DB query change.
