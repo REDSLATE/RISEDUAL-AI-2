@@ -30,6 +30,46 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### `no_decision_log` skip-rate diagnostic + findings (2026-05-09)
+
+**Operator-mandated diagnosis** of why retraining only matched 5/1445 paper trades. Built a read-only `python -m scripts.diagnose_alpha_retrain_join` tool that probes all 8 hypothesis questions verbatim. **No writes, no env mutation, no schema mutation, no retrain promotion** — strict observation.
+
+**Live findings (window=30d)**:
+| Probe | Verdict |
+|---|---|
+| 1. Trades pre-date ADL? | YES — 1544 unmatched trades closed before oldest ADL row |
+| 2. Unstable join keys? | YES — `paper_trades` uses `'ticker'`, `crypto_paper_trades` uses `'symbol'`, `alpha_decision_log` uses `'symbol'` |
+| 3. Wrong timestamp field? | N/A — join is keyed by `(symbol, lane)`, time only bounds the read window |
+| 4. Symbol normalization mismatch? | YES — 194 crypto rows would match if `BTC` ↔ `BTC-USD` |
+| 5. Lane mismatch? | YES — neither paper-trade collection has a `lane` field; both default to "equity" |
+| 6. ADL only for Phase 5a+? | YES — ADL spans 0.40d but window is 30d |
+| 7. ADL TTL too short? | LIKELY — only 0.40d of history; persistence layer brand new |
+| 8. Crypto vs equity schema drift? | YES — symbol field `ticker` vs `symbol`; pnl `pnl_usd` vs `pnl` |
+
+**Match outcome**: 50/1998 in-window paper trades match (2.50%). 1544 trades pre-date ADL; 210 have no ADL row at all; 194 are normalization-mismatches.
+
+**Real bottleneck identified**: `alpha_decision_log` has only **7 rows total** across **2 distinct keys** (`AAPL/equity`, `BTC-USD/crypto`), span 0.40d. The ADL persistence layer (in `services/ml/shadow_wiring` or `pipeline.py`) is barely firing. NO BACKFILL is possible — upstream features can't be recreated.
+
+**Files**:
+- `scripts/diagnose_alpha_retrain_join.py` (279 lines) — runnable CLI + report formatter.
+- `services/diagnostics/alpha_retrain_join.py` (478 lines) — probes/classifiers/recommendations library (split out + relocated under `services/diagnostics/` since it's a library, not a runnable script — fits the 600-line `core-governance` ceiling).
+- `services/diagnostics/__init__.py` — package docstring with the read-only authority-boundary contract.
+- `tests/test_diagnose_alpha_retrain_join.py` — **28 tests** pinning pure helpers, hypothesis classifiers, recommendations, and a static check that the diagnostic has no broker/executor/RoadGuard/FastVeto imports and zero Mongo write verbs (`insert_*`, `update_*`, `delete_*`, `drop`, `bulk_write`, ...).
+
+**Recommendations surfaced (priority order)**:
+1. **PRIMARY**: ADL persistence layer is the real blocker — investigate `services/ml/shadow_wiring`/`pipeline.py` to confirm it fires on every decision.
+2. Patch `extract_rows()` to read `symbol or ticker or pair`.
+3. Derive `lane='crypto'` for `crypto_paper_trades` / `asset_class='crypto'` rows.
+4. Add symbol-normalization step (`BTC` → also probe `BTC-USD`).
+5. Patch `label_from_outcome()` to accept `pnl_usd` / `pnl` / `r_multiple` (not just `realized_pnl_usd`).
+6. **DO NOT** run v2 retrain `--write-artifact` yet — 2.5% coverage trains a non-representative slice.
+
+**Verified**:
+- `tests/test_diagnose_alpha_retrain_join.py`: **28 passed** in 0.12s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2925 passed, 0 failed**.
+- Live CLI: produces the full hypothesis report + match-attempt + sample rows + recommendations on real data.
+
 ### v2 retraining schema — `alpha_v2_fundamentals_technicals` (2026-05-09)
 
 **Operator-mandated next step** after the feature builders. Extends `scripts/retrain_alpha_models.py` to consume `frame.market.fundamentals.*` + `frame.market.technicals.*` while leaving live inference completely untouched.
