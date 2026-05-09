@@ -64,6 +64,14 @@ Wired the runtime to the RISEDUAL monorepo as a fire-and-forget observation side
 - No regressions in calibration / bulk-replay / ADL receipt tests.
 - `MONOREPO_BASE_URL`, `MONOREPO_INGEST_TOKEN`, `RUNTIME_NAME` already present in `.env`.
 
+### FRED Macro Pipeline — Live (verified 2026-05-09)
+
+`FRED_API_KEYS` is set in `/app/backend/.env`. Live verification:
+- All 15 curated macro series populated (GDP, CPI, Core CPI, PCE, UNRATE, PAYEMS, ICSA, FEDFUNDS, DGS10, DGS2, T10Y2Y, HOUST, UMCSENT, BOPGSTB, GDPC1).
+- `GET /api/fred/indicators` returns real values across 7 categories.
+- No mock fallback in the macro feature pipeline.
+- Search War Room FRED adapter (`adapters/fred.py`) reads the same env var via `KeyRotator`.
+
 **Authority-boundary invariants preserved**:
 - `BROKER_LIVE_ORDER_ENABLED` untouched (false).
 - No retrain artifact writes triggered.
