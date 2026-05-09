@@ -115,6 +115,31 @@ async def record_decision(
             "schema_version": 1,
         }
         result = await db[COLLECTION].insert_one(doc)
+
+        # Sidecar mirror (fire-and-forget; never raises). The monorepo
+        # treats this as observation only — local writes already
+        # succeeded and are authoritative for this runtime.
+        try:
+            from services.risedual_monorepo_client import (
+                emit_receipt,
+                fire_and_forget,
+            )
+            fire_and_forget(emit_receipt(
+                action="alpha_decision_log",
+                intent={
+                    "symbol": symbol,
+                    "lane": lane,
+                    "decision": decision,
+                    "blocked_at": blocked_at,
+                    "reason": reason,
+                    "confidence": float(confidence),
+                    "source": (extras or {}).get("source"),
+                },
+                executed=False,
+            ))
+        except Exception:  # noqa: BLE001
+            pass
+
         return str(result.inserted_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[alpha_decision_log] record_decision failed: %s", exc)

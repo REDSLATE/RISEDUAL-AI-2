@@ -3,14 +3,31 @@ Per doctrine: this is the ONLY file in this runtime that knows about the
 monorepo's shared collections. Decision logic stays out of here.
 
 Failures NEVER raise — the monorepo being down must not take down this runtime.
+The sidecar is fire-and-forget; every emit is best-effort. If the env vars
+are not set or the host is unreachable, calls are silently skipped.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import logging
+from typing import Awaitable, Coroutine
+
 import httpx
 
 log = logging.getLogger("risedual.monorepo_client")
+
+
+def _enabled() -> bool:
+    """Sidecar is enabled only when all 3 env vars are set AND the
+    operator has not flipped the kill switch."""
+    if os.environ.get("MONOREPO_SIDECAR_ENABLED", "true").lower() == "false":
+        return False
+    return bool(
+        os.environ.get("MONOREPO_BASE_URL")
+        and os.environ.get("MONOREPO_INGEST_TOKEN")
+        and os.environ.get("RUNTIME_NAME")
+    )
 
 
 def _base() -> str:
@@ -35,7 +52,47 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
+async def aclose() -> None:
+    """Close the underlying httpx client. Idempotent."""
+    global _client
+    if _client is not None:
+        try:
+            await _client.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+        _client = None
+
+
+def fire_and_forget(coro: Coroutine | Awaitable) -> None:
+    """Schedule ``coro`` on the running event loop without awaiting it.
+    If no loop is running (sync caller without an active loop), the
+    coroutine is closed without execution — sync callers from request
+    handlers are expected to be on a running loop already. NEVER raises.
+    """
+    if coro is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop in this thread — drop the coro cleanly.
+        try:
+            coro.close()  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        loop.create_task(coro)
+    except Exception as e:  # noqa: BLE001
+        log.debug("monorepo fire_and_forget schedule failed: %s", e)
+        try:
+            coro.close()  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _post(path: str, body: dict) -> dict:
+    if not _enabled():
+        return {"ok": False, "error": "sidecar_disabled"}
     body = {"runtime": _runtime(), **body}
     try:
         r = await _get_client().post(
@@ -46,7 +103,7 @@ async def _post(path: str, body: dict) -> dict:
         r.raise_for_status()
         return r.json()
     except Exception as e:  # noqa: BLE001
-        log.warning("monorepo ingest %s failed: %s", path, e)
+        log.debug("monorepo ingest %s failed: %s", path, e)
         return {"ok": False, "error": str(e)}
 
 
@@ -80,3 +137,41 @@ async def register_artifact(artifact: str, version: str, sha: str, registered_at
 async def heartbeat(status: str = "ok", detail: dict | None = None) -> dict:
     """Liveness ping. Call every 30-60s in a background task."""
     return await _post("heartbeat", {"status": status, "detail": detail or {}})
+
+
+# ── Higher-level mirrors (sync entry points) ────────────────────────
+
+
+def mirror_calibration_artifact(
+    *,
+    artifact_path,
+    version: str,
+    method: str,
+    fit_at: str | None = None,
+    name: str = "chevelle_isotonic",
+    artifact_kind: str = "calibrator",
+) -> None:
+    """Fire-and-forget: sha-hash the artifact and register it +
+    its calibrator entry with the monorepo. Sync — schedules the
+    coroutine on the running loop. NEVER raises."""
+    try:
+        import hashlib
+        from pathlib import Path as _Path
+        p = _Path(artifact_path)
+        try:
+            sha = hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else ""
+        except Exception:  # noqa: BLE001
+            sha = ""
+
+        async def _both():
+            await register_calibrator(
+                name=name, version=version, method=method, fit_at=fit_at,
+            )
+            await register_artifact(
+                artifact=artifact_kind, version=version, sha=sha,
+                registered_at=fit_at,
+            )
+
+        fire_and_forget(_both())
+    except Exception as e:  # noqa: BLE001
+        log.debug("mirror_calibration_artifact skipped: %s", e)

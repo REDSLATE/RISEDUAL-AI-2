@@ -288,6 +288,34 @@ async def scan_csv(
         rec = label_memory(r, observation_policy=OBSERVATION_POLICY_ALL)
         labeled.append(_record_to_dict(rec, csv_row_index=csv_idx))
 
+    # Sidecar mirror — observation only. Aggregate verdict per upload
+    # is more useful than per-row spam to the monorepo.
+    try:
+        from services.risedual_monorepo_client import (
+            emit_memory_label,
+            fire_and_forget,
+        )
+        agg_preview = _build_aggregate(labeled)
+        quarantined = int(agg_preview.get("quarantined_count", 0))
+        toxic = int(agg_preview.get("toxic_count", 0))
+        total = int(agg_preview.get("total_rows", 0))
+        if quarantined > 0:
+            label = "quarantine"
+        elif toxic > 0:
+            label = "review"
+        else:
+            label = "safe"
+        fire_and_forget(emit_memory_label(
+            label=label,
+            reason="bulk_replay_csv",
+            payload_summary=(
+                f"file={file.filename} total={total} "
+                f"quarantined={quarantined} toxic={toxic}"
+            ),
+        ))
+    except Exception:  # noqa: BLE001
+        pass
+
     aggregate = _build_aggregate(labeled)
 
     return {

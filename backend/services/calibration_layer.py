@@ -379,6 +379,20 @@ def fit_and_persist(
     # Force the in-memory active calibrator to reload on next apply.
     _reset_active_cache()
 
+    # Sidecar mirror — best-effort, never raises.
+    try:
+        from services.risedual_monorepo_client import (
+            mirror_calibration_artifact,
+        )
+        mirror_calibration_artifact(
+            artifact_path=artifact,
+            version=version,
+            method=CALIBRATION_METHOD,
+            fit_at=payload.get("fit_at"),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     return CalibrationFitResult(
         success=True,
         sample_count=n,

@@ -30,6 +30,46 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Alpha Monorepo Sidecar (2026-05-09)
+
+Wired the runtime to the RISEDUAL monorepo as a fire-and-forget observation sidecar. **NEVER blocks, NEVER raises** — local writes remain authoritative.
+
+**Client (`services/risedual_monorepo_client.py`)**:
+- `_enabled()` gate: requires `MONOREPO_BASE_URL`, `MONOREPO_INGEST_TOKEN`, `RUNTIME_NAME`. Honoured kill-switch `MONOREPO_SIDECAR_ENABLED=false`.
+- `_post(path, body)`: 5s timeout via `httpx.AsyncClient`. Adds `runtime` to body, `X-Runtime-Token` header. Returns `{"ok": False, "error": ...}` on any failure — never raises.
+- `fire_and_forget(coro)`: schedules on the running loop, drops cleanly when no loop is active, never raises.
+- Public emits: `emit_receipt`, `emit_memory_label`, `register_calibrator`, `register_artifact`, `heartbeat`.
+- Higher-level helper: `mirror_calibration_artifact(...)` — sha-hashes the joblib + fires both calibrator + artifact registration as one task.
+- `aclose()` for shutdown cleanup.
+
+**Wiring (single chokepoints)**:
+- `services/alpha_decision_log.py::record_decision` — after the `insert_one` succeeds, schedules `emit_receipt(action="alpha_decision_log", intent=..., executed=False)`. Covers ALL six ADL paths automatically (crypto / day-trade / options / blocked-gate / equity paper / approved).
+- `routes/admin_bulk_replay.py` — after labeling, emits one `emit_memory_label(...)` per upload (label = `quarantine` if any, else `review` if toxic, else `safe`).
+- `services/calibration_layer.py::fit_and_persist` — after a successful joblib write, calls `mirror_calibration_artifact(...)`.
+
+**Server lifecycle (`server.py`)**:
+- Startup: schedules `_monorepo_register_artifacts_at_startup()` (one-shot register of the active calibrator) and `_monorepo_heartbeat_loop()` (60s cadence). Both are `asyncio.create_task` — they NEVER block boot.
+- Shutdown: cancels heartbeat task + `aclose()` of the httpx client.
+
+**Test net (`tests/test_risedual_monorepo_client.py` — 12 tests)**:
+- `_enabled()` gate: kill-switch / missing env / present-env.
+- `_post()` returns `sidecar_disabled` when off; swallows network errors silently.
+- `fire_and_forget` no-loop drops the coro; on-loop schedules and runs.
+- Body shape per emit (`receipts` / `memory-labels` / `calibrators` / `artifacts` / `heartbeat`).
+- ADL wiring: `record_decision` mirrors a fake `emit_receipt` exactly once with the correct intent payload.
+
+**Production status (2026-05-09)**:
+- Backend boots cleanly: `[monorepo] sidecar enabled — heartbeat loop spawned`.
+- Full pytest suite: **3151 / 3151 passing** (was 3139 — 12 new sidecar tests added).
+- No regressions in calibration / bulk-replay / ADL receipt tests.
+- `MONOREPO_BASE_URL`, `MONOREPO_INGEST_TOKEN`, `RUNTIME_NAME` already present in `.env`.
+
+**Authority-boundary invariants preserved**:
+- `BROKER_LIVE_ORDER_ENABLED` untouched (false).
+- No retrain artifact writes triggered.
+- No threshold lowering anywhere.
+- The sidecar runs on the same process — failures are scoped to httpx timeouts and never re-raise.
+
 ### Confidence Calibration Layer — Option A (IsotonicRegression) (2026-05-09)
 
 **Operator-approved Option A** with safe defaults: isotonic post-hoc mapping, fit only on firewall-trainable rows, served-confidence scope (CDO keeps raw), 24h refit cadence + manual admin trigger. Patent J thresholds unchanged. Execution authority unchanged.

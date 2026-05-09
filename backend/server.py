@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -596,7 +597,75 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"ChromaDB warmup launch failed (non-critical): {e}")
 
+    # Alpha Monorepo Sidecar — register active calibrator artifact +
+    # spawn the heartbeat loop. Fire-and-forget; the monorepo being
+    # down must never affect this runtime. Gated on env presence.
+    try:
+        from services import risedual_monorepo_client as _mono
+        if _mono._enabled():
+            asyncio.create_task(_monorepo_register_artifacts_at_startup())
+            global _monorepo_heartbeat_task  # noqa: PLW0603
+            _monorepo_heartbeat_task = asyncio.create_task(
+                _monorepo_heartbeat_loop()
+            )
+            logger.info("[monorepo] sidecar enabled — heartbeat loop spawned")
+        else:
+            logger.info("[monorepo] sidecar disabled (env not set)")
+    except Exception as e:
+        logger.warning(f"[monorepo] sidecar startup skipped (non-critical): {e}")
+
     logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
+
+
+_monorepo_heartbeat_task: asyncio.Task | None = None
+
+
+async def _monorepo_register_artifacts_at_startup():
+    """Best-effort one-shot: register the currently-active calibrator
+    with the monorepo. Never raises."""
+    try:
+        from services import risedual_monorepo_client as _mono
+        from services import calibration_layer as _cal
+        version = _cal._get_active_version()
+        if not version:
+            return
+        path = _cal._artifact_path(version)
+        if not path.exists():
+            return
+        import hashlib as _hashlib
+        try:
+            sha = _hashlib.sha256(path.read_bytes()).hexdigest()
+        except Exception:  # noqa: BLE001
+            sha = ""
+        await _mono.register_calibrator(
+            name="chevelle_isotonic",
+            version=version,
+            method="isotonic",
+        )
+        await _mono.register_artifact(
+            artifact="calibrator",
+            version=version,
+            sha=sha,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[monorepo] artifact registration skipped: {e}")
+
+
+async def _monorepo_heartbeat_loop():
+    """Liveness ping every 60s. Runs forever until the task is
+    cancelled at shutdown. Never raises out of the loop."""
+    try:
+        from services import risedual_monorepo_client as _mono
+        while True:
+            try:
+                await _mono.heartbeat(status="ok")
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"[monorepo] heartbeat failed: {e}")
+            await asyncio.sleep(60)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[monorepo] heartbeat loop exited: {e}")
 
 
 async def _chromadb_warmup():
@@ -1549,4 +1618,13 @@ async def shutdown_db_client():
         await stop_kraken_ws_stream()
     except Exception as e:  # noqa: BLE001
         logger.debug(f"Kraken WS stop on shutdown: {e}")
+    # Cancel monorepo heartbeat + close the httpx client.
+    try:
+        global _monorepo_heartbeat_task  # noqa: PLW0603
+        if _monorepo_heartbeat_task is not None:
+            _monorepo_heartbeat_task.cancel()
+        from services.risedual_monorepo_client import aclose as _mono_aclose
+        await _mono_aclose()
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[monorepo] shutdown cleanup: {e}")
     client.close()
