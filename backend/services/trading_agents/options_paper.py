@@ -100,6 +100,43 @@ async def run(db: Any) -> None:
             if scored is None:
                 continue
             direction, conf = scored
+
+            # ── ADL-4: Shadow receipt (fire-and-forget) ──────────
+            # Captures EVERY options-lane decision in
+            # ``alpha_decision_log`` regardless of whether the
+            # conviction floor is cleared. Runs OUT-OF-BAND on the
+            # event loop — NEVER blocks ``run``, NEVER mutates
+            # state, NEVER raises. Pre-signal returns above
+            # (db None, kill switch, no fresh snapshot) deliberately
+            # skip this hook — they have no decision object to log.
+            try:
+                from services.ml.receipt_dispatch import (
+                    schedule_shadow_receipt,
+                )
+                _options_signal = {
+                    "symbol": ticker,
+                    "direction": direction,
+                    "confidence": float(conf),
+                    "strategy": _STRATEGY,
+                    "min_confidence_threshold": _MIN_CONFIDENCE,
+                    "watchlist_position": considered,
+                    "source_layer": "options_paper_agent",
+                }
+                schedule_shadow_receipt(
+                    db,
+                    signal=_options_signal,
+                    market_data=None,
+                    lane="options",
+                    requested_notional_usd=float(_POSITION_USD),
+                    source="options_paper_bot",
+                )
+            except Exception as _adl_exc:  # noqa: BLE001
+                logger.debug(
+                    "[options_paper] ADL receipt schedule skipped "
+                    "for %s: %s",
+                    ticker, _adl_exc,
+                )
+
             if conf < _MIN_CONFIDENCE:
                 continue
             # Direction on the signal snapshot comes as UP / DOWN;

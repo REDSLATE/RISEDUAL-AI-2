@@ -30,6 +30,57 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-4 — wire `options_paper` agent to the shared receipt helper (2026-05-09)
+
+**Micro-phase 4 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the options-lane gap.
+
+**Survey findings**:
+- Real options paper executor exists at `services/trading_agents/options_paper.py:run` (160 → 196 lines after wiring).
+- Scheduled every 30 min via APScheduler job `agent_options_paper`.
+- Trades execute via `record_paper_trade` → `learning_engine_trades` Mongo collection (tagged `strategy="options_paper"`).
+- Per-ticker decision object `(direction, confidence)` is built by `_score_ticker(ticker, db)` reading from `features_snapshots`.
+- Decision points: APPROVED (conf ≥ 0.72 → trade), NO_TRADE (conf < 0.72 → skip), post-signal skipped (price<=0, record_paper_trade returns falsy).
+- Pre-signal early returns (deliberately NOT logged): db None, kill switch active, `_score_ticker` returns None.
+
+**Patch site**: insertion point right AFTER `direction, conf = scored` unpack and BEFORE the conviction floor check. One call covers APPROVED + NO_TRADE uniformly.
+
+**Call shape**:
+```python
+schedule_shadow_receipt(
+    db,
+    signal={
+        "symbol": ticker,
+        "direction": direction,
+        "confidence": float(conf),
+        "strategy": _STRATEGY,                # "options_paper"
+        "min_confidence_threshold": _MIN_CONFIDENCE,  # 0.72
+        "watchlist_position": considered,
+        "source_layer": "options_paper_agent",
+    },
+    market_data=None,
+    lane="options",
+    requested_notional_usd=float(_POSITION_USD),  # 500.0
+    source="options_paper_bot",
+)
+```
+Wrapped in defensive belt+braces `try/except` that logs `[options_paper] ADL receipt schedule skipped` at DEBUG.
+
+**Hard rails (pinned by tests)**:
+- 13-test net `tests/test_options_paper_adl_receipts.py` covers: APPROVED (conf≥0.72) schedules receipt with options lane/source, NO_TRADE (conf<0.72) STILL schedules receipt, signal payload integrity (symbol/direction/confidence/strategy/source_layer), pass-through of `_POSITION_USD` as `requested_notional_usd`, three pre-signal early returns produce ZERO receipts (db None, kill switch ON, `_score_ticker` returns None), raising helper does NOT crash `run`, helper return=`False` does NOT branch caller, plus two static checks (no `run_shadow_pipeline` direct call, no broker/executor imports).
+- Options paper agent execution path is byte-equivalent: kill-switch behaviour, conviction gate, MAX_OPENS limit, watchlist iteration, narrate_scan_skip behaviour — all unchanged.
+- Code-size: `options_paper.py` 160 → 196 lines (+36, well under `core-governance` 600 preferred / 800 hard ceiling).
+
+**Verified**:
+- `tests/test_options_paper_adl_receipts.py`: **13 passed** in 0.15s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2986 passed, 0 failed** (was 2973 + 13 new = 2986 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":569}`.
+
+**Cumulative ADL coverage now spans FOUR lanes**: equity executor, crypto paper bot, day-trade scanner, options paper agent. All four hooked via the same `schedule_shadow_receipt` helper for uniform fire-and-forget semantics.
+
+**Remaining ADL micro-phase**:
+- **ADL-5**: Move/duplicate receipt earlier so kill_switch / risk_guard / sector_cap / max_trades_per_day / RoadGuard ENFORCE blocked decisions also produce receipts.
+
 ### ADL-3 — wire `day_trade_scanner.py` to the shared receipt helper (2026-05-09)
 
 **Micro-phase 3 of 5** of the operator-mandated ADL persistence-coverage fix. Closes the day-trade scanner gap — every scanned candidate now produces an `alpha_decision_log` receipt regardless of whether the gates approve or block it.
