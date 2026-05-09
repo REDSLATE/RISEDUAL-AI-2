@@ -10,6 +10,38 @@ from __future__ import annotations
 from enum import Enum
 
 
+# ── Observation policy tokens ───────────────────────────────────────
+
+
+# When the Chevelle observation loop runs in different modes (full
+# corpus vs. live-trading drill vs. high-trust-only) the operator
+# can pass one of these tokens to the labeler so the resulting
+# records carry the correct ``chevelle_can_observe`` flag without
+# the labeler needing to know which downstream consumer asked.
+#
+#   "all"               — default. Every well-formed row is
+#                         observable; only structurally broken
+#                         input (non-dict / None) is False.
+#   "exclude_synthetic" — silence synthetic-tier (yfinance /
+#                         backtest) rows during live drills. Their
+#                         ``trust_weight`` is unchanged; only the
+#                         observation flag flips.
+#   "live_only"         — silence anything below the
+#                         ``live_real_fill`` tier. Used when the
+#                         operator wants Chevelle to read ONLY real
+#                         broker fills (e.g., for a calibration
+#                         pass against ground-truth executions).
+OBSERVATION_POLICY_ALL: str = "all"
+OBSERVATION_POLICY_EXCLUDE_SYNTHETIC: str = "exclude_synthetic"
+OBSERVATION_POLICY_LIVE_ONLY: str = "live_only"
+
+OBSERVATION_POLICIES = frozenset({
+    OBSERVATION_POLICY_ALL,
+    OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    OBSERVATION_POLICY_LIVE_ONLY,
+})
+
+
 class EventEra(str, Enum):
     """The 9 operator-mandated era buckets.
 

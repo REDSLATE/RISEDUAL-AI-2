@@ -45,6 +45,10 @@ from datetime import datetime
 from typing import Any, Iterable, Iterator, List, Optional
 
 from services.chevelle_memory_labels import (
+    OBSERVATION_POLICIES,
+    OBSERVATION_POLICY_ALL,
+    OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    OBSERVATION_POLICY_LIVE_ONLY,
     PUBLIC_LAUNCH_FLOOR_ISO,
     RECENT_PAPER_DAYS,
     TRUST_CURRENT_MACRO_PROXY,
@@ -78,6 +82,10 @@ __all__ = [
     "DataQuality",
     "EventEra",
     "FailureMode",
+    "OBSERVATION_POLICIES",
+    "OBSERVATION_POLICY_ALL",
+    "OBSERVATION_POLICY_EXCLUDE_SYNTHETIC",
+    "OBSERVATION_POLICY_LIVE_ONLY",
     "OutcomeLabel",
     "PUBLIC_LAUNCH_FLOOR_ISO",
     "RECENT_PAPER_DAYS",
@@ -136,7 +144,11 @@ class ChevelleMemoryRecord:
 # ── Main entry points ───────────────────────────────────────────────
 
 
-def label_memory(raw_row: Any) -> ChevelleMemoryRecord:
+def label_memory(
+    raw_row: Any,
+    *,
+    observation_policy: str = OBSERVATION_POLICY_ALL,
+) -> ChevelleMemoryRecord:
     """Label a single candidate memory.
 
     Never raises — malformed input returns a quarantined record with
@@ -146,13 +158,29 @@ def label_memory(raw_row: Any) -> ChevelleMemoryRecord:
       * source missing
       * opened_at AND closed_at both missing
       * symbol unresolvable
+
+    Args:
+        raw_row: The raw memory candidate (Mongo dict / generic
+            mapping). Non-dict input is quarantined with
+            ``chevelle_can_observe=False``.
+        observation_policy: One of ``"all"`` (default),
+            ``"exclude_synthetic"``, ``"live_only"``. Controls the
+            ``chevelle_can_observe`` flag on the returned record;
+            does NOT affect ``trainable`` or ``trust_weight``.
     """
+    if observation_policy not in OBSERVATION_POLICIES:
+        # Unknown policy → fall back to ALL. The labeler must never
+        # raise on operator-supplied policy strings.
+        observation_policy = OBSERVATION_POLICY_ALL
+
     reasons: List[str] = []
     rejection: Optional[str] = None
 
     if not isinstance(raw_row, dict):
         return _quarantine_record(
-            raw_id=None, rejection="non_dict_input",
+            raw_id=None,
+            rejection="non_dict_input",
+            chevelle_can_observe=False,  # genuinely unobservable
         )
 
     # Required: source.
@@ -232,6 +260,14 @@ def label_memory(raw_row: Any) -> ChevelleMemoryRecord:
         )
     )
 
+    # Apply the observation policy. Quarantined-but-well-formed rows
+    # stay observable (operator dashboard can still render them);
+    # only the policy-driven trust gates flip the flag.
+    can_observe = _resolve_can_observe(
+        policy=observation_policy,
+        trust_weight=trust,
+    )
+
     return ChevelleMemoryRecord(
         raw_id=raw_id,
         symbol=sym,
@@ -245,20 +281,28 @@ def label_memory(raw_row: Any) -> ChevelleMemoryRecord:
         data_quality=quality,
         trust_weight=trust,
         trainable=trainable,
-        chevelle_can_observe=True,
+        chevelle_can_observe=can_observe,
         reasons=reasons,
         rejection_reason=rejection,
     )
 
 
-def label_memories(rows: Iterable[Any]) -> Iterator[ChevelleMemoryRecord]:
+def label_memories(
+    rows: Iterable[Any],
+    *,
+    observation_policy: str = OBSERVATION_POLICY_ALL,
+) -> Iterator[ChevelleMemoryRecord]:
     """Bulk-label an iterable of candidate rows.
 
     Pure generator — no I/O, no aggregation. Callers that need to
     materialise the results into a list should call ``list(...)``.
+
+    Args:
+        rows: The candidate memories.
+        observation_policy: Forwarded verbatim to ``label_memory``.
     """
     for r in rows:
-        yield label_memory(r)
+        yield label_memory(r, observation_policy=observation_policy)
 
 
 def trainable_only(
@@ -283,8 +327,35 @@ def quarantined_only(
 # ── Internal helpers ────────────────────────────────────────────────
 
 
+def _resolve_can_observe(*, policy: str, trust_weight: float) -> bool:
+    """Apply the observation policy to a labeled record.
+
+    The policy gates observation only — it does NOT change
+    ``trainable`` or ``trust_weight`` (so the operator can flip
+    policies between runs without re-labeling the corpus).
+
+    Policy semantics:
+      * ``"all"``               → always True (default).
+      * ``"exclude_synthetic"`` → False for synthetic-tier
+                                  (trust_weight == 0.05) rows. Used
+                                  during live drills.
+      * ``"live_only"``         → True only when
+                                  trust_weight == 1.00 (live broker
+                                  fills). Used for ground-truth
+                                  calibration passes.
+    """
+    if policy == OBSERVATION_POLICY_LIVE_ONLY:
+        return trust_weight >= TRUST_LIVE_REAL_FILL
+    if policy == OBSERVATION_POLICY_EXCLUDE_SYNTHETIC:
+        return trust_weight > TRUST_SYNTHETIC_BACKTEST
+    return True
+
+
 def _quarantine_record(
-    *, raw_id: Optional[str], rejection: str,
+    *,
+    raw_id: Optional[str],
+    rejection: str,
+    chevelle_can_observe: bool = True,
 ) -> ChevelleMemoryRecord:
     return ChevelleMemoryRecord(
         raw_id=raw_id,
@@ -299,7 +370,7 @@ def _quarantine_record(
         data_quality=DataQuality.REJECTED,
         trust_weight=TRUST_QUARANTINED,
         trainable=False,
-        chevelle_can_observe=True,
+        chevelle_can_observe=chevelle_can_observe,
         reasons=[rejection],
         rejection_reason=rejection,
     )

@@ -504,11 +504,119 @@ def test_non_dict_input_is_quarantined_not_raised():
     assert rec.rejection_reason == "non_dict_input"
     assert rec.trust_weight == TRUST_QUARANTINED
     assert rec.trainable is False
+    # Improvement: structurally broken input is unobservable too.
+    assert rec.chevelle_can_observe is False
 
 
 def test_none_input_is_quarantined_not_raised():
     rec = label_memory(None)
     assert rec.rejection_reason == "non_dict_input"
+    assert rec.chevelle_can_observe is False
+
+
+# ── Observation policy ────────────────────────────────────────────────────────
+
+
+def test_default_policy_is_all_observable():
+    rec = label_memory(_good_paper_row())
+    assert rec.chevelle_can_observe is True
+
+
+def test_exclude_synthetic_policy_silences_synthetic_rows():
+    """``exclude_synthetic`` flips ``chevelle_can_observe=False`` for
+    synthetic-tier rows (yfinance / backtest / unknown source)
+    while leaving paper / live rows observable."""
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    )
+    rec = label_memory(
+        _good_paper_row(source="yfinance"),
+        observation_policy=OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    )
+    assert rec.trust_weight == TRUST_SYNTHETIC_BACKTEST
+    assert rec.chevelle_can_observe is False
+    # trainable is unchanged — only the observation flag flips.
+    assert rec.trainable is True
+
+
+def test_exclude_synthetic_policy_keeps_paper_observable():
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    )
+    rec = label_memory(
+        _good_paper_row(),
+        observation_policy=OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+    )
+    assert rec.chevelle_can_observe is True
+
+
+def test_live_only_policy_silences_paper_rows():
+    """``live_only`` flips ``chevelle_can_observe=False`` for
+    anything below the live broker tier."""
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    rec = label_memory(
+        _good_paper_row(),
+        observation_policy=OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    assert rec.trust_weight == TRUST_RECENT_PAPER_TRADE
+    assert rec.chevelle_can_observe is False
+
+
+def test_live_only_policy_keeps_live_observable():
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    rec = label_memory(
+        _good_paper_row(source="alpaca"),
+        observation_policy=OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    assert rec.trust_weight == TRUST_LIVE_REAL_FILL
+    assert rec.chevelle_can_observe is True
+
+
+def test_unknown_policy_falls_back_to_all_without_raising():
+    """An operator-supplied policy string the labeler doesn't
+    recognise must NOT raise — fall back to 'all'."""
+    rec = label_memory(
+        _good_paper_row(),
+        observation_policy="something_we_havent_built_yet",
+    )
+    assert rec.chevelle_can_observe is True
+
+
+def test_policy_does_not_change_trust_or_trainable():
+    """Critical invariant: the policy is observation-only. Trust
+    weight and trainable flag MUST be invariant across policies."""
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_EXCLUDE_SYNTHETIC,
+        OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    row = _good_paper_row(source="yfinance")
+    a = label_memory(row, observation_policy="all")
+    b = label_memory(row, observation_policy=OBSERVATION_POLICY_EXCLUDE_SYNTHETIC)
+    c = label_memory(row, observation_policy=OBSERVATION_POLICY_LIVE_ONLY)
+    assert a.trust_weight == b.trust_weight == c.trust_weight
+    assert a.trainable == b.trainable == c.trainable
+
+
+def test_label_memories_forwards_observation_policy():
+    """The bulk function must thread the policy through to every
+    record — no per-row policy drift."""
+    from services.chevelle_memory_labeler import (
+        OBSERVATION_POLICY_LIVE_ONLY,
+    )
+    rows = [_good_paper_row(symbol=s) for s in ("BTC", "ETH", "SOL")]
+    records = list(
+        label_memories(rows, observation_policy=OBSERVATION_POLICY_LIVE_ONLY)
+    )
+    assert len(records) == 3
+    # All paper trades → all silenced under live_only.
+    assert all(r.chevelle_can_observe is False for r in records)
+
+
+# ── End observation policy ────────────────────────────────────────────────────
 
 
 # ── Idempotence ───────────────────────────────────────────────────────────────

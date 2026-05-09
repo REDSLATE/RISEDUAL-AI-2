@@ -34,19 +34,25 @@ market data
 
 **Pre-Chevelle infrastructure**: a pure label-resolution layer that
 gates every memory before it can flow into Chevelle's training /
-observation engine. Composes the existing labelers
-(`event_aware_regime_labeler`, `data_source_labeler`, the failure
-classifier shape conventions) and fills the four gaps the survey
-identified: trust-weight scalar, `trainable` boolean, `QUARANTINED`
-state (vs. delete), and required-field rejection contract.
+observation engine.
 
-**Module layout** (authority-boundary 3-file split, all under
-`core-governance` 600-line preferred ceiling):
+**Module layout** (3-file split, all under `core-governance` 600-line preferred ceiling):
 | File | Lines | Authority |
 |---|---:|---|
-| `services/chevelle_memory_labels.py` | 79 | enums + trust-ladder constants (data only) |
+| `services/chevelle_memory_labels.py` | 111 | enums + trust-ladder constants + observation-policy tokens (data only) |
 | `services/_chevelle_resolvers.py` | 324 | pure label-resolver helpers (era / lane / source / outcome / failure / quality / trust) |
-| `services/chevelle_memory_labeler.py` | 305 | dataclass + public API (`label_memory`, `label_memories`, `trainable_only`, `quarantined_only`) |
+| `services/chevelle_memory_labeler.py` | 376 | dataclass + public API (`label_memory`, `label_memories`, `trainable_only`, `quarantined_only`) |
+
+**Observation policy** (added 2026-05-09 enhancement):
+The `chevelle_can_observe` flag now responds to an optional
+`observation_policy` parameter on `label_memory` / `label_memories`:
+| Policy | Effect on `chevelle_can_observe` |
+|---|---|
+| `"all"` (default) | True for every well-formed row; False only for non-dict / None input |
+| `"exclude_synthetic"` | False for synthetic-tier rows (`trust=0.05`) — useful during live drills |
+| `"live_only"` | False for anything below `live_real_fill` (`trust=1.00`) — useful for ground-truth calibration passes |
+
+Critical invariant pinned by tests: the policy gates **observation only**. `trust_weight` and `trainable` are invariant across policies — operator can flip policies between runs without re-labeling the corpus. Unknown policy strings fall back to `"all"` (never raise).
 
 **The 10 operator-mandated hard rules** — pinned by tests:
 1. Every memory must have `source` (or be quarantined).
