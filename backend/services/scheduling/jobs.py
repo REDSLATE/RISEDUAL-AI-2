@@ -58,6 +58,18 @@ def register_all(scheduler, db, server_mod):
     scheduler.add_job(s._run_13f_scan, 'cron', hour=8, minute=0, id='sec_13f_daily_scan')
     scheduler.add_job(s._run_referral_hit_rewards, 'cron', hour=9, minute=0, id='referral_hit_rewards_daily')
     scheduler.add_job(s._run_referral_monthly_rewards, 'cron', day=1, hour=9, minute=30, id='referral_monthly_rewards')
+
+    # ── Chevelle calibration refit (Option A: IsotonicRegression) ──
+    # Daily-cadence post-hoc isotonic mapping fit on
+    # firewall-trainable rows. Never blocks; failure → next-day retry.
+    from routes.governance_chevelle_calibration import (
+        run_calibration_refit_job,
+    )
+    scheduler.add_job(
+        run_calibration_refit_job,
+        'cron', hour=4, minute=15, args=[db],
+        id='chevelle_calibration_refit_daily',
+    )
     scheduler.add_job(s._run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
     scheduler.add_job(s._run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
     scheduler.add_job(s._run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')

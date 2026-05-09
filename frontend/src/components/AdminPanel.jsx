@@ -35,6 +35,7 @@ import FastVetoTile from './admin/FastVetoTile';
 import RoadGuardTile from './admin/RoadGuardTile';
 import CalibrationKanban from './admin/CalibrationKanban';
 import BulkReplayPanel from './admin/BulkReplayPanel';
+import PatentJCard from './admin/PatentJCard';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -82,6 +83,7 @@ const TAB_GROUPS = [
       { id: 'fast-veto',     label: 'Fast Veto', icon: ShieldCheck },
       { id: 'roadguard',     label: 'RoadGuard', icon: ShieldCheck },
       { id: 'kanban',        label: 'Kanban',    icon: ShieldCheck },
+      { id: 'patent-j',      label: 'Patent J',  icon: Activity },
       { id: 'bulk-replay',   label: 'Bulk Replay', icon: Upload },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
@@ -126,6 +128,7 @@ const TAB_SUBTITLES = {
   'fast-veto':    () => 'Tier 1 Fast Veto — sub-ms classical guardrail · veto-only · shadow mode',
   roadguard:      () => 'RoadGuard — shared capital + broker safety governor · veto-only · shadow mode',
   kanban:         () => 'Calibration Kanban — per-lane promotion readiness · Shadow → Calibrate → Enforce · read-only',
+  'patent-j':     () => 'Patent J — confidence calibration reliability · isotonic post-hoc mapping · observation only',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -161,6 +164,7 @@ const TAB_COMPONENTS = {
   'fast-veto':    () => <FastVetoTile />,
   roadguard:      () => <RoadGuardTile />,
   kanban:         () => <CalibrationKanban />,
+  'patent-j':     () => <PatentJCard />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,

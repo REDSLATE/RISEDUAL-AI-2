@@ -788,6 +788,21 @@ async def maybe_paper_trade(
                 "trade_id": trade_id,
                 "source_layer": "ml_paper_trader",
             }
+            # ── Calibration Layer (Option A — IsotonicRegression) ──
+            # Append-only metadata. Execution authority is unchanged
+            # (gates upstream still ran against signal.confidence).
+            # Falls back transparently to raw when the calibrator
+            # is missing / stale / fails.
+            try:
+                from services.calibration_layer import apply as _cal_apply
+                _cal = _cal_apply(float(signal.confidence))
+                trade_doc["calibration"] = _cal.as_metadata()
+                _adl_signal["calibration"] = _cal.as_metadata()
+            except Exception as _cal_exc:  # noqa: BLE001
+                log.debug(
+                    "[ml_paper] calibration apply skipped for %s: %s",
+                    ticker, _cal_exc,
+                )
             schedule_shadow_receipt(
                 db,
                 signal=_adl_signal,

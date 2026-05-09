@@ -146,6 +146,10 @@ app.add_middleware(PublicAccessMiddleware)
 from routes.system_access import router as system_access_router
 app.include_router(system_access_router, prefix="/api")
 
+# Chevelle calibration governance (Patent J card + admin refit).
+from routes.governance_chevelle_calibration import router as calibration_router
+app.include_router(calibration_router)
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,

@@ -30,6 +30,67 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Confidence Calibration Layer — Option A (IsotonicRegression) (2026-05-09)
+
+**Operator-approved Option A** with safe defaults: isotonic post-hoc mapping, fit only on firewall-trainable rows, served-confidence scope (CDO keeps raw), 24h refit cadence + manual admin trigger. Patent J thresholds unchanged. Execution authority unchanged.
+
+**Backend** (`services/calibration_layer.py`):
+- `fit_and_persist(rows)` — pulls rows through `chevelle_memory_labeler.trainable_only(...)`, drops UNRESOLVED / NEUTRAL / out-of-range, fits `sklearn.isotonic.IsotonicRegression(y_min=0, y_max=1, out_of_bounds="clip")`, persists to `models/calibrators/calibrator_<UTC-version>.joblib` + atomic `active.txt` pointer.
+- `apply(raw)` — total: never raises. Returns `CalibrationApplyResult` with raw_confidence, calibrated_confidence, calibration_method=`"isotonic"`, calibration_model_version, calibration_sample_count, calibration_applied, fallback_reason. Falls back to raw with `calibration_applied=False` on: missing artifact / stale (>72h) / predict-exception / non-finite raw / out-of-range raw.
+- `reliability_snapshot(rows)` — read-only Patent J payload: active_version, sample_count, ECE, Brier, 10-bin reliability table, apply_health flags.
+- `MIN_SAMPLES=50` (env-tunable), `STALE_AFTER_HOURS=72` (env-tunable). Versioned artifacts kept on disk for audit.
+
+**Wired into served confidence** (`services/ml_paper_trader.py:maybe_paper_trade`):
+- `apply()` runs immediately before the ADL-6 receipt + `paper_trades.insert_one`.
+- Calibration metadata appended to BOTH `trade_doc["calibration"]` AND the ADL receipt's signal payload — so retrain joins see both raw and calibrated values.
+- `signal.confidence` (raw Platt-calibrated) UNCHANGED — execution gates and Patent J still fire against raw, exactly as the operator decreed.
+
+**Admin endpoints** (`routes/governance_chevelle_calibration.py`, owner-only):
+- `POST /api/governance/chevelle/calibration/refit` — pulls last 30d of paper_trades + crypto_paper_trades, runs the firewall, fits + persists.
+- `GET  /api/governance/chevelle/calibration/status` — returns the Patent J card payload.
+- `GET  /api/governance/chevelle/calibration/reliability` — convenience accessor.
+
+**Daily scheduler** (`services/scheduling/jobs.py`):
+- `chevelle_calibration_refit_daily` cron job at **04:15 UTC**. Failures swallowed and logged — next-day retry.
+
+**Frontend** (`components/admin/PatentJCard.jsx`):
+- New "Patent J" tab in the AdminPanel Insights group (sibling to Kanban, Bulk Replay).
+- Health pills (Loaded / Fresh / version), 4 metric tiles (Samples / Rows seen / ECE / Brier), reliability bin table with drift colour-coding (green <5pp, amber <15pp, rose >15pp), "Refit now" button.
+- Footer copy explicitly states observation-only nature and the fall-back contract.
+
+**Production validation (2026-05-09 08:05 UTC)**:
+- First refit on real data: **1376 firewall-trainable samples** out of 1474 rows pulled (98 rows quarantined by the labeler, exactly as designed).
+- **ECE = 0.2461** — predictor is 24.6pp overconfident on average.
+- Biggest bin (1363 samples at predicted 0.752) has realised win rate of 0.504 — isotonic compresses down to ~0.504 for that range. This is the kind of correction the user mentioned ("isotonic ... directly attacks the ECE/Brier issue without weakening J").
+- Active calibrator persisted: `calibrator_2026-05-09T08-05-03Z.joblib`.
+
+**Test net** (`tests/test_calibration_layer.py`, **24 tests**):
+- Pure helpers: reliability_bins / ECE / Brier on synthetic perfectly-calibrated and inverted inputs.
+- Firewall integration: quarantined rows excluded, UNRESOLVED outcomes excluded, out-of-range confidence dropped.
+- Fit refused below MIN_SAMPLES (no artifact, no active pointer touched).
+- Fit succeeds at 60 samples; metrics include pre/post ECE + Brier; post_ece ≤ pre_ece (isotonic Pareto invariant).
+- Apply: fallback when no calibrator → applied=False, calibrated mirrors raw.
+- Apply: returns calibrated after fit, version + sample_count populated.
+- Apply: clips out-of-range and non-finite raw inputs with explicit fallback_reason tags.
+- Apply: stale calibrator (>STALE_AFTER_HOURS) → fallback.
+- Apply: predict() exception → fallback (`apply_exception`).
+- Reliability snapshot: zero-state + populated state, JSON-serializable (no numpy leaks).
+- Static authority firewall: NO Mongo writes, NO broker / executor / Strategist / Auditor / kill-switch imports, NO verdict emission.
+
+**Verified**:
+- `tests/test_calibration_layer.py`: **24 passed** in 0.98s.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **3139 passed, 0 failed** (was 3115 + 24 new = 3139 ✓).
+- Backend boots clean — `/api/health` returns `{"status":"ok","db":"connected","routes":575}` (572 → 575, +3 calibration endpoints).
+- Live admin refit: 1376 samples, ECE 0.2461, calibrator artifact persisted.
+- Frontend lint clean.
+
+**What's NOT in this drop (per operator spec — held for later)**:
+- Option B (temperature scaling) — not added until isotonic results are measured in production.
+- `TRAIN_REAL_MIN` lowering — not touched.
+- Patent J threshold lowering — not touched.
+- v2 artifact promotion — not touched.
+
 ### ADL-6 — APPROVED success-path receipts in `ml_paper_trader` (2026-05-09)
 
 **Closes Gap A surfaced by the 2026-05-09 diagnostic.** The day-of-deploy diagnostic showed `paper_trades` had 152 rows in 24h but `alpha_decision_log` had only 1 equity row, all `NO_TRADE` — meaning every APPROVED equity paper trade was orphaned from the ADL stream. v2 retrain join was structurally blind to APPROVED outcomes regardless of how long we waited.
