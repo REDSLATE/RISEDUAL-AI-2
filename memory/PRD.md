@@ -30,6 +30,28 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Step 4B — `trading_bot_service.py` telemetry/receipts extraction (2026-05-09)
+
+**Micro-phase 2 of 5**. Telemetry/receipts only — zero behaviour change, no broker calls, no decision logic, no DB query change.
+
+`services/trading_bot_service.py`: 1554 → **1506 lines** (-48).
+
+**Moved** to `services/trading_bot/_telemetry.py` (93 lines):
+| Function | Authority |
+|---|---|
+| `fire_equity_shadow` | Research Shadow Layer fire-and-forget logger (kicks off `services.research_shadow_engines.fire_shadow` as a background task). Tier-3 firewall enforced by callee. |
+| `record_kill_switch_outcome` | Step 8 of `execute_signal` — feeds broker outcome into the `ai_core.kill_switch` error window. Counts `{"error": ...}` dicts as failures. |
+
+**Compatibility shim**: re-imported under the original private names (`_fire_equity_shadow`, `_record_kill_switch_outcome`) so the in-module call sites at lines 503/530 are unchanged. Deferred import of `_resolve_db_for_shadow` inside `fire_equity_shadow` breaks the circular dependency cleanly — the helper still routes through tbs's DB resolver.
+
+**Verified**:
+- `make lint-arch` 9 passed · `make lint-fast` 128 passed · `make lint-safety` 72 passed.
+- Targeted suite (execute_signal + executor_lanes + roadguard + fast_veto + kill_switch + shadow + trading_bot + portfolio_risk + adaptive_sizing + drawdown): **393 passed**.
+- Full pytest: **2824 passed, 0 failed** (identical pre/post extraction).
+- No receipt/audit shape changes. No broker behaviour changes.
+
+**Remaining**: 4C (data access), 4D (decision rules), 4E (broker calls — LAST).
+
 ### Step 4A — `trading_bot_service.py` constants extraction (2026-05-09)
 
 **Micro-phase 1 of 5** (operator-mandated slice-then-test cadence). Pure constants/types only — zero behaviour change.

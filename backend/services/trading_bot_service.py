@@ -233,64 +233,16 @@ def _resolve_qty(
     return qty, float(price), None
 
 
-def _fire_equity_shadow(
-    *, synthetic_bot: dict, signal: dict, symbol: str, price: float,
-) -> None:
-    """Research Shadow Layer — fire-and-forget alternative-engine
-    logger for equities. Per-bot config: ``shadow_engine`` +
-    ``shadow_paused`` on the bot doc. Tier-3 firewall is enforced
-    inside :mod:`services.research_shadow_logger` (it only writes
-    to ``research_shadow_decisions``).
-
-    Never blocks, never raises out — any setup failure is logged
-    at warning level and swallowed.
-    """
-    shadow_engine = synthetic_bot.get("shadow_engine") or "none"
-    if shadow_engine not in ("adversarial", "council"):
-        return
-
-    try:
-        import asyncio as _asyncio_eq_shadow
-        from services.research_shadow_engines import fire_shadow as _fire_shadow_eq
-        _asyncio_eq_shadow.create_task(_fire_shadow_eq(
-            _resolve_db_for_shadow(),
-            bot_id=str(
-                synthetic_bot.get("_id")
-                or synthetic_bot.get("bot_id")
-                or "equity_bot"
-            ),
-            user_id=str(synthetic_bot.get("user_id") or "system"),
-            symbol=symbol,
-            asset_type=signal.get("asset_type") or "stock",
-            decision_phase="entry",
-            active_engine="confluence",
-            active_action=signal.get("direction") or "LONG",
-            shadow_engine=shadow_engine,
-            signal=signal,
-            mid_price=float(price),
-            shadow_paused=bool(synthetic_bot.get("shadow_paused")),
-        ))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "[equity-bot] shadow fire-and-forget setup failed for %s: %s",
-            symbol, exc,
-        )
-
-
-def _record_kill_switch_outcome(order: Any) -> None:
-    """Step 8 of execute_signal — feed broker outcome into the
-    kill-switch error window. ``{"error": ...}`` dicts count as
-    failures alongside raised exceptions, so the error-rate trip
-    fires on 4xx/5xx storms, not just uncaught Python errors.
-    """
-    from ai_core.kill_switch import kill_switch
-
-    is_failure = isinstance(order, dict) and order.get("error") is not None
-    kill_switch.record_result(success=not is_failure)
-    if is_failure:
-        trip, trip_reason = kill_switch.should_trip()
-        if trip:
-            kill_switch.activate(trip_reason)
+# Telemetry helpers live in ``services.trading_bot._telemetry`` (Step
+# 4B extraction). Re-imported under the original private names so the
+# in-module call sites (``_fire_equity_shadow(...)``,
+# ``_record_kill_switch_outcome(...)``) don't change. No behaviour
+# change — these helpers are receipt-side only (kill-switch
+# accounting + research-shadow fire-and-forget).
+from services.trading_bot._telemetry import (  # noqa: F401
+    fire_equity_shadow as _fire_equity_shadow,
+    record_kill_switch_outcome as _record_kill_switch_outcome,
+)
 
 
 async def execute_signal(
