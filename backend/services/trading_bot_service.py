@@ -421,25 +421,23 @@ async def execute_signal(
     # signal and writes ONE alpha_decision_log receipt + a
     # roadguard_v2_decisions row. NEVER affects routing — fire-and-
     # forget. The legacy execute_signal flow continues regardless.
-    try:
-        from services.ml.shadow_wiring import run_shadow_pipeline
-        db_for_log = _resolve_db_for_shadow()
-        import asyncio as _asyncio_p5a
-        _asyncio_p5a.create_task(run_shadow_pipeline(
-            db_for_log,
-            signal=signal,
-            market_data=market_data,
-            lane=lane,
-            requested_notional_usd=float(adjusted_size),
-            open_positions=open_positions,
-            equity_curve=equity_curve,
-            bot_capital=bot_capital or 0.0,
-        ))
-    except Exception as _p5a_exc:  # noqa: BLE001
-        logger.warning(
-            "[ml.phase5a] shadow wiring failed to start (executor-safe): %s",
-            _p5a_exc,
-        )
+    # ADL-1 (2026-05-09): the inline asyncio.create_task pattern
+    # was extracted into ``services.ml.receipt_dispatch.schedule_shadow_receipt``
+    # so other executors can call the same helper. Behaviour is
+    # byte-equivalent — same args, same fire-and-forget semantics,
+    # same swallowed-warning failure mode.
+    from services.ml.receipt_dispatch import schedule_shadow_receipt
+    schedule_shadow_receipt(
+        _resolve_db_for_shadow(),
+        signal=signal,
+        market_data=market_data,
+        lane=lane,
+        requested_notional_usd=float(adjusted_size),
+        open_positions=open_positions,
+        equity_curve=equity_curve,
+        bot_capital=bot_capital or 0.0,
+        source="execute_signal",
+    )
 
     _fire_equity_shadow(
         synthetic_bot=synthetic_bot,

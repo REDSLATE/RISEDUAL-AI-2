@@ -30,6 +30,35 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### ADL-1 — shared fire-and-forget receipt helper (2026-05-09)
+
+**Micro-phase 1 of 5** of the operator-mandated ADL persistence-coverage fix. Pure helper extraction — zero behaviour change at the only existing call site, but makes ADL-2/3/4/5 trivial drop-in additions.
+
+**New module** `services/ml/receipt_dispatch.py` (122 lines):
+- `schedule_shadow_receipt(db, *, signal, market_data, lane, requested_notional_usd, ...)` — wraps the `asyncio.create_task(run_shadow_pipeline(...))` pattern with the surrounding try/except.
+- Returns `True` if scheduled, `False` on ANY failure (no event loop, no Mongo, broken import, create_task raise). **Caller's execution path is identical either way**.
+- Coroutines explicitly closed when `create_task` raises so failure paths don't leak unawaited-coroutine warnings.
+
+**Refactored**: `services/trading_bot_service.py:execute_signal` Phase-5a block (24 inline lines → 11-line helper call). Verbatim args, verbatim fire-and-forget, verbatim warning-only failure.
+
+**Hard rails (pinned by tests)**:
+- 9-test net `tests/test_receipt_dispatch.py` covers: happy path (kwargs forwarded byte-for-byte), `db is None` short-circuit, no-running-loop short-circuit (sync caller / cron), `create_task` failure (caught + logged), broken `shadow_wiring` import, raising inner pipeline (caller still returns `True`), full byte-equivalence to legacy inline pattern.
+- Static authority firewall: NO imports from broker / trading_bot_service / crypto_paper_trader / paper_trading_service / routes.broker / executors / RoadGuard / FastVeto / pipeline / broker_wire / kill_switch / alpha_decision_log.
+- No Mongo write verbs (`insert_*`, `update_*`, `delete_*`, `drop`, `bulk_write`).
+- No env reads (`os.environ` / `os.getenv` / `setenv`).
+
+**Verified**:
+- `tests/test_receipt_dispatch.py`: **9 passed** in 0.9s.
+- `tests/test_trading_bot_broker_contract.py`: **14 passed** — broker contract net unchanged.
+- `make lint-arch` 9 · `make lint-fast` 133 · `make lint-safety` 86.
+- Full pytest: **2950 passed, 0 failed** (was 2941 + 9 new = 2950 ✓).
+
+**Remaining ADL micro-phases**:
+- **ADL-2**: Wire `crypto_paper_trader.py` (lane="crypto").
+- **ADL-3**: Wire day-trade scanner/executor (lane="equity").
+- **ADL-4**: Wire options paper bot if present.
+- **ADL-5**: Move/duplicate receipt earlier so kill_switch / risk_guard / sector_cap / max_trades_per_day / RoadGuard ENFORCE blocked decisions also produce receipts.
+
 ### `alpha_decision_log` persistence diagnostic + findings (2026-05-09)
 
 **Operator-mandated upstream investigation** of the bottleneck the previous diagnostic surfaced. Read-only — no writes, no env mutation, no schema mutation, no retrain, no Phase 6 changes.
