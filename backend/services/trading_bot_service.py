@@ -29,39 +29,22 @@ def _resolve_db_for_shadow() -> Any:
     return _db
 
 
-# Adaptive-sizing feature flag. Signal-bot qty gets scaled by the
-# Tier 3 readiness snapshot (readiness multiplier × confidence
-# multiplier) when enabled. Defaults OFF so rollout is a one-line
-# env change; bots run at their configured `qty` otherwise.
-ADAPTIVE_SIZING_ENABLED: bool = (
-    os.getenv("RISEDUAL_ADAPTIVE_SIZING", "0") == "1"
+# Pure constants live in ``services.trading_bot._constants`` (Step 4A
+# extraction). Re-imported here so ``trading_bot_service.MAX_*`` /
+# ``trading_bot_service.ADAPTIVE_SIZING_ENABLED`` etc. stay in this
+# module's globals — preserves both external attribute access AND the
+# monkeypatch pattern used by ``test_trading_bot_adaptive_sizing.py``
+# (bare-name reads inside this module resolve via this module's
+# globals, which a monkeypatch on ``tbs.X`` mutates).
+from services.trading_bot._constants import (  # noqa: F401
+    ADAPTIVE_SIZING_ENABLED,
+    _MIN_SCALED_QTY,
+    MAX_POSITION_USD,
+    MAX_PORTFOLIO_EXPOSURE,
+    MAX_CONCURRENT_TRADES,
+    MAX_SECTOR_EXPOSURE_PCT,
+    BOT_TYPES,
 )
-# Hard floor on the scaled qty so a 0.05× multiplier on a `qty=1`
-# config doesn't round down to zero (which silently blocks trades).
-_MIN_SCALED_QTY: float = 0.01
-
-
-# Hard cap per trade for the USD-notional execution path below.
-# Independent of the per-bot `qty` config — protects against a
-# misconfigured base_size or a runaway readiness multiplier ever
-# sending more than $2000 of notional at a single bot.
-MAX_POSITION_USD: float = 2000.0
-
-# Portfolio-level risk caps. These gate the USD-notional
-# `execute_signal` path — a single bot can fire up to MAX_POSITION_USD
-# per trade, but across all open positions the combined notional is
-# capped at MAX_PORTFOLIO_EXPOSURE and the count at
-# MAX_CONCURRENT_TRADES. When either limit is hit we refuse NEW
-# trades; existing positions are untouched.
-MAX_PORTFOLIO_EXPOSURE: float = 3000.0
-MAX_CONCURRENT_TRADES: int = 5
-
-# Sector concentration cap. Prevents the classic "stack 3 tech
-# longs at the top" failure mode — if a signal's sector already
-# represents more than this share of total exposure, refuse NEW
-# trades in that sector. Compared case-insensitively; signals
-# without a sector tag bypass the check.
-MAX_SECTOR_EXPOSURE_PCT: float = 0.50
 
 
 def get_total_exposure(open_positions: list[dict]) -> float:
@@ -694,10 +677,6 @@ def _bot_from_config(config: Any, symbol: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 # END — USD-notional execution path
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-
-BOT_TYPES = {"grid", "signal", "webhook"}
 
 
 # ── Bot CRUD ──

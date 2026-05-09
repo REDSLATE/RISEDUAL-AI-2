@@ -30,6 +30,32 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
 
+### Step 4A — `trading_bot_service.py` constants extraction (2026-05-09)
+
+**Micro-phase 1 of 5** (operator-mandated slice-then-test cadence). Pure constants/types only — zero behaviour change.
+
+**Target file** (per operator decision): `services/trading_bot_service.py` (1575 → **1554 lines**, -21). The originally-named `day_trade_executor.py` doesn't exist; `trading_bot_service.py` is the real top-level bot orchestrator.
+
+**New package** `services/trading_bot/`:
+| File | Lines | Authority |
+|---|---:|---|
+| `__init__.py` | 15 | Step 4 plan + scope notes |
+| `_constants.py` | 54 | 7 module-level constants — pure values, no behaviour |
+
+**Constants moved**: `ADAPTIVE_SIZING_ENABLED`, `_MIN_SCALED_QTY`, `MAX_POSITION_USD`, `MAX_PORTFOLIO_EXPOSURE`, `MAX_CONCURRENT_TRADES`, `MAX_SECTOR_EXPOSURE_PCT`, `BOT_TYPES`.
+
+**Compatibility shim**: `trading_bot_service.py` does `from services.trading_bot._constants import *names*` so:
+- External attribute access `tbs.MAX_POSITION_USD` still resolves (the names live in `tbs.__dict__` after `from import`).
+- The monkeypatch pattern in `test_trading_bot_adaptive_sizing.py` (`monkeypatch.setattr(tbs, "ADAPTIVE_SIZING_ENABLED", True)`) still mutates the binding bare-name reads inside `tbs` resolve through.
+
+**Verified**:
+- `make lint-arch` 9 passed · `make lint-fast` 128 passed · `make lint-safety` 72 passed.
+- Targeted suite (`test_portfolio_risk_engine` + `test_trading_bot_adaptive_sizing` + `test_execute_signal_usd` + `test_executor_lanes` + `test_drawdown_allocator`): **120 passed**.
+- Full pytest: **2824 passed, 0 failed** (identical pre/post extraction).
+- Backend boots clean. External `tbs.X` attribute access programmatically asserted.
+
+**Remaining micro-phases**: 4B (telemetry/receipts), 4C (data access), 4D (decision rules), 4E (broker calls — LAST).
+
 ### Step 3 — `_start_schedulers()` strangler split (2026-05-09)
 
 **`server.py` shrinks from 2004 → 1537 lines (-467).** Job registration moved verbatim to `services/scheduling/jobs.py`. Zero behaviour change: every job ID, interval, cron expression, `replace_existing`, and `next_run_time` kwarg preserved. Live scheduler still registers **61 jobs** (57 static + 4 dynamic ETL).
