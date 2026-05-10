@@ -36,6 +36,7 @@ import RoadGuardTile from './admin/RoadGuardTile';
 import CalibrationKanban from './admin/CalibrationKanban';
 import BulkReplayPanel from './admin/BulkReplayPanel';
 import PatentJCard from './admin/PatentJCard';
+import CodeEvolutionInbox from './admin/CodeEvolutionInbox';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -84,6 +85,7 @@ const TAB_GROUPS = [
       { id: 'roadguard',     label: 'RoadGuard', icon: ShieldCheck },
       { id: 'kanban',        label: 'Kanban',    icon: ShieldCheck },
       { id: 'patent-j',      label: 'Patent J',  icon: Activity },
+      { id: 'code-evo',      label: 'Code Evo',  icon: ShieldCheck },
       { id: 'bulk-replay',   label: 'Bulk Replay', icon: Upload },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
@@ -129,6 +131,7 @@ const TAB_SUBTITLES = {
   roadguard:      () => 'RoadGuard — shared capital + broker safety governor · veto-only · shadow mode',
   kanban:         () => 'Calibration Kanban — per-lane promotion readiness · Shadow → Calibrate → Enforce · read-only',
   'patent-j':     () => 'Patent J — confidence calibration reliability · isotonic post-hoc mapping · observation only',
+  'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -165,6 +168,7 @@ const TAB_COMPONENTS = {
   roadguard:      () => <RoadGuardTile />,
   kanban:         () => <CalibrationKanban />,
   'patent-j':     () => <PatentJCard />,
+  'code-evo':     () => <CodeEvolutionInbox />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
