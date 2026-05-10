@@ -30,6 +30,33 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
 
+### Python Coach v0 — Alpha's Learning Surface (2026-05-10)
+
+Operator-facing Python learning module. Turns a plain-English goal into a structured lesson plan via the existing `AIService` (Emergent Universal Key) and statically reviews pasted code via Python's `ast`. **Never executes user code.**
+
+**Module layout** (`services/python_coach/`):
+- `schemas.py` — Pydantic models for the API (`LessonPlan`, `LessonStep`, `CodeReview`, `CodeFinding`).
+- `static_review.py` — pure AST reviewer. Detects SYNTAX errors, NO_FUNCTIONS, PRINT_ONLY, MISSING_DOCSTRINGS, NO_MAIN_GUARD, MIXED_INDENT, BARE_EXCEPT_PASS. Goal-aware drill suggester.
+- `lesson_planner.py` — async `AIService` caller. Strict-JSON prompt + tolerant parser (strips fences, falls back to a stub on garbage). `generate_lesson_plan(goal)` and `generate_deep_feedback(code, goal)` — both NEVER raise.
+- `api.py` — owner-only FastAPI router: `POST /plan`, `POST /review` (with optional `deep=True`), `GET /example`.
+
+**Frontend**: `components/admin/PythonCoach.jsx` — new "Python Coach" tab in AdminPanel Insights. Goal textarea, code textarea, Stat tiles (Parses / Lines / Functions / Docstrings), Findings list with severity pills, optional LLM Deep feedback panel, "Load example" pulls the artifact's "fetch stock prices with retry" starter.
+
+**Doctrine firewalls** (`tests/test_python_coach_v0.py`, **19 tests**):
+- AST static review (6 unit tests).
+- Forbidden imports: each coach module fails CI if it imports `services.code_evolution`, `services.broker`, `services.execution`, `subprocess`, `shlex`.
+- Forbidden calls: each module fails CI if it contains `exec(`, `eval(`, `compile(`, `os.system(`, `subprocess.`.
+- Bidirectional isolation: code_evolution may not reference "python_coach".
+- Stub plan is valid `LessonPlan` even when LLM unreachable.
+- All 3 endpoints invoke `_require_owner(request)` (static check).
+
+**Live validation (2026-05-10)**:
+- `POST /plan` for "learn list comprehensions" returned `generated_by: alpha-python-coach-llm` with 5 real drills + 4 pitfalls.
+- `POST /review` with broken code → `parses=False`, single SYNTAX finding.
+- `POST /review` with well-formed code → 0 findings.
+- `GET /example` → starter snippet.
+- 3180 → **3199 passing** (+19 new tests, no regressions). 583 routes.
+
 ### Code Evolution v0 — Self-Review Layer (2026-05-10)
 
 RISEDUAL's code-review gate. Operator pastes a patch; the gate audits, classifies risk, recommends tests, and writes a Mongo receipt. **AI may not promote code, ever.**

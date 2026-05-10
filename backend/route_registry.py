@@ -82,6 +82,7 @@ from routes.admin_guard_shadow import router as admin_guard_shadow_router, set_d
 from routes.admin_blocks_prevented import router as admin_blocks_prevented_router, set_db as set_admin_blocks_prevented_db
 from routes.admin_bulk_replay import router as admin_bulk_replay_router
 from services.code_evolution.api import router as code_evolution_router, set_db as set_code_evolution_db
+from services.python_coach.api import router as python_coach_router
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
@@ -179,6 +180,7 @@ ALL_ROUTERS = [
     admin_blocks_prevented_router,
     admin_bulk_replay_router,
     code_evolution_router,
+    python_coach_router,
     admin_position_reconciler_router,
     admin_memory_drift_router,
     admin_etl_router,

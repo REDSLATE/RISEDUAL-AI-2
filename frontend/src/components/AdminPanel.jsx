@@ -37,6 +37,7 @@ import CalibrationKanban from './admin/CalibrationKanban';
 import BulkReplayPanel from './admin/BulkReplayPanel';
 import PatentJCard from './admin/PatentJCard';
 import CodeEvolutionInbox from './admin/CodeEvolutionInbox';
+import PythonCoach from './admin/PythonCoach';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -86,6 +87,7 @@ const TAB_GROUPS = [
       { id: 'kanban',        label: 'Kanban',    icon: ShieldCheck },
       { id: 'patent-j',      label: 'Patent J',  icon: Activity },
       { id: 'code-evo',      label: 'Code Evo',  icon: ShieldCheck },
+      { id: 'python-coach',  label: 'Python Coach', icon: FileCode },
       { id: 'bulk-replay',   label: 'Bulk Replay', icon: Upload },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
@@ -132,6 +134,7 @@ const TAB_SUBTITLES = {
   kanban:         () => 'Calibration Kanban — per-lane promotion readiness · Shadow → Calibrate → Enforce · read-only',
   'patent-j':     () => 'Patent J — confidence calibration reliability · isotonic post-hoc mapping · observation only',
   'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
+  'python-coach': () => 'Python Coach — lesson plans + AST review · firewalled from execution & code-evolution gate',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -169,6 +172,7 @@ const TAB_COMPONENTS = {
   kanban:         () => <CalibrationKanban />,
   'patent-j':     () => <PatentJCard />,
   'code-evo':     () => <CodeEvolutionInbox />,
+  'python-coach': () => <PythonCoach />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
