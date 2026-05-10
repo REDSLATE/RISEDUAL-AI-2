@@ -125,6 +125,34 @@ async def log_event(
     except Exception as e:
         logger.warning("[agent_activity] insert failed: %s", e)
         return None
+
+    # Doctrine v2: tee through Shelly perception so the system's own
+    # narrative feed is doctrine-labeled in the canonical
+    # ``shelly_memories`` collection. Source-tagged ``agent_activity``
+    # so operator audits can filter by lane. ``perceive()`` never
+    # raises and the import / db path is guarded — agent activity
+    # logging MUST stay fire-and-forget.
+    try:
+        from services.shelly_memory import perceive
+        # Compose text from title + detail so vector search has
+        # something meaningful to index.
+        scribe_text = doc["title"]
+        if doc["detail"]:
+            scribe_text = f"{scribe_text} — {doc['detail']}"
+        await perceive(
+            _db,
+            payload={"text": scribe_text},
+            source="agent_activity",
+            metadata={
+                "agent_event_id": event_id,
+                "agent_event_type": type,
+                "severity": severity,
+                "symbol": symbol,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[agent_activity] shelly perception tee failed: %s", exc)
+
     return event_id
 
 

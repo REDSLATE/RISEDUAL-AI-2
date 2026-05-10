@@ -148,6 +148,37 @@ The Shelly tee is wrapped in try/except — a Shelly outage cannot break the use
 
 **Backend regression**: **3296 / 3296 passing** (was 3287; +9 wiring tests). 597 routes, no errors. Backend hot-reloaded successfully.
 
+### 🌐 Doctrine v2 Full Perception Coverage — agent_activity + news ingest (2026-05-12)
+
+Per operator directive: *"Wire remaining ingest paths through perceive() — agent_activity_service, news ingestion, scrapers — for full perception coverage."*
+
+Three additional ingest paths now flow through Shelly perception:
+
+1. **`agent_activity_service.log_event`** — every entry in the agent narrative feed tees through `perceive(source="agent_activity")` with `title — detail` as scribe text. Metadata carries `agent_event_id`, `agent_event_type`, `severity`, `symbol`. Wrapped — never blocks the activity write.
+
+2. **`news_shock_feeder._persist_catalyst_events`** (Benzinga) — every persisted catalyst article also lands as a canonical perception record. `source="news.benzinga"`, scribe text = headline, metadata = `{event_id, event_date (UTC date from Shelly normalizer), symbol, url, headline}`. Bulk-teed inside a single try/except so per-article cost stays flat.
+
+3. **`av_sentiment_feeder._persist_av_catalyst_events`** (Alpha Vantage) — same as Benzinga but with `source="news.alpha_vantage"` and `sentiment_score` (signed, clamped to [-1, 1]) carried in metadata so vector queries can later filter on signed sentiment.
+
+**Key invariants pinned**:
+- All three tees are best-effort: a Shelly outage NEVER breaks the primary catalyst/activity write.
+- Articles rejected at the primary boundary (no URL, no parseable timestamp, garbage sentiment score) do NOT produce phantom perception records.
+- Event timestamps coerce to UTC `YYYY-MM-DD` via `_normalize_event_date`, so a Benzinga `"2024-03-15T14:30:00Z"` and an AV `"20240315T150000"` on the same day collapse to the same `event_date` key in Shelly.
+
+**Tests** (8 new, in `tests/test_shelly_perception_coverage.py`):
+- agent_activity: dual-write to `agent_activity` + `shelly_memories`; title-only composition when detail missing; resilient to perceive() failure.
+- Benzinga: 2-article batch → 2 catalyst rows + 2 Shelly rows; UTC event_date collapse; resilient.
+- AV: signed sentiment carried in metadata; garbage-score article skipped end-to-end; resilient.
+
+**Backend regression**: **3304 / 3304 passing** (was 3296; +8 coverage tests). 597 routes, no errors. Backend hot-reloaded.
+
+**Perception coverage now spans 5 lanes** (`source` values):
+- `"chat"` — chat memory writes
+- `"market_feed"` — market regime saves
+- `"agent_activity"` — agent narrative feed
+- `"news.benzinga"` — Benzinga catalyst articles
+- `"news.alpha_vantage"` — Alpha Vantage news + sentiment
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.

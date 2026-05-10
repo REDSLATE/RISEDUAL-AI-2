@@ -230,6 +230,31 @@ async def _persist_catalyst_events(
         except Exception:  # noqa: BLE001
             continue
 
+    # Doctrine v2 — perception tee. Every catalyst event also gets
+    # a canonical doctrine-labeled record in ``shelly_memories``.
+    # Bulk-tee in a single try/except so a Shelly hiccup doesn't
+    # punish per-article cost. ``event_time`` (UTC datetime) collapses
+    # through ``_normalize_event_date`` so a single full-ISO from
+    # Benzinga lands as the same YYYY-MM-DD as the AV equivalent.
+    try:
+        from services.shelly_memory import perceive
+        for doc in ops:
+            await perceive(
+                db,
+                payload={"text": doc["headline"]},
+                source="news.benzinga",
+                metadata={
+                    "event_id": doc["event_id"],
+                    "event_date": doc["event_time"],
+                    "symbol": doc["symbol"],
+                    "url": doc.get("url"),
+                    "headline": doc["headline"],
+                },
+            )
+    except Exception:  # noqa: BLE001
+        # Never block the catalyst pipeline on a perception hiccup.
+        pass
+
 
 async def batch_feed_symbols(
     db: Any,

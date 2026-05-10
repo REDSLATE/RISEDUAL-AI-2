@@ -418,6 +418,7 @@ async def _persist_av_catalyst_events(
     if db is None or not feed:
         return
     coll = db.catalyst_events
+    perceived: list[dict[str, Any]] = []
     for a in feed:
         url = a.get("url")
         if not url:
@@ -430,6 +431,8 @@ async def _persist_av_catalyst_events(
         except (TypeError, ValueError):
             continue
         event_id = f"av:{url}"
+        clamped_score = max(-1.0, min(1.0, score))
+        headline = (a.get("title") or "")[:300]
         try:
             await coll.update_one(
                 {"event_id": event_id},
@@ -439,13 +442,45 @@ async def _persist_av_catalyst_events(
                         "symbol": symbol,
                         "event_type": "NEWS",
                         "event_time": ts,
-                        "headline": (a.get("title") or "")[:300],
+                        "headline": headline,
                         "source": "alpha_vantage",
-                        "sentiment_score": max(-1.0, min(1.0, score)),
+                        "sentiment_score": clamped_score,
                         "url": url,
                     }
                 },
                 upsert=True,
             )
+            perceived.append({
+                "event_id": event_id,
+                "event_time": ts,
+                "headline": headline,
+                "url": url,
+                "sentiment_score": clamped_score,
+            })
         except Exception:  # noqa: BLE001
             continue
+
+    # Doctrine v2 — perception tee. Each persisted AV article also
+    # lands as a doctrine-labeled record in ``shelly_memories``. The
+    # canonical sentiment_score is carried in metadata so vector
+    # similarity queries can later filter on signed sentiment. A
+    # Shelly hiccup is logged + swallowed — perception is best-effort.
+    if perceived:
+        try:
+            from services.shelly_memory import perceive
+            for p in perceived:
+                await perceive(
+                    db,
+                    payload={"text": p["headline"]},
+                    source="news.alpha_vantage",
+                    metadata={
+                        "event_id": p["event_id"],
+                        "event_date": p["event_time"],
+                        "symbol": symbol,
+                        "url": p["url"],
+                        "sentiment_score": p["sentiment_score"],
+                        "headline": p["headline"],
+                    },
+                )
+        except Exception:  # noqa: BLE001
+            pass
