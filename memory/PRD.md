@@ -30,6 +30,57 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
 
+### 🧠 Shelly Memory — Single Source of Truth for Durable Memory (2026-05-10)
+
+Per operator audit (2026-05-10): "the data you present should fall under Shelly's purview."
+
+**Doctrine** (CI-pinned by 28 tests):
+1. **Mongo durable, Chroma disposable** — Mongo write happens FIRST; Chroma upsert is wrapped in `try/except` and a Chroma failure logs a warning but never blocks the durable record.
+2. Every memory unit, at write time, automatically receives:
+   - `id` (UUID4)
+   - `event_date` (`YYYY-MM-DD`, normalized via `_normalize_event_date`)
+   - `event_date_ordinal` (int days since epoch — for Chroma `$gte` range filters)
+   - `regime_status` (`"legacy"` if past, `"active"` if today)
+   - `regime_label` (= `event_date`)
+   - `created_at` (full ISO UTC matching audit_trail format)
+   - `embedding_version` (`"minilm-l6-v2-default"`)
+3. **`_normalize_event_date` is the only path** to set `event_date`. Three guarantees:
+   - **Format uniformity** — every output is exactly 10 chars `YYYY-MM-DD`
+   - **Timezone uniformity** — everything coerces to UTC
+   - **Fail loud** — bad input → `ValueError` → HTTP 422 (cannot silently persist malformed dates)
+4. **Toxic-spike landmines closed** at three independent layers:
+   - Boundary normalize (every input shape collapses to YYYY-MM-DD UTC)
+   - Fail-loud-on-malformed (no silent acceptance of "2022-05-09T14:30:00+00:00" mixing with date-only filters)
+   - Numeric `event_date_ordinal` for Chroma range filters (Chroma v1.x silently rejects `$gte` on string fields)
+
+**Module surface** (`services/shelly_memory.py`):
+- `_normalize_event_date(raw)` — boundary normalizer (date / datetime / naive / aware / "Z" / full-ISO / `None` / `""`).
+- `_stamp_regime(metadata)` — applies all 4 mandatory metadata fields.
+- `remember(db, *, text, metadata, memory_id)` — Mongo-durable + Chroma-best-effort write. Returns the persisted document.
+- `recall(db, *, min_event_date, max_event_date, include_legacy, limit)` — Mongo-only durable read. Filters on `event_date_ordinal` (NOT the string field). Boundary-normalizes filter inputs.
+- `count_by_regime(db)` — operator audit: active vs legacy split.
+
+**API** (`services/shelly_memory_api.py`, owner-only):
+- `POST /api/admin/shelly-memory/remember` — write a memory (422 on bad date)
+- `GET /api/admin/shelly-memory/recall?min_event_date=…&include_legacy=…&limit=…` — durable recall
+- `GET /api/admin/shelly-memory/status` — collection + embedding_version + active/legacy/total counts
+
+**Live validation (2026-05-10)**:
+- 595 routes (was 592, +3 new admin endpoints)
+- Every smoke-test case from the audit reproduces exactly:
+  - `AAPL event_date=2024-03-15` → `regime=legacy`, `ordinal=738960`
+  - `TSLA event_date=2022-05-09T14:30:00+00:00` → stored as `2022-05-09 regime=legacy` (full-ISO collapsed at boundary)
+  - `NVDA` today → `regime=active`
+  - `"not-a-date"` → **HTTP 422 "unparseable event_date"** (fail loud)
+  - `recall(min_event_date=2023-01-01)` → exactly 2 results (NVDA + AAPL), TSLA correctly excluded
+- Test count: **3270 / 3270 passing** (3242 → 3270, +28 new shelly_memory tests)
+
+**Authority-boundary invariants preserved**:
+- Owner-only at the API layer.
+- The `remember()` write path raises `ValueError` for malformed input — never silently persists.
+- Chroma failure path logs but doesn't block durable Mongo write (defense in depth).
+- Smoke memories from audit reproduction were cleaned before commit.
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.

@@ -85,6 +85,7 @@ from services.code_evolution.api import router as code_evolution_router, set_db 
 from services.python_coach.api import router as python_coach_router
 from services.alpha_knowledge.api import router as alpha_knowledge_router, set_db as set_alpha_knowledge_db
 from services.operator_trading_gate_api import router as trading_gate_router, set_db as set_trading_gate_db
+from services.shelly_memory_api import router as shelly_memory_router, set_db as set_shelly_memory_db
 from routes.admin_position_reconciler import router as admin_position_reconciler_router, set_db as set_admin_position_reconciler_db
 from routes.admin_memory_drift import router as admin_memory_drift_router, set_db as set_admin_memory_drift_db
 from routes.admin_etl import router as admin_etl_router, set_db as set_admin_etl_db
@@ -185,6 +186,7 @@ ALL_ROUTERS = [
     python_coach_router,
     alpha_knowledge_router,
     trading_gate_router,
+    shelly_memory_router,
     admin_position_reconciler_router,
     admin_memory_drift_router,
     admin_etl_router,
@@ -292,6 +294,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_code_evolution_db,
         set_alpha_knowledge_db,
         set_trading_gate_db,
+        set_shelly_memory_db,
     ]
     # Module-level db handle for the per-patent policy store so the
     # IP contract can read overrides without an explicit db arg.
