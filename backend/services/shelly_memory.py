@@ -129,6 +129,38 @@ def _stamp_regime(metadata: Optional[dict]) -> dict:
     return md
 
 
+# ── Public stamp helper for legacy writers ─────────────────────────
+
+
+def apply_doctrine_stamps(doc: dict) -> dict:
+    """Stamp the 6 mandatory fields onto ``doc`` IN PLACE-FRIENDLY
+    fashion (returns a new dict; caller decides what to persist).
+
+    Intended for legacy writers that want the Shelly doctrine
+    without changing their destination collection. Existing fields
+    in ``doc`` are preserved; only the 6 mandatory fields are
+    added/normalized.
+
+    The stamps applied:
+      * ``id`` (UUID4 — unless caller supplied a string ``id``)
+      * ``embedding_version``
+      * ``created_at`` (ISO UTC; if caller already set, preserved)
+      * Plus ``_stamp_regime()`` on the ``metadata`` block
+        (auto-creates the block if missing; normalizes
+        ``event_date``; stamps ``event_date_ordinal`` /
+        ``regime_status`` / ``regime_label``).
+    """
+    out = dict(doc or {})
+    if not out.get("id"):
+        out["id"] = str(uuid.uuid4())
+    if not out.get("embedding_version"):
+        out["embedding_version"] = EMBEDDING_VERSION
+    if not out.get("created_at"):
+        out["created_at"] = _now_iso()
+    out["metadata"] = _stamp_regime(out.get("metadata"))
+    return out
+
+
 # ── Chroma client (best-effort) ─────────────────────────────────────
 
 

@@ -57,17 +57,33 @@ async def clear_all_memories(user_id: str) -> int:
 
 
 async def save_memory(user_id: str, content: str, category: str = "general", source_session: str = "") -> str:
-    """Save a single memory entry."""
+    """Save a single memory entry.
+
+    As of 2026-05-10, every chat memory passes through the Shelly
+    doctrine stamper so it carries the same 6 mandatory fields
+    every other durable memory in the runtime carries
+    (``id`` / ``event_date`` / ``event_date_ordinal`` /
+    ``regime_status`` / ``regime_label`` / ``created_at`` /
+    ``embedding_version``). Destination collection unchanged —
+    existing readers of ``chat_memories`` keep working.
+    """
     import uuid
+    from services.shelly_memory import apply_doctrine_stamps
     memory_id = f"mem_{uuid.uuid4().hex[:12]}"
-    doc = {
+    raw = {
+        "id": memory_id,
         "user_id": user_id,
         "memory_id": memory_id,
         "content": content,
         "category": category,
         "source_session": source_session,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "metadata": {
+            "user_id": user_id,
+            "category": category,
+            "source_session": source_session,
+        },
     }
+    doc = apply_doctrine_stamps(raw)
     await db.chat_memories.insert_one(doc)
     return memory_id
 
