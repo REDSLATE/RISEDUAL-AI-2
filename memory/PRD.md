@@ -30,6 +30,29 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
 
+### 📊 Counterfactual P&L Tracker (2026-05-10)
+
+Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.
+
+**Module**: `services/counterfactual_pnl.py`
+- `score_one(db, row)` — single-receipt scorer. Resolves direction from `extras.intended_action`, notional from `qty*price`/`notional_usd`/default $1000, fetches close-to-close move via `price_provider.get_daily_history`. LONG profits when price rises; SHORT profits when it falls.
+- `score_window(db, start, end)` — aggregates across a window, returns `{total_receipts, scored_receipts, unscored_receipts, simulated_pnl_usd, by_symbol[]}`.
+- `score_yesterday(db)` and `score_last_n_days(db, days)` — convenience wrappers with `window_label`.
+- `persist_daily_summary(db)` — idempotent upsert into `counterfactual_pnl_daily` (cron-safe).
+
+**Endpoints** (extension to existing trading-gate router):
+- `GET /api/admin/trading-gate/counterfactual-pnl?days=1|7|30` — on-demand compute
+- `POST /api/admin/trading-gate/counterfactual-pnl/persist` — idempotent daily upsert
+
+**Frontend** (extends `TradingGate.jsx`): new "What would have traded" card with 1d/7d/30d toggle, big colored total ($+/-), per-symbol breakdown showing `Nlong · Mshort` and signed P&L. Empty state when no scoreable receipts.
+
+**Tests** (`tests/test_counterfactual_pnl.py`, **10 tests**): direction resolution, notional fallback, LONG/SHORT scoring with mocked moves, unscoreable rows (HOLD/missing prices), per-symbol aggregation, idempotent persist.
+
+**Live validation (2026-05-10)**:
+- 592 routes (was 590, +2 new endpoints)
+- All 3 P&L endpoints respond cleanly; empty windows return zeroed structure
+- Test count: **3242 / 3242 passing**
+
 ### 🔒 Operator Trading Gate — THE ONLY RULE (2026-05-10)
 
 Per operator order:

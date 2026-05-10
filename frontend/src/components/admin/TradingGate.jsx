@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Lock, Unlock, AlertTriangle, RefreshCw, History, ShieldCheck,
   Activity, ToggleLeft, ToggleRight, AlertOctagon,
+  TrendingUp, TrendingDown, BarChart3,
 } from 'lucide-react';
 import { authFetch } from '../../contexts/AuthContext';
 import { getApiBase } from '../../utils/apiBase';
@@ -26,6 +27,8 @@ export default function TradingGate() {
   const [status, setStatus] = React.useState(null);
   const [history, setHistory] = React.useState([]);
   const [synthetics, setSynthetics] = React.useState([]);
+  const [pnl, setPnl] = React.useState(null);
+  const [pnlDays, setPnlDays] = React.useState(1);
   const [busy, setBusy] = React.useState(null);
   const [error, setError] = React.useState(null);
   const [confirm, setConfirm] = React.useState(null); // {target_state}
@@ -33,22 +36,25 @@ export default function TradingGate() {
   const fetchAll = React.useCallback(async () => {
     setError(null);
     try {
-      const [s, h, sy] = await Promise.all([
+      const [s, h, sy, p] = await Promise.all([
         authFetch(`${API}/admin/trading-gate/status`),
         authFetch(`${API}/admin/trading-gate/history?limit=10`),
         authFetch(`${API}/admin/trading-gate/synthetic-summary?limit=10`),
+        authFetch(`${API}/admin/trading-gate/counterfactual-pnl?days=${pnlDays}`),
       ]);
       const sJ = await s.json();
       const hJ = await h.json();
       const syJ = await sy.json();
+      const pJ = await p.json();
       if (!s.ok) throw new Error(sJ.detail || 'status');
       setStatus(sJ);
       setHistory(hJ.history || []);
       setSynthetics(syJ.synthetic_receipts || []);
+      if (p.ok) setPnl(pJ);
     } catch (e) {
       setError(e.message);
     }
-  }, []);
+  }, [pnlDays]);
 
   React.useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -307,6 +313,105 @@ export default function TradingGate() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Counterfactual P&L */}
+      {pnl && (
+        <div
+          data-testid="trading-gate-pnl"
+          className="bg-slate-900/40 border border-slate-800 rounded-lg p-4"
+        >
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-slate-500">
+              <BarChart3 size={14} /> What would have traded
+              <span className="text-[10px] text-slate-600 font-mono">
+                ({pnl.window_label || `last ${pnlDays}d`})
+              </span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 7, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  data-testid={`trading-gate-pnl-window-${d}`}
+                  onClick={() => setPnlDays(d)}
+                  className={`px-2 py-1 rounded text-[10px] font-mono ${
+                    pnlDays === d
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-baseline gap-3 mb-4">
+            <div
+              className={`text-3xl font-bold flex items-center gap-2 ${
+                pnl.simulated_pnl_usd > 0
+                  ? 'text-emerald-400'
+                  : pnl.simulated_pnl_usd < 0
+                    ? 'text-rose-400'
+                    : 'text-slate-400'
+              }`}
+              data-testid="trading-gate-pnl-total"
+            >
+              {pnl.simulated_pnl_usd > 0 && <TrendingUp size={24} />}
+              {pnl.simulated_pnl_usd < 0 && <TrendingDown size={24} />}
+              {pnl.simulated_pnl_usd >= 0 ? '+' : ''}
+              ${pnl.simulated_pnl_usd.toLocaleString()}
+            </div>
+            <div className="text-xs text-slate-500 font-mono">
+              simulated · {pnl.scored_receipts}/{pnl.total_receipts} receipts scored
+              {pnl.unscored_receipts > 0 && ` · ${pnl.unscored_receipts} unscoreable`}
+            </div>
+          </div>
+
+          {pnl.by_symbol?.length > 0 && (
+            <div className="border-t border-slate-800/50 pt-3">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-mono">
+                Top symbols (counterfactual)
+              </div>
+              <ul className="space-y-1">
+                {pnl.by_symbol.slice(0, 6).map((b) => (
+                  <li
+                    key={b.symbol}
+                    className="flex items-center justify-between text-xs font-mono py-1"
+                    data-testid={`trading-gate-pnl-sym-${b.symbol}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-300 w-16">{b.symbol}</span>
+                      <span className="text-[10px] text-slate-600">
+                        {b.n_long}L · {b.n_short}S
+                      </span>
+                    </div>
+                    <span
+                      className={
+                        b.simulated_pnl_usd > 0
+                          ? 'text-emerald-400'
+                          : b.simulated_pnl_usd < 0
+                            ? 'text-rose-400'
+                            : 'text-slate-500'
+                      }
+                    >
+                      {b.simulated_pnl_usd >= 0 ? '+' : ''}
+                      ${b.simulated_pnl_usd.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {pnl.scored_receipts === 0 && (
+            <div className="text-xs text-slate-500 italic mt-2">
+              No scoreable receipts in this window. The MLs haven't
+              produced any directional intent the gate blocked yet.
+            </div>
+          )}
         </div>
       )}
 

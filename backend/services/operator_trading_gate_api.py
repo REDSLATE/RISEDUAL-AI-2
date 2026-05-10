@@ -116,3 +116,29 @@ async def synthetic_summary(
     )
     out = [doc async for doc in cursor]
     return {"synthetic_receipts": out, "count": len(out)}
+
+
+@router.get("/counterfactual-pnl")
+async def counterfactual_pnl(
+    request: Request,
+    days: int = Query(default=1, ge=1, le=30),
+):
+    """Read-only — score the last ``days`` of synthetic ADL
+    receipts as a what-would-have-happened P&L. Computes on
+    demand; safe to refresh."""
+    await _require_owner(request)
+    db = _get_db()
+    from . import counterfactual_pnl as cf
+    if days == 1:
+        return await cf.score_yesterday(db)
+    return await cf.score_last_n_days(db, days=days)
+
+
+@router.post("/counterfactual-pnl/persist")
+async def counterfactual_pnl_persist(request: Request):
+    """Idempotent: write yesterday's summary to
+    ``counterfactual_pnl_daily``. Operator-triggered (or via cron)."""
+    await _require_owner(request)
+    db = _get_db()
+    from . import counterfactual_pnl as cf
+    return await cf.persist_daily_summary(db)
