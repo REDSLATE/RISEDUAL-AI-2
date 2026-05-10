@@ -81,6 +81,50 @@ Per operator audit (2026-05-10): "the data you present should fall under Shelly'
 - Chroma failure path logs but doesn't block durable Mongo write (defense in depth).
 - Smoke memories from audit reproduction were cleaned before commit.
 
+### 🧠 Shelly Doctrine v2 — Perception + Malformed Quarantine (2026-05-12)
+
+Per operator directive (2026-05-12): *"Shelly is the scribe and MongoDB is the source of truth. Perception is also Shelly. Any information sourced must be labeled according to MongoDB standards. If malformed it still must be labeled legacy, date, time and ID. Place malformed in a file of its own, numbered by the number of documents in file. ChromaDB if used is temporary and can be wiped if necessary."*
+
+**Doctrine** (CI-pinned by 29 new tests, total 150 in shelly perimeter):
+1. **Shelly is the scribe + perception layer**. Every piece of inbound information from any lane (chat, market feed, agent, scraper) must flow through `perceive()`. There is no other approved entry-point for sourced info.
+2. **MongoDB is canonical**. Chroma is disposable.
+3. **`perceive()` never raises**. Any failure routes the payload to the malformed-quarantine bin.
+4. **Malformed docs still get MongoDB-standard labels** — `legacy_id` (UUID4), `legacy_date` (YYYY-MM-DD UTC, salvaged from payload `event_date`/`date`/`timestamp`/`ts`/`created_at` if possible, else today), `legacy_time` (full ISO UTC), `created_at`, `embedding_version`, `source`, `error`, `doc_number` (sequential), `raw_payload` (preserved verbatim).
+5. **`doc_number` is strictly sequential** within `shelly_legacy_malformed`, atomic across concurrent writes (Mongo `find_one_and_update` + `$inc` upsert on `shelly_counters` collection). Degraded fallback to `count_documents+1` if the counter mechanism itself errors.
+
+**New module** (`services/shelly_perception.py`, ~280 lines):
+- `perceive(db, *, payload, source, text=None, metadata=None)` — perception entry. Returns `{"ok": True, "lane": "memory"|"malformed", "doc": ...}`. Auto-inherits `event_date`/`symbol`/`lane` from a dict payload into metadata. Auto-injects `source` label. Coerces non-string payloads to JSON via `_coerce_payload_to_text` (precedence: payload["text"] → str(payload) → json.dumps → quarantine).
+- `quarantine_malformed(db, *, raw, source, error)` — last-resort writer. Always succeeds (Mongo `_id` stripped on return).
+- `list_malformed(db, *, limit=50, min_doc_number=None)` — operator audit, sorted by `doc_number` ascending (arrival order).
+- `_next_doc_number(db, key)` — atomic counter via `shelly_counters` collection.
+- `_stamp_malformed(raw, source, error, doc_number)` — pure label stamper.
+
+**Module split**: Perception logic lives in `shelly_perception.py` (~280 lines) to keep `shelly_memory.py` under the 600-line core-governance ceiling. `shelly_memory.py` re-exports `perceive`, `quarantine_malformed`, `list_malformed` so the public API of the doctrine package is unchanged.
+
+**API** (`services/shelly_memory_api.py`, owner-only, 2 new endpoints):
+- `POST /api/admin/shelly-memory/perceive` — `{payload, source, text?, metadata?}` → envelope. Never 5xx's.
+- `GET /api/admin/shelly-memory/malformed?limit=&min_doc_number=` — quarantine bin audit, arrival order.
+- `GET /api/admin/shelly-memory/status` — now also includes `malformed_collection` name + `malformed` bucket count.
+
+**Constants added to `shelly_memory.py`**:
+- `MALFORMED_COLLECTION = "shelly_legacy_malformed"`
+- `COUNTERS_COLLECTION = "shelly_counters"`
+- `count_by_regime(db)` extended to surface `malformed` bucket count.
+
+**Test count**: **3287 / 3287 passing** (was 3270; +17 net) — full backend regression clean.
+
+**Live validation (2026-05-12)**:
+- 597 routes (was 595, +2 new admin endpoints)
+- Doctrine invariants pinned by tests:
+  - Happy path: `{text, event_date}` payload → `lane="memory"`, full 6-stamp doctrine + source label.
+  - Malformed `event_date="not-a-date"` → `lane="malformed"`, all 9 mandatory labels present, `doc_number=1`, `raw_payload` verbatim, `error="stamp_error: ..."`.
+  - Empty/None payload → `lane="malformed"`, `error="empty_or_unscribable_payload"`.
+  - Concurrent quarantines (`asyncio.gather` × 10) → strictly sequential `doc_number=[1..10]`, no collisions.
+  - `legacy_date` salvaged from payload `timestamp` field when `event_date` is unparseable.
+  - Mongo failure on durable write → routed to malformed (operator never loses the perception silently).
+  - `count_by_regime` exposes `{active, legacy, total, malformed}`.
+  - `list_malformed(min_doc_number=3)` returns rows in arrival order, properly filtered.
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.

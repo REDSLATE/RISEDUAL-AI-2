@@ -35,6 +35,26 @@ MEMORY_COLLECTION = "shelly_memories"
 EMBEDDING_VERSION = "minilm-l6-v2-default"
 CHROMA_COLLECTION = "shelly_memories_v1"
 
+# Doctrine v2 (operator directive, 2026-05-12)
+# ---------------------------------------------
+# "Shelly is the scribe and MongoDB is the source of truth.
+#  Perception is also Shelly. Any information sourced must be labeled
+#  according to MongoDB standards. If malformed it still must be
+#  labeled legacy, date, time and ID. Place malformed in a file of
+#  its own, numbered by the number of documents in file. ChromaDB
+#  if used is temporary and can be wiped if necessary."
+#
+# Hard rules:
+#   * `perceive()` is the only inbound entry-point for sourced
+#     information. It never raises — last-resort quarantine catches
+#     anything that doesn't pass the stamper.
+#   * Mongo is canonical. Chroma is disposable.
+#   * Malformed docs land in MALFORMED_COLLECTION with stamps
+#     `legacy_id` / `legacy_date` / `legacy_time` / `created_at` /
+#     `embedding_version` / `source` / `doc_number` (sequential).
+MALFORMED_COLLECTION = "shelly_legacy_malformed"
+COUNTERS_COLLECTION = "shelly_counters"
+
 
 _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -293,8 +313,15 @@ async def recall(
 
 
 async def count_by_regime(db) -> dict[str, int]:
-    """Operator-facing audit — how many active vs legacy rows."""
-    out = {"active": 0, "legacy": 0, "total": 0}
+    """Operator-facing audit — how many active vs legacy rows.
+
+    Doctrine v2: also surfaces the malformed-quarantine count so the
+    operator can see at a glance whether anything has been routed to
+    ``shelly_legacy_malformed``. Malformed docs are ALSO labeled with
+    MongoDB-standard stamps (legacy_id / legacy_date / legacy_time /
+    doc_number) — see ``quarantine_malformed`` for the contract.
+    """
+    out = {"active": 0, "legacy": 0, "total": 0, "malformed": 0}
     try:
         out["active"] = await db[MEMORY_COLLECTION].count_documents(
             {"metadata.regime_status": "active"}
@@ -303,6 +330,23 @@ async def count_by_regime(db) -> dict[str, int]:
             {"metadata.regime_status": "legacy"}
         )
         out["total"] = await db[MEMORY_COLLECTION].count_documents({})
+        out["malformed"] = await db[MALFORMED_COLLECTION].count_documents({})
     except Exception as exc:  # noqa: BLE001
         logger.warning("shelly: count_by_regime failed: %s", exc)
     return out
+
+
+# ── Perception layer (Doctrine v2) — extracted to its own module ───
+# See ``services/shelly_perception.py`` for the perception entry
+# point (``perceive``), the malformed quarantine writer
+# (``quarantine_malformed``), and the operator audit reader
+# (``list_malformed``). The split keeps this module under the
+# core-governance ceiling while preserving the single doctrine.
+from . import shelly_perception as _perception  # noqa: E402
+
+perceive = _perception.perceive
+quarantine_malformed = _perception.quarantine_malformed
+list_malformed = _perception.list_malformed
+_next_doc_number = _perception._next_doc_number
+_stamp_malformed = _perception._stamp_malformed
+_coerce_payload_to_text = _perception._coerce_payload_to_text
