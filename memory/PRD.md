@@ -28,7 +28,57 @@ market data
   -> [broker — disabled]
 ```
 
-## What's Implemented (this fork — 2026-05-08 / 2026-05-09)
+## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
+
+### Code Evolution v0 — Self-Review Layer (2026-05-10)
+
+RISEDUAL's code-review gate. Operator pastes a patch; the gate audits, classifies risk, recommends tests, and writes a Mongo receipt. **AI may not promote code, ever.**
+
+**Doctrine** (literally enforced by tests):
+```
+def may_auto_promote(*args, **kwargs) -> bool:
+    return False
+```
+Static source-grep + runtime invariants forbid any flip to `return True`.
+
+**Module layout** (`services/code_evolution/`):
+- `schemas.py` — dataclasses (internal) + Pydantic API models. ``PatchStatus`` literal: PROPOSED / BLOCKED_FORBIDDEN_PATTERN / BLOCKED_OPERATOR_ONLY / REQUIRES_DUAL_OPERATOR_SIGNATURE / REQUIRES_OPERATOR_SIGNATURE / SIGNED_AWAITING_OPS / REJECTED.
+- `ast_invariants.py` — protected-path blocker (the gate cannot mutate itself), execution-path categoriser (CRITICAL paths require dual sig), risk-path categoriser (HIGH paths require single sig), forbidden-pattern regex (BROKER_LIVE_ORDER_ENABLED flips, COUNCIL_RISK_MODULATOR_ENABLED flips, delete_many, drop_collection, HOLD→BUY/SELL/LONG/SHORT mutations), AST-walk for destructive Mongo calls + direct inserts into protected collections.
+- `code_auditor.py` — risk classifier (LOW/MEDIUM/HIGH/CRITICAL) + required-test recommender. Tests are recommended, never auto-run.
+- `promotion_policy.py` — pure module (no Mongo, no FastAPI, no service imports). `may_auto_promote()`, `required_signatures_for(risk_level)`, `evaluate(invariants, audit) → PromotionPolicyResult`.
+- `api.py` — FastAPI router, owner-only:
+  - `POST /api/admin/code-evolution/evaluate` — full pipeline + Mongo upsert.
+  - `POST /api/admin/code-evolution/countersign` — operator approve/reject. Each unique operator may sign once. BLOCKED_OPERATOR_ONLY can never be promoted via API (409).
+  - `GET /api/admin/code-evolution/receipts` — paginated list (≤100), sorted by updated_at desc.
+  - `GET /api/admin/code-evolution/receipts/{patch_id}` — single receipt.
+
+**Mongo collection**: `code_evolution_receipts` (idempotent upsert by `patch_id`). Diff text is hashed (SHA-256) and never echoed back — only `diff_sha256` and `diff_size_bytes` persist.
+
+**Hard invariants enforced by `tests/test_code_evolution_v0.py` (22 tests)**:
+1. `may_auto_promote()` literally returns False (runtime + source check).
+2. Patch touching `services/code_evolution/` → `BLOCKED_OPERATOR_ONLY`.
+3. Patch with `BROKER_LIVE_ORDER_ENABLED=true` / `COUNCIL_RISK_MODULATOR_ENABLED=true` / HOLD→BUY → `BLOCKED_FORBIDDEN_PATTERN`.
+4. AST walk catches `delete_many`, `drop_collection`, direct `paper_trades.insert_one` regardless of regex.
+5. CRITICAL → 2 sigs, HIGH → 1, MEDIUM/LOW → 0.
+6. Every promotion result reports `auto_promote=False`.
+7. v0 ships ZERO subprocess imports — the test runner is explicitly future work.
+8. `promotion_policy.py` stays pure (no fastapi / motor / routes / alpha_decision_log imports).
+
+**Production validation (2026-05-10)**:
+- Wired into `route_registry.py` — backend went from 575 → **579 routes**.
+- Live smoke against 3 patch shapes:
+  - Protected path → status `BLOCKED_OPERATOR_ONLY`, countersign returned **409** "cannot be promoted via the API".
+  - Forbidden pattern → status `BLOCKED_FORBIDDEN_PATTERN`, sigs 0/2.
+  - HIGH risk → 1 owner countersign flipped status to `SIGNED_AWAITING_OPS`, double-sign by same operator returned **409**.
+- Receipts list endpoint sorts correctly, strips `_id`, surfaces sigs/required ratio.
+- Test count: **3180 / 3180 passing** (3158 → 3180, +22 new code_evolution_v0 tests).
+
+**Authority-boundary invariants preserved**:
+- `BROKER_LIVE_ORDER_ENABLED=false`.
+- No retrain artifact writes triggered.
+- No threshold lowering anywhere.
+- `trading_bot_service.py` Step 4E remains paused per operator order.
+- Code Evolution gate cannot rewrite itself.
 
 ### Alpha Monorepo Sidecar (2026-05-09)
 
