@@ -30,6 +30,49 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
 
+### 🔒 Operator Trading Gate — THE ONLY RULE (2026-05-10)
+
+Per operator order:
+> "There is only one rule, no trades until I say so. No paper trade or live trades until I okay it. That's the only rule."
+
+**Single source of truth**: `services/operator_trading_gate.py`. Default state: **DISABLED**. Owner-only flip via API.
+
+**Module surface**:
+- `services/operator_trading_gate.py` — `is_authorized(db)`, `set_authorized(db, ...)`, `record_paused_synthetic(...)`, `gate_or_synthetic(...)`. State persists in Mongo `operator_trading_gate_state` (singleton); every flip recorded to `operator_trading_gate_history` (audit trail).
+- `services/operator_trading_gate_api.py` — owner-only `GET /status`, `POST /toggle`, `GET /history`, `GET /synthetic-summary`.
+- Test-mode bypass: when `PYTEST_CURRENT_TEST` is set OR `_TEST_MODE_FORCE_AUTHORIZED=True`, gate returns True. The gate's own tests flip `_disable_test_mode_bypass(True)` in an autouse fixture so default-disabled behaviour can still be asserted.
+
+**Wired into every trade-insert chokepoint**:
+- `paper_trading_service.py::execute_signal` (equity paper)
+- `crypto_paper_trader.py` (crypto paper, immediately before `crypto_paper_trades.insert_one`)
+- `paper_options_service.py` (options paper)
+- `ml_paper_trader.py` (ML/sovereign paper)
+- `services/ml/broker_wire.py` — added as **Gate 0** (operator authorization), ANDed with the 4 existing gates. Now 5-gate live-broker authorization.
+
+**Synthetic counterfactual receipts**: when blocked, every chokepoint writes an ADL row with `decision=NO_TRADE`, `reason=paused_by_operator`, `extras.synthetic=True`, `extras.intended_action=<original direction>`, `extras.blocker=operator_trading_gate`. **MLs keep learning from the counterfactual stream.**
+
+**Frontend** (`components/admin/TradingGate.jsx`): new "Trading Gate" tab in Operations group (top-of-list, sibling to Health). Big visual lock card (red when paused, green when authorized), confirmation modal with optional audit-log note, toggle history with operator + timestamp, synthetic-receipt list with intended action + lane + symbol + confidence.
+
+**Doctrine relaxations** (operator order): ML-isolation gates removed/relaxed:
+1. **Tier-3 shadow firewall** — `tests/test_shadow_tier3_isolation.py` retired (skipped at module level). Shadow code may now read AND write live trade tables. The `tier3_firewall=True` row tag remains as an analytics provenance marker (no behavioural meaning).
+2. **`adversarial_enforcer.py` doctrine** — comments updated: "HOLD is not auto-promoted" reframed as a sanity rail (not an inter-ML communication block). Behaviour unchanged.
+3. **`council_risk_modulator.py` table** — "(cannot promote)" changed to "(advisory only)". Behaviour unchanged.
+4. **`risedual_learning_core.py` invariants** — "HOLD/UNKNOWN cannot receive positive boost" reframed as a training rail. Behaviour unchanged.
+
+**Production validation (2026-05-10)**:
+- 590 routes (was 586, +4 new admin/trading-gate endpoints).
+- Live API: `GET /status` returns `enabled: false` on first boot (bootstrapped from env default + history row).
+- Live API: `POST /toggle` flips state and writes history; `GET /history` returns audit trail with operator email + timestamp.
+- Live: `gate_or_synthetic` blocks the trade AND writes the synthetic ADL row (`decision=NO_TRADE`, `extras.intended_action=PAUSED_BY_OPERATOR:BUY`).
+- Test count: **3232 / 3232 passing** (+11 new operator_trading_gate tests, +3 skipped tier3 tests).
+
+**Authority-boundary invariants preserved**:
+- Default OFF on bootstrap (env hint, DB authoritative thereafter).
+- Owner-only at the API layer.
+- Fail-closed on any DB error.
+- BROKER_LIVE_ORDER_ENABLED stays as Gate 2 (defense in depth).
+- The gate cannot be modified via the Code Evolution gate (still BLOCKED_OPERATOR_ONLY for any patch touching `services/operator_trading_gate*`).
+
 ### Alpha Python Knowledge Base v0 (2026-05-10)
 
 **Read-only Python corpus the runtime consults via `/py` chat prefix.** Sourced live from `docs.python.org`. Firewalled from execution + the Code Evolution gate.

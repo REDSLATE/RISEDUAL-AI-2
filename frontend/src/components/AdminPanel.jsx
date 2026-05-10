@@ -39,6 +39,7 @@ import PatentJCard from './admin/PatentJCard';
 import CodeEvolutionInbox from './admin/CodeEvolutionInbox';
 import PythonCoach from './admin/PythonCoach';
 import AlphaKnowledgePanel from './admin/AlphaKnowledgePanel';
+import TradingGate from './admin/TradingGate';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -59,6 +60,7 @@ const TAB_GROUPS = [
     label: 'Operations',
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
+      { id: 'trading-gate', label: 'Trading Gate', icon: Lock },
       { id: 'terminal',  label: 'Terminal',  icon: TrendingUp },
       { id: 'burn-in',   label: 'Burn-In',   icon: Radio },
       { id: 'providers', label: 'Providers', icon: Activity },
@@ -138,6 +140,7 @@ const TAB_SUBTITLES = {
   'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
   'python-coach': () => 'Python Coach — lesson plans + AST review · firewalled from execution & code-evolution gate',
   'alpha-kb':     () => 'Alpha Python Knowledge Base — read-only corpus consulted via /py prefix in chat · firewalled from execution',
+  'trading-gate': () => 'Operator Trading Gate — the SINGLE rule · no trades (paper or live) until you authorize · synthetic ADL receipts so MLs keep learning',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -177,6 +180,7 @@ const TAB_COMPONENTS = {
   'code-evo':     () => <CodeEvolutionInbox />,
   'python-coach': () => <PythonCoach />,
   'alpha-kb':     () => <AlphaKnowledgePanel />,
+  'trading-gate': () => <TradingGate />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,

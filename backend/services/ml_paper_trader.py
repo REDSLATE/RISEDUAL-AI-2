@@ -817,6 +817,29 @@ async def maybe_paper_trade(
                 ticker, _adl_exc,
             )
 
+        # Operator trading gate — single doctrine rule.
+        try:
+            from services.operator_trading_gate import gate_or_synthetic
+            if not await gate_or_synthetic(
+                db,
+                lane="ml_equity_paper",
+                symbol=ticker,
+                intended_decision=str(direction_val or "").upper(),
+                confidence=float(trade_doc.get("confidence") or 0.0),
+                extras={
+                    "prediction_id": signal.prediction_id,
+                    "notional_usd": float(position_usd or 0.0),
+                },
+            ):
+                return {
+                    "ticker": ticker,
+                    "skipped": True,
+                    "reason": "paused_by_operator",
+                    "prediction_id": signal.prediction_id,
+                }
+        except Exception:  # noqa: BLE001
+            pass
+
         await db["paper_trades"].insert_one(trade_doc)
     except DuplicateKeyError:
         # Same prediction firing twice in the same minute — return

@@ -33,8 +33,9 @@ Hard contract (and corresponding test names)
    ``services.prediction_tracker.canonical_ai_dir`` before any
    downstream lookup or boost.
    (``test_unknown_direction_does_not_get_positive_boost``)
-3. ``HOLD`` and ``UNKNOWN`` cannot receive a positive
-   confidence boost from memory win rate.
+3. ``HOLD`` and ``UNKNOWN`` are not awarded positive confidence
+   boosts from memory win rate (training-rail to keep gradeable
+   signals honest — NOT an inter-ML communication block).
    (``test_hold_does_not_get_positive_boost``)
 4. The total delta between ``adjusted_confidence`` and the input
    ``base_confidence`` is bounded to ``[-0.15, +0.15]``.

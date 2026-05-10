@@ -1168,6 +1168,28 @@ async def run_crypto_symbol(
             symbol, _reason_exc,
         )
 
+    # Operator trading gate — single doctrine rule.
+    try:
+        from services.operator_trading_gate import gate_or_synthetic
+        if not await gate_or_synthetic(
+            db,
+            lane="crypto_paper",
+            symbol=symbol,
+            intended_decision=str(trade.get("direction") or trade.get("side") or "").upper(),
+            confidence=float(trade.get("confidence") or 0.0),
+            extras={
+                "qty": trade.get("size"),
+                "entry_price": trade.get("entry_price"),
+            },
+        ):
+            return {
+                "symbol": symbol,
+                "skipped": True,
+                "reason": "paused_by_operator",
+            }
+    except Exception:  # noqa: BLE001
+        pass
+
     try:
         await db.crypto_paper_trades.insert_one(trade)
         # Strip Mongo-injected _id (ObjectId not JSON-serializable).

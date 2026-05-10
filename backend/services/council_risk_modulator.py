@@ -21,7 +21,7 @@ Inputs: Commander action + risk_multiplier, Council action + confidence,
     |------------------|-------------------------|-----------------|
     | (modulator off)  | no change               | —               |
     | (tier closed)    | no change               | —               |
-    | Commander HOLD   | no change               | — (cannot promote) |
+    | Commander HOLD   | no change               | — (advisory only)  |
     | Same direction   | × 1.10                  | cap at 1.25     |
     | Opposite + ≥0.7  | × 0.50                  | floor at 0.50   |
     | Opposite + <0.7  | no change               | —               |

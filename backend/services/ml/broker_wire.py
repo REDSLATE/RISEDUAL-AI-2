@@ -182,8 +182,15 @@ async def run_broker_wire(
         gate2_broker_live = _broker_live_order_flag()
         gate3_legacy = _legacy_live_execution_flag()
         gate4_eligible, gate4_state = await _kanban_eligible(db, lane)
+        # Gate 0 — Operator master authorization (the single rule).
+        try:
+            from services.operator_trading_gate import is_authorized
+            gate0_operator = await is_authorized(db)
+        except Exception:  # noqa: BLE001
+            gate0_operator = False
 
         gates = {
+            "gate0_operator_authorization": gate0_operator,
             "gate1_enforce_flag": gate1_enforce,
             "gate2_broker_live_order_enabled": gate2_broker_live,
             "gate3_legacy_live_execution": gate3_legacy,
@@ -193,6 +200,7 @@ async def run_broker_wire(
 
         all_gates_open = (
             upstream_clear
+            and gate0_operator
             and gate1_enforce
             and gate2_broker_live
             and gate3_legacy

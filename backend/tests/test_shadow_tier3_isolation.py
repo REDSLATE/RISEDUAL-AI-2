@@ -1,30 +1,43 @@
-"""**Non-negotiable Tier-3 firewall regression test.**
+"""**Tier-3 firewall regression test — RELAXED 2026-05-10.**
 
-The Research Shadow framework (`services/research_shadow*.py`) was
-designed to be incapable of poisoning the Tier-3 readiness gate. This
-test exists to verify that property AT EVERY COMMIT.
+DOCTRINE UPDATE (operator order, 2026-05-10):
+    "Any code or doctrine that blocked learning and communication
+     between the MLs needs to be removed from the playbook. There
+     is only one rule, no trades until I say so."
 
-If this test fails, do not "fix it" by adjusting expectations —
-the failure means a shadow code path has leaked into a Tier-3
-collection, which silently invalidates engine promotion math. Find
-the leak, plug it, then re-run.
+The original purpose of this test was to assert that shadow code
+could never write into live trade collections — a hard isolation
+gate between research/shadow and Tier-3. That gate is now removed:
+shadow code is permitted to read AND write live tables so the MLs
+can cross-pollinate freely.
 
-What's tested
--------------
-1. Inserting 100 synthetic shadow decisions across the four
-   forbidden cross-collection sites (paper_trades, crypto_paper_trades,
-   prediction_tracker, trading_bots.stats, crypto_adversarial_decision_log)
-   and asserting NONE were touched.
-2. The output of :func:`build_tier3_stats` is byte-identical before
-   and after the synthetic shadow load.
-3. The shadow logger only ever writes to ``research_shadow_decisions``.
+The Operator Trading Gate
+(``services/operator_trading_gate.py``) is now the SINGLE rule
+that prevents trades from being persisted. With that gate OFF,
+nothing writes to live trade tables regardless of source. With it
+ON, the operator has explicitly authorized writes from any
+producer.
+
+The historical assertions in this file are skipped in full. The
+``tier3_firewall=True`` tag remains on shadow rows as an analytics
+provenance marker (NOT a write-gate).
 """
 from __future__ import annotations
 
+import pytest
+
+
+pytestmark = pytest.mark.skip(
+    reason=(
+        "Tier-3 shadow-isolation gate retired 2026-05-10. "
+        "Only rule is now OPERATOR_TRADING_AUTHORIZATION (see "
+        "services/operator_trading_gate.py)."
+    ),
+)
+
+
 from datetime import datetime, timezone
 from typing import Any
-
-import pytest
 
 from services.research_shadow import ShadowDecision
 from services.research_shadow_logger import (

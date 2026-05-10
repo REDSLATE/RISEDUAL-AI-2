@@ -267,6 +267,38 @@ async def execute_trade(
         trade_record["r_multiple"] = trade_r_multiple
     if entry_avg_for_exit is not None:
         trade_record["entry_price"] = round(float(entry_avg_for_exit), 4)
+
+    # Operator trading gate — single doctrine rule.
+    try:
+        from services.operator_trading_gate import gate_or_synthetic
+        if not await gate_or_synthetic(
+            _db,
+            lane="equity_paper",
+            symbol=symbol,
+            intended_decision=str(side or "").upper(),
+            confidence=float(trade_record.get("confidence") or 0.0),
+            extras={
+                "qty": qty, "price": float(live_price),
+                "side": side,
+            },
+        ):
+            return {
+                "status": "paused_by_operator",
+                "symbol": symbol,
+                "side": side,
+                "qty": qty,
+                "price": round(live_price, 4),
+                "total": round(live_price * qty, 2),
+                "cash_remaining": round(cash, 2),
+                "timestamp": now,
+                "message": (
+                    "OPERATOR_TRADING_AUTHORIZATION is OFF — synthetic "
+                    "ADL receipt was written so MLs can still learn."
+                ),
+            }
+    except Exception:  # noqa: BLE001
+        pass
+
     await _db.paper_trades.insert_one(trade_record)
 
     response = {

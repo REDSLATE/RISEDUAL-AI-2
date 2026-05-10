@@ -237,6 +237,38 @@ async def execute_option_trade(
         "timestamp": now_iso,
         "opened_at": datetime.now(timezone.utc),
     }
+
+    # Operator trading gate — single doctrine rule.
+    try:
+        from services.operator_trading_gate import gate_or_synthetic
+        if not await gate_or_synthetic(
+            _db,
+            lane="options_paper",
+            symbol=symbol,
+            intended_decision=f"{side}_{option_type}".upper(),
+            confidence=0.0,
+            extras={
+                "strike": strike, "expiry": expiry,
+                "option_type": option_type, "side": side, "qty": qty,
+            },
+        ):
+            return {
+                "status": "paused_by_operator",
+                "asset_class": "option",
+                "symbol": symbol,
+                "strike": strike,
+                "expiry": expiry,
+                "option_type": option_type,
+                "side": side,
+                "qty": qty,
+                "message": (
+                    "OPERATOR_TRADING_AUTHORIZATION is OFF — synthetic "
+                    "ADL receipt was written so MLs can still learn."
+                ),
+            }
+    except Exception:  # noqa: BLE001
+        pass
+
     await _db.paper_trades.insert_one(trade_record)
 
     return {

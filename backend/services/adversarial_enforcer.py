@@ -7,8 +7,16 @@ Purpose:
 Core invariants:
     1. Low dissent means low conviction.
     2. Contradictory high-confidence agents force HOLD unless Commander override is valid.
-    3. HOLD cannot be promoted into BUY/SELL by this layer.
+    3. HOLD is not auto-promoted into BUY/SELL by this layer (sanity rail,
+       not an inter-ML communication block — the MLs still see each other's
+       signals; this layer simply requires conviction before it leaves HOLD).
     4. The enforcer emits structured reasons for audit/proof-chain logging.
+
+Note (operator order, 2026-05-10): the ONLY hard authorization rule
+in this codebase is now ``services/operator_trading_gate.py``. The
+sanity rails in this module are advisory consistency checks, not
+inter-ML isolation. MLs may freely learn from and cross-reference
+each other's outputs.
 """
 
 from __future__ import annotations
