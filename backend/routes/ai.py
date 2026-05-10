@@ -119,6 +119,21 @@ async def chat(
         await _ensure_session(sessionId, user)
         memory_context = await _get_memory_context(user)
 
+        # Alpha Python Knowledge Base — opt-in via "/py <question>"
+        # prefix. Strips the prefix and prepends retrieved chunks
+        # to memory_context. Never raises. The KB is firewalled
+        # from execution paths — chat consults it read-only.
+        kb_meta = None
+        try:
+            from services.alpha_knowledge.chat_hook import (
+                maybe_expand_with_python_kb,
+            )
+            message, memory_context, kb_meta = await maybe_expand_with_python_kb(
+                db, message, memory_context,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.warning(f"alpha_knowledge chat hook skipped: {exc}")
+
         is_portfolio_query = user and PORTFOLIO_KEYWORDS.search(message) and not image_base64
         if is_portfolio_query:
             try:
@@ -166,6 +181,8 @@ async def chat(
         response = {"response": assistant_text, "sessionId": sessionId, "provider": provider_meta}
         if tools_used:
             response["tools_used"] = tools_used
+        if kb_meta:
+            response["alpha_knowledge"] = kb_meta
         return response
     except HTTPException:
         raise

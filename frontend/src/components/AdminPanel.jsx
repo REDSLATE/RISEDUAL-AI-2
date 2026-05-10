@@ -38,6 +38,7 @@ import BulkReplayPanel from './admin/BulkReplayPanel';
 import PatentJCard from './admin/PatentJCard';
 import CodeEvolutionInbox from './admin/CodeEvolutionInbox';
 import PythonCoach from './admin/PythonCoach';
+import AlphaKnowledgePanel from './admin/AlphaKnowledgePanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -88,6 +89,7 @@ const TAB_GROUPS = [
       { id: 'patent-j',      label: 'Patent J',  icon: Activity },
       { id: 'code-evo',      label: 'Code Evo',  icon: ShieldCheck },
       { id: 'python-coach',  label: 'Python Coach', icon: FileCode },
+      { id: 'alpha-kb',      label: 'Alpha KB',  icon: Brain },
       { id: 'bulk-replay',   label: 'Bulk Replay', icon: Upload },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
@@ -135,6 +137,7 @@ const TAB_SUBTITLES = {
   'patent-j':     () => 'Patent J — confidence calibration reliability · isotonic post-hoc mapping · observation only',
   'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
   'python-coach': () => 'Python Coach — lesson plans + AST review · firewalled from execution & code-evolution gate',
+  'alpha-kb':     () => 'Alpha Python Knowledge Base — read-only corpus consulted via /py prefix in chat · firewalled from execution',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -173,6 +176,7 @@ const TAB_COMPONENTS = {
   'patent-j':     () => <PatentJCard />,
   'code-evo':     () => <CodeEvolutionInbox />,
   'python-coach': () => <PythonCoach />,
+  'alpha-kb':     () => <AlphaKnowledgePanel />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,

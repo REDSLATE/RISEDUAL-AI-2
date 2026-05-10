@@ -30,7 +30,57 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
 
-### Python Coach v0 — Alpha's Learning Surface (2026-05-10)
+### Alpha Python Knowledge Base v0 (2026-05-10)
+
+**Read-only Python corpus the runtime consults via `/py` chat prefix.** Sourced live from `docs.python.org`. Firewalled from execution + the Code Evolution gate.
+
+**Module layout** (`services/alpha_knowledge/`):
+- `schemas.py` — Pydantic models. `KnowledgeChunk` carries `excluded_from_code_gate_inputs=True` (a future patch-risk classifier MUST honour this flag).
+- `seed_manifest.py` — 82-URL static manifest covering full Python language reference (10), library reference essentials (57), tutorial chapters (8), and HOWTOs (7).
+- `chunker.py` — pure HTML→text pipeline (`_TextExtractor` strips nav/script/style/footer, emits `\n\n` on block-level closings) → paragraph-aware chunker (target 1200 chars, 150-char overlap).
+- `ingest.py` — async fetch+chunk+upsert. 4-way concurrency, 12s per-URL timeout. Idempotent on `chunk_id` (sha256 of `source_url::chunk_index`). Creates Mongo `$text` index + per-category index on first run. Single fetch failure never aborts the run.
+- `retrieval.py` — `$text`-index search ordered by `textScore`. Caps at 20 results. Returns `{results, total_corpus_size}`. Optional category filter.
+- `chat_hook.py` — `maybe_expand_with_python_kb(db, message, memory_context)` detects `/py <question>`, retrieves top-5 chunks, prepends a `Python knowledge (Alpha KB):` block to memory_context. Strips prefix even on retrieval failure so the LLM still gets the question.
+- `api.py` — owner-only:
+  - `GET /api/admin/alpha-knowledge/status` → corpus size, per-category breakdown, last_ingest_at
+  - `GET /api/admin/alpha-knowledge/manifest` → URL list + per-category counts
+  - `POST /api/admin/alpha-knowledge/ingest` → run full or filtered ingest
+  - `GET /api/admin/alpha-knowledge/retrieve?q=…` → ranked chunks
+
+**Chat wiring** (`routes/ai.py`): `chat_endpoint` calls `maybe_expand_with_python_kb` BEFORE the LLM. When triggered, the response carries an `alpha_knowledge` block: `{consulted, results_count, total_corpus_size, sources: [{title, url, category, score}]}`. Never raises — failures are absorbed and chat falls back to vanilla.
+
+**Frontend** (`components/admin/AlphaKnowledgePanel.jsx`): new "Alpha KB" tab in AdminPanel Insights.
+- 4 stat tiles (total chunks, sources, manifest URL count, schema version).
+- Per-category coverage strip (color-coded pills).
+- "Run full ingest" button with live summary (sources fetched / failed / chunks written).
+- Search test panel — paste a query, see top-8 ranked chunks with `score · #idx` and category pills.
+- Footer reminder: chat prefix is `/py <question>`.
+
+**Production validation (2026-05-10)**:
+- 82 URLs / 0 failures / **3,734 chunks** ingested live (language_ref 448, library_ref 2791, tutorial 212, howto 283).
+- `GET /retrieve?q=asyncio+task+gather` → 4.16 textScore on the canonical asyncio page.
+- `POST /chat` with `/py How do I use functools.lru_cache for memoization?` → GPT-5.2 returned a complete answer; response carried `alpha_knowledge.sources` listing 5 functools chunks (scores 4.0 → 2.66).
+- 583 → **586 routes** (4 new admin endpoints + the chat hook).
+- Test count: **3224 / 3224 passing** (3199 → 3224, +25 new alpha_knowledge_v0 tests).
+
+**Doctrine firewalls** (`tests/test_alpha_knowledge_v0.py`, **25 tests**):
+1. AST-based scan: every coach module fails CI if it imports `services.code_evolution`, broker, or execution paths.
+2. AST-based scan: every module fails CI on `exec()`, `eval()`, builtin `compile()`, `os.system`, `subprocess.{run,Popen,call,check_call,check_output}`. (Substring-naive checks would false-positive on docs URLs and `re.compile` — AST chain resolution avoids both.)
+3. Bidirectional isolation: `code_evolution` package fails CI if any file references "alpha_knowledge".
+4. `KnowledgeChunk.excluded_from_code_gate_inputs` defaults `True` — pinned by schema-construction test.
+5. Chat hook: prefix detection, prefix stripping, exception-swallowing on retrieval failure.
+6. Retrieval: empty query short-circuits; results carry score from `$meta:"textScore"`.
+7. Chunker: HTML→text strips nav/script, emits paragraph breaks; chunks stay above 200 chars; chunk_id deterministic.
+8. All 4 endpoints invoke `_require_owner(request)` (static check).
+
+**Authority-boundary invariants preserved**:
+- KB is read-only at the data path (no API mutation surface beyond ingest).
+- KB is firewalled from `code_evolution` (bidirectional disjoint).
+- KB chunks tagged `excluded_from_code_gate_inputs: True`.
+- Chat consult is opt-in (`/py` prefix) — not auto-on.
+- Operator-only at the API layer.
+
+### Python Coach v0 — Operator Learning Surface (2026-05-10)
 
 Operator-facing Python learning module. Turns a plain-English goal into a structured lesson plan via the existing `AIService` (Emergent Universal Key) and statically reviews pasted code via Python's `ast`. **Never executes user code.**
 
