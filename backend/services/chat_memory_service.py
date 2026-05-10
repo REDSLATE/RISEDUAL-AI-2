@@ -59,16 +59,23 @@ async def clear_all_memories(user_id: str) -> int:
 async def save_memory(user_id: str, content: str, category: str = "general", source_session: str = "") -> str:
     """Save a single memory entry.
 
-    As of 2026-05-10, every chat memory passes through the Shelly
-    doctrine stamper so it carries the same 6 mandatory fields
-    every other durable memory in the runtime carries
-    (``id`` / ``event_date`` / ``event_date_ordinal`` /
-    ``regime_status`` / ``regime_label`` / ``created_at`` /
-    ``embedding_version``). Destination collection unchanged —
-    existing readers of ``chat_memories`` keep working.
+    Doctrine flow (2026-05-12, Shelly Doctrine v2):
+
+    1. **Chat-projection write** — apply_doctrine_stamps + insert into
+       ``chat_memories`` so the existing user-scoped UI keeps working
+       (toggle, list, delete). This is the projection callers read.
+    2. **Canonical perception** — flow the same content through
+       ``perceive(source="chat")`` so the source-of-truth Shelly
+       record lands in ``shelly_memories`` with the full doctrine
+       stamps. ``perceive()`` never raises — a Shelly failure
+       routes to the malformed-quarantine bin instead of breaking
+       the chat write.
+
+    Both writes happen unconditionally: the chat UI is the
+    projection, Shelly is the canonical scribe.
     """
     import uuid
-    from services.shelly_memory import apply_doctrine_stamps
+    from services.shelly_memory import apply_doctrine_stamps, perceive
     memory_id = f"mem_{uuid.uuid4().hex[:12]}"
     raw = {
         "id": memory_id,
@@ -85,6 +92,26 @@ async def save_memory(user_id: str, content: str, category: str = "general", sou
     }
     doc = apply_doctrine_stamps(raw)
     await db.chat_memories.insert_one(doc)
+
+    # Doctrine v2 — canonical Shelly record. Wrapped because a Shelly
+    # hiccup must never break a user-facing chat write; perceive()
+    # itself doesn't raise but the import / db handle resolution
+    # could in pathological cases.
+    try:
+        await perceive(
+            db,
+            payload={"text": content},
+            source="chat",
+            metadata={
+                "user_id": user_id,
+                "category": category,
+                "source_session": source_session,
+                "chat_memory_id": memory_id,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat_memory: shelly perception tee failed: %s", exc)
+
     return memory_id
 
 

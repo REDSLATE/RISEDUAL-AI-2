@@ -379,19 +379,35 @@ async def save_regime(regime: dict) -> str:
     # ::normalize_confidence for the single source of truth.
     from services.prediction_tracker import normalize_confidence
 
-    # Mongo→Chroma sync hardening (Apr 30, 2026):
-    # Coerce metadata to the primitive types ChromaDB accepts
-    # (str/int/float/bool) so a tz-naive ``datetime`` round-tripped
-    # through Mongo can't sneak into a metadata field and corrupt
-    # the upsert. Specifically ``date``: callers historically passed
-    # ``mongo_doc.get("timestamp", "")[:10]`` which produced a
-    # TypeError on datetime fields and an empty string on missing
-    # fields — both swallowed by the broad except, both leading to
-    # phantom rows or skipped saves.
+    # Date pipeline migration (2026-05-12, Shelly Doctrine v2):
+    # The historical pipeline used ``to_iso_date(regime.get("date"))``
+    # with a today() fallback. That helper had three subtle gotchas
+    # — naive vs aware datetimes, ``Z`` suffix not normalized, and
+    # silent acceptance of garbage strings as raw fallthrough.
+    # ``_normalize_event_date`` is the single boundary normalizer
+    # for the whole runtime: every input shape collapses to UTC
+    # ``YYYY-MM-DD``, garbage raises ``ValueError``. We catch the
+    # raise here and fall back to today's UTC date so save_regime
+    # stays non-fatal for live feeds (the upstream contract is
+    # "never block a market regime write on a malformed date —
+    # log and continue"). Shelly doctrine: the canonical record
+    # in ``shelly_memories`` is also stamped via the perception
+    # tee below, so even malformed inputs leave a traceable trail.
+    from services.shelly_memory import (
+        _normalize_event_date,
+        apply_doctrine_stamps,
+        perceive,
+    )
     coerced_symbol = str(regime.get("symbol") or "UNKNOWN").upper()
-    coerced_date = to_iso_date(regime.get("date")) or datetime.now(
-        timezone.utc
-    ).strftime("%Y-%m-%d")
+    try:
+        coerced_date = _normalize_event_date(regime.get("date"))
+    except ValueError as exc:
+        logger.warning(
+            "[market_memory] normalize_event_date rejected %r (%s) — "
+            "falling back to today; payload routed to perception tee",
+            regime.get("date"), exc,
+        )
+        coerced_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     coerced_outcome = str(regime.get("outcome") or "pending")
 
     metadata = {
@@ -422,14 +438,28 @@ async def save_regime(regime: dict) -> str:
     logger.info(f"Saved regime for {metadata['symbol']} on {metadata['date']} (id={doc_id[:8]})")
 
     if _db is not None:
+        # Doctrine v2: apply Shelly stamps to the log document so
+        # ``market_memory_log`` rows carry the same MongoDB-standard
+        # labels (id / event_date / event_date_ordinal /
+        # regime_status / regime_label / created_at /
+        # embedding_version) as canonical ``shelly_memories`` rows.
+        # This closes the labeling parity gap — every collection
+        # Shelly touches now speaks the same metadata vocabulary.
+        log_doc = apply_doctrine_stamps({
+            "regime": regime,
+            "text": text,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "metadata": {
+                "event_date": coerced_date,
+                "symbol": coerced_symbol,
+                "outcome": coerced_outcome,
+                "source": "market_feed",
+            },
+        })
         try:
             await _db.market_memory_log.update_one(
                 {"_id": doc_id},
-                {"$set": {
-                    "regime": regime,
-                    "text": text,
-                    "saved_at": datetime.now(timezone.utc).isoformat(),
-                }},
+                {"$set": log_doc},
                 upsert=True,
             )
         except Exception as e:
@@ -439,6 +469,33 @@ async def save_regime(regime: dict) -> str:
                 "context": "market_memory",
                 "note": "MongoDB memory log failed",
             })
+
+        # Doctrine v2: canonical perception tee. Every regime save
+        # also lands as a doctrine-labeled record in
+        # ``shelly_memories`` via ``perceive(source="market_feed")``.
+        # ``perceive()`` itself never raises — but the import /
+        # network resolution path can, so we guard. The tee is
+        # idempotent enough for our purposes (Shelly uses a fresh
+        # UUID per perception, so duplicates manifest as separate
+        # rows rather than corruption — acceptable trade for a
+        # canonical paper trail).
+        try:
+            await perceive(
+                _db,
+                payload={"text": text},
+                source="market_feed",
+                metadata={
+                    "event_date": coerced_date,
+                    "symbol": coerced_symbol,
+                    "outcome": coerced_outcome,
+                    "regime_doc_id": doc_id,
+                    "prediction_id": regime.get("prediction_id"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[market_memory] shelly perception tee failed: %s", exc,
+            )
 
     return doc_id
 

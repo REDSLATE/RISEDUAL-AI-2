@@ -125,6 +125,29 @@ Per operator directive (2026-05-12): *"Shelly is the scribe and MongoDB is the s
   - `count_by_regime` exposes `{active, legacy, total, malformed}`.
   - `list_malformed(min_doc_number=3)` returns rows in arrival order, properly filtered.
 
+### 🔌 Doctrine v2 Wiring — chat_memory + market_memory through perceive() (2026-05-12)
+
+Per operator directive: *"Wire chat_memory_service and market_memory_service ingest paths to flow through perceive() so all sourced information is doctrine-labeled."*
+
+**chat_memory_service.save_memory** — now writes BOTH:
+1. **Chat-projection** to `chat_memories` (existing UI contract preserved — toggle, list, delete keep working) with `apply_doctrine_stamps`.
+2. **Canonical Shelly record** via `perceive(source="chat", metadata={user_id, category, source_session, chat_memory_id})` → lands in `shelly_memories` with full doctrine.
+
+The Shelly tee is wrapped in try/except — a Shelly outage cannot break the user-facing chat write.
+
+**market_memory_service.save_regime** — three changes:
+1. **Date pipeline migration**: replaced `to_iso_date(regime.get("date"))` with `_normalize_event_date()` (Shelly's boundary normalizer). Now full-ISO inputs like `"2024-03-15T23:30:00-05:00"` correctly collapse to UTC date `"2024-03-16"`. Garbage dates raise ValueError, which is caught and falls back to today (live-feed contract preserved — `save_regime` never blocks on a malformed date).
+2. **`market_memory_log` doctrine stamps**: log rows now carry `apply_doctrine_stamps` labels (`id` / `event_date` / `event_date_ordinal` / `regime_status` / `regime_label` / `created_at` / `embedding_version` / `metadata.source="market_feed"`). Closes the labeling parity gap — every collection Shelly touches speaks the same vocabulary.
+3. **Canonical perception tee**: every regime save also produces a `perceive(source="market_feed")` record in `shelly_memories` with `metadata={event_date, symbol, outcome, regime_doc_id, prediction_id}`. Wrapped in try/except.
+
+**`_make_id` fallback path** — still uses `to_iso_date` for hash-key stability (the legacy v1 pre-prediction-id key cannot change without invalidating the entire ChromaDB dedupe contract).
+
+**Tests** (9 new, in `tests/test_shelly_doctrine_v2_wiring.py`):
+- chat: dual-write to both collections; canonical record carries `source="chat"` + `chat_memory_id`; doctrine stamps on canonical record; resilient to perceive() failure.
+- market: tz-aware ISO timestamps coerce to UTC date end-to-end; `market_memory_log` carries full doctrine stamps; perception tee creates canonical record; garbage `date` falls back to today (logged warning) with Shelly tee still recording the event; perceive() failure does NOT block the primary ChromaDB + log writes; naive datetimes assume UTC.
+
+**Backend regression**: **3296 / 3296 passing** (was 3287; +9 wiring tests). 597 routes, no errors. Backend hot-reloaded successfully.
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.
