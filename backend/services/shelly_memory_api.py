@@ -144,3 +144,93 @@ async def malformed_endpoint(
         db, limit=limit, min_doc_number=min_doc_number,
     )
     return {"rows": rows, "count": len(rows)}
+
+
+class PromoteRequest(BaseModel):
+    """Operator-submitted correction for a malformed doc.
+
+    Either ``corrected_payload`` (preferred — operator has fixed the
+    issue, e.g. supplied a valid ``event_date``) or ``use_raw=True``
+    (re-attempt perception on the original raw_payload as-is, useful
+    after upstream fixes to ``_normalize_event_date``).
+    """
+    corrected_payload: Optional[object] = None
+    use_raw: bool = False
+    source: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description=(
+            "Override the original source label. Defaults to the "
+            "malformed row's source if omitted."
+        ),
+    )
+    metadata: Optional[dict] = None
+
+
+@router.post("/malformed/{doc_number}/promote")
+async def promote_malformed_endpoint(
+    doc_number: int,
+    body: PromoteRequest,
+    request: Request,
+):
+    """Re-perceive a quarantined doc with operator-supplied corrections.
+
+    Doctrine: the malformed row stays in ``shelly_legacy_malformed``
+    (numbered audit trail is permanent) — promotion does NOT delete.
+    Instead, on a successful memory-lane outcome, we stamp
+    ``promoted_to_memory_id`` + ``promoted_at`` on the malformed row
+    so the audit trail shows what got rescued and when.
+
+    A re-perception that still lands in the malformed lane (e.g.
+    operator submitted yet another bad date) creates a NEW malformed
+    doc with its own ``doc_number`` — the original row is left
+    untouched. The audit trail is append-only.
+    """
+    await _require_owner(request)
+    db = _get_db()
+
+    # Fetch the malformed row.
+    row = await db[MALFORMED_COLLECTION].find_one(
+        {"doc_number": int(doc_number)}, {"_id": 0},
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"malformed doc #{doc_number} not found",
+        )
+
+    # Resolve payload + source.
+    if body.use_raw or body.corrected_payload is None:
+        payload = row.get("raw_payload")
+    else:
+        payload = body.corrected_payload
+    source = body.source or row.get("source") or "unknown"
+
+    result = await do_perceive(
+        db,
+        payload=payload,
+        source=source,
+        metadata=body.metadata,
+    )
+
+    # Stamp the malformed row on successful memory-lane outcome so
+    # the operator UI can show "✓ promoted" next to the row.
+    if result.get("lane") == "memory":
+        memory_id = (result.get("doc") or {}).get("id")
+        try:
+            from datetime import datetime, timezone
+            await db[MALFORMED_COLLECTION].update_one(
+                {"doc_number": int(doc_number)},
+                {"$set": {
+                    "promoted_to_memory_id": memory_id,
+                    "promoted_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "shelly: failed to stamp promotion on malformed #%d: %s",
+                doc_number, exc,
+            )
+
+    return {"promoted_from_doc_number": int(doc_number), **result}

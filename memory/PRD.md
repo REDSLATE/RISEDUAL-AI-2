@@ -201,6 +201,34 @@ Per operator directive: *"Let me make sure Shelly is fully functional. Get rid o
 
 **Backend regression**: **3304 / 3304 passing** with all flags ACTIVE. No mutations to thresholds, no execution authority granted. Operator Trading Gate still LOCKED.
 
+### 🗂️ Malformed Quarantine Operator Panel (2026-05-11)
+
+Per operator directive: *"Malformed documents, yes"* — closing the operator-side loop on the Shelly Doctrine v2 quarantine bin.
+
+**Backend** — new endpoint:
+- `POST /api/admin/shelly-memory/malformed/{doc_number}/promote` — accepts `{corrected_payload?, use_raw?, source?, metadata?}`. Reads the malformed row by doc_number, re-perceives the (corrected or original) payload, and on memory-lane success stamps the malformed row with `promoted_to_memory_id` + `promoted_at`.
+
+**Doctrine compliance**:
+- Original malformed rows are NEVER deleted. The numbered audit trail is permanent.
+- A still-malformed re-perception creates a NEW malformed doc with its own doc_number (append-only).
+- 404 on unknown doc_number; 422 on malformed source label (Pydantic).
+
+**Frontend** — new admin panel `MalformedQuarantine.jsx`:
+- Wired into `AdminPanel.jsx` under Insights → "Shelly Quarantine" tab.
+- Live count badges: pending vs promoted.
+- Filter: `min_doc_number` cursor for pagination of large bins.
+- Expandable rows showing all 9 doctrine stamps (legacy_id / legacy_date / legacy_time / created_at / embedding_version / source / error / doc_number / raw_payload).
+- "Promote to memory" modal: pre-fills source + JSON-formatted raw_payload in an editable textarea; submits to `/promote`; refreshes list on success. Falls back to plain-text submit if JSON parse fails.
+- Visual states: amber border + "pending" tag for fresh quarantines; emerald border + "✓ promoted" badge + linked memory_id once rescued.
+
+**Tests** (4 new in `test_shelly_malformed_promote.py`):
+- Corrected payload → memory lane → stamps `promoted_to_memory_id` + `promoted_at`.
+- Source label inherits from malformed row when not overridden.
+- `use_raw=True` on still-bad payload → new malformed doc; original row untouched.
+- Unknown `doc_number` → 404-equivalent error.
+
+**Backend regression**: **3310 / 3310 passing** (was 3304; +6). Frontend lint clean. Doctrine intact — quarantine bin is now recoverable AND auditable.
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.
