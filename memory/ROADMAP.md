@@ -302,59 +302,177 @@ current live deploy queue.
 
 ### 🧠 Meta-Classifier Challenger Layer (designed 2026-05-12, parked)
 
-**Status**: design-complete (5-iteration arc with operator), implementation deferred. NOT to start until current ADL organics window completes AND operator green-lights.
+**Status**: design-complete (7-iteration arc with operator), implementation deferred. NOT to start until current ADL organics window completes AND operator green-lights.
 
-**What it is**: a second-tier adversarial layer that complements the existing prompt-driven Bull/Bear/Commander cores. Where Bull/Bear opine on *direction* under prompt, the new challengers opine on `P(majority is wrong | features)` as **calibrated binary meta-classifiers** trained against `verified_24h.correct` ground truth.
+**Final design correction (2026-05-12, v7)**: pending-row exclusion is now baked into the target-construction API itself — the function returns `(y_meta, resolved_mask)` and the caller MUST apply the mask consistently to features and predictions. Forgetting to filter pending rows is no longer a subtle bug; it's a type-shape mismatch.
 
-**Core design** (locked through 5 iterations of operator critique):
-- 4 proposers + 3 challengers. Proposers multi-class (LONG/SHORT/HOLD/NO_TRADE/UNKNOWN); challengers binary meta (`majority_wrong`: 0/1).
+**What it is**: a second-tier adversarial layer that complements the existing prompt-driven Bull/Bear/Commander cores. Where Bull/Bear opine on *direction* under prompt, the new challengers opine on `P(accepted decision was wrong | features)` as **calibrated binary meta-classifiers** trained against `verified_24h.correct` ground truth — and ONLY on rows where verification has actually settled.
+
+**The eight doctrinal invariants** (load-bearing — every iteration that hit a wall hit one of these):
+1. `verified_correct` defines the target.
+2. **Pending verification rows are excluded from training.**
+3. Proposer outputs define features only.
+4. Challenger dissent causes risk reduction or veto only.
+5. Challenger NEVER rewrites historical labels.
+6. NO_TRADE wins ties.
+7. HOLD cannot be promoted into trade.
+8. Council/Challenger may reduce/block, not boost.
+
+**Core design** (locked):
+- 4 proposers + 3 challengers. Proposers multi-class (LONG/SHORT/HOLD/NO_TRADE/UNKNOWN); challengers binary meta (`was_wrong`: 0/1).
 - All cores calibrated via `CalibratedClassifierCV(method="isotonic")` — symmetric calibration is non-negotiable.
-- Challengers use `class_weight="balanced"` (HistGradientBoostingClassifier replaces GBC so the API works). Imbalance is the silent killer.
-- Meta-target: `(majority_vote != y) & (avg_confs > 0.7) & (~verified_correct.astype(bool))` — **stationary** because locked to verified ground truth, not live proposer state.
+- Challengers use `class_weight="balanced"` (HistGradientBoostingClassifier replaces GBC so the API works). Imbalance is the silent killer — though the reframe below pushes meta-1 rate from ~10% up to ~30–50%, easing the knife-edge.
+
+**Meta-target — STATIONARY BY DEFINITION + pending-safe (v7)**:
+```python
+# adversarial_meta_target.py
+import numpy as np
+
+PENDING = "PENDING"
+RESOLVED = "RESOLVED"
+
+def build_verified_veto_target(verified_correct, verification_status):
+    """
+    RISEDUAL adversarial meta-target.
+
+    Contract:
+      * Pending rows are excluded.
+      * Resolved rows only.
+      * y_meta = 1 when the accepted decision was later proven wrong.
+      * Proposer votes/confidence are NEVER part of label construction.
+
+    Returns
+    -------
+    y_meta : np.ndarray of shape (n_resolved,)
+    resolved_mask : np.ndarray of shape (n_total,), bool
+        Caller MUST apply this mask to X and any aligned arrays
+        before passing them to the challenger fit. The mask is a
+        contract, not a hint — the y_meta length will not match the
+        original X length, so a mistake here is a shape error, not
+        a silent corruption.
+    """
+    status = np.asarray(verification_status)
+    verified = np.asarray(verified_correct)
+    resolved_mask = (status == RESOLVED)
+    if verified.dtype != bool:
+        verified = verified.astype(bool)
+    y_meta = (~verified[resolved_mask]).astype(int)
+    return y_meta, resolved_mask
+```
+The label answers ONE question: "was the accepted decision later proven wrong?" Pending rows can't be answered yet, so they're excluded from the answer set entirely. Nothing about proposers enters the label. Proposer drift cannot rewrite history. This is the load-bearing simplification — earlier iterations had `(majority_wrong) & (confident) & (~verified)`, which was non-stationary AND silently included pending rows as either-class. The corrected form removes both failure modes by API design.
+
+**Proposer state → features (NOT label)**:
+```python
+def build_challenger_features(base_X, majority_votes, avg_confs, disagreement_rate):
+    return np.column_stack([base_X, majority_votes, avg_confs, disagreement_rate])
+```
+The challenger sees proposer confidence and disagreement as *input columns*. It learns the boundary "where high-conf proposers tend to fail" from data, instead of being fed a hardcoded `TOXIC_CONFIDENCE_THRESHOLD = 0.7`. One fewer magic number in `config.py`. This is the right way to use an ML model.
+
+**Caller protocol** (mandatory):
+```python
+y_meta, resolved_mask = build_verified_veto_target(
+    verified_correct=df["verified_correct"].values,
+    verification_status=df["verification_status"].values,
+)
+X_train = challenger_features[resolved_mask]   # MUST apply mask
+challenger.fit(X_train, y_meta)
+```
+Skipping the mask application will raise a shape error, not produce wrong results silently — that's the point of the API.
+
+**Hardened majority_vote**:
+```python
+def majority_vote(preds, confs, *, n_classes, no_trade_idx):
+    if len(preds) == 0:
+        return no_trade_idx, 0.0
+    preds = np.asarray(preds, dtype=int)
+    confs = np.asarray(confs, dtype=float)
+    valid = (preds >= 0) & (preds < n_classes)
+    preds = preds[valid]
+    if preds.size == 0:
+        return no_trade_idx, 0.0
+    counts = np.bincount(preds, minlength=n_classes)
+    tied = np.flatnonzero(counts == counts.max())
+    if no_trade_idx in tied:
+        vote = no_trade_idx
+    else:
+        vote = int(tied[0])
+    avg_conf = float(np.nanmean(confs)) if confs.size else 0.0
+    if not np.isfinite(avg_conf):
+        avg_conf = 0.0
+    return vote, avg_conf
+```
+Defensive against garbage class indices (`valid` filter), NaN confidences (`np.nanmean` + `np.isfinite`), and empty input (returns `no_trade_idx`, not `-1`). **Downstream caveat**: any caller that currently branches on `-1` as a "no vote / missing data" sentinel would silently see `no_trade_idx` instead. Before adopting, `grep -rn "== -1\|!= -1" services/` for `majority_vote` consumers and reconcile.
+
 - Veto = abstain (`NO_TRADE`). No alternative-class override — challengers are meta-classifiers, they don't predict classes.
-- Threshold tuner targets **precision@dissent ≥ 0.8** (not recall, not accuracy). Computed on the current batch (current `y_meta`), not the accumulated toxic buffer.
-- Persistence guard: retrain only if disagreement on the `y_meta=1` slice exceeds `DISAGREEMENT_THRESHOLD = 0.2`. Buffer stores ONLY `y_meta=1` rows (named correctly: `toxic_samples_X`).
+- Threshold tuner targets **precision@dissent ≥ 0.8** (not recall, not accuracy). Computed as `TP / (TP + FP)` on the current resolved batch (current `y_meta`), NOT as `mean(dissent_preds == 1)` on the toxic-only buffer (which is recall in disguise).
+- Persistence guard: retrain only if disagreement on the `y_meta=1` slice (of resolved rows) exceeds `DISAGREEMENT_THRESHOLD = 0.2`. Buffer stores ONLY resolved `y_meta=1` rows.
 - Mode-vote tie-break: `np.bincount` (deterministic, dependency-free) → prefer `NO_TRADE_IDX` else smallest class index. `NO_TRADE_IDX = CLASSES.index("NO_TRADE")` — symbolic, not hardcoded.
 
 **Integration map** (rails that already exist in Alpha):
 - Training data → `chevelle_memory_labeler.trainable_only()` (firewall — non-negotiable; quarantined rows would poison the meta-target).
-- Ground truth → `prediction_tracker.verified_24h.correct`.
+- Ground truth → `prediction_tracker.verified_24h.correct`. `verification_status` derived from `verified_24h is not None`.
 - Calibration → `services/calibration_layer.apply()` (existing isotonic pipeline, append-only).
 - Promotion ladder → `services/adversarial_promotion_gate` (existing `shadow → risk_only → veto → full`; 20 closed rows = first promotion threshold, same as Bull/Bear).
 - Veto authority precedent → `fast_veto_layer.FAST_VETO_CAN_APPROVE = False` (hard-coded doctrine; new module mirrors it).
 - Operator UI → new admin tab + reuse `calibration_kanban`.
 
-**Validation plan** (synthetic-first, then organic):
-- Class imbalance handling: challengers must dissent at the natural ~10% rate, not collapse to "never veto."
-- Precision-vs-recall semantics: assert that precision is computed as `TP / (TP + FP)` on the current batch, NOT as `mean(dissent_preds == 1)` on the toxic-only buffer (which is recall in disguise).
-- 24h lag contract: documented in trainer docstring; `verified_correct` must come from T-24h or earlier.
+**Validation plan**:
+- **Pending-row exclusion** (v7 load-bearing test):
+  ```python
+  def test_pending_rows_are_excluded_from_meta_training():
+      verified_correct = np.array([True, False, False, True])
+      verification_status = np.array(["RESOLVED", "PENDING", "RESOLVED", "PENDING"])
+      y_meta, mask = build_verified_veto_target(
+          verified_correct=verified_correct,
+          verification_status=verification_status,
+      )
+      assert mask.tolist() == [True, False, True, False]
+      assert y_meta.tolist() == [0, 1]
+  ```
+- **Proposer drift invariance** (v6 test, still required):
+  ```python
+  def test_y_meta_invariant_to_proposer_drift():
+      verified_correct = np.array([True, False, True, False, False])
+      verification_status = np.array(["RESOLVED"] * 5)
+      y_meta_v1, _ = build_verified_veto_target(verified_correct, verification_status)
+      # Simulate completely different proposer outputs (function never sees them).
+      _proposer_votes_v1 = np.array([0, 1, 2, 3, 0])  # noqa: F841
+      _proposer_votes_v2 = np.array([3, 3, 3, 1, 2])  # noqa: F841
+      y_meta_v2, _ = build_verified_veto_target(verified_correct, verification_status)
+      assert np.array_equal(y_meta_v1, y_meta_v2)
+  ```
+- Class imbalance handling: with the v6 reframe, meta-1 rate is ~30–50% (not ~10%); challengers should learn naturally, not collapse to "never veto." Test on synthetic imbalanced data.
+- Precision-vs-recall semantics: assert precision is computed as `TP / (TP + FP)` on the current resolved batch.
 - Boolean dtype: `verified_correct.astype(bool)` before `~` (int arrays trigger bitwise NOT).
-- Deterministic tie-breaks: `[LONG, LONG, SHORT, SHORT]` → `NO_TRADE`.
-- **Proposer drift invariance** (load-bearing test): refit proposers on perturbed data; assert `((y_meta == 1) → (~verified_correct)).all()` and that the *gate signal* (`~verified_correct`) is bit-identical across proposer redraws. Do NOT assert `y_meta_v1 == y_meta_v2` directly — `y_meta` is allowed to vary with proposer skill; the *defining signal* is what must be stationary.
-- Minimum sample size gate: don't train a challenger until the toxic buffer holds ≥ 100 verified positives. Below that, fall back to no veto (or existing Bull/Bear). Aligned with `adversarial_promotion_gate`'s existing 20-row first-promotion threshold but stricter for the challenger fit step.
+- Deterministic tie-breaks: `[LONG, LONG, SHORT, SHORT]` → `NO_TRADE`. Empty preds → `NO_TRADE`. Garbage class indices filtered.
+- **Mask-must-be-applied test**: pass an X array of len(verified_correct) directly to `challenger.fit(X, y_meta)` without applying `resolved_mask` — assert a `ValueError` / shape mismatch is raised. The API's contract is that misuse crashes loudly.
+- Minimum sample size gate: don't train a challenger until resolved set holds ≥ 100 rows with `verified_correct == False`. Below that, fall back to no veto (or existing Bull/Bear).
 
-**Estimated effort**: 3–5 days of careful wiring + 30–90 days organic accumulation before first shadow→risk_only promotion is statistically defensible. Front-load: 1 day reading existing prediction schema (LONG/SHORT/NO_TRADE actual storage shape) + feature assembly (currently scattered across `market_features`, regime fingerprint, macro, sentiment) before writing a line of new code.
+**Estimated effort**: 3–5 days of careful wiring + 30–90 days organic accumulation before first shadow→risk_only promotion is statistically defensible. Front-load: 1 day reading existing prediction schema (LONG/SHORT/NO_TRADE actual storage shape, `verified_24h` status semantics) + feature assembly (currently scattered across `market_features`, regime fingerprint, macro, sentiment) before writing a line of new code.
 
-**What WON'T work** (caught during the design arc):
+**What WON'T work** (caught during the design arc — preserved so a future agent doesn't re-discover them):
 - Replacing Bull/Bear with these challengers. Different ontologies — they coexist.
 - Bypassing `trainable_only()`. Firewall is doctrinal.
 - Granting direct veto authority on day one. Earned through the existing 4-phase ladder, not granted.
 - Hardcoding `3` for `NO_TRADE`. Use `CLASSES.index(...)`.
 - `scipy.stats.mode` for tie-breaks — its API changed in scipy ≥ 1.9 and returns a scalar with `keepdims=False`. Use `np.bincount`.
-- Tuning thresholds on "accuracy" — 90% imbalanced meta-target makes a never-veto challenger 90% "accurate" and 0% useful. Tune on precision@dissent, period.
-- Asserting `y_meta_v1 == y_meta_v2` after proposer drift. `y_meta` SHOULD vary with proposer skill (improving proposers → fewer toxic samples). The stationarity claim is about the *defining gate signal* (`~verified_correct`), not the meta-label set size.
+- Tuning thresholds on "accuracy" — 50%+ imbalanced meta-target makes a never-veto challenger ≥ 50% "accurate" and 0% useful. Tune on precision@dissent, period.
+- Putting proposer state into the *label* (`majority_votes != y`, `avg_confs > 0.7`). This was v5's mistake. The label depends ONLY on `verified_correct` (gated by `verification_status == RESOLVED`). Proposer state goes in as features.
+- `class_weight` on `GradientBoostingClassifier`. Not in its constructor. Use `HistGradientBoostingClassifier`, or pass `sample_weight` at fit time.
+- Treating an empty `majority_vote` as `-1` if downstream callers branch on that sentinel. Audit consumers before switching to `no_trade_idx`.
+- **Training on pending rows under any default (treating them as 0, treating them as 1, dropping silently).** Pending rows MUST be excluded by API contract — `build_verified_veto_target` returns both `y_meta` and `resolved_mask` precisely so the caller can't forget. v7's load-bearing safety property.
 
 **Why parked, not killed**:
-- Framework loop is closed; arc was productive (5 iterations each removed a real bug, not just added sophistication).
-- Honest sample-size constraint: at current verification cadence (~50–200 predictions/day, ~10% toxic rate), challenger fit needs months of organic accumulation. Building before then is premature optimization.
+- Framework loop is closed; arc was productive (7 iterations each removed a real bug or sharpened a real invariant).
+- Honest sample-size constraint: even at the looser v6 definition (any wrong RESOLVED prediction is a positive), challenger fit still needs hundreds of resolved positives before promotion is defensible.
 - The existing adversarial stack (Bull/Bear/Commander + Fast Veto + Adversarial Promotion Gate) is doing its job. This is a *second tier on top*, not a fix for a broken first tier.
 
 **Trigger conditions for moving out of P3**:
 - ADL organics window has completed (post-May 13, 2026).
-- `predictions` collection has ≥ 1000 `verified_24h.correct == False` rows with `confidence > 0.7` (i.e., ≥ 1000 verified toxic positives).
+- `predictions` collection has ≥ 1000 rows with `verified_24h` resolved (status RESOLVED, either correct True or False) — i.e., a usable training set under the v7 reframe.
 - Operator green-lights with explicit "build the meta-classifier challenger layer."
 
-**Reference docs**: design arc preserved in chat history (5 iterations between operator and agent, 2026-05-12). No code touched the repo during the design phase — intentional.
+**Reference docs**: 7-iteration design arc preserved in chat history (2026-05-12). No code touched the repo during the design phase — intentional.
 
 ---
 
