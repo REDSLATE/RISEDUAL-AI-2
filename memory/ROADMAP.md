@@ -300,6 +300,64 @@ current live deploy queue.
 
 ## P3 — Vision / strategic projects
 
+### 🧠 Meta-Classifier Challenger Layer (designed 2026-05-12, parked)
+
+**Status**: design-complete (5-iteration arc with operator), implementation deferred. NOT to start until current ADL organics window completes AND operator green-lights.
+
+**What it is**: a second-tier adversarial layer that complements the existing prompt-driven Bull/Bear/Commander cores. Where Bull/Bear opine on *direction* under prompt, the new challengers opine on `P(majority is wrong | features)` as **calibrated binary meta-classifiers** trained against `verified_24h.correct` ground truth.
+
+**Core design** (locked through 5 iterations of operator critique):
+- 4 proposers + 3 challengers. Proposers multi-class (LONG/SHORT/HOLD/NO_TRADE/UNKNOWN); challengers binary meta (`majority_wrong`: 0/1).
+- All cores calibrated via `CalibratedClassifierCV(method="isotonic")` — symmetric calibration is non-negotiable.
+- Challengers use `class_weight="balanced"` (HistGradientBoostingClassifier replaces GBC so the API works). Imbalance is the silent killer.
+- Meta-target: `(majority_vote != y) & (avg_confs > 0.7) & (~verified_correct.astype(bool))` — **stationary** because locked to verified ground truth, not live proposer state.
+- Veto = abstain (`NO_TRADE`). No alternative-class override — challengers are meta-classifiers, they don't predict classes.
+- Threshold tuner targets **precision@dissent ≥ 0.8** (not recall, not accuracy). Computed on the current batch (current `y_meta`), not the accumulated toxic buffer.
+- Persistence guard: retrain only if disagreement on the `y_meta=1` slice exceeds `DISAGREEMENT_THRESHOLD = 0.2`. Buffer stores ONLY `y_meta=1` rows (named correctly: `toxic_samples_X`).
+- Mode-vote tie-break: `np.bincount` (deterministic, dependency-free) → prefer `NO_TRADE_IDX` else smallest class index. `NO_TRADE_IDX = CLASSES.index("NO_TRADE")` — symbolic, not hardcoded.
+
+**Integration map** (rails that already exist in Alpha):
+- Training data → `chevelle_memory_labeler.trainable_only()` (firewall — non-negotiable; quarantined rows would poison the meta-target).
+- Ground truth → `prediction_tracker.verified_24h.correct`.
+- Calibration → `services/calibration_layer.apply()` (existing isotonic pipeline, append-only).
+- Promotion ladder → `services/adversarial_promotion_gate` (existing `shadow → risk_only → veto → full`; 20 closed rows = first promotion threshold, same as Bull/Bear).
+- Veto authority precedent → `fast_veto_layer.FAST_VETO_CAN_APPROVE = False` (hard-coded doctrine; new module mirrors it).
+- Operator UI → new admin tab + reuse `calibration_kanban`.
+
+**Validation plan** (synthetic-first, then organic):
+- Class imbalance handling: challengers must dissent at the natural ~10% rate, not collapse to "never veto."
+- Precision-vs-recall semantics: assert that precision is computed as `TP / (TP + FP)` on the current batch, NOT as `mean(dissent_preds == 1)` on the toxic-only buffer (which is recall in disguise).
+- 24h lag contract: documented in trainer docstring; `verified_correct` must come from T-24h or earlier.
+- Boolean dtype: `verified_correct.astype(bool)` before `~` (int arrays trigger bitwise NOT).
+- Deterministic tie-breaks: `[LONG, LONG, SHORT, SHORT]` → `NO_TRADE`.
+- **Proposer drift invariance** (load-bearing test): refit proposers on perturbed data; assert `((y_meta == 1) → (~verified_correct)).all()` and that the *gate signal* (`~verified_correct`) is bit-identical across proposer redraws. Do NOT assert `y_meta_v1 == y_meta_v2` directly — `y_meta` is allowed to vary with proposer skill; the *defining signal* is what must be stationary.
+- Minimum sample size gate: don't train a challenger until the toxic buffer holds ≥ 100 verified positives. Below that, fall back to no veto (or existing Bull/Bear). Aligned with `adversarial_promotion_gate`'s existing 20-row first-promotion threshold but stricter for the challenger fit step.
+
+**Estimated effort**: 3–5 days of careful wiring + 30–90 days organic accumulation before first shadow→risk_only promotion is statistically defensible. Front-load: 1 day reading existing prediction schema (LONG/SHORT/NO_TRADE actual storage shape) + feature assembly (currently scattered across `market_features`, regime fingerprint, macro, sentiment) before writing a line of new code.
+
+**What WON'T work** (caught during the design arc):
+- Replacing Bull/Bear with these challengers. Different ontologies — they coexist.
+- Bypassing `trainable_only()`. Firewall is doctrinal.
+- Granting direct veto authority on day one. Earned through the existing 4-phase ladder, not granted.
+- Hardcoding `3` for `NO_TRADE`. Use `CLASSES.index(...)`.
+- `scipy.stats.mode` for tie-breaks — its API changed in scipy ≥ 1.9 and returns a scalar with `keepdims=False`. Use `np.bincount`.
+- Tuning thresholds on "accuracy" — 90% imbalanced meta-target makes a never-veto challenger 90% "accurate" and 0% useful. Tune on precision@dissent, period.
+- Asserting `y_meta_v1 == y_meta_v2` after proposer drift. `y_meta` SHOULD vary with proposer skill (improving proposers → fewer toxic samples). The stationarity claim is about the *defining gate signal* (`~verified_correct`), not the meta-label set size.
+
+**Why parked, not killed**:
+- Framework loop is closed; arc was productive (5 iterations each removed a real bug, not just added sophistication).
+- Honest sample-size constraint: at current verification cadence (~50–200 predictions/day, ~10% toxic rate), challenger fit needs months of organic accumulation. Building before then is premature optimization.
+- The existing adversarial stack (Bull/Bear/Commander + Fast Veto + Adversarial Promotion Gate) is doing its job. This is a *second tier on top*, not a fix for a broken first tier.
+
+**Trigger conditions for moving out of P3**:
+- ADL organics window has completed (post-May 13, 2026).
+- `predictions` collection has ≥ 1000 `verified_24h.correct == False` rows with `confidence > 0.7` (i.e., ≥ 1000 verified toxic positives).
+- Operator green-lights with explicit "build the meta-classifier challenger layer."
+
+**Reference docs**: design arc preserved in chat history (5 iterations between operator and agent, 2026-05-12). No code touched the repo during the design phase — intentional.
+
+---
+
 ### 🟢 Approved 2026-02-08 — ready to schedule
 
 - ~~**Tech debt: refactor `trading_bot_service.execute_trade()`.**~~
