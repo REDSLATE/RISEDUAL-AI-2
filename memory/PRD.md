@@ -179,6 +179,28 @@ Three additional ingest paths now flow through Shelly perception:
 - `"news.benzinga"` — Benzinga catalyst articles
 - `"news.alpha_vantage"` — Alpha Vantage news + sentiment
 
+### 🔓 Shelly Full Functionality Unlock (2026-05-11)
+
+Per operator directive: *"Let me make sure Shelly is fully functional. Get rid of any other block that doesn't allow her to be fully there."*
+
+**Audit found three remaining gates** — all env flags defaulting to `false` and absent from `backend/.env`. With operator approval (response `a` to the audit), all three flipped to `true`:
+
+| Flag | Effect when ON | Loop Lane |
+|------|---------------|-----------|
+| `LEARNING_CORE_CONSUME_ENABLED` | Phase 3 consumer applies bounded confidence delta (±0.10) + risk dampening (×0.85 on pretell, floor 0.50) to prediction payloads | Influence |
+| `LEARNING_CORE_PERSISTENCE_ENABLED` | Regime cluster state durably written to Mongo (no longer RAM-only) | Persistence |
+| `LEARNING_CORE_REHYDRATE_ON_STARTUP` | Backend boots with replayed resolved memories from Mongo | Rehydrate |
+
+**Closed-loop state** — Shelly perceives → scribes → ingests → persists → rehydrates → influences (all bounded by the doctrine's hard caps). Trading remains **hard-stopped**: `OPERATOR_TRADING_AUTHORIZATION_ENABLED=false`. Influence is real, action is not.
+
+**Backend restart**: clean. 597 routes, no errors. Rehydrate ran (0 memories loaded — expected since persistence was OFF until this restart; Shelly starts accumulating from now).
+
+**CI invariants pinned** (`tests/test_shelly_full_functionality_invariants.py`, 2 new):
+- All six Shelly flags must be `true` in `backend/.env` — a future silent flip-off fails CI and pinpoints the broken lane.
+- `OPERATOR_TRADING_AUTHORIZATION_ENABLED` must stay `false` — the golden rule is now an explicit CI guard.
+
+**Backend regression**: **3304 / 3304 passing** with all flags ACTIVE. No mutations to thresholds, no execution authority granted. Operator Trading Gate still LOCKED.
+
 ### 📊 Counterfactual P&L Tracker (2026-05-10)
 
 Read-only "what would have traded" view layered on top of the synthetic ADL stream the Operator Trading Gate writes.
