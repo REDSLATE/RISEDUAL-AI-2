@@ -20,7 +20,7 @@ moderation, fraud detection, medical triage, ...).
 4. **Proposer outputs are features only.**
 5. **Invalid proposer outputs cannot pollute confidence.**
 6. **Unknown verification states fail closed.**
-7. **NO_TRADE wins unsafe / tied / empty cases.**
+7. **NO_TRADE wins unsafe / tied / empty cases.** ANY tie (two or more classes with the same top count) returns `no_trade_idx`, not smallest-index. A 2v2 directional split is ambiguous, not "LONG by alphabetical priority."
 8. **HOLD cannot be promoted into trade.** *(caller-level — enforced at the veto layer, not in these primitives)*
 9. **Challenger / Council may reduce or block, never boost.** *(caller-level — enforced at the authority gate)*
 

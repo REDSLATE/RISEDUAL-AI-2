@@ -17,6 +17,13 @@ DOCTRINE
   ``majority_vote`` will return that whenever the inputs don't
   unambiguously demand action.
 
+  **Stricter v8 tie-break**: any tie (two or more classes with the
+  same top count) returns ``no_trade_idx`` — NOT smallest-index of
+  the tied set. Doctrinal reasoning: a 2v2 LONG/SHORT split is
+  ambiguous, not "LONG by alphabetical priority." Asymmetric cost
+  (wrong action > wrong abstention) demands defaulting to safe
+  abstention on ALL ambiguous votes.
+
 * Invalid proposer outputs (out-of-range class indices, NaN
   confidences) are masked at the boundary. They cannot leak into the
   reported average confidence — historical bug in earlier drafts of
@@ -92,12 +99,20 @@ def majority_vote(
     contributed to ``vote``.
 
     Tie-break order:
-      1. If ``no_trade_idx`` is among the tied top classes, return it.
-      2. Otherwise return the smallest tied class index.
+      1. If there is exactly one top class (no tie), return it.
+      2. Any tie (two or more classes with the same top count) →
+         return ``no_trade_idx``.
 
-    This matches the "safe abstention wins ties" doctrine and is
-    deterministic across numpy / scipy versions (uses ``np.bincount``,
-    not ``scipy.stats.mode``).
+    This is the "stricter" v8 tie-break: NO_TRADE wins ALL ties,
+    not just ties where NO_TRADE is itself a tied candidate. The
+    doctrinal reasoning is asymmetric cost: in trading, a wrong
+    directional action costs money; abstention costs only
+    opportunity. A 2v2 LONG/SHORT split is doctrinally ambiguous
+    and must default to the safe abstention class — the previous
+    "smallest-index wins" rule silently let `CLASSES[0]` win every
+    coin-flip split, which is signal-shaped noise. Deterministic
+    across numpy / scipy versions (uses ``np.bincount``, not
+    ``scipy.stats.mode``).
     """
     # Config-typo guards — these are about call-site correctness, so
     # they raise unconditionally rather than degrading to a default.
@@ -138,7 +153,9 @@ def majority_vote(
     counts = np.bincount(preds, minlength=n_classes)
     tied = np.flatnonzero(counts == counts.max())
 
-    vote = no_trade_idx if no_trade_idx in tied else int(tied[0])
+    # Stricter v8 tie-break: ANY tie (len(tied) > 1) → NO_TRADE.
+    # Unambiguous winner (len(tied) == 1) → that class.
+    vote = no_trade_idx if len(tied) > 1 else int(tied[0])
     # confs is guaranteed finite post-mask, so plain mean is safe.
     avg_conf = float(np.mean(confs)) if confs.size else 0.0
 

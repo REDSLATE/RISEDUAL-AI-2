@@ -162,29 +162,26 @@ def test_majority_vote_simple_majority():
 
 
 def test_majority_vote_tie_resolves_to_no_trade_when_no_trade_is_candidate():
-    """Doctrine invariant 7: NO_TRADE wins ties — but per the v8
-    code contract, only when NO_TRADE is itself one of the tied
-    top classes. See ``test_majority_vote_tie_without_no_trade...``
-    for the complementary case."""
-    # 3-way tie between classes 0, 1, NO_TRADE(3) → NO_TRADE wins.
+    """Doctrine invariant 7: NO_TRADE wins ties (stricter v8 — wins
+    ALL ties). 3-way tie including NO_TRADE → NO_TRADE."""
     vote, _ = majority_vote(
         [0, 1, 3], [0.5, 0.5, 0.5], n_classes=5, no_trade_idx=3,
     )
     assert vote == 3
 
 
-def test_majority_vote_tie_without_no_trade_picks_smallest_index():
-    """Tie between two non-NO_TRADE classes → smallest index wins.
-    Deterministic across runs / platforms / numpy versions.
-
-    Doctrinal note: invariant 7 says "NO_TRADE wins tied cases" but
-    the v8 code only enforces that when NO_TRADE is itself in the
-    tie. A 2v2 directional split like [LONG, LONG, SHORT, SHORT]
-    currently resolves to LONG (smallest index), NOT NO_TRADE. If
-    that's not the intended doctrine, change the code AND this
-    test together — never just the test."""
-    vote, _ = majority_vote([0, 0, 2, 2], [0.5, 0.5, 0.5, 0.5], n_classes=5, no_trade_idx=3)
-    assert vote == 0
+def test_majority_vote_tie_without_no_trade_also_returns_no_trade():
+    """Stricter v8 tie-break: ANY tie returns NO_TRADE, even when
+    NO_TRADE isn't itself one of the tied classes. A 2v2
+    LONG/SHORT-style split is doctrinally ambiguous; the previous
+    "smallest-index wins" rule silently let CLASSES[0] win every
+    coin-flip split. Asymmetric cost (wrong action > wrong
+    abstention) demands defaulting to safe abstention on every
+    ambiguous case."""
+    vote, _ = majority_vote(
+        [0, 0, 2, 2], [0.5, 0.5, 0.5, 0.5], n_classes=5, no_trade_idx=3,
+    )
+    assert vote == 3
 
 
 def test_majority_vote_empty_input_returns_no_trade():
@@ -196,7 +193,8 @@ def test_majority_vote_empty_input_returns_no_trade():
 
 def test_majority_vote_filters_invalid_class_indices():
     """Invalid (negative or out-of-range) class indices are masked
-    out before counting."""
+    out before counting. Surviving votes here are all class 0 →
+    unambiguous winner."""
     vote, _ = majority_vote([0, 0, -1, 99], [0.7, 0.8, 0.9, 0.6], n_classes=5, no_trade_idx=3)
     assert vote == 0
 
@@ -206,27 +204,28 @@ def test_majority_vote_confs_filter_applied_with_preds():
     Earlier drafts left confs un-masked, polluting avg_conf with
     confidences attached to invalid predictions.
 
-    Setup: preds=[0, 1, -1, 99], confs=[0.7, 0.8, 0.9, 0.6].
+    Setup: preds=[0, 1, -1, 99], confs=[0.7, 0.8, 0.1, 0.2].
     After the valid mask, only preds[0,1] = [0,1] survive, with
-    confs [0.7, 0.8]. avg_conf should be 0.75, NOT (0.7+0.8+0.9+0.6)/4 = 0.75
-    by coincidence — let's use values that distinguish them."""
+    confs [0.7, 0.8]. Tie between 0 and 1 → stricter v8 tie-break
+    returns NO_TRADE. avg_conf must be mean([0.7, 0.8]) = 0.75,
+    NOT mean([0.7, 0.8, 0.1, 0.2]) = 0.45.
+    """
     vote, conf = majority_vote(
         [0, 1, -1, 99],
         [0.7, 0.8, 0.1, 0.2],  # bad-pred confs are LOW
         n_classes=5,
         no_trade_idx=3,
     )
-    # vote is a tie between class 0 and class 1; NO_TRADE NOT in
-    # tie → smallest-index wins per v8 contract.
-    assert vote == 0
-    # avg_conf should be mean([0.7, 0.8]) = 0.75, NOT
-    # mean([0.7, 0.8, 0.1, 0.2]) = 0.45.
+    # Tie between class 0 and class 1 → NO_TRADE wins (stricter v8).
+    assert vote == 3
+    # avg_conf is the load-bearing assertion — must reflect only
+    # the surviving voters' confidences.
     assert conf == pytest.approx(0.75)
 
 
 def test_majority_vote_nan_confs_filtered():
     """NaN confidence is dropped at the same mask as invalid preds.
-    Vote falls through to smallest of the surviving preds; the
+    Surviving preds [0,1] tie → stricter v8 returns NO_TRADE. The
     load-bearing assertion is that NaN doesn't pollute avg_conf."""
     vote, conf = majority_vote(
         [0, 0, 1],
@@ -235,24 +234,22 @@ def test_majority_vote_nan_confs_filtered():
         no_trade_idx=2,
     )
     # preds=[0,0,1] after NaN mask on idx-1 → preds=[0,1],
-    # confs=[0.8, 0.6]. Tie between 0 and 1, NO_TRADE (2) not in
-    # tie → smallest-index wins.
-    assert vote == 0
+    # confs=[0.8, 0.6]. Tie between 0 and 1 → NO_TRADE.
+    assert vote == 2
     assert conf == pytest.approx((0.8 + 0.6) / 2)
 
 
 def test_majority_vote_inf_confs_filtered():
     """+inf / -inf confidences also fail np.isfinite check and are
-    dropped at the boundary."""
+    dropped at the boundary. Surviving preds tie → NO_TRADE."""
     vote, conf = majority_vote(
         [0, 0, 1],
         [0.8, np.inf, 0.6],
         n_classes=3,
         no_trade_idx=2,
     )
-    # Same shape as NaN test — surviving preds [0,1] tie, no
-    # NO_TRADE in tie, smallest wins.
-    assert vote == 0
+    # Same shape as NaN test — surviving preds [0,1] tie → NO_TRADE.
+    assert vote == 2
     assert conf == pytest.approx((0.8 + 0.6) / 2)
 
 

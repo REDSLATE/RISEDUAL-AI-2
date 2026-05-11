@@ -438,12 +438,15 @@ def majority_vote(preds, confs, *, n_classes: int, no_trade_idx: int):
     counts = np.bincount(preds, minlength=n_classes)
     tied = np.flatnonzero(counts == counts.max())
 
-    vote = no_trade_idx if no_trade_idx in tied else int(tied[0])
+    # Stricter v8 tie-break: ANY tie → NO_TRADE.
+    vote = no_trade_idx if len(tied) > 1 else int(tied[0])
     avg_conf = float(np.mean(confs)) if confs.size else 0.0
 
     return vote, avg_conf
 ```
 Filter applies to BOTH `preds` and `confs` (v7 bug fixed). NaN confidences and invalid class indices both die at the same `valid` mask. Empty input returns `no_trade_idx`. `n_classes >= 2` and `no_trade_idx` range checks fail loud at config-typo time.
+
+**Stricter v8 tie-break**: ANY tie (two or more classes with the same top count) returns `no_trade_idx`, not smallest-index of the tied set. The earlier `no_trade_idx if no_trade_idx in tied else int(tied[0])` rule silently let `CLASSES[0]` win every 2v2 directional split — doctrinally that's a coin flip dressed up as a decision. Asymmetric cost (wrong action > wrong abstention) demands defaulting to safe abstention on EVERY ambiguous case.
 
 **Downstream caveat**: any caller that currently branches on `-1` as a "no vote / missing data" sentinel would see `no_trade_idx` instead. Before adopting, `grep -rn "== -1\|!= -1" services/` for `majority_vote` consumers and reconcile.
 
