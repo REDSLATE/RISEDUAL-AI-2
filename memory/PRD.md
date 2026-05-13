@@ -28,7 +28,46 @@ market data
   -> [broker — disabled]
 ```
 
-## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10)
+## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13)
+
+### 🛰️ Alpha Sovereign Sidecar — Mission Control wiring (2026-05-13)
+
+RISEDUAL acts as the **"alpha" brain** (trend-follower) reporting to a
+separate Mission Control runtime (`multi-brain-backbone.preview.emergentagent.com`).
+
+**Doctrine (three locks for one door — all enforced):**
+1. `LIVE_TRADING_ENABLED = False` is hard-coded in `backend/sovereign/wild_adaptive_core_v2.py`.
+2. Sidecar boot calls `assert_doctrine()` and refuses to start if violated.
+3. Client serializes `live_trading_enabled: false` always — there's no parameter to flip it.
+
+**Files:**
+- `backend/sovereign/wild_adaptive_core_v2.py` — doctrine constants + `assert_doctrine()`
+- `backend/sovereign/local_state.py` — atomic JSON state (weights, lr, mode, outcomes)
+- `backend/sovereign/mc_client.py` — verified MC HTTP contract:
+    - Auth: `X-Runtime-Token: <ALPHA_INGEST_TOKEN>` (NOT Bearer)
+    - `POST /api/heartbeat-ping/alpha`
+    - `POST /api/runtime-discussion/sovereign/contribution?runtime=alpha`
+- `backend/sovereign/sidecar.py` — 60s tick loop, contribution + heartbeat
+- `backend/sovereign/smoke_test.py` — 8/8 offline doctrine checks
+- `backend/sovereign/bootstrap_alpha.py` — one-shot weight seeder
+- `data/sovereign/alpha/state.json` — brain-private state (chmod 600 env beside it)
+- `/etc/supervisor/conf.d/alpha-sidecar.conf` — supervisor program registration
+- `backend/tests/test_alpha_sovereign_sidecar.py` — 44 pytest cases, green
+
+**Initial weights (only seeded if state.json absent):**
+`trend +0.85, macd +0.65, rsi -0.25, learning_rate 0.06, mode=DTD`
+
+**Verified first run:** contribution → 200 OK (`posted_as=executor`, `seat_epoch=91`);
+heartbeat → 200 OK. No 422s, no 401s. Sidecar runs under supervisor with
+`autorestart=true`. Stance endpoint (v2) intentionally skipped for Phase 1.
+
+**Operator-only — stays separate from `risedual_monorepo_client.py`** (which is a
+different sidecar to the RISEDUAL monorepo, not Mission Control). Two independent
+sidecars, two independent kill-switches.
+
+---
+
+
 
 ### 🧠 Shelly Memory — Single Source of Truth for Durable Memory (2026-05-10)
 

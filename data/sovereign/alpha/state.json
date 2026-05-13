@@ -1,0 +1,13 @@
+{
+  "brain": "alpha",
+  "learning_rate": 0.06,
+  "mode": "DTD",
+  "notes": "",
+  "recent_outcomes": [],
+  "updated_at": "2026-05-13T01:07:40.421690+00:00",
+  "weights": {
+    "macd": 0.65,
+    "rsi": -0.25,
+    "trend": 0.85
+  }
+}
