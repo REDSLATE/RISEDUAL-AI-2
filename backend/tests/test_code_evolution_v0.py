@@ -115,17 +115,17 @@ def test_patch_touching_unprotected_path_is_not_blocked_operator_only():
 
 
 def test_forbidden_pattern_broker_live_order_flip_is_blocked():
+    """DOCTRINE V3 (2026-05-13): the BROKER_LIVE_ORDER_ENABLED pattern
+    is no longer in the forbidden list — the flag itself was retired
+    when RISEDUAL became a headless brain. Patches that mention it
+    pass the invariants scanner."""
     diff = "+BROKER_LIVE_ORDER_ENABLED = true\n"
     p = _proposal(target_files=("backend/.env",), diff_text=diff)
     inv = scan_patch(p)
-    assert inv.passed is False
-    assert any(
-        "BROKER_LIVE_ORDER_ENABLED" in pat for pat in inv.forbidden_patterns_hit
+    assert not any(
+        "BROKER_LIVE_ORDER_ENABLED" in pat
+        for pat in inv.forbidden_patterns_hit
     )
-
-    audit = audit_patch(p, inv)
-    pol = evaluate_policy(inv, audit)
-    assert pol.status == "BLOCKED_FORBIDDEN_PATTERN"
 
 
 def test_forbidden_pattern_council_modulator_flip_is_blocked():

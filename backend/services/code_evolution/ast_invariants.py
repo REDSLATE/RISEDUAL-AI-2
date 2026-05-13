@@ -72,7 +72,6 @@ RISK_DIRECTION_PATHS: tuple[str, ...] = (
 FORBIDDEN_PATTERNS: tuple[str, ...] = (
     r"COUNCIL_RISK_MODULATOR_ENABLED\s*=\s*true",
     r"CRYPTO_ADVERSARIAL_PHASE\s*=\s*full",
-    r"BROKER_LIVE_ORDER_ENABLED\s*=\s*true",
     r"risk_multiplier\s*>\s*1\.25",
     r"risk_multiplier\s*<\s*0\.50",
     r"may_auto_promote\s*\([^)]*\)\s*->\s*bool\s*:\s*\n\s*return\s+True",

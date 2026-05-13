@@ -48,11 +48,15 @@ def test_doctrine_lock_2_assert_passes_when_safe() -> None:
     assert_doctrine()
 
 
-def test_doctrine_lock_2_assert_raises_when_violated(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_doctrine_lock_2_assert_is_now_noop_under_v3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DOCTRINE V3 (2026-05-13): ``assert_doctrine`` was retired when
+    RISEDUAL became a headless brain. It remains importable for
+    back-compat but is a no-op — flipping ``LIVE_TRADING_ENABLED`` does
+    not raise."""
     import sovereign.wild_adaptive_core_v2 as core
     monkeypatch.setattr(core, "LIVE_TRADING_ENABLED", True)
-    with pytest.raises(RuntimeError, match="DOCTRINE VIOLATION"):
-        core.assert_doctrine()
+    # Must NOT raise under V3.
+    core.assert_doctrine()
 
 
 def test_assert_safe_action_accepts_known_actions() -> None:
@@ -65,11 +69,16 @@ def test_assert_safe_action_rejects_unknown() -> None:
         assert_safe_action("YOLO")
 
 
-def test_assert_safe_action_rejects_when_live_flipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_assert_safe_action_is_vocabulary_only_under_v3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DOCTRINE V3: ``assert_safe_action`` only checks action vocabulary.
+    The previous live-trading guard was retired."""
     import sovereign.wild_adaptive_core_v2 as core
     monkeypatch.setattr(core, "LIVE_TRADING_ENABLED", True)
-    with pytest.raises(RuntimeError, match="DOCTRINE VIOLATION"):
-        core.assert_safe_action("BUY")
+    # Vocabulary check still runs — bad action still raises.
+    with pytest.raises(ValueError):
+        core.assert_safe_action("YOLO")
+    # But a valid action with LIVE_TRADING_ENABLED flipped no longer raises.
+    core.assert_safe_action("BUY")
 
 
 def test_action_to_stance_mapping() -> None:

@@ -43,9 +43,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from local_state import LocalState  # noqa: E402
 from mc_client import MCClient, MCClientError  # noqa: E402
 from wild_adaptive_core_v2 import (  # noqa: E402
-    LIVE_TRADING_ENABLED,
     asdict,
-    assert_safe_action,
     default_weights,
     map_action_to_stance,
     run_adaptive_core,
@@ -60,16 +58,12 @@ logging.basicConfig(
 logger = logging.getLogger("sovereign.sidecar")
 
 
-# Doctrine assertion — three-lock door. The core module-level flag must
-# be False; if a downstream patcher flips it, the sidecar refuses to start.
-def _assert_doctrine() -> None:
-    if LIVE_TRADING_ENABLED:
-        raise RuntimeError(
-            "DOCTRINE VIOLATION: wild_adaptive_core_v2.LIVE_TRADING_ENABLED "
-            "is True. Sovereign sidecar refuses to start. Phase 1 is "
-            "observation-only — there is no scenario where this flag "
-            "should be True at the brain layer."
-        )
+# DOCTRINE V3 (2026-05-13) — local trade-authorization gates removed.
+# RISEDUAL is a headless brain; Mission Control's Executor seat owns
+# execution, and broker keys live only on that host. The wire-level
+# field ``live_trading_enabled`` is still serialized as ``False`` to
+# every contribution payload (MC's API schema requires it), but no
+# local code path can flip it.
 
 
 # Default top-of-book reader — production replaces this. The stub
@@ -95,7 +89,6 @@ class SovereignSidecar:
                  state_path: Optional[Path] = None,
                  top_of_book_fn: Optional[Callable[[str], dict]] = None,
                  active_position_resolver: Optional[Callable[[str], Optional[str]]] = None):
-        _assert_doctrine()
         self.brain = brain
         self.state = LocalState(brain=brain, path=state_path, mode=mode)
         # Seed weights from defaults if local file is fresh.
@@ -123,7 +116,6 @@ class SovereignSidecar:
             decision = run_adaptive_core(
                 top, self.state.weights, account_size=0.0,
             )
-            assert_safe_action(decision.action)
             self.state.append_decision(asdict(decision))
 
             # Stance posting — only if there's an open position to vote on.

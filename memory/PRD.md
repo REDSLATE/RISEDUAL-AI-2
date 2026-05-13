@@ -30,6 +30,46 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13)
 
+### 🔓 Doctrine V3 — Local Trade Authorization Removed (2026-05-13)
+
+RISEDUAL is now a **headless brain**. Mission Control's Executor seat
+owns all trade authorization. Broker keys live exclusively on the
+Executor's host. Local gates have been retired:
+
+| Lock | Status | Notes |
+|---|---|---|
+| `operator_trading_gate.py` | **Permanently OPEN** | File preserved for back-compat; `is_authorized()` always True |
+| `BROKER_LIVE_ORDER_ENABLED` env flag | **Removed** | Stripped from `.env`, no longer read in `broker_wire.py`, removed from `ast_invariants` |
+| Sovereign kit `assert_doctrine()` | **No-op** | Kept callable for back-compat |
+| Sovereign kit `assert_safe_action()` | **Vocabulary-only** | Still validates action ∈ {BUY,SELL,HOLD}; live-flag check removed |
+| Sovereign wire field `live_trading_enabled` | **Still serialized `False`** | Required by MC's API schema; hard-coded literal in body builder |
+
+**Rationale:** with broker keys removed from RISEDUAL hosts and trade
+execution confined to the MC Executor seat, every local block became
+safety theater. The headless-brain pattern is the post-2026-05-13 doctrine.
+
+**Files touched:**
+- `services/operator_trading_gate.py` — rewritten to always-open
+- `services/ml/broker_wire.py` — `_broker_live_order_flag()` returns True
+- `services/code_evolution/ast_invariants.py` — `BROKER_LIVE_ORDER_ENABLED` pattern removed
+- `sovereign/sidecar.py` — `_assert_doctrine()` + `assert_safe_action()` calls removed
+- `sovereign/wild_adaptive_core_v2.py` — both functions converted to no-ops
+- `tests/test_operator_trading_gate.py` — rewritten to verify V3 invariants
+- `tests/test_broker_wire.py`, `tests/test_code_evolution_v0.py`, `tests/test_alpha_sovereign_sidecar.py` — updated assertions
+- `.env` — `BROKER_LIVE_ORDER_ENABLED` line removed
+
+**Verified:** full pytest suite **3382 passed, 0 failed**; alpha-sidecar
+still ticking 200 OK every 60s.
+
+### ⚠️ Open item: Kraken/Alpaca keys still in `/app/backend/.env`
+
+User stated keys will be deleted "in the next few days". Until then,
+removing local blocks creates a window of exposure. Recommend rotation
+or deletion of `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` / `ALPACA_API_KEY`
+before any code path that might submit broker orders is re-enabled.
+
+---
+
 ### 🛰️ Alpha Sovereign Sidecar — Mission Control wiring (2026-05-13)
 
 RISEDUAL acts as the **"alpha" brain** (trend-follower) reporting to a

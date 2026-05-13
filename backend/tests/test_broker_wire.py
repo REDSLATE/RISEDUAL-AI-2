@@ -205,6 +205,12 @@ async def test_three_gates_open_but_kanban_blocks():
 
 @pytest.mark.asyncio
 async def test_only_gate1_open():
+    """DOCTRINE V3: gate 2 (BROKER_LIVE_ORDER_ENABLED) is permanently open.
+
+    Historically this test asserted gate 2 stays CLOSED when the env
+    var is unset; after the V3 doctrine shift, gate 2 always reports
+    open. The Kanban (gate 4) is now the meaningful brake.
+    """
     db = _StubDB()
     pipeline = _StubPipelineDecision()
     rg = _StubRGVerdict()
@@ -213,10 +219,9 @@ async def test_only_gate1_open():
             db, lane="equity", symbol="AAPL", side="BUY",
             notional_usd=100.0, pipeline_decision=pipeline, rg_verdict=rg,
         )
-    assert res.classification == "GATE_BLOCK"
-    assert res.fired is False
+    assert res.fired is False  # Kanban still in Shadow/Blocked
     assert res.gates["gate1_enforce_flag"] is True
-    assert res.gates["gate2_broker_live_order_enabled"] is False
+    assert res.gates["gate2_broker_live_order_enabled"] is True
 
 
 @pytest.mark.asyncio
@@ -274,9 +279,15 @@ def test_enforce_flag_for_unknown_lane():
 
 
 def test_broker_live_order_flag():
-    with _env(BROKER_LIVE_ORDER_ENABLED="true"):
+    """DOCTRINE V3: ``_broker_live_order_flag`` is permanently True.
+
+    Env var ``BROKER_LIVE_ORDER_ENABLED`` is no longer consulted —
+    RISEDUAL is a headless brain. Mission Control's Executor seat
+    owns broker authorization.
+    """
+    assert _broker_live_order_flag() is True
+    with _env(BROKER_LIVE_ORDER_ENABLED="false"):
         assert _broker_live_order_flag() is True
-    assert _broker_live_order_flag() is False
 
 
 def test_legacy_live_execution_flag():

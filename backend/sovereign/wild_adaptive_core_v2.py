@@ -65,26 +65,28 @@ __all__ = [
 
 
 def assert_doctrine() -> None:
-    """LOCK #2. Sidecar calls this on boot and refuses to start on failure."""
-    if LIVE_TRADING_ENABLED is not False:
-        raise RuntimeError(
-            "DOCTRINE VIOLATION: wild_adaptive_core_v2.LIVE_TRADING_ENABLED "
-            "is not False. Sidecar refusing to start. Reset to False and "
-            "redeploy."
-        )
+    """DOCTRINE V3 (2026-05-13): no-op.
+
+    Kept callable for back-compat with any code or test that still
+    imports it. The previous lock-#2 behaviour (raise when
+    ``LIVE_TRADING_ENABLED`` is not False) was retired when RISEDUAL
+    became a headless brain — Mission Control's Executor seat is the
+    sole authorization surface now.
+    """
+    return
 
 
 def assert_safe_action(action: str) -> None:
-    """Hard guard: action must be in the allowed set AND live trading must
-    still be off. The sidecar calls this after every decision."""
+    """DOCTRINE V3 (2026-05-13): action vocabulary check only.
+
+    The previous live-trading guard was retired alongside the local
+    trade-authorization gates. The vocabulary check is preserved
+    because the sovereign body builder still expects canonical action
+    tokens.
+    """
     if action not in ALLOWED_ACTIONS:
         raise ValueError(
             f"unknown action {action!r}; must be one of {sorted(ALLOWED_ACTIONS)}"
-        )
-    if LIVE_TRADING_ENABLED:
-        raise RuntimeError(
-            "DOCTRINE VIOLATION: assert_safe_action called while "
-            "LIVE_TRADING_ENABLED is True."
         )
 
 

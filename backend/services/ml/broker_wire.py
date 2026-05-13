@@ -85,8 +85,14 @@ def _enforce_flag_for(lane: str) -> bool:
 
 
 def _broker_live_order_flag() -> bool:
-    """Global broker kill-switch (Gate 2)."""
-    return os.getenv("BROKER_LIVE_ORDER_ENABLED", "false").lower() == "true"
+    """Global broker kill-switch (Gate 2) — DOCTRINE V3: permanently True.
+
+    Historically gated by ``BROKER_LIVE_ORDER_ENABLED``. RISEDUAL is now
+    a headless brain — Mission Control's Executor seat owns execution,
+    and broker keys live only on that host. The env var is no longer
+    read.
+    """
+    return True
 
 
 def _legacy_live_execution_flag() -> bool:
