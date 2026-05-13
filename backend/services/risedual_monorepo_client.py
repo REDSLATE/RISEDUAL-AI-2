@@ -175,3 +175,102 @@ def mirror_calibration_artifact(
         fire_and_forget(_both())
     except Exception as e:  # noqa: BLE001
         log.debug("mirror_calibration_artifact skipped: %s", e)
+
+
+
+# ── Discussion layer (cross-brain opinions; writes via /api/ingest/opinion,
+# reads via /api/runtime-discussion/*; different routers, same auth) ──
+
+
+async def _get(path: str, params: dict) -> dict:
+    """Best-effort GET. Returns ``{}``-shaped fallback on any failure."""
+    if not _enabled():
+        return {"items": [], "count": 0, "error": "sidecar_disabled"}
+    try:
+        r = await _get_client().get(
+            f"{_base()}{path}",
+            params=params,
+            headers={"X-Runtime-Token": _token()},
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:  # noqa: BLE001
+        log.warning("monorepo GET %s failed: %s", path, e)
+        return {"items": [], "count": 0, "error": str(e)}
+
+
+async def post_opinion(
+    topic: str,
+    stance: str,
+    body: str,
+    *,
+    confidence: float = 0.5,
+    evidence: dict | None = None,
+    in_reply_to: str | None = None,
+) -> dict:
+    """Post this brain's opinion to the cross-brain discussion layer.
+
+    Doctrine: ``may_execute`` is always False — opinions are observations,
+    never executions. ``evidence`` carries references, never raw model state.
+    """
+    return await _post("opinion", {
+        "topic": str(topic),
+        "stance": str(stance),
+        "confidence": float(confidence),
+        "body": str(body),
+        "evidence": evidence or {},
+        "in_reply_to": in_reply_to,
+        "may_execute": False,
+    })
+
+
+async def read_opinions(
+    *,
+    runtime: str | None = None,
+    topic: str | None = None,
+    symbol: str | None = None,
+    thread: str | None = None,
+    since: str | None = None,
+    limit: int = 100,
+) -> dict:
+    """Pull recent opinions from any brain. Best-effort; returns empty on error."""
+    if not _enabled():
+        return {"items": [], "count": 0, "error": "sidecar_disabled"}
+    params: dict[str, str] = {"caller": _runtime(), "limit": str(int(limit))}
+    for k, v in (
+        ("runtime", runtime), ("topic", topic), ("symbol", symbol),
+        ("thread", thread), ("since", since),
+    ):
+        if v:
+            params[k] = str(v)
+    return await _get("/api/runtime-discussion/opinions", params)
+
+
+async def read_roles_manifest() -> dict:
+    """Pull the live roster of connected brains + their declared roles."""
+    if not _enabled():
+        return {"items": [], "count": 0, "error": "sidecar_disabled"}
+    return await _get(
+        "/api/runtime-discussion/roles-manifest",
+        {"caller": _runtime()},
+    )
+
+
+async def read_my_scorecard(since: str | None = None) -> dict:
+    """Pull this brain's accuracy/contribution scorecard from MC."""
+    if not _enabled():
+        return {"runtime": "", "summary": {}, "error": "sidecar_disabled"}
+    params: dict[str, str] = {"caller": _runtime()}
+    if since:
+        params["since"] = str(since)
+    try:
+        r = await _get_client().get(
+            f"{_base()}/api/runtime-discussion/scorecard",
+            params=params,
+            headers={"X-Runtime-Token": _token()},
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:  # noqa: BLE001
+        log.warning("scorecard read failed: %s", e)
+        return {"runtime": _runtime(), "summary": {}, "error": str(e)}
