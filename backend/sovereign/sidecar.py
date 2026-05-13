@@ -1,173 +1,249 @@
-"""Alpha sovereign sidecar — main tick loop.
+"""Sovereign sidecar runner — glues the deterministic core, local
+state, and the MC client.
 
-    python3 -m backend.sovereign.sidecar \\
-        --brain alpha --mode DTD \\
-        --symbols BTC/USD ETH/USD SOL/USD \\
-        --interval 60 \\
-        --state-path /app/data/sovereign/alpha/state.json
+Doctrine:
+    The brain host imports this and runs it as a long-lived process
+    (`python -m runtime_patch_kit.sovereign.sidecar --brain alpha
+    --mode DTD`). The runner:
 
-Behavior:
-    1. Asserts doctrine on boot (LIVE_TRADING_ENABLED must be False).
-    2. Loads or initializes the local state file.
-    3. Every ``interval`` seconds, POSTs a sovereign contribution + a heartbeat
-       to Mission Control. Failures are logged; the loop keeps running.
+      1. Loads / creates `LocalState` on disk.
+      2. For each iteration:
+         a. Reads a top-of-book snapshot (caller-supplied function in
+            production; a stub in this template — replace with broker
+            feed).
+         b. Runs `wild_adaptive_core_v2.run_adaptive_core(...)`.
+         c. Persists the decision locally; if DTD mode and the
+            decision is resolved, applies `update_weights(...)`.
+         d. POSTs a stance to MC (if the brain wants to commit to an
+            open position) + a contribution snapshot (always).
+      3. Sleeps `--interval` seconds and repeats.
+
+    Three locks for one door — `LIVE_TRADING_ENABLED` is reasserted
+    False here so even if a brain's local copy of `wild_adaptive_core_v2.py`
+    is patched, the sidecar still refuses to call execute_trade with a
+    live broker. MC's API is the third and final lock.
+
+    This template intentionally has NO broker integration. Production
+    brain hosts replace the `_read_top_of_book` stub with their own
+    market-data poller (Kraken WebSocket, TOS bars, Public.com REST, …).
 """
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 import os
-import signal
 import sys
 import time
-from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
 
-from .local_state import LocalState
-from .mc_client import MCClient, MCClientError, build_contribution_body
-from .wild_adaptive_core_v2 import BRAIN_NAME, assert_doctrine
+# Allow `python sidecar.py` without installing — same dir imports.
+sys.path.insert(0, str(Path(__file__).parent))
 
-log = logging.getLogger("sovereign.sidecar")
-
-# Default initial weights for Alpha — only applied if state.json is missing.
-ALPHA_INITIAL_WEIGHTS = {"trend": 0.85, "macd": 0.65, "rsi": -0.25}
-ALPHA_INITIAL_LR = 0.06
-
-
-def _seed_if_empty(state: LocalState) -> bool:
-    """Returns True iff seeding happened (state was empty)."""
-    if state.weights:
-        return False
-    state.set_weights(ALPHA_INITIAL_WEIGHTS)
-    state.set_learning_rate(ALPHA_INITIAL_LR)
-    state.save()
-    log.info("seeded initial alpha weights: %s", ALPHA_INITIAL_WEIGHTS)
-    return True
+from local_state import LocalState  # noqa: E402
+from mc_client import MCClient, MCClientError  # noqa: E402
+from wild_adaptive_core_v2 import (  # noqa: E402
+    LIVE_TRADING_ENABLED,
+    asdict,
+    assert_safe_action,
+    default_weights,
+    map_action_to_stance,
+    run_adaptive_core,
+    update_weights,
+)
 
 
-def _tick_notes(symbols: list[str]) -> str:
-    return f"tick @ {int(time.time())} symbols={','.join(symbols)}"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+logger = logging.getLogger("sovereign.sidecar")
 
 
-async def _tick(client: MCClient, state: LocalState, symbols: list[str]) -> None:
-    """One iteration of the loop. Logs failures, does not raise."""
-    body = build_contribution_body(
-        mode=state.mode,
-        weights=state.weights,
-        learning_rate=state.learning_rate,
-        recent_outcomes=list(state.recent_outcomes),
-        notes=_tick_notes(symbols),
-        # Synthetic stub: no learning signal yet, no confidence drift.
-        confidence_delta=0.0,
-        delta_reason="",
-        training_signal=False,
-    )
-
-    # Contribution first (the durable signal), then heartbeat.
-    try:
-        resp = await client.contribution(body)
-        log.info(
-            "contribution OK posted_as=%s seat_epoch=%s updated_at=%s",
-            resp.get("posted_as"),
-            resp.get("seat_epoch"),
-            resp.get("updated_at"),
+# Doctrine assertion — three-lock door. The core module-level flag must
+# be False; if a downstream patcher flips it, the sidecar refuses to start.
+def _assert_doctrine() -> None:
+    if LIVE_TRADING_ENABLED:
+        raise RuntimeError(
+            "DOCTRINE VIOLATION: wild_adaptive_core_v2.LIVE_TRADING_ENABLED "
+            "is True. Sovereign sidecar refuses to start. Phase 1 is "
+            "observation-only — there is no scenario where this flag "
+            "should be True at the brain layer."
         )
-    except MCClientError as e:
-        log.warning("contribution failed: %s", e)
-
-    try:
-        hb = await client.heartbeat({"ts": datetime.now(timezone.utc).isoformat()})
-        log.debug("heartbeat OK: %s", hb)
-    except MCClientError as e:
-        log.warning("heartbeat failed: %s", e)
 
 
-async def _run(args: argparse.Namespace) -> int:
-    # LOCK #2 — refuse to boot if doctrine is violated.
-    assert_doctrine()
+# Default top-of-book reader — production replaces this. The stub
+# returns synthetic features so the sidecar can dry-run on a brain host
+# with no broker feed.
+def _stub_top_of_book(symbol: str) -> dict:
+    import math
+    t = time.time()
+    return {
+        "symbol": symbol,
+        "price": 100.0 + math.sin(t / 60) * 5,
+        "technicals": {
+            "sma20": 100.0,
+            "macd": math.sin(t / 30) * 0.5,
+            "rsi14": 50 + math.cos(t / 45) * 15,
+        },
+    }
 
-    state = LocalState(brain=args.brain, path=args.state_path, mode=args.mode)
-    _seed_if_empty(state)
 
-    base = os.environ.get("MC_BASE_URL", "").strip()
-    token = os.environ.get("ALPHA_INGEST_TOKEN", "").strip()
-    if not base or not token:
-        log.error(
-            "MC_BASE_URL and ALPHA_INGEST_TOKEN must both be set in the env. "
-            "Refusing to start."
+class SovereignSidecar:
+    def __init__(self, *, brain: str, mode: str, mc_base_url: str,
+                 runtime_token: str, symbols: list[str],
+                 state_path: Optional[Path] = None,
+                 top_of_book_fn: Optional[Callable[[str], dict]] = None,
+                 active_position_resolver: Optional[Callable[[str], Optional[str]]] = None):
+        _assert_doctrine()
+        self.brain = brain
+        self.state = LocalState(brain=brain, path=state_path, mode=mode)
+        # Seed weights from defaults if local file is fresh.
+        if not self.state.weights:
+            self.state.set_weights(default_weights())
+            self.state.save()
+        self.client = MCClient(
+            base_url=mc_base_url, brain=brain, runtime_token=runtime_token,
         )
-        return 2
+        self.symbols = symbols
+        self.read_top = top_of_book_fn or _stub_top_of_book
+        # Optional: maps a symbol to the open position_id MC has for it.
+        # Production brain hosts wire this to a small GET against
+        # `/api/shared/positions?symbol=...`. Returning None ⇒ no open
+        # position; the brain still ships a contribution snapshot but
+        # no stance.
+        self.resolve_position = active_position_resolver
 
-    client = MCClient(base_url=base, token=token, runtime=args.brain)
+    # ──────────────────────── one tick ────────────────────────
 
-    stop = asyncio.Event()
+    def tick(self) -> None:
+        contributed = False
+        for symbol in self.symbols:
+            top = self.read_top(symbol)
+            decision = run_adaptive_core(
+                top, self.state.weights, account_size=0.0,
+            )
+            assert_safe_action(decision.action)
+            self.state.append_decision(asdict(decision))
 
-    def _stop(*_a):
-        log.info("signal received; stopping after current tick…")
-        stop.set()
+            # Stance posting — only if there's an open position to vote on.
+            pos_id = self.resolve_position(symbol) if self.resolve_position else None
+            if pos_id:
+                stance = map_action_to_stance(decision.action)
+                try:
+                    self.client.post_stance(
+                        position_id=pos_id, stance=stance,
+                        confidence=decision.confidence,
+                        notes=f"sovereign-core auto stance for {symbol}",
+                        memory_sources=["sovereign.weights_snapshot"],
+                        confidence_origin=decision.confidence_origin,
+                    )
+                    logger.info(
+                        "stance posted: %s %s c=%.3f pos=%s",
+                        symbol, stance, decision.confidence, pos_id,
+                    )
+                except MCClientError as e:
+                    # 4xx → likely a doctrine rejection; don't retry.
+                    # 5xx → MC hiccup; logged, retried next tick.
+                    logger.warning("stance failed: %s", e)
 
-    try:
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
+        # Contribution snapshot — once per tick, summarises the brain.
+        try:
+            self.client.post_contribution(
+                mode=self.state.mode,
+                weights=self.state.weights,
+                learning_rate=self.state.learning_rate,
+                recent_outcomes=self.state.recent_outcomes(20),
+                # Conservative: this template never asks for a confidence
+                # nudge. Brains that want one set training_signal=True
+                # (DTD only) and a non-zero delta on their own logic.
+                confidence_delta=0.0,
+                delta_reason="",
+                training_signal=False,
+                notes=f"tick @ {time.time():.0f}",
+            )
+            contributed = True
+        except MCClientError as e:
+            logger.warning("contribution failed: %s", e)
+
+        # Heartbeat is best-effort.
+        try:
+            self.client.heartbeat()
+        except MCClientError as e:
+            logger.debug("heartbeat failed (non-fatal): %s", e)
+
+        # Persist after each tick so a crash doesn't lose decisions.
+        self.state.save()
+        if contributed:
+            logger.info(
+                "tick complete: mode=%s weights=%s lr=%.3f",
+                self.state.mode, self.state.weights, self.state.learning_rate,
+            )
+
+    # ──────────────────────── retrain (DTD only) ────────────────────────
+
+    def apply_outcome(self, decision: dict, outcome: int) -> None:
+        """Operator-facing hook: when a decision resolves, apply
+        update_weights. PRD mode REFUSES — only DTD-mode brains learn."""
+        if self.state.mode != "DTD":
+            raise RuntimeError(
+                f"refusing to retrain in {self.state.mode} mode; "
+                "switch to DTD for replay training"
+            )
+        if outcome not in (-1, 0, 1):
+            raise ValueError(f"outcome must be -1/0/+1, got {outcome!r}")
+        new_w = update_weights(
+            self.state.weights, decision.get("features") or {}, outcome,
+            lr=self.state.learning_rate,
+        )
+        self.state.set_weights(new_w)
+        self.state.save()
+
+    # ──────────────────────── main loop ────────────────────────
+
+    def run_forever(self, interval_seconds: int = 60) -> None:
+        logger.info(
+            "sovereign sidecar starting: brain=%s mode=%s symbols=%s interval=%ds",
+            self.brain, self.state.mode, self.symbols, interval_seconds,
+        )
+        while True:
             try:
-                loop.add_signal_handler(sig, _stop)
-            except (NotImplementedError, RuntimeError):
-                # Windows / non-asyncio context — fall back to sync handler.
-                signal.signal(sig, _stop)
-    except Exception:  # noqa: BLE001
-        pass
-
-    log.info(
-        "alpha sidecar starting: mode=%s symbols=%s interval=%ss state=%s",
-        args.mode, args.symbols, args.interval, args.state_path,
-    )
-
-    try:
-        while not stop.is_set():
-            try:
-                await _tick(client, state, args.symbols)
+                self.tick()
             except Exception as e:  # noqa: BLE001
-                log.exception("tick crashed (loop continuing): %s", e)
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=args.interval)
-            except asyncio.TimeoutError:
-                pass
-    finally:
-        await client.aclose()
-        log.info("alpha sidecar stopped cleanly")
-    return 0
+                logger.exception("tick failed; will retry: %s", e)
+            time.sleep(interval_seconds)
 
 
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Alpha sovereign sidecar")
-    p.add_argument("--brain", default=BRAIN_NAME)
+def _build_from_argv() -> SovereignSidecar:
+    p = argparse.ArgumentParser(description="RISEDUAL Sovereign Sidecar")
+    p.add_argument("--brain", required=True,
+                   choices=["alpha", "camaro", "chevelle", "redeye"])
     p.add_argument("--mode", default="DTD", choices=["DTD", "PRD"])
-    p.add_argument(
-        "--symbols",
-        nargs="+",
-        default=["BTC/USD", "ETH/USD", "SOL/USD"],
-        help="symbols Alpha is watching (cosmetic for v1; used in notes)",
-    )
-    p.add_argument("--interval", type=int, default=60, help="seconds between ticks")
-    p.add_argument(
-        "--state-path",
-        default=os.environ.get(
-            "SOVEREIGN_STATE_PATH", "/app/data/sovereign/alpha/state.json"
-        ),
-    )
-    p.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"))
-    return p.parse_args(argv)
+    p.add_argument("--mc-url", default=os.environ.get("MC_BASE_URL", ""))
+    p.add_argument("--symbols", nargs="+", default=["BTC/USD"])
+    p.add_argument("--interval", type=int, default=60)
+    p.add_argument("--state-path", default=None)
+    args = p.parse_args()
 
+    token = os.environ.get(f"{args.brain.upper()}_INGEST_TOKEN")
+    if not token:
+        raise SystemExit(
+            f"missing env var {args.brain.upper()}_INGEST_TOKEN — "
+            "see README.md for required envs."
+        )
+    if not args.mc_url:
+        raise SystemExit(
+            "missing --mc-url (or MC_BASE_URL env var). Example: "
+            "https://mc.risedual.io"
+        )
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
-    logging.basicConfig(
-        level=getattr(logging, args.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        stream=sys.stdout,
+    return SovereignSidecar(
+        brain=args.brain, mode=args.mode, mc_base_url=args.mc_url,
+        runtime_token=token, symbols=args.symbols,
+        state_path=Path(args.state_path) if args.state_path else None,
     )
-    return asyncio.run(_run(args))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sidecar = _build_from_argv()
+    sys.exit(sidecar.run_forever() or 0)

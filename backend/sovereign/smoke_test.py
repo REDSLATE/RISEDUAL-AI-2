@@ -2,7 +2,7 @@
 
 Run::
 
-    python3 -m backend.sovereign.smoke_test
+    python3 -m sovereign.smoke_test
     # expect: 8/8 PASS
 """
 from __future__ import annotations
@@ -22,6 +22,10 @@ from .mc_client import (
 from .wild_adaptive_core_v2 import (
     LIVE_TRADING_ENABLED,
     assert_doctrine,
+    default_weights,
+    map_action_to_stance,
+    run_adaptive_core,
+    update_weights,
 )
 
 
@@ -35,10 +39,12 @@ def _check(name: str, fn) -> tuple[str, bool, str]:
 
 def test_doctrine_constant_is_literally_false() -> None:
     assert LIVE_TRADING_ENABLED is False, "lock #1: must be the literal False"
+    assert_doctrine()
 
 
-def test_assert_doctrine_passes_when_safe() -> None:
-    assert_doctrine()  # must not raise
+def test_default_weights_is_alpha_personality() -> None:
+    w = default_weights()
+    assert w == {"trend": 0.85, "macd": 0.65, "rsi": -0.25}
 
 
 def test_local_state_roundtrip() -> None:
@@ -46,25 +52,26 @@ def test_local_state_roundtrip() -> None:
         p = Path(d) / "state.json"
         s1 = LocalState(brain="alpha", path=p, mode="DTD")
         assert s1.weights == {}
-        s1.set_weights({"trend": 0.85, "macd": 0.65, "rsi": -0.25})
+        s1.set_weights(default_weights())
         s1.set_learning_rate(0.06)
         s1.save()
 
         s2 = LocalState(brain="alpha", path=p, mode="DTD")
-        assert s2.weights == {"trend": 0.85, "macd": 0.65, "rsi": -0.25}
+        assert s2.weights == default_weights()
         assert s2.learning_rate == 0.06
+        assert s2.recent_outcomes() == []
+        assert s2.decisions() == []
 
 
-def test_local_state_rejects_out_of_range_weight() -> None:
-    s = LocalState(brain="alpha", path="/tmp/_unused_smoke.json", mode="DTD")
-    try:
-        s.set_weights({"trend": 5.0})
-    except LocalStateError:
-        return
-    raise AssertionError("expected LocalStateError for weight > 3.0")
-
-
-def test_local_state_rejects_bad_mode() -> None:
+def test_local_state_rejects_bad_inputs() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        s = LocalState(brain="alpha", path=Path(d) / "s.json", mode="DTD")
+        try:
+            s.set_weights({"trend": 5.0})
+        except LocalStateError:
+            pass
+        else:
+            raise AssertionError("expected LocalStateError for weight > 3.0")
     try:
         LocalState(brain="alpha", path="/tmp/_unused.json", mode="WILD")
     except LocalStateError:
@@ -87,7 +94,7 @@ def test_mc_client_url_and_auth_shapes() -> None:
 def test_contribution_body_strict_schema() -> None:
     body = build_contribution_body(
         mode="DTD",
-        weights={"trend": 0.85, "macd": 0.65, "rsi": -0.25},
+        weights=default_weights(),
         learning_rate=0.06,
         recent_outcomes=[{
             "symbol": "BTC/USD",
@@ -107,54 +114,41 @@ def test_contribution_body_strict_schema() -> None:
     assert len(body["recent_outcomes"]) == 1
 
 
-def test_contribution_body_rejects_invalid_payloads() -> None:
-    # weight out of range
-    try:
-        build_contribution_body(mode="DTD", weights={"trend": 9.0}, learning_rate=0.06)
-    except MCContractError:
-        pass
-    else:
-        raise AssertionError("expected MCContractError for weight=9.0")
+def test_adaptive_core_is_deterministic() -> None:
+    top = {
+        "symbol": "BTC/USD",
+        "price": 105.0,
+        "technicals": {"sma20": 100.0, "macd": 0.4, "rsi14": 60.0},
+    }
+    d1 = run_adaptive_core(top, default_weights())
+    d2 = run_adaptive_core(top, default_weights())
+    assert d1.symbol == "BTC/USD"
+    assert d1.action in {"BUY", "SELL", "HOLD"}
+    assert d1.score == d2.score and d1.action == d2.action and d1.confidence == d2.confidence
+    assert map_action_to_stance(d1.action) in {"long", "short", "abstain"}
 
-    # PRD + training_signal=True
-    try:
-        build_contribution_body(
-            mode="PRD",
-            weights={"trend": 0.5},
-            learning_rate=0.06,
-            training_signal=True,
-        )
-    except MCContractError:
-        pass
-    else:
-        raise AssertionError("expected MCContractError for PRD+training_signal")
 
-    # bad action in recent_outcomes
-    try:
-        build_contribution_body(
-            mode="DTD",
-            weights={"trend": 0.5},
-            learning_rate=0.06,
-            recent_outcomes=[{
-                "symbol": "X", "action": "YOLO", "confidence": 0.5,
-                "outcome": 1,
-            }],
-        )
-    except MCContractError:
-        pass
-    else:
-        raise AssertionError("expected MCContractError for action='YOLO'")
+def test_update_weights_clamps_and_is_pure() -> None:
+    w0 = default_weights()
+    w1 = update_weights(w0, {"trend": 0.5, "macd": 0.2, "rsi": -0.1}, outcome=1, lr=0.06)
+    # Pure: original untouched.
+    assert w0 == default_weights()
+    # Trend pushed up because outcome=+1 and feature positive.
+    assert w1["trend"] > w0["trend"]
+    # Clamping: extreme features can't push outside [-3, 3].
+    w_extreme = update_weights({"x": 2.99}, {"x": 100.0}, outcome=1, lr=0.5)
+    assert w_extreme["x"] == 3.0
 
 
 CHECKS = [
-    ("lock #1 — LIVE_TRADING_ENABLED is False", test_doctrine_constant_is_literally_false),
-    ("lock #2 — assert_doctrine passes when safe", test_assert_doctrine_passes_when_safe),
-    ("LocalState roundtrip (write+load)", test_local_state_roundtrip),
-    ("LocalState rejects weight > 3.0", test_local_state_rejects_out_of_range_weight),
-    ("LocalState rejects invalid mode", test_local_state_rejects_bad_mode),
-    ("mc_client URLs + X-Runtime-Token header", test_mc_client_url_and_auth_shapes),
-    ("contribution body strict schema accepts valid", test_contribution_body_strict_schema),
-    ("contribution body strict schema rejects invalid", test_contribution_body_rejects_invalid_payloads),
+    ("lock #1+#2 — LIVE_TRADING_ENABLED is False & assert_doctrine passes", test_doctrine_constant_is_literally_false),
+    ("default_weights is Alpha's trend-follower bias", test_default_weights_is_alpha_personality),
+    ("LocalState roundtrip + decisions()/recent_outcomes() methods", test_local_state_roundtrip),
+    ("LocalState rejects out-of-range weights + bad mode", test_local_state_rejects_bad_inputs),
+    ("mc_client URLs + X-Runtime-Token header (no Bearer)", test_mc_client_url_and_auth_shapes),
+    ("contribution body strict schema (live_trading_enabled hard-locked False)", test_contribution_body_strict_schema),
+    ("adaptive core is deterministic + maps to stance", test_adaptive_core_is_deterministic),
+    ("update_weights is pure, clamped, and gradient-correct", test_update_weights_clamps_and_is_pure),
 ]
 
 

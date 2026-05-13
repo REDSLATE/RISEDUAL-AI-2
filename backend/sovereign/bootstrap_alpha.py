@@ -1,9 +1,9 @@
 """One-shot Alpha weight seeder. No-op if state already exists.
 
-Run before first start of the sidecar (the sidecar also self-seeds, but
-running this script gives the operator an explicit visible log line):
+Run before first start of the sidecar (the sidecar self-seeds too,
+but running this script gives the operator an explicit log line).
 
-    python3 -m backend.sovereign.bootstrap_alpha
+    python3 -m sovereign.bootstrap_alpha
 """
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ import os
 import sys
 
 from .local_state import LocalState
-from .sidecar import ALPHA_INITIAL_LR, ALPHA_INITIAL_WEIGHTS
+from .wild_adaptive_core_v2 import default_weights
+
+ALPHA_INITIAL_LR = 0.06
 
 
 def main() -> int:
@@ -20,10 +22,11 @@ def main() -> int:
     )
     s = LocalState(brain="alpha", path=path, mode="DTD")
     if not s.weights:
-        s.set_weights(ALPHA_INITIAL_WEIGHTS)
+        weights = default_weights()
+        s.set_weights(weights)
         s.set_learning_rate(ALPHA_INITIAL_LR)
         s.save()
-        print(f"seeded alpha weights at {path}: {ALPHA_INITIAL_WEIGHTS}")
+        print(f"seeded alpha weights at {path}: {weights}")
         return 0
     print(
         f"alpha state already exists at {path}; not reseeding "

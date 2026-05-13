@@ -1,18 +1,18 @@
-"""Per-brain local state — Alpha's private weights / mode / outcomes.
+"""Per-brain local state — weights, mode, decisions, resolved outcomes.
 
 Each brain owns its own state file. MC never touches it. The doctrine
 boundary is exactly this: brains keep their state local, they only
 exchange ``contribution`` snapshots with MC over HTTPS.
 
-State shape (mirrors what MC's contribution endpoint accepts):
+State shape on disk::
+
     {
         "brain": "alpha",
         "mode": "DTD" | "PRD",
         "weights": { feature_name: float in [-3.0, +3.0], ... },  # <= 16 keys
         "learning_rate": float in [0.0, 0.5],
-        "recent_outcomes": [
-            {symbol, action, confidence, outcome, resolved_at, notional}, ...
-        ],  # <= 50
+        "decisions": [ {symbol, action, confidence, ...}, ... ],   # local audit
+        "outcomes":  [ {symbol, action, confidence, outcome, ...}, ... ],  # MC-bound
         "notes": str,
         "updated_at": iso8601,
     }
@@ -25,15 +25,19 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
 
-from .wild_adaptive_core_v2 import ALLOWED_ACTIONS, ALLOWED_OUTCOMES, SUPPORTED_MODES
+try:
+    from .wild_adaptive_core_v2 import ALLOWED_ACTIONS, ALLOWED_OUTCOMES, SUPPORTED_MODES
+except ImportError:  # bare import via sidecar's sys.path tweak
+    from wild_adaptive_core_v2 import ALLOWED_ACTIONS, ALLOWED_OUTCOMES, SUPPORTED_MODES
 
 # Schema bounds (mirror MC server validation — fail-fast locally).
 _MAX_WEIGHTS = 16
 _WEIGHT_MIN, _WEIGHT_MAX = -3.0, 3.0
 _LR_MIN, _LR_MAX = 0.0, 0.5
 _MAX_OUTCOMES = 50
+_MAX_DECISIONS = 200  # local audit cap (NOT sent to MC)
 _CONF_MIN, _CONF_MAX = 0.0, 1.0
 
 
@@ -41,12 +45,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _default_path(brain: str) -> Path:
+    """Used when the caller passes ``path=None``. Respects SOVEREIGN_STATE_PATH."""
+    env_p = os.environ.get("SOVEREIGN_STATE_PATH")
+    if env_p:
+        return Path(env_p)
+    return Path.home() / ".sovereign" / brain / "state.json"
+
+
 class LocalStateError(ValueError):
     """Raised when an invalid value would be persisted."""
 
 
 class LocalState:
-    """Thin wrapper around a JSON file on disk.
+    """JSON-backed brain state.
 
     Usage::
 
@@ -57,20 +69,26 @@ class LocalState:
             s.save()
     """
 
-    def __init__(self, brain: str, path: str | os.PathLike[str], mode: str = "DTD") -> None:
+    def __init__(
+        self,
+        brain: str,
+        path: str | os.PathLike[str] | None = None,
+        mode: str = "DTD",
+    ) -> None:
         if not brain or not isinstance(brain, str):
             raise LocalStateError("brain name required")
         if mode not in SUPPORTED_MODES:
             raise LocalStateError(f"mode must be one of {SUPPORTED_MODES}, got {mode!r}")
 
         self.brain: str = brain
-        self.path: Path = Path(path)
+        self.path: Path = Path(path) if path is not None else _default_path(brain)
         self.mode: str = mode
 
         # Defaults populated by load() if file exists.
         self.weights: dict[str, float] = {}
         self.learning_rate: float = 0.0
-        self.recent_outcomes: list[dict[str, Any]] = []
+        self._decisions: list[dict[str, Any]] = []
+        self._outcomes: list[dict[str, Any]] = []
         self.notes: str = ""
         self.updated_at: str = _now_iso()
 
@@ -101,11 +119,19 @@ class LocalState:
         self._validate_learning_rate(lr)
         self.learning_rate = lr
 
-        outs = data.get("recent_outcomes") or []
+        outs = data.get("outcomes")
+        if outs is None:
+            # Back-compat: prior schema used "recent_outcomes".
+            outs = data.get("recent_outcomes") or []
         if not isinstance(outs, list):
-            raise LocalStateError("recent_outcomes on disk is not an array")
+            raise LocalStateError("outcomes on disk is not an array")
         self._validate_outcomes(outs)
-        self.recent_outcomes = list(outs)
+        self._outcomes = list(outs)[-_MAX_OUTCOMES:]
+
+        decs = data.get("decisions") or []
+        if not isinstance(decs, list):
+            raise LocalStateError("decisions on disk is not an array")
+        self._decisions = list(decs)[-_MAX_DECISIONS:]
 
         self.notes = str(data.get("notes", "") or "")
 
@@ -133,19 +159,20 @@ class LocalState:
             raise
 
     def snapshot(self) -> dict[str, Any]:
-        """Pure-data view, suitable for JSON serialization."""
+        """Pure-data view, suitable for JSON serialization on disk."""
         return {
             "brain": self.brain,
             "mode": self.mode,
             "weights": dict(self.weights),
             "learning_rate": float(self.learning_rate),
-            "recent_outcomes": list(self.recent_outcomes),
+            "decisions": list(self._decisions),
+            "outcomes": list(self._outcomes),
             "notes": self.notes,
             "updated_at": self.updated_at,
         }
 
     # ── setters (validated) ─────────────────────────────────────────
-    def set_weights(self, weights: dict[str, float]) -> None:
+    def set_weights(self, weights: Mapping[str, float]) -> None:
         self._validate_weights(weights)
         self.weights = {k: float(v) for k, v in weights.items()}
 
@@ -159,6 +186,26 @@ class LocalState:
             raise LocalStateError(f"mode must be one of {SUPPORTED_MODES}")
         self.mode = mode
 
+    # ── decisions (local audit only — NOT sent to MC) ───────────────
+    def append_decision(self, decision: Mapping[str, Any]) -> None:
+        """Record a decision the core just produced. Stamped with timestamp."""
+        if not isinstance(decision, Mapping):
+            raise LocalStateError("decision must be a mapping")
+        rec = dict(decision)
+        rec.setdefault("recorded_at", _now_iso())
+        self._decisions.append(rec)
+        if len(self._decisions) > _MAX_DECISIONS:
+            self._decisions = self._decisions[-_MAX_DECISIONS:]
+
+    def decisions(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Most recent N decisions, oldest-first within the slice."""
+        if limit is None:
+            return list(self._decisions)
+        if limit <= 0:
+            return []
+        return list(self._decisions[-int(limit):])
+
+    # ── outcomes (sent to MC in contribution snapshot) ──────────────
     def add_outcome(
         self,
         *,
@@ -178,16 +225,23 @@ class LocalState:
             "notional": float(notional),
         }
         self._validate_outcomes([rec])
-        self.recent_outcomes.append(rec)
-        # Trim FIFO to the schema cap.
-        if len(self.recent_outcomes) > _MAX_OUTCOMES:
-            self.recent_outcomes = self.recent_outcomes[-_MAX_OUTCOMES:]
+        self._outcomes.append(rec)
+        if len(self._outcomes) > _MAX_OUTCOMES:
+            self._outcomes = self._outcomes[-_MAX_OUTCOMES:]
+
+    def recent_outcomes(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Most recent N resolved outcomes (the list sent in contributions)."""
+        if limit is None:
+            return list(self._outcomes)
+        if limit <= 0:
+            return []
+        return list(self._outcomes[-int(limit):])
 
     # ── validators ──────────────────────────────────────────────────
     @staticmethod
-    def _validate_weights(weights: dict[str, float]) -> None:
-        if not isinstance(weights, dict):
-            raise LocalStateError("weights must be a dict")
+    def _validate_weights(weights: Mapping[str, float]) -> None:
+        if not isinstance(weights, Mapping):
+            raise LocalStateError("weights must be a mapping")
         if len(weights) > _MAX_WEIGHTS:
             raise LocalStateError(f"weights cap is {_MAX_WEIGHTS} keys, got {len(weights)}")
         for k, v in weights.items():
@@ -212,11 +266,12 @@ class LocalState:
             raise LocalStateError(f"learning_rate {lr} outside [{_LR_MIN}, {_LR_MAX}]")
 
     @staticmethod
-    def _validate_outcomes(outs: list[dict[str, Any]]) -> None:
-        if len(outs) > _MAX_OUTCOMES:
+    def _validate_outcomes(outs: Iterable[Mapping[str, Any]]) -> None:
+        out_list = list(outs)
+        if len(out_list) > _MAX_OUTCOMES:
             raise LocalStateError(f"recent_outcomes cap is {_MAX_OUTCOMES}")
-        for i, rec in enumerate(outs):
-            if not isinstance(rec, dict):
+        for i, rec in enumerate(out_list):
+            if not isinstance(rec, Mapping):
                 raise LocalStateError(f"outcome #{i} is not an object")
             action = rec.get("action")
             if action not in ALLOWED_ACTIONS:

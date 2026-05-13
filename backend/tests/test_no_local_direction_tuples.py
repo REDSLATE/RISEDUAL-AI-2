@@ -230,6 +230,15 @@ ALLOWLIST: dict[str, str] = {
         "uses local tuples. Should route through canonical_ai_dir; behaviour "
         "is correct because all upstream callers already canonicalise."
     ),
+    # Sovereign sidecar — Mission Control protocol uses its own vocabularies
+    # (BUY/SELL/HOLD as action tokens to MC's contribution schema, and
+    # long/short/abstain as MC's stance vocabulary). These are NOT AI-verdict
+    # direction tokens — they are the canonical wire format for a different
+    # runtime (Mission Control), validated against MC's verified schema.
+    "sovereign/smoke_test.py": (
+        "MC protocol vocabulary assertions — sovereign-side action/stance "
+        "tokens are MC's wire vocabulary, not RISEDUAL AI verdict tokens."
+    ),
 }
 
 
