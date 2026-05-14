@@ -33,6 +33,7 @@ import argparse
 import logging
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -107,6 +108,58 @@ class SovereignSidecar:
         # no stance.
         self.resolve_position = active_position_resolver
 
+        # ── 2026-05-14 freeze-defence wiring ─────────────────────────
+        # Track the last successful tick wall-time so a watchdog thread
+        # can hard-exit the process if the main loop wedges in a
+        # syscall (the supervisor sees the process as RUNNING in that
+        # case; autorestart never fires). Hard-exit → supervisor
+        # respawn within `startsecs`.
+        self._last_tick_at = time.time()
+        # Independent heartbeat client so the heartbeat path can never
+        # be starved by a hung contribution POST sharing the same
+        # connection pool. (Distinct httpx.Client = distinct pool.)
+        self._hb_client = MCClient(
+            base_url=mc_base_url, brain=brain, runtime_token=runtime_token,
+        )
+
+    # ──────────────────────── heartbeat thread ────────────────────────
+
+    def _heartbeat_loop(self, interval_seconds: int, stop: threading.Event) -> None:
+        """Independent heartbeat publisher. Runs every ``interval_seconds``
+        regardless of whether the main tick is healthy or wedged. This
+        is the change MC asked for — single shared loop → SPOF for
+        heartbeat + contribution + intent publisher."""
+        logger.info("heartbeat thread starting: interval=%ds", interval_seconds)
+        while not stop.is_set():
+            try:
+                self._hb_client.heartbeat()
+            except MCClientError as e:
+                logger.warning("heartbeat (thread) failed: %s", e)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("heartbeat thread unexpected: %s", e)
+            stop.wait(interval_seconds)
+        logger.info("heartbeat thread stopped")
+
+    # ──────────────────────── watchdog thread ────────────────────────
+
+    def _watchdog_loop(self, max_stale_seconds: int, stop: threading.Event) -> None:
+        """If the main tick hasn't completed in ``max_stale_seconds``,
+        the loop is wedged (silent freeze — see 2026-05-14 RCA). Hard
+        exit so supervisor respawns us. ``os._exit`` skips all atexit
+        + thread joins by design: a wedged thread won't release
+        gracefully."""
+        logger.info("watchdog thread starting: max_stale=%ds", max_stale_seconds)
+        while not stop.is_set():
+            stale = time.time() - self._last_tick_at
+            if stale > max_stale_seconds:
+                logger.error(
+                    "WATCHDOG: main loop wedged for %.1fs (limit %ds) — "
+                    "hard-exiting so supervisor can respawn",
+                    stale, max_stale_seconds,
+                )
+                os._exit(2)
+            stop.wait(5)
+
     # ──────────────────────── one tick ────────────────────────
 
     def tick(self) -> None:
@@ -158,11 +211,11 @@ class SovereignSidecar:
         except MCClientError as e:
             logger.warning("contribution failed: %s", e)
 
-        # Heartbeat is best-effort.
-        try:
-            self.client.heartbeat()
-        except MCClientError as e:
-            logger.debug("heartbeat failed (non-fatal): %s", e)
+        # Heartbeat is now published by the independent thread launched
+        # in run_forever() — see 2026-05-14 freeze RCA. We deliberately
+        # do NOT call self.client.heartbeat() here: a hung contribution
+        # POST would otherwise starve the heartbeat path on the same
+        # connection pool, which is exactly the failure mode we saw.
 
         # Persist after each tick so a crash doesn't lose decisions.
         self.state.save()
@@ -171,6 +224,10 @@ class SovereignSidecar:
                 "tick complete: mode=%s weights=%s lr=%.3f",
                 self.state.mode, self.state.weights, self.state.learning_rate,
             )
+        # Watchdog timestamp — only stamp on a tick that actually
+        # reached the end. A partial tick (e.g. contribution hung) will
+        # leave this stale and the watchdog will respawn us.
+        self._last_tick_at = time.time()
 
     # ──────────────────────── retrain (DTD only) ────────────────────────
 
@@ -198,12 +255,34 @@ class SovereignSidecar:
             "sovereign sidecar starting: brain=%s mode=%s symbols=%s interval=%ds",
             self.brain, self.state.mode, self.symbols, interval_seconds,
         )
-        while True:
-            try:
-                self.tick()
-            except Exception as e:  # noqa: BLE001
-                logger.exception("tick failed; will retry: %s", e)
-            time.sleep(interval_seconds)
+        # Spawn the heartbeat + watchdog threads. Both are daemons —
+        # they die when the main process exits (intended).
+        stop_evt = threading.Event()
+        # Heartbeat cadence is independent of tick cadence on purpose:
+        # 30s gives MC's <60s staleness threshold a safety margin of
+        # exactly one missed beat.
+        hb_thread = threading.Thread(
+            target=self._heartbeat_loop, args=(30, stop_evt),
+            name="sidecar-heartbeat", daemon=True,
+        )
+        # Watchdog: if a tick hasn't completed in 2× interval, we're
+        # wedged. 120s for interval=60s is plenty of headroom.
+        wd_thread = threading.Thread(
+            target=self._watchdog_loop, args=(max(interval_seconds * 2, 120), stop_evt),
+            name="sidecar-watchdog", daemon=True,
+        )
+        hb_thread.start()
+        wd_thread.start()
+
+        try:
+            while True:
+                try:
+                    self.tick()
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("tick failed; will retry: %s", e)
+                time.sleep(interval_seconds)
+        finally:
+            stop_evt.set()
 
 
 def _build_from_argv() -> SovereignSidecar:

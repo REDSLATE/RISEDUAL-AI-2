@@ -235,7 +235,19 @@ class MCClient:
         self.base_url = base_url.rstrip("/")
         self.brain = brain
         self.token = runtime_token
-        self._client = httpx.Client(timeout=timeout)
+        # ── 2026-05-14 hardening ───────────────────────────────────────
+        # The default httpx.Client(timeout=5.0) collapses all phases into
+        # one number AND keeps connections alive across the LB. When MC's
+        # upstream rotates a pod, the cached socket goes half-open and
+        # the next POST blocks indefinitely in TLS — the single-number
+        # timeout doesn't always trip on a `pool` acquire stall. We
+        # explicitly bound every phase AND disable keep-alive: the
+        # sidecar makes ~1 req/min so the cost of a fresh handshake each
+        # tick is negligible compared to the cost of a silent freeze.
+        self._client = httpx.Client(
+            timeout=httpx.Timeout(connect=3.0, read=timeout, write=5.0, pool=2.0),
+            limits=httpx.Limits(max_keepalive_connections=0, max_connections=4),
+        )
 
     @classmethod
     def from_env(cls, brain: str = "alpha") -> "MCClient":

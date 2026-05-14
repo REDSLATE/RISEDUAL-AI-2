@@ -5,6 +5,7 @@ These tests must pass alongside the existing 3310+ suite.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -543,11 +544,110 @@ def test_sidecar_tick_runs_without_mc(tmp_path: Path, monkeypatch: pytest.Monkey
     contrib = fake.contributions[0]
     assert contrib["mode"] == "DTD"
     assert contrib["training_signal"] is False
-    assert fake.heartbeats == 1
+    # 2026-05-14: heartbeat moved out of tick() into its own daemon
+    # thread to decouple from contribution path. tick() no longer
+    # publishes a heartbeat; the heartbeat thread does (and is verified
+    # in test_heartbeat_thread_publishes_independently below).
+    assert fake.heartbeats == 0
     # No active_position_resolver → no stance posted.
     assert fake.stances == []
     # Decision recorded locally.
     assert len(side.state.decisions()) == 1
+
+
+def test_heartbeat_thread_publishes_independently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The heartbeat daemon thread must publish heartbeats on its own
+    schedule, separate from tick(). This guards against the 2026-05-14
+    silent-freeze where a hung contribution starved the heartbeat path."""
+    import sovereign.sidecar as sc
+
+    state_path = tmp_path / "alpha.json"
+
+    class _FakeClient:
+        def __init__(self, **_kw):
+            self.contributions: list[dict] = []
+            self.heartbeats: int = 0
+            self.stances: list[dict] = []
+
+        def post_contribution(self, **kwargs):
+            self.contributions.append(kwargs)
+            return {"posted_as": "executor", "seat_epoch": 1, "updated_at": "now"}
+
+        def post_stance(self, **kwargs):
+            self.stances.append(kwargs)
+            return {"ok": True}
+
+        def heartbeat(self, *_a, **_kw):
+            self.heartbeats += 1
+            return {"ok": True}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sc, "MCClient", _FakeClient)
+
+    side = sc.SovereignSidecar(
+        brain="alpha", mode="DTD", mc_base_url="https://x",
+        runtime_token="t", symbols=["BTC/USD"], state_path=state_path,
+    )
+    # Drive the heartbeat loop directly with a short interval + a stop
+    # event we trigger after ~2 cycles. Avoids fragile real-time sleeps.
+    import threading
+    stop = threading.Event()
+
+    def _hb_runner() -> None:
+        side._heartbeat_loop(interval_seconds=1, stop=stop)
+
+    hb_thread = threading.Thread(target=_hb_runner, daemon=True)
+    hb_thread.start()
+    # Let the loop fire at least one heartbeat then stop it.
+    time.sleep(0.2)
+    stop.set()
+    hb_thread.join(timeout=2.0)
+    assert not hb_thread.is_alive(), "heartbeat thread failed to stop"
+
+    hb_client: _FakeClient = side._hb_client  # type: ignore[assignment]
+    assert hb_client.heartbeats >= 1
+    # Heartbeat client is a SEPARATE instance from the tick client so a
+    # hung contribution can't starve it.
+    assert side._hb_client is not side.client
+
+
+def test_watchdog_exits_on_stale_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the main loop hasn't advanced _last_tick_at within the limit,
+    watchdog must call os._exit so supervisor can respawn us."""
+    import sovereign.sidecar as sc
+
+    state_path = tmp_path / "alpha.json"
+    monkeypatch.setattr(sc, "MCClient", lambda **_kw: type("C", (), {"close": lambda s: None})())  # noqa: E731
+
+    side = sc.SovereignSidecar(
+        brain="alpha", mode="DTD", mc_base_url="https://x",
+        runtime_token="t", symbols=["BTC/USD"], state_path=state_path,
+    )
+    # Force the last tick into the distant past so the watchdog trips.
+    side._last_tick_at = time.time() - 9999
+
+    exit_calls: list[int] = []
+    monkeypatch.setattr(sc.os, "_exit", lambda code: exit_calls.append(code))
+
+    import threading
+    stop = threading.Event()
+
+    def _wd_runner() -> None:
+        side._watchdog_loop(max_stale_seconds=1, stop=stop)
+
+    wd_thread = threading.Thread(target=_wd_runner, daemon=True)
+    wd_thread.start()
+    time.sleep(0.2)
+    stop.set()
+    wd_thread.join(timeout=2.0)
+
+    assert exit_calls == [2]
 
 
 def test_sidecar_apply_outcome_dtd_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
