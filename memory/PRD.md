@@ -28,6 +28,28 @@ market data
   -> [broker — disabled]
 ```
 
+## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13 / 2026-02 Feb fork)
+
+### 🟢 SSE Hypothesis Stream — Pro Gate Awaitable Fix (Feb 2026)
+
+Closed out the last P0 blocker from the previous fork: 2 failing SSE
+consensus tests in `tests/test_hypothesis_stream.py`.
+
+- **Root cause**: `routes.ai.get_optional_user` is async, but tests
+  monkey-patch it to a sync lambda. The route did `await
+  get_optional_user(request)` which raised `TypeError: object is not
+  awaitable` on the sync stub, fell into the bare `except`, and
+  defaulted `is_pro = (model == "alpha")`. For `model=consensus` that
+  collapsed to False → the gate emitted a `premium_required` error
+  event instead of running the 4 brains.
+- **Fix**: detect coroutine returns via `inspect.isawaitable()` and
+  only `await` when needed. Production callers stay async; tests can
+  monkey-patch with either form.
+- **Tests**: full `tests/test_hypothesis_stream.py` (10/10) and the
+  wider 3,457-test suite are green.
+- **Files touched**: `routes/hypothesis_stream.py` (pro-gate block
+  only).
+
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13)
 
 ### 🔓 Doctrine V3 — Local Trade Authorization Removed (2026-05-13)

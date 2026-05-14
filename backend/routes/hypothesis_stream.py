@@ -267,10 +267,14 @@ async def get_hypothesis_stream(
         model = "alpha"
 
     db = request.app.state.db
-    # Mirror the JSON route's pro gate exactly.
+    # Mirror the JSON route's pro gate exactly. We tolerate sync/async
+    # monkeypatching in tests by awaiting only when the call returns a
+    # coroutine/awaitable.
     try:
+        import inspect
         from routes.ai import get_optional_user, is_pro_user
-        user = await get_optional_user(request)
+        maybe_user = get_optional_user(request)
+        user = await maybe_user if inspect.isawaitable(maybe_user) else maybe_user
         is_pro = is_pro_user(user)
     except Exception:
         is_pro = model == "alpha"
