@@ -107,7 +107,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
           <div>
             <h2 className="text-white text-xl sm:text-2xl font-bold" style={{fontFamily: 'Manrope, sans-serif'}}>AI Investment Hypothesis</h2>
             <InfoTooltip id="ai-hypothesis" />
-            <p className="text-slate-300 text-xs sm:text-sm">Adversarial AI — Strategist generates thesis, Auditor stress-tests it</p>
+            <p className="text-slate-300 text-xs sm:text-sm">4 distinct AI brains — pick one or run them all in Consensus</p>
           </div>
         </div>
         {isPro && (
@@ -153,13 +153,13 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
             <currentModel.icon className={`w-8 h-8 ${currentModel.color} mx-auto animate-spin`} />
             <p className="text-white font-medium">
               {selectedModel === 'consensus'
-                ? `Running GPT-5.2, Claude Sonnet 4.5, and Gemini Pro on ${symbol.toUpperCase()}...`
+                ? `Running Alpha 1.6, Camaro 1.3, Chevelle 1.3, and RedEye 1.1 on ${symbol.toUpperCase()}...`
                 : `${currentModel.label} is analyzing ${symbol.toUpperCase()}...`}
             </p>
             <p className="text-slate-300 text-sm">
               {selectedModel === 'consensus'
-                ? 'Strategist + Auditor: Adversarial dual-signal analysis across macro, quant, and insider data'
-                : 'Strategist generating thesis, Auditor hunting for flaws in the signal'}
+                ? '4-brain consensus: trend, challenger, governor, and contrary scout weighing in together'
+                : `${currentModel.label} (${currentModel.provider}) generating thesis with its own voice`}
             </p>
           </div>
         </Card>

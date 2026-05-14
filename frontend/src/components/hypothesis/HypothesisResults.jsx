@@ -47,7 +47,7 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
             </Badge>
             {hypothesis.multi_agent && (
               <Badge className="text-[9px] bg-violet-800/40 text-violet-300 border-violet-700/50">
-                {hypothesis.agents_used || 4} AI Agents — Strategist + Auditor
+                {hypothesis.agents_used || 4} AI Brains
               </Badge>
             )}
             <Button size="sm" variant="outline" className="border-white/20 text-white/80 hover:bg-white/10 rounded-lg text-[10px] h-7 px-2" onClick={onExport} disabled={exporting} data-testid="export-report-btn">

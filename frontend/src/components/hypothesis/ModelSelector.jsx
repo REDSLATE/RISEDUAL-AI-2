@@ -19,7 +19,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
           <div className="text-left">
             <div className="text-white text-sm font-medium flex items-center gap-2">
               {currentModel.label}
-              {currentModel.key === 'consensus' && <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">3 MODELS</Badge>}
+              {currentModel.key === 'consensus' && <Badge className="bg-violet-900/50 text-violet-300 border-violet-700/50 text-[9px] px-1.5">4 BRAINS</Badge>}
             </div>
             <div className="text-slate-300 text-xs">{currentModel.provider}</div>
           </div>
@@ -67,7 +67,7 @@ const ModelSelector = ({ models, selectedModel, onSelect, isPro, onSubscribe, sh
           {!isPro && (
             <div className="px-4 py-2.5 bg-[#111C30] border-t border-slate-600">
               <button onClick={onSubscribe} className="text-[#3DE8D9] text-xs font-medium hover:underline flex items-center gap-1" data-testid="model-upgrade-btn">
-                <Zap className="w-3 h-3" /> Upgrade to Pro to unlock all models + Consensus Mode
+                <Zap className="w-3 h-3" /> Upgrade to Pro to unlock all 4 brains + Consensus
               </button>
             </div>
           )}

@@ -26,7 +26,7 @@ const TOUR_STEPS = [
   {
     target: '#ai-hypothesis',
     title: "AI Investment Hypothesis",
-    content: "Enter any ticker and get an AI-generated bull/bear case with confidence scores. Consensus mode runs 3 models for higher accuracy.",
+    content: "Enter any ticker and get an AI-generated bull/bear case with confidence scores. Consensus mode runs 4 brains for higher accuracy.",
     icon: Brain,
   },
   {

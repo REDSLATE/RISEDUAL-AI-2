@@ -41,7 +41,7 @@ const SECTIONS = [
         content: 'Raw AI verdicts on individual tickers or the broader market. Confidence scores, accuracy tracking, and full reasoning chains.',
         goto: ['warroom', 'prediction'] },
       { title: 'Hypothesis generator',
-        content: 'Enter a ticker. Get a bull + bear thesis before the prediction is made. Consensus mode runs 3 models and shows agreement/disagreement.',
+        content: 'Enter a ticker. Get a bull + bear thesis before the prediction is made. Consensus mode runs 4 brains and shows agreement/disagreement.',
         goto: ['warroom', 'hypothesis'] },
       { title: 'Signals (technical + flow)',
         content: 'Live technical signals (RSI/MACD/BB) merged with flow signals (unusual options, dark-pool prints). Filter by ticker or watchlist.',

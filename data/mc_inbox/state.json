@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-14T09:48:33.840360+00:00",
-  "last_roles_at": "2026-05-14T09:39:34.826274+00:00",
-  "last_scorecard_at": "2026-05-14T09:34:34.585512+00:00",
+  "last_polled_at": "2026-05-14T09:58:36.925277+00:00",
+  "last_roles_at": "2026-05-14T09:57:23.457277+00:00",
+  "last_scorecard_at": "2026-05-14T09:57:21.363597+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fcd9bfcd-35ee-471c-a218-e955fcbbee09",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Generates executable signals. The only stack whose authority can ever climb to CO_TRADER or PRIMARY. Must still pass RoadGuard / Envelope / Patent J gates.",
         "kind": "runtime",
-        "last_seen": "2026-05-14T09:39:16.570586+00:00",
+        "last_seen": "2026-05-14T09:57:19.813046+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Shadows Alpha. Attacks Alpha's thesis. Logs counterfactuals. Authority can climb the ladder via PromotionArtifact + Patent J + operator.",
         "kind": "runtime",
-        "last_seen": "2026-05-14T09:39:00.312040+00:00",
+        "last_seen": "2026-05-14T09:57:06.748390+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -85,16 +85,59 @@
     ]
   },
   "scorecard_snapshot": {
-    "error": "Client error '404 Not Found' for url 'https://b177ffdc-73ff-45fb-9ba4-f1e63e5e4274.preview.emergentagent.com/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "brier": 0.227,
+    "calibration_bands": [
+      {
+        "confidence_band": "0.5-0.6",
+        "n": 38,
+        "win_rate": 0.5
+      },
+      {
+        "confidence_band": "0.6-0.7",
+        "n": 76,
+        "win_rate": 0.5
+      },
+      {
+        "confidence_band": "0.7-0.8",
+        "n": 20,
+        "win_rate": 0.0
+      },
+      {
+        "confidence_band": "0.8-0.9",
+        "n": 20,
+        "win_rate": 1.0
+      },
+      {
+        "confidence_band": "0.9-1.0",
+        "n": 19,
+        "win_rate": 1.0
+      }
+    ],
+    "doctrine": "Descriptive only. Scorecards do not gate promotions. No brain may rewrite another brain's authority based on a scorecard.",
+    "lens": "longs",
+    "question_answered": "When am I good at longs?",
+    "role_stances": [
+      "long"
+    ],
     "runtime": "alpha",
-    "summary": {}
+    "summary": {
+      "ambiguous": 0,
+      "avg_confidence_on_losses": 0.6019480519480525,
+      "avg_confidence_on_wins": 0.6935416666666662,
+      "decisive": 173,
+      "hit_rate": 0.5549132947976878,
+      "losses": 77,
+      "no_event": 0,
+      "total_resolved": 173,
+      "wins": 96
+    }
   },
   "stats": {
     "by_peer": {
-      "camaro": 520,
-      "chevelle": 1480
+      "camaro": 780,
+      "chevelle": 2220
     },
-    "opinions_ingested": 2000,
+    "opinions_ingested": 3000,
     "opinions_quarantined": 0
   }
 }
