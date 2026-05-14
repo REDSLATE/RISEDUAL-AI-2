@@ -30,6 +30,60 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13 / 2026-02 Feb fork)
 
+### 🟢 Alpha Sidecar Freeze Hardening (2026-05-14)
+
+After the 18:31:35 silent-freeze incident (Alpha's sidecar wedged ~11
+minutes, supervisor never noticed because the process was technically
+RUNNING — blocked in a TLS syscall), three architectural fixes per
+MC's hardening note. Camaro got the same patch earlier today.
+
+**Fix 1 — `httpx.Client` phase-bound timeouts + no keep-alive**
+(`sovereign/mc_client.py`):
+- Old: `httpx.Client(timeout=5.0)` — single-number, kept connection
+  alive across LB rotation, half-open socket trap.
+- New: `httpx.Client(timeout=httpx.Timeout(connect=3, read=5, write=5,
+  pool=2), limits=httpx.Limits(max_keepalive_connections=0,
+  max_connections=4))` — every phase bounded, fresh TLS each tick.
+  Cost negligible at ~1 req/min.
+
+**Fix 2 — heartbeat decoupled from `tick()` into its own thread**
+(`sovereign/sidecar.py`):
+- Independent `_heartbeat_loop` daemon, 30s cadence, owns its own
+  `MCClient` (separate connection pool). A hung contribution can no
+  longer starve the heartbeat path — MC sees "alive but quiet"
+  instead of "dead."
+- `tick()` no longer calls `client.heartbeat()`.
+
+**Fix 3 — dual watchdog** (in-process + external):
+- In-process `_watchdog_loop` daemon: stamps `_last_tick_at` on
+  successful tick; if stale > 120s, calls `os._exit(2)` → supervisor
+  respawns.
+- External `liveness_watcher.sh` (new supervisor program
+  `alpha-liveness-watcher`): touches `/tmp/alpha_alive` each tick,
+  bash loop `pkill -9`s the sidecar if file mtime > 120s. Catches
+  GIL-deadlock / fork-in-thread classes the in-process watchdog
+  can't observe.
+
+**Worst-case time-to-respawn: ~150s (down from ~11 min / operator-paged).**
+
+**Sidecar URL migration:** `MC_BASE_URL` flipped from
+`multi-brain-backbone.preview.emergentagent.com` →
+`mission.risedual.ai` in `/etc/supervisor/conf.d/alpha-sidecar.conf`.
+The old preview URL had been 404-ing since 2026-05-14 11:54, dropping
+contribution + heartbeat on the floor for 4+ hours.
+
+**Files touched:**
+- `sovereign/mc_client.py` — httpx config
+- `sovereign/sidecar.py` — threading, watchdog, liveness file
+- `sovereign/liveness_watcher.sh` (new) — external pkill watcher
+- `/etc/supervisor/conf.d/alpha-sidecar.conf` — MC URL flip
+- `/etc/supervisor/conf.d/alpha-liveness-watcher.conf` (new)
+- `tests/test_alpha_sovereign_sidecar.py` — updated tick test, added
+  `test_heartbeat_thread_publishes_independently` and
+  `test_watchdog_exits_on_stale_tick`.
+
+**Tests:** 68/68 sidecar tests green. Full suite 3,457/3,457 green.
+
 ### 🟢 SSE Hypothesis Stream — Pro Gate Awaitable Fix (Feb 2026)
 
 Closed out the last P0 blocker from the previous fork: 2 failing SSE
