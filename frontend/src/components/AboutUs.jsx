@@ -20,7 +20,7 @@ const CAPABILITIES = [
   { icon: <Globe className="w-5 h-5 text-blue-400" />, title: 'Macro Intelligence', desc: 'Live world events, foreign market correlations, congressional stock trades, Fed announcements, and corporate lobbying data.' },
   { icon: <Zap className="w-5 h-5 text-lime-400" />, title: 'Live Order Flow Heatmaps', desc: 'Binance L2 depth visualization showing real-time buy/sell pressure across crypto pairs.' },
   { icon: <Shield className="w-5 h-5 text-violet-400" />, title: 'AI Strategy Builder & Backtester', desc: 'Build, backtest, and share trading strategies with a community marketplace.' },
-  { icon: <Brain className="w-5 h-5 text-cyan-400" />, title: 'Portfolio-Aware AI Chat', desc: 'GPT-5.2 powered assistant that knows your paper portfolio and can execute trades with 2-step confirmation.' },
+  { icon: <Brain className="w-5 h-5 text-cyan-400" />, title: 'Portfolio-Aware AI Chat', desc: 'Alpha 1.6 powered assistant that knows your paper portfolio and can execute trades with 2-step confirmation.' },
 ];
 
 const STATS = [

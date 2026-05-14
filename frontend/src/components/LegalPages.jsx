@@ -62,7 +62,7 @@ const TermsContent = () => (
     </S>
 
     <S title="8. AI-Generated Content and Signals">
-      <p>The Service utilizes artificial intelligence and machine learning models (including GPT-5.2 via Emergent Integrations) to generate market predictions, analysis, signals, and insights. All AI-generated content is: (a) clearly labeled with an "AI Signal" tag; (b) provided for informational purposes only and does not constitute financial advice, investment recommendations, or solicitations to buy or sell any security; (c) broadcast simultaneously to all eligible Pro subscribers rather than as individualized recommendations; (d) probabilistic in nature and may be inaccurate. Past performance of AI models does not guarantee future results. The AI is strictly prohibited from providing personalized investment advice.</p>
+      <p>The Service utilizes artificial intelligence and machine learning models (RISEDUAL's four AI runtimes: Alpha 1.6, Camaro 1.3, Chevelle 1.3, and RedEye 1.1) to generate market predictions, analysis, signals, and insights. All AI-generated content is: (a) clearly labeled with an "AI Signal" tag; (b) provided for informational purposes only and does not constitute financial advice, investment recommendations, or solicitations to buy or sell any security; (c) broadcast simultaneously to all eligible Pro subscribers rather than as individualized recommendations; (d) probabilistic in nature and may be inaccurate. Past performance of AI models does not guarantee future results. The AI is strictly prohibited from providing personalized investment advice.</p>
     </S>
 
     <S title="9. Limitation of Liability">
@@ -109,7 +109,7 @@ const AITransparencyContent = () => (
     </div>
 
     <S title="1. AI Models and Providers">
-      <p>This platform utilizes GPT-5.2 via Emergent Integrations as the primary AI inference engine. Additional models from Anthropic (Claude) and Google (Gemini) may be used for multi-model consensus analysis. All AI processing is performed by third-party model providers; {ENTITY} does not train, fine-tune, or host large language models internally.</p>
+      <p>This platform utilizes RISEDUAL's four AI runtimes (Alpha 1.6, Camaro 1.3, Chevelle 1.3, and RedEye 1.1) as the inference layer. Underlying model infrastructure is provided by third-party processors (including OpenAI, Anthropic, and Google) via Emergent Integrations; {ENTITY} does not train, fine-tune, or host large language models internally.</p>
     </S>
 
     <S title="2. AI Signal Labeling">

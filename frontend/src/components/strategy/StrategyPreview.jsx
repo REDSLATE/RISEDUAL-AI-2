@@ -54,7 +54,7 @@ const StrategyPreview = ({ strategy, onSave, saving, expanded, toggle }) => (
           <Save className="w-3.5 h-3.5 mr-1" /> {saving ? 'Saving...' : 'Save Strategy'}
         </Button>
         <Badge className="bg-slate-800 text-slate-400 border-slate-400/30 text-[9px]">
-          <Sparkles className="w-3 h-3 mr-1" /> {strategy.model_used || 'GPT-5.2'}
+          <Sparkles className="w-3 h-3 mr-1" /> {strategy.model_used || 'Alpha 1.6'}
         </Badge>
       </div>
     </Card>

@@ -4,7 +4,7 @@
 export function exportHypothesisReport(hypothesis, symbol) {
   const lines = [
     `RISEDUAL AI - HYPOTHESIS REPORT`, `${'='.repeat(50)}`,
-    `Symbol: ${hypothesis.symbol}`, `Model: ${hypothesis.model || 'GPT-5.2'}`,
+    `Symbol: ${hypothesis.symbol}`, `Model: ${hypothesis.model || 'Alpha 1.6'}`,
     `Generated: ${new Date().toLocaleString()}`, '',
     `VERDICT: ${hypothesis.verdict}`, `Confidence: ${hypothesis.confidence}%`,
     hypothesis.agreement != null ? `Model Agreement: ${hypothesis.agreement}%` : '', '',

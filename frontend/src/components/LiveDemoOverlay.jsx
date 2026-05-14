@@ -47,7 +47,7 @@ const DemoChat = () => {
         setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
         if (data.remaining != null) setRemaining(data.remaining);
       } else if (data.limit) {
-        setMessages(prev => [...prev, { role: 'assistant', content: "You've reached the demo limit! Join the waitlist for unlimited AI access with GPT-5.2." }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: "You've reached the demo limit! Join the waitlist for unlimited AI access with Alpha 1.6." }]);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: data.error || "Something went wrong. Try again!" }]);
       }

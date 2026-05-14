@@ -81,13 +81,15 @@ const Hero = ({ onGetStarted, onScroll, onTryDemo }) => (
         <Zap className="w-3.5 h-3.5" /> Adversarial AI Trading System
       </div>
       <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight mb-6">
-        Our AI Predicted{' '}
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">62% of Market Moves</span>
-        {' '}Last Quarter
+        Stop Guessing.{' '}
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400">Adversarial AI</span>{' '}
+        Decides.
       </h1>
       <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-        RISEDUAL AI deploys dual models&mdash;<span className="text-teal-400 font-medium">Strategist</span> generates signals,{' '}
-        <span className="text-cyan-400 font-medium">Auditor</span> kills bad ones. Sharpe 1.56, 11.2% max drawdown, autonomous paper trading live.{' '}
+        RISEDUAL AI deploys four runtimes&mdash;<span className="text-teal-400 font-medium">Alpha 1.6</span> proposes,{' '}
+        <span className="text-amber-400 font-medium">Camaro 1.3</span> challenges,{' '}
+        <span className="text-cyan-400 font-medium">Chevelle 1.3</span> audits,{' '}
+        <span className="text-rose-400 font-medium">RedEye 1.1</span> argues the other side. Sharpe 1.56, 11.2% max drawdown, autonomous paper trading live.{' '}
         <span className="text-white font-semibold">$55/month.</span> No contracts.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
@@ -119,7 +121,7 @@ const QuantLiteCallout = () => (
   <section className="py-12 sm:py-16 border-t border-white/5" data-testid="landing-quant-callout">
     <div className="max-w-4xl mx-auto px-4 text-center">
       <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-medium">
-        With a <span className="text-white font-bold">GPT-5.2 powered post-mortem engine</span> and{' '}
+        With a <span className="text-white font-bold">RedEye 1.1 powered post-mortem engine</span> and{' '}
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-400 font-bold">Adversarial AI</span>{' '}
         <span className="text-slate-400">(Strategist vs. Auditor)</span>, you aren&rsquo;t just a competitor&mdash;you are a{' '}
         <span className="text-white font-black italic">&ldquo;Quant-Lite&rdquo;</span>{' '}
@@ -194,7 +196,7 @@ const HowItWorks = () => (
           {
             icon: <Clock className="w-5 h-5 text-cyan-400" />,
             title: 'Nightly Retraining',
-            desc: 'Every night, both models retrain on post-mortem data. GPT-5.2 classifies failures and toxic patterns are pruned from ChromaDB.',
+            desc: 'Every night, both models retrain on post-mortem data. RedEye 1.1 classifies failures and toxic patterns are pruned from ChromaDB.',
             bullets: ['TECH_FAKEOUT classification', 'Toxic pattern pruning', 'Adaptive regime learning'],
             color: 'cyan',
           },
@@ -225,7 +227,7 @@ const Comparison = () => {
     { spec: 'Contract Terms', us: 'No Contract', them: 'Annual Only' },
     { spec: 'AI Architecture', us: 'Adversarial (Strategist vs. Auditor)', them: 'Single-Model Black Box' },
     { spec: 'Self-Correction', us: 'Nightly Dual-Signal Retraining', them: 'Static Updates' },
-    { spec: 'Post-Mortem Analysis', us: 'GPT-5.2 Classification', them: 'None / Generic' },
+    { spec: 'Post-Mortem Analysis', us: 'RedEye 1.1 Classification', them: 'None / Generic' },
     { spec: 'Real-Time Data', us: 'Triple SSE + Whale Radar', them: 'Telegram / Delayed' },
   ];
   return (
@@ -279,7 +281,7 @@ const Features = () => {
     { icon: <Clock className="w-5 h-5" />, title: 'Nightly Dual-Signal Retraining', desc: 'Both Strategist and Auditor retrain every night on classified post-mortem data. Toxic patterns get pruned.' },
     { icon: <Radio className="w-5 h-5" />, title: 'Triple SSE Streams', desc: 'Real-time market data from three independent sources. No delays, no Telegram bots.' },
     { icon: <Zap className="w-5 h-5" />, title: 'Whale Radar', desc: 'Track large wallet movements and institutional accumulation before they hit mainstream news.' },
-    { icon: <Brain className="w-5 h-5" />, title: 'GPT-5.2 Post-Mortem', desc: 'Every failed signal gets classified: TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP. Labels feed back into training.' },
+    { icon: <Brain className="w-5 h-5" />, title: 'RedEye 1.1 Post-Mortem', desc: 'Every failed signal gets classified: TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP. Labels feed back into training.' },
     { icon: <BarChart3 className="w-5 h-5" />, title: 'Dynamic Risk Scoring', desc: 'Real-time risk score based on market volatility, Auditor confidence, and historical win rate.' },
     { icon: <LineChart className="w-5 h-5" />, title: 'War Room Dashboard', desc: 'Real-time dashboard showing active signals, Auditor vetos, performance metrics, and market sentiment.' },
   ];
@@ -649,7 +651,7 @@ const FAQ = () => {
   const [open, setOpen] = useState(null);
   const items = [
     { q: 'What makes RISEDUAL AI different from other trading signals?', a: 'RISEDUAL AI uses an adversarial AI architecture with two competing models. The Strategist generates trade signals, and the Auditor actively tries to disprove them. This dual-signal approach catches false breakouts, liquidity traps, and regime shifts that single-model systems miss.' },
-    { q: 'How does the nightly retraining work?', a: 'Every night, GPT-5.2 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
+    { q: 'How does the nightly retraining work?', a: 'Every night, RedEye 1.1 analyzes all failed signals and classifies them (TECH_FAKEOUT, NEWS_BOMB, LIQUIDITY_GAP, etc.). These toxic patterns are pruned from ChromaDB, and winning patterns are reinforced. Both the Strategist and Auditor retrain on this refined dataset.' },
     { q: 'Do I need to sign an annual contract?', a: 'No. Plans start at $0 (Free), $19 (Starter), $55 (Pro), or $99 (Pro Max) per month. No contracts. Cancel anytime from your dashboard. Founding 50 members are locked in at Pro pricing for life.' },
     { q: 'What happens when I run out of credits?', a: 'You can buy more credits anytime. Unlimited AI Chat and War Room remain available for Pro and Pro Max members even at zero credits. Higher plans get better top-up rates.' },
     { q: 'Do credits expire?', a: 'Credits reset monthly with your plan renewal. Unused credits do not roll over. You can always buy top-ups if you need more mid-cycle.' },
@@ -725,7 +727,7 @@ const LandingFooter = ({ onOpenLegal }) => (
           <li><strong className="text-slate-300">High Risk Warning:</strong> Trading stocks, options, and digital assets involves significant risk of loss.</li>
           <li><strong className="text-slate-300">No Financial Advice:</strong> RISEDUAL AI is a <strong className="text-slate-300">financial research publishing platform</strong>. All content, including AI-generated signals and "4-Mind" insights, is for informational and educational purposes only.</li>
           <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> RISEDUAL AI and RISEDUAL INC. are not registered investment advisers (RIAs) or broker-dealers. We do not provide personalized investment recommendations.</li>
-          <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from AI models (GPT-5.2). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
+          <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from RISEDUAL's four AI runtimes (Alpha 1.6, Camaro 1.3, Chevelle 1.3, RedEye 1.1). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
           <li><strong className="text-slate-300">Past Performance:</strong> Any displayed backtests or historical results are not indicative of future performance.</li>
         </ul>
       </div>
