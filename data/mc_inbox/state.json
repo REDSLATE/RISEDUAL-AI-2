@@ -1,5 +1,5 @@
 {
-  "last_polled_at": "2026-05-14T09:44:39.131903+00:00",
+  "last_polled_at": "2026-05-14T09:48:33.840360+00:00",
   "last_roles_at": "2026-05-14T09:39:34.826274+00:00",
   "last_scorecard_at": "2026-05-14T09:34:34.585512+00:00",
   "last_seen_opinion_at": "",
@@ -91,10 +91,10 @@
   },
   "stats": {
     "by_peer": {
-      "camaro": 416,
-      "chevelle": 1184
+      "camaro": 520,
+      "chevelle": 1480
     },
-    "opinions_ingested": 1600,
+    "opinions_ingested": 2000,
     "opinions_quarantined": 0
   }
 }
