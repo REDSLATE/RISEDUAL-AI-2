@@ -609,6 +609,17 @@ async def startup_event():
                 _monorepo_heartbeat_loop()
             )
             logger.info("[monorepo] sidecar enabled — heartbeat loop spawned")
+            # ── MC INBOX POLLER (Doctrine V3, 2026-05-14) ──
+            # Inbound half of the sidecar: pulls cross-brain opinions,
+            # roles manifest, and our scorecard from MC and routes each
+            # opinion through Shelly's perception layer. Never raises.
+            try:
+                from services.mc_inbox_poller import run_forever as _mc_inbox_run
+                global _mc_inbox_task  # noqa: PLW0603
+                _mc_inbox_task = asyncio.create_task(_mc_inbox_run(db))
+                logger.info("[mc_inbox] poller spawned (opinions/roles/scorecard)")
+            except Exception as e:
+                logger.warning(f"[mc_inbox] poller startup failed (non-critical): {e}")
         else:
             logger.info("[monorepo] sidecar disabled (env not set)")
     except Exception as e:
@@ -618,6 +629,7 @@ async def startup_event():
 
 
 _monorepo_heartbeat_task: asyncio.Task | None = None
+_mc_inbox_task: asyncio.Task | None = None
 
 
 async def _monorepo_register_artifacts_at_startup():
