@@ -216,7 +216,17 @@ async def fetch_alpaca_equity_quotes_batch(
             headers=headers,
         )
         if resp.status_code >= 400:
-            logger.warning(
+            # Doctrine V3 (2026-05-13): keys are revoked at source —
+            # RISEDUAL is a headless brain receiving data from MC, not
+            # from broker APIs directly. Demote 401/403 spam to DEBUG so
+            # the scheduler's polite refusal isn't drowning the log.
+            level = (
+                logging.DEBUG
+                if resp.status_code in (401, 403)
+                else logging.WARNING
+            )
+            logger.log(
+                level,
                 "[alpaca_equity_quotes] HTTP %s: %s",
                 resp.status_code, resp.text[:200],
             )
