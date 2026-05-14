@@ -1,4 +1,15 @@
-"""Multi-model hypothesis service — runs GPT-5.2, Claude, Gemini individually or in Consensus Mode."""
+"""Multi-model hypothesis service — runs the 4 RISEDUAL brain
+personas individually or as a 4-way consensus.
+
+Personas are defined in ``services.brain_persona_service``. Each brain
+has its own underlying LLM provider for genuine consensus diversity
+(Alpha→GPT-5.2, Camaro→Claude Sonnet 4.5, Chevelle→Gemini 2.5 Flash,
+RedEye→GPT-5.2 with contrarian prompt).
+
+Doctrine V3 / 2026-05-14: when a brain produces a hypothesis we ALSO
+fold in any recent matching opinion that brain has posted on Mission
+Control, so the brain stays consistent with its operator-side voice.
+"""
 import json
 import asyncio
 import logging
@@ -7,13 +18,14 @@ from typing import Any
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
+from services.brain_persona_service import BRAINS, brain_runtime
+
 logger = logging.getLogger(__name__)
 
-MODELS: dict[str, dict[str, Any]] = {
-    "gpt-5.2": {"provider": "openai", "model": "gpt-5.2", "label": "GPT-5.2", "weight": 0.35},
-    "claude-sonnet-4.5": {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5", "weight": 0.35},
-    "gemini-pro": {"provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini Pro", "weight": 0.30},
-}
+# Backwards-compat alias — older code paths read ``MODELS``. Now points
+# at the brain registry, which carries the same shape (label/weight/
+# provider/model).
+MODELS: dict[str, dict[str, Any]] = BRAINS
 
 SYSTEM_MESSAGE = """You are an elite Wall Street quantitative analyst and AI research engine.
 When given a ticker symbol (stock or crypto), produce a comprehensive investment hypothesis using ALL provided data.
@@ -134,15 +146,63 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(raw)
 
 
+async def _fetch_recent_mc_opinion(model_key: str, symbol: str) -> str:
+    """Best-effort lookup of this brain's recent MC opinions on ``symbol``.
+
+    Returns a short text snippet to inject into the system prompt so the
+    brain stays consistent with what it's been saying publicly. Always
+    returns a string (empty if MC unreachable / brain has no take).
+    Never raises.
+    """
+    runtime = brain_runtime(model_key)
+    if not runtime:
+        return ""
+    try:
+        from services import risedual_monorepo_client as mc
+        resp = await mc.read_opinions(runtime=runtime, symbol=symbol, limit=3)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[brain_persona] MC lookup failed for %s: %s", runtime, e)
+        return ""
+    if not isinstance(resp, dict) or resp.get("error"):
+        return ""
+    items = resp.get("items") or []
+    if not items:
+        return ""
+    bullets: list[str] = []
+    for op in items[:3]:
+        stance = (op.get("stance") or "").strip()
+        body = (op.get("body") or "").strip()
+        if body:
+            bullets.append(f"- ({stance}) {body[:240]}")
+    if not bullets:
+        return ""
+    return (
+        "\n\nYour recent operator-side opinions on this symbol (for "
+        "internal consistency — do not quote them verbatim):\n"
+        + "\n".join(bullets)
+    )
+
+
 async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: str) -> dict:
-    """Run hypothesis generation on a single model."""
+    """Run hypothesis generation on a single brain persona.
+
+    Uses the brain's ``system_prompt`` so each persona has a genuinely
+    different voice. Folds in the brain's recent MC opinions on the
+    symbol when available.
+    """
     cfg = MODELS[model_key]
     raw_text = ""
     try:
+        system = cfg.get("system_prompt") or SYSTEM_MESSAGE
+        mc_note = await _fetch_recent_mc_opinion(model_key, symbol)
+        # The shared SYSTEM_MESSAGE (output schema) is appended so every
+        # brain still returns the same structured JSON the UI expects.
+        full_system = f"{system}\n\n{SYSTEM_MESSAGE}{mc_note}"
+
         chat = LlmChat(
             api_key=api_key,
             session_id=f"hypothesis_{model_key}_{symbol}",
-            system_message=SYSTEM_MESSAGE,
+            system_message=full_system,
         ).with_model(cfg["provider"], cfg["model"])
 
         response = await chat.send_message(UserMessage(text=prompt))
@@ -259,8 +319,13 @@ def _weighted_consensus(results: list[dict]) -> dict:
     }
 
 
-async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str = "gpt-5.2") -> dict:
-    """Generate hypothesis using multi-agent crew (single model) or consensus mode (multi-model)."""
+async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str = "alpha") -> dict:
+    """Generate hypothesis using a single brain persona, or 4-brain
+    consensus when ``model='consensus'``.
+
+    For unknown / legacy model keys we coerce to ``alpha`` (the free
+    tier default).
+    """
     if model == "consensus":
         prompt = _build_prompt(symbol, data)
         tasks = [_run_single_model(api_key, mk, symbol, prompt) for mk in MODELS]
@@ -283,17 +348,12 @@ async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str 
         ]
         return consensus
 
-    # Single model mode — use multi-agent crew for deeper analysis
-    try:
-        from services.crew_definitions import run_hypothesis_crew
-        crew_result = await run_hypothesis_crew(symbol, data, api_key)
-        crew_result["model"] = MODELS.get(model, {}).get("label", "GPT-5.2")
-        crew_result["model_key"] = model
-        crew_result["is_pro"] = True
-        return crew_result
-    except Exception as e:
-        logger.error(f"Crew hypothesis failed for {symbol}, falling back to single model: {e}")
-        if model not in MODELS:
-            model = "gpt-5.2"
-        prompt = _build_prompt(symbol, data)
-        return await _run_single_model(api_key, model, symbol, prompt)
+    # Single brain mode — call the brain's persona LLM directly. The
+    # multi-agent CrewAI path was tuned for generic LLMs and would
+    # erase the brain's personality, so we skip it for branded brains.
+    if model not in MODELS:
+        model = "alpha"
+    prompt = _build_prompt(symbol, data)
+    out = await _run_single_model(api_key, model, symbol, prompt)
+    out["is_pro"] = True
+    return out

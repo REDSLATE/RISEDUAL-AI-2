@@ -28,7 +28,7 @@ PORTFOLIO_KEYWORDS = re.compile(
 )
 
 FREE_CHAT_DAILY_LIMIT = 5
-VALID_HYPOTHESIS_MODELS = ["gpt-5.2", "claude-sonnet-4.5", "gemini-pro", "consensus"]
+VALID_HYPOTHESIS_MODELS = ["alpha", "camaro", "chevelle", "redeye", "consensus"]
 
 
 # Module-level db reference, set by server.py on startup
@@ -617,14 +617,14 @@ async def research_company(symbol: str, request: Request):
 
 # --- AI Hypothesis ---
 @router.get("/hypothesis/{symbol}")
-async def get_hypothesis(symbol: str, request: Request, model: str = "gpt-5.2"):
+async def get_hypothesis(symbol: str, request: Request, model: str = "alpha"):
     user = await get_optional_user(request)
     is_pro = is_pro_user(user)
 
     if model not in VALID_HYPOTHESIS_MODELS:
-        model = "gpt-5.2"
-    if not is_pro and model != "gpt-5.2":
-        raise HTTPException(status_code=403, detail="Premium AI models require a Pro subscription. Free users can use GPT-5.2.")
+        model = "alpha"
+    if not is_pro and model != "alpha":
+        raise HTTPException(status_code=403, detail="Premium AI models require a Pro subscription. Free users can use Alpha 1.6.")
 
     try:
         data = await _collect_all_scrape_data()

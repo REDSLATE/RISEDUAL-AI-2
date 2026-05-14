@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Sparkles, Brain, Cpu, Network, Globe } from 'lucide-react';
+import { Search, Sparkles, Swords, Shield, Eye, Network, Globe } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -17,11 +17,14 @@ import { addRecent } from '../utils/recentTickers';
 
 const API = `${getApiBase()}/api`;
 
+// The 4 RISEDUAL brain personas, plus 4-way consensus.
+// Free tier: Alpha 1.6. Everything else gates on Pro.
 const AI_MODELS = [
-  { key: 'gpt-5.2', label: 'GPT-5.2', provider: 'OpenAI', icon: Sparkles, color: 'text-lime-400', bg: 'bg-lime-700', free: true },
-  { key: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5', provider: 'Anthropic', icon: Brain, color: 'text-orange-400', bg: 'bg-orange-800', free: false },
-  { key: 'gemini-pro', label: 'Gemini Pro', provider: 'Google', icon: Cpu, color: 'text-blue-400', bg: 'bg-blue-900/30', free: false },
-  { key: 'consensus', label: 'Consensus Mode', provider: 'All 3 Models', icon: Network, color: 'text-violet-300', bg: 'bg-violet-900/30', free: false },
+  { key: 'alpha',     label: 'Alpha 1.6',     provider: 'Trend follower', icon: Sparkles, color: 'text-emerald-300', bg: 'bg-emerald-700', free: true  },
+  { key: 'camaro',    label: 'Camaro 1.3',    provider: 'Challenger',     icon: Swords,   color: 'text-amber-300',   bg: 'bg-amber-700',   free: false },
+  { key: 'chevelle',  label: 'Chevelle 1.3',  provider: 'Governor',       icon: Shield,   color: 'text-sky-300',     bg: 'bg-sky-800',     free: false },
+  { key: 'redeye',    label: 'RedEye 1.1',    provider: 'Contrary scout', icon: Eye,      color: 'text-rose-300',    bg: 'bg-rose-800',    free: false },
+  { key: 'consensus', label: 'Consensus',     provider: 'All 4 brains',   icon: Network,  color: 'text-violet-300',  bg: 'bg-violet-900/30', free: false },
 ];
 
 const AIHypothesis = ({ onSubscribe, onLogin }) => {
@@ -31,7 +34,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('gpt-5.2');
+  const [selectedModel, setSelectedModel] = useState('alpha');
   const [showModelPicker, setShowModelPicker] = useState(false);
   const searchRef = useRef(null);
 
@@ -67,7 +70,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
     setError('');
     setHypothesis(null);
     try {
-      const modelParam = isPro ? selectedModel : 'gpt-5.2';
+      const modelParam = isPro ? selectedModel : 'alpha';
       const res = await authFetch(`${API}/hypothesis/${symbol.trim().toUpperCase()}?model=${modelParam}`);
       if (res.status === 401) throw new Error('Session expired — please log in again.');
       if (res.status === 502 || res.status === 504) throw new Error('Server is busy — please try again in a moment.');
@@ -139,7 +142,7 @@ const AIHypothesis = ({ onSubscribe, onLogin }) => {
           />
         </div>
         <Button type="submit" disabled={loading || !symbol.trim()} className="bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white rounded-xl px-6" data-testid="hypothesis-submit">
-          {loading ? (selectedModel === 'consensus' ? 'Running 3 Models...' : 'Analyzing...') : 'Analyze'}
+          {loading ? (selectedModel === 'consensus' ? 'Running 4 Brains...' : 'Analyzing...') : 'Analyze'}
         </Button>
       </form>
 
