@@ -121,6 +121,14 @@ class SovereignSidecar:
         self._hb_client = MCClient(
             base_url=mc_base_url, brain=brain, runtime_token=runtime_token,
         )
+        # External liveness file path — see MC's 2026-05-14 hardening
+        # note, Fix #3. Touched after every successful tick; an
+        # external supervisor program kills us if it goes stale past
+        # 2× interval.
+        self._liveness_file = Path(
+            os.environ.get("SOVEREIGN_LIVENESS_FILE")
+            or f"/tmp/{brain}_alive"
+        )
 
     # ──────────────────────── heartbeat thread ────────────────────────
 
@@ -228,6 +236,16 @@ class SovereignSidecar:
         # reached the end. A partial tick (e.g. contribution hung) will
         # leave this stale and the watchdog will respawn us.
         self._last_tick_at = time.time()
+        # External liveness file — MC's belt-and-suspenders watchdog
+        # (2026-05-14 hardening note). An external supervisor program
+        # checks this file's mtime every 30s and pkills us if it's
+        # stale past 120s. Catches the GIL-deadlock / fork-in-thread
+        # class of freeze that our in-process watchdog thread can't
+        # observe (because the same GIL stall blocks it too).
+        try:
+            self._liveness_file.touch()
+        except OSError as e:
+            logger.warning("liveness file touch failed: %s", e)
 
     # ──────────────────────── retrain (DTD only) ────────────────────────
 
