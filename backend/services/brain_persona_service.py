@@ -7,7 +7,7 @@ a selectable model:
     Alpha 1.6     — trend follower    (gpt-5.2)
     Camaro 1.3    — challenger        (claude-sonnet-4-5-20250929)
     Chevelle 1.3  — governor          (gemini-2.5-flash)
-    RedEye 1.1    — contrary          (gpt-5.2, contrarian prompt)
+    RedEye 1.3    — contrary          (gpt-5.2, contrarian prompt)
 
 Each persona is composed of:
     - A public ``label`` (what the UI shows; e.g. "Alpha 1.6")
@@ -81,14 +81,14 @@ BRAINS: dict[str, dict[str, Any]] = {
         ),
     },
     "redeye": {
-        "label": "RedEye 1.1",
+        "label": "RedEye 1.3",
         "runtime": "redeye",  # operator-side only
         "provider": "openai",
         "model": "gpt-5.2",
         "weight": 0.20,
         "tagline": "Contrary scout",
         "system_prompt": (
-            "You are RedEye 1.1, an adversarial contrarian scout. You hunt for "
+            "You are RedEye 1.3, an adversarial contrarian scout. You hunt for "
             "the trade nobody is making. When the crowd is bullish, you find the "
             "bearish case worth taking seriously. When the crowd is bearish, you "
             "find the underpriced bullish setup. You always argue from the angle "

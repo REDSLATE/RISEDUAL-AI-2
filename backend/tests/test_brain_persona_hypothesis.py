@@ -39,7 +39,7 @@ def test_brain_labels_are_versioned() -> None:
     assert BRAINS["alpha"]["label"] == "Alpha 1.6"
     assert BRAINS["camaro"]["label"] == "Camaro 1.3"
     assert BRAINS["chevelle"]["label"] == "Chevelle 1.3"
-    assert BRAINS["redeye"]["label"] == "RedEye 1.1"
+    assert BRAINS["redeye"]["label"] == "RedEye 1.3"
 
 
 def test_underlying_models_are_heterogeneous() -> None:
@@ -257,7 +257,7 @@ async def test_generate_hypothesis_consensus_runs_all_four(monkeypatch) -> None:
 async def test_generate_hypothesis_consensus_survives_one_brain_error(monkeypatch) -> None:
     async def fake_run(api_key, model_key, symbol, prompt):
         if model_key == "redeye":
-            return {"model": "RedEye 1.1", "model_key": "redeye",
+            return {"model": "RedEye 1.3", "model_key": "redeye",
                     "symbol": symbol, "verdict": "ERROR", "confidence": 0,
                     "summary": "failed", "error": True}
         return {"model": BRAINS[model_key]["label"], "model_key": model_key,

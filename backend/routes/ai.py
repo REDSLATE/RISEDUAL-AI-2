@@ -633,19 +633,23 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "alpha"):
             return _build_hypothesis_teaser(symbol, data)
 
         from services.ai_cache_service import AICacheService
+        from services.llm_response_cache import hypothesis_l1_cache
         force_refresh = request.query_params.get("force_refresh") == "true"
         cache = AICacheService(request.app.state.db)
         cache_key = cache.build_key("hypothesis", symbol=symbol.upper(), model=model)
 
         if not force_refresh:
+            # L1: in-process LRU+TTL (60s) — skips the Mongo round-trip
+            # for hot-symbol repeats inside the same Uvicorn worker.
+            l1_hit = hypothesis_l1_cache.get(cache_key)
+            if l1_hit is not None:
+                l1_hit["_cache"] = {"hit": True, "layer": "l1"}
+                return l1_hit
             cached = await cache.get(cache_key)
             if cached:
-                # AICacheService.get() returns the inner ``data`` dict
-                # directly (see services/ai_cache_service.py:65). The
-                # wrapper's created_at / expires_at are not exposed
-                # through this API — surfacing the cache-hit flag is
-                # what the frontend actually consumes.
-                cached["_cache"] = {"hit": True}
+                cached["_cache"] = {"hit": True, "layer": "mongo"}
+                # Hydrate L1 so subsequent hits in this worker skip Mongo.
+                hypothesis_l1_cache.set(cache_key, cached, ttl_seconds=60)
                 return cached
 
         from services.multi_model_hypothesis_service import generate_hypothesis
@@ -661,6 +665,8 @@ async def get_hypothesis(symbol: str, request: Request, model: str = "alpha"):
             ttl_seconds=600,
             meta={"symbol": symbol.upper(), "model": model},
         )
+        # Hot-path L1 mirror so the next caller in this worker skips Mongo.
+        hypothesis_l1_cache.set(cache_key, hypothesis, ttl_seconds=60)
 
         # Log prediction for accuracy tracking
         if hypothesis.get("verdict") and db is not None:

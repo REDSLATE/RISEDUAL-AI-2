@@ -114,6 +114,16 @@ async def _scrub_test_contamination(db: Any) -> dict:
     return summary
 
 
+async def _add_hot_path_indexes(db: Any) -> dict:
+    """Wrapper that defers to migrations.add_hot_path_indexes.run(db).
+
+    Imported lazily so the migration module doesn't load at runner
+    import time — keeps startup ordering clean.
+    """
+    from migrations.add_hot_path_indexes import run
+    return await run(db)
+
+
 # ── Registry ──
 # (id, description, body). Add new migrations to the bottom; ids
 # must be unique forever (we record them in `migrations` so a
@@ -126,6 +136,16 @@ _MIGRATIONS: list[tuple[str, str, Callable[[Any], Awaitable[dict]]]] = [
         "(predictions, trade_ideas, trades, signals, watchlists, "
         "alerts_sent). Counterpart to scripts/scrub_test_contamination.py.",
         _scrub_test_contamination,
+    ),
+    (
+        "2026-05-14-add-hot-path-indexes",
+        "Add indexes to hot-path collections (predictions, "
+        "shelly_memories, hypothesis_logs, market_memories, "
+        "shelly_legacy_malformed). Without these, every page that "
+        "filters by symbol/user_id/source/created_at runs a "
+        "full-collection scan. Idempotent: existing-with-conflict is "
+        "treated as success.",
+        _add_hot_path_indexes,
     ),
 ]
 

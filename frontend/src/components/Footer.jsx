@@ -86,7 +86,7 @@ const Footer = ({ onOpenLegal }) => {
             <li><strong className="text-slate-300">High Risk Warning:</strong> Trading stocks, options, and digital assets involves significant risk of loss.</li>
             <li><strong className="text-slate-300">No Financial Advice:</strong> RISEDUAL AI is a <strong className="text-slate-300">financial research publishing platform</strong>. All content, including AI-generated signals and "4-Mind" insights, is for informational and educational purposes only.</li>
             <li><strong className="text-slate-300">Not a Broker/Adviser:</strong> RISEDUAL AI and RISEDUAL INC. are not registered investment advisers (RIAs) or broker-dealers. We do not provide personalized investment recommendations.</li>
-            <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from RISEDUAL's four AI runtimes (Alpha 1.6, Camaro 1.3, Chevelle 1.3, RedEye 1.1). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
+            <li><strong className="text-slate-300">AI Limitations:</strong> Content is generated with assistance from RISEDUAL's four AI runtimes (Alpha 1.6, Camaro 1.3, Chevelle 1.3, RedEye 1.3). AI can "hallucinate" or provide inaccurate data. Users must perform their own due diligence before executing any trade.</li>
             <li><strong className="text-slate-300">Past Performance:</strong> Any displayed backtests or historical results are not indicative of future performance.</li>
           </ul>
         </div>

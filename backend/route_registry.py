@@ -99,6 +99,7 @@ from routes.admin_news import router as admin_news_router, set_db as set_admin_n
 from routes.admin_tier3_bootstrap import router as admin_tier3_bootstrap_router, set_db as set_admin_tier3_bootstrap_db
 from routes.admin_promotion_gates import router as admin_promotion_gates_router, set_db as set_admin_promotion_gates_db
 from routes.intelligence_council import router as intelligence_council_router
+from routes.hypothesis_stream import router as hypothesis_stream_router
 from routes.admin_ticker_abandonment import router as admin_ticker_abandonment_router, set_db as set_admin_ticker_abandonment_db
 from routes.admin_day_trade import router as admin_day_trade_router, set_db as set_admin_day_trade_db
 from routes.admin_spread_slippage import router as admin_spread_slippage_router, set_db as set_admin_spread_slippage_db
@@ -214,6 +215,7 @@ ALL_ROUTERS = [
     admin_ml_safety_router,
     nl_trading_router,
     intelligence_council_router,
+    hypothesis_stream_router,
 ]
 
 
