@@ -121,6 +121,20 @@ ALLOWLIST: dict[str, str] = {
         "Validates already-canonical {BUY, SELL, HOLD} from the "
         "council_risk_modulator output."
     ),
+    "services/confidence_weighting.py": (
+        "Disagreement classifier reads already-canonical verdict "
+        "tokens emitted by the hypothesis brains (BUY/SELL/HOLD/"
+        "NEUTRAL). No conversion happens here — only counting which "
+        "directional camps are present so the bounded penalty can be "
+        "applied. Patent M-adjacent doctrine module."
+    ),
+    "services/multi_model_hypothesis_service.py": (
+        "Consensus assembly reads already-canonical verdict tokens "
+        "from each brain's structured JSON output. The DIRECTIONAL_FLOOR "
+        "filter only checks membership ({BUY, SELL}) — it does not "
+        "translate tokens. Verdict canonicalisation is upstream in "
+        "_parse_json_response."
+    ),
     "services/model_adaptation.py": (
         "Iteration set ['LONG','SHORT'] for parametric adaptation "
         "scan — not classification, output direction is already canonical."

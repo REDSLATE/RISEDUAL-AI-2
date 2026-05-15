@@ -19,6 +19,10 @@ from typing import Any
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 from services.brain_persona_service import BRAINS, brain_runtime
+from services.confidence_weighting import (
+    apply_disagreement_penalty,
+    BrainWeightState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,16 +218,24 @@ async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: s
         return hypothesis
 
     except json.JSONDecodeError:
+        # 2026-05-15: do NOT mask a parse failure as a NEUTRAL/50 vote.
+        # Previously this returned {"verdict": "NEUTRAL", "confidence": 50}
+        # which the consensus then treated as a real opinion, flattening
+        # the result towards HOLD. Mark it as ERROR so the consensus
+        # filter drops it — an honest "this brain went silent" instead
+        # of "this brain mildly disagreed."
         return {
             "model": cfg["label"],
             "model_key": model_key,
             "symbol": symbol.upper(),
-            "verdict": "NEUTRAL",
-            "confidence": 50,
+            "verdict": "ERROR",
+            "confidence": 0,
             "thesis": raw_text[:500] or "Analysis completed but structured parsing failed",
-            "summary": f"{cfg['label']} analysis completed — parsing failed",
+            "summary": f"{cfg['label']} response parse failed — dropped from consensus",
             "catalysts": [],
             "risks": [],
+            "error": True,
+            "error_kind": "json_parse_failed",
         }
     except Exception as e:
         logger.error(f"{cfg['label']} hypothesis error for {symbol}: {e}")
@@ -241,43 +253,125 @@ async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: s
         }
 
 
-def _weighted_consensus(results: list[dict]) -> dict:
-    """Compute weighted voting consensus from multiple model results."""
+def _weighted_consensus(
+    results: list[dict],
+    *,
+    brain_weights: BrainWeightState | None = None,
+) -> dict:
+    """Compute weighted voting consensus from multiple model results.
+
+    Doctrine (2026-05-15 — Camaro hold-trap RCA):
+      * Disagreement is a **bounded penalty**, never a flatten to 0.50.
+      * The receipt is **honest** — market judgment is kept separate
+        from execution restraint. A blocked-feeling HOLD will surface
+        ``would_have_traded_without_gates=True`` and the original
+        directional ``raw_action`` so the brain stays auditable.
+      * HOLD does not get to win by passive accumulation: when at
+        least one brain emits a directional verdict above the
+        ``DIRECTIONAL_FLOOR`` confidence (55 %), HOLD is treated as an
+        abstention, not a competing direction.
+    """
     valid = [r for r in results if r.get("verdict") not in ("ERROR", None)]
     if not valid:
         return {
             "verdict": "NEUTRAL",
             "confidence": 0,
             "summary": "All models failed — unable to generate consensus",
+            "market_decision": "HOLD",
+            "execution_decision": "OBSERVE_ONLY",
+            "display_action": "HOLD",
+            "raw_action": "HOLD",
+            "raw_confidence": 0,
+            "final_action": "HOLD",
+            "final_confidence": 0,
+            "hold_reason": "ALL_BRAINS_FAILED",
+            "blocked_by": ["ALL_BRAINS_FAILED"],
+            "would_have_traded_without_gates": False,
+            "pre_weight_confidence": 0,
+            "post_weight_confidence": 0,
+            "council_penalty": 0,
+            "disagreement_kind": "ALL_HOLD",
+            "individual_weights": {},
         }
 
-    verdict_map = {"BUY": 0, "SELL": 0, "HOLD": 0, "NEUTRAL": 0}
-    total_weight = 0
-    weighted_confidence = 0
+    weights = brain_weights or BrainWeightState()
+    weight_map = weights.as_mapping()
+
+    DIRECTIONAL_FLOOR = 55  # confidence pct below which a directional vote is treated as abstention
+
+    verdict_weight = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0, "NEUTRAL": 0.0}
+    directional_weight = {"BUY": 0.0, "SELL": 0.0}
+    total_weight = 0.0
+    weighted_confidence = 0.0
+    verdicts_for_disagreement: list[str] = []
 
     for r in valid:
         key = r["model_key"]
-        w = MODELS.get(key, {}).get("weight", 0.33)
-        verdict = r.get("verdict", "NEUTRAL").upper()
-        if verdict not in verdict_map:
+        base_w = MODELS.get(key, {}).get("weight", 0.33)
+        dyn_w = weight_map.get(key, 1.0)
+        w = base_w * dyn_w
+        verdict = (r.get("verdict") or "NEUTRAL").upper()
+        if verdict not in verdict_weight:
             verdict = "NEUTRAL"
-        verdict_map[verdict] += w
-        weighted_confidence += r.get("confidence", 50) * w
+        confidence = float(r.get("confidence", 50) or 50)
+        verdict_weight[verdict] += w
+        if verdict in ("BUY", "SELL") and confidence >= DIRECTIONAL_FLOOR:
+            directional_weight[verdict] += w
+        verdicts_for_disagreement.append(verdict)
+        weighted_confidence += confidence * w
         total_weight += w
 
-    final_verdict = max(verdict_map, key=verdict_map.get)
-    final_confidence = round(weighted_confidence / total_weight) if total_weight else 50
+    # Pre-weight confidence: pure weighted mean across brains.
+    pre_weight_conf_pct = round(weighted_confidence / total_weight) if total_weight else 50
 
-    # Merge catalysts and risks (deduplicate by similarity)
-    all_catalysts = []
-    all_risks = []
+    # Decide market_decision (raw, un-penalised market judgment).
+    #
+    # HOLD-trap fix: if ANY directional vote cleared the floor, the
+    # higher-weighted side wins, even if absolute HOLD weight exceeds
+    # each directional weight individually. HOLD only wins when no
+    # directional vote crossed the floor.
+    raw_directional = max(directional_weight, key=directional_weight.get)
+    if directional_weight[raw_directional] > 0:
+        market_decision = raw_directional
+    else:
+        # No directional signal cleared the floor — HOLD is honest.
+        market_decision = "HOLD"
+
+    # Apply bounded disagreement penalty to confidence.
+    pre_conf_unit = pre_weight_conf_pct / 100.0
+    disagreement = apply_disagreement_penalty(
+        pre_confidence=pre_conf_unit, verdicts=verdicts_for_disagreement,
+    )
+    post_weight_conf_pct = round(disagreement.post_penalty * 100)
+    council_penalty_pct = round(disagreement.delta * 100, 1)
+
+    # Display + execution layering.
+    # RISEDUAL is a headless brain (Doctrine V3) — execution lives on
+    # Mission Control. We never *gate* trades locally, but we still
+    # expose the would-have-traded signal so MC and operators can see
+    # the brain's honest market judgment vs. its display action.
+    execution_decision = "OBSERVE_ONLY"
+    blocked_by: list[str] = []
+    hold_reason: str | None = None
+    would_have_traded = market_decision in ("BUY", "SELL")
+    if market_decision == "HOLD":
+        if disagreement.kind == "HARD_CONFLICT":
+            hold_reason = "COUNCIL_HARD_CONFLICT"
+        elif disagreement.kind == "ALL_HOLD":
+            hold_reason = "NO_DIRECTIONAL_SIGNAL"
+        else:
+            hold_reason = "DIRECTIONAL_FLOOR_NOT_CLEARED"
+            blocked_by.append("DIRECTIONAL_FLOOR")
+
+    # Catalysts / risks dedup (unchanged from prior behaviour).
+    all_catalysts: list[str] = []
+    all_risks: list[str] = []
     for r in valid:
         all_catalysts.extend(r.get("catalysts", [])[:3])
         all_risks.extend(r.get("risks", [])[:3])
 
-    # Simple dedup: keep unique first 6
-    seen_cat = set()
-    unique_catalysts = []
+    seen_cat: set[str] = set()
+    unique_catalysts: list[str] = []
     for c in all_catalysts:
         short = c[:50].lower()
         if short not in seen_cat:
@@ -286,8 +380,8 @@ def _weighted_consensus(results: list[dict]) -> dict:
         if len(unique_catalysts) >= 6:
             break
 
-    seen_risk = set()
-    unique_risks = []
+    seen_risk: set[str] = set()
+    unique_risks: list[str] = []
     for r in all_risks:
         short = r[:50].lower()
         if short not in seen_risk:
@@ -296,16 +390,18 @@ def _weighted_consensus(results: list[dict]) -> dict:
         if len(unique_risks) >= 6:
             break
 
-    # Use the highest-weighted valid model's thesis and targets
     best = max(valid, key=lambda x: MODELS.get(x["model_key"], {}).get("weight", 0))
-
-    # Agreement percentage
-    agree_count = sum(1 for r in valid if r.get("verdict", "").upper() == final_verdict)
+    agree_count = sum(
+        1 for r in valid
+        if (r.get("verdict") or "").upper() == market_decision
+    )
     agreement = round(agree_count / len(valid) * 100)
 
+    display_action = market_decision  # RISEDUAL never overrides display today
     return {
-        "verdict": final_verdict,
-        "confidence": final_confidence,
+        # ── legacy surface (unchanged shape so existing consumers keep working) ──
+        "verdict": display_action,
+        "confidence": post_weight_conf_pct,
         "agreement": agreement,
         "price_target_short": best.get("price_target_short", "N/A"),
         "price_target_medium": best.get("price_target_medium", "N/A"),
@@ -315,7 +411,26 @@ def _weighted_consensus(results: list[dict]) -> dict:
         "congressional_activity": best.get("congressional_activity", ""),
         "sector_impact": best.get("sector_impact", ""),
         "technical_outlook": best.get("technical_outlook", ""),
-        "summary": f"Consensus: {final_verdict} ({final_confidence}% confidence, {agreement}% model agreement)",
+        "summary": (
+            f"Consensus: {display_action} ({post_weight_conf_pct}% confidence, "
+            f"{agreement}% model agreement)"
+        ),
+        # ── new transparency receipt (2026-05-15 doctrine) ──
+        "market_decision": market_decision,
+        "execution_decision": execution_decision,
+        "display_action": display_action,
+        "raw_action": market_decision,
+        "raw_confidence": pre_weight_conf_pct,
+        "final_action": display_action,
+        "final_confidence": post_weight_conf_pct,
+        "hold_reason": hold_reason,
+        "blocked_by": blocked_by,
+        "would_have_traded_without_gates": would_have_traded,
+        "pre_weight_confidence": pre_weight_conf_pct,
+        "post_weight_confidence": post_weight_conf_pct,
+        "council_penalty": council_penalty_pct,
+        "disagreement_kind": disagreement.kind,
+        "individual_weights": weight_map,
     }
 
 

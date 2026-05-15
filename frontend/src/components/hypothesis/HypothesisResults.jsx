@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Minus, BarChart3, Globe, Landmark, Download, 
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import ConsensusReceipt from './ConsensusReceipt';
 
 const verdictColor = (v) => {
   if (v === 'BUY') return 'text-lime-400 bg-lime-700 border-emerald-700/50';
@@ -60,6 +61,12 @@ const HypothesisResults = ({ hypothesis, currentModel, models, onExport, exporti
         <p className="mt-4 text-sm opacity-90">{hypothesis.summary}</p>
       )}
     </Card>
+
+    {/* Decision Receipt — doctrine telemetry for council disagreement
+        and execution layering. Only renders when receipt fields are
+        present (consensus path emits them; older cached results
+        without them stay clean). */}
+    <ConsensusReceipt hypothesis={hypothesis} />
 
     {/* Consensus Mode: Individual Model Results */}
     {hypothesis.individual_results?.length > 0 && (
