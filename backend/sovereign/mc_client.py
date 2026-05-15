@@ -83,6 +83,165 @@ def stance_url(base: str, position_id: str, runtime: str) -> str:
     )
 
 
+def intents_url(base: str) -> str:
+    """Intent submission endpoint (MC's `shared_intents` collection)."""
+    return f"{base.rstrip('/')}/api/intents"
+
+
+# Honesty-receipt fields accepted by MC's IntentIn schema (2026-05-15).
+# All optional; brains that don't ship them forfeit their audit trail
+# (and produce `total_intents=N, blocked_directional=0` on MC's
+# /api/admin/intents/honesty endpoint — the exact symptom that
+# prompted this patch). The list is kept here, not in
+# build_intent_body, because the validation rules differ per field
+# and inlining them keeps the validator readable.
+_HONESTY_ACTION_FIELDS = ("raw_action", "market_decision", "display_action")
+_HONESTY_EXEC_VALUES = frozenset({"ALLOW", "BLOCK", "SIZE_DOWN", "OBSERVE_ONLY"})
+_HONESTY_WEIGHT_FIELDS = (
+    "strategist_weight", "auditor_weight", "commander_weight",
+    "regime_weight", "memory_weight",
+)
+
+
+def build_intent_body(
+    *,
+    symbol: str,
+    side: str,
+    qty: float,
+    confidence: float,
+    notes: str = "",
+    # ── honesty receipt (all optional, MC server is additive-safe) ──
+    raw_action: str | None = None,
+    raw_confidence: float | None = None,
+    market_decision: str | None = None,
+    execution_decision: str | None = None,
+    display_action: str | None = None,
+    hold_reason: str | None = None,
+    blocked_by: Iterable[str] | None = None,
+    would_have_traded_without_gates: bool | None = None,
+    pre_weight_confidence: float | None = None,
+    post_weight_confidence: float | None = None,
+    council_penalty: float | None = None,
+    strategist_weight: float | None = None,
+    auditor_weight: float | None = None,
+    commander_weight: float | None = None,
+    regime_weight: float | None = None,
+    memory_weight: float | None = None,
+) -> dict[str, Any]:
+    """Construct + validate an intent payload before it leaves the host.
+
+    Required core fields mirror MC's ``IntentIn`` schema. Honesty
+    receipt fields are optional but doctrinally required (2026-05-15):
+    a brain that omits them produces the silent-state failure mode
+    (blocked trades indistinguishable from HOLD opinions) that poisons
+    Hypothesis recall and drifts the council neutral. See
+    ``services.confidence_weighting`` for the math behind the bounded
+    penalty and dynamic weights.
+
+    Raises ``MCContractError`` on local validation failure — we'd
+    rather fail fast than discover a typo in MC's 422 response.
+    """
+    if not symbol or not isinstance(symbol, str):
+        raise MCContractError("intent symbol must be a non-empty string")
+    side_u = (side or "").upper()
+    if side_u not in ALLOWED_ACTIONS:
+        raise MCContractError(
+            f"intent side {side!r} not in {sorted(ALLOWED_ACTIONS)}"
+        )
+    qf = float(qty)
+    if not math.isfinite(qf) or qf <= 0:
+        raise MCContractError(f"intent qty must be > 0, got {qf}")
+    cf = float(confidence)
+    if not math.isfinite(cf) or cf < 0.0 or cf > 1.0:
+        raise MCContractError(f"intent confidence {cf} outside [0, 1]")
+
+    body: dict[str, Any] = {
+        "symbol": symbol.upper(),
+        "side": side_u,
+        "qty": qf,
+        "confidence": cf,
+        "notes": str(notes or ""),
+    }
+
+    # Action-domain honesty fields — must be subset of ALLOWED_ACTIONS
+    # if present (BUY / SELL / HOLD / SHORT / COVER). Validation is
+    # symmetric across raw_action / market_decision / display_action
+    # because all three live in the same action space.
+    for fname, fval in (
+        ("raw_action", raw_action),
+        ("market_decision", market_decision),
+        ("display_action", display_action),
+    ):
+        if fval is None:
+            continue
+        fv = str(fval).upper()
+        if fv not in ALLOWED_ACTIONS:
+            raise MCContractError(
+                f"intent {fname} {fval!r} not in {sorted(ALLOWED_ACTIONS)}"
+            )
+        body[fname] = fv
+
+    # execution_decision is its own enum — explicitly NOT a directional
+    # action. ALLOW/BLOCK/SIZE_DOWN/OBSERVE_ONLY only.
+    if execution_decision is not None:
+        ed = str(execution_decision).upper()
+        if ed not in _HONESTY_EXEC_VALUES:
+            raise MCContractError(
+                f"intent execution_decision {execution_decision!r} not in "
+                f"{sorted(_HONESTY_EXEC_VALUES)}"
+            )
+        body["execution_decision"] = ed
+
+    # Bounded scalars [0, 1] — raw_confidence + the two weight stages.
+    for fname, fval in (
+        ("raw_confidence", raw_confidence),
+        ("pre_weight_confidence", pre_weight_confidence),
+        ("post_weight_confidence", post_weight_confidence),
+    ):
+        if fval is None:
+            continue
+        fv2 = float(fval)
+        if not math.isfinite(fv2) or fv2 < 0.0 or fv2 > 1.0:
+            raise MCContractError(
+                f"intent {fname} {fv2} outside [0, 1]"
+            )
+        body[fname] = fv2
+
+    # council_penalty is a signed delta — typically negative when
+    # disagreement bites. Bounded to [-1, 1] defensively.
+    if council_penalty is not None:
+        cp = float(council_penalty)
+        if not math.isfinite(cp) or cp < -1.0 or cp > 1.0:
+            raise MCContractError(
+                f"intent council_penalty {cp} outside [-1, 1]"
+            )
+        body["council_penalty"] = cp
+
+    # Dynamic per-source weights — bounded [0, 3] (matches the
+    # confidence_weighting clamp envelope). All five travel together
+    # or not at all in production; we tolerate a partial set during
+    # rollout so brains can start emitting incrementally.
+    for fname in _HONESTY_WEIGHT_FIELDS:
+        fval = locals()[fname]
+        if fval is None:
+            continue
+        wv = float(fval)
+        if not math.isfinite(wv) or wv < 0.0 or wv > 3.0:
+            raise MCContractError(f"intent {fname} {wv} outside [0, 3]")
+        body[fname] = wv
+
+    if hold_reason is not None:
+        body["hold_reason"] = str(hold_reason)
+    if blocked_by is not None:
+        body["blocked_by"] = [str(b) for b in blocked_by]
+    if would_have_traded_without_gates is not None:
+        body["would_have_traded_without_gates"] = bool(
+            would_have_traded_without_gates,
+        )
+
+    return body
+
+
 def auth_headers(token: str) -> dict[str, str]:
     """Verified header shape — no 'Bearer' prefix."""
     if not token:
@@ -318,3 +477,22 @@ class MCClient:
             confidence_origin=confidence_origin,
         )
         return self._post(stance_url(self.base_url, position_id, self.brain), body)
+
+    def post_intent(self, **kwargs: Any) -> dict[str, Any]:
+        """POST an intent (with honesty receipt) to MC.
+
+        Thin wrapper over :func:`build_intent_body`. The brain side
+        constructs the receipt from ``_weighted_consensus`` output
+        and the local execution gate's verdict; this method only
+        validates the shape and ships it. All honesty fields are
+        keyword-only and optional — a brain in the middle of the
+        rollout can ship the core 4 (symbol/side/qty/confidence)
+        without the receipt, and the validator will accept it.
+
+        See ``services.confidence_weighting`` doctrine module for the
+        bounded penalty + dynamic weight math, and
+        ``services.multi_model_hypothesis_service._weighted_consensus``
+        for the canonical receipt assembly.
+        """
+        body = build_intent_body(**kwargs)
+        return self._post(intents_url(self.base_url), body)
