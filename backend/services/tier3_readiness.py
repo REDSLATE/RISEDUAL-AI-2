@@ -491,6 +491,19 @@ async def tier3_readiness_snapshot(db: Any, days: int = 30) -> dict:
     stats = await build_tier3_stats(db, days=days)
     decision = check_tier3_unlock(stats)
 
+    # 2026-05-15: surface calendar context so "Live days 6/30" reads
+    # as "6 across 29-day calendar window" rather than the user
+    # mis-reading it as "6 of the last 30 days". Pulled from the
+    # paper-trading progress service which already runs this query.
+    try:
+        from services.paper_trading_progress import tier3_progress
+        progress = await tier3_progress(db)
+        stats["first_trade_at"] = progress.get("first_trade_at")
+        stats["last_trade_at"] = progress.get("last_trade_at")
+        stats["window_days"] = int(progress.get("window_days", 0))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[tier3] calendar context probe skipped: %s", exc)
+
     payload: dict[str, Any] = {
         "stats": stats,
         "unlock": decision,
