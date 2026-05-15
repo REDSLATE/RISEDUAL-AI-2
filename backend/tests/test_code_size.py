@@ -360,6 +360,7 @@ PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
     "backend/services/adversarial_core.py":            (640,  "core-governance"),
     "backend/services/ai_core_engine.py":              (629,  "core-governance"),
     "backend/services/top_universe_service.py":        (613,  "core-governance"),
+    "backend/services/tier3_readiness.py":             (608,  "core-governance"),  # 2026-05-15: hold for high-conf WR daily-mean smoothing; split scheduled after admin UI port lands.
     "backend/services/price_provider.py":              (608,  "core-governance"),
 
     # ── default (preferred 800) ───────────────────────────────────

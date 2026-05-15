@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-15T08:44:21.098492+00:00",
-  "last_roles_at": "2026-05-15T08:42:14.248313+00:00",
-  "last_scorecard_at": "2026-05-15T08:42:14.246211+00:00",
+  "last_polled_at": "2026-05-15T08:55:57.002902+00:00",
+  "last_roles_at": "2026-05-15T08:51:47.671256+00:00",
+  "last_scorecard_at": "2026-05-15T08:51:47.670466+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fcd9bfcd-35ee-471c-a218-e955fcbbee09",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Generates executable signals. The only stack whose authority can ever climb to CO_TRADER or PRIMARY. Must still pass RoadGuard / Envelope / Patent J gates.",
         "kind": "runtime",
-        "last_seen": "2026-05-15T08:41:57.801863+00:00",
+        "last_seen": "2026-05-15T08:51:47.616902+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Shadows Alpha. Attacks Alpha's thesis. Logs counterfactuals. Authority can climb the ladder via PromotionArtifact + Patent J + operator.",
         "kind": "runtime",
-        "last_seen": "2026-05-15T08:41:29.840610+00:00",
+        "last_seen": "2026-05-15T08:51:34.638647+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -134,11 +134,11 @@
   },
   "stats": {
     "by_peer": {
-      "camaro": 9328,
-      "chevelle": 28912,
-      "redeye": 160
+      "camaro": 9563,
+      "chevelle": 29672,
+      "redeye": 165
     },
-    "opinions_ingested": 38400,
+    "opinions_ingested": 39400,
     "opinions_quarantined": 0
   }
 }

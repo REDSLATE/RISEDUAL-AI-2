@@ -121,7 +121,14 @@ def compute_tier3_score(stats: dict) -> float:
     """
     days = float(stats.get("days", 0))
     total_trades = float(stats.get("total_trades", 0))
-    high_conf_wr = max(0.0, min(1.0, float(stats.get("high_conf_win_rate", 0.0))))
+    # 2026-05-15: prefer the smoothed daily-mean WR for the score
+    # signal so a single high-conf day can't swing the 25-point gate.
+    # Fall back to the raw WR for older callers / cached stats that
+    # don't carry the smoothed field.
+    high_conf_wr = max(0.0, min(1.0, float(
+        stats.get("high_conf_win_rate_smoothed",
+                  stats.get("high_conf_win_rate", 0.0)) or 0.0
+    )))
     strong_miss_rate = max(0.0, min(1.0, float(stats.get("strong_miss_rate", 1.0))))
     last_7d_wr = max(0.0, min(1.0, float(stats.get("last_7d_win_rate", 0.0))))
     clamp_total = int(stats.get("clamp_total", 0))
@@ -161,7 +168,13 @@ def compute_tier3_breakdown(stats: dict) -> list[dict]:
     days = float(stats.get("days", 0))
     total_trades = float(stats.get("total_trades", 0))
     high_conf_trades = int(stats.get("high_conf_trades", 0))
-    high_conf_wr = max(0.0, min(1.0, float(stats.get("high_conf_win_rate", 0.0))))
+    # Same smoothed-first rule as ``compute_tier3_score`` — the bar
+    # and the headline score must reconcile to the same WR or the
+    # decomposition stops summing to the composite.
+    high_conf_wr = max(0.0, min(1.0, float(
+        stats.get("high_conf_win_rate_smoothed",
+                  stats.get("high_conf_win_rate", 0.0)) or 0.0
+    )))
     strong_miss_rate = max(0.0, min(1.0, float(stats.get("strong_miss_rate", 1.0))))
     last_7d_wr = max(0.0, min(1.0, float(stats.get("last_7d_win_rate", 0.0))))
     clamp_total = int(stats.get("clamp_total", 0))
@@ -242,9 +255,12 @@ def compute_tier3_breakdown(stats: dict) -> list[dict]:
             "progress_pct": hc_pct,
             "weight_pct": 25,
             "earned_pts": hc_earned,
+            # `met` mirrors the unlock decision (raw WR + sample count)
+            # rather than the smoothed score signal so the "cleared"
+            # badge can't lie about an actual unlock.
             "met": (
                 high_conf_trades >= MIN_HIGH_CONF_SAMPLES
-                and high_conf_wr >= MIN_HIGH_CONF_WIN_RATE
+                and float(stats.get("high_conf_win_rate", 0.0)) >= MIN_HIGH_CONF_WIN_RATE
             ),
             "hint": hc_hint,
         },
@@ -327,6 +343,11 @@ async def _high_conf_and_grades(db: Any, days: int, *, use_calibrated: bool = Tr
         "last_7d_correct": 0,
         "last_7d_graded": 0,
         "overall_correct": 0,
+        # Per-UTC-day buckets across the last 7 days for the high-conf
+        # daily-mean smoothing (2026-05-15). Each entry tracks how
+        # many high-conf samples landed that day and how many were
+        # correct. The score-side smoother averages the daily WRs.
+        "high_conf_daily_buckets": {},
     }
     if db is None:
         return out
@@ -389,6 +410,27 @@ async def _high_conf_and_grades(db: Any, days: int, *, use_calibrated: bool = Tr
                 out["high_conf_sum_conf"] += conf
                 if correct:
                     out["high_conf_correct"] += 1
+                # Last-7d daily bucket for smoothing (only stamped
+                # when we have a parseable timestamp AND the row
+                # lands inside the smoothing window). The score-side
+                # smoother averages the daily WRs to dampen the
+                # single-bucket volatility that produced the
+                # historical 20+ point single-day swings.
+                ts_raw = row.get("timestamp") or ""
+                try:
+                    ts_dt_hc = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    if ts_dt_hc.tzinfo is None:
+                        ts_dt_hc = ts_dt_hc.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    ts_dt_hc = None
+                if ts_dt_hc is not None and ts_dt_hc >= seven_days_ago:
+                    bucket_key = ts_dt_hc.strftime("%Y-%m-%d")
+                    bucket = out["high_conf_daily_buckets"].setdefault(
+                        bucket_key, {"n": 0, "correct": 0},
+                    )
+                    bucket["n"] += 1
+                    if correct:
+                        bucket["correct"] += 1
 
             if grade == "STRONG_MISS":
                 out["strong_miss"] += 1
@@ -450,6 +492,27 @@ async def build_tier3_stats(db: Any, days: int = 30, *, use_calibrated: bool = T
     stats["high_conf_trades"] = hc_n
     stats["high_conf_win_rate"] = (agg["high_conf_correct"] / hc_n) if hc_n else 0.0
     stats["avg_confidence"] = (agg["high_conf_sum_conf"] / hc_n) if hc_n else 0.0
+
+    # 2026-05-15: daily-mean smoothing of the high-conf WR over the
+    # last 7 UTC days where samples exist. The composite score reads
+    # this *smoothed* value (when ≥2 days of data exist) so a single
+    # bad/good day can't swing the 25-point high-conf gate by more
+    # than ~3-4 pts. Unlock gate still uses the raw window-aggregated
+    # WR — smoothing is for the *score signal*, not the gate decision.
+    buckets = agg.get("high_conf_daily_buckets") or {}
+    daily_wrs = [
+        b["correct"] / b["n"] for b in buckets.values() if b.get("n", 0) > 0
+    ]
+    stats["high_conf_daily_days"] = len(daily_wrs)
+    if len(daily_wrs) >= 2:
+        # True daily mean — each day weighted equally regardless of
+        # sample count. This is what gives us the smoothing.
+        stats["high_conf_win_rate_smoothed"] = sum(daily_wrs) / len(daily_wrs)
+    else:
+        # Fewer than 2 days of high-conf data → can't smooth. Fall
+        # back to the raw window-aggregated WR so the score isn't
+        # artificially zeroed during cold-start.
+        stats["high_conf_win_rate_smoothed"] = stats["high_conf_win_rate"]
 
     total_graded = agg["total_graded"]
     stats["strong_miss_rate"] = (agg["strong_miss"] / total_graded) if total_graded else 0.0
