@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-15T14:20:21.551801+00:00",
-  "last_roles_at": "2026-05-15T14:17:57.900438+00:00",
-  "last_scorecard_at": "2026-05-15T14:17:57.872971+00:00",
+  "last_polled_at": "2026-05-15T21:59:10.292813+00:00",
+  "last_roles_at": "2026-05-15T21:55:39.378927+00:00",
+  "last_scorecard_at": "2026-05-15T21:55:39.400630+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fcd9bfcd-35ee-471c-a218-e955fcbbee09",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Generates executable signals. The only stack whose authority can ever climb to CO_TRADER or PRIMARY. Must still pass RoadGuard / Envelope / Patent J gates.",
         "kind": "runtime",
-        "last_seen": "2026-05-15T14:17:57.802767+00:00",
+        "last_seen": "2026-05-15T21:55:39.338033+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Shadows Alpha. Attacks Alpha's thesis. Logs counterfactuals. Authority can climb the ladder via PromotionArtifact + Patent J + operator.",
         "kind": "runtime",
-        "last_seen": "2026-05-15T14:17:43.473075+00:00",
+        "last_seen": "2026-05-15T21:55:26.058204+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Memory firewall, readiness gate, calibration gate, audit verification, promotion control. Off-ladder \u2014 does not trade and is not promotable to a trading authority.",
         "kind": "runtime",
-        "last_seen": "2026-05-15T14:17:53.794353+00:00",
+        "last_seen": "2026-05-15T21:55:22.773304+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -134,11 +134,11 @@
   },
   "stats": {
     "by_peer": {
-      "camaro": 11960,
-      "chevelle": 37424,
-      "redeye": 216
+      "camaro": 13276,
+      "chevelle": 41680,
+      "redeye": 244
     },
-    "opinions_ingested": 49600,
+    "opinions_ingested": 55200,
     "opinions_quarantined": 0
   }
 }

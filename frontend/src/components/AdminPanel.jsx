@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning, ScrollText } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
 import AdminTools from './admin/AdminTools';
+import HonestyMirrorCard from './admin/HonestyMirrorCard';
 import PromoManager from './admin/PromoManager';
 import CacheMonitor from './admin/CacheMonitor';
 import BrokerOAuthConfig from './admin/BrokerOAuthConfig';
@@ -94,6 +95,7 @@ const TAB_GROUPS = [
       { id: 'code-evo',      label: 'Code Evo',  icon: ShieldCheck },
       { id: 'python-coach',  label: 'Python Coach', icon: FileCode },
       { id: 'alpha-kb',      label: 'Alpha KB',  icon: Brain },
+      { id: 'honesty',       label: 'Honesty',   icon: ScrollText },
       { id: 'bulk-replay',   label: 'Bulk Replay', icon: Upload },
       { id: 'whatif',        label: 'What-If Replay', icon: Activity },
       { id: 'patents',       label: 'Patent Watch', icon: FileText },
@@ -143,6 +145,7 @@ const TAB_SUBTITLES = {
   'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
   'python-coach': () => 'Python Coach — lesson plans + AST review · firewalled from execution & code-evolution gate',
   'alpha-kb':     () => 'Alpha Python Knowledge Base — read-only corpus consulted via /py prefix in chat · firewalled from execution',
+  honesty:        () => 'Intent honesty audit · raw vs display action · would-have-traded-without-gates · top hold reasons (proxied from MC)',
   'trading-gate': () => 'Operator Trading Gate — the SINGLE rule · no trades (paper or live) until you authorize · synthetic ADL receipts so MLs keep learning',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
@@ -184,6 +187,7 @@ const TAB_COMPONENTS = {
   'code-evo':     () => <CodeEvolutionInbox />,
   'python-coach': () => <PythonCoach />,
   'alpha-kb':     () => <AlphaKnowledgePanel />,
+  honesty:        () => <HonestyMirrorCard />,
   'trading-gate': () => <TradingGate />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,

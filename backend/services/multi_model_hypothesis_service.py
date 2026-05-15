@@ -13,6 +13,7 @@ Control, so the brain stays consistent with its operator-side voice.
 import json
 import asyncio
 import logging
+import os
 from typing import Any
 
 
@@ -461,6 +462,24 @@ async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str 
             }
             for r in results
         ]
+        # 2026-05-15: emit the doctrine receipt to MC's /api/intents
+        # for the operator audit trail. Off by default — flipping
+        # ``RISEDUAL_EMIT_INTENTS_TO_MC=1`` turns it on once MC's
+        # endpoint is fielded and the operator has confirmed the
+        # rollout window. Fire-and-forget; MC failures never block
+        # the hypothesis response.
+        if os.environ.get("RISEDUAL_EMIT_INTENTS_TO_MC", "0") == "1":
+            try:
+                from sovereign.mc_client import MCClient
+                from sovereign.intent_bridge import emit_intent_from_consensus
+                mc = MCClient(
+                    base_url=os.environ.get("MC_BASE_URL", ""),
+                    brain="alpha",
+                    runtime_token=os.environ.get("ALPHA_INGEST_TOKEN", ""),
+                )
+                await emit_intent_from_consensus(mc, consensus)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("intent emit failed (non-fatal): %s", exc)
         return consensus
 
     # Single brain mode — call the brain's persona LLM directly. The
