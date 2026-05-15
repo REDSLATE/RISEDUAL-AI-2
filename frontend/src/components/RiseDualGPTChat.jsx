@@ -223,7 +223,7 @@ const RiseDualGPTChat = ({ onLimitReached }) => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white shadow-lg shadow-[#3DE8D9]/30 flex items-center justify-center transition-all hover:scale-105"
+          className="hidden lg:flex fixed lg:bottom-5 right-5 z-[60] w-14 h-14 rounded-full bg-[#3DE8D9] hover:bg-[#7AEEE0] text-white shadow-lg shadow-[#3DE8D9]/30 items-center justify-center transition-all hover:scale-105"
           data-testid="chat-fab"
         >
           <MessageSquare className="w-6 h-6" />

@@ -4,8 +4,7 @@ import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import FilterPanel from './FilterPanel';
 import QuickTrade from './QuickTrade';
-import OptionsPaperTrade from './OptionsPaperTrade';
-import OptionsLiveTrade from './OptionsLiveTrade';
+import OptionsTradeButton from './OptionsTradeButton';
 
 const DataTable = ({
   title, subtitle, columns, data,
@@ -160,7 +159,7 @@ const getCellContent = (col, row) => {
               ))}
               {showTrading && (
                 <th className="text-left py-3 px-3 text-slate-300 text-xs font-medium uppercase tracking-wider">
-                  {tradeVariant === 'options' ? 'TRADE · PAPER / LIVE' : 'QUICK TRADE'}
+                  {tradeVariant === 'options' ? 'TRADE' : 'QUICK TRADE'}
                 </th>
               )}
             </tr>
@@ -179,10 +178,7 @@ const getCellContent = (col, row) => {
                 {showTrading && (
                   <td className="py-3 px-3">
                     {tradeVariant === 'options' ? (
-                      <div className="flex flex-col gap-1">
-                        <OptionsPaperTrade row={row} />
-                        <OptionsLiveTrade row={row} />
-                      </div>
+                      <OptionsTradeButton row={row} />
                     ) : (
                       <QuickTrade symbol={row.contract} />
                     )}

@@ -19,7 +19,7 @@
  * validation beyond "qty > 0". Broker is the source of truth for
  * buying power and options-eligibility.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useState, forwardRef } from 'react';
 import { TrendingUp, TrendingDown, AlertCircle, ShieldAlert } from 'lucide-react';
 import axios from 'axios';
 import { Button } from './ui/button';
@@ -51,7 +51,7 @@ function defaultMonthlyExpiry() {
   return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
 }
 
-const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
+const OptionsLiveTrade = forwardRef(({ row, defaultSide = 'buy', hideTriggers = false }, ref) => {
   const parsed = useMemo(() => parseContract(row?.price), [row]);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -89,16 +89,22 @@ const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
     if (isOpen) refreshStatus();
   }, [isOpen, refreshStatus]);
 
-  if (!parsed) return null;
-
-  const sideLabel = side === 'buy' ? 'Buy to Open' : 'Sell to Close';
-  const ocsSide = side === 'buy' ? 'buy_to_open' : 'sell_to_close';
-
   const openModal = (forcedSide) => {
+    if (!parsed) return;
     setSide(forcedSide);
     setResult(null);
     setIsOpen(true);
   };
+
+  // Allow a parent to imperatively open this modal (used by
+  // OptionsTradeButton's single-button consolidation). Must come
+  // BEFORE the early `if (!parsed)` return to satisfy rules-of-hooks.
+  useImperativeHandle(ref, () => ({ open: openModal }));
+
+  if (!parsed) return null;
+
+  const sideLabel = side === 'buy' ? 'Buy to Open' : 'Sell to Close';
+  const ocsSide = side === 'buy' ? 'buy_to_open' : 'sell_to_close';
 
   const acceptODD = async () => {
     try {
@@ -143,32 +149,34 @@ const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
 
   return (
     <>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => openModal('buy')}
-          data-testid={`options-live-buy-${row.contract}`}
-          className="bg-green-600 hover:bg-green-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
-        >
-          <span className="flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5" />
-            Buy
-          </span>
-          <TradeModePill mode="live" />
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => openModal('sell')}
-          data-testid={`options-live-sell-${row.contract}`}
-          className="bg-red-600 hover:bg-red-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
-        >
-          <span className="flex items-center gap-1.5">
-            <TrendingDown className="w-3.5 h-3.5" />
-            Sell
-          </span>
-          <TradeModePill mode="live" />
-        </Button>
-      </div>
+      {!hideTriggers && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => openModal('buy')}
+            data-testid={`options-live-buy-${row.contract}`}
+            className="bg-green-600 hover:bg-green-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
+          >
+            <span className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+              Buy
+            </span>
+            <TradeModePill mode="live" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => openModal('sell')}
+            data-testid={`options-live-sell-${row.contract}`}
+            className="bg-red-600 hover:bg-red-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
+          >
+            <span className="flex items-center gap-1.5">
+              <TrendingDown className="w-3.5 h-3.5" />
+              Sell
+            </span>
+            <TradeModePill mode="live" />
+          </Button>
+        </div>
+      )}
 
       {isOpen && (
         <div
@@ -348,6 +356,8 @@ const OptionsLiveTrade = ({ row, defaultSide = 'buy' }) => {
       )}
     </>
   );
-};
+});
+
+OptionsLiveTrade.displayName = 'OptionsLiveTrade';
 
 export default OptionsLiveTrade;

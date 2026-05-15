@@ -20,7 +20,7 @@
  *   defaultSide — "buy" or "sell". The scanner's green/red buttons
  *     pass this so each row shows both actions.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useImperativeHandle, useMemo, useState, forwardRef } from 'react';
 import { TrendingUp, TrendingDown, AlertCircle, Info } from 'lucide-react';
 import axios from 'axios';
 import { Button } from './ui/button';
@@ -65,7 +65,7 @@ function defaultMonthlyExpiry() {
   return iso;
 }
 
-const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
+const OptionsPaperTrade = forwardRef(({ row, defaultSide = 'buy', hideTriggers = false }, ref) => {
   const parsed = useMemo(() => parseContract(row?.price), [row]);
   const [isOpen, setIsOpen] = useState(false);
   const [side, setSide] = useState(defaultSide);
@@ -74,16 +74,21 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  if (!parsed) return null; // malformed scanner row — hide gracefully
-
-  const sideLabel = side === 'buy' ? 'Buy to Open' : 'Sell to Close';
-  const ocsSide = side === 'buy' ? 'buy_to_open' : 'sell_to_close';
-
   const openModal = (forcedSide) => {
+    if (!parsed) return;
     setSide(forcedSide);
     setResult(null);
     setIsOpen(true);
   };
+
+  // Allow a parent to imperatively open this modal (used by
+  // OptionsTradeButton's single-button consolidation).
+  useImperativeHandle(ref, () => ({ open: openModal }));
+
+  if (!parsed) return null; // malformed scanner row — hide gracefully
+
+  const sideLabel = side === 'buy' ? 'Buy to Open' : 'Sell to Close';
+  const ocsSide = side === 'buy' ? 'buy_to_open' : 'sell_to_close';
 
   const submit = async () => {
     setLoading(true);
@@ -119,32 +124,34 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
 
   return (
     <>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={() => openModal('buy')}
-          data-testid={`options-paper-buy-${row.contract}`}
-          className="bg-green-600 hover:bg-green-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
-        >
-          <span className="flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5" />
-            Buy
-          </span>
-          <TradeModePill mode="paper" />
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => openModal('sell')}
-          data-testid={`options-paper-sell-${row.contract}`}
-          className="bg-red-600 hover:bg-red-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
-        >
-          <span className="flex items-center gap-1.5">
-            <TrendingDown className="w-3.5 h-3.5" />
-            Sell
-          </span>
-          <TradeModePill mode="paper" />
-        </Button>
-      </div>
+      {!hideTriggers && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => openModal('buy')}
+            data-testid={`options-paper-buy-${row.contract}`}
+            className="bg-green-600 hover:bg-green-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
+          >
+            <span className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+              Buy
+            </span>
+            <TradeModePill mode="paper" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => openModal('sell')}
+            data-testid={`options-paper-sell-${row.contract}`}
+            className="bg-red-600 hover:bg-red-700 flex items-center justify-between gap-1.5 text-xs min-w-[112px]"
+          >
+            <span className="flex items-center gap-1.5">
+              <TrendingDown className="w-3.5 h-3.5" />
+              Sell
+            </span>
+            <TradeModePill mode="paper" />
+          </Button>
+        </div>
+      )}
 
       {isOpen && (
         <div
@@ -275,6 +282,8 @@ const OptionsPaperTrade = ({ row, defaultSide = 'buy' }) => {
       )}
     </>
   );
-};
+});
+
+OptionsPaperTrade.displayName = 'OptionsPaperTrade';
 
 export default OptionsPaperTrade;
