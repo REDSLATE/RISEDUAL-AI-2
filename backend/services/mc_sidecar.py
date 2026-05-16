@@ -209,8 +209,16 @@ async def _heartbeat_loop(db) -> None:
                     "[mc_sidecar] heartbeat HTTP %d: %s",
                     r.status_code, (r.text or "")[:120],
                 )
+                await _set_state(
+                    db, last_heartbeat_error=f"http_{r.status_code}",
+                    last_heartbeat_error_at=_now_iso(),
+                )
             else:
                 _touch_liveness()
+                await _set_state(
+                    db, last_heartbeat_at=_now_iso(),
+                    last_heartbeat_error=None,
+                )
         except (httpx.HTTPError, asyncio.CancelledError) as exc:
             if isinstance(exc, asyncio.CancelledError):
                 logger.info("[mc_sidecar] heartbeat loop cancelled")
