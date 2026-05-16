@@ -625,6 +625,24 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"[monorepo] sidecar startup skipped (non-critical): {e}")
 
+    # ── In-process MC sidecar (alternative to the supervisor-managed
+    # external sidecar). Gated by ALPHA_INPROCESS_SIDECAR=1. Disabled
+    # by default so the existing external sidecar continues to own
+    # the wire — flip the flag (and stop the supervisor program) to
+    # switch. See services/mc_sidecar.py for the operator runbook.
+    try:
+        if os.environ.get("ALPHA_INPROCESS_SIDECAR", "0") == "1":
+            from services import mc_sidecar as _mc_sidecar
+            await _mc_sidecar.start(db)
+            logger.info(
+                "[mc_sidecar] in-process sidecar started "
+                "(heartbeat/contribution/watchdog asyncio tasks)",
+            )
+        else:
+            logger.info("[mc_sidecar] in-process sidecar disabled (ALPHA_INPROCESS_SIDECAR != 1)")
+    except Exception as e:
+        logger.warning(f"[mc_sidecar] in-process startup skipped (non-critical): {e}")
+
     logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
 
 
@@ -1639,4 +1657,12 @@ async def shutdown_db_client():
         await _mono_aclose()
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[monorepo] shutdown cleanup: {e}")
+    # In-process MC sidecar — cancel the three asyncio loops cleanly.
+    try:
+        if os.environ.get("ALPHA_INPROCESS_SIDECAR", "0") == "1":
+            from services import mc_sidecar as _mc_sidecar
+            await _mc_sidecar.stop(db)
+            logger.info("[mc_sidecar] in-process sidecar stopped on shutdown")
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[mc_sidecar] shutdown cleanup: {e}")
     client.close()
