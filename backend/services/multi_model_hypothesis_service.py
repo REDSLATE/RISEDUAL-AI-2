@@ -21,6 +21,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 from services.brain_persona_service import BRAINS, brain_runtime
 from services.confidence_weighting import (
+    HIGH_CONVICTION_OVERRIDE,
     apply_disagreement_penalty,
     BrainWeightState,
 )
@@ -293,6 +294,9 @@ def _weighted_consensus(
             "council_penalty": 0,
             "disagreement_kind": "ALL_HOLD",
             "individual_weights": {},
+            "override_reason": None,
+            "override_brain": None,
+            "override_confidence": None,
         }
 
     weights = brain_weights or BrainWeightState()
@@ -327,16 +331,48 @@ def _weighted_consensus(
 
     # Decide market_decision (raw, un-penalised market judgment).
     #
-    # HOLD-trap fix: if ANY directional vote cleared the floor, the
-    # higher-weighted side wins, even if absolute HOLD weight exceeds
-    # each directional weight individually. HOLD only wins when no
-    # directional vote crossed the floor.
-    raw_directional = max(directional_weight, key=directional_weight.get)
-    if directional_weight[raw_directional] > 0:
-        market_decision = raw_directional
+    # 2026-05-16 — HIGH-CONVICTION OVERRIDE (A-pattern):
+    # If any single brain emits a directional verdict at
+    # ≥ HIGH_CONVICTION_OVERRIDE confidence, that brain wins the
+    # market_decision regardless of council split. The disagreement
+    # penalty still bites ``post_weight_confidence`` so the receipt
+    # remains honest about dissent — what we change is direction,
+    # not headline confidence. This unblocks the trapped strong
+    # signal without softening the penalty on noisy splits.
+    override_reason: str | None = None
+    override_brain: str | None = None
+    override_verdict: str | None = None
+    override_confidence: int | None = None
+    for r in valid:
+        v = (r.get("verdict") or "").upper()
+        c = float(r.get("confidence", 0) or 0)
+        if v in ("BUY", "SELL") and c >= HIGH_CONVICTION_OVERRIDE:
+            # First brain to clear the override bar wins. Ties
+            # extremely unlikely (need two brains both ≥80% with
+            # the same verdict — that's just unanimous high
+            # conviction, the override picks either).
+            override_brain = r["model_key"]
+            override_verdict = v
+            override_confidence = int(c)
+            override_reason = (
+                f"HIGH_CONVICTION_{override_brain.upper()}_"
+                f"AT_{override_confidence}PCT"
+            )
+            break
+
+    if override_verdict is not None:
+        market_decision = override_verdict
     else:
-        # No directional signal cleared the floor — HOLD is honest.
-        market_decision = "HOLD"
+        # HOLD-trap fix: if ANY directional vote cleared the floor,
+        # the higher-weighted side wins, even if absolute HOLD weight
+        # exceeds each directional weight individually. HOLD only
+        # wins when no directional vote crossed the floor.
+        raw_directional = max(directional_weight, key=directional_weight.get)
+        if directional_weight[raw_directional] > 0:
+            market_decision = raw_directional
+        else:
+            # No directional signal cleared the floor — HOLD is honest.
+            market_decision = "HOLD"
 
     # Apply bounded disagreement penalty to confidence.
     pre_conf_unit = pre_weight_conf_pct / 100.0
@@ -432,6 +468,13 @@ def _weighted_consensus(
         "council_penalty": council_penalty_pct,
         "disagreement_kind": disagreement.kind,
         "individual_weights": weight_map,
+        # High-conviction override audit (2026-05-16, A-pattern).
+        # ``override_reason`` is None when the consensus path took
+        # the normal floor / weight route; non-None when a single
+        # brain at ≥ HIGH_CONVICTION_OVERRIDE % flipped the direction.
+        "override_reason": override_reason,
+        "override_brain": override_brain,
+        "override_confidence": override_confidence,
     }
 
 

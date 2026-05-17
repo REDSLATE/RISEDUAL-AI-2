@@ -226,8 +226,24 @@ def compute_brain_weights(
 
 
 DISAGREEMENT_PENALTY = 0.82  # multiplicative, bounded — MC doctrine
-HOLD_BIAS_PENALTY = 0.90     # softer penalty when only HOLD is the disagreer
+# Original, restored 2026-05-16: the experimental softer values
+# (HOLD=0.95, HARD_CONFLICT=0.80) were rolled back in favor of the
+# A-pattern override below — fix the trapped HIGH-CONVICTION signal,
+# don't water down the penalty on genuine disagreement.
+HOLD_BIAS_PENALTY = 0.90      # softer penalty when only HOLD is the disagreer
 HARD_CONFLICT_PENALTY = 0.70  # both BUY AND SELL present — real conflict
+
+# 2026-05-16: when a single brain emits a directional verdict at
+# ≥ this confidence, that brain wins ``market_decision`` regardless
+# of council split. The disagreement penalty still applies to
+# ``final_confidence`` so the receipt stays honest about dissent;
+# what the override changes is the *direction* the council chooses,
+# not how confident it claims to be after the penalty.
+#
+# Why 80 (not 75 or 50): LLM calibration places real conviction in
+# the 75-85% band — below that is "leaning" / noise. The bar is
+# deliberately high so this is rare but unambiguous when it fires.
+HIGH_CONVICTION_OVERRIDE = 80
 
 
 @dataclass
@@ -304,6 +320,7 @@ __all__ = [
     "DISAGREEMENT_PENALTY",
     "DisagreementResult",
     "HARD_CONFLICT_PENALTY",
+    "HIGH_CONVICTION_OVERRIDE",
     "HOLD_BIAS_PENALTY",
     "WeightState",
     "apply_disagreement_penalty",

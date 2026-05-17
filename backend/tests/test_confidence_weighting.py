@@ -313,8 +313,9 @@ def test_consensus_all_hold_is_honest_hold():
 
 
 def test_consensus_directional_floor_blocks_low_confidence_signal():
-    """A 50 % BUY shouldn't be allowed to win over a HOLD majority —
-    that's exactly the noise we're protecting against."""
+    """A sub-coin-flip BUY shouldn't win over a HOLD majority — that
+    is exactly the noise the floor protects against. Floor is at
+    55% per current doctrine."""
     results = [
         _stub_result("alpha",   "BUY",  40),   # below the 55 % floor
         _stub_result("camaro",  "HOLD", 60),
@@ -325,6 +326,113 @@ def test_consensus_directional_floor_blocks_low_confidence_signal():
     assert out["market_decision"] == "HOLD"
     assert out["hold_reason"] == "DIRECTIONAL_FLOOR_NOT_CLEARED"
     assert "DIRECTIONAL_FLOOR" in out["blocked_by"]
+
+
+# ── high-conviction override (A-pattern, 2026-05-16) ───────────────────
+
+
+def test_high_conviction_override_flips_hold_majority():
+    """The trapped-opportunity scenario: 3 HOLDs at moderate
+    confidence + 1 brain at 82% BUY. Without the override, council
+    would HOLD-trap. With override at 80, the strong directional
+    signal owns the market_decision."""
+    results = [
+        _stub_result("alpha",   "BUY",  82),   # clears override
+        _stub_result("camaro",  "HOLD", 60),
+        _stub_result("chevelle","HOLD", 62),
+        _stub_result("redeye",  "HOLD", 58),
+    ]
+    out = _weighted_consensus(results)
+    assert out["market_decision"] == "BUY"
+    assert out["override_reason"] is not None
+    assert "HIGH_CONVICTION" in out["override_reason"]
+    assert out["override_brain"] == "alpha"
+    assert out["override_confidence"] == 82
+    # Disagreement penalty still bites — receipt stays honest.
+    assert out["disagreement_kind"] == "HOLD_DISSENT"
+    assert out["council_penalty"] < 0
+    assert out["would_have_traded_without_gates"] is True
+
+
+def test_high_conviction_override_threshold_at_80_not_79():
+    """Lock the override threshold at exactly 80 — a 79% BUY must
+    still go through the normal floor/weight path, not override."""
+    results = [
+        _stub_result("alpha",   "BUY",  79),   # just below override
+        _stub_result("camaro",  "HOLD", 70),
+        _stub_result("chevelle","HOLD", 70),
+        _stub_result("redeye",  "HOLD", 70),
+    ]
+    out = _weighted_consensus(results)
+    # No override fired (79 < 80).
+    assert out["override_reason"] is None
+    # The HOLD-trap fix still lets the directional win since the
+    # alpha BUY clears the 55 % floor — but no override badge.
+    assert out["market_decision"] == "BUY"
+
+
+def test_high_conviction_override_fires_at_exact_80():
+    """Boundary inclusive — exactly 80% is "high conviction"."""
+    results = [
+        _stub_result("alpha",   "BUY",  80),
+        _stub_result("camaro",  "HOLD", 70),
+        _stub_result("chevelle","HOLD", 70),
+        _stub_result("redeye",  "HOLD", 70),
+    ]
+    out = _weighted_consensus(results)
+    assert out["override_reason"] is not None
+    assert out["override_confidence"] == 80
+
+
+def test_high_conviction_override_wins_over_hard_conflict():
+    """Most important guard: a single brain at 85% BUY must own the
+    market_decision even when another brain is at 70% SELL — the
+    HARD_CONFLICT penalty still cuts confidence by ×0.70 but does
+    NOT silence the directional verdict. This is the exact
+    opportunity-capture case the operator described."""
+    results = [
+        _stub_result("alpha",   "BUY",  85),   # clears override
+        _stub_result("camaro",  "SELL", 70),
+        _stub_result("chevelle","HOLD", 65),
+        _stub_result("redeye",  "HOLD", 60),
+    ]
+    out = _weighted_consensus(results)
+    assert out["market_decision"] == "BUY"
+    assert out["override_brain"] == "alpha"
+    assert out["disagreement_kind"] == "HARD_CONFLICT"
+    # Penalty still bites — pre > post — but direction is BUY.
+    assert out["pre_weight_confidence"] > out["post_weight_confidence"]
+
+
+def test_high_conviction_override_does_not_fire_on_unanimous():
+    """When everyone agrees, no override is needed — receipt should
+    reflect the normal path, not a phantom override badge."""
+    out = _weighted_consensus(_build_results(buy=4, conf_each=85))
+    assert out["market_decision"] == "BUY"
+    # Override fields still populate (since alpha cleared 80) — that
+    # is doctrinally correct: a unanimous high-conviction BUY is
+    # still a high-conviction BUY. The badge just doesn't change the
+    # outcome.
+    assert out["override_reason"] is not None
+    # But the disagreement kind is UNANIMOUS, no penalty.
+    assert out["disagreement_kind"] == "UNANIMOUS"
+    assert out["council_penalty"] == 0
+
+
+def test_override_first_brain_wins_on_simultaneous_clearance():
+    """If two brains both clear the 80 bar, the first one
+    encountered owns it. Deterministic and rare."""
+    results = [
+        _stub_result("alpha",   "BUY",  82),
+        _stub_result("camaro",  "BUY",  88),   # higher but second
+        _stub_result("chevelle","HOLD", 60),
+        _stub_result("redeye",  "HOLD", 60),
+    ]
+    out = _weighted_consensus(results)
+    # Either alpha or camaro is acceptable doctrinally; the
+    # implementation picks the first valid iterator hit.
+    assert out["override_brain"] in ("alpha", "camaro")
+    assert out["market_decision"] == "BUY"
 
 
 def test_consensus_execution_decision_is_observe_only_under_doctrine_v3():

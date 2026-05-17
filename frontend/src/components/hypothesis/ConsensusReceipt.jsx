@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, AlertTriangle, ShieldOff } from 'lucide-react';
+import { Scale, AlertTriangle, ShieldOff, Zap } from 'lucide-react';
 import { Card } from '../ui/card';
 
 /**
@@ -57,6 +57,9 @@ const ConsensusReceipt = ({ hypothesis }) => {
     disagreement_kind,
     individual_weights,
     execution_decision,
+    override_reason,
+    override_brain,
+    override_confidence,
   } = hypothesis;
 
   const overridden = raw_action && final_action && raw_action !== final_action;
@@ -78,6 +81,16 @@ const ConsensusReceipt = ({ hypothesis }) => {
             data-testid="receipt-disagreement-kind"
           >
             {fmtKind(disagreement_kind)}
+          </span>
+        )}
+        {override_reason && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-cyan-700/50 bg-cyan-900/20 text-cyan-300 ml-2"
+            data-testid="receipt-override-badge"
+            title={override_reason}
+          >
+            <Zap className="w-3 h-3" />
+            Override: {override_brain || '—'} @ {override_confidence != null ? `${override_confidence}%` : '—'}
           </span>
         )}
       </div>
