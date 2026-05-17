@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { User, Copy, Check, Pin, Zap, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { getApiBase } from '../../utils/apiBase';
+import MCCard from './MCCard';
 
 const CHIP_API = `${getApiBase()}/api/analytics/chip-event`;
 
@@ -18,6 +19,22 @@ const MessageBubble = ({ msg, idx, copiedId, onCopy, isPro, onPin }) => {
       setTimeout(() => setPinned(false), 3000);
     }
   };
+
+  // MC slash-command card — when the user runs `/mc …`, useChat.js
+  // attaches an `mc_card` payload instead of plain markdown content.
+  // Render it as a compact assistant bubble with the structured card
+  // inside, and skip the normal markdown / pin / copy chrome since
+  // these are *system* read-outs, not LLM text.
+  if (!isUser && msg.mc_card) {
+    return (
+      <div className="flex gap-2" data-testid={`message-mc-${idx}`}>
+        <img src="/logo-ai-bright2.png" alt="AI" className="w-6 h-6 flex-shrink-0 object-contain mt-0.5" />
+        <div className="max-w-[90%] flex-1">
+          <MCCard card={msg.mc_card} />
+        </div>
+      </div>
+    );
+  }
 
   // LLM budget-exceeded banner — the backend returns HTTP 402 with
   // a structured payload when the Emergent Universal Key budget is

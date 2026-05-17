@@ -3,7 +3,6 @@ import { Toaster } from './ui/sonner';
 import Footer from './Footer';
 import Navbar from './Navbar';
 import StockTicker from './StockTicker';
-import RiseDualGPTChat from './RiseDualGPTChat';
 import MobileBottomNav from './MobileBottomNav';
 import DashboardView from './DashboardView';
 import PromoBanner from './PromoBanner';
@@ -15,6 +14,7 @@ import ResearchHub from './hubs/ResearchHub';
 import OptionsHub from './hubs/OptionsHub';
 import WorkspaceHub from './hubs/WorkspaceHub';
 import WarRoomHub from './hubs/WarRoomHub';
+import AIAssistantHub from './hubs/AIAssistantHub';
 
 const TerminalModeHub = React.lazy(() => import('./hubs/TerminalModeHub'));
 
@@ -123,6 +123,10 @@ const AuthenticatedShell = ({
           <WorkspaceHub onSubscribe={sub} initialTab={workspaceTab} />
         )}
 
+        {activeView === 'ai' && (
+          <AIAssistantHub onSubscribe={sub} />
+        )}
+
         {activeView === 'terminal' && (
           <React.Suspense
             fallback={
@@ -138,9 +142,8 @@ const AuthenticatedShell = ({
 
       <Footer onOpenLegal={(tab) => { setLegalTab(tab); setShowLegal(true); }} />
 
-      <RiseDualGPTChat onSubscribe={sub} />
       <MobileBottomNav
-        onOpenChat={openChat}
+        onOpenChat={() => navigateTo('ai')}
         activeView={activeView}
         onNavigate={navigateTo}
         v2Nav={v2Nav}

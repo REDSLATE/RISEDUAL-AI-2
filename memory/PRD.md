@@ -1882,5 +1882,68 @@ Test files: `test_ml_boundary.py`, `test_ml_perception.py`, `test_ml_pipeline_v2
 - `GET  /api/admin/ml/v2/roadguard/pair-status` — closed-loop RG pair counts + last verdict
 - `GET  /api/admin/ml/v2/roadguard/decisions/recent?lane=equity|crypto&limit=50`
 
+
+## Phase 1 — MC-Aware AI Assistant Workspace (2026-05-17)
+
+Built the dedicated 3-pane `/ai` route that replaces the floating chat
+widget. The chat is now MC-grounded: it asks, displays, and never executes.
+
+### What shipped
+- **New route**: `activeView === 'ai'` renders `AIAssistantHub`
+  (`frontend/src/components/hubs/AIAssistantHub.jsx`). Wired into
+  `AuthenticatedShell` + `Navbar` (teal "AI" pill, key `ai`) +
+  `MobileBottomNav` (chat button → /ai instead of floating modal).
+- **Floating chat retired**: `RiseDualGPTChat.jsx` import removed
+  from `AuthenticatedShell`. File kept on disk for now in case the
+  drag/dock pattern is wanted elsewhere.
+- **MC-aware hook**: `useMCContext()` polls 3 read-only surfaces
+  every 30s (`/api/admin/mc-sidecar/status`,
+  `/api/sovereign/honesty-mirror`, `/api/chat/mc/intents/recent`).
+  Owner-only endpoints return a graceful 403; the hook exposes
+  `ownerScope` so the UI can render an operator-only placeholder.
+- **Slash command parser**: `frontend/src/utils/mcCommands.js`
+  detects `/mc <verb>` lines and dispatches them to a single
+  backend endpoint instead of hitting the LLM path.
+- **MC card renderer**: `components/chat/MCCard.jsx` renders five
+  card kinds (`mc_status`, `mc_mirror`, `mc_intents`, `mc_opine`,
+  `mc_help`) inline as compact assistant bubbles.
+- **Backend dispatcher**: `routes/chat_mc.py` exposes
+  `POST /api/chat/mc/dispatch` (parses + routes to the right
+  command handler) and `GET /api/chat/mc/intents/recent` (right-pane
+  hydrate without a slash). Owner-gated commands use the canonical
+  `role == "owner"` check.
+- **Side-effect bug fix**: `routes/admin_mc_sidecar.py` and
+  `routes/sovereign_honesty.py` were checking `user.get("is_owner")`
+  which is never set on the user document. Replaced with the correct
+  `role == "owner"` check; tests updated to match.
+
+### Doctrine guard rails
+- Chat can **ask** (`/mc status`, `/mc mirror`, `/mc intents`).
+- Chat can **display** (renders MC's reply as a card).
+- Chat can **opine** (`/mc opine NVDA` runs a fresh council
+  hypothesis and returns the receipt; does NOT post-intent).
+- Chat **cannot execute**. Intent emission still flows through
+  `intent_bridge` from the consensus tick — chat is read-through.
+
+### Tests
+- `backend/tests/test_chat_mc_route.py` — 9 new tests covering
+  help / status / mirror / intents / opine / unknown verb.
+- 93 tests pass across the MC + chat + intent surface.
+
+### Backlog from this phase (Level 2-4 ladder)
+- **Level 2 ext**: add `/mc post-intent <hypothesis_id>` once user
+  asks for write-capable surface (kept out of Phase 1 by design).
+- **Level 3**: full tool-using agent (LLM autonomously calls
+  `get_council_opinion`, `get_honesty_mirror`, etc.). Powerful but
+  blurs authority — deferred until Phase 1 proves the read-only
+  shape works in production.
+- **Level 4**: WebSocket / SSE bridge from MC → chat so the
+  assistant proactively pings the operator when the council flips.
+- **Intent audit mirror**: `intent_bridge.emit_intent_sync` should
+  write to `mc_intents_audit` so `/mc intents` returns live receipts
+  instead of the doctrine note. Trivial — deferred until the
+  `RISEDUAL_EMIT_INTENTS_TO_MC` flag is flipped on.
+
+
 ## Test Credentials
 See `/app/memory/test_credentials.md`.

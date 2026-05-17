@@ -5,6 +5,7 @@ import useTTS from './useTTS';
 import useStreamingAgent from './useStreamingAgent';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
+import { isMCCommand, parseMCCommand, dispatchMCCommand } from '../utils/mcCommands';
 
 const API = `${getApiBase()}/api`;
 
@@ -111,6 +112,30 @@ export default function useChat({ isPro, onLimitReached } = {}) {
     };
 
     try {
+      // MC slash commands — intercept before any LLM path.
+      // These are read-only against the council/MC; the chat asks,
+      // displays, and never executes (Headless Brain Doctrine V3).
+      if (!selectedImage && isMCCommand(text)) {
+        try {
+          const parsed = parseMCCommand(text);
+          const card = await dispatchMCCommand(parsed);
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            mc_card: card,           // ChatMessages renders by `mc_card.kind`
+            content: '',              // fallback text for non-card renderers
+            provider: 'mc',
+          }]);
+          return;
+        } catch (mcErr) {
+          logger.warn('MC slash dispatch failed:', mcErr);
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `MC command failed: ${mcErr.message || mcErr}`,
+          }]);
+          return;
+        }
+      }
+
       // Use streaming agent for calculation-heavy queries (no image)
       const useAgent = !selectedImage && TOOLS_PATTERN.test(text);
 

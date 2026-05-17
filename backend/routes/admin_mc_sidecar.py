@@ -33,7 +33,11 @@ def set_db(db) -> None:
 
 async def _require_owner(request: Request) -> dict:
     user = await get_current_user(request)
-    if not user or not user.get("is_owner"):
+    # Canonical check — matches routes/auth.py. Older code paths in
+    # this module used user.get("is_owner") which is never set on the
+    # user document (the schema uses ``role``); that bug made this
+    # endpoint silently unreachable. Fixed 2026-05-17.
+    if not user or user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="owner-only endpoint")
     return user
 

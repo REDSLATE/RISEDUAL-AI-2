@@ -102,6 +102,7 @@ from routes.intelligence_council import router as intelligence_council_router
 from routes.hypothesis_stream import router as hypothesis_stream_router
 from routes.sovereign_honesty import router as sovereign_honesty_router
 from routes.admin_mc_sidecar import router as admin_mc_sidecar_router, set_db as set_admin_mc_sidecar_db
+from routes.chat_mc import router as chat_mc_router, set_db as set_chat_mc_db
 from routes.admin_ticker_abandonment import router as admin_ticker_abandonment_router, set_db as set_admin_ticker_abandonment_db
 from routes.admin_day_trade import router as admin_day_trade_router, set_db as set_admin_day_trade_db
 from routes.admin_spread_slippage import router as admin_spread_slippage_router, set_db as set_admin_spread_slippage_db
@@ -220,6 +221,7 @@ ALL_ROUTERS = [
     hypothesis_stream_router,
     sovereign_honesty_router,
     admin_mc_sidecar_router,
+    chat_mc_router,
 ]
 
 
@@ -288,6 +290,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_tier3_bootstrap_db,
         set_admin_promotion_gates_db,
         set_admin_mc_sidecar_db,
+        set_chat_mc_db,
         set_admin_ticker_abandonment_db,
         set_admin_day_trade_db,
         set_admin_spread_slippage_db,

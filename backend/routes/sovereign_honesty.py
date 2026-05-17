@@ -31,8 +31,13 @@ router = APIRouter(prefix="/api/sovereign", tags=["sovereign"])
 
 def _require_owner(user: dict) -> None:
     """The honesty mirror is owner-only. Free users see the public
-    receipt on the hypothesis page; this aggregate stays internal."""
-    if not user or not user.get("is_owner"):
+    receipt on the hypothesis page; this aggregate stays internal.
+
+    Canonical role check — matches routes/auth.py. The earlier
+    ``user.get("is_owner")`` check was a bug (the schema uses
+    ``role``); fixed 2026-05-17.
+    """
+    if not user or user.get("role") != "owner":
         raise HTTPException(
             status_code=403, detail="owner-only endpoint",
         )

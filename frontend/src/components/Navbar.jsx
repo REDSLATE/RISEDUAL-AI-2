@@ -21,6 +21,7 @@ const openChat = () => window.dispatchEvent(new CustomEvent('risedualai-open-cha
 
 const NAV_DESTINATIONS = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'ai', label: 'AI', accent: 'teal' },
   { key: 'research', label: 'Research' },
   { key: 'options', label: 'Options' },
   { key: 'workspace', label: 'Workspace' },
@@ -29,6 +30,7 @@ const NAV_DESTINATIONS = [
 const NAV_DESTINATIONS_V2 = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'warroom', label: 'War Room', accent: 'orange' },
+  { key: 'ai', label: 'AI', accent: 'teal' },
   { key: 'research', label: 'Research' },
   { key: 'options', label: 'Options' },
   { key: 'workspace', label: 'Workspace' },

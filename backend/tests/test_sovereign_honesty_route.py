@@ -35,7 +35,7 @@ def _mock_owner(monkeypatch):
     from routes import sovereign_honesty as mod
     monkeypatch.setattr(
         mod, "get_current_user",
-        AsyncMock(return_value={"is_owner": True, "email": "admin@risedual.ai"}),
+        AsyncMock(return_value={"role": "owner", "email": "admin@risedual.ai"}),
     )
 
 
@@ -43,7 +43,7 @@ def _mock_non_owner(monkeypatch):
     from routes import sovereign_honesty as mod
     monkeypatch.setattr(
         mod, "get_current_user",
-        AsyncMock(return_value={"is_owner": False, "email": "user@x.com"}),
+        AsyncMock(return_value={"role": "user", "email": "user@x.com"}),
     )
 
 
