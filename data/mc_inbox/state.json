@@ -1,145 +1,27 @@
 {
-  "last_polled_at": "2026-05-17T13:51:30.385157+00:00",
-  "last_roles_at": "2026-05-17T13:49:48.460302+00:00",
-  "last_scorecard_at": "2026-05-17T13:49:48.443615+00:00",
+  "last_polled_at": "2026-05-17T14:32:29.557752+00:00",
+  "last_roles_at": "2026-05-18T00:57:02.703621+00:00",
+  "last_scorecard_at": "2026-05-18T00:57:02.676297+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "ffece59b-920b-4929-b548-e6772d4be4c1",
   "roles_snapshot": {
-    "count": 4,
-    "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
-    "items": [
-      {
-        "allowed_actions": [
-          "enter_long",
-          "enter_short",
-          "exit",
-          "scale_in",
-          "hold",
-          "phase6_proposal"
-        ],
-        "authority_state": "co_trader",
-        "description": "Generates executable signals. The only stack whose authority can ever climb to CO_TRADER or PRIMARY. Must still pass RoadGuard / Envelope / Patent J gates.",
-        "kind": "runtime",
-        "last_seen": "2026-05-17T13:49:48.421028+00:00",
-        "may_execute": false,
-        "role": "trader",
-        "runtime": "alpha",
-        "tagline": "has hands",
-        "title": "Trader"
-      },
-      {
-        "allowed_actions": [
-          "shadow_proposal",
-          "counterfactual",
-          "veto",
-          "reduce",
-          "watch",
-          "executor_proposed"
-        ],
-        "authority_state": "challenger",
-        "description": "Shadows Alpha. Attacks Alpha's thesis. Logs counterfactuals. Authority can climb the ladder via PromotionArtifact + Patent J + operator.",
-        "kind": "runtime",
-        "last_seen": "2026-05-17T13:48:56.857519+00:00",
-        "may_execute": false,
-        "role": "challenger",
-        "runtime": "camaro",
-        "tagline": "has teeth",
-        "title": "Challenger"
-      },
-      {
-        "allowed_actions": [
-          "readiness_gate",
-          "calibration_gate",
-          "audit_verify",
-          "promotion_decision",
-          "authority_call"
-        ],
-        "authority_state": "governor",
-        "description": "Memory firewall, readiness gate, calibration gate, audit verification, promotion control. Off-ladder \u2014 does not trade and is not promotable to a trading authority.",
-        "kind": "runtime",
-        "last_seen": "2026-05-17T13:47:50.324165+00:00",
-        "may_execute": false,
-        "role": "governor",
-        "runtime": "chevelle",
-        "tagline": "has the keys",
-        "title": "Governor"
-      },
-      {
-        "allowed_actions": [
-          "post_opinion",
-          "read_opinions",
-          "read_roles_manifest",
-          "adversarial_advisory",
-          "stance_contrary"
-        ],
-        "authority_state": "advisor",
-        "description": "Adversarial scout. Off-ladder. Argues the contrary case on every position (today: typically the short side, but the seat does not bind direction \u2014 the seat binds intent). Whoever holds the executor seat makes the final call. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances.",
-        "kind": "runtime",
-        "last_seen": null,
-        "may_execute": false,
-        "role": "opponent",
-        "runtime": "redeye",
-        "tagline": "argues the contrary case",
-        "title": "Opponent"
-      }
-    ]
+    "count": 0,
+    "error": "Client error '404 Not Found' for url 'https://b177ffdc-73ff-45fb-9ba4-f1e63e5e4274.preview.emergentagent.com/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "items": []
   },
   "scorecard_snapshot": {
-    "brier": 0.2269,
-    "calibration_bands": [
-      {
-        "confidence_band": "0.5-0.6",
-        "n": 40,
-        "win_rate": 0.5
-      },
-      {
-        "confidence_band": "0.6-0.7",
-        "n": 80,
-        "win_rate": 0.5
-      },
-      {
-        "confidence_band": "0.7-0.8",
-        "n": 21,
-        "win_rate": 0.0
-      },
-      {
-        "confidence_band": "0.8-0.9",
-        "n": 21,
-        "win_rate": 1.0
-      },
-      {
-        "confidence_band": "0.9-1.0",
-        "n": 20,
-        "win_rate": 1.0
-      }
-    ],
-    "doctrine": "Descriptive only. Scorecards do not gate promotions. No brain may rewrite another brain's authority based on a scorecard.",
-    "lens": "longs",
-    "question_answered": "When am I good at longs?",
-    "role_stances": [
-      "long"
-    ],
+    "error": "Client error '404 Not Found' for url 'https://b177ffdc-73ff-45fb-9ba4-f1e63e5e4274.preview.emergentagent.com/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
     "runtime": "alpha",
-    "summary": {
-      "ambiguous": 0,
-      "avg_confidence_on_losses": 0.6018518518518524,
-      "avg_confidence_on_wins": 0.693465346534653,
-      "decisive": 182,
-      "hit_rate": 0.554945054945055,
-      "losses": 81,
-      "no_event": 0,
-      "total_resolved": 182,
-      "wins": 101
-    }
+    "summary": {}
   },
   "stats": {
     "by_peer": {
-      "alpha": 1133,
-      "camaro": 29200,
-      "chevelle": 54771,
-      "redeye": 696
+      "alpha": 1958,
+      "camaro": 33000,
+      "chevelle": 54896,
+      "redeye": 946
     },
-    "opinions_ingested": 85800,
+    "opinions_ingested": 90800,
     "opinions_quarantined": 0
   }
 }
