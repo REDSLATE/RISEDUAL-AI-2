@@ -203,6 +203,10 @@ async def test_flag_on_skips_below_trade_gate(
 async def test_flag_on_scales_down_for_throttled_readiness(
     typical_readiness, capture_trades, monkeypatch
 ):
+    """2026-05-17 open-trading override: throttled readiness no
+    longer scales size down — local sizing returns the ceiling so
+    MC sees full intent confidence. We assert the override behavior
+    here (was: ~7.98 under legacy throttles)."""
     monkeypatch.setattr(tbs, "ADAPTIVE_SIZING_ENABLED", True)
     monkeypatch.setattr(tbs, "_db", _FakeDB([_bot("alpha", qty=10)]))
     async def _noop(*args, **kw): pass  # noqa: ARG001
@@ -210,21 +214,20 @@ async def test_flag_on_scales_down_for_throttled_readiness(
     async def _noop_log(*args, **kw): return "pid"  # noqa: ARG001
     monkeypatch.setattr(pt, "log_prediction", _noop_log)
 
-    # Confidence 92 → conf_mult ≈ 1.308; readiness score 81.33 with
-    # the high_conf throttle firing → readiness_mult = min(0.81, 1.0) × 0.75 = 0.61.
-    # Final mult ≈ 0.798 → qty=10 scaled to ~7.98.
+    # Confidence 92 → conf_mult ≈ 1.308; readiness_mult = 1.0 (override).
+    # Final mult ≈ 1.308 → qty=10 scaled to ~13.08.
     results = await tbs.process_signal_for_bots("u1", _signal(confidence=92))
 
     assert len(capture_trades) == 1
     scaled_qty = capture_trades[0]["qty"]
-    assert 7.0 < scaled_qty < 9.0, f"expected ~8, got {scaled_qty}"
+    assert 12.5 < scaled_qty < 13.5, f"expected ~13.08 under override, got {scaled_qty}"
 
     # Sizing metadata stamped on the result for admin observability.
     assert "sizing" in results[0]
     meta = results[0]["sizing"]
     assert meta["original_qty"] == 10
     assert abs(meta["scaled_qty"] - scaled_qty) < 0.01
-    assert 0.7 < meta["final_mult"] < 0.9
+    assert 1.2 < meta["final_mult"] < 1.4
 
 
 # ════════════════════════════════════════════════════════════════════════════════

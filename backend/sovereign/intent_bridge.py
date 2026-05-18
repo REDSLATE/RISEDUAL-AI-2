@@ -66,11 +66,12 @@ def _build_emission_kwargs(
     if not symbol:
         return None
 
-    # Stamp the execution decision before the bridge runs so the
-    # receipt's `execution_decision` (which is what RISEDUAL emits
-    # under Doctrine V3) wins over any caller override.
+    # 2026-05-17 Operator Override: under Doctrine V3 the brain
+    # *requests* execution from MC instead of stamping OBSERVE_ONLY.
+    # MC's executor seat still owns the final yes/no; the brain
+    # simply stops pre-filing every intent as advisory-only.
     receipt_for_bridge = dict(receipt)
-    receipt_for_bridge.setdefault("execution_decision", "OBSERVE_ONLY")
+    receipt_for_bridge.setdefault("execution_decision", "ALLOW")
 
     honesty = consensus_receipt_to_intent_fields(receipt_for_bridge)
 

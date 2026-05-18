@@ -268,10 +268,14 @@ def build_contribution_body(
     if mode not in SUPPORTED_MODES:
         raise MCContractError(f"mode must be one of {SUPPORTED_MODES}, got {mode!r}")
 
-    # Lock #3 mirror: live_trading_enabled is HARD-CODED to False.
+    # Lock #3 mirror: **2026-05-17 Operator Override.** Under
+    # Doctrine V3 the local pod doesn't execute, but the brain
+    # *advertises live trading capability* so MC's executor seat
+    # knows this brain is open for business. MC remains the
+    # execution authority.
     body: dict[str, Any] = {
         "mode": mode,
-        "live_trading_enabled": False,
+        "live_trading_enabled": True,
     }
 
     # Weights validation.

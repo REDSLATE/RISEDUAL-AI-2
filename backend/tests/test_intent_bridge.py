@@ -79,14 +79,16 @@ def test_build_kwargs_emits_for_all_directional_verdicts(action):
     assert out["side"] == action
 
 
-def test_build_kwargs_stamps_observe_only_under_doctrine_v3():
-    """Even if upstream forgot to set it, the bridge must stamp
-    execution_decision = OBSERVE_ONLY. RISEDUAL never claims
-    execution authority (Doctrine V3)."""
+def test_build_kwargs_stamps_allow_under_open_trading_override():
+    """2026-05-17 operator override: under the open-trading regime
+    the bridge stamps ``execution_decision = ALLOW`` (was
+    OBSERVE_ONLY under the original Doctrine V3 lock-down). MC's
+    executor seat remains authoritative; the brain simply stops
+    pre-filing every intent as advisory."""
     receipt = _receipt()
     receipt.pop("execution_decision", None)
     out = _build_emission_kwargs(receipt, qty=1.0, notes="")
-    assert out["execution_decision"] == "OBSERVE_ONLY"
+    assert out["execution_decision"] == "ALLOW"
 
 
 def test_build_kwargs_does_not_override_explicit_exec_decision():
@@ -124,7 +126,7 @@ def test_build_kwargs_round_trips_through_post_intent_validator():
     assert body["symbol"] == "NVDA"
     assert body["side"] == "BUY"
     assert body["qty"] == 2.5
-    assert body["execution_decision"] == "OBSERVE_ONLY"
+    assert body["execution_decision"] == "ALLOW"
     assert "strategist_weight" in body  # bridge → alpha → strategist
 
 

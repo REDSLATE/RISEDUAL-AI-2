@@ -10,6 +10,7 @@ from ai_core.sizing import (
     MIN_CONFIDENCE_TO_TRADE,
     MIN_CONF_MULT,
     MIN_POSITION_MULTIPLIER,
+    _compute_position_multiplier_legacy as _legacy_mult,
     apply_adaptive_position_size,
     apply_per_trade_sizing,
     build_tier3_snapshot_message,
@@ -70,46 +71,57 @@ def test_position_mult_healthy_stats_hits_ceiling():
 
 
 def test_position_mult_zero_score_hits_floor():
+    """2026-05-17: Live override returns the ceiling (1.0) regardless
+    of score — exercise the preserved legacy math through the private
+    helper so the documented throttle behavior stays under test."""
     bad = {"confidence_score": 0, "stats": {"high_conf_trades": 50}}
     # 0/100 = 0, clamped up to MIN, but the high_conf throttle doesn't fire.
-    assert compute_position_multiplier(bad) == pytest.approx(MIN_POSITION_MULTIPLIER)
+    assert _legacy_mult(bad) == pytest.approx(MIN_POSITION_MULTIPLIER)
 
 
 def test_position_mult_strong_miss_throttle():
     r = _healthy_readiness()
     r["stats"]["strong_miss_rate"] = 0.15   # > 10% cutoff
     # 1.0 × 0.5 = 0.5
-    assert compute_position_multiplier(r) == pytest.approx(0.5)
+    assert _legacy_mult(r) == pytest.approx(0.5)
 
 
 def test_position_mult_clamp_canary_heaviest_throttle():
     r = _healthy_readiness()
     r["stats"]["clamp_total"] = 1
     # 1.0 × 0.25 = 0.25
-    assert compute_position_multiplier(r) == pytest.approx(0.25)
+    assert _legacy_mult(r) == pytest.approx(0.25)
 
 
 def test_position_mult_small_sample_throttle():
     r = _healthy_readiness()
     r["stats"]["high_conf_trades"] = 5
     # 1.0 × 0.75 = 0.75
-    assert compute_position_multiplier(r) == pytest.approx(0.75)
+    assert _legacy_mult(r) == pytest.approx(0.75)
 
 
 def test_position_mult_throttles_compound():
-    """All three safety throttles firing at once should compound."""
+    """All three safety throttles firing at once should compound (legacy)."""
     r = _healthy_readiness()
     r["stats"]["strong_miss_rate"] = 0.20
     r["stats"]["clamp_total"] = 3
     r["stats"]["high_conf_trades"] = 10
     # 1.0 × 0.5 × 0.25 × 0.75 = 0.09375 → rounded 0.094
-    assert compute_position_multiplier(r) == pytest.approx(0.094, abs=1e-3)
+    assert _legacy_mult(r) == pytest.approx(0.094, abs=1e-3)
 
 
 def test_position_mult_fails_closed_on_empty_dict():
-    """Empty-dict defaults trip high_conf throttle but nothing else."""
+    """Empty-dict defaults trip high_conf throttle but nothing else (legacy)."""
     # score 0 → clamped up to MIN (0.25) × 0.75 = 0.1875
-    assert compute_position_multiplier({}) == pytest.approx(0.1875, abs=1e-3)
+    assert _legacy_mult({}) == pytest.approx(0.1875, abs=1e-3)
+
+
+def test_position_mult_open_trading_override_returns_ceiling():
+    """2026-05-17 override: public compute_position_multiplier
+    returns ``MAX_POSITION_MULTIPLIER`` flat. Local sizing no longer
+    pre-throttles — MC RoadGuard remains authoritative on execute."""
+    bad = {"confidence_score": 0, "stats": {"strong_miss_rate": 0.5, "clamp_total": 5}}
+    assert compute_position_multiplier(bad) == pytest.approx(MAX_POSITION_MULTIPLIER)
 
 
 def test_position_mult_ceiling_preserved_above_100():

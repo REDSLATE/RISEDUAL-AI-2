@@ -70,21 +70,37 @@ _FINAL_MULT_CEIL: float = 2.0
 
 def compute_position_multiplier(readiness: dict) -> float:
     """Turn a :func:`services.tier3_readiness.tier3_readiness_snapshot`
-    result into a position-size multiplier in
-    `[MIN_POSITION_MULTIPLIER, MAX_POSITION_MULTIPLIER]`, subject to
-    three safety throttles:
+    result into a position-size multiplier.
 
-      * `strong_miss_rate > 10%`     → ×0.5 (risk-off)
-      * `clamp_total > 0`            → ×0.25 (canary trip)
-      * `high_conf_trades < 30`      → ×0.75 (small-sample discount)
+    **2026-05-17 — Operator Override (Phase A: Open Trading)**
 
-    Multipliers compound — a run that trips all three ends up at
-    ``score/100 × 0.5 × 0.25 × 0.75`` which is deliberately tiny.
+    Under Doctrine V3 (Headless Brain) execution authority lives on
+    MC, not the local pod. This local sizer was originally written
+    to throttle a brain that hadn't accumulated live history yet
+    — a concern that produced "Alpha sizes to ~0" on every signal
+    because the readiness score was tiny. MC's RoadGuard / quality
+    gates remain authoritative on the execute side; the local pod
+    no longer pre-throttles them.
 
-    The `readiness` dict is expected to carry a top-level
-    ``confidence_score`` and nested ``stats`` dict, matching what
-    `tier3_readiness_snapshot()` produces. Missing keys are treated
-    as 0 (fail-closed to the smallest safe multiplier).
+    The override returns ``MAX_POSITION_MULTIPLIER`` flat so the
+    rest of the sizing chain (confidence ramp, calibration dampener,
+    final clamp) still applies. The three safety throttles
+    (strong_miss, canary clamp, small-sample) are preserved verbatim
+    in :func:`_compute_position_multiplier_legacy` for the readiness
+    UI / digest to keep *displaying* progress without gating size.
+
+    To revert, swap this body for a call to the legacy helper.
+    """
+    _ = readiness  # parameter retained for ABI stability
+    return float(MAX_POSITION_MULTIPLIER)
+
+
+def _compute_position_multiplier_legacy(readiness: dict) -> float:
+    """Legacy readiness-driven multiplier with the three safety
+    throttles. Preserved verbatim for the readiness digest / UI.
+
+    To revert the open-trading override, replace
+    :func:`compute_position_multiplier` body with a call here.
     """
     score = float(readiness.get("confidence_score", 0))
     stats = readiness.get("stats") or {}

@@ -521,30 +521,51 @@ def check_all_gates(
 ) -> GateResult:
     """Run all three tier gate checks and return a :class:`GateResult`.
 
-    This is the primary entry point for the orchestrator.  All parameters
-    default to conservative values so callers only need to provide what is
-    available at their current stage.
+    **2026-05-17 — Operator Override (Phase A: Open Trading)**
 
-    Parameters
-    ----------
-    accuracy:
-        Directional prediction accuracy (fraction correct).
-    n_predictions:
-        Number of labeled predictions used in calibration.
-    ece:
-        Expected Calibration Error.
-    sharpe:
-        Annualised Sharpe ratio (0.0 until backtest available).
-    max_drawdown:
-        Maximum observed drawdown (1.0 = no backtest data yet).
-    live_days:
-        Days of continuous live paper-trading (0 until Tier 2 active).
-    user_opted_in:
-        Explicit Tier 3 opt-in flag.
+    Per operator command, the promotion-gate ladder (Tier 1 → 2 → 3)
+    has been force-unlocked across every brain and every lane. The
+    pre-existing threshold logic — accuracy / Sharpe / live-days /
+    opt-in — produced asymmetric outcomes: Camaro accumulated enough
+    history to clear Tier 3 for equity, while Alpha / Chevelle /
+    RedEye were stuck at Tier 1, and crypto was blocked for all
+    brains because no stack had a long-enough crypto live record.
 
-    Returns
-    -------
-    GateResult
+    Doctrine V3 (Headless Brain) puts execution authority on MC. The
+    local readiness gate was originally written to protect local
+    broker fan-out — a concern that no longer applies under V3. MC's
+    own RoadGuard / kill-switch / quality gates remain authoritative
+    on the execute side; the local pod no longer pre-empts them.
+
+    The legacy threshold logic below is preserved verbatim in
+    :func:`_check_all_gates_legacy` so the readiness UI can keep
+    *displaying* progress, and so this override is one search away
+    from being reverted. Parameters are kept to maintain the public
+    signature — every caller in the tree passes them anyway.
+    """
+    _ = (accuracy, n_predictions, ece, sharpe, max_drawdown, live_days, user_opted_in)
+    return GateResult(
+        tier1=TierStatus(tier=Tier.TIER1_ALERTS, unlocked=True, reason="operator-override:open-trading"),
+        tier2=TierStatus(tier=Tier.TIER2_PAPER, unlocked=True, reason="operator-override:open-trading"),
+        tier3=TierStatus(tier=Tier.TIER3_LIVE, unlocked=True, reason="operator-override:open-trading"),
+    )
+
+
+def _check_all_gates_legacy(
+    accuracy: float,
+    n_predictions: int,
+    ece: float,
+    sharpe: float = 0.0,
+    max_drawdown: float = 1.0,
+    live_days: int = 0,
+    user_opted_in: bool = False,
+) -> GateResult:
+    """Legacy three-tier gate logic. Preserved verbatim so the
+    readiness UI can keep *displaying* progress even though the
+    gates themselves no longer apply (see :func:`check_all_gates`).
+
+    To revert the override, replace `check_all_gates` body with
+    a call to this function.
     """
     t1 = check_tier1(accuracy=accuracy, n_predictions=n_predictions, ece=ece)
     t2 = check_tier2(

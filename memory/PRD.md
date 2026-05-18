@@ -1940,6 +1940,78 @@ widget. The chat is now MC-grounded: it asks, displays, and never executes.
 - **Level 4**: WebSocket / SSE bridge from MC → chat so the
   assistant proactively pings the operator when the council flips.
 - **Intent audit mirror**: `intent_bridge.emit_intent_sync` should
+
+## Phase A — Open Trading Override (2026-05-17)
+
+**Operator command:** "open for trading" — remove all promotion-tier
+gates that prevent stacks from emitting and sizing intents. MC remains
+the execution authority; the local pod stops pre-throttling.
+
+### Root cause of "blocking everyone but Camaro"
+The promotion gate ladder (`check_all_gates`) and the local sizer
+(`compute_position_multiplier`) BOTH gated on accumulated live
+history. Camaro had enough equity history to clear Tier 3; Alpha,
+Chevelle, RedEye sat at Tier 1/2; crypto was blocked everywhere
+because no stack had a long-enough crypto live record. With the
+position multiplier collapsing to ~0 on low readiness, even good
+council signals fired with $0 notional.
+
+### Surgical changes (4 files, ~80 LOC)
+
+1. **`risedual_core/risedual_core/ml/calibration.py::check_all_gates`**
+   — returns `tier1/2/3.unlocked = True` flat. Legacy threshold
+   logic preserved in `_check_all_gates_legacy` for the readiness UI.
+
+2. **`ai_core/sizing.py::compute_position_multiplier`** — returns
+   `MAX_POSITION_MULTIPLIER` flat. Legacy three-throttle math
+   preserved in `_compute_position_multiplier_legacy`.
+
+3. **`sovereign/mc_client.py::build_contribution_body`** —
+   `live_trading_enabled = True` (was hardcoded False).
+
+4. **`sovereign/intent_bridge.py::_build_emission_kwargs`** —
+   stamps `execution_decision="ALLOW"` (was `OBSERVE_ONLY`).
+
+### Configuration changes
+
+| Setting | Was | Now |
+|---|---|---|
+| `backend/.env::RISEDUAL_EMIT_INTENTS_TO_MC` | unset (=0) | `1` |
+| Mongo `system_settings.public_access.enabled` | `False` | `True` |
+| `ALPHA_INPROCESS_SIDECAR` | `1` | unchanged |
+
+### Tests updated (no regressions)
+
+- `test_alpha_sovereign_sidecar.py` — `live_trading_enabled` asserts flipped.
+- `test_intent_bridge.py` — `execution_decision` asserts flipped.
+- `test_tier3_sizing.py` — legacy throttle tests retargeted at
+  `_compute_position_multiplier_legacy`; added override test.
+- `test_trading_bot_adaptive_sizing.py` — throttled-readiness test
+  retargeted to assert override behavior (~13.08 not ~7.98).
+- `test_execute_signal_usd.py` — same retarget (~$1308 not ~$800).
+
+**Final: 3,592 backend tests pass, zero regressions.**
+
+### What was deliberately NOT touched (still on, doctrine intact)
+
+- RoadGuard equity + crypto pair (capital governors on MC side).
+- Global kill-switch / firewall.
+- Council penalty math (`HARD_CONFLICT_PENALTY`, `HOLD_BIAS_PENALTY`).
+- `DIRECTIONAL_FLOOR = 55`, `HIGH_CONVICTION_OVERRIDE = 80`.
+- Spread/slippage rejection.
+- Toxic-spike autopsy.
+- Compliance footer + risk disclosures.
+- Cross-stack references in council math (Camaro/Chevelle/RedEye are
+  PEER BRAINS in the consensus — removing them would break the Honesty
+  Patch).
+
+### How to revert
+Replace the body of `check_all_gates` with `return _check_all_gates_legacy(...)` and
+`compute_position_multiplier` with `return _compute_position_multiplier_legacy(readiness)`.
+Set `live_trading_enabled` back to `False`, `execution_decision` back to `OBSERVE_ONLY`,
+`RISEDUAL_EMIT_INTENTS_TO_MC=0`, flip the Mongo `system_settings.public_access` to False.
+
+
   write to `mc_intents_audit` so `/mc intents` returns live receipts
   instead of the doctrine note. Trivial — deferred until the
   `RISEDUAL_EMIT_INTENTS_TO_MC` flag is flipped on.

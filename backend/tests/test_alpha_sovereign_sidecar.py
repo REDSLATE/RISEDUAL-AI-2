@@ -386,15 +386,17 @@ def test_contribution_body_valid() -> None:
         notes="tick @ 0",
     )
     assert body["mode"] == "DTD"
-    assert body["live_trading_enabled"] is False
+    assert body["live_trading_enabled"] is True  # 2026-05-17 open-trading override
     assert body["weights"]["rsi"] == -0.25
     assert body["training_signal"] is False
     assert len(body["recent_outcomes"]) == 1
 
 
-def test_contribution_body_live_trading_always_false() -> None:
+def test_contribution_body_live_trading_always_true_under_open_trading() -> None:
+    """2026-05-17 operator override: under the open-trading regime the
+    brain advertises live trading capability. MC remains executor."""
     body = build_contribution_body(mode="DTD", weights={"trend": 0.5}, learning_rate=0.0)
-    assert body["live_trading_enabled"] is False
+    assert body["live_trading_enabled"] is True
 
 
 def test_contribution_body_rejects_bad_mode() -> None:

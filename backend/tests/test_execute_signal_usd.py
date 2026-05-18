@@ -134,16 +134,19 @@ async def test_execute_signal_scales_size_and_converts_to_qty(capture_execution)
 
 @pytest.mark.asyncio
 async def test_execute_signal_scales_down_for_throttled_readiness(capture_execution):
-    """Score 81.33 with high_conf throttle → final_mult ≈ 0.8. $1000 × 0.8 = $800.
-    Below the $2000 cap so no clipping. Price $200 → qty 4.0."""
+    """2026-05-17 open-trading override: local sizing no longer
+    throttles for low readiness — the multiplier is fixed at 1.0
+    and only the confidence ramp varies. Confidence 92 → conf_mult
+    ≈ 1.308. $1000 × 1.308 ≈ $1308 notional, $1308 / $200 ≈ 6.54
+    qty."""
     signal = {"symbol": "MSFT", "entry": 200, "direction": "LONG", "confidence": 92}
     config = SimpleNamespace(trade_size=1000)
 
     out = await tbs.execute_signal(signal, {}, _typical_readiness(), config)
 
-    # Throttled readiness × high confidence ≈ 0.8 → $800 notional.
-    assert 700 < out["size_usd"] < 900
-    assert 3.5 < out["qty"] < 4.5
+    # Override: full multiplier × conf ramp ≈ 1.308 → ~$1308 notional.
+    assert 1200 < out["size_usd"] < 1400
+    assert 6.0 < out["qty"] < 7.0
     assert capture_execution[0]["side"] == "BUY"
 
 
