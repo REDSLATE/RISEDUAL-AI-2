@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Mapping
 
 from sovereign.intent_receipt import consensus_receipt_to_intent_fields
@@ -42,14 +43,38 @@ logger = logging.getLogger(__name__)
 _DIRECTIONAL = frozenset({"BUY", "SELL", "SHORT", "COVER"})
 
 
+# Crypto-vs-equity lane classifier. Used only to tag the trace ID so
+# the operator can grep CRYPTO vs EQUITY across the pipeline without
+# touching anything else in the council math.
+_CRYPTO_HINTS = ("/USD", "/USDT", "/USDC", "-USD", "BTC", "ETH", "SOL", "XRP",
+                 "DOGE", "ADA", "BNB", "AVAX", "LINK", "MATIC", "DOT")
+
+
+def _classify_lane(symbol: str) -> str:
+    s = (symbol or "").upper()
+    if any(h in s for h in _CRYPTO_HINTS):
+        return "CRYPTO"
+    return "EQUITY"
+
+
+def _new_trace_id() -> str:
+    """8-char trace id — short enough to grep, long enough to be unique."""
+    return uuid.uuid4().hex[:8]
+
+
 def _build_emission_kwargs(
     receipt: Mapping[str, Any], *, qty: float, notes: str,
+    trace_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Compose post_intent kwargs from a doctrine receipt.
 
     Returns None when the receipt is non-directional (caller should
     skip emission). Returns a kwargs dict ready to splat into
     ``MCClient.post_intent`` otherwise.
+
+    A ``trace_id`` is auto-generated if not supplied and stamped onto
+    the payload so the operator can follow one intent through
+    Alpha → MC → executor → broker logs end-to-end.
     """
     raw = str(receipt.get("raw_action") or receipt.get("market_decision") or "").upper()
     if raw not in _DIRECTIONAL:
@@ -74,6 +99,16 @@ def _build_emission_kwargs(
     receipt_for_bridge.setdefault("execution_decision", "ALLOW")
 
     honesty = consensus_receipt_to_intent_fields(receipt_for_bridge)
+    tid = trace_id or _new_trace_id()
+    lane = _classify_lane(symbol)
+
+    # First trace boundary — the brain has decided to emit. Anything
+    # downstream that doesn't echo this trace_id is the failure point.
+    logger.info(
+        "[%s] ALPHA_%s_INTENT_CREATED symbol=%s side=%s conf=%.3f exec=%s",
+        tid, lane, symbol, raw, final_unit,
+        receipt_for_bridge.get("execution_decision", "?"),
+    )
 
     return {
         "symbol": symbol,
@@ -81,6 +116,7 @@ def _build_emission_kwargs(
         "qty": float(qty),
         "confidence": final_unit,
         "notes": notes,
+        "trace_id": tid,
         **honesty,
     }
 

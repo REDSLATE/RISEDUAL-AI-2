@@ -2016,6 +2016,67 @@ Set `live_trading_enabled` back to `False`, `execution_decision` back to `OBSERV
   instead of the doctrine note. Trivial — deferred until the
   `RISEDUAL_EMIT_INTENTS_TO_MC` flag is flipped on.
 
+## Phase A — Diagnostic Trace Instrumentation (2026-05-17)
+
+Added a single 8-char trace_id stamped onto every emitted intent so
+one signal can be followed end-to-end across the brain↔MC boundary.
+Designed to surface the failure point per operator's directive:
+"the first missing line is the failure boundary."
+
+### Trace boundaries (logged with `[xxxxxxxx]` prefix)
+
+| Layer | Log line | File |
+|---|---|---|
+| Brain decides to emit | `ALPHA_<lane>_INTENT_CREATED` | `sovereign/intent_bridge.py` |
+| HTTP about to fire | `MC_<lane>_POST_SENT` | `sovereign/mc_client.py::post_intent` |
+| MC accepts | `MC_<lane>_RESPONSE_OK verdict=… executable=…` | `sovereign/mc_client.py::post_intent` |
+| MC rejects | `MC_<lane>_RESPONSE_FAIL err=…` | `sovereign/mc_client.py::post_intent` |
+| MC accepts but won't fire | `MC_<lane>_NON_EXECUTABLE reason=…` | `sovereign/mc_client.py::post_intent` |
+| Local crypto adapter | `CRYPTO_ADAPTER_REACHED` | `services/executors/crypto_executor.py` |
+| Local equity adapter | `EQUITY_ADAPTER_REACHED` | `services/executors/equity_executor.py` |
+| Broker outcome | `<lane>_BROKER_{SUBMITTED,SKIPPED} reason=…` | each lane executor |
+
+### Lane classifier
+`/USD`, `/USDT`, `/USDC`, `-USD`, and `BTC/ETH/SOL/...` symbols are
+tagged `CRYPTO`; everything else `EQUITY`. Defined once in
+`intent_bridge._classify_lane` and `mc_client._classify_lane_for_log`.
+
+### Trace propagation
+- `_build_emission_kwargs` mints a trace_id if caller doesn't pass one.
+- `build_intent_body` accepts an optional `trace_id` and stamps it on
+  the wire (MC server is additive-safe — extra fields ignored if
+  schema doesn't know about them).
+- `post_intent` extracts trace_id from the body and uses it for
+  `MC_POST_SENT` / `MC_RESPONSE_*` log lines.
+- Lane executors mint their own trace_id if the signal carries none,
+  and write `trace_id` back onto the result dict so upstream chains.
+
+### Operator grep recipes
+```bash
+# Has the brain decided to emit ANYTHING since boot?
+grep "ALPHA_.*_INTENT_CREATED" /var/log/supervisor/backend.*.log
+
+# Has any crypto intent reached MC?
+grep "MC_CRYPTO_POST_SENT" /var/log/supervisor/backend.*.log
+
+# Has MC ever returned non-executable on crypto?
+grep "MC_CRYPTO_NON_EXECUTABLE" /var/log/supervisor/backend.*.log
+
+# Follow ONE trace end to end:
+grep "<8-char-id>" /var/log/supervisor/backend.*.log
+```
+
+### Tests
+- `test_trace_pipeline.py` — 9 new tests covering trace mint,
+  propagation, lane tagging, MC_POST_SENT / RESPONSE_OK /
+  NON_EXECUTABLE / RESPONSE_FAIL boundaries.
+- `test_executor_lanes.py` — 3 tests updated to tolerate the new
+  `trace_id` field on result dicts.
+
+**Final: 3,608 backend tests pass, zero regressions.**
+
+
+
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.

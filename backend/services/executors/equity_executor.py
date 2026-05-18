@@ -17,6 +17,7 @@ is tagged.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 from services.executors._shared import EQUITY_LANE, is_equity_market_open
@@ -40,21 +41,28 @@ async def execute_equity_signal(
     market-hours pre-gate that runs before any kill-switch / fast-
     veto / sizing work.
     """
+    tid = str(signal.get("trace_id") or uuid.uuid4().hex[:8])
+    logger.info(
+        "[%s] EQUITY_ADAPTER_REACHED symbol=%s direction=%s confidence=%s",
+        tid,
+        signal.get("symbol"), signal.get("direction"), signal.get("confidence"),
+    )
     if not is_equity_market_open():
         logger.info(
-            "[equity-lane] %s skipped: market closed",
-            signal.get("symbol"),
+            "[%s] EQUITY_BROKER_SKIPPED reason=MARKET_CLOSED symbol=%s",
+            tid, signal.get("symbol"),
         )
         return {
             "skipped": True,
             "reason": "MARKET_CLOSED",
             "lane": EQUITY_LANE.name,
+            "trace_id": tid,
         }
 
     # Lazy import to avoid a circular import at module load
     # (trading_bot_service imports executors.__init__).
     from services.trading_bot_service import execute_signal as _core_execute
-    return await _core_execute(
+    result = await _core_execute(
         signal=signal,
         market_data=market_data,
         tier3_readiness=tier3_readiness,
@@ -64,3 +72,13 @@ async def execute_equity_signal(
         bot_capital=bot_capital,
         lane=EQUITY_LANE.name,
     )
+    if isinstance(result, dict):
+        result.setdefault("trace_id", tid)
+        outcome = "SUBMITTED" if not result.get("skipped") and not result.get("error") else "SKIPPED"
+        logger.info(
+            "[%s] EQUITY_BROKER_%s reason=%s qty=%s",
+            tid, outcome,
+            result.get("reason") or result.get("error") or "ok",
+            result.get("qty"),
+        )
+    return result

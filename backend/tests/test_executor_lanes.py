@@ -195,11 +195,10 @@ async def test_equity_executor_skips_when_market_closed(monkeypatch):
         tier3_readiness={},
         config={"trade_size": 100},
     )
-    assert result == {
-        "skipped": True,
-        "reason": "MARKET_CLOSED",
-        "lane": "equity",
-    }
+    assert result["skipped"] is True
+    assert result["reason"] == "MARKET_CLOSED"
+    assert result["lane"] == "equity"
+    assert "trace_id" in result  # Phase A instrumentation
 
 
 @pytest.mark.asyncio
@@ -225,7 +224,9 @@ async def test_equity_executor_calls_core_when_market_open(monkeypatch):
         config={"trade_size": 100},
     )
     assert captured.get("lane") == "equity"
-    assert result == {"order": "fake", "lane": "equity"}
+    assert result["order"] == "fake"
+    assert result["lane"] == "equity"
+    assert "trace_id" in result
 
 
 # ── 5. Crypto lane — no market-hours gate ──────────────────────
@@ -259,7 +260,9 @@ async def test_crypto_executor_does_not_check_market_hours(monkeypatch):
         config={"trade_size": 100},
     )
     assert captured.get("lane") == "crypto"
-    assert result == {"order": "fake", "lane": "crypto"}
+    assert result["order"] == "fake"
+    assert result["lane"] == "crypto"
+    assert "trace_id" in result
 
 
 # ── 6. Router behaviour — execute_signal(lane=None) dispatches ──

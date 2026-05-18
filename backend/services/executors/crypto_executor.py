@@ -11,10 +11,16 @@ Symbolic gates (deterministic, run BEFORE Fast Veto / Council):
 For now there is no blocking gate — the lane runs through to the
 shared executor body with ``lane="crypto"`` so the Fast Veto layer
 applies crypto-tuned thresholds and the shadow log is tagged.
+
+Tracing (2026-05-17): emits ``CRYPTO_ADAPTER_REACHED`` so the
+operator can confirm a routed intent actually hit this lane vs.
+being silently routed elsewhere (the symptom that prompted the
+Phase A diagnostic instrumentation).
 """
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 from services.executors._shared import CRYPTO_LANE
@@ -36,10 +42,18 @@ async def execute_crypto_signal(
     Same signature as the legacy ``execute_signal`` so callers can
     swap directly. The lane runs 24/7 — no market-hours pre-gate.
     """
+    # Pull or mint a trace_id so this entry shows up in the operator's
+    # grep alongside ALPHA_CRYPTO_INTENT_CREATED / MC_CRYPTO_POST_SENT.
+    tid = str(signal.get("trace_id") or uuid.uuid4().hex[:8])
+    logger.info(
+        "[%s] CRYPTO_ADAPTER_REACHED symbol=%s direction=%s confidence=%s",
+        tid,
+        signal.get("symbol"), signal.get("direction"), signal.get("confidence"),
+    )
     # Lazy import to avoid a circular import at module load
     # (trading_bot_service imports executors.__init__).
     from services.trading_bot_service import execute_signal as _core_execute
-    return await _core_execute(
+    result = await _core_execute(
         signal=signal,
         market_data=market_data,
         tier3_readiness=tier3_readiness,
@@ -49,3 +63,14 @@ async def execute_crypto_signal(
         bot_capital=bot_capital,
         lane=CRYPTO_LANE.name,
     )
+    # Tag the result with the trace id so upstream loggers can chain.
+    if isinstance(result, dict):
+        result.setdefault("trace_id", tid)
+        outcome = "SUBMITTED" if not result.get("skipped") and not result.get("error") else "SKIPPED"
+        logger.info(
+            "[%s] CRYPTO_BROKER_%s reason=%s qty=%s",
+            tid, outcome,
+            result.get("reason") or result.get("error") or "ok",
+            result.get("qty"),
+        )
+    return result

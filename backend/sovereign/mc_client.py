@@ -88,6 +88,18 @@ def intents_url(base: str) -> str:
     return f"{base.rstrip('/')}/api/intents"
 
 
+# ── trace-id helpers (Phase A diagnostic instrumentation) ──────────────
+_CRYPTO_HINTS_LOG = ("/USD", "/USDT", "/USDC", "-USD", "BTC", "ETH", "SOL",
+                     "XRP", "DOGE", "ADA", "BNB", "AVAX", "LINK", "MATIC", "DOT")
+
+
+def _classify_lane_for_log(symbol: str) -> str:
+    """Crypto vs equity classifier used only for log tagging so the
+    operator can ``grep MC_CRYPTO`` / ``grep MC_EQUITY``."""
+    s = (symbol or "").upper()
+    return "CRYPTO" if any(h in s for h in _CRYPTO_HINTS_LOG) else "EQUITY"
+
+
 # Honesty-receipt fields accepted by MC's IntentIn schema (2026-05-15).
 # All optional; brains that don't ship them forfeit their audit trail
 # (and produce `total_intents=N, blocked_directional=0` on MC's
@@ -110,6 +122,7 @@ def build_intent_body(
     qty: float,
     confidence: float,
     notes: str = "",
+    trace_id: str | None = None,
     # ── honesty receipt (all optional, MC server is additive-safe) ──
     raw_action: str | None = None,
     raw_confidence: float | None = None,
@@ -138,6 +151,10 @@ def build_intent_body(
     ``services.confidence_weighting`` for the math behind the bounded
     penalty and dynamic weights.
 
+    ``trace_id`` (optional, 8-char hex) is stamped onto the wire so MC
+    can echo it back through its executor / broker logs — the
+    operator can then grep one intent end-to-end across the boundary.
+
     Raises ``MCContractError`` on local validation failure — we'd
     rather fail fast than discover a typo in MC's 422 response.
     """
@@ -162,6 +179,8 @@ def build_intent_body(
         "confidence": cf,
         "notes": str(notes or ""),
     }
+    if trace_id:
+        body["trace_id"] = str(trace_id)
 
     # Action-domain honesty fields — must be subset of ALLOWED_ACTIONS
     # if present (BUY / SELL / HOLD / SHORT / COVER). Validation is
@@ -493,10 +512,41 @@ class MCClient:
         rollout can ship the core 4 (symbol/side/qty/confidence)
         without the receipt, and the validator will accept it.
 
-        See ``services.confidence_weighting`` doctrine module for the
-        bounded penalty + dynamic weight math, and
-        ``services.multi_model_hypothesis_service._weighted_consensus``
-        for the canonical receipt assembly.
+        ``trace_id`` (if present) is stamped onto the wire AND logged
+        at the MC_POST_SENT / MC_RESPONSE_* boundaries so the operator
+        can follow one intent end-to-end across the brain↔MC gap.
         """
         body = build_intent_body(**kwargs)
-        return self._post(intents_url(self.base_url), body)
+        tid = body.get("trace_id") or "--------"
+        lane = _classify_lane_for_log(body.get("symbol", ""))
+        log.info(
+            "[%s] MC_%s_POST_SENT url=%s symbol=%s side=%s conf=%.3f exec=%s",
+            tid, lane, intents_url(self.base_url),
+            body.get("symbol"), body.get("side"), float(body.get("confidence", 0)),
+            body.get("execution_decision", "?"),
+        )
+        try:
+            response = self._post(intents_url(self.base_url), body)
+        except MCClientError as exc:
+            log.warning(
+                "[%s] MC_%s_RESPONSE_FAIL err=%s",
+                tid, lane, exc,
+            )
+            raise
+        # MC echoes the intent_id (and ideally the trace_id) back. If
+        # MC accepts but won't execute, it surfaces ``executable=False``
+        # in the response — that's the silent-failure gap we want to
+        # catch on the operator side without changing MC's behavior.
+        executable = response.get("executable")
+        verdict = response.get("decision") or response.get("status") or "accepted"
+        log.info(
+            "[%s] MC_%s_RESPONSE_OK verdict=%s executable=%s intent_id=%s",
+            tid, lane, verdict, executable, response.get("intent_id") or response.get("id"),
+        )
+        if executable is False:
+            log.warning(
+                "[%s] MC_%s_NON_EXECUTABLE reason=%s",
+                tid, lane,
+                response.get("reason") or response.get("hold_reason") or "unknown",
+            )
+        return response
