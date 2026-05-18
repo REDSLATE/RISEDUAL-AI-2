@@ -61,7 +61,17 @@ DIRECTION_TOKENS = frozenset({
 # accompanied by a one-line justification — anyone who adds a new
 # entry without one fails review.
 ALLOWLIST: dict[str, str] = {
-    # The canonical helper itself defines the source-of-truth sets.
+    # Portable platform survival layer — deliberately zero-dependency
+    # so it can be forked into sibling services / run on Railway /
+    # Render / VPS without dragging the rest of the codebase along.
+    # Uses raw BUY/SELL because those are the only directions a
+    # broker accepts; importing canonical_ai_dir here would defeat
+    # the portability contract.
+    "shared/runtime/platform_survival.py": (
+        "Portable broker-side gate — accepts only BUY/SELL as the "
+        "post-canonicalised execution direction set. Cannot import "
+        "services.prediction_tracker without breaking portability."
+    ),
     "services/prediction_tracker.py": (
         "Source of truth — defines DIRECTION_BULLISH/BEARISH/NEUTRAL "
         "and canonical_ai_dir."

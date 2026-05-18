@@ -1,12 +1,12 @@
 {
-  "last_polled_at": "2026-05-17T14:32:29.557752+00:00",
-  "last_roles_at": "2026-05-18T02:04:42.065441+00:00",
-  "last_scorecard_at": "2026-05-18T02:04:42.069076+00:00",
+  "last_polled_at": "2026-05-18T14:24:24.436876+00:00",
+  "last_roles_at": "2026-05-18T14:25:29.602927+00:00",
+  "last_scorecard_at": "2026-05-18T14:25:24.660769+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ffece59b-920b-4929-b548-e6772d4be4c1",
+  "last_seen_opinion_id": "fffacdff-a002-46d6-80e3-b04e4e1b91fe",
   "roles_snapshot": {
     "count": 0,
-    "error": "Client error '404 Not Found' for url 'https://b177ffdc-73ff-45fb-9ba4-f1e63e5e4274.preview.emergentagent.com/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "error": "",
     "items": []
   },
   "scorecard_snapshot": {
@@ -16,12 +16,12 @@
   },
   "stats": {
     "by_peer": {
-      "alpha": 1958,
-      "camaro": 33000,
-      "chevelle": 54896,
-      "redeye": 946
+      "alpha": 3333,
+      "camaro": 38800,
+      "chevelle": 55021,
+      "redeye": 1446
     },
-    "opinions_ingested": 90800,
+    "opinions_ingested": 98600,
     "opinions_quarantined": 0
   }
 }
