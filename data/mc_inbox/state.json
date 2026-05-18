@@ -1,12 +1,12 @@
 {
   "last_polled_at": "2026-05-18T14:24:24.436876+00:00",
-  "last_roles_at": "2026-05-18T14:25:29.602927+00:00",
-  "last_scorecard_at": "2026-05-18T14:25:24.660769+00:00",
+  "last_roles_at": "2026-05-18T14:46:57.154593+00:00",
+  "last_scorecard_at": "2026-05-18T14:46:57.149992+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fffacdff-a002-46d6-80e3-b04e4e1b91fe",
   "roles_snapshot": {
     "count": 0,
-    "error": "",
+    "error": "Client error '404 Not Found' for url 'https://b177ffdc-73ff-45fb-9ba4-f1e63e5e4274.preview.emergentagent.com/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
     "items": []
   },
   "scorecard_snapshot": {

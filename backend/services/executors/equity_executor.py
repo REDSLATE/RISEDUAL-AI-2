@@ -17,12 +17,17 @@ is tagged.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, Dict, List, Optional
 
 from services.executors._shared import EQUITY_LANE, is_equity_market_open
+from shared.runtime.platform_survival import broker_verify_receipt
 
 logger = logging.getLogger(__name__)
+
+
+_REQUIRE_RECEIPT = os.environ.get("RISEDUAL_REQUIRE_MC_RECEIPT", "0") == "1"
 
 
 async def execute_equity_signal(
@@ -47,6 +52,43 @@ async def execute_equity_signal(
         tid,
         signal.get("symbol"), signal.get("direction"), signal.get("confidence"),
     )
+
+    # ── Survival-layer broker-side verification (see crypto_executor
+    # for the full doctrine note). The broker accepts only what MC
+    # signed; missing/invalid receipts skip when ENFORCE is on, log
+    # and proceed when off.
+    receipt = signal.get("mc_receipt")
+    if receipt:
+        verdict = broker_verify_receipt(receipt)
+        if not verdict["ok"]:
+            logger.warning(
+                "[%s] EQUITY_RECEIPT_INVALID reason=%s require=%s",
+                tid, verdict["reason"], _REQUIRE_RECEIPT,
+            )
+            if _REQUIRE_RECEIPT:
+                return {
+                    "skipped": True,
+                    "reason": f"RECEIPT_{verdict['reason']}",
+                    "lane": EQUITY_LANE.name,
+                    "trace_id": tid,
+                }
+        else:
+            logger.info(
+                "[%s] EQUITY_RECEIPT_VERIFIED symbol=%s",
+                tid, verdict.get("symbol"),
+            )
+    elif _REQUIRE_RECEIPT:
+        logger.warning(
+            "[%s] EQUITY_RECEIPT_MISSING — refusing submit "
+            "(RISEDUAL_REQUIRE_MC_RECEIPT=1)", tid,
+        )
+        return {
+            "skipped": True,
+            "reason": "RECEIPT_MISSING",
+            "lane": EQUITY_LANE.name,
+            "trace_id": tid,
+        }
+
     if not is_equity_market_open():
         logger.info(
             "[%s] EQUITY_BROKER_SKIPPED reason=MARKET_CLOSED symbol=%s",

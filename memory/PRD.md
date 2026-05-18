@@ -2068,6 +2068,72 @@ grep "<8-char-id>" /var/log/supervisor/backend.*.log
 
 ### Tests
 - `test_trace_pipeline.py` — 9 new tests covering trace mint,
+
+## Phase A2 — Live-Flow Wiring into Survival Layer (2026-05-17)
+
+The portable survival kernel from Phase A1 is now in the critical
+path of every directional emission. Brain side runs a local mirror
+of MC's gate before POSTing; broker side verifies the HMAC-signed
+receipt before submitting any order.
+
+### Brain side (`sovereign/intent_bridge.py`)
+- `_build_emission_kwargs` now constructs an `IntentEnvelope` via
+  `sidecar_build_intent` and runs `mc_canonical_gate()` as a local
+  pre-flight mirror.
+- Three log boundaries added:
+  - `SURVIVAL_PREFLIGHT_OK` (approved, receipt attached)
+  - `SURVIVAL_PREFLIGHT_SOFT_DENY` (failed, but soft mode lets it
+    proceed — current default)
+  - `SURVIVAL_PREFLIGHT_BLOCK` (failed under `RISEDUAL_SURVIVAL_ENFORCE=1`,
+    returns None, no MC POST)
+- The signed receipt rides on the outgoing payload via a new
+  `mc_receipt` field in `build_intent_body`.
+
+### Broker side (`services/executors/crypto_executor.py`,
+`services/executors/equity_executor.py`)
+- Before delegating to `_core_execute`, check `signal["mc_receipt"]`:
+  - Present + valid signature → `*_RECEIPT_VERIFIED` log + proceed
+  - Present + invalid → `*_RECEIPT_INVALID` log; if
+    `RISEDUAL_REQUIRE_MC_RECEIPT=1`, skip with `RECEIPT_<reason>`
+  - Absent + REQUIRE on → skip with `RECEIPT_MISSING`
+  - Absent + REQUIRE off → graceful degrade, log, proceed
+
+### Mode matrix
+
+| `SURVIVAL_ENFORCE` | `REQUIRE_MC_RECEIPT` | Behavior |
+|---|---|---|
+| 0 (default) | 0 (default) | **Observe** — every boundary logs, nothing blocks. Use this for prod rollout. |
+| 1 | 0 | Brain refuses to emit on failed pre-flight. Broker still graceful. |
+| 0 | 1 | Brain emits everything. Broker refuses orders without valid receipt. |
+| 1 | 1 | **Full hard-block** — both sides enforce. End state. |
+
+### Promotion path
+1. Ship with both flags off (current state — wiring is observable in
+   logs but never blocks).
+2. Watch logs for `SURVIVAL_PREFLIGHT_SOFT_DENY` — if Camaro's 60%
+   dampener produces a flood of below-floor denies, that's exactly
+   what we want to see *before* it ships to live.
+3. Flip `RISEDUAL_SURVIVAL_ENFORCE=1` once the log story is clean.
+4. Flip `RISEDUAL_REQUIRE_MC_RECEIPT=1` only after MC is actually
+   signing receipts on its end (this requires changes on the MC
+   side — until then, brain-emitted receipts are the only source).
+
+### Tests
+- `test_survival_live_wiring.py` — 9 new tests covering the bridge
+  side (receipt attach / soft-deny / hard-block), broker side (valid
+  receipt / tampered receipt / missing receipt / graceful degrade),
+  and the end-to-end chain.
+- **3,622 backend tests pass, zero regressions.**
+
+### What's now possible
+- Grep `SURVIVAL_PREFLIGHT` to see every kernel verdict in real time.
+- Grep `*_RECEIPT_VERIFIED` to confirm broker is checking signatures.
+- Any sidecar with `local_execution_authority = True` (via tampered
+  envelope) hits `SIDECAR_LOCAL_AUTHORITY_FORBIDDEN` in the kernel.
+- Stale code with a mismatched policy_hash hits `POLICY_HASH_MISMATCH`
+  — surfaces deploy skew automatically.
+
+
   propagation, lane tagging, MC_POST_SENT / RESPONSE_OK /
   NON_EXECUTABLE / RESPONSE_FAIL boundaries.
 - `test_executor_lanes.py` — 3 tests updated to tolerate the new

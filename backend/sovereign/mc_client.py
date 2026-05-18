@@ -123,6 +123,7 @@ def build_intent_body(
     confidence: float,
     notes: str = "",
     trace_id: str | None = None,
+    mc_receipt: Mapping[str, Any] | None = None,
     # ── honesty receipt (all optional, MC server is additive-safe) ──
     raw_action: str | None = None,
     raw_confidence: float | None = None,
@@ -181,6 +182,11 @@ def build_intent_body(
     }
     if trace_id:
         body["trace_id"] = str(trace_id)
+    if mc_receipt:
+        # The survival-layer receipt rides on the wire so MC can echo
+        # back the policy_hash + the broker adapter (any service) can
+        # re-verify the HMAC signature before submitting.
+        body["mc_receipt"] = dict(mc_receipt)
 
     # Action-domain honesty fields — must be subset of ALLOWED_ACTIONS
     # if present (BUY / SELL / HOLD / SHORT / COVER). Validation is

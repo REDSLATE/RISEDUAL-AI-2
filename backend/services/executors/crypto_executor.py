@@ -20,12 +20,17 @@ Phase A diagnostic instrumentation).
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, Dict, List, Optional
 
 from services.executors._shared import CRYPTO_LANE
+from shared.runtime.platform_survival import broker_verify_receipt
 
 logger = logging.getLogger(__name__)
+
+
+_REQUIRE_RECEIPT = os.environ.get("RISEDUAL_REQUIRE_MC_RECEIPT", "0") == "1"
 
 
 async def execute_crypto_signal(
@@ -50,6 +55,49 @@ async def execute_crypto_signal(
         tid,
         signal.get("symbol"), signal.get("direction"), signal.get("confidence"),
     )
+
+    # ── Survival-layer broker-side verification ──────────────────
+    # If the upstream emission carried an mc_receipt, verify the HMAC
+    # signature against the shared secret. This is the brake that
+    # prevents a sidecar with hidden authority from coercing the
+    # broker — the broker accepts ONLY what MC signed.
+    #
+    # Mode is governed by ``RISEDUAL_REQUIRE_MC_RECEIPT``:
+    #   * 1   → unverified / missing receipts return SKIPPED
+    #   * 0/unset → graceful degrade (log + proceed) so flow keeps
+    #               running while the env var rolls out.
+    receipt = signal.get("mc_receipt")
+    if receipt:
+        verdict = broker_verify_receipt(receipt)
+        if not verdict["ok"]:
+            logger.warning(
+                "[%s] CRYPTO_RECEIPT_INVALID reason=%s require=%s",
+                tid, verdict["reason"], _REQUIRE_RECEIPT,
+            )
+            if _REQUIRE_RECEIPT:
+                return {
+                    "skipped": True,
+                    "reason": f"RECEIPT_{verdict['reason']}",
+                    "lane": CRYPTO_LANE.name,
+                    "trace_id": tid,
+                }
+        else:
+            logger.info(
+                "[%s] CRYPTO_RECEIPT_VERIFIED symbol=%s",
+                tid, verdict.get("symbol"),
+            )
+    elif _REQUIRE_RECEIPT:
+        logger.warning(
+            "[%s] CRYPTO_RECEIPT_MISSING — refusing submit "
+            "(RISEDUAL_REQUIRE_MC_RECEIPT=1)", tid,
+        )
+        return {
+            "skipped": True,
+            "reason": "RECEIPT_MISSING",
+            "lane": CRYPTO_LANE.name,
+            "trace_id": tid,
+        }
+
     # Lazy import to avoid a circular import at module load
     # (trading_bot_service imports executors.__init__).
     from services.trading_bot_service import execute_signal as _core_execute

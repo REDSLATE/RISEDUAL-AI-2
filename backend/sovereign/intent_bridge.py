@@ -27,9 +27,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from typing import Any, Mapping
 
+from shared.runtime.platform_survival import (
+    mc_canonical_gate as _survival_gate,
+    sidecar_build_intent as _survival_build_intent,
+)
 from sovereign.intent_receipt import consensus_receipt_to_intent_fields
 from sovereign.mc_client import MCClient, MCClientError
 
@@ -41,6 +46,27 @@ logger = logging.getLogger(__name__)
 # only. (`ALLOWED_ACTIONS` over in mc_client.py also includes HOLD
 # for the schema's sake; this set is stricter on purpose.)
 _DIRECTIONAL = frozenset({"BUY", "SELL", "SHORT", "COVER"})
+
+# Survival layer wiring (2026-05-17 Phase A2):
+#
+# Every emission now runs through ``mc_canonical_gate`` locally as a
+# pre-flight mirror of what the remote MC will decide. The kernel
+# attaches a stamped runtime envelope (env / git_sha / policy_hash /
+# local_execution_authority=False) and either approves with an
+# HMAC-signed receipt or surfaces an explicit reason string.
+#
+# Mode is governed by ``RISEDUAL_SURVIVAL_ENFORCE``:
+#   * unset/0  → soft-warn (current default). Pre-flight failures log
+#                a `SURVIVAL_PREFLIGHT_DENY` line but emission still
+#                fires. Lets us observe the kernel in prod without
+#                gating real flow.
+#   * 1        → hard-block. Failed pre-flight short-circuits the
+#                emission and returns None — same effect as a non-
+#                directional verdict.
+#
+# Broker-side verification lives in the lane executors; this is the
+# brain-side half of the wiring.
+_SURVIVAL_ENFORCE = os.environ.get("RISEDUAL_SURVIVAL_ENFORCE", "0") == "1"
 
 
 # Crypto-vs-equity lane classifier. Used only to tag the trace ID so
@@ -110,6 +136,45 @@ def _build_emission_kwargs(
         receipt_for_bridge.get("execution_decision", "?"),
     )
 
+    # ── Survival-layer pre-flight ─────────────────────────────────
+    # Local mirror of mc_canonical_gate. Builds a runtime envelope
+    # (env / git_sha / policy_hash / local_execution_authority=False),
+    # runs the kernel, attaches the signed receipt to the outgoing
+    # body. The receipt rides on the wire so the broker adapter — in
+    # this service or any sibling service — can re-verify.
+    envelope = _survival_build_intent(
+        brain_id="alpha",
+        lane=lane.lower(),
+        symbol=symbol,
+        direction=raw,
+        confidence=final_unit,
+        room_id=os.environ.get("RISEDUAL_SIDECAR_ROOM", "alpha"),
+    )
+    survival_verdict = _survival_gate(envelope)
+
+    if not survival_verdict["accepted"]:
+        reason = survival_verdict["reason"]
+        if _SURVIVAL_ENFORCE:
+            logger.warning(
+                "[%s] SURVIVAL_PREFLIGHT_BLOCK lane=%s symbol=%s reason=%s "
+                "errors=%s",
+                tid, lane, symbol, reason, survival_verdict.get("errors", []),
+            )
+            return None
+        # Soft mode: warn but proceed. Lets us observe the kernel
+        # without gating real flow.
+        logger.warning(
+            "[%s] SURVIVAL_PREFLIGHT_SOFT_DENY lane=%s symbol=%s reason=%s "
+            "(set RISEDUAL_SURVIVAL_ENFORCE=1 to hard-block)",
+            tid, lane, symbol, reason,
+        )
+    else:
+        logger.info(
+            "[%s] SURVIVAL_PREFLIGHT_OK lane=%s symbol=%s policy_hash=%s",
+            tid, lane, symbol,
+            survival_verdict["receipt"].get("mc_policy_hash", "?")[:8],
+        )
+
     return {
         "symbol": symbol,
         "side": raw,
@@ -117,6 +182,7 @@ def _build_emission_kwargs(
         "confidence": final_unit,
         "notes": notes,
         "trace_id": tid,
+        "mc_receipt": survival_verdict["receipt"],
         **honesty,
     }
 
