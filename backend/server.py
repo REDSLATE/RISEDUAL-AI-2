@@ -432,6 +432,35 @@ async def startup_event():
     except Exception as e:
         logger.exception(f"CRITICAL: DB wire failed: {e}")
 
+    # MC Survival Layer check-in. Posts Alpha's RuntimeStamp to MC at
+    # /api/admin/runtime/sidecar-checkin/alpha so the operator can see
+    # who's prod vs preview live on Diagnostics. Observability only —
+    # does NOT gate execution. The broker-receipt seal remains the
+    # lock on bad orders. See services/mc_checkin/__init__.py.
+    try:
+        from services.mc_checkin import (
+            RuntimeStamp,
+            checkin_now,
+            start_periodic_checkin,
+        )
+        stamp = RuntimeStamp.current()
+        app.state.runtime_stamp = stamp
+        logger.info(
+            "alpha runtime stamp: env=%s platform=%s git=%s policy_hash=%s "
+            "broker_mode=%s local_execution_authority=%s",
+            stamp.env_name, stamp.platform, stamp.git_sha,
+            stamp.policy_hash[:8], stamp.broker_mode,
+            stamp.local_execution_authority,
+        )
+        try:
+            await checkin_now()
+        except Exception as e:  # noqa: BLE001
+            # Don't block boot on MC being flaky — but log loudly.
+            logger.warning(f"mc_checkin boot ping failed (non-critical): {e}")
+        start_periodic_checkin(app.state)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"mc_checkin wire-up failed (non-critical): {e}")
+
     try:
         await _start_schedulers()
         logger.info("Schedulers started")
@@ -1665,4 +1694,11 @@ async def shutdown_db_client():
             logger.info("[mc_sidecar] in-process sidecar stopped on shutdown")
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[mc_sidecar] shutdown cleanup: {e}")
+    # MC check-in periodic loop — cancel cleanly to avoid an asyncio
+    # warning about a pending task on shutdown.
+    try:
+        from services.mc_checkin import stop_periodic_checkin
+        await stop_periodic_checkin()
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[mc_checkin] shutdown cleanup: {e}")
     client.close()
