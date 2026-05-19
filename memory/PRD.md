@@ -30,6 +30,56 @@ market data
 
 ## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13 / 2026-02 Feb fork)
 
+### 🏆 Stage 3 — Sovereign vs Council Evidence Pipeline (2026-02-19)
+
+Closed the Sovereign AI Promotion Plan Stage 3 — paired-verdict ledger
+with backfilled realised PnL so the operator can read both AIs
+side-by-side and judge promotion-readiness.
+
+**New modules:**
+- `services/decision_outcome_writer.py` — `_score_voice` (routes through
+  `prediction_tracker.canonical_ai_dir`), `_decide_winner`,
+  `write_outcome_for_trade`, `attach_council_verdict`, `aggregate_stats`.
+- `routes/admin_decision_pairs.py` — owner-only `GET /api/admin/decision-pairs`
+  and `/stats`. Registered in `route_registry.py`.
+- `components/admin/Stage3DecisionPairs.jsx` — operator dashboard (4-tile
+  scoreboard + head-to-head winners + expandable pair ledger).
+  Wired into AdminPanel → Insights → "Sov vs Council".
+
+**Wiring (live flow):**
+- `ml_paper_trader.maybe_paper_trade` files a pair immediately after
+  `paper_trades.insert_one` (council=ABSENT placeholder, attached later).
+- `paper_trade_closer.close_due_paper_trades` calls `write_outcome_for_trade`
+  after every successful close — best-effort.
+- `multi_model_hypothesis_service.generate_hypothesis` (consensus branch)
+  calls `attach_council_verdict` to backfill the council voice onto any
+  open pair for the same symbol within 10 min.
+
+**Doctrine pinned:**
+- `sovereign_voice` remains pure templates — no LLM imports (CI test).
+- `file_decision_pair` idempotent on `decision_id`.
+- `_score_voice` routes through `canonical_ai_dir` (no private direction
+  alias tables; passes `test_no_local_direction_tuples`).
+
+**Test count: 3,688 / 3,688 passing** (was 3,660+; +30 new Stage 3 tests, 0
+regressions). Frontend lint clean. Live smoke against demo-seeded pairs:
+sovereign 50% accuracy, council 100%, agreement 33%, winners
+{sovereign:0, council:1, tie:1, neither:0}.
+
+**Testing agent verdict:** 100% backend (26/26 pytest) and 100% frontend.
+No critical or minor issues. All 16 required data-testids present + unique.
+
+**Outstanding (Stage 4+):**
+- `/admin/council-policy` endpoint for dynamic confidence floors (P1).
+- Alpaca equity `volume_24h_usd` enrichment for 7/7 snapshot completeness (P2).
+- Stage 3.5 per-context promotion (lane/regime matrix) (P2).
+- Stage 4: Sovereign becomes primary execution authority (P2).
+- Stage 5: LLM emergency override / "Auditor of Last Resort" (P2).
+- Small Account Mode (Warrior Trading kill-switch profile) (P2).
+- Options Education Layer (`/learn/options` tooltips) (P3).
+
+## What's Implemented (this fork — 2026-05-08 / 2026-05-09 / 2026-05-10 / 2026-05-13 / 2026-02 Feb fork)
+
 ### 🟢 Alpha Sidecar Freeze Hardening (2026-05-14)
 
 After the 18:31:35 silent-freeze incident (Alpha's sidecar wedged ~11
