@@ -33,6 +33,7 @@ import TerminalTopActions from './admin/TerminalTopActions';
 import AdminRoutesPanel from './admin/AdminRoutesPanel';
 import ShellyDiagnosticTile from './admin/ShellyDiagnosticTile';
 import MalformedQuarantine from './admin/MalformedQuarantine';
+import Stage3DecisionPairs from './admin/Stage3DecisionPairs';
 import FastVetoTile from './admin/FastVetoTile';
 import RoadGuardTile from './admin/RoadGuardTile';
 import CalibrationKanban from './admin/CalibrationKanban';
@@ -92,6 +93,7 @@ const TAB_GROUPS = [
       { id: 'roadguard',     label: 'RoadGuard', icon: ShieldCheck },
       { id: 'kanban',        label: 'Kanban',    icon: ShieldCheck },
       { id: 'patent-j',      label: 'Patent J',  icon: Activity },
+      { id: 'stage3-pairs',  label: 'Sov vs Council', icon: Brain },
       { id: 'code-evo',      label: 'Code Evo',  icon: ShieldCheck },
       { id: 'python-coach',  label: 'Python Coach', icon: FileCode },
       { id: 'alpha-kb',      label: 'Alpha KB',  icon: Brain },
@@ -142,6 +144,7 @@ const TAB_SUBTITLES = {
   roadguard:      () => 'RoadGuard — shared capital + broker safety governor · veto-only · shadow mode',
   kanban:         () => 'Calibration Kanban — per-lane promotion readiness · Shadow → Calibrate → Enforce · read-only',
   'patent-j':     () => 'Patent J — confidence calibration reliability · isotonic post-hoc mapping · observation only',
+  'stage3-pairs': () => 'Stage 3 — Sovereign vs Council ledger · side-by-side verdicts with backfilled outcomes · promotion evidence',
   'code-evo':     () => 'Code Evolution v0 — operator-countersigned patch review · AI may audit, never promote',
   'python-coach': () => 'Python Coach — lesson plans + AST review · firewalled from execution & code-evolution gate',
   'alpha-kb':     () => 'Alpha Python Knowledge Base — read-only corpus consulted via /py prefix in chat · firewalled from execution',
@@ -184,6 +187,7 @@ const TAB_COMPONENTS = {
   roadguard:      () => <RoadGuardTile />,
   kanban:         () => <CalibrationKanban />,
   'patent-j':     () => <PatentJCard />,
+  'stage3-pairs': () => <Stage3DecisionPairs />,
   'code-evo':     () => <CodeEvolutionInbox />,
   'python-coach': () => <PythonCoach />,
   'alpha-kb':     () => <AlphaKnowledgePanel />,

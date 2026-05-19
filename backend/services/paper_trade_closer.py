@@ -245,6 +245,28 @@ async def close_due_paper_trades(db: Any) -> dict:
             )
             if res.modified_count:
                 closed += 1
+                # ── Stage 3: backfill realised outcome onto the
+                # matching decision_pairs row (if one was filed at
+                # trade-open time). Best-effort — never blocks the
+                # close.
+                try:
+                    from services.decision_outcome_writer import (
+                        write_outcome_for_trade,
+                    )
+                    await write_outcome_for_trade(
+                        db,
+                        trade_id=trade_id,
+                        direction=direction,
+                        pnl_usd=pnl_usd,
+                        pnl_pct=pnl_pct,
+                        outcome_label=outcome,
+                        closed_at=now,
+                    )
+                except Exception as _ow_exc:  # noqa: BLE001
+                    logger.debug(
+                        "[paper-closer] outcome write failed for %s: %s",
+                        ticker, _ow_exc,
+                    )
                 # Sync paper_positions roster (best-effort)
                 try:
                     await db["paper_positions"].update_many(

@@ -841,6 +841,33 @@ async def maybe_paper_trade(
             pass
 
         await db["paper_trades"].insert_one(trade_doc)
+
+        # ── Stage 3: file Sovereign verdict (council attached later). ──
+        # If a SovereignDecision was produced upstream for this tick,
+        # pair it with an ABSENT-council placeholder. The pair gets:
+        #   * council voice attached later by ``attach_council_verdict``
+        #     when a consensus hypothesis is generated for the symbol.
+        #   * outcome backfilled by ``write_outcome_for_trade`` when the
+        #     paper trade closes.
+        # Wrapped — never blocks the trade write.
+        if sovereign_decision_id:
+            try:
+                from services.intent_decision_filer import file_decision_pair
+                _sov_dec_row = await db["sovereign_decisions"].find_one(
+                    {"decision_id": sovereign_decision_id}, {"_id": 0},
+                )
+                if _sov_dec_row:
+                    await file_decision_pair(
+                        db,
+                        sovereign_decision=_sov_dec_row,
+                        council_hypothesis=None,
+                        trade_id=trade_id,
+                    )
+            except Exception as _stage3_exc:  # noqa: BLE001
+                log.debug(
+                    "[ml_paper] Stage3 pair filing failed for %s: %s",
+                    ticker, _stage3_exc,
+                )
     except DuplicateKeyError:
         # Same prediction firing twice in the same minute — return
         # the existing trade_id so the caller's workflow stays

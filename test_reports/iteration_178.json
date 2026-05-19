@@ -1,0 +1,72 @@
+{
+  "summary": "Stage 3 Decision Pairs (Sovereign vs Council) - All tests passed. Backend: 26/26 pytest unit tests pass + all API endpoints working correctly (401 without auth, 200 with owner auth, filters working). Frontend: Dashboard renders correctly with all data-testid attributes present, scoreboard shows correct demo data, filters work, row expansion shows rationale details.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stage3_decision_pairs.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "sovereign_voice.py is deterministic - no LLM imports (verified by test_voice_no_llm_imports)",
+    "file_decision_pair() is idempotent on decision_id (verified by test_file_decision_pair_is_idempotent_on_decision_id)",
+    "write_outcome_for_trade() correctly backfills PnL and computes scoreboard.winner",
+    "attach_council_verdict() correctly skips pairs outside the configured window",
+    "All 16 required data-testid attributes present and unique",
+    "Filter chips (Lane/Agreement/Resolved/Window) correctly re-fetch and update row list",
+    "Row expansion shows Sovereign rationale_text + key_drivers chips + warnings chips on left, Council rationale on right"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (26/26 pytest tests passed, all API endpoints working)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "3 demo pairs already seeded in MongoDB (demo-d-1 NVDA, demo-d-2 TSLA, demo-d-3 BTCUSD)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Stage 3 Decision Pairs fully tested. Key findings: (1) Tab is at AdminPanel → Insights → 'Sov vs Council' (data-testid='admin-tab-stage3-pairs'), (2) Main container: data-testid='stage3-decision-pairs', (3) Scoreboard tiles: stage3-sovereign-acc, stage3-council-acc, stage3-agreement, stage3-totals, (4) Winners section: stage3-winners, (5) Rows container: stage3-rows, (6) Individual rows: stage3-row-{decision_id}, (7) Filters: stage3-filter-lane, stage3-filter-agreement, stage3-filter-resolved, stage3-filter-window, (8) Refresh button: stage3-refresh-btn, (9) Demo data: 3 pairs (2 resolved, 1 unresolved), sovereign accuracy 50%, council accuracy 100%, agree rate 33%, winners: tie=1, council=1",
+  "verified_acceptance_criteria": {
+    "backend_401_unauth": "PASS - GET /api/admin/decision-pairs returns 401 without auth",
+    "backend_200_with_owner": "PASS - GET /api/admin/decision-pairs returns 200 with owner JWT",
+    "backend_response_shape": "PASS - Returns {rows:[], count:int} shape",
+    "backend_filter_lane": "PASS - lane=equity returns 2 rows (TSLA, NVDA)",
+    "backend_filter_agreement": "PASS - agreement=AGREE returns 1 row (demo-d-1)",
+    "backend_filter_resolved": "PASS - resolved=true returns 2 rows, resolved=false returns 1 row",
+    "backend_stats_endpoint": "PASS - GET /api/admin/decision-pairs/stats returns correct shape with all fields",
+    "backend_stats_values": "PASS - sovereign.accuracy=0.5, council.accuracy=1.0, agreement.agree_rate=0.3333, winners={sovereign:0, council:1, tie:1, neither:0}",
+    "backend_voice_deterministic": "PASS - sovereign_voice.py has no LLM imports (verified by unit test)",
+    "backend_filer_idempotent": "PASS - file_decision_pair() with same decision_id twice does not duplicate row",
+    "backend_outcome_writer": "PASS - write_outcome_for_trade() backfills PnL and computes scoreboard.winner correctly",
+    "backend_council_attacher": "PASS - attach_council_verdict() updates open pair within window, skips outside window",
+    "backend_pytest_26_tests": "PASS - All 26 tests in test_stage3_decision_pairs.py passed",
+    "frontend_dashboard_renders": "PASS - Stage 3 Decision Pairs dashboard renders at AdminPanel → Insights → 'Sov vs Council'",
+    "frontend_scoreboard_values": "PASS - Sovereign accuracy 50%, Council accuracy 100%, Agreement 33%, Total pairs 3",
+    "frontend_winners_values": "PASS - Sovereign won 0, Council won 1, Both right (tie) 1, Both wrong 0",
+    "frontend_filter_lane": "PASS - Lane filter re-fetches and updates row list (Equity shows 2 rows)",
+    "frontend_filter_resolved": "PASS - Resolved filter re-fetches and updates row list (Closed shows 2 rows)",
+    "frontend_row_expansion": "PASS - Clicking row expands rationale detail panel with Sovereign rationale + key_drivers + warnings on left, Council rationale on right",
+    "frontend_testid_stage3_decision_pairs": "PASS - data-testid='stage3-decision-pairs' present",
+    "frontend_testid_stage3_scoreboard": "PASS - data-testid='stage3-scoreboard' present",
+    "frontend_testid_stage3_sovereign_acc": "PASS - data-testid='stage3-sovereign-acc' present",
+    "frontend_testid_stage3_council_acc": "PASS - data-testid='stage3-council-acc' present",
+    "frontend_testid_stage3_agreement": "PASS - data-testid='stage3-agreement' present",
+    "frontend_testid_stage3_totals": "PASS - data-testid='stage3-totals' present",
+    "frontend_testid_stage3_winners": "PASS - data-testid='stage3-winners' present",
+    "frontend_testid_stage3_rows": "PASS - data-testid='stage3-rows' present",
+    "frontend_testid_stage3_row_demo_d_1": "PASS - data-testid='stage3-row-demo-d-1' present",
+    "frontend_testid_stage3_row_demo_d_2": "PASS - data-testid='stage3-row-demo-d-2' present",
+    "frontend_testid_stage3_row_demo_d_3": "PASS - data-testid='stage3-row-demo-d-3' present",
+    "frontend_testid_stage3_filter_lane": "PASS - data-testid='stage3-filter-lane' present",
+    "frontend_testid_stage3_filter_agreement": "PASS - data-testid='stage3-filter-agreement' present",
+    "frontend_testid_stage3_filter_resolved": "PASS - data-testid='stage3-filter-resolved' present",
+    "frontend_testid_stage3_filter_window": "PASS - data-testid='stage3-filter-window' present",
+    "frontend_testid_stage3_refresh_btn": "PASS - data-testid='stage3-refresh-btn' present"
+  }
+}

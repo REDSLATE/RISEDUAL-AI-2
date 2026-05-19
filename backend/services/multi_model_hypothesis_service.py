@@ -523,6 +523,17 @@ async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str 
                 await emit_intent_from_consensus(mc, consensus)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("intent emit failed (non-fatal): %s", exc)
+        # ── Stage 3: attach this council verdict to any matching
+        # open Sovereign decision pair (best-effort, never raises).
+        try:
+            from services.decision_outcome_writer import attach_council_verdict
+            from server import db as _server_db  # type: ignore
+            if _server_db is not None:
+                await attach_council_verdict(
+                    _server_db, symbol=symbol, council_hypothesis=consensus,
+                )
+        except Exception as _stage3_exc:  # noqa: BLE001
+            logger.debug("council attach failed (non-fatal): %s", _stage3_exc)
         return consensus
 
     # Single brain mode — call the brain's persona LLM directly. The
