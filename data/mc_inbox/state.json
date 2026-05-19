@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-19T07:08:58.891684+00:00",
-  "last_roles_at": "2026-05-19T07:09:48.208380+00:00",
-  "last_scorecard_at": "2026-05-19T07:09:47.667317+00:00",
+  "last_polled_at": "2026-05-19T07:23:35.727975+00:00",
+  "last_roles_at": "2026-05-19T07:20:55.094113+00:00",
+  "last_scorecard_at": "2026-05-19T07:20:55.105276+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fff58e80-3f3e-4f57-940f-60462783b508",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T07:09:47.644170+00:00",
+        "last_seen": "2026-05-19T07:20:43.641892+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T07:07:46.705924+00:00",
+        "last_seen": "2026-05-19T07:20:40.575749+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T07:09:47.132210+00:00",
+        "last_seen": "2026-05-19T07:14:27.125386+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -134,12 +134,12 @@
   },
   "stats": {
     "by_peer": {
-      "alpha": 5136,
-      "camaro": 50946,
-      "chevelle": 55513,
-      "redeye": 2005
+      "alpha": 5400,
+      "camaro": 52162,
+      "chevelle": 55553,
+      "redeye": 2085
     },
-    "opinions_ingested": 113600,
+    "opinions_ingested": 115200,
     "opinions_quarantined": 0
   }
 }

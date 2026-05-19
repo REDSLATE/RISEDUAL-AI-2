@@ -153,7 +153,21 @@ def _parse_ticker_row(row: dict[str, Any]) -> dict[str, Any] | None:
     mid = (bid + ask) / 2.0
     spread_bps = ((ask - bid) / mid) * 10_000.0 if mid > 0 else 0.0
 
-    return {
+    # 24h volume — Kraken's `v` is [today_volume, last_24h_volume] in
+    # BASE units (e.g. for XBTUSDT this is BTC). The intent
+    # enrichment layer multiplies by mid price to get notional USD.
+    # See services/intent_enrichment.py:fetch_crypto_snapshot.
+    volume_24h_base: float | None = None
+    try:
+        v = row.get("v")
+        if isinstance(v, (list, tuple)) and len(v) >= 2:
+            volume_24h_base = float(v[1])
+            if volume_24h_base < 0:
+                volume_24h_base = None
+    except (TypeError, ValueError):
+        volume_24h_base = None
+
+    out: dict[str, Any] = {
         "price": round(mid, 8),
         "bid": round(bid, 8),
         "ask": round(ask, 8),
@@ -162,6 +176,9 @@ def _parse_ticker_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "source": "kraken",
         "ts": _now(),
     }
+    if volume_24h_base is not None:
+        out["volume_24h_base"] = round(volume_24h_base, 8)
+    return out
 
 
 async def fetch_kraken_quotes_batch(

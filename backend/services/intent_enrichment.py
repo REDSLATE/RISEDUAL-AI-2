@@ -227,13 +227,12 @@ async def fetch_equity_snapshot(symbol: str) -> Dict[str, Any]:
         return _empty_snapshot("missing_symbol")
 
     try:
-        from services.alpaca_equity_quotes import get_quote
+        from services.alpaca_equity_quotes import get_alpaca_equity_quote
     except ImportError:
         return _empty_snapshot("alpaca_adapter_missing")
 
     try:
-        q = await get_quote(symbol) if asyncio.iscoroutinefunction(get_quote) \
-            else await asyncio.to_thread(get_quote, symbol)
+        q = await get_alpaca_equity_quote(symbol)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[snapshot] alpaca fetch failed for %s: %s", symbol, exc)
         return _empty_snapshot(f"alpaca_fetch_error:{type(exc).__name__}")
@@ -268,11 +267,15 @@ async def fetch_equity_snapshot(symbol: str) -> Dict[str, Any]:
 
 
 async def _derive_equity_volatility_and_trend(symbol: str) -> tuple[Optional[float], Optional[float]]:
-    """Same derivation as crypto but reading from the equity history
-    adapter when available."""
+    """Same derivation as crypto but reading from the Alpaca equity
+    bars adapter when available. Returns ``(None, None)`` on any
+    failure so the snapshot keeps shipping with sentinel values."""
     try:
-        from services.price_provider import get_equity_history
-        bars = await asyncio.to_thread(get_equity_history, symbol, 60)
+        from services.alpaca_equity_quotes import get_alpaca_equity_history
+        # Hourly bars give us a more responsive 1h vol than daily.
+        bars = await get_alpaca_equity_history(
+            symbol, lookback_bars=60, timeframe="1Hour",
+        )
     except Exception:  # noqa: BLE001
         return None, None
 
