@@ -1,9 +1,9 @@
 {
-  "last_polled_at": "2026-05-19T05:24:48.853278+00:00",
-  "last_roles_at": "2026-05-19T05:25:32.993628+00:00",
-  "last_scorecard_at": "2026-05-19T05:25:32.992982+00:00",
+  "last_polled_at": "2026-05-19T06:07:48.293442+00:00",
+  "last_roles_at": "2026-05-19T06:08:39.584421+00:00",
+  "last_scorecard_at": "2026-05-19T06:08:39.625961+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ff45b591-00b7-478b-8e5b-ba3c06862a62",
+  "last_seen_opinion_id": "fff58e80-3f3e-4f57-940f-60462783b508",
   "roles_snapshot": {
     "count": 4,
     "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T05:25:32.900125+00:00",
+        "last_seen": "2026-05-19T06:08:39.561620+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T05:25:16.726229+00:00",
+        "last_seen": "2026-05-19T06:07:49.391185+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T05:24:30.906656+00:00",
+        "last_seen": "2026-05-19T06:08:07.940278+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -134,12 +134,12 @@
   },
   "stats": {
     "by_peer": {
-      "alpha": 3651,
-      "camaro": 44262,
-      "chevelle": 55132,
-      "redeye": 1555
+      "alpha": 4443,
+      "camaro": 47814,
+      "chevelle": 55348,
+      "redeye": 1795
     },
-    "opinions_ingested": 104600,
+    "opinions_ingested": 109400,
     "opinions_quarantined": 0
   }
 }
