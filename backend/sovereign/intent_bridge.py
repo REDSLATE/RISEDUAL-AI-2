@@ -230,11 +230,40 @@ async def emit_intent_from_consensus(
     MC failures are logged at WARNING and swallowed — the next tick
     will retry on its own. Non-directional verdicts are skipped
     silently and return ``None``.
+
+    2026-05-19 doctrine update: every directional emission is now
+    enriched with a normalized market snapshot before going on the
+    wire (see ``services.intent_enrichment``). Brains MUST NOT POST
+    ``snapshot:{}`` — MC reads missing fields as sentinel values
+    and the doctrine score collapses. Enrichment is best-effort and
+    always populates the seven canonical keys; sentinel values fill
+    in when the upstream quote provider is unavailable.
     """
+    # Build the emission kwargs first — non-directional verdicts
+    # short-circuit here without contacting MC or fetching a quote.
+    kwargs = _build_emission_kwargs(receipt, qty=qty, notes=notes)
+    if kwargs is None:
+        return None
+
+    # Enrich with a normalized snapshot. The helper logs a
+    # SNAPSHOT_ENRICHED line so the operator can grep emissions and
+    # see which carry real data vs sentinel fills.
+    try:
+        from services.intent_enrichment import enrich_intent_with_snapshot
+        kwargs = await enrich_intent_with_snapshot(kwargs)
+    except Exception as exc:  # noqa: BLE001
+        # Never let the snapshot fetcher block an emission — MC's
+        # classifier handles missing snapshots gracefully.
+        logger.warning(
+            "[%s] SNAPSHOT_ENRICH_FAILED symbol=%s err=%s",
+            kwargs.get("trace_id", "--------"),
+            kwargs.get("symbol"), exc,
+        )
+
     loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(
-            None, lambda: emit_intent_sync(client, receipt, qty=qty, notes=notes),
+            None, lambda: client.post_intent(**kwargs),
         )
     except MCClientError as exc:
         logger.warning(

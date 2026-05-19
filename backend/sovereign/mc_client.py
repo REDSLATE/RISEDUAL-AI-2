@@ -124,6 +124,7 @@ def build_intent_body(
     notes: str = "",
     trace_id: str | None = None,
     mc_receipt: Mapping[str, Any] | None = None,
+    snapshot: Mapping[str, Any] | None = None,
     # ── honesty receipt (all optional, MC server is additive-safe) ──
     raw_action: str | None = None,
     raw_confidence: float | None = None,
@@ -187,6 +188,12 @@ def build_intent_body(
         # back the policy_hash + the broker adapter (any service) can
         # re-verify the HMAC signature before submitting.
         body["mc_receipt"] = dict(mc_receipt)
+    if snapshot:
+        # Normalized market snapshot — see services/intent_enrichment.py
+        # for the seven canonical keys. MC's classifier reads these
+        # directly; missing/sentinel values land in the "missing data"
+        # bucket rather than collapsing the doctrine score silently.
+        body["snapshot"] = dict(snapshot)
 
     # Action-domain honesty fields — must be subset of ALLOWED_ACTIONS
     # if present (BUY / SELL / HOLD / SHORT / COVER). Validation is
