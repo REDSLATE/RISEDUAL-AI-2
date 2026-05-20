@@ -1,148 +1,250 @@
-"""Operator Trading Gate — DEPRECATED (2026-05-13).
+"""Operator Trading Gate — MC-OR-NOTHING DOCTRINE (2026-05-20).
 
 ═══════════════════════════════════════════════════════════════════
-                       DOCTRINE V3 — PERMANENTLY OPEN
+                  MC-OR-NOTHING SAFETY DOCTRINE
 ═══════════════════════════════════════════════════════════════════
 
-RISEDUAL is now a headless brain. Mission Control owns execution
-exclusively, gated by the Executor seat held by one sibling at a
-time. Trading keys live ONLY on the Executor seat's host.
+RISEDUAL is a headless brain — Mission Control owns execution. But
+there are four LOCAL trade-insert chokepoints that historically
+wrote rows directly to Mongo without ever consulting MC:
 
-Local consequence:
-* This gate is permanently OPEN. ``is_authorized()`` returns True.
-* ``gate_or_synthetic()`` returns True without writing synthetic
-  ADL receipts (the gate isn't blocking, so there's no
-  counterfactual to record).
+    * ml_paper_trader.maybe_paper_trade           → paper_trades
+    * crypto_paper_trader.run_crypto_symbol       → crypto_paper_trades
+    * paper_options_service                       → paper_trades
+    * paper_trading_service.execute_signal        → paper_trades
 
-This file is preserved (not deleted) because 11 services + several
-tests import its symbols. The deprecation is behavioural, not
-structural — call sites still work, they just no longer block.
+This module is the kill switch for those four paths. When the
+"local trades blocked" doctrine is engaged, every call to
+``gate_or_synthetic`` returns False — the chokepoint skips the
+write, optionally records a synthetic counterfactual receipt for
+the MLs to learn from, and the trade does not happen.
 
-When you're ready to delete this file entirely:
-    1. Remove imports from ml_paper_trader.py, crypto_paper_trader.py,
-       paper_trading_service.py, paper_options_service.py,
-       adversarial_enforcer.py, ml/broker_wire.py
-    2. Remove route at route_registry.py
-    3. Remove the dedicated test file (tests/test_operator_trading_gate.py)
-    4. Then delete this file.
+The MC-routed flow (consensus → ``emit_intent_from_consensus`` →
+MC ``/api/intents``) does NOT pass through this gate and is
+unaffected.
+
+State precedence (highest → lowest):
+1. Mongo runtime override (``operator_trading_gate_state`` doc) —
+   set via owner-only ``POST /api/admin/trading-gate/toggle``.
+2. ``RISEDUAL_LOCAL_TRADES_BLOCKED`` env flag — when ``true``
+   (default), local trades are blocked at boot until an operator
+   explicitly flips the runtime override.
+
+The legacy ``OPERATOR_TRADING_AUTHORIZATION_ENABLED`` env key is
+still read as a back-compat alias when the new key is absent.
 
 ═══════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-# Collections + env key kept for back-compat with any operator UI
-# that still queries them; nothing in this module reads or writes
-# DB state for the gate's authorization decision anymore.
 STATE_COLLECTION = "operator_trading_gate_state"
 HISTORY_COLLECTION = "operator_trading_gate_history"
-ENV_KEY = "OPERATOR_TRADING_AUTHORIZATION_ENABLED"
+SYNTHETIC_COLLECTION = "operator_trading_gate_synthetic"
+
+# New canonical env key. When unset, falls back to the legacy
+# OPERATOR_TRADING_AUTHORIZATION_ENABLED for back-compat.
+ENV_KEY_BLOCKED = "RISEDUAL_LOCAL_TRADES_BLOCKED"
+ENV_KEY_LEGACY = "OPERATOR_TRADING_AUTHORIZATION_ENABLED"
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ── Test-mode shims (kept for back-compat with the gate's own tests) ──
-# These never affect ``is_authorized``'s return value (which is always
-# True). They exist solely so existing test code that calls them does
-# not break.
+def _env_default_enabled() -> bool:
+    """True if local trading is permitted at boot (no Mongo override).
+
+    Default: ``RISEDUAL_LOCAL_TRADES_BLOCKED=true`` → boot DENIED.
+    """
+    blocked = os.environ.get(ENV_KEY_BLOCKED)
+    if blocked is not None:
+        return blocked.strip().lower() not in ("true", "1", "yes", "on")
+    legacy = os.environ.get(ENV_KEY_LEGACY)
+    if legacy is not None:
+        return legacy.strip().lower() in ("true", "1", "yes", "on")
+    # Default to BLOCKED when no env knob present.
+    return False
+
+
+# ── Test-mode shims (back-compat with existing pytest fixtures) ─────
 
 _TEST_MODE_FORCE_AUTHORIZED: bool = True
-
-
-def _force_test_mode_authorized(value: bool) -> None:  # noqa: ARG001 — kept for sig compat
-    """No-op shim. Gate is always open under DOCTRINE V3."""
-    return
-
-
 _test_mode_disabled: bool = False
+
+
+def _force_test_mode_authorized(value: bool) -> None:
+    global _TEST_MODE_FORCE_AUTHORIZED
+    _TEST_MODE_FORCE_AUTHORIZED = bool(value)
 
 
 def _TEST_MODE_DISABLED_BY_FIXTURE() -> bool:  # noqa: N802
     return _test_mode_disabled
 
 
-def _disable_test_mode_bypass(value: bool) -> None:  # noqa: ARG001 — kept for sig compat
-    """No-op shim. Gate is always open under DOCTRINE V3."""
-    return
+def _disable_test_mode_bypass(value: bool) -> None:
+    global _test_mode_disabled
+    _test_mode_disabled = bool(value)
 
 
-# ── Read path (always-open) ────────────────────────────────────────
+def _in_pytest() -> bool:
+    return "PYTEST_CURRENT_TEST" in os.environ
 
 
-async def is_authorized(db) -> bool:  # noqa: ARG001 — kept for sig compat
-    """DOCTRINE V3: permanently True.
+# ── State read ──────────────────────────────────────────────────────
 
-    RISEDUAL no longer gates trade authorization locally. The Executor
-    seat on Mission Control is the only place trades can originate,
-    and the broker keys live exclusively on that host.
+
+async def _read_runtime_override(db) -> Optional[bool]:
+    if db is None:
+        return None
+    try:
+        doc = await db[STATE_COLLECTION].find_one({"_id": "singleton"}, {"_id": 0})
+        if doc and "enabled" in doc:
+            return bool(doc["enabled"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[trading-gate] state read failed (failing closed): %s", exc)
+    return None
+
+
+async def is_authorized(db) -> bool:
+    """Return True iff a local trade-insert chokepoint may proceed.
+
+    Order:
+      * pytest bypass (when ``_TEST_MODE_FORCE_AUTHORIZED`` AND not
+        ``_test_mode_disabled``)
+      * Mongo runtime override
+      * env default (RISEDUAL_LOCAL_TRADES_BLOCKED)
+    Fails closed on any DB error.
     """
-    return True
+    if _in_pytest() and _TEST_MODE_FORCE_AUTHORIZED and not _test_mode_disabled:
+        return True
+
+    override = await _read_runtime_override(db)
+    if override is not None:
+        return override
+    return _env_default_enabled()
 
 
-async def get_status(db) -> dict[str, Any]:  # noqa: ARG001
-    """Operator-facing snapshot — reflects the permanent-open doctrine."""
+async def get_status(db) -> dict[str, Any]:
+    enabled = await is_authorized(db)
+    override = await _read_runtime_override(db)
     return {
-        "enabled": True,
-        "by_operator": "doctrine_v3_permanently_open",
+        "enabled": bool(enabled),
+        "source": "runtime_override" if override is not None else "env_default",
+        "env_default_enabled": _env_default_enabled(),
+        "by_operator": "mc_or_nothing_doctrine",
         "note": (
-            "RISEDUAL is a headless brain. Trade authorization is "
-            "delegated to Mission Control's Executor seat."
+            "MC-or-nothing doctrine: the four local trade-insert "
+            "chokepoints are blocked. MC-routed intent emissions "
+            "are unaffected."
         ),
         "loaded_at": _utc_now().isoformat(),
     }
 
 
-# ── Write path (no-op under V3) ────────────────────────────────────
+# ── State write ─────────────────────────────────────────────────────
 
 
 async def set_authorized(
-    db,  # noqa: ARG001
+    db,
     *,
-    enabled: bool,  # noqa: ARG001
-    operator_id: str,  # noqa: ARG001
-    note: str = "",  # noqa: ARG001
+    enabled: bool,
+    operator_id: str,
+    note: str = "",
 ) -> dict[str, Any]:
-    """No-op shim. The gate is permanently open; flipping it is a no-op.
+    """Owner-only runtime override. Persists in Mongo + appends to
+    history. Fails closed if DB unavailable."""
+    if db is None:
+        raise RuntimeError("db_not_ready")
+    now = _utc_now()
+    await db[STATE_COLLECTION].update_one(
+        {"_id": "singleton"},
+        {"$set": {
+            "enabled": bool(enabled),
+            "updated_at": now,
+            "updated_by": operator_id,
+            "note": note or "",
+        }},
+        upsert=True,
+    )
+    await db[HISTORY_COLLECTION].insert_one({
+        "enabled": bool(enabled),
+        "operator_id": operator_id,
+        "note": note or "",
+        "at": now,
+    })
+    logger.warning(
+        "[trading-gate] enabled=%s by=%s note=%s",
+        bool(enabled), operator_id, note or "<none>",
+    )
+    return {"ok": True, "state": await get_status(db)}
 
-    Kept callable so any admin UI that still POSTs to it gets a
-    deterministic success response.
-    """
-    return {"ok": True, "state": await get_status(None)}
 
-
-# ── Synthetic counterfactual receipt (no-op under V3) ──────────────
+# ── Synthetic counterfactual (still valuable for ML learning) ──────
 
 
 async def record_paused_synthetic(
-    db,  # noqa: ARG001
+    db,
     *,
-    lane: str,  # noqa: ARG001
-    symbol: str,  # noqa: ARG001
-    decision: str,  # noqa: ARG001
-    confidence: float = 0.0,  # noqa: ARG001
-    extras: Optional[dict[str, Any]] = None,  # noqa: ARG001
+    lane: str,
+    symbol: str,
+    decision: str,
+    confidence: float = 0.0,
+    extras: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
-    """No-op shim. The gate is permanently open, so there's nothing
-    to record as a counterfactual."""
-    return None
+    """Record that a blocked-by-gate trade WOULD have been opened.
+    Best-effort; failure must not propagate."""
+    if db is None:
+        return None
+    try:
+        doc = {
+            "lane": lane,
+            "symbol": symbol,
+            "decision": "NO_TRADE",
+            "reason": "paused_by_operator_mc_or_nothing",
+            "confidence": float(confidence or 0.0),
+            "at": _utc_now(),
+            "extras": {
+                "synthetic": True,
+                "intended_action": f"PAUSED_BY_OPERATOR:{(decision or '').upper()}",
+                "blocker": "operator_trading_gate",
+                **(extras or {}),
+            },
+        }
+        res = await db[SYNTHETIC_COLLECTION].insert_one(doc)
+        return str(res.inserted_id) if res and getattr(res, "inserted_id", None) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[trading-gate] synthetic write failed (non-fatal): %s", exc)
+        return None
 
 
 async def gate_or_synthetic(
-    db,  # noqa: ARG001
+    db,
     *,
-    lane: str,  # noqa: ARG001
-    symbol: str,  # noqa: ARG001
-    intended_decision: str,  # noqa: ARG001
-    confidence: float = 0.0,  # noqa: ARG001
-    extras: Optional[dict[str, Any]] = None,  # noqa: ARG001
+    lane: str,
+    symbol: str,
+    intended_decision: str,
+    confidence: float = 0.0,
+    extras: Optional[dict[str, Any]] = None,
 ) -> bool:
-    """DOCTRINE V3: always returns True. Callers proceed unconditionally."""
-    return True
+    """Single chokepoint API: returns True if the caller may proceed,
+    False if the caller must abort. On block, writes a synthetic
+    counterfactual receipt before returning False."""
+    if await is_authorized(db):
+        return True
+    await record_paused_synthetic(
+        db,
+        lane=lane,
+        symbol=symbol,
+        decision=intended_decision,
+        confidence=confidence,
+        extras=extras,
+    )
+    return False

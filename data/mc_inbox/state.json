@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-20T11:22:18.790257+00:00",
-  "last_roles_at": "2026-05-20T10:45:12.874059+00:00",
-  "last_scorecard_at": "2026-05-20T10:45:12.871004+00:00",
+  "last_polled_at": "2026-05-20T13:17:49.020480+00:00",
+  "last_roles_at": "2026-05-20T13:18:06.073335+00:00",
+  "last_scorecard_at": "2026-05-20T13:18:06.067052+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "ff983b7f-15bd-416a-bc29-991c4d424081",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-20T10:44:39.724609+00:00",
+        "last_seen": "2026-05-20T13:18:06.048017+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-20T10:44:49.365094+00:00",
+        "last_seen": "2026-05-20T13:16:35.358205+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-20T10:43:14.395483+00:00",
+        "last_seen": "2026-05-20T13:15:10.037226+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -75,7 +75,7 @@
         "authority_state": "advisor",
         "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-19T05:10:46.088784+00:00",
+        "last_seen": null,
         "may_execute": false,
         "role": "opponent",
         "runtime": "redeye",
@@ -89,27 +89,27 @@
     "calibration_bands": [
       {
         "confidence_band": "0.5-0.6",
-        "n": 44,
+        "n": 46,
         "win_rate": 0.5
       },
       {
         "confidence_band": "0.6-0.7",
-        "n": 91,
-        "win_rate": 0.4945
+        "n": 95,
+        "win_rate": 0.4947
       },
       {
         "confidence_band": "0.7-0.8",
-        "n": 23,
+        "n": 24,
         "win_rate": 0.0
       },
       {
         "confidence_band": "0.8-0.9",
-        "n": 23,
+        "n": 24,
         "win_rate": 1.0
       },
       {
         "confidence_band": "0.9-1.0",
-        "n": 22,
+        "n": 23,
         "win_rate": 1.0
       }
     ],
@@ -122,24 +122,24 @@
     "runtime": "alpha",
     "summary": {
       "ambiguous": 0,
-      "avg_confidence_on_losses": 0.6016483516483523,
-      "avg_confidence_on_wins": 0.6924999999999993,
-      "decisive": 203,
-      "hit_rate": 0.5517241379310345,
-      "losses": 91,
+      "avg_confidence_on_losses": 0.6015789473684217,
+      "avg_confidence_on_wins": 0.6924786324786318,
+      "decisive": 212,
+      "hit_rate": 0.5518867924528302,
+      "losses": 95,
       "no_event": 0,
-      "total_resolved": 203,
-      "wins": 112
+      "total_resolved": 212,
+      "wins": 117
     }
   },
   "stats": {
     "by_peer": {
-      "alpha": 6349,
-      "camaro": 65565,
-      "chevelle": 55713,
-      "redeye": 2373
+      "alpha": 7075,
+      "camaro": 68909,
+      "chevelle": 55823,
+      "redeye": 2593
     },
-    "opinions_ingested": 130000,
+    "opinions_ingested": 134400,
     "opinions_quarantined": 0
   }
 }
