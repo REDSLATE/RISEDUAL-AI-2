@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
 import time
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, Optional
@@ -31,6 +32,84 @@ def env(name: str, default: str = "") -> str:
 def sha256_json(payload: Dict[str, Any]) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(raw).hexdigest()
+
+
+# ── Python environment fingerprint ─────────────────────────────────
+#
+# Cached at first call. The sidecar's process never reinstalls
+# packages mid-flight, so a single boot-time fingerprint is the
+# correct fidelity. If the operator restarts the sidecar after a
+# dependency bump, MC sees a new fingerprint on the next check-in
+# and can flag the drift.
+#
+# Failure modes (pip missing, subprocess blocked, etc.) collapse
+# to a dict with a non-None ``error`` field and a None hash. The
+# fingerprint is observational — its job is to let MC notice
+# drift, NOT to gate the sidecar.
+
+_PIP_FINGERPRINT_CACHE: Optional[Dict[str, Any]] = None
+
+
+def env_pip_fingerprint(*, force_refresh: bool = False) -> Dict[str, Any]:
+    """Return a stable fingerprint of the installed Python packages.
+
+    Shape::
+
+        {
+            "pip_freeze_sha256": "<64-char hex>" | None,
+            "package_count": int,
+            "sample": ["scikit-learn==1.4.2", "numpy==1.26.4", ...],
+            "error": None | "<short reason>",
+            "captured_at_ms": int,
+        }
+
+    Caching: first call captures, subsequent calls reuse. The cache
+    intentionally outlives a single tick because pip freeze is
+    expensive (~150ms) and packages can't change without a
+    process restart.
+    """
+    global _PIP_FINGERPRINT_CACHE
+    if _PIP_FINGERPRINT_CACHE is not None and not force_refresh:
+        return _PIP_FINGERPRINT_CACHE
+
+    fp: Dict[str, Any] = {
+        "pip_freeze_sha256": None,
+        "package_count": 0,
+        "sample": [],
+        "error": None,
+        "captured_at_ms": int(time.time() * 1000),
+    }
+    try:
+        out = subprocess.run(
+            ["pip", "freeze", "--disable-pip-version-check"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        text = (out.stdout or "")
+        if out.returncode != 0:
+            fp["error"] = f"pip_returncode_{out.returncode}"
+        lines = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("#")]
+        # Normalise to a stable, sorted byte representation so
+        # ordering changes don't show up as drift.
+        canonical = "\n".join(sorted(lines))
+        fp["pip_freeze_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+        fp["package_count"] = len(lines)
+        # Surface a small human-readable sample so operators can
+        # see "what changed" without pulling the full list. Pin
+        # the packages whose versions actually move our decisions.
+        _SAMPLE_KEYS = ("scikit-learn", "numpy", "fastapi", "motor",
+                        "httpx", "pydantic", "anthropic", "openai")
+        fp["sample"] = sorted([
+            l for l in lines if any(l.lower().startswith(k + "==") for k in _SAMPLE_KEYS)
+        ])
+    except FileNotFoundError:
+        fp["error"] = "pip_not_found"
+    except subprocess.TimeoutExpired:
+        fp["error"] = "pip_freeze_timeout"
+    except Exception as exc:  # noqa: BLE001
+        fp["error"] = f"pip_freeze_exception:{type(exc).__name__}"
+
+    _PIP_FINGERPRINT_CACHE = fp
+    return fp
 
 
 def policy_hash() -> str:
@@ -58,6 +137,7 @@ class RuntimeStamp:
     policy_hash: str
     local_execution_authority: bool
     timestamp_ms: int
+    pip_fingerprint: Dict[str, Any]
 
     @staticmethod
     def current(sidecar_room: str = "unknown") -> "RuntimeStamp":
@@ -74,6 +154,7 @@ class RuntimeStamp:
             policy_hash=policy_hash(),
             local_execution_authority=False,
             timestamp_ms=int(time.time() * 1000),
+            pip_fingerprint=env_pip_fingerprint(),
         )
 
     def validate_for_prod_sidecar(self) -> Dict[str, Any]:

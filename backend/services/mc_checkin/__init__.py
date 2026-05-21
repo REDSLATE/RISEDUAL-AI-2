@@ -117,9 +117,11 @@ class RuntimeStamp:
     policy_hash: str
     local_execution_authority: bool
     timestamp_ms: int
+    pip_fingerprint: Dict[str, Any]
 
     @staticmethod
     def current() -> "RuntimeStamp":
+        from shared.runtime.platform_survival import env_pip_fingerprint
         return RuntimeStamp(
             app_name=_env("RISEDUAL_APP_NAME", "alpha"),
             env_name=_env("RISEDUAL_ENV", "unknown"),
@@ -133,6 +135,7 @@ class RuntimeStamp:
             policy_hash=_policy_hash(),
             local_execution_authority=False,  # doctrine-pinned
             timestamp_ms=int(time.time() * 1000),
+            pip_fingerprint=env_pip_fingerprint(),
         )
 
 
