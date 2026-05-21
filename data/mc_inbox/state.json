@@ -1,6 +1,6 @@
 {
-  "last_polled_at": "2026-05-21T23:46:24.811118+00:00",
-  "last_roles_at": "2026-05-21T23:44:49.341359+00:00",
+  "last_polled_at": "2026-05-21T23:49:36.257650+00:00",
+  "last_roles_at": "2026-05-21T23:50:26.842419+00:00",
   "last_scorecard_at": "2026-05-21T23:44:49.300060+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fe4bb4b0-57dd-474e-b350-81a8382f20d0",
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-21T23:44:49.279198+00:00",
+        "last_seen": "2026-05-21T23:50:14.228649+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "observer",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-21T23:43:37.953730+00:00",
+        "last_seen": "2026-05-21T23:49:51.386034+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-21T23:36:01.842622+00:00",
+        "last_seen": "2026-05-21T23:45:45.078737+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -135,11 +135,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 83677,
+      "camaro": 84077,
       "chevelle": 55993,
       "redeye": 2933
     },
-    "opinions_ingested": 150800,
+    "opinions_ingested": 151200,
     "opinions_quarantined": 0
   }
 }
