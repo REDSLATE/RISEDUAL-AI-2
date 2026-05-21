@@ -183,6 +183,15 @@ def _build_emission_kwargs(
         "notes": notes,
         "trace_id": tid,
         "mc_receipt": survival_verdict["receipt"],
+        # ── 2026-05-21 MC prod contract additions ─────────────────
+        # The new MC contract uses ``stack`` / ``action`` / ``lane``
+        # / ``rationale`` / ``doctrine_snapshot``. We keep the legacy
+        # ``side`` / ``notes`` / ``snapshot`` keys above for back-
+        # compat during the rollout window — MC ignores unknowns.
+        "stack": "alpha",
+        "action": raw,
+        "lane": lane.lower(),
+        "rationale": notes,
         **honesty,
     }
 

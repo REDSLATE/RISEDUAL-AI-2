@@ -125,6 +125,12 @@ def build_intent_body(
     trace_id: str | None = None,
     mc_receipt: Mapping[str, Any] | None = None,
     snapshot: Mapping[str, Any] | None = None,
+    # ── 2026-05-21 MC prod contract additions ────────────────────
+    stack: str | None = None,
+    action: str | None = None,
+    lane: str | None = None,
+    rationale: str | None = None,
+    doctrine_snapshot: Mapping[str, Any] | None = None,
     # ── honesty receipt (all optional, MC server is additive-safe) ──
     raw_action: str | None = None,
     raw_confidence: float | None = None,
@@ -194,6 +200,34 @@ def build_intent_body(
         # directly; missing/sentinel values land in the "missing data"
         # bucket rather than collapsing the doctrine score silently.
         body["snapshot"] = dict(snapshot)
+
+    # ── 2026-05-21 MC prod contract fields ───────────────────────
+    # The prod MC contract uses these field names. Legacy
+    # ``side`` / ``notes`` / ``snapshot`` are still emitted above
+    # for any sibling that still reads the old shape, but MC's
+    # gate chain (gate 7: roadguard_spread_floor) reads ONLY from
+    # the new ``doctrine_snapshot``.
+    if stack:
+        body["stack"] = str(stack)
+    if action:
+        ac = str(action).upper()
+        if ac not in ALLOWED_ACTIONS:
+            raise MCContractError(
+                f"intent action {action!r} not in {sorted(ALLOWED_ACTIONS)}"
+            )
+        body["action"] = ac
+    if lane:
+        body["lane"] = str(lane).lower()
+    if rationale is not None:
+        body["rationale"] = str(rationale)[:4000]  # MC contract cap
+    if doctrine_snapshot:
+        body["doctrine_snapshot"] = dict(doctrine_snapshot)
+    elif snapshot:
+        # Always emit doctrine_snapshot when ANY snapshot is present
+        # — MC re-mounts this field as <doc>.snapshot. A missing
+        # doctrine_snapshot is the failure mode that drops gate 7
+        # on every intent.
+        body["doctrine_snapshot"] = dict(snapshot)
 
     # Action-domain honesty fields — must be subset of ALLOWED_ACTIONS
     # if present (BUY / SELL / HOLD / SHORT / COVER). Validation is

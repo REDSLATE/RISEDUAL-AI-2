@@ -304,18 +304,28 @@ async def _derive_equity_volatility_and_trend(symbol: str) -> tuple[Optional[flo
 
 
 async def enrich_intent_with_snapshot(intent: Dict[str, Any]) -> Dict[str, Any]:
-    """Attach a normalized snapshot to an intent dict in-place.
+    """Attach a normalized market snapshot to an intent dict in-place.
 
-    Idempotent: if ``intent["snapshot"]`` is already populated (has
-    at least one of the canonical keys), leaves it alone. Otherwise
-    routes by ``intent["lane"]`` and fills the snapshot in.
+    The snapshot lives on the outgoing body under the key
+    ``doctrine_snapshot`` (NOT ``snapshot``). Per the 2026-05-21 MC
+    contract, MC re-mounts the wire field ``doctrine_snapshot`` at
+    ``shared_intents.<doc>.snapshot`` and ``doctrine_sidecars.<row>.snapshot``
+    — gate 7 reads ``intent.snapshot.spread_bps`` and fail-closes if
+    the value is missing.
+
+    Idempotent: if ``intent["doctrine_snapshot"]`` is already populated
+    (has at least one of the canonical keys), leaves it alone. Same
+    for any legacy ``intent["snapshot"]`` — we read either, but we
+    always WRITE to ``doctrine_snapshot``.
 
     Always logs a one-line completeness summary before returning so
     the operator can grep ``SNAPSHOT_ENRICHED`` to confirm intents
     aren't going out empty.
     """
-    existing = intent.get("snapshot")
+    existing = intent.get("doctrine_snapshot") or intent.get("snapshot")
     if isinstance(existing, dict) and any(k in existing for k in SNAPSHOT_KEYS):
+        # Ensure it's also written under the canonical key.
+        intent["doctrine_snapshot"] = existing
         return intent
 
     lane = (intent.get("lane") or "").lower()
@@ -329,10 +339,18 @@ async def enrich_intent_with_snapshot(intent: Dict[str, Any]) -> Dict[str, Any]:
     else:
         snapshot = _empty_snapshot(f"unknown_lane:{lane!r}")
 
-    intent["snapshot"] = snapshot
+    # ── 2026-05-21 contract additions ─────────────────────────────
+    # MC's gate chain + sizing path also read ``price`` (mid) from
+    # the snapshot. Add it here so the operator doesn't have to
+    # wait on a follow-up patch to populate it.
+    bid = snapshot.get("bid")
+    ask = snapshot.get("ask")
+    if (snapshot.get("price") is None and isinstance(bid, (int, float))
+            and isinstance(ask, (int, float)) and bid > 0 and ask > 0):
+        snapshot["price"] = round((float(bid) + float(ask)) / 2.0, 6)
 
-    # Completeness log — operator grep for SNAPSHOT_ENRICHED to see
-    # which intents carry real data vs sentinel fills.
+    intent["doctrine_snapshot"] = snapshot
+
     populated = sum(1 for k in SNAPSHOT_KEYS if snapshot.get(k) not in (None,))
     logger.info(
         "[%s] SNAPSHOT_ENRICHED lane=%s symbol=%s populated=%d/7 status=%s "

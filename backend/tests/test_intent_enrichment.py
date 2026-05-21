@@ -134,8 +134,10 @@ async def test_enrich_routes_by_lane_crypto(monkeypatch):
 
     intent = {"lane": "crypto", "symbol": "ETH/USD", "direction": "BUY"}
     out = await enrich_intent_with_snapshot(intent)
-    assert out["snapshot"]["bid"] == 1.0
-    assert out["snapshot"]["spread_bps"] == 5.0
+    assert out["doctrine_snapshot"]["bid"] == 1.0
+    assert out["doctrine_snapshot"]["spread_bps"] == 5.0
+    # 2026-05-21: ``price`` (mid) is auto-derived for MC's sizing path.
+    assert out["doctrine_snapshot"]["price"] == round((1.0 + 1.1) / 2, 6)
 
 
 @pytest.mark.asyncio
@@ -152,8 +154,8 @@ async def test_enrich_routes_by_lane_equity(monkeypatch):
 
     intent = {"lane": "equity", "symbol": "NVDA", "direction": "BUY"}
     out = await enrich_intent_with_snapshot(intent)
-    assert out["snapshot"]["bid"] == 100.0
-    assert out["snapshot"]["exchange_liquidity_score"] == 0.95
+    assert out["doctrine_snapshot"]["bid"] == 100.0
+    assert out["doctrine_snapshot"]["exchange_liquidity_score"] == 0.95
 
 
 @pytest.mark.asyncio
@@ -161,21 +163,35 @@ async def test_enrich_idempotent_when_snapshot_already_present():
     """Brains that already enriched upstream must not be clobbered."""
     intent = {
         "lane": "crypto", "symbol": "BTC/USD",
-        "snapshot": {"bid": 999.0, "snapshot_status": "preset"},
+        "doctrine_snapshot": {"bid": 999.0, "snapshot_status": "preset"},
     }
     out = await enrich_intent_with_snapshot(intent)
-    assert out["snapshot"]["bid"] == 999.0  # unchanged
-    assert out["snapshot"]["snapshot_status"] == "preset"
+    assert out["doctrine_snapshot"]["bid"] == 999.0  # unchanged
+    assert out["doctrine_snapshot"]["snapshot_status"] == "preset"
+
+
+@pytest.mark.asyncio
+async def test_enrich_idempotent_accepts_legacy_snapshot_key():
+    """Legacy callers that wrote intent['snapshot'] must still be
+    respected — the enricher re-mounts under the new key without
+    re-fetching."""
+    intent = {
+        "lane": "crypto", "symbol": "BTC/USD",
+        "snapshot": {"bid": 777.0, "snapshot_status": "legacy_preset"},
+    }
+    out = await enrich_intent_with_snapshot(intent)
+    assert out["doctrine_snapshot"]["bid"] == 777.0
+    assert out["doctrine_snapshot"]["snapshot_status"] == "legacy_preset"
 
 
 @pytest.mark.asyncio
 async def test_enrich_unknown_lane_returns_sentinel_snapshot():
     intent = {"lane": "fx", "symbol": "EURUSD", "direction": "BUY"}
     out = await enrich_intent_with_snapshot(intent)
-    assert "snapshot" in out
-    assert set(SNAPSHOT_KEYS).issubset(out["snapshot"].keys())
-    assert out["snapshot"]["snapshot_status"].startswith("unknown_lane")
-    assert out["snapshot"]["spread_bps"] == SPREAD_BPS_UNKNOWN
+    assert "doctrine_snapshot" in out
+    assert set(SNAPSHOT_KEYS).issubset(out["doctrine_snapshot"].keys())
+    assert out["doctrine_snapshot"]["snapshot_status"].startswith("unknown_lane")
+    assert out["doctrine_snapshot"]["spread_bps"] == SPREAD_BPS_UNKNOWN
 
 
 @pytest.mark.asyncio
