@@ -50,7 +50,7 @@ def test_tunables_are_sane():
     assert CALIBRATION_GAP_LIMIT == 0.15
     assert MAX_STRONG_MISS_RATE == 0.10
     assert STABILITY_DROP_LIMIT == 0.15
-    assert HIGH_CONF_THRESHOLD == 70.0
+    assert HIGH_CONF_THRESHOLD == 60.0
 
 
 # ────────────────────────────────────────────────────────────────────────────────

@@ -87,15 +87,25 @@ def test_honest_hold_emit_is_wrapped_in_try_except(src: str):
 
 
 def test_kelly_zero_branch_still_returns_none(src: str):
-    """The honest-hold emit MUST precede ``return None`` — local
-    paper_trades behavior is unchanged on Kelly-zero."""
+    """The honest-hold emit MUST precede ``return None``.
+
+    Updated 2026-05-22 for the observation_fill rung: the branch
+    now DOES write a paper_trades row, but it is an
+    ``observation_fill`` (status=observation_open, synthetic=True,
+    shares=0). The pin protects against accidentally writing a
+    REAL fill (status="open" with shares > 0)."""
     branch_start = src.find("if position_usd <= 0.0:")
     branch_end = src.find("return None", branch_start)
     # The return None must still be there.
     assert branch_end > branch_start
-    # And no paper_trades insert lives in this branch.
     branch = src[branch_start:branch_end]
-    assert 'paper_trades"].insert_one' not in branch
+    # And no REAL paper-trade insert (status="open" with shares > 0).
+    # The observation row is allowed; check the markers that
+    # distinguish observations from real fills.
+    assert '"status": "observation_open"' in branch
+    assert '"synthetic": True' in branch
+    assert '"shares": 0.0' in branch
+    assert '"position_usd": 0.0' in branch
 
 
 # ── Behavioural test — patch MC, drive the branch, assert call ────

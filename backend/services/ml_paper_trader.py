@@ -584,6 +584,67 @@ async def maybe_paper_trade(
             log.debug(
                 "[ml_paper] honest-hold emit failed (non-fatal): %s", _hh_exc,
             )
+
+        # 2026-05-22: Observation-Fill Receipt (FIRST RUNG OF THE
+        # PROMOTION LADDER).
+        #
+        # The operator's promotion doctrine deadlocked: "no learning
+        # without execution + no execution without learning". The
+        # `days` and `total_trades` counters never ticked because
+        # Kelly-zero ticks wrote nothing to ``paper_trades``.
+        #
+        # An observation_fill is a paper_trades row with size=0
+        # marking that the brain WOULD have traded if Kelly hadn't
+        # throttled. It carries:
+        #   * ``receipt_type: "observation_fill"`` — distinguishes
+        #     from real fills downstream
+        #   * ``synthetic: True``  — never counts toward live-unlock
+        #   * ``eligible_for_learning: True`` — calibration,
+        #     expectancy, MAE all read this
+        #   * ``status: "observation_open"`` — paper_trade_closer
+        #     resolves it against market price (NOT "open" so the
+        #     closer's existing query is unaffected)
+        #   * ``opened_at`` is a BSON-date so ``compute_live_days``
+        #     ticks the day counter
+        #
+        # Best-effort; failure of the observation write never
+        # breaks the main loop.
+        try:
+            import uuid as _uuid
+            obs_trade_id = str(_uuid.uuid4())
+            obs_doc = {
+                "trade_id": obs_trade_id,
+                "ticker": ticker,
+                "symbol": ticker,
+                "direction": direction_val,
+                "confidence": float(directional_conf),
+                "prediction_id": getattr(signal, "prediction_id", None),
+                "position_usd": 0.0,
+                "shares": 0.0,
+                "entry_price": price_at_signal,
+                "opened_at": datetime.now(timezone.utc),
+                "status": "observation_open",
+                "receipt_type": "observation_fill",
+                "synthetic": True,
+                "eligible_for_learning": True,
+                "eligible_for_live_unlock": False,
+                "hold_reason": "kelly_zero_size",
+                "regime": regime,
+                "source_layer": "ml_paper_trader",
+                "sovereign_decision_id": sovereign_decision_id,
+                "failure_penalty_meta": failure_penalty_meta,
+            }
+            await db["paper_trades"].insert_one(obs_doc)
+            log.info(
+                "[ml_paper] OBSERVATION_FILL %s %s conf=%.3f (size=$0, "
+                "eligible_for_learning=True)",
+                ticker, direction_val.upper(), directional_conf,
+            )
+        except Exception as _obs_exc:  # noqa: BLE001
+            log.debug(
+                "[ml_paper] observation_fill write failed (non-fatal): %s",
+                _obs_exc,
+            )
         return None
 
     # Apply symbol failure size multiplier (composes with Kelly output)

@@ -37,10 +37,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ── Tunables ──────────────────────────────────────────────────────────────────
-# "High confidence" cut-off (0-100 scale). 70 matches the decile
-# bucket used by the reliability diagram and sits above the current
-# model's average confidence (~60), making it a meaningful top-end.
-HIGH_CONF_THRESHOLD: float = 70.0
+# "High confidence" cut-off (0-100 scale). 2026-05-22: lowered
+# 70.0 → 60.0 by operator decree after diagnosing that the brain's
+# natural high-conf band sits at 0.55-0.68 (post-dampener stack).
+# The historical 70 cut was aspirational against a hypothetical
+# brain; the brain we actually shipped rarely crosses 0.68.
+# Camaro's BNB BUY at 0.677 conf now counts as a high-conf sample.
+HIGH_CONF_THRESHOLD: float = 60.0
 
 # Min distinct paper-trading days before Tier 3 can unlock.
 MIN_DAYS: int = 30
@@ -320,6 +323,42 @@ async def _paper_trades_count(db: Any) -> int:
         return 0
 
 
+# 2026-05-22: First-rung observation ladder. Threshold for unlocking
+# micro-paper trades. Tunable independent of the Tier 3 unlock gates
+# above. Lowered alongside the doctrine that the brain emits at 0.55-
+# 0.68 most of the time, so observation samples accumulate without
+# requiring real fills.
+MIN_OBSERVATION_SAMPLES: int = 100
+
+
+async def _observation_stats(db: Any) -> dict[str, int]:
+    """Count observation_fill receipts (Kelly-zero rung). The
+    learning ladder reads this as Rung 1: ``N/100 observations``
+    before unlocking the micro-paper rung."""
+    try:
+        total = await db["paper_trades"].count_documents(
+            {"receipt_type": "observation_fill"},
+        )
+        resolved = await db["paper_trades"].count_documents(
+            {"receipt_type": "observation_fill",
+             "status": "observation_closed"},
+        )
+        wins = await db["paper_trades"].count_documents(
+            {"receipt_type": "observation_fill",
+             "status": "observation_closed",
+             "outcome": "win"},
+        )
+        return {
+            "observations_total": total,
+            "observations_resolved": resolved,
+            "observations_won": wins,
+        }
+    except Exception as exc:
+        logger.warning("[tier3-readiness] observation_stats failed: %s", exc)
+        return {"observations_total": 0, "observations_resolved": 0,
+                "observations_won": 0}
+
+
 async def _high_conf_and_grades(db: Any, days: int, *, use_calibrated: bool = True) -> dict:
     """Single pass over `predictions` to derive:
       * high_conf_trades / correct / sum_confidence
@@ -486,6 +525,18 @@ async def build_tier3_stats(db: Any, days: int = 30, *, use_calibrated: bool = T
         logger.warning("[tier3-readiness] live-days failed: %s", exc)
 
     stats["total_trades"] = await _paper_trades_count(db)
+
+    # 2026-05-22: observation ladder stats. Surfaces Rung 1 progress
+    # ("X observations resolved out of 100") without changing the
+    # existing Tier 3 unlock gate semantics. Dashboard reads these
+    # as additional fields; the unlock math doesn't.
+    stats.update(await _observation_stats(db))
+    stats["observation_threshold"] = MIN_OBSERVATION_SAMPLES
+    obs_resolved = stats.get("observations_resolved", 0)
+    obs_won = stats.get("observations_won", 0)
+    stats["observations_win_rate"] = (
+        obs_won / obs_resolved if obs_resolved else 0.0
+    )
 
     agg = await _high_conf_and_grades(db, days, use_calibrated=use_calibrated)
     hc_n = agg["high_conf_trades"]

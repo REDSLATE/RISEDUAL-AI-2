@@ -131,12 +131,20 @@ async def close_due_paper_trades(db: Any) -> dict:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hold_hours)
     now = datetime.now(timezone.utc)
 
-    # Only close rows we know are AI-driven (Schema A from
-    # `ml_paper_trader.py`). Manual UI buy/sell ticks (Schema B)
-    # don't have a `status` field — they're transactions, not
-    # positions, and shouldn't be closed by this service.
+    # Close rows from BOTH paths:
+    #  * "open"             — real paper trades (Kelly sized > $0)
+    #  * "observation_open" — first-rung observation_fill receipts
+    #    (Kelly sized $0). Schema is paper_trades-shaped but
+    #    ``shares = 0``, so the PnL math still runs cleanly and
+    #    stamps a `pnl_pct` + `outcome` we can grade against — the
+    #    learning signal lives in ``pnl_pct`` not in $ exposure.
+    # Manual UI buy/sell rows (Schema B, no `status`) are still
+    # excluded.
     cursor = db["paper_trades"].find(
-        {"status": "open", "opened_at": {"$type": "date", "$lt": cutoff}},
+        {
+            "status": {"$in": ["open", "observation_open"]},
+            "opened_at": {"$type": "date", "$lt": cutoff},
+        },
         {"_id": 0},
     ).limit(500)
 
@@ -153,8 +161,14 @@ async def close_due_paper_trades(db: Any) -> dict:
             shares = float(t.get("shares") or 0)
             direction = str(t.get("direction") or "up").lower()
             trade_id = t.get("trade_id")
+            is_observation = t.get("status") == "observation_open"
 
-            if not (ticker and trade_id and entry > 0 and shares > 0):
+            # Observation receipts (shares=0) compute pct PnL against
+            # market price without dollar exposure — the learning
+            # value is in the rate/direction, not the size. Real
+            # trades still require shares > 0.
+            min_required = 0.0 if is_observation else 1.0
+            if not (ticker and trade_id and entry > 0 and shares >= min_required):
                 logger.warning(
                     "[paper-closer] malformed trade row skipped: %s", trade_id,
                 )
@@ -220,7 +234,7 @@ async def close_due_paper_trades(db: Any) -> dict:
                 autopsy = None
 
             update_set = {
-                "status": "closed",
+                "status": "observation_closed" if is_observation else "closed",
                 "closed_at": now,
                 "exit_price": current,
                 "pnl_usd": pnl_usd,
@@ -240,7 +254,8 @@ async def close_due_paper_trades(db: Any) -> dict:
                 update_set["autopsy"] = autopsy
 
             res = await db["paper_trades"].update_one(
-                {"trade_id": trade_id, "status": "open"},
+                {"trade_id": trade_id,
+                 "status": "observation_open" if is_observation else "open"},
                 {"$set": update_set},
             )
             if res.modified_count:
