@@ -172,6 +172,44 @@ class SovereignSidecar:
 
     def tick(self) -> None:
         contributed = False
+
+        # ── 2026-05-22: drain the outcome inbox FIRST so any
+        # backend-closed paper trades populate _outcomes before
+        # the contribution-emit check below. The bridge is best-
+        # effort — if Mongo is down the drainer returns [] and
+        # the tick proceeds normally (just won't post a
+        # contribution under the empty-payload doctrine).
+        try:
+            from outcome_inbox_client import drain_pending_for_brain_sync
+            drained = drain_pending_for_brain_sync(self.brain, limit=20)
+            logger.info(
+                "outcome_inbox_drain brain=%s found=%d",
+                self.brain, len(drained),
+            )
+            if drained:
+                for row in drained:
+                    try:
+                        self.state.add_outcome(
+                            symbol=row.get("symbol", ""),
+                            action=row.get("action", "BUY"),
+                            confidence=float(row.get("confidence", 0.0)),
+                            outcome=int(row.get("outcome", 0)),
+                            resolved_at=str(row.get("resolved_at") or ""),
+                            notional=float(row.get("notional", 0.0)),
+                        )
+                    except Exception as _add_exc:  # noqa: BLE001
+                        logger.warning(
+                            "outcome_add_failed trade_id=%s err=%s",
+                            row.get("trade_id"), _add_exc,
+                        )
+                self.state.save()
+                logger.info(
+                    "outcomes_ingested brain=%s n=%d outcomes_total=%d",
+                    self.brain, len(drained), len(self.state._outcomes),
+                )
+        except Exception as _drain_exc:  # noqa: BLE001
+            logger.warning("outcome drain failed (non-fatal): %s", _drain_exc)
+
         for symbol in self.symbols:
             top = self.read_top(symbol)
             decision = run_adaptive_core(

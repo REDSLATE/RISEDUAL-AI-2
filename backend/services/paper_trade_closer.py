@@ -282,6 +282,37 @@ async def close_due_paper_trades(db: Any) -> dict:
                         "[paper-closer] outcome write failed for %s: %s",
                         ticker, _ow_exc,
                     )
+
+                # ── 2026-05-22: enqueue outcome for the Sovereign
+                # sidecar's inbox so its LocalState._outcomes can
+                # populate. Without this, MC sees Alpha contribute
+                # an empty `recent_outcomes` array on every tick
+                # (the empty-payload screenshot regression).
+                # Real fills AND observation closes both feed the
+                # bridge — both are learning-eligible.
+                try:
+                    from services.sovereign_outcome_bridge import (
+                        enqueue_outcome,
+                    )
+                    await enqueue_outcome(
+                        db,
+                        brain="alpha",
+                        trade_id=trade_id,
+                        symbol=ticker,
+                        direction=direction,
+                        confidence=float(t.get("confidence") or 0.0),
+                        outcome_label=outcome,
+                        notional=float(t.get("position_usd") or 0.0),
+                        extras={
+                            "receipt_type": t.get("receipt_type") or "real_fill",
+                            "pnl_pct": pnl_pct,
+                        },
+                    )
+                except Exception as _bridge_exc:  # noqa: BLE001
+                    logger.debug(
+                        "[paper-closer] outcome bridge enqueue failed: %s",
+                        _bridge_exc,
+                    )
                 # Sync paper_positions roster (best-effort)
                 try:
                     await db["paper_positions"].update_many(

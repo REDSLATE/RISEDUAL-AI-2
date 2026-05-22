@@ -61,10 +61,19 @@ def test_no_empty_contribution_is_emitted_in_tick():
 # ── Behavioural — empty outcomes ⇒ no MC call ──────────────────────
 
 
-def test_tick_skips_post_contribution_when_outcomes_empty():
+def test_tick_skips_post_contribution_when_outcomes_empty(monkeypatch):
     """Drive tick() with a state that has zero recent outcomes and
     confirm post_contribution is NOT called."""
     from sovereign.sidecar import SovereignSidecar
+    from sovereign import outcome_inbox_client as oic
+
+    # Force the inbox drainer to a no-op so this test stays
+    # hermetic — we're only testing the empty-payload refusal.
+    monkeypatch.setattr(oic, "_get_db", lambda: None)
+    monkeypatch.setattr(
+        oic, "drain_pending_for_brain_sync",
+        lambda brain, limit=20: [],
+    )
 
     # Build sidecar with stubbed top-of-book + MC client
     fake_top = lambda sym: {
@@ -89,11 +98,19 @@ def test_tick_skips_post_contribution_when_outcomes_empty():
     sc.client.post_contribution.assert_not_called()
 
 
-def test_tick_emits_post_contribution_when_outcomes_present():
+def test_tick_emits_post_contribution_when_outcomes_present(monkeypatch):
     """Mirror test: with at least one recent outcome, the
     contribution DOES go out."""
     from sovereign.sidecar import SovereignSidecar
+    from sovereign import outcome_inbox_client as oic
     from datetime import datetime, timezone
+
+    # Inbox drainer stays hermetic.
+    monkeypatch.setattr(oic, "_get_db", lambda: None)
+    monkeypatch.setattr(
+        oic, "drain_pending_for_brain_sync",
+        lambda brain, limit=20: [],
+    )
 
     sc = SovereignSidecar(
         brain="alpha", mode="DTD",
