@@ -548,7 +548,42 @@ async def maybe_paper_trade(
     )
 
     if position_usd <= 0.0:
-        log.debug("[ml_paper] Kelly sizing returned $0 — skipping paper trade for %s.", ticker)
+        log.debug("[ml_paper] Kelly returned $0 for %s — emitting honest-hold to MC", ticker)
+        # 2026-05-22: doctrine-pure honest-hold receipt. The brain
+        # wanted a directional trade but Kelly self-throttled to $0.
+        # MC gets the audit row; no local paper_trades write happens.
+        # See the operator's "Brain → MC Intent POST Contract" note:
+        # silent zero-size Kelly drops were poisoning Patent-J recall
+        # (HOLD-by-conviction vs HOLD-by-Kelly-throttle look identical
+        # downstream without this telemetry).
+        try:
+            import os as _os
+            from sovereign.intent_bridge import emit_intent_from_consensus
+            from sovereign.mc_client import MCClient
+            mc = MCClient(
+                base_url=_os.environ.get("MC_BASE_URL", ""),
+                brain="alpha",
+                runtime_token=_os.environ.get("ALPHA_INGEST_TOKEN", ""),
+            )
+            await emit_intent_from_consensus(mc, {
+                "symbol": ticker.upper(),
+                "raw_action": "BUY" if direction_val == "long" else "SELL",
+                "market_decision": "HOLD",
+                "display_action": "BUY" if direction_val == "long" else "SELL",
+                "final_confidence": float(directional_conf) * 100,
+                "execution_decision": "OBSERVE_ONLY",
+                "would_have_traded_without_gates": False,
+                "hold_reason": "kelly_zero_size",
+                "summary": (
+                    f"Alpha wanted {direction_val.upper()} {ticker} at "
+                    f"conf={directional_conf:.3f} but Kelly sized $0 "
+                    f"(half-kelly on win_probability={directional_conf:.3f})"
+                ),
+            })
+        except Exception as _hh_exc:  # noqa: BLE001
+            log.debug(
+                "[ml_paper] honest-hold emit failed (non-fatal): %s", _hh_exc,
+            )
         return None
 
     # Apply symbol failure size multiplier (composes with Kelly output)
