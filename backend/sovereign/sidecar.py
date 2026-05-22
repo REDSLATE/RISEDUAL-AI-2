@@ -201,23 +201,47 @@ class SovereignSidecar:
                     logger.warning("stance failed: %s", e)
 
         # Contribution snapshot — once per tick, summarises the brain.
-        try:
-            self.client.post_contribution(
-                mode=self.state.mode,
-                weights=self.state.weights,
-                learning_rate=self.state.learning_rate,
-                recent_outcomes=self.state.recent_outcomes(20),
-                # Conservative: this template never asks for a confidence
-                # nudge. Brains that want one set training_signal=True
-                # (DTD only) and a non-zero delta on their own logic.
-                confidence_delta=0.0,
-                delta_reason="",
-                training_signal=False,
-                notes=f"tick @ {time.time():.0f}",
+        #
+        # 2026-05-22 (operator decree): refuse to emit empty
+        # contributions. The screenshot of MC's diagnostics showed
+        # 60 consecutive ALPHA `SOV-AUDIT contribution • as executor
+        # • (empty payload)` rows because `recent_outcomes` was an
+        # empty list every cycle (nothing populates _outcomes in
+        # LocalState — the writer side is missing). MC treated each
+        # empty contribution as a "skeleton row — engine not
+        # emitting substance."
+        #
+        # Rule per operator: if no symbol/side/conf is available,
+        # emit ABSTAIN explicitly or emit NOTHING. Never an empty
+        # executor contribution.
+        recent = self.state.recent_outcomes(20)
+        if not recent:
+            logger.warning(
+                "ALPHA_ABSTAIN_CONTRIBUTION brain=%s reason=no_recent_outcomes "
+                "decisions_on_disk=%d outcomes_on_disk=%d "
+                "(skipping post — refusing to ship empty payload)",
+                self.brain,
+                len(self.state._decisions),
+                len(self.state._outcomes),
             )
-            contributed = True
-        except MCClientError as e:
-            logger.warning("contribution failed: %s", e)
+        else:
+            try:
+                self.client.post_contribution(
+                    mode=self.state.mode,
+                    weights=self.state.weights,
+                    learning_rate=self.state.learning_rate,
+                    recent_outcomes=recent,
+                    # Conservative: this template never asks for a confidence
+                    # nudge. Brains that want one set training_signal=True
+                    # (DTD only) and a non-zero delta on their own logic.
+                    confidence_delta=0.0,
+                    delta_reason="",
+                    training_signal=False,
+                    notes=f"tick @ {time.time():.0f}",
+                )
+                contributed = True
+            except MCClientError as e:
+                logger.warning("contribution failed: %s", e)
 
         # Heartbeat is now published by the independent thread launched
         # in run_forever() — see 2026-05-14 freeze RCA. We deliberately

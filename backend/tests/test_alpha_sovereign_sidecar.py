@@ -539,6 +539,14 @@ def test_sidecar_tick_runs_without_mc(tmp_path: Path, monkeypatch: pytest.Monkey
     # Seeded with default_weights() automatically.
     assert side.state.weights == default_weights()
 
+    # 2026-05-22: under the empty-contribution refusal doctrine, the
+    # sidecar will NOT post a contribution unless `recent_outcomes` is
+    # non-empty. Seed one outcome so the post-path is exercised.
+    side.state.add_outcome(
+        symbol="BTC/USD", action="BUY", confidence=0.6,
+        outcome=1, notional=0.0,
+    )
+
     side.tick()
 
     fake: _FakeClient = side.client  # type: ignore[assignment]
