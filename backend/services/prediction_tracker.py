@@ -812,21 +812,74 @@ async def log_market_prediction(db: Any, direction: str, confidence: float,
 
 
 async def verify_pending_predictions(db: Any) -> None:
-    """Check and verify predictions that have passed 24h or 1 week. Run as background task."""
+    """Check and verify predictions that have passed 24h or 1 week. Run as background task.
+
+    Drain rate / robustness changes (2026-05-22):
+    * Batch limit bumped 20 → 200 rows per call. With the 5-minute
+      scheduler cadence that's a 120× headroom over the historical
+      configuration which left a 2,000+ row backlog blocking Tier 3
+      readiness.
+    * Rate-limited fetches (``price_now is None``) now stamp a
+      ``verify_attempts`` counter on the row. After
+      ``MAX_VERIFY_ATTEMPTS`` (10) the row is marked
+      ``verification_skipped`` so it stops blocking the queue. This
+      protects against permanently un-fetchable tickers (delisted,
+      provider drops the symbol) silently rotting the verifier.
+    * The same logic applies to the 1-week branch.
+    """
     now = datetime.now(timezone.utc)
     cutoff_24h = (now - timedelta(hours=24)).isoformat()
     cutoff_1w = (now - timedelta(weeks=1)).isoformat()
 
-    # Find predictions needing 24h verification
+    MAX_VERIFY_ATTEMPTS = 10  # ~50 minutes at 5min cadence per row before giving up
+
+    # Find predictions needing 24h verification — newest first so the
+    # in-window high-conf bucket refills before we chew through the
+    # oldest backlog. Tier 3 readiness only counts the rolling 30 day
+    # window; rows older than that gain it nothing.
     pending_24h = db.predictions.find({
         "verified_24h": None,
         "timestamp": {"$lte": cutoff_24h},
         "price_at_prediction": {"$gt": 0},
-    }, {"_id": 0}).limit(20)
+        "$or": [
+            {"verify_attempts": {"$exists": False}},
+            {"verify_attempts": {"$lt": MAX_VERIFY_ATTEMPTS}},
+        ],
+    }, {"_id": 0}).sort("timestamp", -1).limit(200)
 
     async for pred in pending_24h:
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
+            # Don't silently drop — bump the attempts counter. After
+            # MAX_VERIFY_ATTEMPTS the row falls off the queue.
+            attempts = int(pred.get("verify_attempts", 0)) + 1
+            if attempts >= MAX_VERIFY_ATTEMPTS:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {
+                        "verify_attempts": attempts,
+                        "verified_24h": {
+                            "price": None,
+                            "correct": None,
+                            "grade": "VERIFICATION_SKIPPED",
+                            "verified_at": now.isoformat(),
+                            "failure_code": "PRICE_FETCH_FAILED",
+                            "failure_reason": (
+                                f"Price fetch failed {attempts}× — symbol "
+                                f"may be delisted or provider-dropped."
+                            ),
+                        },
+                    }},
+                )
+                logger.warning(
+                    "[verify] giving up on %s after %d attempts",
+                    pred["symbol"], attempts,
+                )
+            else:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {"verify_attempts": attempts}},
+                )
             continue
         tolerance_24h = await _neutral_tolerance(pred["symbol"], window="24h")
         # New 5-tier grading: compute the rich label first, derive the
@@ -1065,17 +1118,44 @@ async def verify_pending_predictions(db: Any) -> None:
                     "note": "AI post-mortem skipped for <expr>",
                 })
 
-    # Find predictions needing 1-week verification
+    # Find predictions needing 1-week verification (same drain-rate
+    # + max-attempts protection as the 24h branch).
     pending_1w = db.predictions.find({
         "verified_1w": None,
         "verified_24h": {"$ne": None},
         "timestamp": {"$lte": cutoff_1w},
         "price_at_prediction": {"$gt": 0},
-    }, {"_id": 0}).limit(20)
+        "$or": [
+            {"verify_1w_attempts": {"$exists": False}},
+            {"verify_1w_attempts": {"$lt": 10}},
+        ],
+    }, {"_id": 0}).sort("timestamp", -1).limit(200)
 
     async for pred in pending_1w:
         price_now = await asyncio.to_thread(_get_current_price, pred["symbol"])
         if price_now is None:
+            attempts = int(pred.get("verify_1w_attempts", 0)) + 1
+            if attempts >= 10:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {
+                        "verify_1w_attempts": attempts,
+                        "verified_1w": {
+                            "price": None,
+                            "correct": None,
+                            "verified_at": now.isoformat(),
+                            "failure_code": "PRICE_FETCH_FAILED",
+                            "failure_reason": (
+                                f"1w price fetch failed {attempts}× — giving up."
+                            ),
+                        },
+                    }},
+                )
+            else:
+                await db.predictions.update_one(
+                    {"prediction_id": pred["prediction_id"]},
+                    {"$set": {"verify_1w_attempts": attempts}},
+                )
             continue
         tolerance_1w = await _neutral_tolerance(pred["symbol"], window="1w")
         correct = _evaluate_prediction(

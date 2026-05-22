@@ -1635,8 +1635,13 @@ def _start_cache_warmup():
         logger.info("Cache warm-up started in background")
 
         async def _verify_loop():
+            # 2026-05-22: cadence dropped 1h → 5min after diagnosing a
+            # 2,000+ row verification backlog blocking Tier 3 readiness
+            # (high-conf samples couldn't refill the rolling 30-day
+            # window because the verifier drained <20 rows/hour while
+            # signal_dispatcher emitted hundreds/hour).
             while True:
-                await asyncio.sleep(3600)
+                await asyncio.sleep(300)
                 try:
                     from services.prediction_tracker import verify_pending_predictions
                     await verify_pending_predictions(db)
