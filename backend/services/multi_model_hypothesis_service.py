@@ -189,15 +189,44 @@ async def _fetch_recent_mc_opinion(model_key: str, symbol: str) -> str:
     )
 
 
-async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: str) -> dict:
+async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: str,
+                             *, data: dict | None = None) -> dict:
     """Run hypothesis generation on a single brain persona.
 
     Uses the brain's ``system_prompt`` so each persona has a genuinely
     different voice. Folds in the brain's recent MC opinions on the
     symbol when available.
+
+    Budget-resilience (2026-05-22, P1 mitigations):
+      * Layer 1 — Hypothesis cache: hits short-circuit the LLM call
+        entirely (no token spend).
+      * Layer 2 — BYO direct API key fallback: when the Emergent
+        key returns a budget/quota error AND the operator has set
+        ``OPENAI_API_KEY`` / ``ANTHROPIC_API_KEY`` / ``GEMINI_API_KEY``
+        for the brain's provider, we retry via the official SDK.
     """
     cfg = MODELS[model_key]
     raw_text = ""
+
+    # ── Layer 1: cache lookup ──────────────────────────────────
+    cache_db = None
+    ckey: str | None = None
+    if data is not None:
+        try:
+            from services import hypothesis_cache as hc
+            from server import db as _server_db  # type: ignore
+            cache_db = _server_db
+            ckey = hc.cache_key(symbol, model_key, data)
+            cached = await hc.get(cache_db, key=ckey)
+            if cached:
+                logger.info("[hypothesis_cache] HIT model=%s symbol=%s",
+                            model_key, symbol)
+                out = dict(cached)
+                out["served_from_cache"] = True
+                return out
+        except Exception as _cache_exc:  # noqa: BLE001
+            logger.debug("[hypothesis_cache] lookup skipped: %s", _cache_exc)
+
     try:
         system = cfg.get("system_prompt") or SYSTEM_MESSAGE
         mc_note = await _fetch_recent_mc_opinion(model_key, symbol)
@@ -205,18 +234,39 @@ async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: s
         # brain still returns the same structured JSON the UI expects.
         full_system = f"{system}\n\n{SYSTEM_MESSAGE}{mc_note}"
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"hypothesis_{model_key}_{symbol}",
-            system_message=full_system,
-        ).with_model(cfg["provider"], cfg["model"])
+        # Layer 2 wrapper handles "Emergent first → direct API on
+        # budget error" so the body stays lean. The inner closure
+        # is a 0-arg coroutine; the wrapper either returns its
+        # result or — on a budget error AND a configured direct
+        # key — retries via the official provider SDK.
+        async def _send_via_emergent() -> str:
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"hypothesis_{model_key}_{symbol}",
+                system_message=full_system,
+            ).with_model(cfg["provider"], cfg["model"])
+            response = await chat.send_message(UserMessage(text=prompt))
+            return response if isinstance(response, str) else response.text
 
-        response = await chat.send_message(UserMessage(text=prompt))
-        raw_text = response if isinstance(response, str) else response.text
+        from services.llm_fallback import call_with_emergent_then_fallback
+        raw_text = await call_with_emergent_then_fallback(
+            emergent_send=_send_via_emergent,
+            provider=cfg["provider"], model=cfg["model"],
+            system_message=full_system, user_message=prompt,
+        )
+
         hypothesis = _parse_json_response(raw_text)
         hypothesis["model"] = cfg["label"]
         hypothesis["model_key"] = model_key
         hypothesis["symbol"] = symbol.upper()
+        # Cache successful single-brain runs so subsequent re-queries
+        # in the TTL window short-circuit.
+        if cache_db is not None and ckey:
+            try:
+                from services import hypothesis_cache as hc
+                await hc.put(cache_db, key=ckey, payload=hypothesis)
+            except Exception as _put_exc:  # noqa: BLE001
+                logger.debug("[hypothesis_cache] put skipped: %s", _put_exc)
         return hypothesis
 
     except json.JSONDecodeError:
@@ -487,7 +537,7 @@ async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str 
     """
     if model == "consensus":
         prompt = _build_prompt(symbol, data)
-        tasks = [_run_single_model(api_key, mk, symbol, prompt) for mk in MODELS]
+        tasks = [_run_single_model(api_key, mk, symbol, prompt, data=data) for mk in MODELS]
         results = await asyncio.gather(*tasks)
 
         consensus = _weighted_consensus(results)
@@ -542,6 +592,6 @@ async def generate_hypothesis(api_key: str, symbol: str, data: dict, model: str 
     if model not in MODELS:
         model = "alpha"
     prompt = _build_prompt(symbol, data)
-    out = await _run_single_model(api_key, model, symbol, prompt)
+    out = await _run_single_model(api_key, model, symbol, prompt, data=data)
     out["is_pro"] = True
     return out

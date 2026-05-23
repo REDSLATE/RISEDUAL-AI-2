@@ -307,6 +307,15 @@ async def close_due_paper_trades(db: Any) -> dict:
                             "receipt_type": t.get("receipt_type") or "real_fill",
                             "pnl_pct": pnl_pct,
                         },
+                        # 2026-05-22 (Gap 2): forward provenance so MC
+                        # gets the audit lineage on its recent_outcomes
+                        # snapshot. None when the trade row never
+                        # carried a signal match (synthetic / pre-
+                        # backfill rows); the bridge stores them as
+                        # null and the sidecar omits them on the wire.
+                        sovereign_decision_id=t.get("sovereign_decision_id"),
+                        prediction_id=t.get("prediction_id"),
+                        source_signal=t.get("source_signal"),
                     )
                 except Exception as _bridge_exc:  # noqa: BLE001
                     logger.debug(

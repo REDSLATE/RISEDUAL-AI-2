@@ -67,13 +67,24 @@ def test_tick_skips_post_contribution_when_outcomes_empty(monkeypatch):
     from sovereign.sidecar import SovereignSidecar
     from sovereign import outcome_inbox_client as oic
 
-    # Force the inbox drainer to a no-op so this test stays
-    # hermetic — we're only testing the empty-payload refusal.
-    monkeypatch.setattr(oic, "_get_db", lambda: None)
-    monkeypatch.setattr(
-        oic, "drain_pending_for_brain_sync",
-        lambda brain, limit=20: [],
-    )
+    # 2026-05-22 flake fix: sidecar.tick() does
+    # ``from outcome_inbox_client import drain_pending_for_brain_sync``
+    # via its sys.path-prefixed local imports, so the top-level
+    # ``outcome_inbox_client`` module is a SEPARATE instance in
+    # ``sys.modules`` from ``sovereign.outcome_inbox_client``.
+    # Patching only the sovereign-prefixed copy let the real
+    # drainer run against Mongo — and a concurrent
+    # ``paper_trade_closer`` enqueueing a fresh row in production
+    # would make this test fail intermittently. We patch BOTH
+    # module instances so the hermeticity claim holds.
+    import importlib
+    top_oic = importlib.import_module("outcome_inbox_client")
+    for mod in (oic, top_oic):
+        monkeypatch.setattr(mod, "_get_db", lambda: None)
+        monkeypatch.setattr(
+            mod, "drain_pending_for_brain_sync",
+            lambda brain, limit=20: [],
+        )
 
     # Build sidecar with stubbed top-of-book + MC client
     fake_top = lambda sym: {
@@ -105,12 +116,16 @@ def test_tick_emits_post_contribution_when_outcomes_present(monkeypatch):
     from sovereign import outcome_inbox_client as oic
     from datetime import datetime, timezone
 
-    # Inbox drainer stays hermetic.
-    monkeypatch.setattr(oic, "_get_db", lambda: None)
-    monkeypatch.setattr(
-        oic, "drain_pending_for_brain_sync",
-        lambda brain, limit=20: [],
-    )
+    # Inbox drainer stays hermetic — patch both module instances
+    # (see flake fix in companion test above).
+    import importlib
+    top_oic = importlib.import_module("outcome_inbox_client")
+    for mod in (oic, top_oic):
+        monkeypatch.setattr(mod, "_get_db", lambda: None)
+        monkeypatch.setattr(
+            mod, "drain_pending_for_brain_sync",
+            lambda brain, limit=20: [],
+        )
 
     sc = SovereignSidecar(
         brain="alpha", mode="DTD",

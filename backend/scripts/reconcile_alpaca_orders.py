@@ -153,7 +153,8 @@ from services.backfill_signal_matcher import (  # noqa: E402
 
 
 async def reconcile(db: Any, *, since: str, until: str,
-                    apply: bool) -> dict[str, int]:
+                    apply: bool,
+                    enqueue_outcomes: bool = False) -> dict[str, int]:
     """Walk Alpaca orders → write to paper_trades + outcome inbox.
 
     Returns a stats dict for the operator."""
@@ -173,6 +174,10 @@ async def reconcile(db: Any, *, since: str, until: str,
         "labelled_prediction": 0,
         "unattributed": 0,
     }
+
+    # Collect inserted/mirrored rows so the optional outcome pairer
+    # can FIFO them into round-trip outcomes after the main loop.
+    mirrored_rows: list[dict[str, Any]] = []
 
     for o in orders:
         oid = o.get("id")
@@ -282,6 +287,10 @@ async def reconcile(db: Any, *, since: str, until: str,
         else:
             stats["would_insert"] += 1
 
+        # Track every mirrored row so the optional FIFO pairer
+        # below has the full picture, regardless of apply mode.
+        mirrored_rows.append(doc)
+
         if not apply:
             continue
 
@@ -293,6 +302,44 @@ async def reconcile(db: Any, *, since: str, until: str,
         # mirror the fill itself. If the broker later sells, the SELL
         # order arrives as its own row and the reconciler closes the
         # buy-side via pair matching (out-of-scope for v1).
+
+    # ── Gap 1 (2026-05-22): FIFO-pair mirrored fills into resolved
+    # outcomes and enqueue them on the Sovereign sidecar's inbox.
+    # Opt-in via ``--enqueue-outcomes`` so dry-runs stay dry. The
+    # pairer is provenance-aware: the BUY lot's
+    # ``sovereign_decision_id`` / ``prediction_id`` / ``source_signal``
+    # rides through to the inbox, completing the audit lineage MC
+    # needs to see (the missing piece that made every Alpha
+    # contribution look like ``empty payload`` for months).
+    if enqueue_outcomes:
+        from services.backfill_outcome_pairer import pair_fills_into_outcomes
+        from services.sovereign_outcome_bridge import enqueue_outcome
+        outcomes = pair_fills_into_outcomes(mirrored_rows)
+        logger.info("Paired %d round-trip outcomes from %d mirrored rows",
+                    len(outcomes), len(mirrored_rows))
+        for o in outcomes:
+            stats["would_enqueue_outcome"] += 1
+            if not apply:
+                continue
+            await enqueue_outcome(
+                db,
+                brain="alpha",
+                trade_id=o["trade_id"],
+                symbol=o["symbol"],
+                direction=o["direction"],
+                confidence=float(o.get("confidence") or 0.0),
+                outcome_label=o["outcome_label"],
+                notional=float(o.get("notional") or 0.0),
+                extras={
+                    "receipt_type": "alpaca_backfill_pair",
+                    "pnl_pct": o.get("pnl_pct"),
+                    "buy_trade_id": o.get("buy_trade_id"),
+                    "sell_trade_id": o.get("sell_trade_id"),
+                },
+                sovereign_decision_id=o.get("sovereign_decision_id"),
+                prediction_id=o.get("prediction_id"),
+                source_signal=o.get("source_signal"),
+            )
 
     logger.info("Reconciliation complete: %s", stats)
     return stats
@@ -306,6 +353,10 @@ async def main() -> int:
                         help="ISO date (e.g. 2026-05-18)")
     parser.add_argument("--apply", action="store_true",
                         help="Actually write rows (default is dry-run)")
+    parser.add_argument("--enqueue-outcomes", action="store_true",
+                        help=("FIFO-pair filled BUY/SELL legs into "
+                              "round-trip outcomes and enqueue them on "
+                              "the Sovereign sidecar's inbox (Gap 1)."))
     args = parser.parse_args()
 
     since = args.since + ("T00:00:00Z" if "T" not in args.since else "")
@@ -318,12 +369,17 @@ async def main() -> int:
         return 2
 
     db = AsyncIOMotorClient(mongo_url)[db_name]
-    stats = await reconcile(db, since=since, until=until, apply=args.apply)
+    stats = await reconcile(
+        db, since=since, until=until, apply=args.apply,
+        enqueue_outcomes=args.enqueue_outcomes,
+    )
     print()
     print(f"  apply mode:           {args.apply}")
+    print(f"  enqueue outcomes:     {args.enqueue_outcomes}")
     print(f"  fetched from Alpaca:  {stats['fetched']}")
     print(f"  would insert (open):  {stats['would_insert']}")
     print(f"  would close (filled): {stats['would_close']}")
+    print(f"  would enqueue out:    {stats['would_enqueue_outcome']}")
     print(f"  already in Mongo:     {stats['deduped']}")
     print(f"  skipped no-price:     {stats['skipped_no_price']}")
     print(f"  skipped quarantined:  {stats['skipped_quarantined']}")

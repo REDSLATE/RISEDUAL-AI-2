@@ -196,6 +196,19 @@ class SovereignSidecar:
                             outcome=int(row.get("outcome", 0)),
                             resolved_at=str(row.get("resolved_at") or ""),
                             notional=float(row.get("notional", 0.0)),
+                            # 2026-05-22 (Gap 2): forward provenance
+                            # so MC sees the audit lineage. add_outcome
+                            # treats them as optional; missing values
+                            # pass through cleanly.
+                            sovereign_decision_id=(
+                                row.get("sovereign_decision_id") or None
+                            ),
+                            prediction_id=(
+                                row.get("prediction_id") or None
+                            ),
+                            source_signal=(
+                                row.get("source_signal") or None
+                            ),
                         )
                     except Exception as _add_exc:  # noqa: BLE001
                         logger.warning(

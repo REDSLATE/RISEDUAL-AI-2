@@ -202,7 +202,7 @@ async def test_run_single_model_folds_in_mc_note(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_generate_hypothesis_dispatches_to_brain(monkeypatch) -> None:
-    async def fake_run(api_key, model_key, symbol, prompt):
+    async def fake_run(api_key, model_key, symbol, prompt, *, data=None):
         return {"model": "Alpha 1.6", "model_key": model_key,
                 "symbol": symbol, "verdict": "BUY", "confidence": 80}
 
@@ -216,7 +216,7 @@ async def test_generate_hypothesis_dispatches_to_brain(monkeypatch) -> None:
 async def test_generate_hypothesis_coerces_unknown_model(monkeypatch) -> None:
     called_with: dict = {}
 
-    async def fake_run(api_key, model_key, symbol, prompt):
+    async def fake_run(api_key, model_key, symbol, prompt, *, data=None):
         called_with["model_key"] = model_key
         return {"model": "Alpha 1.6", "model_key": model_key, "symbol": symbol,
                 "verdict": "HOLD", "confidence": 50}
@@ -230,7 +230,7 @@ async def test_generate_hypothesis_coerces_unknown_model(monkeypatch) -> None:
 async def test_generate_hypothesis_consensus_runs_all_four(monkeypatch) -> None:
     calls: list[str] = []
 
-    async def fake_run(api_key, model_key, symbol, prompt):
+    async def fake_run(api_key, model_key, symbol, prompt, *, data=None):
         calls.append(model_key)
         return {
             "model": BRAINS[model_key]["label"],
@@ -255,7 +255,7 @@ async def test_generate_hypothesis_consensus_runs_all_four(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_generate_hypothesis_consensus_survives_one_brain_error(monkeypatch) -> None:
-    async def fake_run(api_key, model_key, symbol, prompt):
+    async def fake_run(api_key, model_key, symbol, prompt, *, data=None):
         if model_key == "redeye":
             return {"model": "RedEye 1.3", "model_key": "redeye",
                     "symbol": symbol, "verdict": "ERROR", "confidence": 0,

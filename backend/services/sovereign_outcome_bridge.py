@@ -68,6 +68,14 @@ async def enqueue_outcome(
     outcome_label: str,
     notional: float = 0.0,
     extras: Optional[Mapping[str, Any]] = None,
+    # ── 2026-05-22 (Gap 2): provenance fields propagated to MC ─────
+    # so the audit lineage (Sovereign decision → fill → outcome) is
+    # visible end-to-end in MC's diagnostics. Optional — older
+    # callers that don't have them still work; the sidecar / MC
+    # client only emit non-None values.
+    sovereign_decision_id: Optional[str] = None,
+    prediction_id: Optional[str] = None,
+    source_signal: Optional[str] = None,
 ) -> dict[str, Any]:
     """Idempotently enqueue an outcome event for the named brain.
 
@@ -94,6 +102,17 @@ async def enqueue_outcome(
         "created_at": datetime.now(timezone.utc),
         "drained": False,
         "extras": dict(extras or {}),
+        # Provenance — top-level so the drainer + sidecar can
+        # forward them to MC without parsing nested extras.
+        "sovereign_decision_id": (
+            str(sovereign_decision_id) if sovereign_decision_id else None
+        ),
+        "prediction_id": (
+            str(prediction_id) if prediction_id else None
+        ),
+        "source_signal": (
+            str(source_signal) if source_signal else None
+        ),
     }
     try:
         existing = await db[COLLECTION].find_one(

@@ -399,14 +399,24 @@ def build_contribution_body(
         conf = float(rec.get("confidence", 0.0))
         if not math.isfinite(conf) or conf < 0.0 or conf > 1.0:
             raise MCContractError(f"outcome #{i} confidence {conf} outside [0, 1]")
-        validated_outs.append({
+        out_row: dict[str, Any] = {
             "symbol": str(rec.get("symbol", "")),
             "action": str(action),
             "confidence": conf,
             "outcome": int(outcome),
             "resolved_at": str(rec.get("resolved_at") or ""),
             "notional": float(rec.get("notional", 0.0) or 0.0),
-        })
+        }
+        # 2026-05-22 (Gap 2): forward provenance labels when
+        # present so MC can join outcomes back to the originating
+        # Sovereign decision / prediction. Omitted (vs. emitted
+        # as null) so the MC schema stays additive-safe and old
+        # brains keep validating.
+        for fname in ("sovereign_decision_id", "prediction_id", "source_signal"):
+            fv = rec.get(fname)
+            if fv:
+                out_row[fname] = str(fv)
+        validated_outs.append(out_row)
     body["recent_outcomes"] = validated_outs
 
     body["notes"] = str(notes or "")

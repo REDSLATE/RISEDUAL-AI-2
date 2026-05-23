@@ -1,0 +1,65 @@
+{
+  "summary": "P0 MC Visibility Gaps + P1 LLM Budget Mitigations - All tests passed. Full pytest suite: 3810 passed, 1 skipped, 0 failures. New feature tests: 36/36 passed (14 P0 Gap tests + 18 P1 Layer tests + 4 empty-contribution regression tests).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_mc_visibility_gaps_2026_05_22.py",
+    "/app/backend/tests/test_llm_budget_mitigations_2026_05_22.py",
+    "/app/backend/tests/test_alpha_empty_contribution_refused.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "P0 Gap 1: reconcile_alpaca_orders.py correctly implements --enqueue-outcomes flag with FIFO pairing via pair_fills_into_outcomes + enqueue_outcome",
+    "P0 Gap 2: LocalState.add_outcome accepts sovereign_decision_id/prediction_id/source_signal kwargs; RECENT_OUTCOME_FIELDS tuple includes all 3 provenance fields",
+    "P0 Gap 2: mc_client.build_contribution_body correctly emits provenance fields when present, omits when absent (not null)",
+    "P0 Gap 2: sidecar.tick() forwards provenance fields to state.add_outcome via optional kwargs",
+    "P0 Gap 2: paper_trade_closer forwards provenance to enqueue_outcome using t.get() pattern",
+    "P1 Layer 1: hypothesis_cache.py implements Mongo-backed TTL cache with stable cache_key(), TTL clamped [60,3600]s, ensure_utc guard for datetime comparison",
+    "P1 Layer 2: llm_fallback.py implements is_budget_error() with conservative detection, has_direct_key() for OPENAI/ANTHROPIC/GEMINI_API_KEY, call_with_emergent_then_fallback wrapper",
+    "P1 Integration: multi_model_hypothesis_service._run_single_model accepts data= kwarg, cache lookup on hit returns served_from_cache=True, wraps LlmChat in call_with_emergent_then_fallback",
+    "Regression: test_alpha_empty_contribution_refused tests still pass - empty-payload refusal doctrine intact"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (3810 passed, 1 skipped, 0 failures)"
+  },
+  "test_credentials": "N/A - backend-only testing",
+  "seed_data_creation": "None - unit tests use in-memory Mongo stand-ins",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "P0 MC Visibility Gaps and P1 LLM Budget Mitigations fully tested. Key modules: (1) scripts/reconcile_alpaca_orders.py - --enqueue-outcomes flag for FIFO pairing, (2) services/backfill_outcome_pairer.py - pair_fills_into_outcomes() FIFO BUY->SELL, (3) services/sovereign_outcome_bridge.py - enqueue_outcome with provenance kwargs, (4) sovereign/local_state.py - RECENT_OUTCOME_FIELDS + add_outcome provenance, (5) sovereign/mc_client.py - build_contribution_body emits provenance, (6) sovereign/sidecar.py - tick() forwards provenance, (7) services/paper_trade_closer.py - forwards provenance to enqueue_outcome, (8) services/hypothesis_cache.py - Mongo TTL cache Layer 1, (9) services/llm_fallback.py - BYO key fallback Layer 2, (10) services/multi_model_hypothesis_service.py - _run_single_model with cache + fallback wiring",
+  "verified_acceptance_criteria": {
+    "p0_gap1_enqueue_outcomes_flag": "PASS - argparse lists --enqueue-outcomes, reconcile accepts enqueue_outcomes bool kwarg",
+    "p0_gap1_fifo_pairer_wired": "PASS - pair_fills_into_outcomes + enqueue_outcome called when flag set",
+    "p0_gap1_provenance_threading": "PASS - BUY lot's sovereign_decision_id/prediction_id/source_signal carried to outcome",
+    "p0_gap1_pnl_labels": "PASS - win > +0.5%, loss < -0.5%, flat otherwise",
+    "p0_gap2_local_state_provenance_kwargs": "PASS - add_outcome accepts optional sovereign_decision_id/prediction_id/source_signal",
+    "p0_gap2_recent_outcome_fields": "PASS - RECENT_OUTCOME_FIELDS tuple includes all 3 provenance keys",
+    "p0_gap2_missing_values_not_null": "PASS - Missing provenance values NOT stored as null keys (additive-safe)",
+    "p0_gap2_mc_client_emits_provenance": "PASS - build_contribution_body emits provenance when present, omits when absent",
+    "p0_gap2_sidecar_forwards_provenance": "PASS - tick() forwards provenance to state.add_outcome via kwargs",
+    "p0_gap2_paper_closer_forwards_provenance": "PASS - enqueue_outcome call includes t.get() for all 3 provenance fields",
+    "p1_layer1_cache_key_stable": "PASS - cache_key() stable across identical data bundles, varies per symbol/model_key/fingerprint",
+    "p1_layer1_get_returns_none_safely": "PASS - Returns None on db=None, missing rows, expired rows, DB errors",
+    "p1_layer1_ttl_clamped": "PASS - TTL clamped to [60, 3600] seconds via HYPOTHESIS_CACHE_TTL_SECONDS env",
+    "p1_layer1_ensure_utc_guard": "PASS - Uses services.datetime_utils.ensure_utc before datetime comparison",
+    "p1_layer2_is_budget_error": "PASS - Detects budget/quota/insufficient_quota/rate_limit_exceeded case-insensitively",
+    "p1_layer2_has_direct_key": "PASS - Detects OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY in env",
+    "p1_layer2_call_with_emergent_then_fallback": "PASS - Wraps emergent send, retries via call_direct on budget error + configured key",
+    "p1_layer2_non_budget_errors_bubble": "PASS - Non-budget errors bubble up unchanged",
+    "p1_layer2_budget_without_key_raises": "PASS - Budget errors without BYO key still raise",
+    "p1_integration_data_kwarg": "PASS - _run_single_model takes optional data=None kwarg",
+    "p1_integration_cache_hit": "PASS - On cache hit returns cached payload with served_from_cache=True",
+    "p1_integration_cache_store": "PASS - After successful LLM call, stores result in cache",
+    "p1_integration_fallback_wrapper": "PASS - LlmChat call wrapped in call_with_emergent_then_fallback",
+    "regression_empty_contribution_refused": "PASS - test_alpha_empty_contribution_refused tests all pass",
+    "regression_full_suite": "PASS - 3810 passed, 1 skipped, 0 failures"
+  }
+}

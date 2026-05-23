@@ -40,6 +40,26 @@ _MAX_OUTCOMES = 50
 _MAX_DECISIONS = 200  # local audit cap (NOT sent to MC)
 _CONF_MIN, _CONF_MAX = 0.0, 1.0
 
+# Canonical recent_outcomes payload fields (2026-05-22, Gap 2).
+# Sidecar's ``post_contribution`` strips down to this whitelist
+# before shipping to MC so unknown future fields can't leak. The
+# first 6 are MC-mandatory; the last 3 are optional provenance
+# labels that complete the audit lineage (Sovereign decision →
+# fill → outcome). Older snapshots without the provenance fields
+# stay valid — the validator only enforces ``action`` /
+# ``outcome`` / ``confidence``.
+RECENT_OUTCOME_FIELDS: tuple[str, ...] = (
+    "symbol",
+    "action",
+    "confidence",
+    "outcome",
+    "resolved_at",
+    "notional",
+    "sovereign_decision_id",
+    "prediction_id",
+    "source_signal",
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -215,8 +235,16 @@ class LocalState:
         outcome: int,
         resolved_at: str | None = None,
         notional: float = 0.0,
+        # 2026-05-22 (Gap 2): provenance labels propagated to MC
+        # so the audit lineage (Sovereign decision / prediction →
+        # fill → outcome) is visible in MC diagnostics. All three
+        # are optional — older callers that don't have them still
+        # produce valid outcomes.
+        sovereign_decision_id: str | None = None,
+        prediction_id: str | None = None,
+        source_signal: str | None = None,
     ) -> None:
-        rec = {
+        rec: dict[str, Any] = {
             "symbol": str(symbol),
             "action": str(action),
             "confidence": float(confidence),
@@ -224,6 +252,12 @@ class LocalState:
             "resolved_at": resolved_at or _now_iso(),
             "notional": float(notional),
         }
+        if sovereign_decision_id:
+            rec["sovereign_decision_id"] = str(sovereign_decision_id)
+        if prediction_id:
+            rec["prediction_id"] = str(prediction_id)
+        if source_signal:
+            rec["source_signal"] = str(source_signal)
         self._validate_outcomes([rec])
         self._outcomes.append(rec)
         if len(self._outcomes) > _MAX_OUTCOMES:
