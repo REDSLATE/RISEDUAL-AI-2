@@ -697,6 +697,54 @@ async def _log_order(user_id: str, broker_id: str, req: PlaceOrderRequest, resul
         "proof_chain_entity_id": proof_chain_entity_id,
         "outcome_appended": False,
     })
+
+    # ── 2026-05-22: Mirror manual UI orders into paper_trades so
+    # Tier 3 readiness + Stage 3 Sovereign-vs-Council ledger + the
+    # Sovereign outcome bridge SEE these fills. Without this
+    # mirror, ``trade_orders`` is a dead-end collection
+    # (only ``position_reconciler`` reads it). Idempotent on
+    # ``alpaca_order_id``.
+    try:
+        broker_oid = result.get("id", "")
+        if broker_oid:
+            existing = await db["paper_trades"].find_one(
+                {"alpaca_order_id": broker_oid}, {"_id": 0},
+            )
+            if not existing:
+                qty = float(req.quantity or 0)
+                limit_px = float(req.limit_price or 0)
+                side_lower = (req.side or "").lower()
+                direction = "up" if side_lower == "buy" else "down"
+                # Mark as "open" — the position reconciler will close
+                # it when the broker reports the position closed.
+                status = (result.get("status") or "submitted").lower()
+                paper_status = "closed" if status == "filled" else "open"
+                await db["paper_trades"].insert_one({
+                    "trade_id": f"alpaca-{broker_oid}",
+                    "alpaca_order_id": broker_oid,
+                    "ticker": req.symbol.upper(),
+                    "symbol": req.symbol.upper(),
+                    "direction": direction,
+                    "side": side_lower,
+                    "shares": qty,
+                    "qty": qty,
+                    "entry_price": limit_px,
+                    "position_usd": qty * limit_px,
+                    "status": paper_status,
+                    "opened_at": datetime.now(timezone.utc),
+                    "source_layer": "manual_ui_broker",
+                    "receipt_type": "real_fill",
+                    "synthetic": False,
+                    "eligible_for_learning": True,
+                    "eligible_for_live_unlock": True,
+                    "broker_id": broker_id,
+                    "user_id": user_id,
+                })
+    except Exception as mirror_exc:  # noqa: BLE001
+        logger.warning(
+            f"[broker] paper_trades mirror failed (non-fatal): {mirror_exc}",
+        )
+
     try:
         from services.push_service import notify_trade_execution
         await notify_trade_execution(

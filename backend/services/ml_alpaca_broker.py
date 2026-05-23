@@ -405,6 +405,58 @@ async def maybe_execute_live(
                     "[ml_alpaca] Order submitted but DB write failed: %s", db_exc
                 )
 
+            # ── 2026-05-22: Mirror into paper_trades so Tier 3
+            # readiness, Stage 3 Sovereign-vs-Council ledger and the
+            # outcome bridge SEE these fills. Pre-fix, the broker
+            # wrote ONLY to ``live_orders`` (no downstream consumer),
+            # silently invisible to every promotion gate.
+            # Idempotent on ``alpaca_order_id``.
+            try:
+                existing = await db["paper_trades"].find_one(
+                    {"alpaca_order_id": order_id}, {"_id": 0},
+                )
+                if not existing:
+                    qty_est = (
+                        notional / float(snapshot.price)
+                        if getattr(snapshot, "price", None)
+                        and float(snapshot.price) > 0 else 0.0
+                    )
+                    await db["paper_trades"].insert_one({
+                        "trade_id": f"alpaca-{order_id}",
+                        "alpaca_order_id": order_id,
+                        "ticker": ticker,
+                        "symbol": ticker,
+                        "direction": direction_val,
+                        "side": side,
+                        "shares": qty_est,
+                        "qty": qty_est,
+                        "entry_price": (
+                            float(snapshot.price)
+                            if getattr(snapshot, "price", None) else 0.0
+                        ),
+                        "position_usd": notional,
+                        "status": "open",
+                        "opened_at": datetime.now(timezone.utc),
+                        "source_layer": "ml_alpaca_broker",
+                        "receipt_type": "real_fill",
+                        "synthetic": False,
+                        "eligible_for_learning": True,
+                        "eligible_for_live_unlock": True,
+                        "confidence": float(signal.confidence),
+                        "prediction_id": signal.prediction_id,
+                        "regime": regime,
+                    })
+                    log.info(
+                        "[ml_alpaca] Mirrored %s %s into paper_trades "
+                        "(order_id=%s, notional=$%.2f)",
+                        ticker, side, order_id, notional,
+                    )
+            except Exception as mirror_exc:  # noqa: BLE001
+                log.warning(
+                    "[ml_alpaca] paper_trades mirror failed for %s: %s",
+                    ticker, mirror_exc,
+                )
+
         return order_id
 
     finally:
