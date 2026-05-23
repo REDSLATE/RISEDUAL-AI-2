@@ -140,6 +140,18 @@ def _outcome_label(pnl_pct: float) -> str:
     return "flat"
 
 
+# Signal labelling lives in services/backfill_signal_matcher.py so
+# the script stays under the 400-line preferred ceiling AND the
+# matcher becomes reusable by any future broker backfill (Kraken,
+# IBKR, etc.). Operator hard rule: every backfilled fill MUST carry
+# a label.
+from services.backfill_signal_matcher import (  # noqa: E402
+    SIGNAL_MATCH_WINDOW as _SIGNAL_MATCH_WINDOW,
+    direction_matches as _direction_matches,
+    match_signal as _match_signal,
+)
+
+
 async def reconcile(db: Any, *, since: str, until: str,
                     apply: bool) -> dict[str, int]:
     """Walk Alpaca orders → write to paper_trades + outcome inbox.
@@ -157,6 +169,9 @@ async def reconcile(db: Any, *, since: str, until: str,
         "deduped": 0,
         "skipped_no_price": 0,
         "skipped_quarantined": 0,
+        "labelled_sovereign": 0,
+        "labelled_prediction": 0,
+        "unattributed": 0,
     }
 
     for o in orders:
@@ -197,6 +212,24 @@ async def reconcile(db: Any, *, since: str, until: str,
             stats["deduped"] += 1
             continue
 
+        # ── Operator hard rule (2026-05-22): every backfilled fill
+        # MUST carry a label. Look for the signal that fired this
+        # order — Sovereign decision first, then prediction. If
+        # nothing matches within the 10-min window, the row is
+        # explicitly tagged ``unattributed_real_fill`` (NOT given a
+        # synthetic confidence). Tier 3 / Stage 3 can then make
+        # informed choices about whether to count them.
+        signal_match = await _match_signal(
+            db, symbol=sym, side=side, when=opened_at,
+        )
+        if signal_match:
+            if signal_match["source_signal"] == "sovereign_decision":
+                stats["labelled_sovereign"] += 1
+            else:
+                stats["labelled_prediction"] += 1
+        else:
+            stats["unattributed"] += 1
+
         doc = {
             "trade_id": f"alpaca-{oid}",
             "alpaca_order_id": oid,
@@ -212,12 +245,36 @@ async def reconcile(db: Any, *, since: str, until: str,
             "opened_at": opened_at,
             "closed_at": closed_at,
             "source_layer": "alpaca_reconciler",
-            "receipt_type": "real_fill",
+            "receipt_type": (
+                "real_fill" if signal_match
+                else "unattributed_real_fill"
+            ),
             "synthetic": False,
-            "eligible_for_learning": True,
+            "eligible_for_learning": bool(signal_match),
             "eligible_for_live_unlock": True,
             "alpaca_raw_status": a_status,
-            "confidence": 0.0,  # unknown — broker doesn't track it
+            # Labelling — operator hard rule.
+            "labelled": bool(signal_match),
+            "source_signal": (
+                signal_match.get("source_signal") if signal_match else None
+            ),
+            "confidence": (
+                float(signal_match["confidence"]) if signal_match else 0.0
+            ),
+            "sovereign_decision_id": (
+                signal_match.get("sovereign_decision_id")
+                if signal_match else None
+            ),
+            "prediction_id": (
+                signal_match.get("prediction_id") if signal_match else None
+            ),
+            "conviction_tier": (
+                signal_match.get("conviction_tier") if signal_match else None
+            ),
+            "regime": (signal_match.get("regime") if signal_match else None),
+            "signal_at": (
+                signal_match.get("signal_at") if signal_match else None
+            ),
         }
 
         if status == "closed":
@@ -270,6 +327,11 @@ async def main() -> int:
     print(f"  already in Mongo:     {stats['deduped']}")
     print(f"  skipped no-price:     {stats['skipped_no_price']}")
     print(f"  skipped quarantined:  {stats['skipped_quarantined']}")
+    print("  --- labelling (operator hard rule) ---")
+    print(f"  labelled (sovereign): {stats['labelled_sovereign']}")
+    print(f"  labelled (prediction):{stats['labelled_prediction']}")
+    print(f"  UNATTRIBUTED:         {stats['unattributed']}  "
+          "(tagged receipt_type=unattributed_real_fill)")
     return 0
 
 
