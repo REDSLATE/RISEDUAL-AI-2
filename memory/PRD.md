@@ -3,6 +3,63 @@
 ## Original Problem Statement
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
+## Latest Update — 2026-02-23 (Fork F)
+
+### 🎯 P0 + P1 — MC Visibility Gaps + LLM Budget Mitigations
+Closed the two MC visibility gaps that were causing Mission Control to
+see empty/unattributed outcome contributions, and shipped a 2-layer
+LLM budget-exhaustion guard for the Hypothesis tab.
+
+**P0 — MC Visibility Gaps:**
+- `scripts/reconcile_alpaca_orders.py` now accepts `--enqueue-outcomes`.
+  When set, mirrored Alpaca BUY/SELL legs are FIFO-paired into
+  round-trip outcomes (win/loss/flat by ±0.5% threshold) and pushed
+  to the Sovereign outcome inbox, carrying the BUY lot's
+  provenance through to MC.
+- `services/backfill_outcome_pairer.py` — new FIFO pairer.
+- `sovereign/local_state.py::add_outcome` — accepts `sovereign_decision_id`,
+  `prediction_id`, `source_signal` (all optional). New `RECENT_OUTCOME_FIELDS`
+  constant lists the canonical schema. Missing values are omitted
+  (not stored as null keys) so MC's schema stays additive.
+- `sovereign/mc_client.py::build_contribution_body` — emits provenance
+  fields on the wire when present.
+- `sovereign/sidecar.py::tick` — forwards provenance from drained
+  rows to `state.add_outcome`.
+- `services/paper_trade_closer.py` — forwards provenance to
+  `enqueue_outcome` so live paper closures populate the lineage.
+- `services/sovereign_outcome_bridge.py::enqueue_outcome` — promotes
+  provenance from kwargs to top-level Mongo columns (not nested in
+  `extras`) so the drainer + MC client can forward without parsing.
+
+**P1 — LLM Budget Mitigations:**
+- `services/hypothesis_cache.py` — new Mongo TTL cache. Default
+  10-min TTL, clamped to `[60, 3600]s` via `HYPOTHESIS_CACHE_TTL_SECONDS`.
+  Cache key = `symbol:model_key:data_fingerprint`. Best-effort:
+  any DB error returns None / no-op so cache health never blocks
+  the hypothesis path.
+- `services/llm_fallback.py` — BYO direct API key fallback. When
+  the Emergent LLM key returns a budget/quota error AND the
+  operator has set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` /
+  `GEMINI_API_KEY`, the call retries via the official provider
+  SDK. Non-budget errors bubble up unchanged so the consensus
+  filter still drops bad votes.
+- `services/multi_model_hypothesis_service.py::_run_single_model`
+  now wraps the LlmChat call in
+  `call_with_emergent_then_fallback` and consults the cache
+  before spending tokens. `served_from_cache=True` is stamped on
+  cache hits for operator audit.
+
+**Tests (32 new, all passing):**
+- `tests/test_mc_visibility_gaps_2026_05_22.py` — 14 tests.
+- `tests/test_llm_budget_mitigations_2026_05_22.py` — 18 tests.
+- `tests/test_alpha_empty_contribution_refused.py` — hardened
+  against a latent flake (paper_trade_closer enqueueing during
+  the test would defeat the monkeypatch); both `outcome_inbox_client`
+  module instances are now patched.
+
+**Test suite total:** **3,810 passed, 1 skipped, 0 failures** (up
+from 3,778 at fork start).
+
 ## Architecture
 - **FastAPI** backend on `:8001` with `/api` prefix
 - **React** frontend on `:3000`
