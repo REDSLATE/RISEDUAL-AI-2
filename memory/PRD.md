@@ -5,6 +5,41 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🛡️ MC Empty-Payload Alignment — `_contribution_loop` Deleted
+
+MC shipped a 422-on-empty enforcement (substantive-rule: any of
+`notes`/`weights`/`recent_outcomes`/`delta_reason`/`confidence_delta`
+non-default). The in-process `services/mc_sidecar.py::_contribution_loop`
+was the source of Alpha's `(empty payload)` audit rows — it posted a
+hardcoded `weights+notes` body every interval and raced the
+supervisor sidecar on the outcome inbox drain.
+
+**Deleted:** `_contribution_loop` (+ `_contrib_task` global). The
+supervisor-run `sovereign.sidecar` (PID 44, `alpha-sidecar.conf`) is
+now the canonical contribution producer — single source of truth,
+deterministic inbox drain, real LocalState-backed content, the
+2026-05-22 empty-payload refusal still active.
+
+**Heartbeat survives** — the in-process `_heartbeat_loop` is
+untouched AND the supervisor sidecar has its own heartbeat thread.
+Two independent paths to `/api/heartbeat-ping/alpha` means MC sees
+liveness even if one path dies (the right belt-and-suspenders
+surface, at the heartbeat layer).
+
+**Lineage stamp** — per MC operator's ask, every contribution from
+the supervisor sidecar now carries lineage in `notes`:
+`sidecar v<X> · supervisor · contribution_id=<uuid12> · tick @ <ts>`
+so audit-log skimming can distinguish supervisor contributions from
+any future noise sources.
+
+**Tests:** 7 new (3 mc_sidecar.py deletion pins + 4 lineage stamp
+pins), all passing. Full suite **3,817 passed / 1 skipped / 0
+failures**.
+
+**Live-verified:** Supervisor sidecar restarted cleanly post-change;
+heartbeat + contribution both returning 200 from MC; outcome inbox
+drain finding 0 races (was 0/20 vs the old in-process-loop pattern).
+
 ### 🎯 P0 + P1 — MC Visibility Gaps + LLM Budget Mitigations
 Closed the two MC visibility gaps that were causing Mission Control to
 see empty/unattributed outcome contributions, and shipped a 2-layer

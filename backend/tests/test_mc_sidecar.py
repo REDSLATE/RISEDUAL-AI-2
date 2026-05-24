@@ -4,12 +4,16 @@ MC's brain-operator dashboard relies on.
 
 Doctrine asserts:
   * ``start()`` and ``stop()`` are idempotent.
-  * Three tasks (heartbeat, contribution, watchdog) are tracked
-    independently — a hung contribution cannot starve heartbeat.
+  * Two tasks (heartbeat, watchdog) are tracked
+    independently — a hung anything cannot starve heartbeat.
+  * The contribution loop was DELETED on 2026-02-23 — the
+    supervisor sidecar owns contributions. ``contribution_task_alive``
+    is exposed as a constant ``False`` for back-compat with
+    REDEYE-shaped MC dashboards.
   * ``status()`` carries the legacy ``task_alive`` alias REDEYE's MC
     parser already speaks.
   * Watchdog can be disabled (e.g. local dev) by env, but heartbeat
-    + contribution always run.
+    always runs.
   * Liveness file age is exposed for operator visibility.
 """
 from __future__ import annotations
@@ -42,7 +46,6 @@ def _isolate_module_state(monkeypatch):
     import services.mc_sidecar as mod
 
     # Reset task globals between tests.
-    mod._contrib_task = None
     mod._heartbeat_task = None
     mod._watchdog_task = None
 
@@ -75,7 +78,7 @@ def _isolate_module_state(monkeypatch):
     yield
 
     # Tear down any leaked tasks from a failing test.
-    for ref in (mod._contrib_task, mod._heartbeat_task, mod._watchdog_task):
+    for ref in (mod._heartbeat_task, mod._watchdog_task):
         if ref is not None and not ref.done():
             ref.cancel()
 
@@ -84,15 +87,22 @@ def _isolate_module_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_start_spawns_all_three_tasks(fake_db):
+async def test_start_spawns_heartbeat_and_watchdog(fake_db):
+    """Doctrine 2026-02-23: only TWO tasks spawn (heartbeat +
+    watchdog). The contribution loop was deleted — the supervisor
+    sidecar owns contributions now."""
     import services.mc_sidecar as mod
 
     st = await mod.start(fake_db)
     try:
         assert st["heartbeat_task_alive"] is True
-        assert st["contribution_task_alive"] is True
         assert st["watchdog_task_alive"] is True
-        assert st["task_alive"] is True  # legacy alias for MC
+        # Contribution is gone — surface stays the same shape but
+        # always False, with an owner tag for operator clarity.
+        assert st["contribution_task_alive"] is False
+        assert st["contribution_owned_by"] == "supervisor:alpha-sidecar"
+        # task_alive legacy alias reflects heartbeat only now.
+        assert st["task_alive"] is True
     finally:
         await mod.stop(fake_db)
 
@@ -102,9 +112,9 @@ async def test_start_is_idempotent(fake_db):
     """Calling start() twice must not spawn duplicate tasks."""
     import services.mc_sidecar as mod
     await mod.start(fake_db)
-    t1 = (mod._heartbeat_task, mod._contrib_task, mod._watchdog_task)
+    t1 = (mod._heartbeat_task, mod._watchdog_task)
     await mod.start(fake_db)
-    t2 = (mod._heartbeat_task, mod._contrib_task, mod._watchdog_task)
+    t2 = (mod._heartbeat_task, mod._watchdog_task)
     try:
         # Same task objects → no double-spawn.
         assert t1 == t2
@@ -118,9 +128,10 @@ async def test_stop_cancels_all_tasks(fake_db):
     await mod.start(fake_db)
     st = await mod.stop(fake_db)
     assert st["heartbeat_task_alive"] is False
-    assert st["contribution_task_alive"] is False
     assert st["watchdog_task_alive"] is False
     assert st["task_alive"] is False
+    # contribution_task_alive remains False (it's a constant now).
+    assert st["contribution_task_alive"] is False
 
 
 @pytest.mark.asyncio
@@ -130,6 +141,35 @@ async def test_stop_without_start_is_idempotent(fake_db):
     st = await mod.stop(fake_db)
     assert st["heartbeat_task_alive"] is False
     assert st["task_alive"] is False
+
+
+# ── doctrine: contribution loop is gone ────────────────────────────────
+
+
+def test_contribution_loop_function_is_removed():
+    """The deleted function MUST stay deleted — the supervisor
+    sidecar is now the canonical contribution producer. If a
+    future refactor accidentally re-adds it the inbox-drain race
+    returns."""
+    import services.mc_sidecar as mod
+    assert not hasattr(mod, "_contribution_loop"), (
+        "mc_sidecar._contribution_loop was deleted on 2026-02-23 — "
+        "the supervisor sidecar is the canonical producer. If you "
+        "need to re-add it, also re-add the inbox-drain race "
+        "mitigation."
+    )
+    # The task global is also gone.
+    assert not hasattr(mod, "_contrib_task")
+
+
+def test_module_docstring_pins_doctrine_decision():
+    """Future maintainers must be able to find the 2026-02-23
+    decision in the module docstring."""
+    import services.mc_sidecar as mod
+    doc = (mod.__doc__ or "").lower()
+    assert "2026-02-23" in doc
+    assert "supervisor" in doc
+    assert "canonical" in doc
 
 
 # ── status payload shape ───────────────────────────────────────────────
@@ -142,12 +182,14 @@ async def test_status_includes_required_keys(fake_db):
     try:
         st = await mod.status(fake_db)
         for k in (
-            "contribution_task_alive", "heartbeat_task_alive",
-            "watchdog_task_alive", "task_alive",
+            "contribution_task_alive", "contribution_owned_by",
+            "heartbeat_task_alive", "watchdog_task_alive", "task_alive",
             "intervals", "watchdog", "identity",
         ):
             assert k in st, f"status missing required key: {k}"
-        # Intervals echo the env-driven config.
+        # Intervals echo the env-driven config. ``contribution_s``
+        # is retained for back-compat with REDEYE-shaped parsers
+        # even though no contribution loop exists in this module.
         assert st["intervals"]["heartbeat_s"] >= 1
         assert st["intervals"]["contribution_s"] >= 1
         # Watchdog block is fully populated.
@@ -183,41 +225,40 @@ async def test_status_identity_does_not_leak_runtime_token(fake_db):
 @pytest.mark.asyncio
 async def test_watchdog_disabled_does_not_spawn_task(fake_db, monkeypatch):
     """``ALPHA_WATCHDOG_ENABLED=false`` must keep the watchdog task
-    dormant while still spawning heartbeat + contribution."""
+    dormant while still spawning heartbeat."""
     import services.mc_sidecar as mod
 
     monkeypatch.setattr(mod, "WATCHDOG_ENABLED", False)
     await mod.start(fake_db)
     try:
         assert mod._heartbeat_task is not None
-        assert mod._contrib_task is not None
         assert mod._watchdog_task is None
         st = await mod.status(fake_db)
         assert st["watchdog_task_alive"] is False
         assert st["heartbeat_task_alive"] is True
-        # Legacy alias should reflect the live transport tasks.
+        # Legacy alias should reflect the live heartbeat task.
         assert st["task_alive"] is True
     finally:
         await mod.stop(fake_db)
 
 
-# ── heartbeat survives a hung contribution (the 2026-05-14 invariant) ──
+# ── heartbeat independence (2026-05-14 silent-freeze invariant) ────────
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_task_independent_of_contribution(fake_db, monkeypatch):
-    """If we cancel ONLY the contribution task by hand, the heartbeat
-    task must keep running. This guards the single-loop SPOF that
-    caused the silent freeze in the first place."""
+async def test_heartbeat_task_independent_of_watchdog(fake_db):
+    """If we cancel ONLY the watchdog task by hand, the heartbeat
+    task must keep running. This guards the single-loop SPOF
+    that caused the silent freeze in the first place."""
     import services.mc_sidecar as mod
     await mod.start(fake_db)
     try:
-        # Cancel contribution out of band.
-        mod._contrib_task.cancel()
-        # Give the loop a tick to actually stop.
+        # Cancel watchdog out of band.
+        if mod._watchdog_task is not None:
+            mod._watchdog_task.cancel()
         await asyncio.sleep(0.05)
         st = await mod.status(fake_db)
-        assert st["contribution_task_alive"] is False
+        assert st["watchdog_task_alive"] is False
         assert st["heartbeat_task_alive"] is True
         assert st["task_alive"] is True
     finally:
@@ -266,3 +307,4 @@ def test_brain_identity_redacts_runtime_token(monkeypatch):
     ident = mc_sovereign.brain_identity()
     # Hard guarantee: the token's value never appears in the identity dict.
     assert "super-secret-token" not in str(ident)
+

@@ -1,9 +1,27 @@
 """MC sidecar — in-process asyncio start / stop / status for Alpha.
 
 This is the in-process counterpart to ``backend/sovereign/sidecar.py``
-(the supervisor-managed external script). Operating both at the same
-time would double-POST to MC, so the deployment picks one — see
-``ALPHA_INPROCESS_SIDECAR`` below.
+(the supervisor-managed external script). The in-process variant
+historically also published contribution payloads, but since the
+2026-02-23 alignment with MC's empty-payload 422 enforcement the
+**contribution loop has been removed**. The supervisor-run
+``sovereign.sidecar`` is now the **canonical** contribution
+producer — single source of truth, deterministic outcome-inbox
+drain, real LocalState-backed content, doctrinal empty-payload
+refusal.
+
+What's left in-process:
+  * Heartbeat loop  — publishes liveness to ``/api/heartbeat-ping``.
+  * Watchdog loop   — SIGKILLs the process group when the liveness
+                      file goes stale (GIL-stall / native-extension
+                      freeze defence the supervisor watchdog can't
+                      observe).
+
+The heartbeat in-process is **redundant on purpose**: the supervisor
+sidecar publishes its own heartbeat too. Two independent paths means
+MC still sees liveness even if one path dies — that's the right
+belt-and-suspenders surface, at the heartbeat layer where it matters,
+not at the contribution layer where racing causes data corruption.
 
 Why an in-process variant exists
 --------------------------------
@@ -22,14 +40,9 @@ Coexistence with the external sidecar
 -------------------------------------
 By default ``ALPHA_INPROCESS_SIDECAR`` is **off**. The external
 supervisor sidecar (``/etc/supervisor/conf.d/alpha-sidecar.conf``)
-keeps running as it does today. To switch to in-process:
-
-    1. ``sudo supervisorctl stop alpha-sidecar alpha-liveness-watcher``
-       (so we don't double-POST).
-    2. Set ``ALPHA_INPROCESS_SIDECAR=1`` in ``backend/.env``.
-    3. Restart the backend. The lifespan hook will spawn the three
-       loops here automatically.
-    4. ``GET /api/admin/mc-sidecar/status`` confirms `running`.
+keeps running as it does today. To switch to in-process heartbeat /
+watchdog as well, set ``ALPHA_INPROCESS_SIDECAR=1``. Either way the
+supervisor sidecar remains the contribution producer.
 
 Env vars (operator-facing surface)
 ----------------------------------
@@ -39,7 +52,6 @@ Var                                  Default              Effect
 ``ALPHA_BRAIN_NAME``                 ``alpha``            Liveness file: ``/tmp/<n>_alive``
 ``ALPHA_LIVENESS_FILE``              ``/tmp/alpha_alive`` Explicit path override
 ``ALPHA_HEARTBEAT_INTERVAL_S``       ``30``               Heartbeat loop cadence
-``ALPHA_CONTRIBUTION_INTERVAL_S``    ``60``               Contribution loop cadence
 ``ALPHA_WATCHDOG_ENABLED``           ``true``             Disable for local dev
 ``ALPHA_WATCHDOG_INTERVAL_S``        ``30``               Watchdog check cadence
 ``ALPHA_WATCHDOG_STALE_S``           ``120``              SIGKILL threshold (seconds)
@@ -49,11 +61,11 @@ Var                                  Default              Effect
 Doctrine pinned in code (not configurable on purpose)
 -----------------------------------------------------
 * Heartbeat ALWAYS runs on its own task and its own httpx client —
-  a hung contribution can never starve heartbeat (the 2026-05-14
+  a hung anything can never starve it (the 2026-05-14
   silent-freeze RCA).
-* Contribution body uses the doctrine receipt assembly elsewhere
-  (``services.confidence_weighting`` etc.) — this module only owns
-  the *transport* loops.
+* Contribution is owned by ``sovereign.sidecar`` (supervisor) — the
+  in-process module MUST NOT post contributions. Doing so would
+  re-introduce the inbox-drain race condition deleted on 2026-02-23.
 """
 from __future__ import annotations
 
@@ -93,6 +105,10 @@ def _env_bool(name: str, default: bool) -> bool:
 
 BRAIN_NAME = os.environ.get("ALPHA_BRAIN_NAME") or mc_sovereign.DEFAULT_BRAIN_NAME
 HEARTBEAT_INTERVAL_S = _env_int("ALPHA_HEARTBEAT_INTERVAL_S", 30)
+# ``CONTRIBUTION_INTERVAL_S`` is intentionally retained for any
+# operator dashboard / REDEYE-shaped status parser still reading it,
+# but the contribution loop itself was deleted on 2026-02-23 — see
+# the module docstring. The supervisor sidecar owns contributions.
 CONTRIBUTION_INTERVAL_S = _env_int("ALPHA_CONTRIBUTION_INTERVAL_S", 60)
 WATCHDOG_ENABLED = _env_bool("ALPHA_WATCHDOG_ENABLED", True)
 WATCHDOG_INTERVAL_S = _env_int("ALPHA_WATCHDOG_INTERVAL_S", 30)
@@ -109,7 +125,6 @@ _state_doc_id = f"alpha:{BRAIN_NAME}"
 # ── task globals ───────────────────────────────────────────────────────
 
 
-_contrib_task: asyncio.Task | None = None
 _heartbeat_task: asyncio.Task | None = None
 _watchdog_task: asyncio.Task | None = None
 _task_lock = asyncio.Lock()
@@ -227,57 +242,6 @@ async def _heartbeat_loop(db) -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL_S)
 
 
-async def _contribution_loop(db) -> None:
-    """Council contribution publisher.
-
-    Posts a minimal contribution body (mode + a placeholder weights
-    bag) so MC keeps Alpha's seat populated. The richer receipt
-    assembly lives in the hypothesis path; this is the
-    keep-alive-the-seat heartbeat for council membership.
-    """
-    base = _mc_base()
-    token = _runtime_token()
-    if not base:
-        logger.warning("[mc_sidecar] contribution loop: MC_BASE_URL unset, idling")
-        while True:
-            await asyncio.sleep(CONTRIBUTION_INTERVAL_S)
-
-    url = f"{base}/api/runtime-discussion/sovereign/contribution?runtime={BRAIN_NAME}"
-    headers = {"X-Runtime-Token": token, "Content-Type": "application/json"}
-    logger.info(
-        "[mc_sidecar] contribution loop starting: every %ds", CONTRIBUTION_INTERVAL_S,
-    )
-    while True:
-        try:
-            body = {
-                "mode": "DTD",
-                "weights": {"macd": 0.65, "rsi": -0.25, "trend": 0.85},
-                "learning_rate": 0.06,
-                "notes": "in-process sidecar contribution",
-                "training_signal": False,
-            }
-            async with _async_client() as client:
-                r = await client.post(url, json=body, headers=headers)
-            if r.status_code >= 400:
-                logger.warning(
-                    "[mc_sidecar] contribution HTTP %d: %s",
-                    r.status_code, (r.text or "")[:120],
-                )
-                await _set_state(db, last_error=f"contribution_http_{r.status_code}",
-                                 last_error_at=_now_iso())
-            else:
-                await _set_state(db, last_contribution_at=_now_iso(),
-                                 last_error=None)
-        except asyncio.CancelledError:
-            logger.info("[mc_sidecar] contribution loop cancelled")
-            raise
-        except httpx.HTTPError as exc:
-            logger.warning("[mc_sidecar] contribution failed: %s", exc)
-            await _set_state(db, last_error=f"contribution_{type(exc).__name__}",
-                             last_error_at=_now_iso())
-        await asyncio.sleep(CONTRIBUTION_INTERVAL_S)
-
-
 async def _watchdog_loop(db) -> None:
     """SIGKILL the process group when the liveness file goes stale.
 
@@ -322,14 +286,16 @@ async def _watchdog_loop(db) -> None:
 
 
 async def start(db) -> dict[str, Any]:
-    """Start contribution + heartbeat + watchdog loops. Idempotent.
+    """Start heartbeat + watchdog loops. Idempotent.
+
+    Contribution loop is intentionally NOT spawned — the supervisor
+    sidecar (``sovereign.sidecar``) is the canonical contribution
+    producer since 2026-02-23. See module docstring.
 
     Mirrors REDEYE's start() — same shape, same return value.
     """
-    global _contrib_task, _heartbeat_task, _watchdog_task
+    global _heartbeat_task, _watchdog_task
     async with _task_lock:
-        if _contrib_task is None or _contrib_task.done():
-            _contrib_task = asyncio.create_task(_contribution_loop(db))
         if _heartbeat_task is None or _heartbeat_task.done():
             _heartbeat_task = asyncio.create_task(_heartbeat_loop(db))
         if WATCHDOG_ENABLED and (_watchdog_task is None or _watchdog_task.done()):
@@ -341,16 +307,16 @@ async def start(db) -> dict[str, Any]:
 
 async def stop(db) -> dict[str, Any]:
     """Cancel all loops. Idempotent."""
-    global _contrib_task, _heartbeat_task, _watchdog_task
+    global _heartbeat_task, _watchdog_task
     async with _task_lock:
-        for task_ref in (_contrib_task, _heartbeat_task, _watchdog_task):
+        for task_ref in (_heartbeat_task, _watchdog_task):
             if task_ref is not None and not task_ref.done():
                 task_ref.cancel()
                 try:
                     await task_ref
                 except (asyncio.CancelledError, Exception):
                     pass
-        _contrib_task = _heartbeat_task = _watchdog_task = None
+        _heartbeat_task = _watchdog_task = None
         await _set_state(db, status="stopped")
     return await status(db)
 
@@ -362,9 +328,13 @@ async def status(db) -> dict[str, Any]:
     ) or {}
     return {
         **doc,
-        "contribution_task_alive": bool(
-            _contrib_task and not _contrib_task.done()
-        ),
+        # Doctrine 2026-02-23: contribution is owned by the supervisor
+        # sidecar. We surface ``contribution_task_alive=False`` as a
+        # constant so legacy REDEYE-shaped MC dashboards keep
+        # parsing without erroring; the supervisor's contribution
+        # status is read via /api/admin/sovereign-status instead.
+        "contribution_task_alive": False,
+        "contribution_owned_by": "supervisor:alpha-sidecar",
         "heartbeat_task_alive": bool(
             _heartbeat_task and not _heartbeat_task.done()
         ),
@@ -373,9 +343,9 @@ async def status(db) -> dict[str, Any]:
         ),
         # Legacy alias — REDEYE's status payload exposes ``task_alive``
         # for older MC dashboards. Keep it so MC's parser stays simple.
+        # Reflects heartbeat liveness only now (contribution moved out).
         "task_alive": bool(
-            (_contrib_task and not _contrib_task.done())
-            or (_heartbeat_task and not _heartbeat_task.done())
+            _heartbeat_task and not _heartbeat_task.done()
         ),
         "intervals": {
             "heartbeat_s": HEARTBEAT_INTERVAL_S,

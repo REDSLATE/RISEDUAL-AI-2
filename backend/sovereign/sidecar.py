@@ -35,6 +35,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -50,6 +51,17 @@ from wild_adaptive_core_v2 import (  # noqa: E402
     run_adaptive_core,
     update_weights,
 )
+
+# Wire-level identity stamp for the operator-side audit log. Per the
+# MC operator's ask on 2026-02-23: every contribution should carry
+# enough lineage in ``notes`` that an operator skimming the audit
+# log knows the row came from the supervisor sidecar (vs. the now-
+# deleted in-process ``mc_sidecar._contribution_loop``). The
+# version pins to the brain release; ``transport`` discriminates the
+# producer; ``contribution_id`` is a UUID4 per call so duplicate
+# rows can be triaged without grepping by content fingerprint.
+SIDECAR_VERSION = os.environ.get("ALPHA_BRAIN_VERSION") or "1.6"
+SIDECAR_TRANSPORT_TAG = "supervisor"
 
 
 logging.basicConfig(
@@ -276,6 +288,12 @@ class SovereignSidecar:
                 len(self.state._outcomes),
             )
         else:
+            # Lineage stamp per MC operator's 2026-02-23 ask — the
+            # supervisor sidecar's contributions should never be
+            # mistaken for the deleted in-process loop's noise. The
+            # UUID is per-call so two consecutive rows are
+            # operator-distinguishable.
+            contribution_id = uuid.uuid4().hex[:12]
             try:
                 self.client.post_contribution(
                     mode=self.state.mode,
@@ -288,7 +306,12 @@ class SovereignSidecar:
                     confidence_delta=0.0,
                     delta_reason="",
                     training_signal=False,
-                    notes=f"tick @ {time.time():.0f}",
+                    notes=(
+                        f"sidecar v{SIDECAR_VERSION} · "
+                        f"{SIDECAR_TRANSPORT_TAG} · "
+                        f"contribution_id={contribution_id} · "
+                        f"tick @ {time.time():.0f}"
+                    ),
                 )
                 contributed = True
             except MCClientError as e:
