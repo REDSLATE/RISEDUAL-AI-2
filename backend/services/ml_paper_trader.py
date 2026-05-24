@@ -556,6 +556,21 @@ async def maybe_paper_trade(
         # silent zero-size Kelly drops were poisoning Patent-J recall
         # (HOLD-by-conviction vs HOLD-by-Kelly-throttle look identical
         # downstream without this telemetry).
+        #
+        # 2026-02-23 BUG FIX: ``direction_val`` was referenced here
+        # before it was assigned (the original assignment lived at
+        # the post-Kelly success path, line ~797). Every Kelly-zero
+        # tick was raising ``UnboundLocalError`` and the
+        # ``try/except`` block swallowed it as "non-fatal" — meaning
+        # honest-hold receipts AND observation_fill rows have been
+        # silently failing in prod since 2026-05-22. Computing it up
+        # front here closes that hole.
+        # The legacy check used the wrong literal (compared against
+        # ``"long"`` / ``"short"``) — ``signal.direction.value``
+        # returns ``up`` / ``down``, so even if the variable HAD
+        # been defined, every emit would have stamped SELL.
+        direction_val = str(signal.direction.value)
+        _is_long = direction_val == "up"
         try:
             import os as _os
             from sovereign.intent_bridge import emit_intent_from_consensus
@@ -567,9 +582,9 @@ async def maybe_paper_trade(
             )
             await emit_intent_from_consensus(mc, {
                 "symbol": ticker.upper(),
-                "raw_action": "BUY" if direction_val == "long" else "SELL",
+                "raw_action": "BUY" if _is_long else "SELL",
                 "market_decision": "HOLD",
-                "display_action": "BUY" if direction_val == "long" else "SELL",
+                "display_action": "BUY" if _is_long else "SELL",
                 "final_confidence": float(directional_conf) * 100,
                 "execution_decision": "OBSERVE_ONLY",
                 "would_have_traded_without_gates": False,
@@ -612,6 +627,17 @@ async def maybe_paper_trade(
         try:
             import uuid as _uuid
             obs_trade_id = str(_uuid.uuid4())
+            # 2026-02-23: the entry-price field used to reference a
+            # name that was never assigned anywhere in this function
+            # — pure NameError swallowed by the catch. Resolve to the
+            # snapshot's ``close_price`` (the value used for sizing
+            # elsewhere) with a 0.0 fallback so the row still writes
+            # if the snapshot is missing it.
+            _obs_entry_price = float(getattr(snapshot, "close_price", 0.0) or 0.0)
+            # ``sovereign_decision_id`` is only assigned inside the
+            # sovereign-shadow branch when it succeeds. Default to
+            # None when that branch didn't run / failed.
+            _obs_sov_id = locals().get("sovereign_decision_id")
             obs_doc = {
                 "trade_id": obs_trade_id,
                 "ticker": ticker,
@@ -621,7 +647,7 @@ async def maybe_paper_trade(
                 "prediction_id": getattr(signal, "prediction_id", None),
                 "position_usd": 0.0,
                 "shares": 0.0,
-                "entry_price": price_at_signal,
+                "entry_price": _obs_entry_price,
                 "opened_at": datetime.now(timezone.utc),
                 "status": "observation_open",
                 "receipt_type": "observation_fill",
@@ -631,7 +657,7 @@ async def maybe_paper_trade(
                 "hold_reason": "kelly_zero_size",
                 "regime": regime,
                 "source_layer": "ml_paper_trader",
-                "sovereign_decision_id": sovereign_decision_id,
+                "sovereign_decision_id": _obs_sov_id,
                 "failure_penalty_meta": failure_penalty_meta,
             }
             await db["paper_trades"].insert_one(obs_doc)

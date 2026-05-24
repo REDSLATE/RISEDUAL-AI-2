@@ -5,6 +5,54 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🐛 Three Silent Prod Bugs Found via Skipped-Test Audit
+
+Investigating the lone `1 skipped` in the test suite surfaced
+three real production bugs in `services/ml_paper_trader.py`'s
+Kelly-zero branch (added 2026-05-22) — all hidden by the broad
+``try/except`` meant to protect against MC outages:
+
+1. **`direction_val` UnboundLocalError** — used at line 570 etc.
+   but only assigned post-Kelly (line 797). Every Kelly-zero
+   tick raised NameError silently, **dropping every honest-hold
+   receipt to MC since 2026-05-22**.
+2. **Wrong literal comparison** — `direction_val == "long"`
+   would never be true (the field carries `"up"`/`"down"`). Had
+   the NameError NOT fired first, every emit would have stamped
+   `SELL` regardless of true brain direction.
+3. **`price_at_signal` was never assigned anywhere** — pure
+   NameError on the observation_fill insert. **Every Kelly-zero
+   tick was failing to write its observation_fill row**, which
+   means the Tier 3 observation ladder's `days_active` /
+   `total_trades` counters HAVE NOT BEEN ticking in prod since
+   the rung shipped.
+
+**Fixed:**
+- Compute `direction_val` + `_is_long` at the top of the Kelly-zero
+  branch.
+- Replace `price_at_signal` with `snapshot.close_price` (with
+  safe fallback).
+- Default `sovereign_decision_id` via `locals().get(...)` when
+  the upstream sovereign-shadow branch is skipped.
+
+**Mock-drifted test resurrected:**
+- `test_kelly_zero_calls_emit_intent_from_consensus` was passing
+  args in the legacy `(db, ticker, signal, snapshot, regime, ...)`
+  order — but the current signature is
+  `(ticker, signal, snapshot, regime, db, ...)`. Fixed call
+  order; added regime token correction (`trending_up`); stubbed
+  `get_dynamic_confidence_threshold` so the realistic `0.65`
+  confidence reaches the Kelly check; replaced defensive
+  `pytest.skip` with hard `pytest.fail` so future drift surfaces
+  loudly.
+- Added 4 new regression pins that catch each NameError /
+  literal-comparison bug by static authority — they cannot
+  silently come back.
+
+**Test suite:** **3,822 passed / 0 skipped / 0 failures** (up
+from 3,817 with 1 skipped — and the skipped one was masking the
+above prod bugs).
+
 ### 🛡️ MC Empty-Payload Alignment — `_contribution_loop` Deleted
 
 MC shipped a 422-on-empty enforcement (substantive-rule: any of

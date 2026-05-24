@@ -86,6 +86,99 @@ def test_honest_hold_emit_is_wrapped_in_try_except(src: str):
     assert "honest-hold emit failed" in branch.lower()
 
 
+def test_kelly_zero_branch_defines_direction_val_locally(src: str):
+    """2026-02-23 regression pin: ``direction_val`` was referenced
+    in the Kelly-zero branch BEFORE it was assigned (the original
+    assignment lived at the post-Kelly success path). Every
+    Kelly-zero tick was raising ``UnboundLocalError``, silently
+    swallowed by the broad ``except`` block — meaning every
+    honest-hold receipt AND every observation_fill row was
+    DROPPED in prod. Pin the local definition so a future
+    refactor can't accidentally remove it again."""
+    branch_start = src.find("if position_usd <= 0.0:")
+    branch_end = src.find("return None", branch_start)
+    branch = src[branch_start:branch_end]
+    # The branch must assign direction_val locally, BEFORE any use.
+    first_assign = branch.find("direction_val = str(signal.direction.value)")
+    assert first_assign > 0, (
+        "Kelly-zero branch MUST assign ``direction_val`` locally to "
+        "guard against UnboundLocalError (see 2026-02-23 RCA)."
+    )
+    # All later usages must occur AFTER the assignment.
+    for marker in ('"direction": direction_val',
+                   "direction_val.upper()"):
+        pos = branch.find(marker)
+        if pos > 0:
+            assert pos > first_assign, (
+                f"Kelly-zero branch reference {marker!r} appears "
+                f"BEFORE direction_val is assigned — would re-introduce "
+                f"the silent UnboundLocalError"
+            )
+
+
+def test_kelly_zero_branch_uses_correct_up_down_check(src: str):
+    """2026-02-23 regression pin: the original BUY/SELL logic used
+    ``direction_val == "long"`` — but ``signal.direction.value``
+    returns ``"up"``/``"down"``, NOT ``"long"``/``"short"``. So
+    every honest-hold emit would have stamped ``SELL`` regardless
+    of true brain direction (had the UnboundLocalError NOT fired
+    first to mask it). Pin the corrected ``"up"`` check."""
+    branch_start = src.find("if position_usd <= 0.0:")
+    branch_end = src.find("return None", branch_start)
+    branch = src[branch_start:branch_end]
+    # The wrong literal must NOT be present.
+    assert 'direction_val == "long"' not in branch, (
+        "Kelly-zero branch reverted to the broken ``\"long\"`` check "
+        "— signal.direction.value returns ``\"up\"``/``\"down\"``."
+    )
+    # The corrected check (or an equivalent ``_is_long`` derived
+    # variable) must be present.
+    assert (
+        'direction_val == "up"' in branch
+        or '_is_long' in branch
+    ), "Kelly-zero branch missing the up/down direction discriminator"
+
+
+def test_kelly_zero_branch_does_not_reference_unassigned_globals(src: str):
+    """2026-02-23 regression pin: ``price_at_signal`` was NEVER
+    assigned anywhere in ``maybe_paper_trade`` but the
+    observation_fill ``entry_price`` field referenced it. NameError
+    on every Kelly-zero tick. Pin the corrected pattern (snapshot
+    fallback)."""
+    branch_start = src.find("if position_usd <= 0.0:")
+    branch_end = src.find("return None", branch_start)
+    branch = src[branch_start:branch_end]
+    # ``price_at_signal`` must NOT be referenced as a bare name.
+    # Wrap-style usages (``getattr(snapshot, ...``) are fine; the
+    # raw bareword that the original bug carried is what we ban.
+    assert "price_at_signal" not in branch, (
+        "Kelly-zero branch still references the never-assigned "
+        "``price_at_signal`` — use ``snapshot.close_price`` instead."
+    )
+    # The corrected entry_price source must be present.
+    assert 'getattr(snapshot, "close_price"' in branch, (
+        "Kelly-zero observation_fill must use snapshot.close_price "
+        "for entry_price (the 2026-02-23 fix)."
+    )
+
+
+def test_kelly_zero_branch_defends_sovereign_decision_id_unbound(src: str):
+    """2026-02-23 regression pin: ``sovereign_decision_id`` is only
+    assigned inside the (try-guarded) sovereign-shadow branch. If
+    that branch is skipped or fails, the observation_fill write
+    would raise UnboundLocalError. Pin the ``locals().get(...)``
+    defensive read."""
+    branch_start = src.find("if position_usd <= 0.0:")
+    branch_end = src.find("return None", branch_start)
+    branch = src[branch_start:branch_end]
+    # The defensive read must be present.
+    assert 'locals().get("sovereign_decision_id")' in branch, (
+        "Kelly-zero branch must read sovereign_decision_id via "
+        "``locals().get(...)`` so an upstream shadow skip doesn't "
+        "raise UnboundLocalError."
+    )
+
+
 def test_kelly_zero_branch_still_returns_none(src: str):
     """The honest-hold emit MUST precede ``return None``.
 
@@ -151,9 +244,29 @@ async def test_kelly_zero_calls_emit_intent_from_consensus(monkeypatch):
         # needs to reach the Kelly branch.
         signal = MagicMock()
         signal.direction = MagicMock(value="up")
+        # 0.65 is the realistic Kelly-zero scenario — low conviction
+        # but still above the static ``_MIN_PAPER_CONFIDENCE=0.55``
+        # floor. The dynamic confidence gate
+        # (``get_dynamic_confidence_threshold``) is stubbed below so
+        # the in-memory drawdown / loss-streak escalators don't
+        # raise the bar above 0.65 during the test run.
         signal.confidence = 0.65
         signal.prediction_id = "pred-test-001"
         signal.feature_importance = {}
+
+        # Stub the dynamic confidence gate to a permissive threshold
+        # so signal.confidence=0.65 reaches the Kelly check.
+        from services import confidence_gate as _cg
+        _ConfThresh = type("_ConfThresh", (), {})
+        _stub = _ConfThresh()
+        _stub.threshold = 0.50
+        _stub.delta = 0.0
+        _stub.reasons = []
+        monkeypatch.setattr(
+            "services.confidence_gate.get_dynamic_confidence_threshold",
+            AsyncMock(return_value=_stub),
+            raising=False,
+        )
 
         snapshot = MagicMock()
         for attr in ("rsi", "momentum_5b", "atr_pct", "volume_zscore",
@@ -202,13 +315,34 @@ async def test_kelly_zero_calls_emit_intent_from_consensus(monkeypatch):
 
         try:
             result = await mod.maybe_paper_trade(
-                _DB(), "AAPL", signal, snapshot, "trend_up", [],
+                # Production signature (post-refactor):
+                #   maybe_paper_trade(ticker, signal, snapshot, regime, db, http_client=None)
+                # The earlier test fixture passed args in the old order
+                # (db-first) which made the function read the str
+                # ticker AS the signal and threw
+                # ``'str' object has no attribute 'direction'`` before
+                # even reaching the Kelly branch — triggering the
+                # defensive ``pytest.skip``. Pinning the call order
+                # against the actual signature keeps this behavioural
+                # test honest (the 2026-02-23 mock-drift fix).
+                #
+                # ``regime`` must be one of ``_TRADEABLE_REGIMES`` —
+                # ``"trend_up"`` (legacy) is NOT in the set; the
+                # canonical token is ``"trending_up"``. Using the
+                # wrong token short-circuits at line 398 before Kelly
+                # runs.
+                "AAPL", signal, snapshot, "trending_up", _DB(),
             )
         except Exception as exc:  # noqa: BLE001
-            # If we land in a different branch's exception before
-            # reaching kelly, the test is still useful as a static
-            # check — but let's surface it.
-            pytest.skip(f"maybe_paper_trade aborted before kelly: {exc}")
+            # If maybe_paper_trade evolves AGAIN and we no longer
+            # reach Kelly, fail loudly rather than skip silently —
+            # the static authority tests above still pin the
+            # doctrine fields, but a hard fail here surfaces the
+            # mock drift immediately instead of letting it rot
+            # under a green ``skipped`` badge.
+            pytest.fail(
+                f"maybe_paper_trade aborted before kelly (mock drift): {exc!r}"
+            )
 
         # On Kelly-zero, we must return None
         assert result is None
