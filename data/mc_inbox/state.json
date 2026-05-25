@@ -1,13 +1,88 @@
 {
-  "last_polled_at": "2026-05-25T12:26:32.107905+00:00",
-  "last_roles_at": "2026-05-25T12:19:45.287388+00:00",
+  "last_polled_at": "2026-05-25T14:45:27.252870+00:00",
+  "last_roles_at": "2026-05-25T14:18:07.834928+00:00",
   "last_scorecard_at": "2026-05-25T12:19:44.565654+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ff2e854f-158c-433a-887d-a3f5487f41c4",
+  "last_seen_opinion_id": "fef724c3-8dd6-4cc5-a285-da1c2808fe85",
   "roles_snapshot": {
-    "count": 0,
-    "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
-    "items": []
+    "count": 4,
+    "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
+    "items": [
+      {
+        "allowed_actions": [
+          "enter_long",
+          "enter_short",
+          "exit",
+          "scale_in",
+          "hold",
+          "phase6_proposal"
+        ],
+        "authority_state": "co_trader",
+        "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
+        "kind": "runtime",
+        "last_seen": "2026-05-25T14:17:57.780283+00:00",
+        "may_execute": false,
+        "role": "trader",
+        "runtime": "alpha",
+        "tagline": "structured trader",
+        "title": "Alpha"
+      },
+      {
+        "allowed_actions": [
+          "shadow_proposal",
+          "counterfactual",
+          "veto",
+          "reduce",
+          "watch",
+          "executor_proposed"
+        ],
+        "authority_state": "challenger",
+        "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
+        "kind": "runtime",
+        "last_seen": "2026-05-25T14:17:32.250064+00:00",
+        "may_execute": false,
+        "role": "challenger",
+        "runtime": "camaro",
+        "tagline": "challenger / counterfactual",
+        "title": "Camaro"
+      },
+      {
+        "allowed_actions": [
+          "readiness_gate",
+          "calibration_gate",
+          "audit_verify",
+          "promotion_decision",
+          "authority_call"
+        ],
+        "authority_state": "governor",
+        "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
+        "kind": "runtime",
+        "last_seen": "2026-05-25T14:10:28.027418+00:00",
+        "may_execute": false,
+        "role": "governor",
+        "runtime": "chevelle",
+        "tagline": "memory + calibration",
+        "title": "Chevelle"
+      },
+      {
+        "allowed_actions": [
+          "post_opinion",
+          "read_opinions",
+          "read_roles_manifest",
+          "adversarial_advisory",
+          "stance_contrary"
+        ],
+        "authority_state": "advisor",
+        "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
+        "kind": "runtime",
+        "last_seen": "2026-05-25T14:17:53.751043+00:00",
+        "may_execute": false,
+        "role": "opponent",
+        "runtime": "redeye",
+        "tagline": "adversarial scout",
+        "title": "REDEYE"
+      }
+    ]
   },
   "scorecard_snapshot": {
     "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
@@ -17,11 +92,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 131672,
+      "camaro": 132843,
       "chevelle": 55993,
-      "redeye": 60738
+      "redeye": 63167
     },
-    "opinions_ingested": 256600,
+    "opinions_ingested": 260200,
     "opinions_quarantined": 0
   }
 }
