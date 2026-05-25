@@ -1,7 +1,7 @@
 {
-  "last_polled_at": "2026-05-25T11:33:41.747567+00:00",
-  "last_roles_at": "2026-05-25T11:34:43.741515+00:00",
-  "last_scorecard_at": "2026-05-25T11:28:31.212327+00:00",
+  "last_polled_at": "2026-05-25T11:46:04.220263+00:00",
+  "last_roles_at": "2026-05-25T11:44:44.384553+00:00",
+  "last_scorecard_at": "2026-05-25T11:39:42.881333+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "ff804431-acd2-4206-b939-353444a87d2a",
   "roles_snapshot": {
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T11:34:33.913836+00:00",
+        "last_seen": "2026-05-25T11:44:38.755845+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T11:33:54.940606+00:00",
+        "last_seen": "2026-05-25T11:43:56.923308+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T11:34:24.353017+00:00",
+        "last_seen": "2026-05-25T11:44:38.629799+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -75,7 +75,7 @@
         "authority_state": "advisor",
         "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T11:34:03.436155+00:00",
+        "last_seen": "2026-05-25T11:44:36.401857+00:00",
         "may_execute": false,
         "role": "opponent",
         "runtime": "redeye",
@@ -85,18 +85,35 @@
     ]
   },
   "scorecard_snapshot": {
-    "error": "Server error '502 Bad Gateway' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502",
+    "brier": null,
+    "calibration_bands": [],
+    "doctrine": "Descriptive only. Scorecards do not gate promotions. No brain may rewrite another brain's authority based on a scorecard.",
+    "lens": "longs",
+    "question_answered": "When am I good at longs?",
+    "role_stances": [
+      "long"
+    ],
     "runtime": "alpha",
-    "summary": {}
+    "summary": {
+      "ambiguous": 0,
+      "avg_confidence_on_losses": null,
+      "avg_confidence_on_wins": null,
+      "decisive": 0,
+      "hit_rate": null,
+      "losses": 0,
+      "no_event": 0,
+      "total_resolved": 0,
+      "wins": 0
+    }
   },
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 129634,
+      "camaro": 130242,
       "chevelle": 55993,
-      "redeye": 56976
+      "redeye": 57768
     },
-    "opinions_ingested": 250800,
+    "opinions_ingested": 252200,
     "opinions_quarantined": 0
   }
 }
