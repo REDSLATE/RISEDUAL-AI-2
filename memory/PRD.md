@@ -5,6 +5,71 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🎯 Alpaca Position Closer — Live Broker Exit Engine
+
+**Background:** Operator forensics (screenshot Feb-23) surfaced
+that brain-opened Alpaca positions (NVDA 90sh, AMZN 78sh,
+GOOGL 53sh, MSFT 50sh, META 1.3sh, plus SPY option spreads) had
+been accumulating for weeks because the brain had a BUY path
+(``ml_alpaca_broker._submit_market_order(side="buy")``) but
+**no matching close path**. The ``paper_trade_closer`` was
+marking the bookkeeping rows ``closed`` and computing PnL from
+quotes, but never telling Alpaca to actually sell. PDT cliff
+June 4 made this urgent.
+
+**Shipped:** ``services/alpaca_position_closer.py`` — a real
+exit engine that:
+1. Polls Alpaca's ``GET /v2/positions`` (broker = source of
+   truth; avoids the ``paper_trades`` drift documented in the
+   NVDA-23-vs-168 forensic).
+2. Resolves entry/peak/opened_at from the matching
+   ``live_orders`` row.
+3. Applies the **same** equity exit cascade as
+   ``tier3_paper_closer`` (SL 1% → TP off-default → trail
+   2%/50%-giveback → max-hold 36h) so paper + live grade
+   identically.
+4. For options, layers a hard close N days before expiry
+   (default 5, ``OPTIONS_PRE_EXPIRY_DAYS``) on top of the
+   standard envelope — assignment hygiene for the June-4 PDT
+   transition.
+5. Submits ``sell`` / ``buy_to_close`` / ``sell_to_close`` via
+   the existing ``_submit_market_order`` helper.
+6. Mirrors the SELL into ``paper_trades`` so the existing
+   outcome-bridge → Sovereign learning pipeline picks up the
+   live exit.
+
+**Safety rails:**
+- Master switch ``ALPACA_POSITION_CLOSER_ENABLED`` default
+  **OFF** so a routine backend restart can't surprise-fire.
+- Dry-run mode ``ALPACA_POSITION_CLOSER_DRY_RUN`` default
+  **ON** when enabled — logs decisions and writes mirror rows
+  with ``dry_run=True`` for operator audit before going hot.
+- Idempotency window (default 600s) — no double-fire while
+  Alpaca's position list catches up.
+- Per-position try/except — one bad symbol never poisons the
+  sweep.
+
+**Schedule:** every 5 minutes (matches ``position_reconciler``).
+Confirmed in startup log:
+``..., position reconciler (30m), alpaca position closer (5m), drift alert watcher (5m), ...``
+
+**Tests:** 14 new pinning master/dry-run switches, OCC option
+parsing, pre-expiry priority, equity-cascade fallback, anchor
+resolution, idempotency, per-position error isolation, and the
+mirror-row stamps.
+
+**Test suite: 3,842 passed / 0 skipped / 0 failures.**
+
+**Operator playbook for June-4 PDT window:**
+1. After redeploy, `alpaca position closer (5m)` will be live
+   in the scheduler but inert (master switch OFF).
+2. Set ``ALPACA_POSITION_CLOSER_ENABLED=true`` in prod env.
+   Dry-run still ON — audit the decision log for one trading
+   day.
+3. When tape looks right, set
+   ``ALPACA_POSITION_CLOSER_DRY_RUN=false``. Closer goes hot.
+4. Monitor: ``grep "alpaca-closer\|Alpaca position closer" /var/log/...``
+
 ### 🐛 Outcome-Label Math Fixed for Observation Rungs
 
 End-to-end smoke-testing the auto-resolver caught a fourth silent

@@ -921,7 +921,7 @@ async def _start_schedulers():
             _set_self_test_scheduler(scheduler)
         except Exception as e:
             logger.warning(f"Self-test scheduler wire failed: {e}")
-        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), tier3 paper closer (15m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
+        logger.info("Schedulers started: digest (6:00), watchlist (5:30), memory cleanup (2:00), nightly ML retrain (2:30), waitlist invite (9:00), smart orders (30s), grid bots (30s), signal dispatcher (5m), headlines (15m), predictions (10m), ML labeler (1h), FRED snapshot (7:00), 13F scan (8:00), referral hit rewards (9:00 daily), referral monthly rewards (1st @ 9:30), help search digest (Mon 7:00), USASpending warmup (3:30), self-test monitor (15m), conviction drift (8:00), tier3 digest (8:15), ML health digest (8:00), paper-trade closer (60m), tier3 paper closer (15m), crypto paper bot (15m, 24/7), crypto closer (15m, 12h hold), crypto adaptation detector (6h), position reconciler (30m), alpaca position closer (5m), drift alert watcher (5m), top-universe rebuild (Sun 00:00), top-universe warm post-close (21:05), top-universe warm pre-open (13:00), options-universe warm (5m, market-hours-gated), notification lifecycle sweep (4:00 + 16:00)")
     except Exception as e:
         logger.warning(f"Scheduler setup failed: {e}")
         # Pump the traceback to the Health panel — the outer
@@ -956,6 +956,34 @@ async def _run_position_reconciler():
         await run_position_reconciler(db)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Position reconciler tick failed: {e}")
+
+
+async def _run_alpaca_position_closer():
+    """Background (5m): live Alpaca position exit engine.
+
+    Closes brain-opened Alpaca positions when SL / TP / trail / max-
+    hold / pre-expiry trigger. Default OFF — master switch
+    ``ALPACA_POSITION_CLOSER_ENABLED``. Default dry-run when enabled
+    (``ALPACA_POSITION_CLOSER_DRY_RUN=true``) so the operator can
+    audit the exit tape against live positions before going hot.
+    """
+    try:
+        from services.alpaca_position_closer import (
+            close_due_alpaca_positions,
+        )
+        result = await close_due_alpaca_positions(db)
+        if result.get("closed") or result.get("errors"):
+            logger.info(
+                "Alpaca position closer: %s closed=%d errors=%d "
+                "evaluated=%d reasons=%s",
+                "DRY-RUN" if result.get("dry_run") else "LIVE",
+                result.get("closed", 0),
+                result.get("errors", 0),
+                result.get("evaluated", 0),
+                result.get("reasons", {}),
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Alpaca position closer tick failed: {e}")
 
 
 async def _run_drift_alert_watcher():

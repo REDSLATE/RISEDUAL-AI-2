@@ -110,6 +110,13 @@ def register_all(scheduler, db, server_mod):
     scheduler.add_job(s._run_wedge_alerter_tick, 'interval', minutes=5, id='wedge_alerter_tick', replace_existing=True)
     scheduler.add_job(s._run_ai_core_nightly, 'cron', hour=2, minute=45, id='ai_core_nightly', replace_existing=True)
     scheduler.add_job(s._run_position_reconciler, 'interval', minutes=30, id='position_reconciler', replace_existing=True)
+    # 2026-02-23: live Alpaca position closer — fills the gap that left
+    # AMZN/GOOGL/MSFT/NVDA accumulating in the broker because the brain
+    # had no Alpaca-side close path. Default OFF (master switch
+    # ``ALPACA_POSITION_CLOSER_ENABLED``); when enabled defaults to
+    # dry-run so the operator can sanity-check the exit tape before
+    # going live. 5-minute cadence matches position_reconciler.
+    scheduler.add_job(s._run_alpaca_position_closer, 'interval', minutes=5, id='alpaca_position_closer', replace_existing=True)
     scheduler.add_job(s._run_drift_alert_watcher, 'interval', minutes=5, id='drift_alert_watcher', replace_existing=True)
 
     # ETL framework jobs — one scheduler entry per registered subclass
