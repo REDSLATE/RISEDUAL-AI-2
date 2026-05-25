@@ -92,6 +92,91 @@ def test_compute_close_short_loser():
     assert outcome == "loss"
 
 
+# ── 2026-02-23 regression pins ──────────────────────────────────
+# Pre-2026-02-23: outcome was computed from ``pnl_usd``, which is
+# always 0 when shares=0 (the observation_fill case). Every
+# observation rung was being labelled "flat" regardless of the
+# brain's directional accuracy. These tests pin the pct-based
+# outcome rule so the Sovereign learning signal stays coherent
+# across all receipt types.
+
+
+def test_compute_close_observation_long_winner_zero_shares():
+    """shares=0 (observation_fill), long, +48% price move →
+    outcome MUST be "win" (was "flat" pre-fix)."""
+    from services.paper_trade_closer import _compute_close
+    pnl_usd, pnl_pct, outcome = _compute_close("up", 145.50, 215.33, 0.0)
+    assert pnl_usd == 0.0
+    assert round(pnl_pct, 4) == 0.4799
+    assert outcome == "win", (
+        "Observation rung with +48% pct must be 'win'. Pre-fix this "
+        "was 'flat' because outcome was derived from $ PnL (always "
+        "$0 when shares=0), silently killing the learning signal."
+    )
+
+
+def test_compute_close_observation_long_loser_zero_shares():
+    """shares=0, long, -3% price move → outcome MUST be 'loss'."""
+    from services.paper_trade_closer import _compute_close
+    pnl_usd, pnl_pct, outcome = _compute_close("up", 100.0, 97.0, 0.0)
+    assert pnl_usd == 0.0
+    assert pnl_pct == -0.03
+    assert outcome == "loss"
+
+
+def test_compute_close_observation_short_winner_zero_shares():
+    """shares=0, short, price falls -10% → outcome MUST be 'win'."""
+    from services.paper_trade_closer import _compute_close
+    pnl_usd, pnl_pct, outcome = _compute_close("down", 100.0, 90.0, 0.0)
+    assert pnl_usd == 0.0
+    assert pnl_pct == 0.1
+    assert outcome == "win"
+
+
+def test_compute_close_observation_within_threshold_is_flat():
+    """±0.5% threshold must hold — small moves both directions
+    grade as 'flat' so noise doesn't dominate the learning tape."""
+    from services.paper_trade_closer import _compute_close
+    # +0.3% — under the +0.5% win threshold
+    _, _, outcome_pos = _compute_close("up", 100.0, 100.3, 0.0)
+    assert outcome_pos == "flat"
+    # -0.3% — under the -0.5% loss threshold
+    _, _, outcome_neg = _compute_close("up", 100.0, 99.7, 0.0)
+    assert outcome_neg == "flat"
+    # Exactly +0.5% — boundary is exclusive (strict >), so "flat".
+    _, _, outcome_boundary = _compute_close("up", 100.0, 100.5, 0.0)
+    assert outcome_boundary == "flat"
+    # +0.6% crosses the boundary → "win"
+    _, _, outcome_just_over = _compute_close("up", 100.0, 100.6, 0.0)
+    assert outcome_just_over == "win"
+
+
+def test_compute_close_observation_threshold_matches_backfill_pairer():
+    """The observation threshold MUST match
+    ``backfill_outcome_pairer._WIN_THRESHOLD`` so the learning
+    signal is consistent across receipt types — real fills,
+    Alpaca backfill pairs, and observation rungs all grade on
+    the same scale. If these drift, MC's outcome stream will
+    have a hidden per-source-type bias."""
+    from services.paper_trade_closer import _OBSERVATION_PCT_THRESHOLD
+    from services.backfill_outcome_pairer import _WIN_THRESHOLD
+    assert _OBSERVATION_PCT_THRESHOLD == _WIN_THRESHOLD
+
+
+def test_compute_close_real_trade_outcome_still_from_pct_and_aligned():
+    """For real Kelly-sized trades (shares > 0), $ PnL and pct
+    PnL agree in sign — so the pct-based rule produces the same
+    win/loss as the old $-based rule. This pins that property so
+    the fix didn't quietly flip real-trade labelling."""
+    from services.paper_trade_closer import _compute_close
+    # +10% gain on $1000 → +$100 → "win" both ways.
+    _, _, out_long = _compute_close("up", 100.0, 110.0, 10.0)
+    assert out_long == "win"
+    # -10% on a short → loss both ways.
+    _, _, out_short = _compute_close("down", 100.0, 110.0, 10.0)
+    assert out_short == "loss"
+
+
 def test_close_due_skips_recent_trades(monkeypatch):
     """Trade younger than hold window stays open."""
     from services import paper_trade_closer

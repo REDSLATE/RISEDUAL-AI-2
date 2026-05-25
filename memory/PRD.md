@@ -5,6 +5,39 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🐛 Outcome-Label Math Fixed for Observation Rungs
+
+End-to-end smoke-testing the auto-resolver caught a fourth silent
+prod bug: `paper_trade_closer._compute_close` derived the
+``outcome`` label from $ PnL — which is always **$0** for
+``observation_fill`` rows (shares=0). That meant every
+observation rung, regardless of whether Alpha's directional bet
+was right, was labelled ``flat`` on the wire.
+
+**Impact:** Even after the NameError fixes from earlier this
+session land in prod, the Sovereign learning signal from
+observation rungs would have been **100% flat** — Tier 3
+counters would tick but MC's outcome stream would carry zero
+learning value.
+
+**Fixed:** outcome now derived from ``pnl_pct`` with the same
+±0.5% threshold the ``backfill_outcome_pairer`` uses. Sign
+agreement with $ PnL is preserved for real trades, so the rule
+is backward-compatible. 6 new regression pins (including a
+cross-module pin that the threshold MUST match
+``_WIN_THRESHOLD`` to prevent silent drift).
+
+**Live-verified end-to-end on preview:**
+- Seeded 48h-old observation_fill row (NVDA, +48% pct since
+  entry) → closer marked `observation_closed`, `outcome=win`,
+  inbox row carries `outcome_label="win"`, `outcome=1`, plus
+  all 3 provenance fields (`sovereign_decision_id`,
+  `prediction_id`, `source_signal`).
+- Mirror loss scenario (short observation, market up 48%) →
+  `outcome=loss`, `outcome=-1`. Bidirectional grading confirmed.
+
+**Test suite: 3,828 passed / 0 skipped / 0 failures.**
+
 ### 🐛 Three Silent Prod Bugs Found via Skipped-Test Audit
 
 Investigating the lone `1 skipped` in the test suite surfaced

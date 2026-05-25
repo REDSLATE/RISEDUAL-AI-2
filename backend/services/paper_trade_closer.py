@@ -47,6 +47,15 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_HOLD_HOURS = 24
 
+# Outcome-label threshold for observation_fill rows (shares=0).
+# Mirrors ``services.backfill_outcome_pairer._outcome_label`` so
+# every Sovereign outcome — whether from a real Kelly-sized trade,
+# an Alpaca backfill pair, or an observation_fill rung — uses the
+# same ±0.5% win/loss/flat cut-off. Keeping this in lock-step is
+# critical: a drift here makes MC's learning signal incoherent
+# across receipt types.
+_OBSERVATION_PCT_THRESHOLD = 0.005
+
 
 def _hold_hours() -> int:
     raw = os.environ.get("PAPER_TRADE_HOLD_HOURS")
@@ -72,14 +81,36 @@ def _is_disabled() -> bool:
 def _compute_close(direction: str, entry: float, current: float,
                    shares: float) -> tuple[float, float, str]:
     """Direction-aware P&L. ``direction='down'`` = short — gains
-    when price falls. Returns (pnl_usd, pnl_pct, outcome)."""
+    when price falls. Returns (pnl_usd, pnl_pct, outcome).
+
+    2026-02-23 fix: the outcome label is now computed from
+    ``pnl_pct``, not ``pnl_usd``. The previous logic
+    (``"win" if pnl_usd > 0 else …``) was correct for real Kelly-
+    sized trades but always returned ``"flat"`` for
+    ``observation_fill`` rows (where ``shares=0`` → ``pnl_usd=0``
+    by construction). That silently destroyed the Sovereign
+    learning signal for every observation rung — MC saw a flood
+    of "flat" outcomes regardless of whether Alpha's directional
+    bet was right.
+
+    The pct-based rule mirrors
+    ``backfill_outcome_pairer._outcome_label`` so the win/loss/flat
+    cut-off (±0.5%) is consistent across receipt types — real
+    fills, Alpaca backfill pairs, and observation rungs all grade
+    on the same scale.
+    """
     if direction == "down":
         pnl_usd = (entry - current) * shares
         pnl_pct = (entry - current) / entry if entry else 0.0
     else:
         pnl_usd = (current - entry) * shares
         pnl_pct = (current - entry) / entry if entry else 0.0
-    outcome = "win" if pnl_usd > 0 else ("loss" if pnl_usd < 0 else "flat")
+    if pnl_pct > _OBSERVATION_PCT_THRESHOLD:
+        outcome = "win"
+    elif pnl_pct < -_OBSERVATION_PCT_THRESHOLD:
+        outcome = "loss"
+    else:
+        outcome = "flat"
     return round(pnl_usd, 2), round(pnl_pct, 4), outcome
 
 
