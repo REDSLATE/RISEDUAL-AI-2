@@ -1,9 +1,9 @@
 {
-  "last_polled_at": "2026-05-25T07:27:19.387840+00:00",
-  "last_roles_at": "2026-05-25T07:26:05.536957+00:00",
-  "last_scorecard_at": "2026-05-25T07:00:59.539724+00:00",
+  "last_polled_at": "2026-05-25T09:31:17.792098+00:00",
+  "last_roles_at": "2026-05-25T08:01:06.683496+00:00",
+  "last_scorecard_at": "2026-05-25T08:01:05.338040+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ff7a93d3-4714-41ac-ba3b-3d93405fcd8f",
+  "last_seen_opinion_id": "ff804431-acd2-4206-b939-353444a87d2a",
   "roles_snapshot": {
     "count": 4,
     "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T07:26:05.427789+00:00",
+        "last_seen": "2026-05-25T08:00:56.445574+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -39,7 +39,7 @@
         "authority_state": "challenger",
         "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T07:25:10.444873+00:00",
+        "last_seen": "2026-05-25T07:57:15.227137+00:00",
         "may_execute": false,
         "role": "challenger",
         "runtime": "camaro",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T07:26:01.660637+00:00",
+        "last_seen": "2026-05-25T08:01:06.524506+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -75,7 +75,7 @@
         "authority_state": "advisor",
         "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-25T07:25:56.032652+00:00",
+        "last_seen": "2026-05-25T08:00:52.392639+00:00",
         "may_execute": false,
         "role": "opponent",
         "runtime": "redeye",
@@ -109,11 +109,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 123820,
+      "camaro": 126434,
       "chevelle": 55993,
-      "redeye": 50990
+      "redeye": 53776
     },
-    "opinions_ingested": 239000,
+    "opinions_ingested": 244400,
     "opinions_quarantined": 0
   }
 }
