@@ -540,6 +540,48 @@ async def maybe_paper_trade(
     except Exception as _sov_exc:  # noqa: BLE001
         log.debug("[ml_paper] sovereign shadow failed for %s: %s", ticker, _sov_exc)
 
+    # ── Memory Modulator (2026-02-23, P0-1/P0-4 applied) ───────────
+    # Symmetric across all 4 brains. Confidence-only modulation
+    # bounded [-0.25, +0.10]. Directional intents only. Quarantine-
+    # aware (Chevelle firewall). The receipt is stamped onto the
+    # intent payload below for MC's tripwire to clamp/reject if any
+    # downstream code path produces an out-of-bounds value.
+    memory_modulator_receipt: dict[str, Any] = {
+        "value": 0.0, "reason": "not_applicable",
+        "doctrine_bounds": [-0.25, 0.10],
+    }
+    try:
+        from shared.memory_modulator import (
+            apply_modulator_to_confidence,
+            compute_memory_modulator,
+        )
+        memory_modulator_receipt = await compute_memory_modulator(
+            db,
+            brain="alpha",
+            symbol=str(ticker).upper(),
+            direction=str(signal.direction.value),
+            features=(signal.feature_importance or {}),
+        )
+        if memory_modulator_receipt.get("value"):
+            _before = directional_conf
+            directional_conf, _delta = apply_modulator_to_confidence(
+                confidence=directional_conf,
+                modulator_value=float(memory_modulator_receipt["value"]),
+            )
+            memory_modulator_receipt["confidence_before"] = float(_before)
+            memory_modulator_receipt["confidence_after"] = float(directional_conf)
+            memory_modulator_receipt["applied_delta"] = float(_delta)
+            log.info(
+                "[ml_paper] Memory modulator %s: conf %.3f → %.3f (Δ=%+.4f, %s)",
+                ticker, _before, directional_conf, _delta,
+                memory_modulator_receipt.get("reason"),
+            )
+    except Exception as _mm_exc:  # noqa: BLE001
+        log.debug(
+            "[ml_paper] memory modulator failed for %s: %s — skipped",
+            ticker, _mm_exc,
+        )
+
     # ── Position sizing ──────────────────────────────────────────────────────
     portfolio_value = await _current_portfolio_value(db)
     position_usd = half_kelly_position(
@@ -589,6 +631,7 @@ async def maybe_paper_trade(
                 "execution_decision": "OBSERVE_ONLY",
                 "would_have_traded_without_gates": False,
                 "hold_reason": "kelly_zero_size",
+                "memory_modulator": memory_modulator_receipt,
                 "summary": (
                     f"Alpha wanted {direction_val.upper()} {ticker} at "
                     f"conf={directional_conf:.3f} but Kelly sized $0 "
@@ -856,6 +899,13 @@ async def maybe_paper_trade(
         trade_doc["sovereign_contribution"] = sovereign_contribution_meta
     if failure_penalty_meta is not None:
         trade_doc["symbol_failure_penalty"] = failure_penalty_meta
+    # 2026-02-23: stamp the memory modulator receipt on every
+    # paper_trade row so the audit lineage (modulator → conf →
+    # Kelly → fill) is reconstructable post-hoc, not just on the
+    # intent payload that MC sees. Always written (even when value
+    # is 0.0) so a missing receipt is a code-path bug, not a quiet
+    # "neutral" outcome.
+    trade_doc["memory_modulator"] = memory_modulator_receipt
 
     # ── Decision reasoning overlay (READ-ONLY) ───────────────────────
     # Stamp the rich gate-trace overlay onto the trade row. The

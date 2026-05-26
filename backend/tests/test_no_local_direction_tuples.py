@@ -138,6 +138,15 @@ ALLOWLIST: dict[str, str] = {
         "directional camps are present so the bounded penalty can be "
         "applied. Patent M-adjacent doctrine module."
     ),
+    "shared/memory_modulator.py": (
+        "Symmetric across all 4 brains — doctrine demands the same "
+        "code path for Alpha/Camaro/Chevelle/REDEYE. Accepts the "
+        "common AI verdict tokens (BUY/SHORT/SELL/UP/DOWN) and "
+        "normalises to the canonical up/down stored in this repo's "
+        "decision logs. Importing canonical_ai_dir from services."
+        "prediction_tracker would couple shared/ to services/ and "
+        "break the drop-in contract the operator requires."
+    ),
     "services/multi_model_hypothesis_service.py": (
         "Consensus assembly reads already-canonical verdict tokens "
         "from each brain's structured JSON output. The DIRECTIONAL_FLOOR "

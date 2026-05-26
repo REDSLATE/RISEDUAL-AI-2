@@ -5,6 +5,66 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🧠 Memory Modulator v1 — Brain-Symmetric Confidence Modulator
+
+Shipped operator's drop-in memory modulator at
+``shared/memory_modulator.py`` with all four P0 safety adds:
+
+* **P0-1 Quarantine exclusion** — every candidate memory passes
+  through ``chevelle_memory_labeler.label_memory`` BEFORE
+  similarity is computed. Rows with ``trust_weight == 0.0`` or
+  any ``rejection_reason`` are dropped. Defensive: a raise in
+  the labeler itself is treated as a quarantine signal — a
+  noisy upstream row can't slip past the firewall.
+* **P0-2 Bound enforcement** — modulator value clamped to
+  ``[-0.25, +0.10]`` at THREE points: at compute time, at
+  application time (``apply_modulator_to_confidence``), and (by
+  MC tripwire on receipt, per operator). Even a buggy upstream
+  ``99.0`` can't move confidence by more than ``+0.10``.
+* **P0-3 Receipt persisted** — stamped on BOTH the intent
+  payload (``emit_intent_from_consensus(payload)``) AND every
+  paper_trade row (``trade_doc["memory_modulator"]``) so the
+  audit lineage (modulator → conf → Kelly → fill) is
+  reconstructable post-hoc, not just on the MC-side intent.
+* **P0-4 Feature normalization** — per-feature clip to
+  ``[-3.0, +3.0]`` + stable whitelist of 13 features. A single
+  rogue ``volume_zscore=9999`` can never dominate the cosine; an
+  attacker / regression adding a never-seen feature can't slip
+  into the similarity vector.
+
+**Doctrine pinned in code + tests:**
+* HOLD never modulated.
+* Direction never created (receipt has no
+  ``recommended_direction`` / ``flip`` / ``override`` field).
+* Confidence-only mutation; gates / ladder / RoadGuard untouched.
+* Symmetric across Alpha/Camaro/Chevelle/REDEYE — same code
+  path, no per-brain branches; the scoreboard decides.
+* Losers downweight takes priority over winners upweight (the
+  conservative move when both thresholds met).
+
+**Wiring (this repo = Alpha):**
+``services/ml_paper_trader.maybe_paper_trade`` calls the
+modulator AFTER the Sovereign shadow and BEFORE Kelly sizing,
+so the confidence delta actually reaches the position-sizer.
+Honest-hold emits stamp the receipt onto MC's intent payload.
+
+**Env knobs (operator-tunable):**
+- ``MEMORY_MODULATOR_ENABLED`` (default ON; ``false`` quarantines the modulator itself at runtime)
+- ``MEMORY_MODULATOR_LOOKBACK_DAYS`` (90)
+- ``MEMORY_MODULATOR_SIM_THRESHOLD`` (0.85)
+- ``MEMORY_MODULATOR_MAX_UP`` / ``_MAX_DOWN`` (0.10 / -0.25; clamped at the doctrine bound even if env tries to widen)
+- ``MEMORY_MODULATOR_MIN_MATCHES_FOR_UP`` (5)
+- ``MEMORY_MODULATOR_MIN_MATCHES_FOR_DOWN`` (2)
+
+**24 new tests** pinning every doctrine + safety property.
+``test_no_local_direction_tuples`` allowlist extended with a
+justified entry for ``shared/memory_modulator.py`` (it must
+accept the common verdict tokens directly since importing
+``services.prediction_tracker`` would break the drop-in
+contract for the other 3 brains).
+
+**Test suite: 3,866 passed / 0 skipped / 0 failures**
+
 ### 🎯 Alpaca Position Closer — Live Broker Exit Engine
 
 **Background:** Operator forensics (screenshot Feb-23) surfaced
