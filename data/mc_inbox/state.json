@@ -1,9 +1,9 @@
 {
-  "last_polled_at": "2026-05-26T06:46:25.376719+00:00",
+  "last_polled_at": "2026-05-26T10:28:11.280477+00:00",
   "last_roles_at": "2026-05-26T06:45:04.908693+00:00",
   "last_scorecard_at": "2026-05-26T06:40:02.096623+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "fc9bf124-5954-4004-bb53-2f17be49dfa4",
+  "last_seen_opinion_id": "fd349501-fa40-4665-830e-2af02a5d5016",
   "roles_snapshot": {
     "count": 4,
     "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
@@ -109,11 +109,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 139040,
+      "camaro": 139133,
       "chevelle": 55993,
-      "redeye": 81770
+      "redeye": 81877
     },
-    "opinions_ingested": 285000,
+    "opinions_ingested": 285200,
     "opinions_quarantined": 0
   }
 }
