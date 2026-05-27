@@ -256,7 +256,8 @@ async def get_dynamic_confidence_threshold(
         if db is not None:
             override = await db["confidence_gate_overrides"].find_one(
                 {"_id": "current"},
-                {"_id": 0, "min_rr": 1, "expires_at": 1},
+                {"_id": 0, "min_rr": 1, "min_confidence": 1,
+                 "expires_at": 1},
             )
             if override and override.get("expires_at"):
                 from datetime import datetime, timezone
@@ -268,15 +269,34 @@ async def get_dynamic_confidence_threshold(
                 # written by older code paths.
                 exp = ensure_utc(override["expires_at"])
                 if exp and exp > datetime.now(timezone.utc):
-                    # NL override — shift the base by 5 points per 0.5
-                    # above default (conservative mapping). This couples
-                    # an "operator wants tighter RR" signal to the
-                    # confidence gate without blowing through MAX_THRESHOLD.
-                    extra_rr = max(0.0, float(override["min_rr"]) - 1.5)
-                    nl_base = min(
-                        _current_max_threshold(),
-                        _current_base_min_confidence() + min(0.15, extra_rr * 0.10),
-                    )
+                    # 2026-02-23: ``min_confidence`` is the new
+                    # explicit override surface owned by
+                    # ``/api/admin/council-policy``. It takes
+                    # precedence over the legacy ``min_rr``
+                    # heuristic mapping below — the route already
+                    # clamps it to ``[hard_floor, hard_cap]`` so
+                    # we trust the value verbatim here.
+                    if "min_confidence" in override and override["min_confidence"] is not None:
+                        try:
+                            nl_base = min(
+                                _current_max_threshold(),
+                                max(
+                                    _current_base_min_confidence(),
+                                    float(override["min_confidence"]),
+                                ),
+                            )
+                        except (TypeError, ValueError):
+                            pass
+                    elif "min_rr" in override:
+                        # NL override — shift the base by 5 points per 0.5
+                        # above default (conservative mapping). This couples
+                        # an "operator wants tighter RR" signal to the
+                        # confidence gate without blowing through MAX_THRESHOLD.
+                        extra_rr = max(0.0, float(override["min_rr"]) - 1.5)
+                        nl_base = min(
+                            _current_max_threshold(),
+                            _current_base_min_confidence() + min(0.15, extra_rr * 0.10),
+                        )
     except Exception as exc:  # noqa: BLE001
         logger.debug("[confidence_gate] override read failed: %s", exc)
 

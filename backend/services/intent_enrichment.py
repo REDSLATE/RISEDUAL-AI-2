@@ -149,14 +149,20 @@ async def fetch_crypto_snapshot(symbol: str) -> Dict[str, Any]:
     # 24h USD volume — Kraken's per-pair volume comes out in BASE
     # units; multiply by mid price for a notional USD figure. If we
     # don't have mid + base volume, leave it None (sentinel).
-    volume_24h_usd: Optional[float] = None
-    mid = q.get("price")
-    base_volume = q.get("volume_24h_base") or q.get("v24h") or q.get("volume_24h")
-    if mid and base_volume:
-        try:
-            volume_24h_usd = round(float(mid) * float(base_volume), 2)
-        except (TypeError, ValueError):
-            volume_24h_usd = None
+    # 2026-02-23 (P2 enrichment): the Alpaca equity adapter now
+    # surfaces ``volume_24h_usd`` directly from the snapshot's
+    # ``dailyBar``. Prefer that pre-computed value when present so
+    # MC's classifier sees the same USD-volume figure across
+    # crypto + equities.
+    volume_24h_usd: Optional[float] = q.get("volume_24h_usd")
+    if volume_24h_usd is None:
+        mid = q.get("price")
+        base_volume = q.get("volume_24h_base") or q.get("v24h") or q.get("volume_24h")
+        if mid and base_volume:
+            try:
+                volume_24h_usd = round(float(mid) * float(base_volume), 2)
+            except (TypeError, ValueError):
+                volume_24h_usd = None
 
     # 1h volatility + trend strength — derived from short history.
     # If the history adapter isn't available or fails, leave None.

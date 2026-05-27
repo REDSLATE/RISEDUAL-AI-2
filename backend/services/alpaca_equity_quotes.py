@@ -101,6 +101,7 @@ def _parse_quote_block(
     latest_quote: dict | None,
     latest_trade: dict | None,
     prev_daily_bar: dict | None = None,
+    daily_bar: dict | None = None,
 ) -> dict[str, Any] | None:
     """Build the canonical quote shape from Alpaca's snapshot
     components. Returns ``None`` if neither side has anything
@@ -162,6 +163,44 @@ def _parse_quote_block(
             change = round(price - prev_close, 4)
             change_pct = round((change / prev_close) * 100.0, 4)
 
+    # 2026-02-23 (P2 telemetry enrichment): MC's classifier
+    # snapshot requires ``volume_24h_usd`` to differentiate liquid
+    # vs. thinly-traded names. Alpaca's snapshot endpoint surfaces
+    # the running session volume in ``dailyBar.v`` (shares); we
+    # convert to USD at the volume-weighted average price
+    # (``dailyBar.vw``) when present, falling back to ``dailyBar.c``
+    # then to the current ``price`` so the field is never None on
+    # a successful snapshot. The previous session's
+    # ``prevDailyBar.v`` is used as a fallback when the day's bar
+    # is still empty (pre-market). Both surfaces are documented
+    # at https://docs.alpaca.markets/reference/stocksnapshot.
+    volume_24h_usd: float | None = None
+    volume_24h_shares: float | None = None
+    for bar in (daily_bar, prev_daily_bar):
+        if not bar:
+            continue
+        try:
+            v = float(bar.get("v") or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v <= 0:
+            continue
+        try:
+            vwap = float(bar.get("vw") or 0)
+        except (TypeError, ValueError):
+            vwap = 0.0
+        try:
+            close = float(bar.get("c") or 0)
+        except (TypeError, ValueError):
+            close = 0.0
+        # Prefer VWAP (truest $-volume); fall back to bar close,
+        # then to the live price so a missing ``vw`` doesn't
+        # produce None.
+        unit_price = vwap if vwap > 0 else (close if close > 0 else price)
+        volume_24h_shares = round(v, 2)
+        volume_24h_usd = round(v * unit_price, 2)
+        break  # first usable bar wins (dailyBar > prevDailyBar)
+
     return {
         "price": round(price, 4),
         "bid": round(bid, 4) if bid > 0 else None,
@@ -173,6 +212,8 @@ def _parse_quote_block(
         "prev_close": round(prev_close, 4) if prev_close > 0 else 0,
         "change": change,
         "change_pct": change_pct,
+        "volume_24h_shares": volume_24h_shares,
+        "volume_24h_usd": volume_24h_usd,
         "source": "alpaca",
         "ts": _now(),
     }
@@ -254,6 +295,7 @@ async def fetch_alpaca_equity_quotes_batch(
             latest_quote=snap.get("latestQuote"),
             latest_trade=snap.get("latestTrade"),
             prev_daily_bar=snap.get("prevDailyBar"),
+            daily_bar=snap.get("dailyBar"),
         )
         if parsed is not None:
             parsed["symbol"] = sym
