@@ -3,6 +3,45 @@
 ## Original Problem Statement
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
+
+## Latest Update — 2026-02-26 (Fork G)
+
+### 🔵 P3 — Options Education Layer
+
+Plain-language options glossary so every chart/screener in the
+Options hub can render inline definition tooltips without leaving
+the page, and so a dedicated "Learn" tab gives newcomers the full
+vocabulary in one searchable place.
+
+**Backend** (`routes/learn_options.py`):
+- Static, curated 29-term glossary covering **Basics, Greeks,
+  Mechanics, Strategies** (call/put/strike/premium/IV/Greeks/
+  covered call/CSP/credit & debit spreads/iron condor/straddle/
+  strangle/…). Definitions follow ClearValue Investing's
+  beginner-friendly style — one tooltip sentence + one paragraph.
+- `GET /api/learn/options` — full grouped payload (count,
+  categories, terms map).
+- `GET /api/learn/options/{term_key}` — single-term lookup
+  (case-insensitive, 404 on unknown).
+- Mounted via `route_registry.py` under `/api/learn`. No DB
+  schema, no LLM calls — git-auditable glossary updates.
+
+**Frontend** (`components/OptionsTermTooltip.jsx`,
+`components/OptionsLearn.jsx`):
+- `<OptionsTermTooltip termKey="delta">Δ</OptionsTermTooltip>` —
+  inline tooltip wrapper backed by a session-cached glossary
+  (`window.__optionsGlossary`). Unknown terms render plain — no
+  dead trigger.
+- New "Learn" tab added to `hubs/OptionsHub.jsx` alongside Radar
+  / Flow / Dark Pool. Renders a searchable card grid grouped by
+  category, with live count + per-card data-testids.
+
+**Tests**: `tests/test_learn_options.py` (7 cases) — shape
+validation, core-term presence, list endpoint, case-insensitive
+lookup, 404 path. Full backend suite: **3,905 passing** (was
+3,898; +7 new, zero regressions).
+
+
 ## Latest Update — 2026-02-23 (Fork F)
 
 ### 🚨 PROD-DEPLOY FIX — In-Process Sovereign Sidecar
