@@ -110,6 +110,7 @@ from routes.admin_spread_slippage import router as admin_spread_slippage_router,
 from routes.admin_autopsy_promotion import router as admin_autopsy_promotion_router, set_db as set_admin_autopsy_promotion_db
 from routes.admin_council_policy import router as admin_council_policy_router, set_db as set_admin_council_policy_db
 from routes.admin_sovereign_stage_3_5 import router as admin_sovereign_stage_3_5_router, set_db as set_admin_sovereign_stage_3_5_db
+from routes.admin_kill_switch_profiles import router as admin_kill_switch_profiles_router
 from routes.learn_options import router as learn_options_router
 from routes.admin_realtime_infra import router as admin_realtime_infra_router, set_db as set_admin_realtime_infra_db
 from routes.admin_notification_lifecycle import router as admin_notification_lifecycle_router, set_db as set_admin_notification_lifecycle_db
@@ -214,6 +215,7 @@ ALL_ROUTERS = [
     admin_autopsy_promotion_router,
     admin_council_policy_router,
     admin_sovereign_stage_3_5_router,
+    admin_kill_switch_profiles_router,
     learn_options_router,
     admin_realtime_infra_router,
     admin_notification_lifecycle_router,

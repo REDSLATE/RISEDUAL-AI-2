@@ -4,6 +4,54 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Fork G, P2 Small Account)
+
+### 🟠 P2 — Small Account Mode (Named Kill-Switch Profiles)
+
+Translated the public Warrior Trading "2025 Small Account Toolkit"
+discipline rules into a code-versioned, named profile so a small-
+account trader can opt into the documented discipline overlay
+without re-implementing it manually each session.
+
+**Profile** (`services/kill_switch_profiles.py`):
+- `small_account_warrior` profile encodes the toolkit's three
+  written rules:
+  - **Rule 2 — Daily max loss**: -10% of starting equity OR a hard
+    -$100 USD floor, whichever trips first (belt-and-suspenders
+    for sub-$1,000 accounts where 10% rounds tiny).
+  - **Rule 3 — Three consecutive losers**: session over after 3
+    consecutive losing trades.
+  - Toolkit explicitly says "don't stop until momentum cools" →
+    NO profit-give-back cap baked in.
+- Pure-function evaluator (`evaluate_profile`) — sync, no DB, no
+  async. Can be called from the paper-trade emission path, the
+  admin endpoint, or unit tests with the same code.
+- Frozen dataclass profile registry — admin can't redefine a
+  profile via HTTP; profile changes go through PR review.
+
+**Routes** (`routes/admin_kill_switch_profiles.py`, owner-only):
+- `GET /api/admin/kill-switch/profiles` — list registry
+- `GET /api/admin/kill-switch/profiles/{key}` — single lookup
+- `POST /api/admin/kill-switch/profiles/{key}/evaluate` — dry-run
+  evaluator against `{starting_equity_usd, realized_pnl_usd_today,
+  consecutive_losses_today}`; returns full per-rule trigger
+  breakdown with the operator-friendly message ("daily loss
+  -120.00 ≤ -100.00 (10% of starting equity)").
+
+**Tests**: 19 new (`test_kill_switch_profiles.py` evaluator +
+`test_admin_kill_switch_profiles_route.py` route). Coverage
+includes quiet day, percent floor, USD floor, 3-loss halt,
+2-loss no-halt, no-profit-cap behaviour, unknown profile, and
+owner-role enforcement. Full backend suite: **3,924 passing**
+(was 3,905; +19 new, zero regressions).
+
+**Doctrine note** — the profile is intentionally NOT auto-wired
+into the paper-trade emission path yet. This is the *definition +
+inspection* step. Wiring the live gate (admin opt-in, per-account
+state tracker) is the natural follow-up.
+
+
+
 ## Latest Update — 2026-02-26 (Fork G)
 
 ### 🔵 P3 — Options Education Layer
