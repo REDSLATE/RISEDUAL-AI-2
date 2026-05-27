@@ -672,6 +672,27 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"[mc_sidecar] in-process startup skipped (non-critical): {e}")
 
+    # ── In-process Sovereign Sidecar (2026-02-23 prod-deploy fix).
+    # Emergent's deploy image doesn't ship the supervisor's
+    # ``alpha-sidecar.conf``, so prod has been running with NO
+    # Sovereign contribution loop. This in-process variant uses the
+    # SAME ``SovereignSidecar`` class as the supervisor program and
+    # is lockfile-guarded against double-firing in preview (where the
+    # supervisor process IS running). Default OFF; operator flips
+    # ``ALPHA_INPROCESS_SIDECAR_ENABLED=1`` in prod env after deploy.
+    try:
+        from sovereign import inprocess_sidecar as _alpha_sov
+        ips_status = await _alpha_sov.start()
+        logger.info(
+            "[alpha_inprocess_sidecar] startup: %s (%s)",
+            "started" if ips_status.get("started") else "skipped",
+            ips_status.get("reason"),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"[alpha_inprocess_sidecar] startup skipped (non-critical): {e}"
+        )
+
     logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
 
 
@@ -1727,6 +1748,14 @@ async def shutdown_db_client():
             logger.info("[mc_sidecar] in-process sidecar stopped on shutdown")
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[mc_sidecar] shutdown cleanup: {e}")
+    # In-process Sovereign sidecar (2026-02-23 prod-deploy fix) —
+    # cancel the contribution loop cleanly so the shutdown doesn't
+    # log a "pending task" warning.
+    try:
+        from sovereign import inprocess_sidecar as _alpha_sov
+        await _alpha_sov.stop()
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[alpha_inprocess_sidecar] shutdown cleanup: {e}")
     # MC check-in periodic loop — cancel cleanly to avoid an asyncio
     # warning about a pending task on shutdown.
     try:

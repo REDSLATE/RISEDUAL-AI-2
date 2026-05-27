@@ -5,6 +5,65 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 
 ## Latest Update — 2026-02-23 (Fork F)
 
+### 🚨 PROD-DEPLOY FIX — In-Process Sovereign Sidecar
+
+Operator screenshot showed Alpha at `HEARTBEAT ONLY · 54987s ago`
+(15h stale) on MC's dashboard. MC team responded with a source-
+cited diagnosis: the classifier is age-based on
+``sovereign_state.updated_at`` — every accepted 200-OK contribution
+refreshes that age. So 54987s of staleness implies **no
+contributions reaching MC for 15h**.
+
+**Root cause:** ``alpha-sidecar.conf`` lives at
+``/etc/supervisor/conf.d/`` on the **preview pod** but is NOT
+inside ``/app``. Emergent's deploy image
+(``fastapi_react_mongo_shadcn_base_image_cloud_arm``) doesn't ship
+custom supervisor configs. So **production has been running with
+NO Sovereign sidecar process at all** since the deploy — the
+brain's HTTP layer in preview was healthy and 200-OK-ing, but prod
+had no sender. This is consistent with everything: empty
+scorecard, 0 wins/0 losses, frozen weights, observation_fills
+never resolving — none of those signals were arriving at MC.
+
+**Fix:** New ``sovereign/inprocess_sidecar.py`` module spawns the
+SAME ``SovereignSidecar`` class as the supervisor process — but
+as a FastAPI lifespan asyncio task that ships automatically with
+``/app/backend``. Wired into ``server.py`` startup + shutdown
+hooks.
+
+**Doctrine pins:**
+* Default OFF via ``ALPHA_INPROCESS_SIDECAR_ENABLED`` — preview
+  (where the supervisor sidecar IS running) stays exactly as it
+  was.
+* Lockfile guard at ``/tmp/alpha_alive`` — if the supervisor
+  sidecar is alive (preview), the in-process loop no-ops on
+  startup. No race, no double-POST.
+* Fail-soft: missing ``MC_BASE_URL`` / ``ALPHA_INGEST_TOKEN``
+  logs a warning and the loop exits cleanly. Backend still
+  serves API.
+* Identical payload shape to the supervisor sidecar — same
+  ``SovereignSidecar`` class, same lineage stamp, same outcome-
+  inbox drain, same 422-substantive empty-payload refusal.
+
+**Operator runbook for prod:**
+1. Push to GitHub + redeploy. Backend ships with the new module
+   but inert (master switch OFF).
+2. Set ``ALPHA_INPROCESS_SIDECAR_ENABLED=1`` in prod env.
+3. Bounce the pod. Within 60s, MC's `sv_iso` age should drop
+   from 54987s → <60s and the dashboard badge flips off
+   `HEARTBEAT ONLY`.
+4. Within ~24h (after one closed observation_fill cycle),
+   weights start moving, scorecard fills, promotion gate
+   re-evaluates.
+
+**Live-verified in preview:**
+- Default-OFF: backend startup logs `[alpha_inprocess_sidecar] startup: skipped (disabled)` ✅
+- Lockfile guard with stale lockfile: ``supervisor_winning() == False`` ✅
+- Enabled + no env: fail-soft (loop exits, no crash) ✅
+- Enabled + lockfile fresh: `[alpha_inprocess_sidecar] startup: skipped (supervisor_present)` ✅
+
+**11 new tests + 3,877 / 0 skipped / 0 failures backend suite.**
+
 ### 🧠 Memory Modulator v1 — Brain-Symmetric Confidence Modulator
 
 Shipped operator's drop-in memory modulator at
