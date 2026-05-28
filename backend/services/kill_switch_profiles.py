@@ -91,8 +91,76 @@ WARRIOR_SMALL_ACCOUNT = Profile(
 )
 
 
+# Platform-engineered defaults. These are NOT direct citations from a
+# named source — they're operator-vetted opinionated starting points
+# loosely inspired by common day-trading / swing-trading discipline
+# literature. The operator can fork the registry (PR-only) to tighten
+# or loosen any value; the file ships with the deploy so changes are
+# git-auditable.
+
+INTRADAY_MOMENTUM = Profile(
+    key="intraday_momentum",
+    name="Intraday Momentum — Tight Discipline",
+    description=(
+        "Day-trader overlay for active intraday momentum strategies. "
+        "Tight max-loss floor (5%) on the assumption the trader is "
+        "scalping multiple high-velocity setups per session; "
+        "two-consecutive-loss cut so a losing streak doesn't compound "
+        "while reading the wrong tape. Profit cap at 15% locks gains "
+        "on a hot day so emotional over-trading doesn't give them back."
+    ),
+    source="RISEDUAL platform default — intraday momentum",
+    daily_max_loss_pct=0.05,
+    daily_max_loss_usd=None,
+    consecutive_loss_limit=2,
+    daily_profit_cap_pct=0.15,
+    tags=("intraday", "momentum", "tight_discipline"),
+)
+
+
+SWING_TRADER = Profile(
+    key="swing_trader",
+    name="Swing Trader — Multi-Day Tolerance",
+    description=(
+        "Multi-day position overlay for swing setups. Looser daily "
+        "loss tolerance (15%) on the assumption that one-day mark-to-"
+        "market noise shouldn't force-close a multi-day thesis. "
+        "Five-consecutive-loss floor lets a normal swing string "
+        "play out before the discipline overlay intervenes."
+    ),
+    source="RISEDUAL platform default — swing trader",
+    daily_max_loss_pct=0.15,
+    daily_max_loss_usd=None,
+    consecutive_loss_limit=5,
+    daily_profit_cap_pct=None,
+    tags=("swing", "multi_day", "looser_discipline"),
+)
+
+
+CONSERVATIVE_IRA = Profile(
+    key="conservative_ira",
+    name="Conservative IRA — Capital Preservation",
+    description=(
+        "Capital-preservation overlay for retirement / IRA accounts. "
+        "Very tight 3% daily loss + a hard $500 USD floor so a low-"
+        "balance retirement account can't get cratered by a single "
+        "bad-tape session. Two-loss consecutive cut. No profit cap — "
+        "retirement is a marathon, capping gains is unhelpful."
+    ),
+    source="RISEDUAL platform default — conservative IRA",
+    daily_max_loss_pct=0.03,
+    daily_max_loss_usd=500.0,
+    consecutive_loss_limit=2,
+    daily_profit_cap_pct=None,
+    tags=("ira", "retirement", "capital_preservation"),
+)
+
+
 PROFILES: dict[str, Profile] = {
     WARRIOR_SMALL_ACCOUNT.key: WARRIOR_SMALL_ACCOUNT,
+    INTRADAY_MOMENTUM.key: INTRADAY_MOMENTUM,
+    SWING_TRADER.key: SWING_TRADER,
+    CONSERVATIVE_IRA.key: CONSERVATIVE_IRA,
 }
 
 

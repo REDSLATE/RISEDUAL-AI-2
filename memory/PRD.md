@@ -4,6 +4,49 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Fork G, P2 follow-up: profiles + UI)
+
+### 🟠 More named profiles + frontend Discipline picker
+
+**Three new profiles registered** (`services/kill_switch_profiles.py`):
+- `intraday_momentum` — 5% daily-loss floor, 2-loss cut, 15%
+  profit cap (give-back guard for hot tape).
+- `swing_trader` — 15% daily-loss tolerance (one-day noise
+  shouldn't kill a multi-day thesis), 5-loss cut, no profit cap.
+- `conservative_ira` — 3% daily-loss floor + hard $500 USD
+  floor, 2-loss cut, no profit cap.
+- Source labels make it explicit that the three new profiles are
+  "RISEDUAL platform default — …" not direct citations. Profile
+  changes still go through PR review — registry stays
+  git-auditable.
+
+**Frontend Discipline tab**
+(`components/admin/DisciplineProfilePicker.jsx`):
+- New AdminPanel tab between Trading Gate and Terminal
+  ("Discipline").
+- Owner-only — uses `authFetch` against the three runtime
+  endpoints.
+- Registry overview (4 cards): per-profile rules + source.
+- Per-asset_type gate cards (equity + crypto) with three states:
+  - **Inactive** — profile dropdown + starting-equity input +
+    Activate button.
+  - **Armed** — live config + today's P&L + consecutive losses +
+    closes-today + Deactivate button.
+  - **Halt** — rose-tinted card with the per-rule trigger
+    messages spelled out.
+- Toast feedback on activate / deactivate / errors.
+- All interactive elements carry `data-testid` per doctrine.
+
+**Tests**: 8 new profile-evaluator tests in
+`test_kill_switch_profiles_extended.py`. Full backend suite:
+**3,968 passing** (was 3,960; +8 new, zero regressions). Frontend
+lint clean; live page renders without compile errors.
+
+**Live smoke (preview, owner JWT)**: `/api/admin/kill-switch/profiles`
+returns count=4 with correct rule shapes for all four profiles.
+
+
+
 ## Latest Update — 2026-02-26 (Fork G, P2 Warrior Live Gate)
 
 ### 🟠 P2 — Warrior Small Account profile wired into the live emission gate

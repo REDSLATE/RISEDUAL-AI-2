@@ -43,6 +43,7 @@ import CodeEvolutionInbox from './admin/CodeEvolutionInbox';
 import PythonCoach from './admin/PythonCoach';
 import AlphaKnowledgePanel from './admin/AlphaKnowledgePanel';
 import TradingGate from './admin/TradingGate';
+import DisciplineProfilePicker from './admin/DisciplineProfilePicker';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -64,6 +65,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
       { id: 'trading-gate', label: 'Trading Gate', icon: Lock },
+      { id: 'discipline', label: 'Discipline', icon: ShieldCheck },
       { id: 'terminal',  label: 'Terminal',  icon: TrendingUp },
       { id: 'burn-in',   label: 'Burn-In',   icon: Radio },
       { id: 'providers', label: 'Providers', icon: Activity },
@@ -150,6 +152,7 @@ const TAB_SUBTITLES = {
   'alpha-kb':     () => 'Alpha Python Knowledge Base — read-only corpus consulted via /py prefix in chat · firewalled from execution',
   honesty:        () => 'Intent honesty audit · raw vs display action · would-have-traded-without-gates · top hold reasons (proxied from MC)',
   'trading-gate': () => 'Operator Trading Gate — the SINGLE rule · no trades (paper or live) until you authorize · synthetic ADL receipts so MLs keep learning',
+  discipline:     () => 'Named kill-switch discipline profiles · per-asset overlay · halts paper-trade emission when daily-loss or consecutive-loss rules fire',
   'bulk-replay':  () => 'Pre-ingest CSV firewall scan — labeling sanity check · read-only · no DB writes · no training',
   whatif:         () => 'What-If Replay — project each engine schema against the firewall outcome ledger',
   patents:        () => 'USPTO Patent Watch — daily fetch · per-query results',
@@ -193,6 +196,7 @@ const TAB_COMPONENTS = {
   'alpha-kb':     () => <AlphaKnowledgePanel />,
   honesty:        () => <HonestyMirrorCard />,
   'trading-gate': () => <TradingGate />,
+  discipline:     () => <DisciplineProfilePicker />,
   'bulk-replay':  () => <BulkReplayPanel />,
   whatif:         () => <WhatIfReplayPanel />,
   patents:        () => <PatentWatchPanel />,
