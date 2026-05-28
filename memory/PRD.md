@@ -4,6 +4,62 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Fork G, P2 Warrior Live Gate)
+
+### 🟠 P2 — Warrior Small Account profile wired into the live emission gate
+
+The named discipline profile from the previous fork was a definition
++ inspection-only surface. This batch adds the live gate so an
+operator can actually run the discipline overlay against the equity
+or crypto paper-trader cores.
+
+**Runtime helpers** (`services/kill_switch_profile_runtime.py`):
+- `get_active_profile_config(db, asset_type)` — singleton config
+  read from `kill_switch_profile_global` collection.
+- `set_active_profile_config(...)` / `clear_active_profile_config(...)` —
+  upsert / delete writes.
+- `compute_session_stats(...)` — tallies today's realised P&L
+  (`pnl_usd` sum) and consecutive-loss streak (scan most-recent
+  closes desc, count contiguous `outcome=="loss"`). Session
+  boundary = UTC midnight.
+- `check_session_halt(db, asset_type)` — runs the active profile's
+  evaluator against live session stats; returns the
+  `ProfileEvaluation` when any halt rule fires, else `None`.
+- **Fail-soft**: any config or Mongo failure degrades to no-halt
+  so the discipline overlay can't ground the brain on its own bug.
+
+**Admin routes** (`routes/admin_kill_switch_profile_runtime.py`,
+owner-only):
+- `POST /api/admin/kill-switch/runtime/{asset_type}/activate` —
+  enable a profile with starting equity + optional note.
+- `DELETE /api/admin/kill-switch/runtime/{asset_type}/active` —
+  clear the override.
+- `GET /api/admin/kill-switch/runtime/{asset_type}/status` —
+  live readout: config + session stats + halt verdict + trigger
+  list. The full operator dashboard signal in one call.
+
+**Live gate hook** (`services/ml_paper_trader.maybe_paper_trade`):
+- Inserted as the FIRST gate after the directional-confidence read.
+- When `check_session_halt(db, "equity")` returns a halt verdict,
+  the trade emission short-circuits to `None`, logs
+  `[ml_paper] Kill-Switch Profile HALT <ticker> profile=<key>
+  triggers=<rules>`, and writes an `activity_logger`
+  `log_paper_trade_skipped` row with the per-rule messages.
+- Default behaviour: no profile configured → silent no-op, brain
+  runs exactly as before.
+
+**Tests**: 14 new (`test_kill_switch_profile_runtime.py` — 7,
+`test_admin_kill_switch_profile_runtime_route.py` — 7).
+Full backend suite: **3,960 passing** (was 3,946; +14 new,
+zero regressions).
+
+**Live smoke (preview)**: activated Warrior on equity at $1,000
+starting equity → status returns clean `{active: true, halt: false,
+realized_pnl_usd_today: 0.0, consecutive_losses_today: 0}`;
+deactivation cleared cleanly.
+
+
+
 ## Latest Update — 2026-02-26 (Fork G, P0 Learning Pipeline Unblock)
 
 ### 🔴 P0 — Sovereign learning pipeline can finally resolve decisions

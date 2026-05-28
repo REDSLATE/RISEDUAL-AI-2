@@ -210,6 +210,43 @@ async def maybe_paper_trade(
     log.info("[ml_paper] %s: direction=%s raw_conf=%.3f directional=%.3f regime=%s",
              ticker, signal.direction.value, signal.confidence, directional_conf, regime)
 
+    # ── Kill-Switch Profile gate (P2, 2026-02-26) ──────────────────────────
+    # Named discipline overlay (Warrior Small Account or any future
+    # profile). When an operator has activated a profile against the
+    # equity core via ``admin_kill_switch_profile_runtime.activate_profile``,
+    # this block evaluates today's realised P&L + consecutive-loss
+    # streak. Halt verdict → log + return None; no profile configured
+    # → silent no-op so a clean install is unchanged.
+    #
+    # Fail-soft discipline: any error in the gate must NOT block the
+    # trade. The profile is an overlay; bugs in the overlay can't
+    # ground the brain.
+    try:
+        from services.kill_switch_profile_runtime import check_session_halt
+        _ks_ev = await check_session_halt(db, "equity")
+        if _ks_ev is not None and _ks_ev.halt:
+            triggered = ", ".join(t.rule for t in _ks_ev.triggers) or "?"
+            log.warning(
+                "[ml_paper] Kill-Switch Profile HALT %s — profile=%s triggers=%s",
+                ticker, _ks_ev.profile_key, triggered,
+            )
+            try:
+                from services.activity_logger import log_paper_trade_skipped
+                await log_paper_trade_skipped(
+                    ticker=ticker,
+                    reason=f"kill_switch_profile_halt:{_ks_ev.profile_key} ({triggered})",
+                    confidence=directional_conf,
+                    why=[t.message for t in _ks_ev.triggers],
+                )
+            except Exception:
+                pass
+            return None
+    except Exception as _ks_exc:  # noqa: BLE001
+        log.debug(
+            "[ml_paper] kill-switch profile gate skipped (non-fatal): %s",
+            _ks_exc,
+        )
+
     # ── Ticker Abandonment / Cooldown Gate ──────────────────────────────────
     # FIRST gate by design — bad ticker behaviour should reduce attention
     # before it consumes capital. Pure decision against rolling-window

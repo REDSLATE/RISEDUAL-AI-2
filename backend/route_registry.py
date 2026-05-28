@@ -112,6 +112,7 @@ from routes.admin_council_policy import router as admin_council_policy_router, s
 from routes.admin_sovereign_stage_3_5 import router as admin_sovereign_stage_3_5_router, set_db as set_admin_sovereign_stage_3_5_db
 from routes.admin_sovereign_learning_health import router as admin_sovereign_learning_health_router, set_db as set_admin_sovereign_learning_health_db
 from routes.admin_kill_switch_profiles import router as admin_kill_switch_profiles_router
+from routes.admin_kill_switch_profile_runtime import router as admin_kill_switch_profile_runtime_router, set_db as set_admin_kill_switch_profile_runtime_db
 from routes.learn_options import router as learn_options_router
 from routes.admin_realtime_infra import router as admin_realtime_infra_router, set_db as set_admin_realtime_infra_db
 from routes.admin_notification_lifecycle import router as admin_notification_lifecycle_router, set_db as set_admin_notification_lifecycle_db
@@ -218,6 +219,7 @@ ALL_ROUTERS = [
     admin_sovereign_stage_3_5_router,
     admin_sovereign_learning_health_router,
     admin_kill_switch_profiles_router,
+    admin_kill_switch_profile_runtime_router,
     learn_options_router,
     admin_realtime_infra_router,
     admin_notification_lifecycle_router,
@@ -310,6 +312,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_council_policy_db,
         set_admin_sovereign_stage_3_5_db,
         set_admin_sovereign_learning_health_db,
+        set_admin_kill_switch_profile_runtime_db,
         set_admin_realtime_infra_db,
         set_admin_notification_lifecycle_db,
         set_admin_introspection_db,
