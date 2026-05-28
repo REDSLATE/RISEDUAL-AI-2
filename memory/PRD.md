@@ -4,6 +4,79 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Fork G, 5-Shelly Federation)
+
+### 🧠 5-Shelly memory + reasoning federation (drop-in, doctrine-locked)
+
+Built the operator-specified 5-Shelly architecture: one LocalShelly
+per execution-authority brain (Alpha / Camaro / Chevelle / RedEye)
+plus an MCShelly head that ingests rollups and reasons across the
+federation. Strict authority discipline — every persisted doc and
+every returned dict carries `authority: "memory_reasoning_only"`.
+Shelly may *recommend* (support / warn / neutral / conflict);
+Shelly may NOT execute, block, override, or promote.
+
+**Drop-in module** (`/app/backend/shelly/`):
+- `contracts.py` — `ShellyMemoryEvent`, `ShellyReasoningReceipt`
+  dataclasses + `stable_hash()` + `utc_now()`.
+- `config.py` — `BRAIN_NAMES`, sample-size floors, warn/support
+  thresholds (`LOCAL_LOSS_RATE_WARN=0.60`,
+  `MC_LOSS_RATE_SUPPORT=0.35`, etc.).
+- `local_shelly.py` — `LocalShelly` (per brain): `remember()`,
+  `reason()`, `rollup_for_mc()`, `mark_rolled_to_mc()`. Async
+  (motor) all the way, `_id` stripped at query time.
+- `mc_shelly.py` — `MCShelly` head: `ingest_rollup()` (dedup on
+  event_hash), `reason_across_shellys()` (cross-brain tally +
+  explicit brain-conflict detection — if Alpha/Camaro polarize
+  win-side while Chevelle/RedEye polarize loss-side, the
+  receipt names them).
+- `pipeline.py` — `ShellyPipeline` orchestrator:
+  `record_brain_event(brain, receipt)` → local memory + local
+  reasoning + MC reasoning; `rollup_all_to_mc()` for the
+  scheduled drain.
+
+**Admin route** (`routes/admin_shelly_federation.py`, owner-only):
+- `GET /api/admin/shelly-federation/state` — per-brain memory +
+  receipt counts + MC shared totals.
+- `GET /api/admin/shelly-federation/recent-receipts?limit=N` —
+  newest MC reasoning receipts.
+- `POST /api/admin/shelly-federation/reason` — stateless
+  dry-run reasoning against any `{symbol, direction}` so the
+  operator can spot-check "what does the federation know about
+  this setup right now?"
+
+**Tests**: 17 new (`test_shelly_federation.py`). Coverage:
+- Contract invariants (stable_hash order-insensitive, doctrine
+  stamp present, receipt_hash excludes timestamp).
+- LocalShelly idempotency, warn-on-loss-streak, neutral on no
+  history, rollup marking.
+- MC ingest dedup, support / warn / neutral / sample-floor
+  paths.
+- Pipeline four-brain instantiation, three-layer write,
+  unknown-brain rejection, end-to-end rollup drain.
+- **Doctrine invariant** — every persisted Shelly doc across
+  every collection carries `authority: memory_reasoning_only`.
+
+Full backend suite: **3,985 passing** (was 3,968; +17 new, zero
+regressions). Live preview endpoints all return the doctrine stamp;
+state endpoint reports 0 memories across all 4 brains (expected —
+brains haven't been wired to call `pipeline.record_brain_event()`
+yet, that's the operator's next integration step).
+
+**How to teach Shelly** (one-line integration per brain receipt):
+```python
+shelly_result = await pipeline.record_brain_event(brain, receipt)
+receipt["shelly"] = {
+    "local_reasoning": shelly_result["local_reasoning"],
+    "mc_reasoning":    shelly_result["mc_reasoning"],
+    "authority":       "memory_reasoning_only",
+}
+```
+Plus one scheduled `await pipeline.rollup_all_to_mc()` (nightly).
+No execution-path changes anywhere.
+
+
+
 ## Latest Update — 2026-02-26 (Fork G, P2 follow-up: profiles + UI)
 
 ### 🟠 More named profiles + frontend Discipline picker
