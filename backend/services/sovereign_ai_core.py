@@ -67,6 +67,12 @@ class SovereignFeatures:
     # Upstream strategist vote (advisory only)
     strategist_action: Optional[Direction] = None
     strategist_confidence: Optional[float] = None
+    # Entry price snapshot — captured at decide-time so the
+    # resolution loop can score the decision via market drift even
+    # when no paper_trade fired. Optional for backwards-compat with
+    # legacy decision rows; when ``None`` the drift-resolution
+    # branch skips the row instead of guessing a price.
+    entry_price: Optional[float] = None
 
 
 # ─── Decision payload ──────────────────────────────────────────────────────────

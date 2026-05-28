@@ -4,6 +4,63 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Fork G, P0 Learning Pipeline Unblock)
+
+### 🔴 P0 — Sovereign learning pipeline can finally resolve decisions
+
+The operator correctly identified that the promotion gate was stuck
+at `0/500 resolved` not because of data volume but because of a
+**structural break**: HOLD decisions never resolved (no fired trade
+to compare against) and non-HOLD decisions only resolved when the
+paper trader actually fired — both gated by code, not by data.
+
+**Three-piece fix landed in one batch**:
+
+1. **`/api/admin/sovereign/learning-health`** diagnostic endpoint
+   (`routes/admin_sovereign_learning_health.py`, owner-only) —
+   surfaces total decisions, action distribution, last-24h
+   throughput, count carrying `entry_price`, per-horizon
+   resolution counts (aged / resolved / was_right / unresolved
+   aged), and the promotion-gate snapshot inline. The operator
+   can see the whole pipeline in one call.
+   - **Live preview reading** confirms 3,105 crypto decisions
+     accumulated but **0 carry entry_price** (legacy), 0
+     resolved at every horizon, 3,105 unresolved-aged.
+
+2. **`feature_snapshot.entry_price`** added to `SovereignFeatures`
+   dataclass (`services/sovereign_ai_core.py`). Wired through
+   from both paper-trader call sites (`ml_paper_trader.py`,
+   `crypto_paper_trader.py`) to capture the entry price at
+   decide-time. Every new sovereign decision going forward will
+   carry the field, opening the door to drift-based resolution.
+
+3. **Drift-resolution branch** in
+   `services/sovereign_drift_resolver.py` + integrated into
+   `sovereign_resolution_loop._resolve_one_horizon`. For
+   decisions aged past a horizon with NO linked closed
+   paper_trade:
+   - **HOLD** is "right" when `|drift_pct| <= tolerance`
+     (default 0.5% equity, 1% crypto, env-tunable).
+   - **LONG** is "right" when `drift_pct > 0`.
+   - **SHORT** is "right" when `drift_pct < 0`.
+   - Legacy rows without `entry_price` are skipped with a
+     stable reason (`no_entry_price`) so the diagnostic
+     endpoint surfaces what's blocking.
+   - Fetches current price via `MarketDataService.get_quote()` /
+     `.get_crypto_quote()`.
+
+**Tests**: 22 new (`test_sovereign_drift_resolver.py` — 12 cases;
+`test_admin_sovereign_learning_health.py` — 5; `test_sovereign_resolution_drift_fallback.py` — 3). Full backend
+suite: **3,946 passing** (was 3,924; +22 new, zero regressions).
+
+**Impact on Stage 4 readiness**: The promotion gate is now
+structurally reachable. Once production redeploys this batch,
+every new sovereign decision will be scoreable — including the
+~29% HOLD share that was permanently muted before. The
+`0/500 resolved` counter will start climbing on its own.
+
+
+
 ## Latest Update — 2026-02-26 (Fork G, P2 Small Account)
 
 ### 🟠 P2 — Small Account Mode (Named Kill-Switch Profiles)

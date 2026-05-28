@@ -515,6 +515,10 @@ async def maybe_paper_trade(
                 if _catalyst else None,
             strategist_action=_prod_action,
             strategist_confidence=float(directional_conf),
+            # P0 (2026-02-26) — capture entry price so the drift
+            # resolver can score this decision via market drift even
+            # when the paper trader never fires.
+            entry_price=float(getattr(snapshot, "close_price", 0.0) or 0.0) or None,
         )
 
         _sov_dec = await run_prd_sovereign_shadow(

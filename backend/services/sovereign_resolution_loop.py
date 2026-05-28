@@ -64,31 +64,66 @@ def _was_right(action: str, pnl_pct: float) -> bool:
 
 async def _resolve_one_horizon(
     db: Any, horizon: str, *, asset_type: str, trade_coll: str,
+    market_data: Any | None = None,
 ) -> dict[str, Any]:
-    """Resolve all unresolved sovereign decisions for a given horizon + asset."""
+    """Resolve all unresolved sovereign decisions for a given horizon + asset.
+
+    Two-stage resolution:
+      1. **Linked-trade join** (original behaviour) — for decisions
+         whose paper_trade fired and closed, score against the real
+         realised P&L on the trade row.
+      2. **Market-drift fallback** — for decisions with no linked
+         trade (HOLD always; non-HOLD when the paper trader gated
+         out), score against ``(current_price - entry_price) / entry_price``
+         via ``sovereign_drift_resolver``. Closes the chicken-and-egg
+         where the promotion gate could never count to 500 because
+         HOLDs and gated-out directional opinions were unresolvable
+         on principle.
+    """
     cutoff = _HORIZONS[horizon]
     now = datetime.now(timezone.utc)
 
-    # Find unresolved sovereign decisions that have aged past this horizon
-    # AND have a linked fired trade. We look up the trade via the link on
-    # the trade-row side — sovereign_decisions rows stay schema-clean.
+    # Find unresolved sovereign decisions that have aged past this horizon.
+    # Pull the full feature_snapshot so the drift fallback can read
+    # ``entry_price`` without a second round-trip.
     unresolved_cur = db["sovereign_decisions"].find(
         {
             "asset_type": asset_type,
             f"outcomes.{horizon}": {"$exists": False},
             "created_at": {"$lte": now - cutoff},
         },
-        {"_id": 0, "decision_id": 1, "action": 1, "symbol": 1, "created_at": 1},
+        {
+            "_id": 0, "decision_id": 1, "action": 1, "symbol": 1,
+            "created_at": 1, "feature_snapshot": 1, "asset_type": 1,
+        },
     ).limit(BATCH_CAP)
     unresolved = await unresolved_cur.to_list(length=BATCH_CAP)
 
     resolved_count = 0
     skipped_no_trade = 0
+    drift_resolved = 0
+    drift_skipped: dict[str, int] = {}
+
+    # Lazy-import the drift resolver + market data service so a
+    # backend without market-data credentials still imports cleanly.
+    drift_fn = None
+    md = market_data
+    try:
+        from services.sovereign_drift_resolver import drift_resolve_one
+        drift_fn = drift_resolve_one
+        if md is None:
+            from services.market_data_service import MarketDataService
+            md = MarketDataService(db=db)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[sovereign_resolve] drift resolver unavailable: %s", exc)
 
     for row in unresolved:
         dec_id = row.get("decision_id")
         if not dec_id:
             continue
+
+        # ── Stage 1: try to join a closed paper_trade row.
+        trade = None
         try:
             trade = await db[trade_coll].find_one(
                 {
@@ -99,20 +134,46 @@ async def _resolve_one_horizon(
                 {"_id": 0, "pnl_pct": 1, "closed_at": 1},
             )
         except Exception as exc:  # noqa: BLE001
-            logger.debug("[sovereign_resolve] trade lookup failed id=%s: %s", dec_id, exc)
-            trade = None
+            logger.debug(
+                "[sovereign_resolve] trade lookup failed id=%s: %s",
+                dec_id, exc,
+            )
 
-        if trade is None or trade.get("pnl_pct") is None:
-            skipped_no_trade += 1
+        if trade is not None and trade.get("pnl_pct") is not None:
+            pnl_pct = float(trade["pnl_pct"])
+            was_right = _was_right(str(row.get("action") or ""), pnl_pct)
+            ok = await resolve_sovereign_decision(
+                db, dec_id, horizon=horizon, pnl_pct=pnl_pct, was_right=was_right,
+            )
+            if ok:
+                resolved_count += 1
             continue
 
-        pnl_pct = float(trade["pnl_pct"])
-        was_right = _was_right(str(row.get("action") or ""), pnl_pct)
-        ok = await resolve_sovereign_decision(
-            db, dec_id, horizon=horizon, pnl_pct=pnl_pct, was_right=was_right,
-        )
-        if ok:
-            resolved_count += 1
+        # ── Stage 2: no linked trade — fall back to market drift.
+        skipped_no_trade += 1
+        if drift_fn is None or md is None:
+            drift_skipped["drift_unavailable"] = (
+                drift_skipped.get("drift_unavailable", 0) + 1
+            )
+            continue
+        try:
+            receipt = await drift_fn(
+                db, decision=row, horizon=horizon, market_data=md,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[sovereign_resolve] drift fallback raised id=%s: %s",
+                dec_id, exc,
+            )
+            drift_skipped["drift_exception"] = (
+                drift_skipped.get("drift_exception", 0) + 1
+            )
+            continue
+        if receipt.get("status") == "resolved":
+            drift_resolved += 1
+        else:
+            reason = str(receipt.get("reason") or "unknown")
+            drift_skipped[reason] = drift_skipped.get(reason, 0) + 1
 
     return {
         "asset_type": asset_type,
@@ -120,6 +181,8 @@ async def _resolve_one_horizon(
         "scanned": len(unresolved),
         "resolved": resolved_count,
         "skipped_no_trade": skipped_no_trade,
+        "drift_resolved": drift_resolved,
+        "drift_skipped": drift_skipped,
     }
 
 

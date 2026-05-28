@@ -607,6 +607,25 @@ async def run_crypto_symbol(
         )
 
         _indicators = (signal.get("strategist") or {}).get("indicators", {}) or {}
+        # P0 (2026-02-26) — capture entry price so the drift resolver
+        # can score the decision via market drift when no paper trade
+        # fires (HOLD or gated-out direction). Pulls from the signal's
+        # ``current_price`` / ``price`` (set upstream by the strategist),
+        # falling back to None for unsourced ticks.
+        _entry_price_crypto = (
+            signal.get("current_price")
+            or signal.get("price")
+            or _indicators.get("price")
+        )
+        try:
+            _entry_price_crypto = (
+                float(_entry_price_crypto)
+                if _entry_price_crypto is not None else None
+            )
+            if _entry_price_crypto is not None and _entry_price_crypto <= 0:
+                _entry_price_crypto = None
+        except (TypeError, ValueError):
+            _entry_price_crypto = None
         _crypto_features = SovereignFeatures(
             symbol=symbol.upper(),
             asset_type="crypto",
@@ -617,6 +636,7 @@ async def run_crypto_symbol(
             regime=signal.get("regime"),
             strategist_action=None,
             strategist_confidence=float(signal.get("confidence") or 0.0),
+            entry_price=_entry_price_crypto,
         )
         _advisory_crypto = {
             "strategist": {
