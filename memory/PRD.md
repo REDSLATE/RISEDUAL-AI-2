@@ -4,6 +4,56 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-26 (Phase 1: Shelly-MC wired)
+
+### 🧠 Phase 1 — MC Shelly receiving its first real verdicts
+
+Per the operator's phased rollout plan
+(Phase 1 = MC Shelly → Phase 2 = brain Shellys → Phase 3 = cross-Shelly federation),
+this batch lights up Phase 1 end-to-end.
+
+**Singleton pipeline** wired at `server.py` startup
+(`app.state.shelly_pipeline`). Boot log line:
+`Shelly Federation wired: 5 nodes (Alpha, Camaro, Chevelle, RedEye, MC)`.
+
+**MC emitter helper** (`shelly/mc_emitter.py`):
+- `set_pipeline()` / `get_pipeline()` — fail-soft singleton.
+- `emit_mc_event(verdict_type, symbol, direction, decision, features, ...)` —
+  shapes any MC verifier/notary verdict into a
+  `ShellyMemoryEvent` and routes it through
+  `ShellyPipeline.record_brain_event("MC", ...)`. Doctrine
+  stamp applied by the pipeline. Swallows all exceptions
+  (logs DEBUG) so MC code never blocks on Shelly.
+
+**First MC verifier site wired**: `sovereign_promotion_gate.compute_sovereign_promotion_status`
+emits one `verdict_type=sovereign_promotion_gate` event per
+gate run, capturing the full verdict (rows_resolved,
+win_rate, calibration_avg, rolling_win_rate, blocker)
+into MC's LocalShelly. **Live preview verified**: 4
+gate runs produced 4 MC-Shelly memories + 8 reasoning
+receipts (local + cross-Shelly).
+
+**Nightly rollup scheduled** in `services/scheduling/jobs.py`
+at 02:15 UTC — drains all 5 LocalShellys (brains + MC)
+into the shared aggregator. Job id:
+`shelly_federation_rollup_nightly`.
+
+**Tests**: 4 new in `test_shelly_mc_emitter.py` (no-pipeline
+skip, doctrine routing, exception swallowing, full
+promotion-gate integration). Full backend suite:
+**3,990 passing** (was 3,986; +4 new, zero regressions).
+
+### Next — Phase 2 wiring sites
+The 4 brain receipt-emission paths the operator needs to
+nominate:
+- **Alpha** — `services/ml_paper_trader.maybe_paper_trade`
+  (after the signal + sovereign decision are built).
+- **Camaro / Chevelle / RedEye** — adversarial council
+  vote emission (need operator confirmation of exact
+  file path).
+
+
+
 ## Latest Update — 2026-02-26 (Fork G, 5-Shelly Federation)
 
 ### 🧠 5-Shelly memory + reasoning federation (drop-in, doctrine-locked)

@@ -70,6 +70,27 @@ def register_all(scheduler, db, server_mod):
         'cron', hour=4, minute=15, args=[db],
         id='chevelle_calibration_refit_daily',
     )
+
+    # ── Shelly Federation nightly rollup ────────────────────────
+    # Drains every LocalShelly's unrolled memories (all 5 nodes —
+    # 4 brains + MC) into the shared aggregator collection. Run
+    # at 02:15 UTC so it happens after the memory_cleanup job at
+    # 02:00 but before the nightly_ml_retrain at 02:30.
+    async def _shelly_federation_rollup():
+        try:
+            from shelly.mc_emitter import get_pipeline
+            pipeline = get_pipeline()
+            if pipeline is None:
+                return {"ok": False, "skipped": "pipeline_uninitialised"}
+            return await pipeline.rollup_all_to_mc()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+
+    scheduler.add_job(
+        _shelly_federation_rollup,
+        'cron', hour=2, minute=15,
+        id='shelly_federation_rollup_nightly',
+    )
     scheduler.add_job(s._run_help_search_digest, 'cron', day_of_week='mon', hour=7, minute=0, id='help_search_weekly_digest')
     scheduler.add_job(s._run_usaspending_warmup, 'cron', hour=3, minute=30, id='usaspending_warmup')
     scheduler.add_job(s._run_nightly_ml_retrain, 'cron', hour=2, minute=30, id='nightly_ml_retrain')

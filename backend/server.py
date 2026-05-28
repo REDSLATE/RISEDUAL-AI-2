@@ -432,6 +432,26 @@ async def startup_event():
     except Exception as e:
         logger.exception(f"CRITICAL: DB wire failed: {e}")
 
+    # Phase 1 — Shelly Federation pipeline singleton.
+    # Initialises the 5-Shelly federation (Alpha/Camaro/Chevelle/RedEye + MC)
+    # and registers it on the MC emitter so any MC verifier site that
+    # calls ``emit_mc_event(...)`` can route through Shelly-MC.
+    # Fail-soft: a wiring failure logs and continues — Shelly is
+    # observation-only and must never block boot.
+    try:
+        from shelly import ShellyPipeline
+        from shelly.mc_emitter import set_pipeline as _set_shelly_pipeline
+        shelly_pipeline = ShellyPipeline(db)
+        app.state.shelly_pipeline = shelly_pipeline
+        _set_shelly_pipeline(shelly_pipeline)
+        logger.info(
+            "Shelly Federation wired: %d nodes (%s)",
+            len(shelly_pipeline.locals),
+            ", ".join(shelly_pipeline.locals.keys()),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Shelly Federation wire-up failed (non-critical): %s", e)
+
     # MC Survival Layer check-in. Posts Alpha's RuntimeStamp to MC at
     # /api/admin/runtime/sidecar-checkin/alpha so the operator can see
     # who's prod vs preview live on Diagnostics. Observability only —

@@ -133,7 +133,7 @@ async def compute_sovereign_promotion_status(
 
         phase = "phase_2_authority" if promoted else "phase_1_shadow_only"
 
-        return {
+        verdict = {
             "asset_type": asset_type,
             "phase": phase,
             "promoted": promoted,
@@ -153,6 +153,46 @@ async def compute_sovereign_promotion_status(
             "gate_horizon": GATE_HORIZON,
             "blocker": blocker,
         }
+
+        # Phase 1 Shelly-MC wiring (2026-02-26) — emit every gate
+        # verdict into MC's LocalShelly as a memory event. MC is the
+        # verifier/notary and this is one of its highest-signal
+        # outputs. Fail-soft: any error in the emitter is swallowed
+        # inside the helper so this code path never blocks.
+        try:
+            from shelly.mc_emitter import emit_mc_event
+            direction_tag = (
+                "PROMOTE" if promoted
+                else "DEMOTE" if demoted
+                else "HOLD_SHADOW"
+            )
+            decision_tag = (
+                "PROMOTE_GATE_PASS" if promoted
+                else "PROMOTE_GATE_DEMOTE" if demoted
+                else "PROMOTE_GATE_BLOCK"
+            )
+            await emit_mc_event(
+                verdict_type="sovereign_promotion_gate",
+                symbol=asset_type.upper(),
+                direction=direction_tag,
+                decision=decision_tag,
+                features={
+                    "phase": phase,
+                    "rows_resolved": rows_resolved,
+                    "rows_right": rows_right,
+                    "win_rate": win_rate,
+                    "calibration_avg": cal_avg,
+                    "rolling_win_rate": rolling_rate,
+                    "blocker": blocker,
+                },
+            )
+        except Exception as _shelly_exc:  # noqa: BLE001
+            logger.debug(
+                "[sovereign_promotion] shelly emit non-fatal: %s",
+                _shelly_exc,
+            )
+
+        return verdict
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "[sovereign-promotion] status read failed for %s: %s",
