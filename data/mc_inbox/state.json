@@ -1,6 +1,6 @@
 {
-  "last_polled_at": "2026-05-28T00:24:24.606847+00:00",
-  "last_roles_at": "2026-05-28T00:22:55.323546+00:00",
+  "last_polled_at": "2026-05-28T00:31:36.589464+00:00",
+  "last_roles_at": "2026-05-28T00:28:21.210746+00:00",
   "last_scorecard_at": "2026-05-28T00:22:55.225283+00:00",
   "last_seen_opinion_at": "",
   "last_seen_opinion_id": "fc6d561e-ae0b-4b8f-a5cd-b3d6d0ba1be0",
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-28T00:22:55.172502+00:00",
+        "last_seen": "2026-05-28T00:28:19.250418+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-28T00:22:38.869890+00:00",
+        "last_seen": "2026-05-28T00:28:05.249433+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -75,7 +75,7 @@
         "authority_state": "advisor",
         "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-28T00:22:17.056066+00:00",
+        "last_seen": "2026-05-28T00:28:20.806860+00:00",
         "may_execute": false,
         "role": "opponent",
         "runtime": "redeye",
@@ -109,11 +109,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 148629,
+      "camaro": 148926,
       "chevelle": 56072,
-      "redeye": 105502
+      "redeye": 105805
     },
-    "opinions_ingested": 318400,
+    "opinions_ingested": 319000,
     "opinions_quarantined": 0
   }
 }
