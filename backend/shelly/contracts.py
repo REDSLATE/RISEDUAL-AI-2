@@ -52,6 +52,15 @@ class ShellyMemoryEvent:
     roadguard_status: str
     outcome: Optional[dict[str, Any]] = None
     created_at: str = ""
+    # Phase 2 forward-compat (2026-02-26) — the embedding slot is
+    # added now so the wire format never has to change when the
+    # Chroma sidecar lands. ``None`` means "not yet embedded";
+    # population happens in LocalShelly.remember() once Phase 2
+    # ships. Excluded from the event_hash by virtue of being None
+    # on every existing write path, so Phase 1 hashes remain
+    # stable across the upgrade.
+    embedding: Optional[list[float]] = None
+    embedding_version: Optional[str] = None
 
     def to_doc(self) -> dict[str, Any]:
         """Serialize to a Mongo-ready document with stamped metadata.

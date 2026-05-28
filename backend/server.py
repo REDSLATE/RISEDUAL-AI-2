@@ -441,6 +441,7 @@ async def startup_event():
     try:
         from shelly import ShellyPipeline
         from shelly.mc_emitter import set_pipeline as _set_shelly_pipeline
+        from shelly.indexes import ensure_indexes as _shelly_ensure_indexes
         shelly_pipeline = ShellyPipeline(db)
         app.state.shelly_pipeline = shelly_pipeline
         _set_shelly_pipeline(shelly_pipeline)
@@ -449,6 +450,14 @@ async def startup_event():
             len(shelly_pipeline.locals),
             ", ".join(shelly_pipeline.locals.keys()),
         )
+        try:
+            idx_result = await _shelly_ensure_indexes(db)
+            logger.info("Shelly Federation indexes ensured: %s", idx_result)
+        except Exception as ie:  # noqa: BLE001
+            logger.warning(
+                "Shelly Federation index creation failed (non-critical): %s",
+                ie,
+            )
     except Exception as e:  # noqa: BLE001
         logger.warning("Shelly Federation wire-up failed (non-critical): %s", e)
 

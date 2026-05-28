@@ -36,7 +36,12 @@ class LocalShelly:
         self.receipts = db[f"shelly_{brain_name.lower()}_reasoning_receipts"]
 
     async def remember(self, event: ShellyMemoryEvent) -> dict[str, Any]:
-        """Persist a single brain receipt. Idempotent on ``event_hash``."""
+        """Persist a single brain receipt. Idempotent on ``event_hash``.
+
+        Phase 2 — also fires a best-effort Chroma vector upsert via
+        ``shelly.vector_sidecar.embed_memory``. Vector failure NEVER
+        blocks the durable Mongo write.
+        """
         doc = event.to_doc()
         doc["shelly_scope"] = "local"
         doc["owner_brain"] = self.brain_name
@@ -45,6 +50,15 @@ class LocalShelly:
             {"$setOnInsert": doc},
             upsert=True,
         )
+        # ── Phase 2: best-effort vector upsert ───────────────────
+        try:
+            from shelly.vector_sidecar import embed_memory
+            embed_memory(self.brain_name, doc)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[shelly_%s] vector upsert non-fatal: %s",
+                self.brain_name, exc,
+            )
         return doc
 
     async def reason(self, current_case: dict[str, Any]) -> dict[str, Any]:

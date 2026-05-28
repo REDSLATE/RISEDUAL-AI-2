@@ -137,4 +137,37 @@ async def reason_dry_run(
     )
 
 
+@router.post("/similarity")
+async def federation_similarity_search(
+    request: Request, body: dict[str, Any] = Body(default_factory=dict),
+) -> dict[str, Any]:
+    """Phase 3-style cross-Shelly retrieval over Chroma vectors.
+
+    Body schema::
+
+        {"symbol": "AAPL", "direction": "LONG", "decision": "BUY",
+         "features": {...}, "top_k_per_node": 3}
+
+    Returns per-node top-K nearest-neighbour memories from every
+    federation node's Chroma collection. Caller can merge / rank /
+    detect conflicts in their own UI.
+    """
+    await _require_owner(request)
+    if db is None or pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline unavailable")
+    from shelly.vector_sidecar import find_similar_federation
+    top_k = max(1, min(int(body.get("top_k_per_node", 3) or 3), 25))
+    matches = find_similar_federation(body, top_k_per_node=top_k)
+    return {
+        "authority": "memory_reasoning_only",
+        "query": {
+            "symbol": body.get("symbol"),
+            "direction": body.get("direction"),
+            "decision": body.get("decision"),
+        },
+        "matches_by_node": matches,
+        "total_matches": sum(len(v) for v in matches.values()),
+    }
+
+
 __all__ = ["router", "set_db"]

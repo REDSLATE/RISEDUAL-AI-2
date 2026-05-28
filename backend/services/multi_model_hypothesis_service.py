@@ -267,6 +267,18 @@ async def _run_single_model(api_key: str, model_key: str, symbol: str, prompt: s
                 await hc.put(cache_db, key=ckey, payload=hypothesis)
             except Exception as _put_exc:  # noqa: BLE001
                 logger.debug("[hypothesis_cache] put skipped: %s", _put_exc)
+
+        # Phase 2 — Shelly brain wiring. Single emission site for
+        # all four brain personas. Fail-soft inside the helper.
+        from shelly.brain_emitter import emit_brain_hypothesis
+        await emit_brain_hypothesis(
+            model_key=model_key,
+            symbol=symbol,
+            hypothesis=hypothesis,
+            provider=cfg.get("provider"),
+            model=cfg.get("model"),
+        )
+
         return hypothesis
 
     except json.JSONDecodeError:

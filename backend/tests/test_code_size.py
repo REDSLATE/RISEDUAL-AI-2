@@ -362,6 +362,7 @@ PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
     "backend/services/top_universe_service.py":        (613,  "core-governance"),
     "backend/services/tier3_readiness.py":             (608,  "core-governance"),  # 2026-05-15: hold for high-conf WR daily-mean smoothing; split scheduled after admin UI port lands.
     "backend/services/price_provider.py":              (608,  "core-governance"),
+    "backend/services/multi_model_hypothesis_service.py":(609, "core-governance"),  # 2026-02-26: Phase 2 brain wiring +9 lines; split out into shelly/brain_emitter to keep this site readable. Further reduction would require splitting the 4 budget-resilience layers which are tightly coupled.
 
     # ── default (preferred 800) ───────────────────────────────────
     "backend/server.py":                               (2003, "default"),
