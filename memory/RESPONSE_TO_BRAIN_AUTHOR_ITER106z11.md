@@ -1,5 +1,15 @@
 # Response to Alpha sidecar author — iter-106z11 follow-up
 
+> ⚠️ **SUPERSEDED** by `/app/memory/RESPONSE_TO_ALPHA_AUTHOR_OPINIONS_v2.md`.
+>
+> The v2 document is the canonical Alpha response, with current
+> seat assignments (crypto_strategist + auditor), prod-pulled
+> evidence, and the `authority_call` mirror pattern. The v1 doc
+> below is kept only for thread continuity from the iter-106z11
+> reply chain.
+
+---
+
 **Topic**: Alpha is opinion-silent on the MC consensus channel.
 **Status**: Diagnosis confirmed; verified contract below — copy-pasteable.
 
