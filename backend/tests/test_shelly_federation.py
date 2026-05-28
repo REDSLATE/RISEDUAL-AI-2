@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from shelly.config import BRAIN_NAMES, MEMORY_REASONING_ONLY
+from shelly.config import BRAIN_NAMES, MC_NODE_NAME, NODE_NAMES, MEMORY_REASONING_ONLY
 from shelly.contracts import (
     ShellyMemoryEvent,
     ShellyReasoningReceipt,
@@ -363,10 +363,40 @@ async def test_mc_reason_neutral_below_sample_floor(fake_db):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_instantiates_all_four_brains(fake_db):
+async def test_pipeline_instantiates_all_five_nodes(fake_db):
+    """Federation has 5 LocalShellys — 4 brains plus MC.
+
+    Doctrine: MC is NOT a brain (it's the verifier/notary) but it
+    IS a federation node and owns its own Shelly so MC receipts
+    get the same memory + reasoning treatment as brain receipts.
+    """
     from shelly.pipeline import ShellyPipeline
     p = ShellyPipeline(fake_db)
-    assert set(p.locals.keys()) == set(BRAIN_NAMES)
+    assert set(p.locals.keys()) == set(NODE_NAMES)
+    assert len(p.locals) == 5
+    # MC is present alongside the 4 brains
+    assert MC_NODE_NAME in p.locals
+    assert MC_NODE_NAME not in BRAIN_NAMES  # MC is not a brain
+    for brain in BRAIN_NAMES:
+        assert brain in p.locals
+
+
+@pytest.mark.asyncio
+async def test_pipeline_records_mc_node_receipt(fake_db):
+    """MC owns its own Shelly and produces receipts that flow through
+    the same pipeline as brain receipts. Rejection of MC = doctrine bug."""
+    from shelly.pipeline import ShellyPipeline
+    p = ShellyPipeline(fake_db)
+    result = await p.record_brain_event("MC", {
+        "symbol": "AAPL", "direction": "VERIFY", "confidence": 1.0,
+        "decision": "VERIFY_OK", "features": {"verifier": True},
+        "mc_status": "self", "roadguard_status": "green",
+    })
+    assert result["ok"] is True
+    assert result["node"] == "MC"
+    assert result["is_mc_node"] is True
+    # MC's local memory was persisted into shelly_mc_memories
+    assert await fake_db["shelly_mc_memories"].count_documents({}) == 1
 
 
 @pytest.mark.asyncio
@@ -388,33 +418,37 @@ async def test_pipeline_record_brain_event_writes_to_all_three_layers(fake_db):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_unknown_brain_rejected_cleanly(fake_db):
+async def test_pipeline_unknown_node_rejected_cleanly(fake_db):
     from shelly.pipeline import ShellyPipeline
     p = ShellyPipeline(fake_db)
     result = await p.record_brain_event("GTO", {
         "symbol": "AAPL", "direction": "LONG",
     })
     assert result["ok"] is False
-    assert result["reason"] == "UNKNOWN_BRAIN"
+    assert result["reason"] == "UNKNOWN_NODE"
+    assert "MC" in result["valid_nodes"]
+    assert "Alpha" in result["valid_nodes"]
 
 
 @pytest.mark.asyncio
-async def test_pipeline_rollup_drains_local_to_mc(fake_db):
+async def test_pipeline_rollup_drains_all_five_nodes(fake_db):
+    """All 5 federation nodes — 4 brains + MC — drain into shared."""
     from shelly.pipeline import ShellyPipeline
     p = ShellyPipeline(fake_db)
-    for brain in ("Alpha", "Camaro"):
-        await p.record_brain_event(brain, {
+    for node in NODE_NAMES:
+        await p.record_brain_event(node, {
             "symbol": "BTC", "direction": "LONG", "confidence": 0.6,
-            "decision": "LONG", "features": {}, "mc_status": "ok",
-            "roadguard_status": "green",
+            "decision": "LONG", "features": {"node": node},
+            "mc_status": "ok", "roadguard_status": "green",
         })
     r = await p.rollup_all_to_mc()
     assert r["ok"] is True
     assert r["authority"] == "memory_reasoning_only"
-    assert sum(v["inserted"] for v in r["results"].values()) == 2
-    # All local memories now have rolled_to_mc=True
-    for brain in ("Alpha", "Camaro"):
-        pending = await p.locals[brain].rollup_for_mc()
+    assert set(r["results"].keys()) == set(NODE_NAMES)
+    assert sum(v["inserted"] for v in r["results"].values()) == 5
+    # All five local-Shelly memory pools fully drained.
+    for node in NODE_NAMES:
+        pending = await p.locals[node].rollup_for_mc()
         assert pending == []
 
 

@@ -2,9 +2,22 @@
 from __future__ import annotations
 
 # The four execution-authority brains in the RISEDUAL stack.
-# A LocalShelly is instantiated per name. Order matters only for
-# deterministic iteration in rollup jobs.
+# A LocalShelly is instantiated per name.
 BRAIN_NAMES: tuple[str, ...] = ("Alpha", "Camaro", "Chevelle", "RedEye")
+
+# The MC node also participates in the federation with its OWN local
+# Shelly — MC is the verifier/notary and produces receipts of its
+# own (verification verdicts, council-policy decisions, sovereign
+# promotion gate calls) that deserve the same memory + reasoning
+# treatment as a brain. Keep MC strictly separate from
+# ``BRAIN_NAMES`` because MC is NOT a brain — it has no execution
+# authority — but it IS a federation node.
+MC_NODE_NAME: str = "MC"
+
+# All 5 federation nodes — every node owns a LocalShelly. The
+# MCShelly aggregator/head reasons ACROSS these 5 instances; it is
+# itself a function, not an additional Shelly count.
+NODE_NAMES: tuple[str, ...] = BRAIN_NAMES + (MC_NODE_NAME,)
 
 # Authority discipline tag. EVERY document Shelly writes must carry
 # this exact string so the operator (and audit tooling) can verify
@@ -33,6 +46,8 @@ MC_SIMILAR_LIMIT = 100
 
 __all__ = [
     "BRAIN_NAMES",
+    "MC_NODE_NAME",
+    "NODE_NAMES",
     "MEMORY_REASONING_ONLY",
     "LOCAL_MIN_SAMPLES",
     "LOCAL_LOSS_RATE_WARN",

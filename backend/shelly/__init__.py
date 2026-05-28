@@ -35,13 +35,15 @@ from shelly.contracts import (  # noqa: F401
     stable_hash,
     utc_now,
 )
-from shelly.config import BRAIN_NAMES, MEMORY_REASONING_ONLY  # noqa: F401
+from shelly.config import BRAIN_NAMES, MC_NODE_NAME, NODE_NAMES, MEMORY_REASONING_ONLY  # noqa: F401
 from shelly.local_shelly import LocalShelly  # noqa: F401
 from shelly.mc_shelly import MCShelly  # noqa: F401
 from shelly.pipeline import ShellyPipeline  # noqa: F401
 
 __all__ = [
     "BRAIN_NAMES",
+    "MC_NODE_NAME",
+    "NODE_NAMES",
     "MEMORY_REASONING_ONLY",
     "ShellyMemoryEvent",
     "ShellyReasoningReceipt",

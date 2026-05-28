@@ -52,15 +52,15 @@ async def get_federation_state(request: Request) -> dict[str, Any]:
     await _require_owner(request)
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    from shelly.config import BRAIN_NAMES, MEMORY_REASONING_ONLY
+    from shelly.config import MEMORY_REASONING_ONLY, NODE_NAMES
 
     out: dict[str, Any] = {
         "authority": MEMORY_REASONING_ONLY,
-        "brains": {},
+        "nodes": {},
     }
-    for brain in BRAIN_NAMES:
-        mem_coll = f"shelly_{brain.lower()}_memories"
-        rec_coll = f"shelly_{brain.lower()}_reasoning_receipts"
+    for node in NODE_NAMES:
+        mem_coll = f"shelly_{node.lower()}_memories"
+        rec_coll = f"shelly_{node.lower()}_reasoning_receipts"
         try:
             total = await db[mem_coll].count_documents({})
             unrolled = await db[mem_coll].count_documents(
@@ -68,12 +68,13 @@ async def get_federation_state(request: Request) -> dict[str, Any]:
             )
             receipts = await db[rec_coll].count_documents({})
         except Exception as exc:  # noqa: BLE001
-            out["brains"][brain] = {"error": str(exc)}
+            out["nodes"][node] = {"error": str(exc)}
             continue
-        out["brains"][brain] = {
+        out["nodes"][node] = {
             "memories_total": total,
             "memories_pending_rollup": unrolled,
             "reasoning_receipts_total": receipts,
+            "is_mc_node": node == "MC",
         }
     try:
         out["mc_shared"] = {
