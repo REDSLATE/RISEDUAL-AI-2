@@ -432,6 +432,18 @@ async def startup_event():
     except Exception as e:
         logger.exception(f"CRITICAL: DB wire failed: {e}")
 
+    # MC Keys Proxy — pull canonical market-data keys (Polygon, Finnhub)
+    # from MC's ``/api/admin/keys/market-data`` endpoint and stamp into
+    # ``os.environ`` BEFORE any market-data service initialises. Local
+    # ``.env`` values stay as the fallback if MC is unreachable. See
+    # services/mc_keys_proxy.py for the doctrine pins.
+    try:
+        from services.mc_keys_proxy import fetch_and_apply as _fetch_mc_keys
+        _mc_keys_result = _fetch_mc_keys()
+        logger.info("[mc_keys_proxy] boot result: %s", _mc_keys_result)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"mc_keys_proxy wire-up failed (non-critical): {e}")
+
     # Phase 1 — Shelly Federation pipeline singleton.
     # Initialises the 5-Shelly federation (Alpha/Camaro/Chevelle/RedEye + MC)
     # and registers it on the MC emitter so any MC verifier site that
