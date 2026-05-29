@@ -96,7 +96,20 @@ Your roster snapshot:
 "holds_crypto_executor": false
 ```
 
-Even after the env stamp goes green, your intents won't enter the live execution path until you hold an **executor seat** (equity `executor` or `crypto`). Auditor and Crypto Strategist do not carry execution authority by design. The operator controls seat placement — flag this once your sidecar passes the checkin and they'll decide whether you take an executor chair.
+Even after the env stamp goes green, your intents won't enter the live execution path until you hold an **executor seat** (equity `executor` or `crypto`). Auditor and Crypto Strategist do not carry execution authority. The operator controls seat placement — flag this once your sidecar passes the checkin and they'll decide whether you take an executor chair.
+
+**Doctrine pin (from `shared/roster.py` line 111):**
+> IDENTITY DOES NOT GRANT AUTHORITY. SEAT POLICY DOES.
+
+By default every brain is eligible for every seat. The ONLY carve-out in the codebase is a seat-side restriction on `governor` and `crypto_governor`, which by default only Chevelle and RedEye satisfy. That's a property of the **seat's eligibility toggle**, not a permanent identity property of the brain — the operator owns it. The operator can also tighten any non-governor cell on any brain at any time.
+
+What that means for you: the operator can rotate you into ANY non-governor seat — strategist, executor, auditor — on either lane, at any time. Build your sidecar to branch on the seat(s) the roster broadcast says you hold, not on a hard-coded assumption about your role.
+
+Concrete behaviors per seat you might hold:
+
+- equity / crypto `strategist` → form trust/reduce/veto/observation theses on intents in that lane (your current crypto seat)
+- equity / crypto `executor` → emit intents to `POST /api/intents`
+- equity / crypto `auditor` → post pre-trade contrary case + post-trade review opinions (your current equity seat)
 
 ---
 
