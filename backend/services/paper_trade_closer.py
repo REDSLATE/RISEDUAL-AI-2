@@ -353,6 +353,33 @@ async def close_due_paper_trades(db: Any) -> dict:
                         "[paper-closer] outcome bridge enqueue failed: %s",
                         _bridge_exc,
                     )
+
+                # ── Phase 4 (2026-02-27): backfill the realised
+                # outcome onto every Shelly memory in the decision
+                # cluster (Alpha + council brains + MC + shared).
+                # Without this, the federation's reasoning paths
+                # forever report "Not enough Shelly memory yet" —
+                # they only count memories with outcome.pnl_pct.
+                # Fail-soft; per-node try/except inside the helper.
+                try:
+                    from shelly.outcome_backfill import (
+                        backfill_outcome_for_trade,
+                    )
+                    await backfill_outcome_for_trade(
+                        db,
+                        ticker=ticker,
+                        direction=direction,
+                        trade_id=trade_id,
+                        opened_at=t.get("opened_at"),
+                        closed_at=now,
+                        pnl_pct=pnl_pct,
+                        outcome_label=outcome,
+                    )
+                except Exception as _shelly_exc:  # noqa: BLE001
+                    logger.debug(
+                        "[paper-closer] shelly outcome backfill failed: %s",
+                        _shelly_exc,
+                    )
                 # Sync paper_positions roster (best-effort)
                 try:
                     await db["paper_positions"].update_many(

@@ -4,6 +4,94 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-02-27 (Phase 4: Federation Outcome Loop + Consensus)
+
+### 🧠 Phase 4 — 5-Shelly Federation closes the learning loop
+
+The federation moves from "scribe-only" to **closed-loop learning**.
+Pre-Phase 4, both `LocalShelly.reason()` and
+`MCShelly.reason_across_shellys()` filtered on
+`outcome.pnl_pct exists` — but nothing wrote that field, so every
+reasoning call permanently reported "Not enough Shelly memory yet"
+regardless of how many decisions accumulated.
+
+**Outcome backfill** (`shelly/outcome_backfill.py`):
+`backfill_outcome_for_trade(...)` matches on
+`(symbol_upper, canonical_direction, opened_at ± 600s)` and stamps
+`outcome.pnl_pct` + `outcome.outcome_label` + `outcome.trade_id`
+back onto every matching unresolved memory across all 5 LocalShelly
+collections + the MC shared aggregator. Idempotent (only writes
+when `outcome.pnl_pct` is missing). Per-node `try/except` —
+fail-soft. Top-level `authority: memory_reasoning_only` stamp
+never modified.
+
+**Wiring**: `services/paper_trade_closer.close_due_paper_trades`
+calls the backfill after every successful close, right after the
+sovereign outcome bridge. Best-effort, never blocks the close path.
+
+**Alpha-as-paper-trader emission**
+(`shelly/brain_emitter.emit_alpha_paper_trade`):
+Distinct from the hypothesis-stage emit. Captures Alpha's
+EXECUTION-stage decision (post-Kelly, post-RoadGuard,
+post-modulator) in the Alpha LocalShelly with
+`decision="PAPER_TRADE_OPEN"` and full lineage features
+(trade_id, prediction_id, sovereign_decision_id, entry_price,
+position_usd, regime). Wired into
+`services/ml_paper_trader.maybe_paper_trade` right after the
+`paper_trades.insert_one` success branch.
+
+**Consensus endpoint**:
+`GET /api/admin/shelly-federation/consensus?symbol=AAPL&direction=LONG`.
+Runs `LocalShelly.reason()` on all 5 nodes + the MC cross-brain
+aggregator, applies the conservative-priority rollup rule
+(`warn > neutral > support` — mirrors the memory modulator's
+"losers downweight beats winners upweight" doctrine), and returns
+a single rolled-up recommendation alongside the per-node detail.
+Read-only. Safe to poll.
+
+**Frontend** (`components/admin/ShellyFederationPanel.jsx`):
+- New "Federation" tab in AdminPanel → Insights, between "Shelly"
+  and "Shelly Quarantine".
+- 5 colored node cards (Alpha/Camaro/Chevelle/RedEye/MC) +
+  MC-shared aggregator card showing memories_total /
+  memories_pending_rollup / reasoning_receipts_total.
+- Consensus dry-run form: symbol + direction → rolled-up verdict
+  card (WARN/NEUTRAL/SUPPORT badge + Δ confidence) + per-node
+  reasoning breakdown + MC cross-brain by-brain tally chips.
+- All elements stamped with `data-testid` per doctrine.
+
+**Tests**: 12 new (`test_shelly_phase4_outcome_backfill.py`).
+Coverage: per-node backfill across all 5 + MC shared,
+idempotency on already-resolved rows, time-window enforcement,
+direction normalisation (up → LONG), per-node fail-soft,
+outcome sub-doc field schema, Alpha emit no-op when pipeline
+missing, Alpha emit feature population, Alpha emit error
+swallowing, consensus rollup priority rule (3 cases).
+
+**Backend regression**: **4,011 passing** (was 3,999; +12 new,
+zero regressions). All lint clean. Live consensus endpoint
+verified end-to-end on the preview pod.
+
+**Brain coordination memo**
+(`/app/memory/RESPONSE_TO_BRAIN_AUTHORS_FEDERATION_PHASE_4.md`):
+Sidecar authors notified that the trading-app's outcome loop is
+live, with the symmetric pattern documented if they want their
+brain-side mirror to do the same. No coordination required —
+their existing opinion / contribution surfaces are unchanged.
+
+### Pending — Phase 5+ candidates
+- **Council brain-paths emit at execution-stage** (currently only
+  hypothesis-stage). Adds Camaro / Chevelle / RedEye receipts at
+  trade emission so the federation's recommendation surface
+  matches Alpha symmetrically.
+- **Federation similarity-search UI** — surface
+  `/api/admin/shelly-federation/similarity` (Chroma vector top-K)
+  in the panel as an expandable per-node section.
+- **Federation reasoning timeline** — per-symbol historical view
+  of how the rolled-up recommendation has evolved.
+
+
+
 ## Latest Update — 2026-02-26 (Phase 1: Shelly-MC wired)
 
 ### 🧠 Phase 1 — MC Shelly receiving its first real verdicts

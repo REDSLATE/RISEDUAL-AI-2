@@ -1150,6 +1150,32 @@ async def maybe_paper_trade(
             )
         except Exception:
             pass
+
+        # ── Phase 4 (2026-02-27): Alpha-as-paper-trader Shelly emit ──
+        # Distinct from the hypothesis-stage emit in
+        # multi_model_hypothesis_service — this receipt captures
+        # the EXECUTION-stage decision (post-Kelly, post-RoadGuard,
+        # post-modulator). Outcomes will flow back via the
+        # paper_trade_closer → shelly.outcome_backfill loop.
+        try:
+            from shelly.brain_emitter import emit_alpha_paper_trade
+            await emit_alpha_paper_trade(
+                symbol=ticker,
+                direction=direction_val,
+                confidence=signal.confidence,
+                trade_id=trade_id,
+                prediction_id=signal.prediction_id,
+                sovereign_decision_id=sovereign_decision_id,
+                entry_price=entry_price,
+                position_usd=position_usd,
+                regime=regime,
+            )
+        except Exception as _shelly_exc:  # noqa: BLE001
+            log.debug(
+                "[ml_paper] shelly alpha emit skipped for %s: %s",
+                ticker, _shelly_exc,
+            )
+
         return trade_id
 
     except Exception as exc:  # noqa: BLE001

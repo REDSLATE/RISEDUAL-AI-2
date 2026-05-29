@@ -170,4 +170,99 @@ async def federation_similarity_search(
     }
 
 
+@router.get("/consensus")
+async def federation_consensus(
+    request: Request, symbol: str, direction: str,
+) -> dict[str, Any]:
+    """Phase 4 — federation-wide consensus verdict.
+
+    Runs ``LocalShelly.reason()`` on every brain (Alpha / Camaro /
+    Chevelle / RedEye / MC) for the given ``(symbol, direction)``
+    pair AND runs ``MCShelly.reason_across_shellys()`` on the
+    pooled memory. Rolls everything up into a single top-level
+    recommendation using the conservative-priority rule
+    ``warn > neutral > support`` — same priority the memory
+    modulator uses when blending evidence.
+
+    Read-only and idempotent: no writes. Safe to poll from a
+    future Mission Control panel.
+    """
+    await _require_owner(request)
+    if db is None or pipeline is None:
+        raise HTTPException(status_code=503, detail="Pipeline unavailable")
+    symbol = (symbol or "").strip().upper()
+    direction = (direction or "").strip().upper()
+    if not symbol or not direction:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "missing_symbol_or_direction"},
+        )
+
+    case = {"symbol": symbol, "direction": direction}
+
+    per_node: dict[str, dict[str, Any]] = {}
+    for node, shelly in pipeline.locals.items():
+        try:
+            receipt = await shelly.reason(case)
+            receipt.pop("_id", None)
+        except Exception as exc:  # noqa: BLE001
+            receipt = {
+                "recommendation": "neutral",
+                "confidence_delta": 0.0,
+                "reasons": [f"reason error: {exc}"],
+                "evidence_hashes": [],
+            }
+        per_node[node] = receipt
+
+    try:
+        mc_receipt = await pipeline.mc_shelly.reason_across_shellys(case)
+        mc_receipt.pop("_id", None)
+    except Exception as exc:  # noqa: BLE001
+        mc_receipt = {
+            "recommendation": "neutral",
+            "confidence_delta": 0.0,
+            "reasons": [f"mc reason error: {exc}"],
+            "evidence_hashes": [],
+        }
+
+    # Conservative-priority rollup: warn dominates, then neutral,
+    # then support. Mirrors the memory modulator's "losers
+    # downweight beats winners upweight" doctrine.
+    recommendations = [r.get("recommendation", "neutral") for r in per_node.values()]
+    recommendations.append(mc_receipt.get("recommendation", "neutral"))
+    if "warn" in recommendations:
+        rolled_up = "warn"
+    elif "support" in recommendations and "neutral" not in recommendations:
+        rolled_up = "support"
+    else:
+        rolled_up = "neutral"
+
+    # When warning: take the most negative delta. When supporting:
+    # take the smallest positive delta. When neutral: 0.0.
+    deltas = [
+        float(r.get("confidence_delta", 0.0) or 0.0)
+        for r in per_node.values()
+    ]
+    deltas.append(float(mc_receipt.get("confidence_delta", 0.0) or 0.0))
+    if rolled_up == "warn":
+        rolled_delta = min(deltas) if deltas else 0.0
+    elif rolled_up == "support":
+        positive = [d for d in deltas if d > 0]
+        rolled_delta = min(positive) if positive else 0.0
+    else:
+        rolled_delta = 0.0
+
+    return {
+        "authority": "memory_reasoning_only",
+        "query": {"symbol": symbol, "direction": direction},
+        "per_node": per_node,
+        "mc_cross_brain": mc_receipt,
+        "rolled_up": {
+            "recommendation": rolled_up,
+            "confidence_delta": rolled_delta,
+            "rule": "warn>neutral>support; most-conservative wins",
+        },
+    }
+
+
 __all__ = ["router", "set_db"]

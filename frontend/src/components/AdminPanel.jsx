@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning, ScrollText } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning, ScrollText, Network } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -32,6 +32,7 @@ import NewsShockBurnIn from './admin/NewsShockBurnIn';
 import TerminalTopActions from './admin/TerminalTopActions';
 import AdminRoutesPanel from './admin/AdminRoutesPanel';
 import ShellyDiagnosticTile from './admin/ShellyDiagnosticTile';
+import ShellyFederationPanel from './admin/ShellyFederationPanel';
 import MalformedQuarantine from './admin/MalformedQuarantine';
 import Stage3DecisionPairs from './admin/Stage3DecisionPairs';
 import FastVetoTile from './admin/FastVetoTile';
@@ -90,6 +91,7 @@ const TAB_GROUPS = [
       { id: 'autopsy',       label: 'Toxic Autopsy', icon: AlertTriangle },
       { id: 'engines',       label: 'AI Core', icon: Activity },
       { id: 'shelly',        label: 'Shelly',  icon: Brain },
+      { id: 'shelly-federation', label: 'Federation', icon: Network },
       { id: 'shelly-malformed', label: 'Shelly Quarantine', icon: FileWarning },
       { id: 'fast-veto',     label: 'Fast Veto', icon: ShieldCheck },
       { id: 'roadguard',     label: 'RoadGuard', icon: ShieldCheck },
@@ -141,6 +143,7 @@ const TAB_SUBTITLES = {
   autopsy:        () => 'Toxic spike autopsy — WHY high-confidence predictions failed',
   engines:        () => 'AI Core engine registry — live + candidate side-by-side · bucket-lift comparison',
   shelly:         () => 'Shelly · Patent M Learning Core — situational memory · observation only (rollout step 1/5)',
+  'shelly-federation': () => '5-Shelly Federation — 4 brains + MC verifier · memory + cross-brain reasoning · authority: memory_reasoning_only',
   'shelly-malformed': () => 'Shelly Quarantine — malformed perceptions, doctrine-labeled, numbered audit trail · promote when fixed',
   'fast-veto':    () => 'Tier 1 Fast Veto — sub-ms classical guardrail · veto-only · shadow mode',
   roadguard:      () => 'RoadGuard — shared capital + broker safety governor · veto-only · shadow mode',

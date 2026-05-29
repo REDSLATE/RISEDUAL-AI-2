@@ -92,4 +92,61 @@ async def emit_brain_hypothesis(
         )
 
 
-__all__ = ["emit_brain_hypothesis"]
+async def emit_alpha_paper_trade(
+    *,
+    symbol: str,
+    direction: str,
+    confidence: Any,
+    trade_id: str,
+    prediction_id: Optional[str] = None,
+    sovereign_decision_id: Optional[str] = None,
+    entry_price: Optional[float] = None,
+    position_usd: Optional[float] = None,
+    regime: Optional[str] = None,
+    mc_status: str = "unverified",
+    roadguard_status: str = "n/a",
+) -> None:
+    """Fire-and-forget Shelly emission for an Alpha paper-trade.
+
+    This is the *execution-stage* receipt — distinct from the
+    hypothesis-stage receipt ``emit_brain_hypothesis`` writes.
+    The hypothesis layer captures Alpha's *opinion* at signal
+    generation; this captures Alpha's *committed action* after
+    every gate has cleared (Kelly, RoadGuard, operator gate,
+    memory modulator). Both layers will eventually receive the
+    same outcome backfill — so the operator can compare
+    "hypothesis-stage vs execution-stage" hit rates per brain.
+    """
+    try:
+        from shelly.mc_emitter import get_pipeline
+        pipeline = get_pipeline()
+        if pipeline is None:
+            return
+        await pipeline.record_brain_event(
+            "Alpha",
+            {
+                "symbol": (symbol or "").upper(),
+                "direction": _normalise_direction(direction),
+                "confidence": _normalise_confidence(confidence),
+                "decision": "PAPER_TRADE_OPEN",
+                "features": {
+                    "trade_id": trade_id,
+                    "prediction_id": prediction_id,
+                    "sovereign_decision_id": sovereign_decision_id,
+                    "entry_price": entry_price,
+                    "position_usd": position_usd,
+                    "regime": regime,
+                    "stage": "execution",
+                },
+                "mc_status": mc_status,
+                "roadguard_status": roadguard_status,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "[shelly_brain_emit] alpha paper trade emit non-fatal sym=%s: %s",
+            symbol, exc,
+        )
+
+
+__all__ = ["emit_brain_hypothesis", "emit_alpha_paper_trade"]
