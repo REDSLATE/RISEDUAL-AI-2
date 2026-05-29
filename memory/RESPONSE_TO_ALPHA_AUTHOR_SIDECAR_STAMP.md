@@ -1,152 +1,121 @@
-# Response to Alpha sidecar author — Sidecar Environment Stamp
+# Response to Alpha-author re: sidecar env stamp invalid on prod
 
-**Supersedes for active follow-up**: `RESPONSE_TO_ALPHA_AUTHOR_OPINIONS_v2.md`
-**Status**: Patch shipped, code path verified, single env-config blocker remains.
-**Severity**: 1-line env var away from green. Not a code problem.
+**TL;DR**: Alpha's sidecar checkin verdict on prod is `invalid` with error `BAD_OR_UNKNOWN_DB_NAME`. MC's gate chain will not accept your intents as live until the env stamp passes the prod-sidecar validator. Documentation alignment is done; the wire is not. This blocks the gate chain even if the operator gives you an executor seat.
 
 ---
 
-## 1. Live evidence (production, `mission.risedual.ai`)
-
-<operator: paste current values from /admin/intents and /admin/diagnostics before forwarding>
+## Live evidence (pulled from `mission.risedual.ai` just now)
 
 ```
-Alpha sidecar → MC roundtrip status:
-  - heartbeat:     fresh (last seen <Xs> ago)
-  - policy_hash:   matches MC canonical
-  - opinion POST:  reaching MC endpoint
-  - env stamp:     INVALID — BAD_OR_UNKNOWN_DB_NAME
-
-shared_brain_opinions count where runtime == "alpha":
-  0  (MC stamp gate is rejecting every POST at the door)
-
-MC rejection log (representative):
-  reject reason: BAD_OR_UNKNOWN_DB_NAME
-  received: <empty | "preview" | "test" | "unknown">
-  expected: one of MC's known prod database identifiers
+GET /api/admin/brain/emission-diagnose/alpha
 ```
-
-**This is materially different from the iter-106z11 / v2 diagnosis.** Alpha's author DID ship the patch — the opinions code path is live, the HTTP layer works, the token is correct. What's blocking is a single env-stamp validation downstream of the POST. MC is doing exactly what it's designed to do: refuse to accept opinions from a sidecar that can't prove it's running in a sanctioned prod environment.
-
----
-
-## 2. The specific failure
-
-```
-MC verdict: BAD_OR_UNKNOWN_DB_NAME
-```
-
-MC reads `RISEDUAL_DB_NAME` (and adjacent stamp vars) on every inbound opinion POST. If the value is missing, empty, or one of the explicitly-blacklisted strings (`preview`, `test`, `unknown`, `dev`, etc.), the POST is rejected at the validation layer *before* the opinion lands in `shared_brain_opinions`. This protects prod broker keys from preview/test sidecars triggering real orders.
-
-On Alpha's prod pod, `RISEDUAL_DB_NAME` is currently one of those forbidden values (or unset).
-
----
-
-## 3. Exact env vars to set on Alpha's prod pod
-
-```bash
-# Required — must exactly match MC's canonical prod DB identifier
-RISEDUAL_DB_NAME=<the verified prod db_name — confirm with operator>
-
-# Required — symmetric with MC .env, already set, included here for completeness
-ALPHA_INGEST_TOKEN=<unchanged>
-
-# Adjacent stamp vars MC may also validate
-RISEDUAL_ENV=prod
-RISEDUAL_RUNTIME_NAME=alpha
-```
-
-**Critical**: the `RISEDUAL_DB_NAME` value is **not** something Alpha's author should guess. The operator will confirm the exact string from MC's `.env`. Common mistake to avoid: leaving the value as `preview` because that's what the dev pod uses — prod pod must use the prod DB name.
-
-After setting the vars, restart / redeploy the Alpha sidecar pod so the new environment takes effect.
-
----
-
-## 4. Verification curl
-
-Run this from any pod with `ALPHA_INGEST_TOKEN` set, **after** Alpha's prod pod redeploys with the corrected env:
-
-```bash
-curl -sS -X POST "https://mission.risedual.ai/api/ingest/opinion" \
-  -H "X-Runtime-Token: $ALPHA_INGEST_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "runtime": "alpha",
-    "topic": "symbol:BTC-USD",
-    "stance": "observation",
-    "confidence": 0.5,
-    "body": "post-stamp-fix smoke test",
-    "may_execute": false
-  }'
-```
-
-**Expected response shape**:
 
 ```json
 {
-  "ok": true,
-  "verdict": "prod",
-  "opinion_id": "<uuid>",
-  "runtime": "alpha",
-  "received_at": "<iso8601>"
+    "summary": "alpha sidecar is alive but silent for the last 24h.",
+    "silent_reasons": [
+        "SIDECAR_CHECKIN_INVALID",
+        "NO_EXECUTOR_SEAT_FOR_LANE",
+        "NO_INTENT_LAST_24H"
+    ],
+    "sidecar_checkin": {
+        "verdict": "invalid",
+        "errors": ["BAD_OR_UNKNOWN_DB_NAME"],
+        "policy_hash_match": true,
+        "ever_checked_in": true
+    },
+    "emission": {
+        "total_intents_ever": 83,
+        "window_total": 0
+    },
+    "heartbeat": {
+        "liveness": "dormant",
+        "heartbeat_age_seconds": 29.0,
+        "intents_last_24h": 0,
+        "opinions_last_24h": 0
+    }
 }
 ```
 
-The `verdict: "prod"` field is the green-light signal. If it returns:
-- `verdict: "BAD_OR_UNKNOWN_DB_NAME"` → the env var didn't propagate to the running process (check pod restart, deployment manifest layer, secret scope).
-- `401` → token wrong or missing.
-- `404` → URL typo.
-- `422` → schema regression (shouldn't happen; the body above is verified).
+Heartbeat is fresh (29s). `ever_checked_in: true`. `policy_hash_match: true`. So your sidecar IS reaching MC and the policy is in sync. **Only the env stamp is wrong**, and that single failure puts every intent on a path the gate chain ignores.
 
 ---
 
-## 5. Secondary blocker — operator-side, NOT a brain-team item
+## What MC actually checks
 
-Even after Alpha's stamp goes green and opinions start landing, **Alpha does not currently hold an executor seat** on the Mission Control Seat Roster. That's an operator dashboard change (2-click reseat), not a code change.
+`shared/runtime/platform_survival.py::validate_for_prod_sidecar`. All six must be true:
 
-**Important: Alpha's author should NOT try to fix this from their side.** Seat assignments are operator-controlled in MC; there's no env var or sidecar-side knob for them. Trying to push a "fix" for the seat from the brain pod will either no-op or fail validation.
+| Field | Required value | Env var |
+|---|---|---|
+| `env_name` | literal string `"prod"` | `RISEDUAL_ENV` (or `ENV` fallback) |
+| `mc_url` | starts with `https://mission.risedual.ai` | `RISEDUAL_MC_URL` |
+| `db_name` | NOT in `("", "preview", "test", "unknown")` | `RISEDUAL_DB_NAME` |
+| `broker_mode` | one of `"paper"`, `"live"`, `"dry_run"` | `RISEDUAL_BROKER_MODE` |
+| `git_sha` | not `""` / `"unknown"` | `GIT_SHA` or `VERCEL_GIT_COMMIT_SHA` |
+| `local_execution_authority` | `False` (hard-coded) | — |
 
-This blocker is recorded here so Alpha's author knows:
-- Their stamp going green is the end of their deliverable.
-- If trades still don't fire after that, the next step is on the operator (seat assignment), not on them.
-- The status sequence after redeploy will be: stamp valid → opinions landing → seat reassignment → trades flowing.
-
----
-
-## 6. Doctrine pin: why MC enforces the stamp
-
-MC enforces `RISEDUAL_DB_NAME` validation on every opinion POST because **opinions ultimately feed the gate chain that authorizes real orders against real broker keys**. A misconfigured sidecar running in preview, test, or dev — but pointed at the prod MC by token — would otherwise leak preview-quality opinions into the prod consensus, and those opinions could co-sign paradox records that fire prod orders.
-
-The stamp gate is the boundary that says: "I will not accept opinions from a sidecar that cannot prove it's running against the canonical prod database identifier MC expects." It's the same doctrinal pattern as:
-- Broker keys never leaving MC (iter-106z11)
-- `may_execute=False` schema-pinned on every opinion (current contract)
-- Owner-only auth on every admin write surface
-
-Three nested boundaries, all enforcing the same invariant: **execution authority requires verified provenance at every hop**. The stamp gate is one hop in that chain; it's catching Alpha now because Alpha's prod pod env is the missing piece, not because anything else is wrong.
+Yours is currently failing **`BAD_OR_UNKNOWN_DB_NAME`** — your sidecar is stamping either an empty string, the literal `"preview"`, the literal `"test"`, or `"unknown"` for `db_name`. MC throws back `verdict=invalid` and stops counting your intents as production traffic.
 
 ---
 
-## Definition of done
+## What to do
 
-Alpha sidecar author's work is complete when, after the env var fix and pod redeploy:
+1. **Set the env on your prod sidecar pod**:
 
-1. The verification curl in §4 returns `verdict: "prod"` with a valid `opinion_id`.
-2. `shared_brain_opinions` count where `runtime == "alpha"` begins incrementing as the per-intent loop fires.
-3. `mission.risedual.ai/admin/intents` shows Alpha's seat strip flipping from "stamp invalid" (or equivalent) to a live `opinion · Xs ago` indicator.
+   ```bash
+   RISEDUAL_ENV=prod
+   RISEDUAL_MC_URL=https://mission.risedual.ai
+   RISEDUAL_DB_NAME=<your real prod mongo db name>     # NOT "preview" / "test" / blank
+   RISEDUAL_BROKER_MODE=paper                          # or "live" / "dry_run"
+   GIT_SHA=<commit sha at deploy>
+   RISEDUAL_PLATFORM=<your hosting platform name>
+   RISEDUAL_SIDECAR_VERSION=<your version tag>
+   RISEDUAL_APP_NAME=alpha
+   ```
 
-The seat reassignment in §5 is the operator's next step, not Alpha's.
+2. **Redeploy** so the sidecar starts re-stamping with the new values.
+
+3. **Verify** by re-hitting the diagnose endpoint:
+
+   ```bash
+   curl -s "https://mission.risedual.ai/api/admin/brain/emission-diagnose/alpha" \
+     -H "Authorization: Bearer <operator-jwt>" | jq '.sidecar_checkin'
+   ```
+
+   Expected: `"verdict": "prod"`, `"errors": []`. Anything else means the stamp still isn't clean — read the error code, match it back to the table above, fix that env var.
 
 ---
 
-## Honest flags for the operator
+## Secondary blocker (operator-side, NOT yours)
 
-1. **Pattern continuity with iter-106z11 / opinions v2**: each successive Alpha thread has narrowed the gap by one structural layer.
-   - iter-106z11 → wrong endpoint, wrong header, wrong schema (contract)
-   - opinions v2 → contract correct, but no per-intent emit (code)
-   - sidecar stamp → code correct, but env stamp invalid (config)
+Your roster snapshot:
 
-   Each step the failure surface has gotten smaller and more specific. This last one is genuinely one env var.
+```json
+"seats_held": ["auditor", "crypto_strategist"],
+"holds_equity_executor": false,
+"holds_crypto_executor": false
+```
 
-2. **Reference bundle from Chevelle (post-iter-106z12) is still on the table** as a known-working snapshot — `services/risedual_monorepo_client.py` + `mc_key_proxy.py`. If Alpha's author wants to audit their stamp-handling against a working brain's implementation before the env fix lands, that's a good cross-check. Frame as reference, not dependency.
+Even after the env stamp goes green, your intents won't enter the live execution path until you hold an **executor seat** (equity `executor` or `crypto`). Auditor and Crypto Strategist do not carry execution authority by design. The operator controls seat placement — flag this once your sidecar passes the checkin and they'll decide whether you take an executor chair.
 
-3. **No changes on the trading-app side.** This is entirely a brain-pod env configuration. The trading-app Shelly Federation does not interact with the MC opinion channel, so nothing about this thread blocks or accelerates a `risedual.ai` redeploy.
+---
+
+## How to know it's fixed
+
+Three signals on the operator dashboard, in this order:
+
+1. `verdict: prod` on the sidecar checkin diagnose
+2. `silent_reasons` drops `SIDECAR_CHECKIN_INVALID`
+3. Once you also hold an executor seat: `by_gate_state.pending > 0` and `window_total` starts climbing within minutes
+
+You can also self-verify by asking the operator to run:
+```
+GET https://mission.risedual.ai/api/admin/brain/emission-diagnose/alpha
+```
+This endpoint requires an operator JWT — brain teams cannot hit it directly. Coordinate with the operator for a one-off curl after redeploy, or ask them to paste back the `sidecar_checkin` block.
+
+---
+
+## Doctrine pin
+
+MC enforces the env stamp because broker keys live on production MC, not on the sidecar pod. If a `preview` or `test` sidecar's intents were allowed onto the live gate chain, a dev environment could trigger real orders. That's the doctrine the validator is protecting. The fix is in your `.env` — there is no MC-side workaround.
