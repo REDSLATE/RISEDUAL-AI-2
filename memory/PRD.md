@@ -4,6 +4,96 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-05-30 (Dupe-Pod fix + Process Identity payload)
+
+### 🚨 Duplicate-checkin bug found and fixed
+
+**Symptom**: MC's stored stamp for Alpha alternated between `verdict=prod` (matching what `/api/admin/runtime/stamp` self-reported on prod) and `verdict=preview` (matching the preview pod's `RISEDUAL_ENV=preview`). Same `brain_id=alpha`, same `ALPHA_MC_INGEST_TOKEN` — MC could not disambiguate.
+
+**Smoking gun** (caught by MC operator via cross-stamp comparison):
+- Self-diagnose on prod showed `pip_fingerprint.package_count=5` (full prod deps)
+- MC's stored stamp at the same minute showed `pip_fingerprint.package_count=4` (lighter preview deps)
+- Two different installed-package sets = two different Python processes
+
+**Root cause**: The preview pod in `/app/backend/.env` had identical `ALPHA_MC_INGEST_TOKEN` and `RISEDUAL_MC_URL=https://mission.risedual.ai` as production. Both pods' periodic `mc_checkin` loops were POSTing to prod MC every 5 min as the same brain.
+
+**Fixes shipped (Alpha side)**:
+
+1. **Preview-pod skip guard** (`backend/server.py`):
+   ```
+   if stamp.env_name != "prod" and not RISEDUAL_MC_CHECKIN_ENABLE_ON_PREVIEW:
+       skip checkin (boot + periodic)
+   ```
+   Verified live: preview pod boot log emits `[mc_checkin] SKIPPED — env_name='preview' is not 'prod'`.
+
+2. **`process_identity` payload field** (`services/mc_checkin/__init__.py`):
+   Every checkin POST now includes:
+   ```json
+   "process_identity": {
+     "pid": <int>,
+     "hostname": "<gethostname>",
+     "process_boot_at": "<iso utc, captured once at module load>"
+   }
+   ```
+   Stable for the lifetime of each Python interpreter. MC parses and indexes it.
+
+3. **`last_posted_to_mc` field on the runtime stamp diagnostic**
+   (`routes/admin_runtime_stamp.py`): surfaces the literal stamp the
+   periodic loop last POSTed (env_name, db_name, mc_url, broker_mode,
+   git_sha, policy_hash, posted_at). Closes the "is our pod posting
+   what we think?" loop without log digging.
+
+4. **`[stamp-debug]` log line** on every checkin — `env_name`, `db_name`,
+   `broker_mode`, `git_sha`, `mc_url` printed at INFO level so
+   operators can grep without re-deploying.
+
+### MC-side defense-in-depth (their team)
+- `sidecar_checkin_audit` append-only collection with full payload + source_ip
+- `GET /api/admin/runtime/sidecar-checkin/{brain}/audit`
+- `GET /api/admin/runtime/sidecar-checkin/{brain}/imposter-scan` flags
+  `imposter_suspected=true` when >1 distinct identity sustains ≥3 checkins
+- 610/610 MC tripwires green (+5 new)
+
+### Tests added (Alpha side)
+- `tests/test_mc_checkin_process_identity.py` (+2 tests)
+  - payload schema correctness
+  - identity stable within a single process
+- `tests/test_admin_runtime_stamp.py` (5 tests, includes
+  validator-self-check + gate-state + token-mask invariants)
+- `tests/test_mc_keys_proxy.py` (14 tests, full fetch/apply
+  contract)
+
+**Backend regression**: **4,032 tests passing** (was 4,011 at session
+start; +21 new this session, zero regressions).
+
+### Diagnostic endpoints owned by the trading app
+- `GET /api/admin/runtime/stamp` — owner-only, returns:
+  - `runtime_stamp` (RuntimeStamp.current())
+  - `last_posted_to_mc` (what the periodic loop last POSTed)
+  - `validator_self_check` (re-runs MC's prod validator locally)
+  - `operator_trading_gate` (blocked/open + reason)
+  - `intent_emission` (RISEDUAL_EMIT_INTENTS_TO_MC state)
+  - `mc_keys_proxy` (enabled + Polygon/Finnhub presence)
+  - `tokens_present` (booleans, NEVER token values)
+
+### Operator gate flipped
+- `RISEDUAL_LOCAL_TRADES_BLOCKED=false` set on both preview & prod
+- All four local paper-trade chokepoints unblocked
+- Paper trader will fire real `paper_trades` rows on next BUY/SELL verdict
+
+### Status going into next session
+- ✅ Alpha env validated locally (`validator_self_check.ok = true`)
+- ✅ Operator gate open
+- ✅ Polygon + Finnhub keys via MC proxy
+- ✅ ALPHA_INGEST_TOKEN + ALPHA_MC_INGEST_TOKEN present on prod
+- 🔴 `risedual.ai` redeploy PENDING — pushes dupe-pod fix to prod
+- 🔴 After redeploy, MC verdict should flip to `prod` within one 5-min cycle
+- 🟡 Equity lane toggle still OFF — flip Monday 9:30 AM ET to see first SPY trade
+- 🔴 Camaro brain-loop dead (external team)
+- 🔴 RedEye 0 intents in 24h (external team)
+
+
+
 ## Latest Update — 2026-02-27 (Phase 4: Federation Outcome Loop + Consensus)
 
 ### 🧠 Phase 4 — 5-Shelly Federation closes the learning loop
