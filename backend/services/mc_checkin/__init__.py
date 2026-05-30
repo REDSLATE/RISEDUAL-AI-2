@@ -123,6 +123,34 @@ def get_last_posted_stamp() -> Dict[str, Any]:
     }
 
 
+# Process identity — captured once at module load so every checkin
+# from THIS Python interpreter reports the same pid + boot_time.
+import socket as _socket
+_PROCESS_BOOT_TIME_ISO: str = ""
+
+
+def _process_identity() -> Dict[str, Any]:
+    """Return a small dict identifying this Python process.
+
+    MC's checkin handler can record this alongside each stamp; when
+    two pods accidentally share a brain_id + token, the diverging
+    pid/hostname/boot_time make the duplicate immediately obvious in
+    MC's audit trail.
+    """
+    global _PROCESS_BOOT_TIME_ISO
+    if not _PROCESS_BOOT_TIME_ISO:
+        _PROCESS_BOOT_TIME_ISO = _utc_iso()
+    try:
+        hostname = _socket.gethostname()
+    except Exception:  # noqa: BLE001
+        hostname = "unknown"
+    return {
+        "pid": os.getpid(),
+        "hostname": hostname,
+        "process_boot_at": _PROCESS_BOOT_TIME_ISO,
+    }
+
+
 @dataclass(frozen=True)
 class RuntimeStamp:
     app_name: str
@@ -210,7 +238,16 @@ async def checkin_now(timeout_seconds: float = 10.0) -> Dict[str, Any]:
     global _LAST_POSTED_STAMP, _LAST_POSTED_AT
     _LAST_POSTED_STAMP = asdict(stamp)
     _LAST_POSTED_AT = _utc_iso()
-    payload = {"stamp": asdict(stamp)}
+    # Process identity (2026-02-27 — duplicate-checkin diagnosis).
+    # When two pods POST as the same brain_id (e.g., preview + prod
+    # both holding the same ALPHA_MC_INGEST_TOKEN), MC sees alternating
+    # stamps with no way to disambiguate. Including pid + boot_time +
+    # hostname lets MC audit which process is the source of each
+    # checkin. Pure metadata — does NOT affect validator outcome.
+    payload = {
+        "stamp": asdict(stamp),
+        "process_identity": _process_identity(),
+    }
 
     url = f"{_mc_url()}/api/admin/runtime/sidecar-checkin/alpha"
     headers = {

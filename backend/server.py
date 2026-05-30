@@ -478,6 +478,14 @@ async def startup_event():
     # who's prod vs preview live on Diagnostics. Observability only —
     # does NOT gate execution. The broker-receipt seal remains the
     # lock on bad orders. See services/mc_checkin/__init__.py.
+    #
+    # Preview-pod skip (2026-02-27): preview-tier pods MUST NOT POST
+    # to a production MC. Same brain_id + ingest token can't be
+    # disambiguated on MC's side and the preview stamp pollutes the
+    # operator's diagnose view (the "two pods" duplicate-checkin bug
+    # confirmed via pip_fingerprint divergence). Override with
+    # RISEDUAL_MC_CHECKIN_ENABLE_ON_PREVIEW=1 only when explicitly
+    # testing the checkin loop itself.
     try:
         from services.mc_checkin import (
             RuntimeStamp,
@@ -493,12 +501,23 @@ async def startup_event():
             stamp.policy_hash[:8], stamp.broker_mode,
             stamp.local_execution_authority,
         )
-        try:
-            await checkin_now()
-        except Exception as e:  # noqa: BLE001
-            # Don't block boot on MC being flaky — but log loudly.
-            logger.warning(f"mc_checkin boot ping failed (non-critical): {e}")
-        start_periodic_checkin(app.state)
+        _preview_override = os.environ.get(
+            "RISEDUAL_MC_CHECKIN_ENABLE_ON_PREVIEW", "",
+        ).strip().lower() in ("1", "true", "yes", "on")
+        if stamp.env_name != "prod" and not _preview_override:
+            logger.info(
+                "[mc_checkin] SKIPPED — env_name=%r is not 'prod'. "
+                "Preview/dev pods do not post to MC. Set "
+                "RISEDUAL_MC_CHECKIN_ENABLE_ON_PREVIEW=1 to override.",
+                stamp.env_name,
+            )
+        else:
+            try:
+                await checkin_now()
+            except Exception as e:  # noqa: BLE001
+                # Don't block boot on MC being flaky — but log loudly.
+                logger.warning(f"mc_checkin boot ping failed (non-critical): {e}")
+            start_periodic_checkin(app.state)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"mc_checkin wire-up failed (non-critical): {e}")
 
