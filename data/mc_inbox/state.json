@@ -1,88 +1,13 @@
 {
-  "last_polled_at": "2026-05-30T15:13:45.205066+00:00",
-  "last_roles_at": "2026-05-30T09:58:35.770973+00:00",
-  "last_scorecard_at": "2026-05-30T09:53:33.320005+00:00",
+  "last_polled_at": "2026-05-30T21:04:01.791563+00:00",
+  "last_roles_at": "2026-05-30T21:05:52.756950+00:00",
+  "last_scorecard_at": "2026-05-30T21:05:48.266834+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "fbbeef29-1d22-4b62-8581-5a585e962994",
+  "last_seen_opinion_id": "ff0228e0-62a3-43fe-a09d-3d1ad483cef6",
   "roles_snapshot": {
-    "count": 4,
-    "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
-    "items": [
-      {
-        "allowed_actions": [
-          "enter_long",
-          "enter_short",
-          "exit",
-          "scale_in",
-          "hold",
-          "phase6_proposal"
-        ],
-        "authority_state": "co_trader",
-        "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
-        "kind": "runtime",
-        "last_seen": "2026-05-30T09:58:33.788070+00:00",
-        "may_execute": false,
-        "role": "trader",
-        "runtime": "alpha",
-        "tagline": "structured trader",
-        "title": "Alpha"
-      },
-      {
-        "allowed_actions": [
-          "shadow_proposal",
-          "counterfactual",
-          "veto",
-          "reduce",
-          "watch",
-          "executor_proposed"
-        ],
-        "authority_state": "challenger",
-        "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-05-30T03:00:18.933834+00:00",
-        "may_execute": false,
-        "role": "challenger",
-        "runtime": "camaro",
-        "tagline": "challenger / counterfactual",
-        "title": "Camaro"
-      },
-      {
-        "allowed_actions": [
-          "readiness_gate",
-          "calibration_gate",
-          "audit_verify",
-          "promotion_decision",
-          "authority_call"
-        ],
-        "authority_state": "governor",
-        "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-05-30T09:56:58.488498+00:00",
-        "may_execute": false,
-        "role": "governor",
-        "runtime": "chevelle",
-        "tagline": "memory + calibration",
-        "title": "Chevelle"
-      },
-      {
-        "allowed_actions": [
-          "post_opinion",
-          "read_opinions",
-          "read_roles_manifest",
-          "adversarial_advisory",
-          "stance_contrary"
-        ],
-        "authority_state": "advisor",
-        "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-05-30T09:57:52.277257+00:00",
-        "may_execute": false,
-        "role": "opponent",
-        "runtime": "redeye",
-        "tagline": "adversarial scout",
-        "title": "REDEYE"
-      }
-    ]
+    "count": 0,
+    "error": "",
+    "items": []
   },
   "scorecard_snapshot": {
     "brier": null,
@@ -109,11 +34,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 188474,
-      "chevelle": 68853,
-      "redeye": 175876
+      "camaro": 191571,
+      "chevelle": 69524,
+      "redeye": 180108
     },
-    "opinions_ingested": 441400,
+    "opinions_ingested": 449400,
     "opinions_quarantined": 0
   }
 }

@@ -107,6 +107,14 @@ async def get_status_checks():
     return status_checks
 
 
+# Public v1 brain identity surface (consumed by MC's BrainHealthTile).
+# MUST be registered BEFORE api_router so it wins the /api/status path
+# match — the legacy api_router.get("/status") above returns the
+# status_checks debug collection and would shadow MC's contract path.
+from routes.public_status import router as public_status_router
+app.include_router(public_status_router)
+
+
 # Register all routers
 app.include_router(api_router)
 register_all_routers(app)
@@ -421,6 +429,54 @@ async def _run_ai_core_nightly():
         logger.warning(f"AI Core nightly sweep failed: {e}")
 
 
+def _alias_mc_identity_env_vars() -> None:
+    """Alias Alpha's historical env-var names → MC v1 spec names.
+
+    The drop-in ``sidecar/mc_identity_v1.py`` module from MC reads four
+    env vars by exact name: ``MC_URL``, ``MC_INGEST_TOKEN``,
+    ``MC_BASE_URL``, ``HEARTBEAT_TOKEN``. Alpha's deployment historically
+    uses different names for the same values:
+
+    +-----------------+-------------------------------+
+    | MC v1 name      | Alpha historical name(s)      |
+    +-----------------+-------------------------------+
+    | MC_URL          | RISEDUAL_MC_URL               |
+    | MC_INGEST_TOKEN | ALPHA_MC_INGEST_TOKEN /       |
+    |                 | ALPHA_INGEST_TOKEN            |
+    | MC_BASE_URL     | MC_BASE_URL (already correct) |
+    | HEARTBEAT_TOKEN | MONOREPO_INGEST_TOKEN /       |
+    |                 | ALPHA_INGEST_TOKEN            |
+    +-----------------+-------------------------------+
+
+    We copy values into the v1 names ONLY if the v1 name isn't already
+    set — never overwrite an operator-set value. This keeps the spec
+    module pristine (no Alpha-specific renames) and the v1 lifecycle
+    log honest.
+    """
+    import os as _os
+
+    def _ensure(target: str, sources: list[str]) -> None:
+        if (_os.environ.get(target) or "").strip():
+            return
+        for src in sources:
+            value = (_os.environ.get(src) or "").strip()
+            if value:
+                _os.environ[target] = value
+                return
+
+    _ensure("MC_URL", ["RISEDUAL_MC_URL", "MC_BASE_URL"])
+    _ensure("MC_INGEST_TOKEN", ["ALPHA_MC_INGEST_TOKEN", "ALPHA_INGEST_TOKEN"])
+    _ensure("MC_BASE_URL", ["RISEDUAL_MC_URL"])
+    _ensure(
+        "HEARTBEAT_TOKEN",
+        ["MONOREPO_INGEST_TOKEN", "ALPHA_MC_INGEST_TOKEN", "ALPHA_INGEST_TOKEN"],
+    )
+    # v1 identity also reads ENV_NAME + BROKER_MODE for the chip header —
+    # alias Alpha's existing names so the chip reflects environment
+    # without forcing the operator to set two variables for the same thing.
+    _ensure("ENV_NAME", ["RISEDUAL_ENV"])
+    _ensure("BROKER_MODE", ["RISEDUAL_BROKER_MODE"])
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -486,6 +542,26 @@ async def startup_event():
     # confirmed via pip_fingerprint divergence). Override with
     # RISEDUAL_MC_CHECKIN_ENABLE_ON_PREVIEW=1 only when explicitly
     # testing the checkin loop itself.
+    #
+    # v1 identity surface (2026-05-30): MC's BrainHealthTile reads
+    # GET /api/status which calls build_identity_block(). That fn
+    # reads the v1 env-var names (MC_URL / MC_INGEST_TOKEN /
+    # MC_BASE_URL / HEARTBEAT_TOKEN). Alpha's deployment historically
+    # uses different names — alias them here so the v1 module stays
+    # pristine (drop-in from MC) and the tripwire log line is honest.
+    _alias_mc_identity_env_vars()
+    try:
+        from sidecar.mc_identity_v1 import (
+            build_identity_block as _v1_identity,
+            log_lifecycle as _v1_lifecycle,
+        )
+        from routes.public_status import APP_NAME, SIDECAR_VERSION
+        _identity_block = _v1_identity(
+            app_name=APP_NAME, sidecar_version=SIDECAR_VERSION,
+        )
+        _v1_lifecycle(_identity_block)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"mc_identity_v1 lifecycle log failed (non-critical): {e}")
     try:
         from services.mc_checkin import (
             RuntimeStamp,
