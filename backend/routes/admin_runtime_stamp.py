@@ -62,6 +62,34 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return raw not in ("false", "0", "no", "off")
 
 
+def _get_last_posted() -> dict[str, Any]:
+    """Snapshot of the last stamp the periodic mc_checkin loop POSTed.
+
+    Crucial diagnostic — answers "what is the periodic loop actually
+    sending to MC?" without log digging. If this disagrees with
+    runtime_stamp above, something between RuntimeStamp.current() and
+    the POST is mutating the stamp.
+    """
+    try:
+        from services.mc_checkin import get_last_posted_stamp
+        snap = get_last_posted_stamp()
+        if snap.get("stamp") is None:
+            return {"stamp": None, "posted_at": None, "note": "no checkin yet"}
+        s = snap["stamp"]
+        # Surface only the validator-relevant fields — keep response small.
+        return {
+            "posted_at": snap.get("posted_at"),
+            "env_name": s.get("env_name"),
+            "db_name": s.get("db_name"),
+            "mc_url": s.get("mc_url"),
+            "broker_mode": s.get("broker_mode"),
+            "git_sha": s.get("git_sha"),
+            "policy_hash": s.get("policy_hash"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"snapshot unavailable: {exc}"}
+
+
 @router.get("/stamp")
 async def get_runtime_stamp(request: Request) -> dict[str, Any]:
     """Return the current runtime stamp + relevant gate flags.
@@ -142,6 +170,7 @@ async def get_runtime_stamp(request: Request) -> dict[str, Any]:
 
     return {
         "runtime_stamp": stamp_dict,
+        "last_posted_to_mc": _get_last_posted(),
         "validator_self_check": validator_view,
         "operator_trading_gate": gate_state,
         "intent_emission": {

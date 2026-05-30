@@ -103,6 +103,26 @@ def _env(name: str, default: str = "") -> str:
     return (os.getenv(name) or default).strip()
 
 
+def _utc_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+# Most-recent stamp actually POSTed to MC. Surfaced via the runtime
+# diagnostic endpoint so the operator can confirm "what is the
+# periodic loop posting?" without log grep.
+_LAST_POSTED_STAMP: Optional[Dict[str, Any]] = None
+_LAST_POSTED_AT: Optional[str] = None
+
+
+def get_last_posted_stamp() -> Dict[str, Any]:
+    """Snapshot of the last stamp the periodic task POSTed to MC."""
+    return {
+        "stamp": _LAST_POSTED_STAMP,
+        "posted_at": _LAST_POSTED_AT,
+    }
+
+
 @dataclass(frozen=True)
 class RuntimeStamp:
     app_name: str
@@ -173,6 +193,23 @@ async def checkin_now(timeout_seconds: float = 10.0) -> Dict[str, Any]:
     don't block" — Alpha keeps running, but the operator sees the drift.
     """
     stamp = RuntimeStamp.current()
+    # Stamp-debug breadcrumb (2026-02-27): one line per checkin so the
+    # operator can see exactly what env_name / db_name / git_sha the
+    # running process is POSTing to MC, without needing to dig through
+    # validator output. Aligns with the per-cycle MC diagnose response.
+    log.info(
+        "[stamp-debug] checkin posting: env_name=%r db_name=%r "
+        "broker_mode=%r git_sha=%r mc_url=%r",
+        stamp.env_name, stamp.db_name, stamp.broker_mode,
+        stamp.git_sha, stamp.mc_url,
+    )
+    # Cache the most-recently-posted stamp for the runtime stamp
+    # diagnostic endpoint. Lets the operator confirm from a single
+    # HTTP curl that the periodic loop is posting what they expect —
+    # no need to SSH into the pod and grep logs.
+    global _LAST_POSTED_STAMP, _LAST_POSTED_AT
+    _LAST_POSTED_STAMP = asdict(stamp)
+    _LAST_POSTED_AT = _utc_iso()
     payload = {"stamp": asdict(stamp)}
 
     url = f"{_mc_url()}/api/admin/runtime/sidecar-checkin/alpha"
