@@ -1,9 +1,9 @@
 {
-  "last_polled_at": "2026-05-29T23:38:44.365226+00:00",
-  "last_roles_at": "2026-05-30T04:33:42.921361+00:00",
-  "last_scorecard_at": "2026-05-30T04:33:42.497945+00:00",
+  "last_polled_at": "2026-05-30T04:45:35.716080+00:00",
+  "last_roles_at": "2026-05-30T04:46:32.865545+00:00",
+  "last_scorecard_at": "2026-05-30T04:46:32.795446+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "fff65a01-c1c4-4ef4-b917-1f75412a747a",
+  "last_seen_opinion_id": "fbabf2f8-a42e-4484-89c2-fa4ec124804d",
   "roles_snapshot": {
     "count": 4,
     "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
@@ -20,7 +20,7 @@
         "authority_state": "co_trader",
         "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
         "kind": "runtime",
-        "last_seen": "2026-05-30T04:33:42.473079+00:00",
+        "last_seen": "2026-05-30T04:46:32.659456+00:00",
         "may_execute": false,
         "role": "trader",
         "runtime": "alpha",
@@ -57,7 +57,7 @@
         "authority_state": "governor",
         "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-30T04:33:19.554148+00:00",
+        "last_seen": "2026-05-30T04:46:23.908499+00:00",
         "may_execute": false,
         "role": "governor",
         "runtime": "chevelle",
@@ -75,7 +75,7 @@
         "authority_state": "advisor",
         "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
         "kind": "runtime",
-        "last_seen": "2026-05-30T04:33:34.293997+00:00",
+        "last_seen": "2026-05-30T04:46:07.480486+00:00",
         "may_execute": false,
         "role": "opponent",
         "runtime": "redeye",
@@ -109,11 +109,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 182398,
-      "chevelle": 62622,
-      "redeye": 161583
+      "camaro": 182718,
+      "chevelle": 62782,
+      "redeye": 162103
     },
-    "opinions_ingested": 414800,
+    "opinions_ingested": 415800,
     "opinions_quarantined": 0
   }
 }

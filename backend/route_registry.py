@@ -112,6 +112,7 @@ from routes.admin_council_policy import router as admin_council_policy_router, s
 from routes.admin_sovereign_stage_3_5 import router as admin_sovereign_stage_3_5_router, set_db as set_admin_sovereign_stage_3_5_db
 from routes.admin_sovereign_learning_health import router as admin_sovereign_learning_health_router, set_db as set_admin_sovereign_learning_health_db
 from routes.admin_shelly_federation import router as admin_shelly_federation_router, set_db as set_admin_shelly_federation_db
+from routes.admin_runtime_stamp import router as admin_runtime_stamp_router, set_db as set_admin_runtime_stamp_db
 from routes.admin_kill_switch_profiles import router as admin_kill_switch_profiles_router
 from routes.admin_kill_switch_profile_runtime import router as admin_kill_switch_profile_runtime_router, set_db as set_admin_kill_switch_profile_runtime_db
 from routes.learn_options import router as learn_options_router
@@ -220,6 +221,7 @@ ALL_ROUTERS = [
     admin_sovereign_stage_3_5_router,
     admin_sovereign_learning_health_router,
     admin_shelly_federation_router,
+    admin_runtime_stamp_router,
     admin_kill_switch_profiles_router,
     admin_kill_switch_profile_runtime_router,
     learn_options_router,
