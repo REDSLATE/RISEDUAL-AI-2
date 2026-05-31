@@ -282,12 +282,108 @@ def emit_intent_sync(
     return client.post_intent(**kwargs)
 
 
+def _build_opinion_payload(
+    receipt: Mapping[str, Any], *, notes: str = "", trace_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Compose ``post_opinion`` kwargs from a doctrine receipt.
+
+    Unlike the intent path, opinions are emitted for ALL verdicts —
+    HOLD / NEUTRAL included. "I have no opinion" is itself a valid
+    observation the cross-brain discussion layer wants to see. The
+    only thing we refuse is a missing symbol (no anchor → no topic).
+
+    2026-06 wire-up: per operator override, all brains (Alpha included)
+    can occupy the executor seat. Opinions ride alongside intents so
+    MC's discussion layer surfaces Alpha's reasoning regardless of
+    which brain is sitting in the executor seat at the moment.
+    """
+    symbol = str(receipt.get("symbol") or "").upper()
+    if not symbol:
+        return None
+
+    raw = str(
+        receipt.get("raw_action") or receipt.get("market_decision") or "HOLD"
+    ).upper() or "HOLD"
+
+    final_pct = receipt.get("final_confidence", receipt.get("confidence", 0))
+    try:
+        final_unit = max(0.0, min(1.0, float(final_pct) / 100.0))
+    except (TypeError, ValueError):
+        final_unit = 0.5
+
+    lane = _classify_lane(symbol)
+    summary = (
+        notes
+        or receipt.get("summary")
+        or receipt.get("rationale")
+        or receipt.get("thesis")
+        or f"{raw} {symbol} @ {int(round(final_unit * 100))}% conviction"
+    )
+
+    evidence: dict[str, Any] = {
+        "lane": lane.lower(),
+        "symbol": symbol,
+        "raw_action": raw,
+        "final_confidence": receipt.get("final_confidence"),
+        "raw_confidence": receipt.get("raw_confidence"),
+    }
+    if trace_id:
+        evidence["trace_id"] = trace_id
+    snap = receipt.get("snapshot")
+    if isinstance(snap, Mapping) and snap:
+        evidence["snapshot"] = dict(snap)
+    weights = receipt.get("individual_weights")
+    if isinstance(weights, Mapping) and weights:
+        evidence["individual_weights"] = dict(weights)
+
+    return {
+        "topic": f"{lane.lower()}:{symbol}",
+        "stance": raw,
+        "body": str(summary),
+        "confidence": final_unit,
+        "evidence": evidence,
+    }
+
+
+async def emit_opinion_from_consensus(
+    receipt: Mapping[str, Any],
+    *,
+    notes: str = "alpha consensus tick",
+    trace_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Fire Alpha's opinion to MC's cross-brain discussion layer.
+
+    Doctrine: opinions are observations, never executions. ``post_opinion``
+    forces ``may_execute=False`` on the wire. Best-effort — sidecar
+    failures are swallowed inside ``risedual_monorepo_client._post``
+    and surface as ``{"ok": False, "error": ...}``.
+
+    Unlike :func:`emit_intent_from_consensus`, this fires on ALL
+    verdicts including HOLD — "no opinion" is itself an opinion worth
+    publishing to the discussion layer so peer brains can see Alpha
+    was awake and chose to stand pat.
+    """
+    payload = _build_opinion_payload(receipt, notes=notes, trace_id=trace_id)
+    if payload is None:
+        return None
+    try:
+        from services import risedual_monorepo_client as _mc_opinion
+        return await _mc_opinion.post_opinion(**payload)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "emit_opinion_from_consensus failed (non-fatal): symbol=%s err=%s",
+            receipt.get("symbol"), exc,
+        )
+        return None
+
+
 async def emit_intent_from_consensus(
     client: MCClient,
     receipt: Mapping[str, Any],
     *,
     qty: float = 1.0,
     notes: str = "alpha consensus tick",
+    emit_opinion: bool = True,
 ) -> dict[str, Any] | None:
     """Async fire-and-forget wrapper around :func:`emit_intent_sync`.
 
@@ -316,9 +412,12 @@ async def emit_intent_from_consensus(
     in when the upstream quote provider is unavailable.
     """
     # Build the emission kwargs first — non-directional verdicts
-    # short-circuit here without contacting MC or fetching a quote.
+    # short-circuit the intent path but still fire an opinion so the
+    # discussion layer sees Alpha's reasoning even on HOLD ticks.
     kwargs = _build_emission_kwargs(receipt, qty=qty, notes=notes)
     if kwargs is None:
+        if emit_opinion:
+            await emit_opinion_from_consensus(receipt, notes=notes)
         return None
 
     # Enrich with a normalized snapshot. The helper logs a
@@ -338,7 +437,7 @@ async def emit_intent_from_consensus(
 
     loop = asyncio.get_running_loop()
     try:
-        return await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None, lambda: client.post_intent(**kwargs),
         )
     except MCClientError as exc:
@@ -346,10 +445,26 @@ async def emit_intent_from_consensus(
             "emit_intent_from_consensus failed (non-fatal): symbol=%s err=%s",
             receipt.get("symbol"), exc,
         )
-        return None
+        result = None
+
+    # Fire the opinion alongside the intent so MC's discussion layer
+    # always sees Alpha's reasoning, regardless of whether the intent
+    # itself succeeded. Best-effort; never blocks the intent return.
+    if emit_opinion:
+        try:
+            await emit_opinion_from_consensus(
+                receipt, notes=notes, trace_id=kwargs.get("trace_id"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "intent_bridge opinion side-channel failed (non-fatal): %s", exc,
+            )
+
+    return result
 
 
 __all__ = [
     "emit_intent_from_consensus",
     "emit_intent_sync",
+    "emit_opinion_from_consensus",
 ]

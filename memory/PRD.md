@@ -4,6 +4,27 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06 (Opinion side-channel wired)
+
+### Wire: Alpha now publishes opinions to MC on every consensus tick
+
+**Per operator override**: all brains (Alpha included) can occupy the executor seat. `post_opinion()` in `services/risedual_monorepo_client.py` had been a dormant wire (defined, never called). It is now wired into the consensus pathway so MC's cross-brain discussion layer surfaces Alpha's reasoning regardless of which brain holds the executor seat.
+
+**Files touched**:
+- `backend/sovereign/intent_bridge.py` — added `_build_opinion_payload()` + `emit_opinion_from_consensus()`. Modified `emit_intent_from_consensus()` to fire opinion alongside intent (BUY/SELL/SHORT/COVER) AND on non-directional verdicts (HOLD), since opinions are valid for all verdicts.
+- `backend/tests/test_opinion_emission.py` (NEW) — 18 tripwire tests.
+
+**Behavior**:
+- Directional verdicts → intent + opinion (both wires hot, shared trace_id in evidence)
+- HOLD/NEUTRAL → opinion only (intent path short-circuits per existing doctrine)
+- `emit_opinion=False` kwarg lets legacy callers opt out
+- Opinion sidecar failures are swallowed; intent return value is unaffected
+- `post_opinion()` forces `may_execute=False` on the wire (opinions ≠ executions)
+
+**Tests**: 4,094 passing (was 4,076).
+
+
+
 ## Latest Update — 2026-05-30 (Dupe-Pod fix + Process Identity payload)
 
 ### 🚨 Duplicate-checkin bug found and fixed
