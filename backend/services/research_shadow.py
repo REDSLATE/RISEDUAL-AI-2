@@ -83,6 +83,18 @@ TACTICAL_LOOKAHEAD_S: dict[str, int] = {
     "options": _env_int("SHADOW_TACTICAL_LOOKAHEAD_OPTIONS_S", 4 * 60 * 60),
 }
 
+# Strategic lookahead window in seconds — the "would shadow have
+# ridden the winner longer (or escaped the loser) by holding past
+# active's close?" check. Measured FROM active's close timestamp, not
+# from the shadow decision. 30 minutes mirrors the tactical default
+# so the operator reads a consistent post-event horizon; bump via env
+# if a particular asset class needs a longer ride-out window.
+STRATEGIC_LOOKAHEAD_S: dict[str, int] = {
+    "stock": _env_int("SHADOW_STRATEGIC_LOOKAHEAD_STOCK_S", 30 * 60),
+    "crypto": _env_int("SHADOW_STRATEGIC_LOOKAHEAD_CRYPTO_S", 30 * 60),
+    "options": _env_int("SHADOW_STRATEGIC_LOOKAHEAD_OPTIONS_S", 4 * 60 * 60),
+}
+
 # Maturity guardrail — disagreement-conditional metrics are NOT
 # actionable until at least N dissents have been scored. Mirrors
 # crypto_adversarial_stats.MIN_BUCKET_SAMPLES (15) and

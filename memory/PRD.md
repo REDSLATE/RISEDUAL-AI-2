@@ -24,6 +24,34 @@ Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI 
 **Tests**: 4,094 passing (was 4,076).
 
 
+## Latest Update — 2026-06 (Strategic dissent scorer wired)
+
+### Wire: research shadow now scores BOTH tactical and strategic dissents
+
+**Gap closed**: `compute_strategic_score()` existed at `services/research_shadow_scorer.py:112` but was never invoked by `run_scorer_pass`. Of 2,666 dissents in MongoDB, 99.7% had tactical scores but **0%** had strategic scores. The "shadow refused to enter" decisions (2,017 SHORT-vs-HOLD cases) had no strategic accountability.
+
+**Files touched**:
+- `backend/services/research_shadow.py` — added `STRATEGIC_LOOKAHEAD_S` dict (30min default for stock/crypto, 4h for options).
+- `backend/services/research_shadow_scorer.py` — added `_fetch_strategic_pending()`, `_find_matching_closed_trade()`, `_score_one_strategic()`, and wired both passes into `run_scorer_pass()`. Counter now reports `scored_tactical` + `scored_strategic` separately.
+- `backend/tests/test_strategic_dissent_scorer.py` (NEW) — 19 tripwire tests.
+
+**Behavior**:
+- Strategic eligibility: `is_dissent=True AND shadow_action="HOLD" AND active_action in {LONG,SHORT,BUY,SELL}`.
+- Join: symbol + opened_at within ±15min of shadow.ts + direction axis match (handles both equity `up`/`down` and crypto `LONG`/`SHORT` vocabularies).
+- Lookahead: 30min PAST active's close timestamp (not past shadow.ts).
+- Skips (not failures): no matching closed trade, window not elapsed, quote provider down → re-tried on subsequent ticks.
+- SHORT-active strategic scores pass `direction="SHORT"` to `compute_strategic_score`, not the LONG default. Bare default would mis-score SHORT-side dissents.
+- Tier-3 firewall preserved: scorer READS from `paper_trades`/`crypto_paper_trades`, WRITES only to `research_shadow_decisions`.
+
+**Live signal observed within 90 seconds of deploy**:
+- `active=SHORT, shadow=HOLD` (n=348 scored): **81.3% shadow-right**, avg delta **+$17.82**. Adversarial brain correctly more patient.
+- `active=LONG, shadow=HOLD` (n=45 scored): **0% shadow-right**, avg delta **−$82**. Adversarial brain wrongly patient — actives correctly close longs at the right time.
+- 1,958 strategic dissents still pending — scoring at ~100/tick.
+
+**Tests**: 4,142 passing (was 4,123).
+
+
+
 
 ## Latest Update — 2026-05-30 (Dupe-Pod fix + Process Identity payload)
 

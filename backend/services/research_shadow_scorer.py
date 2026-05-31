@@ -48,6 +48,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from services.research_shadow import (
+    STRATEGIC_LOOKAHEAD_S,
     TACTICAL_LOOKAHEAD_S,
     canonicalise_action,
     hypothetical_pnl_usd,
@@ -279,9 +280,21 @@ async def _score_one_tactical(db: Any, row: dict) -> bool:
 async def run_scorer_pass(db: Any, batch: int = 100) -> dict[str, int]:
     """One pass of the deferred scorer. Returns a small counter
     dict so the worker wrapper can log a summary line per tick.
+
+    2026-06 update: now runs BOTH tactical and strategic passes.
+    Tactical scores all mature dissents on a 30-min horizon.
+    Strategic additionally scores the unique-value subset where
+    shadow said HOLD while active was in a directional position
+    that has since closed — answers "would shadow have ridden it
+    longer (or escaped the loser) past active's close?". Read-only
+    from ``paper_trades`` / ``crypto_paper_trades``; write-only to
+    ``research_shadow_decisions`` (Tier-3 firewall preserved).
     """
     if db is None:
-        return {"scanned": 0, "scored": 0, "skipped": 0}
+        return {
+            "scanned": 0, "scored": 0, "skipped": 0,
+            "scored_tactical": 0, "scored_strategic": 0,
+        }
 
     pending = await _fetch_tactical_pending(db, batch=batch)
     scored = 0
@@ -292,4 +305,224 @@ async def run_scorer_pass(db: Any, batch: int = 100) -> dict[str, int]:
             scored += 1
         else:
             skipped += 1
-    return {"scanned": len(pending), "scored": scored, "skipped": skipped}
+
+    # Strategic pass — only applies to is_dissent=True AND
+    # shadow_action=HOLD AND active was directional.
+    strategic_pending = await _fetch_strategic_pending(db, batch=batch)
+    strategic_scored = 0
+    for row in strategic_pending:
+        ok = await _score_one_strategic(db, row)
+        if ok:
+            strategic_scored += 1
+        else:
+            skipped += 1
+
+    return {
+        "scanned": len(pending) + len(strategic_pending),
+        "scored": scored + strategic_scored,
+        "scored_tactical": scored,
+        "scored_strategic": strategic_scored,
+        "skipped": skipped,
+    }
+
+
+# ── Strategic scorer (HOLD-shadow vs closed-active) ──────────────────────────
+
+
+# Active-trade direction tokens accepted on the join. Crypto bots
+# store ``LONG`` / ``SHORT``; equity bots historically used
+# ``up`` / ``down``. We accept both vocabularies; ``canonicalise_action``
+# upstream already normalized the shadow row's ``active_action`` to
+# uppercase ``LONG``/``SHORT``/``BUY``/``SELL``.
+_DIRECTIONAL_ACTIVE = frozenset({"LONG", "SHORT", "BUY", "SELL"})
+
+
+async def _fetch_strategic_pending(db: Any, batch: int = 100) -> list[dict]:
+    """Strategic-eligible pending dissents.
+
+    Filter:
+      * ``is_dissent=True``
+      * ``shadow_action="HOLD"``  (canonical form)
+      * ``active_action`` is directional (LONG/SHORT/BUY/SELL)
+      * ``strategic_score`` not yet present
+
+    Doctrine: strategic scoring exists to grade the "shadow refused
+    to enter" decisions against the eventual realised close of
+    active's position. Without this pass, the disagreement-conditional
+    accuracy metric ignores the largest dissent bucket in the data
+    (active=SHORT, shadow=HOLD).
+    """
+    if db is None:
+        return []
+    out: list[dict] = []
+    try:
+        cursor = db[SHADOW_COLLECTION].find(
+            {
+                "is_dissent": True,
+                "shadow_action": "HOLD",
+                "active_action": {"$in": list(_DIRECTIONAL_ACTIVE)},
+                "strategic_score": {"$exists": False},
+            },
+            {"_id": 0},
+        ).sort("ts", 1).limit(batch)
+        async for row in cursor:
+            out.append(row)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[shadow-scorer] fetch strategic pending failed: %s", exc)
+    return out
+
+
+# Equity bots store ``direction`` as lowercase ``up``/``down``;
+# crypto bots use uppercase ``LONG``/``SHORT``. Map both to the
+# canonical active-action axis used by the shadow log.
+_TRADE_DIR_TO_CANONICAL = {
+    "LONG": "LONG", "long": "LONG", "BUY": "LONG", "up": "LONG",
+    "SHORT": "SHORT", "short": "SHORT", "SELL": "SHORT", "down": "SHORT",
+}
+
+
+async def _find_matching_closed_trade(
+    db: Any, row: dict,
+) -> Optional[dict]:
+    """Best-effort join from a shadow row to its matching CLOSED
+    paper trade. Returns ``{entry_price, exit_price, closed_at,
+    direction_canonical, collection}`` or ``None``.
+
+    Join rule (intentionally loose for v1, tighten later):
+      * symbol match (``symbol`` field on crypto, ``ticker`` on equity)
+      * status == ``closed``
+      * opened_at within ±15min of the shadow row's ``ts``
+      * direction matches the active_action axis
+      * picks the closest opened_at to shadow.ts when multiple
+        candidates exist
+    """
+    symbol = row.get("symbol")
+    ts = row.get("ts")
+    asset_type = (row.get("asset_type") or "stock").lower()
+    active_action = canonicalise_action(row.get("active_action"))
+    if not symbol or not isinstance(ts, datetime):
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+
+    window = timedelta(minutes=15)
+    lo, hi = ts - window, ts + window
+    lo_n = lo.replace(tzinfo=None)
+    hi_n = hi.replace(tzinfo=None)
+
+    if asset_type == "crypto":
+        coll = "crypto_paper_trades"
+        sym_field = "symbol"
+    else:
+        coll = "paper_trades"
+        sym_field = "ticker"
+
+    try:
+        candidates = await db[coll].find(
+            {
+                sym_field: symbol,
+                "status": "closed",
+                "opened_at": {"$gte": lo_n, "$lte": hi_n},
+            },
+            projection={
+                "_id": 0, "opened_at": 1, "closed_at": 1,
+                "exit_price": 1, "entry_price": 1, "direction": 1,
+            },
+        ).to_list(20)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[shadow-scorer] closed-trade lookup failed %s/%s: %s",
+            asset_type, symbol, exc,
+        )
+        return None
+
+    # Filter by direction axis match.
+    best = None
+    best_delta = None
+    ts_naive = ts.replace(tzinfo=None)
+    for c in candidates:
+        dir_can = _TRADE_DIR_TO_CANONICAL.get(c.get("direction") or "", "")
+        if dir_can != active_action:
+            continue
+        opened = c.get("opened_at")
+        if not isinstance(opened, datetime):
+            continue
+        opened_naive = opened.replace(tzinfo=None) if opened.tzinfo else opened
+        delta = abs((opened_naive - ts_naive).total_seconds())
+        if best is None or delta < best_delta:
+            best = c
+            best_delta = delta
+            best["direction_canonical"] = dir_can
+            best["collection"] = coll
+    return best
+
+
+async def _score_one_strategic(db: Any, row: dict) -> bool:
+    """Score a single strategic-eligible dissent. Returns True on
+    success (score patched onto the row), False on skip (no match,
+    window not elapsed, price unavailable, etc.) — skips are
+    re-tried on subsequent ticks.
+    """
+    decision_id = row.get("decision_id")
+    if not decision_id:
+        return False
+
+    closed = await _find_matching_closed_trade(db, row)
+    if not closed:
+        return False  # no matching closed active trade in the window
+
+    active_close_price = closed.get("exit_price")
+    closed_at = closed.get("closed_at")
+    entry_price = float(closed.get("entry_price") or row.get("mid_price") or 0.0)
+    direction_canonical = closed.get("direction_canonical") or "LONG"
+
+    if not active_close_price or entry_price <= 0:
+        return False
+    if not isinstance(closed_at, datetime):
+        return False
+    if closed_at.tzinfo is None:
+        closed_at = closed_at.replace(tzinfo=timezone.utc)
+
+    asset_type = (row.get("asset_type") or "stock").lower()
+    lookahead = STRATEGIC_LOOKAHEAD_S.get(
+        asset_type, STRATEGIC_LOOKAHEAD_S["stock"],
+    )
+    target_ts = closed_at + timedelta(seconds=lookahead)
+
+    # Window must have elapsed before we can resolve a later price.
+    if datetime.now(timezone.utc) < target_ts:
+        return False
+
+    later_price = await _resolve_later_price(
+        db, row.get("symbol") or "", asset_type, target_ts,
+    )
+    if later_price is None:
+        return False
+
+    # If active was SHORT, the "held" P&L direction is SHORT — the
+    # bare compute_strategic_score default of LONG would mis-score
+    # a SHORT-side dissent. Passing the canonical direction makes
+    # the comparison axis correct.
+    base_bps = int(row.get("sim_fill_bps_round_trip") or 0)
+    fill_bps = volume_conditional_fill_bps(
+        base_bps=base_bps,
+        volume_ratio=row.get("volume_ratio_at_decision"),
+        asset_type=asset_type,
+    )
+
+    score = compute_strategic_score(
+        shadow_action=direction_canonical,
+        entry_price=entry_price,
+        active_close_price=float(active_close_price),
+        later_price=later_price,
+        fill_cost_bps=fill_bps,
+        lookahead_used_s=lookahead,
+    )
+    # Annotate for operator transparency on what was joined.
+    score["fill_cost_bps_applied"] = fill_bps
+    score["fill_cost_bps_base"] = base_bps
+    score["matched_collection"] = closed.get("collection")
+    score["matched_active_close_at"] = closed_at.isoformat()
+    score["matched_active_direction"] = direction_canonical
+
+    return await patch_scores(db, decision_id, strategic_score=score)
