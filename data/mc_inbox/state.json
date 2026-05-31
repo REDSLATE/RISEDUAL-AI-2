@@ -1,5 +1,5 @@
 {
-  "last_polled_at": "2026-05-31T04:28:53.008798+00:00",
+  "last_polled_at": "2026-05-31T04:30:49.906067+00:00",
   "last_roles_at": "2026-05-31T04:27:42.384713+00:00",
   "last_scorecard_at": "2026-05-31T04:27:42.387365+00:00",
   "last_seen_opinion_at": "",
@@ -17,11 +17,11 @@
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 194413,
-      "chevelle": 74736,
-      "redeye": 191054
+      "camaro": 194420,
+      "chevelle": 74791,
+      "redeye": 191192
     },
-    "opinions_ingested": 468400,
+    "opinions_ingested": 468600,
     "opinions_quarantined": 0
   }
 }
