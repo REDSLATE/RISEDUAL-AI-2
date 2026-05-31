@@ -1235,6 +1235,18 @@ async def run_crypto_symbol(
         signal["confidence"],
     )
 
+    # 2026-05-31 Phase B — emit intent to MC for audit lineage.
+    # Fire-and-forget: an MC failure NEVER reverts the local trade.
+    # Disable with RISEDUAL_CRYPTO_EMIT_INTENTS=false.
+    try:
+        from services.crypto_mc_intent_emitter import emit_crypto_intent
+        await emit_crypto_intent(trade, signal)
+    except Exception as _emit_exc:  # noqa: BLE001
+        logger.debug(
+            "[crypto-bot] MC intent emit non-fatal for %s: %s",
+            symbol, _emit_exc,
+        )
+
     return {
         "symbol": symbol,
         "opened": True,
