@@ -192,8 +192,75 @@ def _build_emission_kwargs(
         "action": raw,
         "lane": lane.lower(),
         "rationale": notes,
+        # ── 2026-05-30 MC brain-callable contract additions ──────
+        # target_price + stop_price are part of MC's documented
+        # minimum body. We derive sane defaults from the consensus
+        # receipt: prefer caller-supplied values; otherwise compute
+        # from entry_price using a conviction-scaled target band.
+        **_derive_price_targets(receipt, raw, final_unit),
         **honesty,
     }
+
+
+def _derive_price_targets(
+    receipt: Mapping[str, Any], direction: str, conf_unit: float,
+) -> dict[str, Any]:
+    """Best-effort target_price / stop_price derivation.
+
+    Doctrine pin: Alpha is an advisor, not a sizer. We try the
+    receipt's explicit fields first; if absent, compute a sensible
+    default from ``entry_price`` so the MC gate chain has something
+    to score risk:reward against. Returns an empty dict (no fields)
+    when no usable price anchor exists — MC accepts the intent
+    without the fields, just won't grade R:R.
+
+    Defaults: target = entry ± (1.5% + conf × 3%), stop = entry ∓ 1%.
+    Target widens with conviction; stop is fixed-discipline. Same
+    posture as the paper-trade closer's 2% trail / 1% stop.
+    """
+    out: dict[str, Any] = {}
+    explicit_target = receipt.get("target_price")
+    explicit_stop = receipt.get("stop_price")
+    if explicit_target is not None:
+        try:
+            tp = float(explicit_target)
+            if tp > 0 and tp == tp:  # not NaN
+                out["target_price"] = tp
+        except (TypeError, ValueError):
+            pass
+    if explicit_stop is not None:
+        try:
+            sp = float(explicit_stop)
+            if sp > 0 and sp == sp:
+                out["stop_price"] = sp
+        except (TypeError, ValueError):
+            pass
+    if "target_price" in out and "stop_price" in out:
+        return out
+
+    # Derive from entry. Try receipt.entry_price first, then snapshot.price.
+    entry = receipt.get("entry_price")
+    if entry is None:
+        snap = receipt.get("snapshot") or {}
+        entry = snap.get("price") if isinstance(snap, Mapping) else None
+    try:
+        entry_f = float(entry) if entry is not None else None
+    except (TypeError, ValueError):
+        entry_f = None
+    if entry_f is None or entry_f <= 0:
+        return out  # no anchor; ship without the fields
+
+    target_band = 0.015 + max(0.0, min(1.0, float(conf_unit))) * 0.03
+    stop_band = 0.01
+    if direction in ("BUY", "COVER"):
+        target = entry_f * (1.0 + target_band)
+        stop = entry_f * (1.0 - stop_band)
+    else:  # SELL, SHORT
+        target = entry_f * (1.0 - target_band)
+        stop = entry_f * (1.0 + stop_band)
+    out.setdefault("target_price", round(target, 4))
+    out.setdefault("stop_price", round(stop, 4))
+    return out
 
 
 def emit_intent_sync(

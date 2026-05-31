@@ -131,6 +131,15 @@ def build_intent_body(
     lane: str | None = None,
     rationale: str | None = None,
     doctrine_snapshot: Mapping[str, Any] | None = None,
+    # ── 2026-05-30 MC brain-callable contract additions ──────────
+    # MC's brain-endpoint spec (2026-05-30) lists target_price +
+    # stop_price as part of the minimum intent body; ``thesis`` is the
+    # operator-facing field. We accept ``thesis`` here and alias it
+    # to ``rationale`` on the wire so MC's existing rationale field
+    # population stays intact.
+    target_price: float | None = None,
+    stop_price: float | None = None,
+    thesis: str | None = None,
     # ── honesty receipt (all optional, MC server is additive-safe) ──
     raw_action: str | None = None,
     raw_confidence: float | None = None,
@@ -220,6 +229,27 @@ def build_intent_body(
         body["lane"] = str(lane).lower()
     if rationale is not None:
         body["rationale"] = str(rationale)[:4000]  # MC contract cap
+    elif thesis is not None:
+        # 2026-05-30 contract: ``thesis`` is the spec's name for the
+        # operator-facing prose. Map to ``rationale`` on the wire so
+        # MC's existing field population path is preserved.
+        body["rationale"] = str(thesis)[:4000]
+    # ── 2026-05-30: target_price + stop_price ────────────────────
+    # Bounded positive floats; reject NaN/inf/zero/negative. MC's
+    # dry-run gate chain may start enforcing presence to score R:R,
+    # so we validate here rather than discovering a 422 at the edge.
+    for fname, fval in (
+        ("target_price", target_price),
+        ("stop_price", stop_price),
+    ):
+        if fval is None:
+            continue
+        tp = float(fval)
+        if not math.isfinite(tp) or tp <= 0:
+            raise MCContractError(
+                f"intent {fname} must be a positive finite float, got {fval!r}"
+            )
+        body[fname] = tp
     if doctrine_snapshot:
         body["doctrine_snapshot"] = dict(doctrine_snapshot)
     elif snapshot:
