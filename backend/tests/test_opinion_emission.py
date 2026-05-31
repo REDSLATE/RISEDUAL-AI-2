@@ -57,30 +57,34 @@ def _receipt(**over):
 def test_build_opinion_payload_shapes_basic_fields():
     out = _build_opinion_payload(_receipt())
     assert out is not None
-    assert out["topic"] == "equity:NVDA"
-    assert out["stance"] == "BUY"
+    # Spec § 4: canonical topic shape is "symbol:<SYMBOL>", not lane-prefixed.
+    assert out["topic"] == "symbol:NVDA"
+    # Spec § 4: stance vocabulary is long/short/observation/retract/etc,
+    # NOT the raw action verb.
+    assert out["stance"] == "long"
     assert out["confidence"] == pytest.approx(0.72)
     assert "NVDA" in out["body"] or "upside" in out["body"].lower()
 
 
 def test_build_opinion_payload_emits_for_hold():
-    """HOLD is a valid opinion — must NOT short-circuit like intents."""
+    """HOLD is a valid opinion — must NOT short-circuit like intents.
+    HOLD maps to ``observation`` ("awake, no thesis change")."""
     out = _build_opinion_payload(
         _receipt(raw_action="HOLD", market_decision="HOLD"),
     )
     assert out is not None
-    assert out["stance"] == "HOLD"
+    assert out["stance"] == "observation"
 
 
-def test_build_opinion_payload_emits_for_unknown_action_as_hold():
-    """Unknown verdicts collapse to HOLD on the opinion wire."""
+def test_build_opinion_payload_emits_for_unknown_action_as_observation():
+    """Unknown verbs collapse to ``observation`` — safer than guessing
+    a directional stance from a verb MC doesn't recognize."""
     out = _build_opinion_payload(
         _receipt(raw_action="MAYBE", market_decision="MAYBE"),
     )
     assert out is not None
-    # Unknown verdicts surface as their literal value or fall through;
-    # what matters is the opinion is still emitted (not None).
-    assert out["topic"] == "equity:NVDA"
+    assert out["stance"] == "observation"
+    assert out["topic"] == "symbol:NVDA"
 
 
 def test_build_opinion_payload_returns_none_for_empty_symbol():
@@ -88,8 +92,49 @@ def test_build_opinion_payload_returns_none_for_empty_symbol():
 
 
 def test_build_opinion_payload_classifies_crypto_lane():
+    """Topic stays ``symbol:<SYMBOL>`` regardless of lane; lane info
+    rides in ``evidence`` so MC's discussion layer can filter."""
     out = _build_opinion_payload(_receipt(symbol="BTC/USD"))
-    assert out["topic"].startswith("crypto:")
+    assert out["topic"] == "symbol:BTC/USD"
+    assert out["evidence"]["lane"] == "crypto"
+
+
+@pytest.mark.parametrize(
+    "action,stance",
+    [
+        ("BUY", "long"),
+        ("SHORT", "short"),
+        ("HOLD", "observation"),
+        # SELL/COVER are executions, not council moves. Default to
+        # ``observation`` — promote to ``retract`` later when we
+        # track thesis-driven vs mechanical close intent.
+        ("SELL", "observation"),
+        ("COVER", "observation"),
+    ],
+)
+def test_build_opinion_payload_action_to_stance_mapping(action, stance):
+    """Spec § 4 vocabulary: long/short/veto/endorse/question/
+    observation/agree/disagree/refine/retract/hypothesis."""
+    out = _build_opinion_payload(_receipt(
+        raw_action=action, market_decision=action,
+    ))
+    assert out["stance"] == stance
+
+
+def test_build_opinion_payload_sell_carries_close_context_in_body():
+    """SELL maps to ``observation`` but the body must make the close
+    context explicit so the discussion log isn't ambiguous."""
+    out = _build_opinion_payload(_receipt(
+        raw_action="SELL", market_decision="SELL",
+    ))
+    assert "[SELL close]" in out["body"]
+
+
+def test_build_opinion_payload_cover_carries_close_context_in_body():
+    out = _build_opinion_payload(_receipt(
+        raw_action="COVER", market_decision="COVER",
+    ))
+    assert "[COVER close]" in out["body"]
 
 
 def test_build_opinion_payload_carries_trace_id_in_evidence():
@@ -127,8 +172,8 @@ async def test_emit_opinion_from_consensus_calls_post_opinion():
         assert out == {"ok": True, "id": "op-1"}
         mocked.assert_awaited_once()
         kwargs = mocked.call_args.kwargs
-        assert kwargs["topic"] == "equity:NVDA"
-        assert kwargs["stance"] == "BUY"
+        assert kwargs["topic"] == "symbol:NVDA"
+        assert kwargs["stance"] == "long"
 
 
 @pytest.mark.asyncio
@@ -176,7 +221,8 @@ async def test_emit_intent_also_fires_opinion_on_directional():
 @pytest.mark.asyncio
 async def test_emit_intent_fires_opinion_even_on_hold():
     """HOLD short-circuits the intent path but the opinion still
-    flows — "no opinion" is itself a publishable observation."""
+    flows — "no opinion" is itself a publishable observation that
+    maps to MC's ``observation`` stance."""
     client = MagicMock()
     with patch(
         "services.risedual_monorepo_client.post_opinion",
@@ -188,7 +234,7 @@ async def test_emit_intent_fires_opinion_even_on_hold():
         assert out is None
         client.post_intent.assert_not_called()
         opinion_mock.assert_awaited_once()
-        assert opinion_mock.call_args.kwargs["stance"] == "HOLD"
+        assert opinion_mock.call_args.kwargs["stance"] == "observation"
 
 
 @pytest.mark.asyncio

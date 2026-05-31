@@ -296,6 +296,21 @@ def _build_opinion_payload(
     can occupy the executor seat. Opinions ride alongside intents so
     MC's discussion layer surfaces Alpha's reasoning regardless of
     which brain is sitting in the executor seat at the moment.
+
+    2026-06 spec alignment (MC Brain API Quickstart v1 § 4):
+      * ``topic`` follows the canonical ``"symbol:<SYMBOL>"`` shape.
+      * ``stance`` is drawn from MC's discussion vocabulary
+        (``long``/``short``/``observation``/``retract``/…), not the
+        raw action verb. Mapping rules:
+          BUY   → ``long``       (bullish open thesis)
+          SHORT → ``short``      (bearish open thesis)
+          HOLD  → ``observation`` (awake, no thesis change)
+          SELL / COVER → ``observation`` with body explaining the
+              close. We do NOT auto-emit ``retract`` for mechanical
+              closes (stop/target/time exits) — promoting every close
+              to a retraction pollutes the auditor's "stance change
+              vs PnL" surface. Promote to ``retract`` later when we
+              track thesis-driven vs mechanical close intent.
     """
     symbol = str(receipt.get("symbol") or "").upper()
     if not symbol:
@@ -312,6 +327,7 @@ def _build_opinion_payload(
         final_unit = 0.5
 
     lane = _classify_lane(symbol)
+    stance = _action_to_stance(raw)
     summary = (
         notes
         or receipt.get("summary")
@@ -319,6 +335,11 @@ def _build_opinion_payload(
         or receipt.get("thesis")
         or f"{raw} {symbol} @ {int(round(final_unit * 100))}% conviction"
     )
+    # Make the close-context explicit in the body so an
+    # ``observation`` stance on a SELL/COVER isn't ambiguous in the
+    # discussion log.
+    if raw in {"SELL", "COVER"}:
+        summary = f"[{raw} close] {summary}"
 
     evidence: dict[str, Any] = {
         "lane": lane.lower(),
@@ -337,12 +358,35 @@ def _build_opinion_payload(
         evidence["individual_weights"] = dict(weights)
 
     return {
-        "topic": f"{lane.lower()}:{symbol}",
-        "stance": raw,
+        "topic": f"symbol:{symbol}",
+        "stance": stance,
         "body": str(summary),
         "confidence": final_unit,
         "evidence": evidence,
     }
+
+
+# MC discussion vocabulary mapping. Spec § 4 valid stances:
+#   long, short, veto, endorse, question, observation,
+#   agree, disagree, refine, retract, hypothesis
+_ACTION_TO_STANCE = {
+    "BUY": "long",
+    "SHORT": "short",
+    "HOLD": "observation",
+    # SELL/COVER default to ``observation`` — they're executions, not
+    # council moves. Promote to ``retract`` only when caller passes
+    # an explicit ``in_reply_to`` (thesis-driven close).
+    "SELL": "observation",
+    "COVER": "observation",
+}
+
+
+def _action_to_stance(action: str) -> str:
+    """Map a doctrine action verb to MC's discussion stance vocab.
+
+    Unknown verbs collapse to ``observation`` — safer than guessing
+    a directional stance from an unrecognized verb."""
+    return _ACTION_TO_STANCE.get((action or "").upper(), "observation")
 
 
 async def emit_opinion_from_consensus(

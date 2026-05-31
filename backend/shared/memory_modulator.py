@@ -193,13 +193,28 @@ def _is_quarantined(memory_row: Mapping[str, Any]) -> bool:
 
 
 def _clamp_modulator(value: float) -> float:
-    """Local doctrine clamp. MC will independently clamp on receipt
-    (defense in depth) but Alpha must never even emit an out-of-
-    bounds value — otherwise the MC tripwire would just bury the
-    decision rather than letting Alpha self-correct."""
+    """Local doctrine clamp. MC will independently 422-reject any
+    out-of-band value (no silent clamp on their side), so Alpha must
+    never even emit an out-of-bounds value. If this clamp ever fires,
+    that's a signal the upstream modulator math went sideways — we
+    log it so the operator can investigate rather than silently
+    submitting the clamped value as if it were correct.
+    """
     if not math.isfinite(value):
+        logger.warning(
+            "memory_modulator non-finite value rejected: %r — clamped to 0.0",
+            value,
+        )
         return 0.0
-    return max(_max_down(), min(_max_up(), value))
+    lo, hi = _max_down(), _max_up()
+    if value < lo or value > hi:
+        logger.warning(
+            "memory_modulator out-of-band raw=%.4f bounds=[%.2f,%.2f] — "
+            "upstream math suspect, clamping locally",
+            value, lo, hi,
+        )
+        return max(lo, min(hi, value))
+    return value
 
 
 # ── Outcome / direction helpers ───────────────────────────────────
