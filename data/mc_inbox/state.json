@@ -1,27 +1,27 @@
 {
-  "last_polled_at": "2026-05-31T04:30:49.906067+00:00",
-  "last_roles_at": "2026-05-31T04:27:42.384713+00:00",
-  "last_scorecard_at": "2026-05-31T04:27:42.387365+00:00",
+  "last_polled_at": "2026-05-31T05:30:30.923763+00:00",
+  "last_roles_at": "2026-05-31T05:07:55.531532+00:00",
+  "last_scorecard_at": "2026-05-31T05:07:53.440732+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ff893a28-362f-4d2f-9708-e2e0825847ea",
+  "last_seen_opinion_id": "fff1beb5-1718-4feb-9960-3b1c8342edb0",
   "roles_snapshot": {
     "count": 0,
-    "error": "",
+    "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
     "items": []
   },
   "scorecard_snapshot": {
-    "error": "",
+    "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
     "runtime": "alpha",
     "summary": {}
   },
   "stats": {
     "by_peer": {
       "alpha": 8197,
-      "camaro": 194420,
-      "chevelle": 74791,
-      "redeye": 191192
+      "camaro": 194559,
+      "chevelle": 76034,
+      "redeye": 193210
     },
-    "opinions_ingested": 468600,
+    "opinions_ingested": 472000,
     "opinions_quarantined": 0
   }
 }
