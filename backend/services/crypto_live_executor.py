@@ -82,6 +82,25 @@ MAX_DAILY_LIVE_TRADES: int = 10
 # surface the orphan-protection condition loudly.
 HARD_STOP_LOSS_PCT: float = 0.03
 
+# Hard take-profit percentage from entry price (operator directive
+# 2026-06-01: "TP at 4%+ or greater"). Limit-SELL leg placed
+# immediately after the market buy fills, alongside the SL. If the
+# TP leg fails to place, the live row is still written but flagged
+# ``take_profit_placed=False`` — the SL still protects downside;
+# TP failure only means the position rides naked on the upside
+# until the operator attaches one manually.
+#
+# NOTE on order coexistence: Kraken does NOT auto-link SL + TP as
+# an OCO pair on the AddOrder endpoint. Both orders are live on
+# the book simultaneously. When ONE fires, the other becomes an
+# orphan that will fire if price ever revisits its trigger — at
+# which point we'd be net SHORT the position by accident. The
+# closer/reconcile loop (follow-up task) must cancel the orphan
+# the moment a position-closing fill is detected. Until that
+# closer is built, the operator MUST manually cancel the orphan
+# in the Kraken UI after either leg fills.
+HARD_TAKE_PROFIT_PCT: float = 0.04
+
 # Internal-to-Kraken symbol map. Kraken uses legacy "XBT" prefix for
 # Bitcoin in the AddOrder API; if we ever extend the allowlist past
 # BTC/ETH this dict must be extended in lockstep.
@@ -252,6 +271,9 @@ def place_live_market_buy(
         "stop_loss_price": 0.0,
         "stop_loss_order_id": "",
         "stop_loss_placed": False,
+        "take_profit_price": 0.0,
+        "take_profit_order_id": "",
+        "take_profit_placed": False,
     }
 
     # ── Hard stop-loss leg ────────────────────────────────────────
@@ -290,6 +312,46 @@ def place_live_market_buy(
             "RAISED: %s. fill=%s trigger=$%.2f — OPERATOR MUST "
             "MANUALLY ATTACH STOP",
             exc, fill["kraken_order_id"], sl_trigger,
+        )
+
+    # ── Hard take-profit leg ──────────────────────────────────────
+    # Operator directive 2026-06-01: TP at 4%+. We place a limit
+    # SELL at entry × 1.04. The "+ or greater" framing is honoured
+    # because a limit order at $X fills at >= $X (price-time priority
+    # at or above the limit) — partial fills above 4% are explicitly
+    # acceptable. Independent of the SL leg: failure to place TP does
+    # NOT undo a successful SL (downside is still protected).
+    tp_target = round(ref_price * (1.0 + HARD_TAKE_PROFIT_PCT), 2)
+    try:
+        tp_resp = client.place_order(
+            symbol=pair,
+            qty=qty,
+            side="sell",
+            order_type="limit",
+            limit_price=tp_target,
+        )
+        if tp_resp and tp_resp.get("id"):
+            fill["take_profit_price"] = tp_target
+            fill["take_profit_order_id"] = tp_resp.get("id") or ""
+            fill["take_profit_placed"] = True
+            logger.info(
+                "[crypto-live] TP placed @ $%.2f (+%.1f%%) order_id=%s",
+                tp_target, HARD_TAKE_PROFIT_PCT * 100.0,
+                tp_resp.get("id"),
+            )
+        else:
+            logger.error(
+                "[crypto-live] TP placement returned empty. "
+                "fill=%s target=$%.2f — upside ride is open-ended "
+                "until operator attaches TP manually",
+                fill["kraken_order_id"], tp_target,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "[crypto-live] TP placement RAISED: %s. fill=%s "
+            "target=$%.2f — upside ride is open-ended until "
+            "operator attaches TP manually",
+            exc, fill["kraken_order_id"], tp_target,
         )
 
     return fill
@@ -353,15 +415,20 @@ async def maybe_route_live(
     live_row["live_notional_usd"] = placed["notional_usd"]
     live_row["size_usd"] = placed["notional_usd"]
     live_row["size"] = placed["qty"]
-    # Hard stop-loss leg (operator-mandated 3% cap). The closer reads
-    # these fields to know whether SL is broker-side or app-side.
+    # Hard stop-loss + take-profit legs (operator-mandated 3%/4% caps).
+    # The closer reads these fields to know which legs are broker-side.
     live_row["stop_loss_pct"] = HARD_STOP_LOSS_PCT
     live_row["stop_loss_price"] = placed.get("stop_loss_price", 0.0)
     live_row["stop_loss_order_id"] = placed.get("stop_loss_order_id", "")
     live_row["stop_loss_placed"] = placed.get("stop_loss_placed", False)
+    live_row["take_profit_pct"] = HARD_TAKE_PROFIT_PCT
+    live_row["take_profit_price"] = placed.get("take_profit_price", 0.0)
+    live_row["take_profit_order_id"] = placed.get("take_profit_order_id", "")
+    live_row["take_profit_placed"] = placed.get("take_profit_placed", False)
     live_row["live_safety_caps"] = {
         "notional_cap_usd": notional,
         "stop_loss_pct": HARD_STOP_LOSS_PCT,
+        "take_profit_pct": HARD_TAKE_PROFIT_PCT,
         "open_position_cap": MAX_OPEN_LIVE_POSITIONS,
         "daily_trade_cap": MAX_DAILY_LIVE_TRADES,
         "symbol_allowlist": sorted(LIVE_SYMBOL_ALLOWLIST),
@@ -383,11 +450,12 @@ async def maybe_route_live(
         return None
 
     sl_state = "SL @ $%.2f" % live_row["stop_loss_price"] if live_row["stop_loss_placed"] else "NO SL (MANUAL!)"
+    tp_state = "TP @ $%.2f" % live_row["take_profit_price"] if live_row["take_profit_placed"] else "no TP"
     logger.info(
         "[crypto-live] LIVE FILL — %s LONG qty=%.8f notional=$%.2f "
-        "kraken_order_id=%s %s",
+        "kraken_order_id=%s %s %s",
         symbol, placed["qty"], placed["notional_usd"],
-        placed["kraken_order_id"], sl_state,
+        placed["kraken_order_id"], sl_state, tp_state,
     )
     return live_row
 

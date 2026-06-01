@@ -28,6 +28,7 @@ import pytest
 
 from services.crypto_live_executor import (
     HARD_STOP_LOSS_PCT,
+    HARD_TAKE_PROFIT_PCT,
     LIVE_SYMBOL_ALLOWLIST,
     MAX_DAILY_LIVE_TRADES,
     MAX_OPEN_LIVE_POSITIONS,
@@ -80,6 +81,13 @@ def test_hard_stop_loss_is_exactly_three_percent():
     """Operator directive 2026-06-01: SL no more than 3%. If anyone
     tries to relax this through a config knob, the test screams."""
     assert HARD_STOP_LOSS_PCT == 0.03
+
+
+def test_hard_take_profit_is_at_least_four_percent():
+    """Operator directive 2026-06-01: TP at 4%+ or greater. The
+    constant pins the floor at 4% — making it lower would violate
+    the directive. Bumping it up (e.g. 0.05) is allowed by intent."""
+    assert HARD_TAKE_PROFIT_PCT >= 0.04
 
 
 def test_allowlist_is_btc_eth_only():
@@ -193,7 +201,7 @@ async def test_eligibility_accepts_BUY_as_synonym_for_LONG(monkeypatch):
 
 
 def test_buy_places_stop_loss_at_3pct_below_entry(monkeypatch):
-    """Both BUY and SL go through KrakenTradingService. SL trigger
+    """BUY + SL + TP each go through KrakenTradingService. SL trigger
     price must be exactly entry × 0.97."""
     monkeypatch.setenv("KRAKEN_API_KEY", "fake")
     monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
@@ -202,6 +210,7 @@ def test_buy_places_stop_loss_at_3pct_below_entry(monkeypatch):
     fake_client.place_order.side_effect = [
         {"id": "BUY-TXID", "status": "submitted", "symbol": "XBTUSD"},
         {"id": "SL-TXID", "status": "submitted", "symbol": "XBTUSD"},
+        {"id": "TP-TXID", "status": "submitted", "symbol": "XBTUSD"},
     ]
     with patch(
         "services.crypto_live_executor._kraken_client",
@@ -221,10 +230,62 @@ def test_buy_places_stop_loss_at_3pct_below_entry(monkeypatch):
     assert sl_call.kwargs["stop_price"] == 58200.0
 
 
+def test_buy_places_take_profit_at_4pct_above_entry(monkeypatch):
+    """TP leg must be a LIMIT SELL at exactly entry × 1.04."""
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+
+    fake_client = MagicMock()
+    fake_client.place_order.side_effect = [
+        {"id": "BUY-TXID", "status": "submitted", "symbol": "XBTUSD"},
+        {"id": "SL-TXID", "status": "submitted", "symbol": "XBTUSD"},
+        {"id": "TP-TXID", "status": "submitted", "symbol": "XBTUSD"},
+    ]
+    with patch(
+        "services.crypto_live_executor._kraken_client",
+        return_value=fake_client,
+    ):
+        fill = place_live_market_buy("BTC", notional_usd=25.0, ref_price=60000.0)
+    assert fill is not None
+    assert fill["take_profit_placed"] is True
+    assert fill["take_profit_order_id"] == "TP-TXID"
+    # TP = 60000 × 1.04 = 62400.00
+    assert fill["take_profit_price"] == 62400.0
+    # Third call to place_order must be the limit SELL at TP.
+    tp_call = fake_client.place_order.call_args_list[2]
+    assert tp_call.kwargs["side"] == "sell"
+    assert tp_call.kwargs["order_type"] == "limit"
+    assert tp_call.kwargs["limit_price"] == 62400.0
+
+
+def test_buy_sl_succeeds_tp_fails_returns_both_markers(monkeypatch):
+    """SL is the critical leg (downside). TP failure must NOT undo
+    a successful SL placement — the row still ships with
+    ``stop_loss_placed=True`` and ``take_profit_placed=False``."""
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+
+    fake_client = MagicMock()
+    fake_client.place_order.side_effect = [
+        {"id": "BUY-TXID", "status": "submitted", "symbol": "XBTUSD"},
+        {"id": "SL-TXID", "status": "submitted", "symbol": "XBTUSD"},
+        Exception("TP service unavailable"),
+    ]
+    with patch(
+        "services.crypto_live_executor._kraken_client",
+        return_value=fake_client,
+    ):
+        fill = place_live_market_buy("BTC", notional_usd=25.0, ref_price=60000.0)
+    assert fill is not None
+    assert fill["stop_loss_placed"] is True
+    assert fill["take_profit_placed"] is False
+
+
 def test_buy_succeeds_but_sl_fails_returns_orphan_marker(monkeypatch):
     """If SL placement raises or returns empty, the fill dict still
     comes back but ``stop_loss_placed=False`` so the operator can
-    see the open position has no broker-side stop."""
+    see the open position has no broker-side stop. TP attempt still
+    fires (it's independent of SL)."""
     monkeypatch.setenv("KRAKEN_API_KEY", "fake")
     monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
 
@@ -232,6 +293,7 @@ def test_buy_succeeds_but_sl_fails_returns_orphan_marker(monkeypatch):
     fake_client.place_order.side_effect = [
         {"id": "BUY-TXID", "status": "submitted", "symbol": "XBTUSD"},
         Exception("SL service unavailable"),
+        {"id": "TP-TXID", "status": "submitted", "symbol": "XBTUSD"},
     ]
     with patch(
         "services.crypto_live_executor._kraken_client",
@@ -242,6 +304,7 @@ def test_buy_succeeds_but_sl_fails_returns_orphan_marker(monkeypatch):
     assert fill["kraken_order_id"] == "BUY-TXID"  # BUY succeeded
     assert fill["stop_loss_placed"] is False     # SL did not
     assert fill["stop_loss_order_id"] == ""
+    assert fill["take_profit_placed"] is True    # TP fired independently
 
 
 def test_buy_failure_returns_none_no_sl_attempted(monkeypatch):
@@ -305,6 +368,9 @@ async def test_maybe_route_live_persists_to_live_collection_only(monkeypatch):
         "stop_loss_price": 58200.0,
         "stop_loss_order_id": "SL-1",
         "stop_loss_placed": True,
+        "take_profit_price": 62400.0,
+        "take_profit_order_id": "TP-1",
+        "take_profit_placed": True,
     }
     with patch(
         "services.crypto_live_executor.place_live_market_buy",
@@ -316,6 +382,9 @@ async def test_maybe_route_live_persists_to_live_collection_only(monkeypatch):
     assert out["kraken_order_id"] == "BUY-1"
     assert out["stop_loss_placed"] is True
     assert out["stop_loss_pct"] == 0.03
+    assert out["take_profit_placed"] is True
+    assert out["take_profit_pct"] == 0.04
+    assert out["take_profit_price"] == 62400.0
     # Only one collection touched — the live one.
     assert len(db.crypto_live_trades.inserted) == 1
     assert not hasattr(db, "crypto_paper_trades") or \
@@ -339,11 +408,14 @@ async def test_maybe_route_live_carries_safety_caps_snapshot(monkeypatch):
             "kraken_order_id": "X", "kraken_pair": "XBTUSD", "qty": 0.0004,
             "notional_usd": 25.0, "stop_loss_price": 58200.0,
             "stop_loss_order_id": "Y", "stop_loss_placed": True,
+            "take_profit_price": 62400.0,
+            "take_profit_order_id": "Z", "take_profit_placed": True,
         },
     ):
         out = await maybe_route_live(db, _trade())
     caps = out["live_safety_caps"]
     assert caps["stop_loss_pct"] == 0.03
+    assert caps["take_profit_pct"] == 0.04
     assert caps["notional_cap_usd"] == 25.0
     assert caps["open_position_cap"] == 3
     assert caps["daily_trade_cap"] == 10
@@ -389,6 +461,8 @@ async def test_maybe_route_live_returns_none_when_db_insert_fails(monkeypatch):
             "kraken_order_id": "X", "kraken_pair": "XBTUSD", "qty": 0.0004,
             "notional_usd": 25.0, "stop_loss_price": 58200.0,
             "stop_loss_order_id": "Y", "stop_loss_placed": True,
+            "take_profit_price": 62400.0,
+            "take_profit_order_id": "Z", "take_profit_placed": True,
         },
     ):
         out = await maybe_route_live(_BoomDB(), _trade())
