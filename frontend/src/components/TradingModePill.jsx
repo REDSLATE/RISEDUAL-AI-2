@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Beaker, Flame, AlertTriangle, X } from 'lucide-react';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import { getApiBase } from '../utils/apiBase';
@@ -54,6 +55,24 @@ const TradingModePill = () => {
   useEffect(() => {
     if (!user) return;
     fetchState();
+  }, [user, fetchState]);
+
+  // Cross-component "open modal" channel — listened to by
+  // TradingModeBanner (and any future surface that wants to nudge
+  // the user to switch). Works regardless of whether THIS pill is
+  // visually rendered (mobile layout hides the pill inside the
+  // navbar's ``hidden lg:flex`` wrapper, but the listener still
+  // fires and the modal renders via portal).
+  useEffect(() => {
+    if (!user) return;
+    const onOpenRequest = () => {
+      fetchState();
+      setOpen(true);
+    };
+    window.addEventListener('risedual:open-trading-mode-modal', onOpenRequest);
+    return () => window.removeEventListener(
+      'risedual:open-trading-mode-modal', onOpenRequest,
+    );
   }, [user, fetchState]);
 
   // Cooldown ticker
@@ -199,7 +218,7 @@ const TradingModePill = () => {
         <span>{mode}</span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
           onClick={closeModal}
@@ -337,7 +356,8 @@ const TradingModePill = () => {
               </p>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

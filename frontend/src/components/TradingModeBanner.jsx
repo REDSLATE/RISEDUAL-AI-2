@@ -28,8 +28,15 @@ const TradingModeBanner = ({ expectedMode = 'paper', compact = false }) => {
   const isPaper = expectedMode === 'paper';
 
   const requestSwitch = () => {
-    // Programmatic click on the navbar pill so the audit + cooldown
-    // pipeline is the single source of truth for mode flips.
+    // Two-channel switch trigger:
+    //   1. CustomEvent — primary path. TradingModePill listens for
+    //      this and opens its modal regardless of whether the pill
+    //      itself is in a hidden parent (mobile layout, where the
+    //      pill lives inside the navbar's ``hidden lg:flex`` wrapper).
+    //   2. Programmatic click fallback — kept so an older
+    //      TradingModePill bundle (pre-event-listener wire) still
+    //      responds. Harmless when both fire.
+    window.dispatchEvent(new CustomEvent('risedual:open-trading-mode-modal'));
     const pill = document.querySelector('[data-testid="trading-mode-pill"]');
     if (pill) pill.click();
   };
