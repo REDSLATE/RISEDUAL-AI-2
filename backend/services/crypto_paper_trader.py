@@ -1210,6 +1210,46 @@ async def run_crypto_symbol(
     except Exception:  # noqa: BLE001
         pass
 
+    # 2026-06-01 — Live execution attempt (Kraken).
+    # Doctrine: this is BEFORE the paper insert. If
+    # ``maybe_route_live`` returns a live row, the order has already
+    # fired on Kraken AND been persisted to ``crypto_live_trades``
+    # — we MUST NOT also insert into ``crypto_paper_trades`` because
+    # that would create a phantom paper twin of a real position.
+    # ``maybe_route_live`` returns ``None`` when:
+    #   * ``RISEDUAL_CRYPTO_LIVE_EXEC`` is unset / 0 (default — paper continues)
+    #   * symbol/direction/caps reject the trade
+    #   * Kraken broker call fails
+    # In ALL of those cases we fall through to the paper path
+    # unchanged so Alpha keeps learning.
+    try:
+        from services.crypto_live_executor import maybe_route_live
+        live_row = await maybe_route_live(db, trade)
+        if live_row is not None:
+            # Live fill landed. Skip the paper insert + return a
+            # paper-shaped success dict so callers / dashboards see
+            # the same shape they get from the paper path.
+            await log_adversarial_decision(
+                db, symbol=symbol, signal=signal, final_direction=signal["direction"],
+            )
+            return {
+                "symbol": symbol,
+                "live": True,
+                "kraken_order_id": live_row.get("kraken_order_id"),
+                "size_usd": live_row.get("size_usd"),
+                "entry_price": live_row.get("entry_price"),
+                "stop_loss_placed": live_row.get("stop_loss_placed"),
+                "stop_loss_price": live_row.get("stop_loss_price"),
+            }
+    except Exception as _live_exc:  # noqa: BLE001
+        # A bug in the live wire must NEVER prevent the paper trade
+        # — the existing paper learning loop is sacrosanct.
+        logger.warning(
+            "[crypto-bot] live route swallowed exception for %s "
+            "(falling back to paper): %s",
+            symbol, _live_exc,
+        )
+
     try:
         await db.crypto_paper_trades.insert_one(trade)
         # Strip Mongo-injected _id (ObjectId not JSON-serializable).
