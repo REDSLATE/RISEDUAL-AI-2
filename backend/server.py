@@ -159,6 +159,12 @@ app.include_router(system_access_router, prefix="/api")
 from routes.governance_chevelle_calibration import router as calibration_router
 app.include_router(calibration_router)
 
+# Crypto live trading status (owner-only diagnostic for the live
+# Kraken wire — armed/config/open positions/daily count).
+from routes.admin_crypto_live_status import router as crypto_live_status_router, set_db as _set_crypto_live_status_db
+app.include_router(crypto_live_status_router)
+_set_crypto_live_status_db(db)
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1322,6 +1328,29 @@ async def _run_crypto_paper_closer():
             )
     except Exception as e:
         logger.debug(f"Crypto paper closer error: {e}")
+
+
+async def _run_crypto_live_closer():
+    """Background: 5-minute live crypto closer + orphan-leg
+    canceller. Cancels the resting SL or TP leg whenever one
+    bracket leg fires on Kraken, and patches the corresponding
+    ``crypto_live_trades`` row to ``status="closed"``. No-op when
+    ``RISEDUAL_CRYPTO_LIVE_EXEC`` is unset.
+    """
+    try:
+        from services.crypto_live_closer import run_crypto_live_closer_pass
+        summary = await run_crypto_live_closer_pass(db)
+        if summary.get("sl_hit") or summary.get("tp_hit") or summary.get("errors"):
+            logger.info(
+                "Crypto live closer: scanned=%d sl_hit=%d tp_hit=%d skipped=%d errors=%d",
+                summary.get("scanned", 0),
+                summary.get("sl_hit", 0),
+                summary.get("tp_hit", 0),
+                summary.get("skipped", 0),
+                summary.get("errors", 0),
+            )
+    except Exception as e:
+        logger.debug(f"Crypto live closer error: {e}")
 
 
 async def _run_crypto_adaptation_detector():

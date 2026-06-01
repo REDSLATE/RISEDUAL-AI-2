@@ -114,6 +114,11 @@ def register_all(scheduler, db, server_mod):
     scheduler.add_job(s._run_tier3_paper_closer, 'interval', minutes=15, id='tier3_paper_closer', replace_existing=True)
     scheduler.add_job(s._run_crypto_paper_bot, 'interval', minutes=15, id='crypto_paper_bot', replace_existing=True)
     scheduler.add_job(s._run_crypto_paper_closer, 'interval', minutes=15, id='crypto_paper_trade_closer', replace_existing=True)
+    # 2026-06-01: live crypto orphan-leg closer. 5-min cadence so the
+    # orphan exposure window (one leg fires, other still resting) is
+    # capped at ~5 min. Defaults to no-op when RISEDUAL_CRYPTO_LIVE_EXEC
+    # is unset.
+    scheduler.add_job(s._run_crypto_live_closer, 'interval', minutes=5, id='crypto_live_closer', replace_existing=True)
     scheduler.add_job(s._run_crypto_adaptation_detector, 'interval', hours=6, id='crypto_adaptation_detector', replace_existing=True)
     scheduler.add_job(s._run_day_trade_scanner_equity, 'interval', minutes=5, id='day_trade_scanner_equity', replace_existing=True)
     scheduler.add_job(s._run_day_trade_scanner_crypto, 'interval', minutes=5, id='day_trade_scanner_crypto', replace_existing=True)
