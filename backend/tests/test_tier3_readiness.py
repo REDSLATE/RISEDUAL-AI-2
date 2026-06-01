@@ -23,6 +23,18 @@ from services.tier3_readiness import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _disable_tier3_bypass(monkeypatch):
+    """2026-06-01: the operator bypass ``TIER3_BYPASS_UNLOCKED=1`` is now
+    set in ``.env`` so the live system unlocks unconditionally. These
+    tests validate the ORIGINAL evidence-based gate logic, so they
+    must run with the bypass off — otherwise every check_tier3_unlock
+    call returns ``unlocked=True`` and we lose regression coverage on
+    the underlying math. The bypass itself is covered separately by
+    ``test_tier3_bypass.py``."""
+    monkeypatch.delenv("TIER3_BYPASS_UNLOCKED", raising=False)
+
+
 def _perfect_stats() -> dict:
     """A stats dict that passes every single check."""
     return {

@@ -31,6 +31,7 @@ Design rules
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -63,7 +64,31 @@ def check_tier3_unlock(stats: dict) -> dict:
     `stats` is expected to contain the keys produced by
     :func:`build_tier3_stats`. Missing keys are treated as 0 (fail-
     closed).
+
+    2026-06 operator override
+    -------------------------
+    The Tier 3 promotion framework was built as a pre-launch evidence
+    gate — "don't let the adversarial brain influence trades until
+    we have N closed paper trades + N high-conf wins + calibration
+    proof". Per operator decision (2026-06-01), this gate is being
+    permanently retired: the framework's empirical work is done,
+    and a system-wide bypass via ``TIER3_BYPASS_UNLOCKED=1``
+    short-circuits the readiness math to ``unlocked=True``. The
+    digest emails and dashboard tiles keep running so the operator
+    retains visibility, but nothing in the trade flow gates on the
+    math anymore.
+
+    To re-enable Tier 3 gating, unset the env var and the original
+    evidence checks below resume. No code deletion needed.
     """
+    if os.environ.get("TIER3_BYPASS_UNLOCKED", "").strip() in ("1", "true", "True", "yes", "on"):
+        return {
+            "unlocked": True,
+            "reasons": [],
+            "confidence_score": 100.0,
+            "bypass": "TIER3_BYPASS_UNLOCKED",
+        }
+
     reasons: list[str] = []
 
     days = int(stats.get("days", 0))

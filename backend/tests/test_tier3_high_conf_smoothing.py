@@ -24,6 +24,14 @@ from services.tier3_readiness import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _disable_tier3_bypass(monkeypatch):
+    """2026-06-01: the operator bypass ``TIER3_BYPASS_UNLOCKED=1`` is now
+    set in ``.env``. These tests validate the underlying smoothing
+    + gate math, so they must run with the bypass off."""
+    monkeypatch.delenv("TIER3_BYPASS_UNLOCKED", raising=False)
+
+
 # ── compute_tier3_score honours the smoothed field ─────────────────────
 
 

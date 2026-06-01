@@ -399,12 +399,17 @@ def test_roadguard_v2_duplicate_symbol_block():
     assert v.gate == "G07"
 
 
-def test_roadguard_v2_g10_kill_switch_when_live_attempt():
+def test_roadguard_v2_g10_kill_switch_when_live_attempt(monkeypatch):
+    # 2026-06-01: live ``.env`` now sets ``BROKER_LIVE_ORDER_ENABLED=true``
+    # to unblock production live orders. This test validates the G10
+    # BLOCK behavior when the kill-switch is OFF, so we explicitly
+    # clear it for this assertion.
+    monkeypatch.delenv("BROKER_LIVE_ORDER_ENABLED", raising=False)
     v = RoadGuardV2().evaluate(
         _intent(will_hit_live_broker=True),
         _account(),
     )
-    # Default BROKER_LIVE_ORDER_ENABLED=false in env → BLOCK
+    # BROKER_LIVE_ORDER_ENABLED=false in env → BLOCK
     assert v.gate == "G10"
     assert v.decision == "BLOCK"
 

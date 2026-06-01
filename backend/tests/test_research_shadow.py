@@ -889,6 +889,11 @@ async def test_tier_readiness_reports_all_three_blockers(monkeypatch):
         _fake_council_stats,
     )
     monkeypatch.setenv("CRYPTO_ADVERSARIAL_PHASE", "shadow")
+    # 2026-06-01: live ``.env`` now sets ``TIER3_BYPASS_UNLOCKED=1`` which
+    # would short-circuit the gate to unlocked and silence the tier3
+    # blocker in next_steps. This test validates the ORIGINAL 3-blocker
+    # reporting path, so we clear the bypass for this assertion.
+    monkeypatch.delenv("TIER3_BYPASS_UNLOCKED", raising=False)
 
     out = await fetch_tier_readiness(object())  # any non-None db
     assert out["ready_to_enable_council"] is False
