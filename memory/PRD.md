@@ -4,6 +4,77 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-02 (Outcome push fix + Time-based exit + MC identity probe)
+
+### Three batched changes — backend test suite 4,250 → 4,261 (+11, 0 regressions)
+
+**1. MC Scorecard `total_resolved=0` fix — crypto closes now flow to MC**
+
+`services/paper_trade_closer.py` was already enqueueing equity closes
+into `sovereign_outcomes_inbox` since 2026-05-22, but `services/crypto_closer.py`
+(paper) and `services/crypto_live_closer.py` (live) were not. MC's
+recent_outcomes snapshot for Alpha was therefore equity-only, which
+explains the 0/N resolved counter on the crypto side of the
+Scorecard.
+
+Files touched:
+- `services/crypto_closer.py` — `enqueue_outcome(brain="alpha", ...)` call right after
+  `write_crypto_trade_memory`. Provenance fields forwarded.
+- `services/crypto_live_closer.py::_close_row` — symmetric
+  `enqueue_outcome` call on every live close (SL/TP/manual/time-based).
+- Lane discriminator `extras.lane = "crypto"` so MC can filter the
+  per-lane outcome stream.
+
+**2. Time-based stale-exit for live crypto (env-armed, default OFF)**
+
+`services/crypto_live_closer.py` now scans every open live row's
+`opened_at` before the SL/TP classifier runs. Rows older than
+`CRYPTO_LIVE_MAX_HOLD_HOURS` (env knob; unset/0 = disabled) are
+force-flatted: cancel both SL+TP legs, place market SELL for
+`row.size`, stamp the row `closed_reason="time_based_exit"`. Exit
+price uses Kraken's last-traded probe with fallback to `entry_price`
+(honest "no mark, pnl=0" instead of a phantom extreme).
+
+Doctrine pins:
+- LONG-only (mirrors executor's no-shorts doctrine; defensive guard
+  refuses synthetic covering BUYs).
+- Zero-qty rows refused — never SELL the wrong size.
+- Helper `_force_close_stale_row` placed-order failure → row left
+  for the normal orphan classifier (no double-action).
+- 5 new tripwire tests cover: default-OFF behaviour, fires-when-stale,
+  skips-short-holds, falls-back-to-entry on quote fail, refuses zero qty.
+
+Context: PDT rule change June 4, 2026 ($25k → $2.5k) reframes
+overnight equity holds as discipline failures. Crypto is exempt
+from PDT (24/7 market) but the operator wants the same time
+discipline armed for live BTC/ETH positions.
+
+**3. MC identity probe diagnostic — triage the 401 without one-off curls**
+
+New owner-only endpoint
+`GET /api/admin/runtime/mc-identity-probe` hits MC's
+`/api/admin/runtime/{brain}/status` with `X-Brain-Id` + `X-Runtime-Token`
+(per `MC_BRAIN_API_QUICKSTART_v1.md` section 10) and returns
+status_code + first 400 chars of response + an operator-facing
+hint string. Hint matrix pinned by 6 unit tests, covering:
+- transport error (unreachable MC)
+- 200 (accepted)
+- 401 with three named possible causes (token rotated, JWT-only path,
+  preview/prod missing brain token)
+- 403 (JWT-only)
+- 404 (route drift)
+- default (other status codes)
+
+The 401 next step is unblocked: operator can `curl` the probe,
+share the JSON with the MC operator, and get a definitive
+answer in one round-trip.
+
+### Pending — MC Scorecard verification
+- After this redeploy, watch MC's Scorecard for Alpha crypto outcome
+  flow. The bridge is wired symmetrically with the equity path that
+  already works.
+
+
 ## Latest Update — 2026-06 (Opinion side-channel wired)
 
 ### Wire: Alpha now publishes opinions to MC on every consensus tick

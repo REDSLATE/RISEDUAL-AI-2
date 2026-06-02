@@ -85,7 +85,8 @@ async def test_closer_no_op_when_live_disabled(monkeypatch):
     db = MagicMock()  # any access would raise on AttributeError trip
     out = await run_crypto_live_closer_pass(db)
     assert out == {
-        "scanned": 0, "sl_hit": 0, "tp_hit": 0, "skipped": 0, "errors": 0,
+        "scanned": 0, "sl_hit": 0, "tp_hit": 0,
+        "skipped": 0, "errors": 0, "time_based_exit": 0,
     }
     # No find() call.
     db.crypto_live_trades.find.assert_not_called()
@@ -341,3 +342,195 @@ async def test_closer_handles_db_read_error(monkeypatch):
     out = await run_crypto_live_closer_pass(_BoomDB())
     assert out["errors"] == 1
     assert out["scanned"] == 0
+
+
+# ── Time-based stale-exit branch (2026-06) ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_time_based_exit_disabled_by_default(monkeypatch):
+    """CRYPTO_LIVE_MAX_HOLD_HOURS unset → no time-based action even
+    on a 30-day-old position. Default-OFF safety."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("RISEDUAL_CRYPTO_LIVE_EXEC", "1")
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+    monkeypatch.delenv("CRYPTO_LIVE_MAX_HOLD_HOURS", raising=False)
+
+    old = datetime.now(timezone.utc) - timedelta(days=30)
+    rows = [{
+        "_id": "r1", "symbol": "BTC", "direction": "LONG",
+        "entry_price": 60000.0, "size": 0.0004, "live_notional_usd": 25.0,
+        "stop_loss_order_id": "SL-1", "stop_loss_price": 58200.0,
+        "take_profit_order_id": "TP-1", "take_profit_price": 62400.0,
+        "opened_at": old,
+    }]
+    fake_client = MagicMock()
+    # SL+TP both still resting — neither hit.
+    fake_client.get_orders.return_value = [{"id": "SL-1"}, {"id": "TP-1"}]
+
+    db = _FakeDB(rows=rows)
+    with patch(
+        "services.crypto_live_closer._kraken_client",
+        return_value=fake_client,
+    ):
+        out = await run_crypto_live_closer_pass(db)
+    assert out["time_based_exit"] == 0
+    # No SELL placed; no row closed.
+    fake_client.place_order.assert_not_called()
+    assert db.crypto_live_trades.updates == []
+
+
+@pytest.mark.asyncio
+async def test_time_based_exit_fires_when_stale(monkeypatch):
+    """Row past CRYPTO_LIVE_MAX_HOLD_HOURS → SL+TP cancelled,
+    market SELL placed, row closed with reason=time_based_exit."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("RISEDUAL_CRYPTO_LIVE_EXEC", "1")
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+    monkeypatch.setenv("CRYPTO_LIVE_MAX_HOLD_HOURS", "24")
+
+    old = datetime.now(timezone.utc) - timedelta(hours=48)
+    rows = [{
+        "_id": "r2", "symbol": "BTC", "direction": "LONG",
+        "entry_price": 60000.0, "size": 0.0004, "live_notional_usd": 25.0,
+        "stop_loss_order_id": "SL-2", "stop_loss_price": 58200.0,
+        "take_profit_order_id": "TP-2", "take_profit_price": 62400.0,
+        "opened_at": old,
+    }]
+    fake_client = MagicMock()
+    # Both legs still resting — confirms the time-based path runs
+    # BEFORE the SL/TP classifier (otherwise this row would be
+    # classified as "both_resting" and skipped).
+    fake_client.get_orders.return_value = [{"id": "SL-2"}, {"id": "TP-2"}]
+    fake_client.cancel_order.return_value = True
+    fake_client.place_order.return_value = {"id": "TIME-SELL-1"}
+    fake_client.get_ticker.return_value = {"last": 61000.0}
+
+    db = _FakeDB(rows=rows)
+    with patch(
+        "services.crypto_live_closer._kraken_client",
+        return_value=fake_client,
+    ):
+        out = await run_crypto_live_closer_pass(db)
+    assert out["time_based_exit"] == 1
+    # Both legs cancelled.
+    cancelled = {c.args[0] for c in fake_client.cancel_order.call_args_list}
+    assert cancelled == {"SL-2", "TP-2"}
+    # Market SELL placed for the row's size.
+    fake_client.place_order.assert_called_once()
+    kw = fake_client.place_order.call_args.kwargs
+    assert kw["side"] == "sell"
+    assert kw["order_type"] == "market"
+    assert kw["qty"] == 0.0004
+    # Row closed with time_based_exit reason.
+    assert len(db.crypto_live_trades.updates) == 1
+    update_set = db.crypto_live_trades.updates[0][1]["$set"]
+    assert update_set["closed_reason"] == "time_based_exit"
+    assert update_set["status"] == "closed"
+    # Exit at the mark price probe, not entry.
+    assert update_set["exit_price"] == 61000.0
+
+
+@pytest.mark.asyncio
+async def test_time_based_exit_skips_short_holds(monkeypatch):
+    """Row younger than CRYPTO_LIVE_MAX_HOLD_HOURS → no force-close."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("RISEDUAL_CRYPTO_LIVE_EXEC", "1")
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+    monkeypatch.setenv("CRYPTO_LIVE_MAX_HOLD_HOURS", "24")
+
+    young = datetime.now(timezone.utc) - timedelta(hours=2)
+    rows = [{
+        "_id": "r3", "symbol": "BTC", "direction": "LONG",
+        "entry_price": 60000.0, "size": 0.0004,
+        "stop_loss_order_id": "SL-3", "stop_loss_price": 58200.0,
+        "take_profit_order_id": "TP-3", "take_profit_price": 62400.0,
+        "opened_at": young,
+    }]
+    fake_client = MagicMock()
+    fake_client.get_orders.return_value = [{"id": "SL-3"}, {"id": "TP-3"}]
+
+    db = _FakeDB(rows=rows)
+    with patch(
+        "services.crypto_live_closer._kraken_client",
+        return_value=fake_client,
+    ):
+        out = await run_crypto_live_closer_pass(db)
+    assert out["time_based_exit"] == 0
+    fake_client.place_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_time_based_exit_falls_back_to_entry_on_quote_fail(monkeypatch):
+    """If the mark-price probe fails, exit_price falls back to
+    entry so pnl_pct = 0 (honest 'no broker mark, don't lie')."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("RISEDUAL_CRYPTO_LIVE_EXEC", "1")
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+    monkeypatch.setenv("CRYPTO_LIVE_MAX_HOLD_HOURS", "12")
+
+    old = datetime.now(timezone.utc) - timedelta(hours=20)
+    rows = [{
+        "_id": "r4", "symbol": "ETH", "direction": "LONG",
+        "entry_price": 3000.0, "size": 0.01,
+        "stop_loss_order_id": "SL-4", "stop_loss_price": 2910.0,
+        "take_profit_order_id": "TP-4", "take_profit_price": 3120.0,
+        "opened_at": old,
+    }]
+    fake_client = MagicMock()
+    fake_client.get_orders.return_value = [{"id": "SL-4"}, {"id": "TP-4"}]
+    fake_client.cancel_order.return_value = True
+    fake_client.place_order.return_value = {"id": "TIME-SELL-2"}
+    fake_client.get_ticker.side_effect = Exception("quote down")
+
+    db = _FakeDB(rows=rows)
+    with patch(
+        "services.crypto_live_closer._kraken_client",
+        return_value=fake_client,
+    ):
+        out = await run_crypto_live_closer_pass(db)
+    assert out["time_based_exit"] == 1
+    update_set = db.crypto_live_trades.updates[0][1]["$set"]
+    assert update_set["closed_reason"] == "time_based_exit"
+    assert update_set["exit_price"] == 3000.0
+    assert update_set["pnl_pct"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_time_based_exit_refuses_zero_qty(monkeypatch):
+    """Missing/zero qty → refuse the SELL (we'd flat the wrong size)."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("RISEDUAL_CRYPTO_LIVE_EXEC", "1")
+    monkeypatch.setenv("KRAKEN_API_KEY", "fake")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "fake")
+    monkeypatch.setenv("CRYPTO_LIVE_MAX_HOLD_HOURS", "24")
+
+    old = datetime.now(timezone.utc) - timedelta(hours=48)
+    rows = [{
+        "_id": "r5", "symbol": "BTC", "direction": "LONG",
+        "entry_price": 60000.0, "size": 0.0,  # missing/zero qty
+        "stop_loss_order_id": "SL-5",
+        "take_profit_order_id": "TP-5",
+        "opened_at": old,
+    }]
+    fake_client = MagicMock()
+    fake_client.get_orders.return_value = [{"id": "SL-5"}, {"id": "TP-5"}]
+
+    db = _FakeDB(rows=rows)
+    with patch(
+        "services.crypto_live_closer._kraken_client",
+        return_value=fake_client,
+    ):
+        out = await run_crypto_live_closer_pass(db)
+    assert out["time_based_exit"] == 0
+    fake_client.place_order.assert_not_called()
+

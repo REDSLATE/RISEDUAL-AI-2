@@ -186,4 +186,132 @@ async def get_runtime_stamp(request: Request) -> dict[str, Any]:
     }
 
 
+# ── MC identity probe (2026-06) ─────────────────────────────────────
+#
+# Issue: MC's identity surface (``/api/admin/runtime/{brain}/status``)
+# returned 401 when the brain hit it with ``X-Brain-Id`` +
+# ``X-Runtime-Token`` — the exact headers documented as the runtime
+# auth scheme in ``MC_BRAIN_API_QUICKSTART_v1.md`` section 10.
+#
+# This probe lets the operator confirm exactly what MC is returning
+# without writing one-off curls. It hits MC live and surfaces the
+# status code + first 200 chars of the response, so a 401 can be
+# triaged into one of:
+#   * runtime token rotated on MC but not in our env
+#   * MC moved identity behind operator JWT auth (doc out of date)
+#   * MC env (preview vs prod) doesn't issue this brain a token
+#
+# Read-only on MC's side; the GET cannot mutate state.
+@router.get("/mc-identity-probe")
+async def mc_identity_probe(request: Request) -> dict[str, Any]:
+    """Probe MC's identity endpoint with the brain's runtime token.
+
+    Returns::
+
+        {
+          "url": "<full url>",
+          "headers_sent": {"X-Brain-Id": "<brain>", "X-Runtime-Token": "***"},
+          "status_code": int,
+          "response_preview": "<first 400 chars>",
+          "hint": "<operator-facing diagnosis>",
+        }
+
+    Never raises — network errors surface as ``status_code=null``
+    with the exception text in ``response_preview``.
+    """
+    await _require_owner(request)
+
+    import httpx
+
+    base = (
+        os.environ.get("RISEDUAL_MC_URL")
+        or os.environ.get("MC_BASE_URL")
+        or ""
+    ).strip().rstrip("/")
+    brain = (
+        os.environ.get("RISEDUAL_APP_NAME")
+        or os.environ.get("RUNTIME_NAME")
+        or "alpha"
+    ).strip() or "alpha"
+    brain = brain.lower()
+    token = (
+        os.environ.get("ALPHA_MC_INGEST_TOKEN")
+        or os.environ.get("ALPHA_INGEST_TOKEN")
+        or ""
+    ).strip()
+
+    if not base or not token:
+        return {
+            "url": None,
+            "status_code": None,
+            "response_preview": "",
+            "hint": (
+                "MC base URL or runtime token missing — set "
+                "RISEDUAL_MC_URL + ALPHA_MC_INGEST_TOKEN before probing."
+            ),
+        }
+
+    url = f"{base}/api/admin/runtime/{brain}/status"
+    headers = {
+        "X-Brain-Id": brain,
+        "X-Runtime-Token": token,
+        "Accept": "application/json",
+    }
+
+    status_code: Any = None
+    body_preview = ""
+    try:
+        with httpx.Client(timeout=6.0) as client:
+            resp = client.get(url, headers=headers)
+            status_code = resp.status_code
+            body_preview = (resp.text or "")[:400]
+    except Exception as exc:  # noqa: BLE001
+        body_preview = f"transport_error: {exc}"
+
+    hint = _identity_probe_hint(status_code, body_preview)
+    return {
+        "url": url,
+        "headers_sent": {
+            "X-Brain-Id": brain,
+            "X-Runtime-Token": "*** (present)",
+        },
+        "status_code": status_code,
+        "response_preview": body_preview,
+        "hint": hint,
+    }
+
+
+def _identity_probe_hint(status_code: Any, body_preview: str) -> str:
+    """Human-friendly diagnosis for the operator. Pure-function so
+    tests can pin every branch without HTTP."""
+    if status_code is None:
+        return (
+            "Could not reach MC. Check RISEDUAL_MC_URL is correct + "
+            "network egress."
+        )
+    if status_code == 200:
+        return "Identity surface returns 200 — runtime token is accepted."
+    if status_code == 401:
+        return (
+            "MC rejected the runtime token. Either: (a) token was "
+            "rotated on MC and the env var is stale, (b) MC moved "
+            "this route behind operator JWT auth (doctrine drift), "
+            "or (c) MC's preview/prod env doesn't issue this brain a "
+            "token. Ping the MC operator with this probe response."
+        )
+    if status_code == 403:
+        return (
+            "MC returned 403 — the token is valid but lacks permission "
+            "for this route. Likely operator JWT-only path. Ask MC if "
+            "the identity surface still accepts X-Runtime-Token per the "
+            "MC_BRAIN_API_QUICKSTART_v1 doc."
+        )
+    if status_code == 404:
+        return (
+            "MC returned 404 — the route path may have changed. "
+            "Compare with MC's deployed API listing."
+        )
+    return f"MC returned {status_code}. Inspect response_preview."
+
+
 __all__ = ["router", "set_db"]

@@ -408,6 +408,54 @@ async def close_expired_crypto_trades(
 
             await write_crypto_trade_memory(db, closed_trade)
 
+            # ── 2026-06 (Gap 2): enqueue crypto outcome to the
+            # Sovereign sidecar's inbox so MC's recent_outcomes
+            # snapshot accumulates crypto closes. Without this,
+            # MC's Scorecard sees `total_resolved=0` for Alpha —
+            # equity closes were already wired (see
+            # paper_trade_closer.py), but crypto closes were not.
+            try:
+                from services.sovereign_outcome_bridge import (
+                    enqueue_outcome,
+                )
+                outcome_label = (
+                    "win" if pnl > 0 else ("loss" if pnl < 0 else "flat")
+                )
+                await enqueue_outcome(
+                    db,
+                    brain="alpha",
+                    trade_id=str(
+                        closed_trade.get("trade_id")
+                        or closed_trade.get("id")
+                        or trade.get("trade_id")
+                        or trade.get("_id")
+                        or ""
+                    ),
+                    symbol=symbol,
+                    direction=direction,
+                    confidence=float(trade.get("confidence") or 0.0),
+                    outcome_label=outcome_label,
+                    notional=float(
+                        trade.get("position_usd")
+                        or trade.get("size_usd")
+                        or 0.0
+                    ),
+                    extras={
+                        "lane": "crypto",
+                        "receipt_type": "paper",
+                        "r_multiple": r_multiple,
+                        "close_reason": exit_reason,
+                    },
+                    sovereign_decision_id=trade.get("sovereign_decision_id"),
+                    prediction_id=trade.get("prediction_id"),
+                    source_signal=trade.get("source_signal"),
+                )
+            except Exception as _bridge_exc:  # noqa: BLE001
+                logger.debug(
+                    "[crypto-closer] outcome bridge enqueue failed: %s",
+                    _bridge_exc,
+                )
+
             # Patent M (Alpha) — Shelly observation-side ingestion.
             # Behind ``LEARNING_CORE_INGEST_ENABLED`` (default off).
             # Best-effort: never raises, never affects the close.
