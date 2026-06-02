@@ -1,27 +1,27 @@
 {
-  "last_polled_at": "2026-06-01T14:31:38.873438+00:00",
-  "last_roles_at": "2026-06-01T14:31:51.419720+00:00",
-  "last_scorecard_at": "2026-06-01T14:31:45.524413+00:00",
+  "last_polled_at": "2026-06-02T07:23:52.145459+00:00",
+  "last_roles_at": "2026-06-02T07:20:11.519064+00:00",
+  "last_scorecard_at": "2026-06-02T07:20:11.470820+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ff98bc73-d684-4792-adb8-ced05b51df46",
+  "last_seen_opinion_id": "ffcf7353-5fa5-410d-a4a6-e60e306e116d",
   "roles_snapshot": {
     "count": 0,
-    "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
+    "error": "Server error '502 Bad Gateway' for url 'https://mission.risedual.ai/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502",
     "items": []
   },
   "scorecard_snapshot": {
-    "error": "Server error '520 <none>' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/520",
+    "error": "Server error '502 Bad Gateway' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502",
     "runtime": "alpha",
     "summary": {}
   },
   "stats": {
     "by_peer": {
-      "alpha": 16396,
-      "camaro": 208957,
+      "alpha": 16777,
+      "camaro": 210523,
       "chevelle": 82614,
-      "redeye": 225833
+      "redeye": 228486
     },
-    "opinions_ingested": 533800,
+    "opinions_ingested": 538400,
     "opinions_quarantined": 0
   }
 }

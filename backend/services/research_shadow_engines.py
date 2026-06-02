@@ -693,3 +693,16 @@ async def _mirror_to_stream_if_commander(
         logger.debug(
             "[shadow] commander stream mirror failed (non-critical): %s", exc,
         )
+
+
+
+# ── RISE MarketVerse v0.1 side-channel ────────────────────────────────────────
+# Phase 0 hook (2026-06-01): re-export from ``services.marketverse_recorder``
+# so callers can keep importing ``record_marketverse_observation`` from the
+# shadow-engines module (which is where the operator's wiring spec routes it).
+# Real implementation lives in ``services/marketverse_recorder.py`` to keep
+# this file under the 800-line code-size ceiling.
+#
+# Doctrine (unchanged): SHADOW ONLY — no live consumption, no broker authority.
+# Writes to ``marketverse_observations`` exclusively.
+from services.marketverse_recorder import record_marketverse_observation  # noqa: E402, F401
