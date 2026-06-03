@@ -1,119 +1,27 @@
 {
-  "last_polled_at": "2026-06-02T07:59:37.701333+00:00",
-  "last_roles_at": "2026-06-02T08:00:03.408317+00:00",
-  "last_scorecard_at": "2026-06-02T08:00:03.244542+00:00",
+  "last_polled_at": "2026-06-03T14:20:55.529099+00:00",
+  "last_roles_at": "2026-06-03T14:18:29.763076+00:00",
+  "last_scorecard_at": "2026-06-03T14:18:29.764390+00:00",
   "last_seen_opinion_at": "",
-  "last_seen_opinion_id": "ffcf7353-5fa5-410d-a4a6-e60e306e116d",
+  "last_seen_opinion_id": "fee375da-5a72-4b6e-92a3-4f77f392abc1",
   "roles_snapshot": {
-    "count": 4,
-    "doctrine": "Brains share opinions, not internal model state. None can execute trades, paper or live.",
-    "items": [
-      {
-        "allowed_actions": [
-          "enter_long",
-          "enter_short",
-          "exit",
-          "scale_in",
-          "hold",
-          "phase6_proposal"
-        ],
-        "authority_state": "co_trader",
-        "description": "Trained on structured-signal day-trading. Stamps executable proposals; whether a proposal lands as an order depends on the SEAT holder of the moment, not on Alpha's identity.",
-        "kind": "runtime",
-        "last_seen": "2026-06-02T08:00:03.296870+00:00",
-        "may_execute": false,
-        "role": "trader",
-        "runtime": "alpha",
-        "tagline": "structured trader",
-        "title": "Alpha"
-      },
-      {
-        "allowed_actions": [
-          "shadow_proposal",
-          "counterfactual",
-          "veto",
-          "reduce",
-          "watch",
-          "executor_proposed"
-        ],
-        "authority_state": "challenger",
-        "description": "Trained to attack the thesis and surface counterfactuals. Whether the challenge becomes a veto / reduce / watch depends on which seat Camaro currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-06-02T07:59:48.433039+00:00",
-        "may_execute": false,
-        "role": "challenger",
-        "runtime": "camaro",
-        "tagline": "challenger / counterfactual",
-        "title": "Camaro"
-      },
-      {
-        "allowed_actions": [
-          "readiness_gate",
-          "calibration_gate",
-          "audit_verify",
-          "promotion_decision",
-          "authority_call"
-        ],
-        "authority_state": "governor",
-        "description": "Trained on memory firewall, readiness gate, calibration gate, audit verification, and promotion-control reasoning. Authority to act on those signals depends on which seat Chevelle currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-06-02T08:00:01.446518+00:00",
-        "may_execute": false,
-        "role": "governor",
-        "runtime": "chevelle",
-        "tagline": "memory + calibration",
-        "title": "Chevelle"
-      },
-      {
-        "allowed_actions": [
-          "post_opinion",
-          "read_opinions",
-          "read_roles_manifest",
-          "adversarial_advisory",
-          "stance_contrary"
-        ],
-        "authority_state": "advisor",
-        "description": "Trained to argue the contrary case on every position. REDEYE speaks via the shared discussion layer and the position primitive \u2014 peers may read, never modify, its stances. Authority to translate a contrary-case finding into a veto / reduce / watch depends on the seat REDEYE currently holds.",
-        "kind": "runtime",
-        "last_seen": "2026-06-02T07:59:38.891009+00:00",
-        "may_execute": false,
-        "role": "opponent",
-        "runtime": "redeye",
-        "tagline": "adversarial scout",
-        "title": "REDEYE"
-      }
-    ]
+    "count": 0,
+    "error": "Server error '502 Bad Gateway' for url 'https://mission.risedual.ai/api/runtime-discussion/roles-manifest?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502",
+    "items": []
   },
   "scorecard_snapshot": {
-    "brier": null,
-    "calibration_bands": [],
-    "doctrine": "Descriptive only. Scorecards do not gate promotions. No brain may rewrite another brain's authority based on a scorecard.",
-    "lens": "longs",
-    "question_answered": "When am I good at longs?",
-    "role_stances": [
-      "long"
-    ],
+    "error": "Server error '502 Bad Gateway' for url 'https://mission.risedual.ai/api/runtime-discussion/scorecard?caller=alpha'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502",
     "runtime": "alpha",
-    "summary": {
-      "ambiguous": 0,
-      "avg_confidence_on_losses": null,
-      "avg_confidence_on_wins": null,
-      "decisive": 0,
-      "hit_rate": null,
-      "losses": 0,
-      "no_event": 0,
-      "total_resolved": 0,
-      "wins": 0
-    }
+    "summary": {}
   },
   "stats": {
     "by_peer": {
-      "alpha": 17493,
-      "camaro": 211340,
-      "chevelle": 82614,
-      "redeye": 229553
+      "alpha": 18109,
+      "camaro": 214529,
+      "chevelle": 84741,
+      "redeye": 237221
     },
-    "opinions_ingested": 541000,
+    "opinions_ingested": 554600,
     "opinions_quarantined": 0
   }
 }

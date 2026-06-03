@@ -1064,7 +1064,24 @@ async def _start_schedulers():
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from services.scheduling import register_all as _register_scheduler_jobs
-        scheduler = AsyncIOScheduler()
+        # 2026-06-03 hardening: explicit job_defaults so stalled
+        # ticks DON'T stack up and starve the event loop. Observed
+        # 8h pod silence on 2026-06-03 (06:11→14:14 UTC) caused by
+        # _check_smart_orders instances piling up behind hung httpx
+        # sockets. Defaults below:
+        #   * coalesce=True: if N misfires queued, run ONE catch-up
+        #     run instead of N back-to-back replays.
+        #   * misfire_grace_time=60: any tick that's more than 60s
+        #     late is dropped, not deferred. Keeps the queue
+        #     bounded.
+        #   * max_instances=2: a single hung tick can't permanently
+        #     block the next one (still bounded — we don't want
+        #     unbounded fan-out).
+        scheduler = AsyncIOScheduler(job_defaults={
+            "coalesce": True,
+            "misfire_grace_time": 60,
+            "max_instances": 2,
+        })
         # Job registration was strangler-split out of this function
         # on 2026-05-08 (Architecture Split Step 3). Every add_job
         # call — same IDs, same intervals, same replace_existing

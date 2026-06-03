@@ -7,6 +7,7 @@ Supports 3 execution modes:
 
 Smart orders are stored in MongoDB and monitored by a background price checker.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -370,16 +371,40 @@ async def check_smart_orders() -> None:
     from services.price_provider import get_quote, get_crypto_quote
     CRYPTO = {"BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "DOT", "SHIB", "LINK", "BNB"}
 
-    # Batch fetch prices for all unique symbols
+    # Batch fetch prices for all unique symbols.
+    #
+    # 2026-06-03 hardening: previously this loop fetched quotes
+    # SERIALLY with no per-call timeout. A single stalled provider
+    # could hold check_smart_orders past the 30s scheduler interval,
+    # which (under AsyncIOScheduler's default ``max_instances=1``)
+    # stacks subsequent ticks as "skipped". Worse, multiple
+    # in-flight hung httpx sockets eventually starve the event
+    # loop entirely — observed as the 8h Alpha-silence pattern
+    # on 2026-06-03 (06:11 UTC → 14:14 UTC scheduler death).
+    #
+    # Fix: gather all quote probes concurrently, bound each at
+    # 6s, swallow exceptions individually. Total wall-time for
+    # this section is now capped at ~6s regardless of how many
+    # providers are slow.
     symbols = list({o["symbol"] for o in active})
-    prices = {}
-    for sym in symbols:
+
+    async def _bounded_quote(sym: str) -> tuple[str, Optional[float]]:
         try:
-            q = await get_crypto_quote(sym) if sym in CRYPTO else await get_quote(sym)
+            fetcher = get_crypto_quote(sym) if sym in CRYPTO else get_quote(sym)
+            q = await asyncio.wait_for(fetcher, timeout=6.0)
             if q and q.get("price"):
-                prices[sym] = float(q["price"])
-        except Exception:
+                return sym, float(q["price"])
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001
             pass
+        return sym, None
+
+    quote_results = await asyncio.gather(
+        *[_bounded_quote(s) for s in symbols],
+        return_exceptions=False,
+    )
+    prices: dict[str, float] = {
+        sym: px for sym, px in quote_results if px is not None
+    }
 
     now = datetime.now(timezone.utc).isoformat()
 

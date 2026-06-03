@@ -4,6 +4,38 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-03 (Alpha 8h-silence RCA — scheduler hang fix)
+
+### 🚨 RCA: Alpha emitter went silent for 8 hours
+
+**Operator screenshot (Jun 3, 09:12 PT)**: MC's Intents page shows Alpha as Strategist on both equity + crypto lanes, but **last opinion 8h ago, last sovereign 8h ago, total Alpha intents = 0**. Other brains (Camaro 43, REDEYE 57) emitting normally.
+
+**Smoking gun in preview pod logs**:
+- `06:11:02 UTC` — last apscheduler "skipped: maximum number of running instances reached (1)" warning for `_check_smart_orders`.
+- `06:11:02 → 14:14:31 UTC` — **8 hours of total log silence** (no scheduler ticks, no intent emissions, no heartbeats from periodic loops).
+- `14:14:31 UTC` — pod auto-restarted, scheduler came back, but only 1 minute of new emissions before the user's screenshot.
+
+**Root cause**: `services/smart_order_service.check_smart_orders` (runs every 30s) was fetching quotes for every active smart-order symbol **serially with no per-call timeout**. Combined with `AsyncIOScheduler()` default `max_instances=1` and NO `misfire_grace_time`, stalled httpx sockets (Cloudflare 502/520 from MC saturation seen in logs at 05:57 and 06:07) accumulated until the event loop starved. apscheduler became unable to fire ANY job — including the in-process Sovereign sidecar and Alpha's consensus-tick path.
+
+**Three-piece fix shipped**:
+
+1. **`services/smart_order_service.check_smart_orders`** — quotes now fetched **concurrently via `asyncio.gather`**, each wrapped in `asyncio.wait_for(timeout=6.0)`. A single stalled provider can no longer extend the tick past its 30s window.
+
+2. **`server.py` scheduler init** — `AsyncIOScheduler` now constructed with explicit `job_defaults`:
+   - `coalesce=True` — collapse N queued misfires into 1 catch-up run
+   - `misfire_grace_time=60` — drop ticks more than 60s late (don't defer them)
+   - `max_instances=2` — bounded concurrency (one hung tick can't permanently block the next, but we don't fan out unbounded either)
+
+3. **`tests/test_smart_order_scheduler_hang_fix.py`** (NEW, 3 tests) — static pin: `asyncio.gather` + `asyncio.wait_for` MUST appear in `check_smart_orders`. The regression would silently re-introduce the serial loop; the tripwire fails loud.
+
+**Tests**: 4,261 → 4,264 (+3, zero regressions).
+
+**Operator action**: Redeploy to prod. The scheduler-hang RCA applies symmetrically — prod was likely starving on the same Cloudflare-502 pattern that took the preview pod down.
+
+### Pending — MC Scorecard verification (from prev session)
+- Crypto outcome bridge wiring shipped 2026-06-02. After this redeploy, MC's Scorecard for Alpha should start accumulating crypto `total_resolved` counts on the next paper-close cycle.
+
+
 ## Latest Update — 2026-06-02 (Outcome push fix + Time-based exit + MC identity probe)
 
 ### Three batched changes — backend test suite 4,250 → 4,261 (+11, 0 regressions)
