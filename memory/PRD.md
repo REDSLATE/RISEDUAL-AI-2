@@ -4,6 +4,33 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-09 (Public.com broker auth fix)
+
+### 🔧 Public.com connect: 400 → working
+
+**Operator report (Jun 9)**: "Connection failed (400)" at risedual.ai's broker-connect panel with valid Public.com credentials (API Token + Account ID).
+
+**Root cause**: `services/broker_service.PublicTradingService` used the operator's **secret key** directly as a Bearer token. Public.com's API rejects this with 401 — their flow REQUIRES an exchange step first:
+
+```
+POST https://api.public.com/userapiauthservice/personal/access-tokens
+Body: {"validityInMinutes": N, "secret": <user-secret>}
+→  Response: {"accessToken": "<short-lived JWT>"}
+```
+
+Only the returned JWT is accepted by `/userapigateway/trading/*`. Our route saw the upstream 401 and surfaced it as a 400 "Could not authenticate with broker" — hence the operator-visible failure.
+
+**Fix shipped**:
+- `PublicTradingService.AUTH_URL` + `_exchange_secret_for_access_token()` — performs the documented exchange and caches the JWT with a 60s refresh slack.
+- `_auth_headers()` — lazy refresh on every request. First call exchanges; subsequent calls reuse until ~60s before declared expiry.
+- All 5 trading methods (`get_account`, `get_positions`, `place_order`, `get_orders`, `cancel_order`) now call `_auth_headers()` instead of the deleted `self.headers`.
+- 6 tripwire tests (`tests/test_public_broker_auth_exchange.py`) pin: AUTH_URL constant, no stale `self.headers`, exchange-on-first-call, 401-from-Public surfaces as None (not raise), cache reuse, expiry refresh.
+
+**Tests**: 4,264 → 4,270 (+6, zero regressions). Backend healthy, 630 routes.
+
+**Operator action**: Redeploy preview → prod. Public.com connect should succeed on the next attempt with the same credentials you tried before.
+
+
 ## Latest Update — 2026-06-03 (Alpha 8h-silence RCA — scheduler hang fix)
 
 ### 🚨 RCA: Alpha emitter went silent for 8 hours

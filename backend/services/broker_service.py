@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from typing import Optional, Any
 from dataclasses import dataclass
 import requests
@@ -855,21 +856,115 @@ class RobinhoodTradingService:
 
 
 class PublicTradingService:
-    """Public.com — REST API trading. Uses Bearer Token from developer portal."""
+    """Public.com — REST API trading.
+
+    Auth flow (per https://public.com/api/docs/quickstart):
+        1. User generates a long-lived **secret key** in Public's
+           developer portal — this is what the operator pastes in
+           the "API Token" field of the broker-connect panel.
+        2. We exchange that secret for a short-lived (≤24h)
+           **access token** via:
+               POST /userapiauthservice/personal/access-tokens
+               body {"validityInMinutes": N, "secret": <secret>}
+           Response carries ``accessToken`` (a JWT).
+        3. EVERY downstream call uses the access token as
+           ``Authorization: Bearer <accessToken>``.
+
+    The 2026-06-03 RCA caught us using the secret directly as a
+    Bearer — Public.com rejects this with 401 (which the broker-
+    connect route wraps as a 400 "Could not authenticate").
+
+    The exchange is cached in-process: the first call hits the
+    auth service, subsequent calls reuse the JWT until ~60s before
+    its declared expiry, then re-exchange transparently.
+    """
+
+    AUTH_URL = "https://api.public.com/userapiauthservice/personal/access-tokens"
+    _DEFAULT_VALIDITY_MINUTES = 60
+    _REFRESH_SLACK_SECONDS = 60
 
     def __init__(self, api_key: str, api_secret: str, **kwargs: object) -> None:
-        self.access_token = api_key
+        # ``api_key`` here is Public's long-lived **secret key** (what
+        # their portal labels "API Token"). ``api_secret`` is the
+        # **Account ID**. The naming preserves the broker-connect
+        # form contract; we just rebind locally for clarity.
+        self._secret_key = api_key
         self.account_id = api_secret
         self.base_url = "https://api.public.com/userapigateway"
-        self.headers = {
-            "Authorization": f"Bearer {self.access_token}",
+        self._access_token: Optional[str] = None
+        self._access_token_expires_at: float = 0.0
+
+    def _exchange_secret_for_access_token(self) -> Optional[str]:
+        """POST the secret to Public's auth service and cache the
+        returned access token. Returns the token on success, ``None``
+        on auth failure (so the caller can surface a clean error
+        instead of leaking a stack trace to the UI)."""
+        try:
+            resp = requests.post(
+                self.AUTH_URL,
+                json={
+                    "validityInMinutes": self._DEFAULT_VALIDITY_MINUTES,
+                    "secret": self._secret_key,
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "[broker_public] access-token exchange returned %d: %s",
+                    resp.status_code, resp.text[:200],
+                )
+                return None
+            data = resp.json() if resp.content else {}
+            token = data.get("accessToken") or data.get("access_token")
+            if not token:
+                logger.warning(
+                    "[broker_public] access-token response missing token: %s",
+                    str(data)[:200],
+                )
+                return None
+            # Cache for (validity - slack) seconds. Public doesn't echo
+            # the validity back in the response, so we re-use what we
+            # asked for. ``time.time()`` keeps this monotonic enough
+            # for the ~60min cadence.
+            self._access_token = token
+            self._access_token_expires_at = (
+                time.time()
+                + (self._DEFAULT_VALIDITY_MINUTES * 60)
+                - self._REFRESH_SLACK_SECONDS
+            )
+            return token
+        except Exception as e:
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "_exchange_secret_for_access_token",
+            })
+            return None
+
+    def _auth_headers(self) -> Optional[dict]:
+        """Return the Bearer header for downstream calls, exchanging
+        a fresh token if cache is empty/expired. ``None`` means the
+        secret is bad and the caller should surface auth failure."""
+        if (
+            not self._access_token
+            or time.time() >= self._access_token_expires_at
+        ):
+            if not self._exchange_secret_for_access_token():
+                return None
+        return {
+            "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json",
         }
 
     def get_account(self) -> Optional[dict]:
         try:
+            headers = self._auth_headers()
+            if headers is None:
+                return None
             r = requests.get(f"{self.base_url}/trading/account",
-                             headers=self.headers, timeout=10)
+                             headers=headers, timeout=10)
             r.raise_for_status()
             data = r.json()
             return {
@@ -891,8 +986,11 @@ class PublicTradingService:
 
     def get_positions(self) -> list[dict]:
         try:
+            headers = self._auth_headers()
+            if headers is None:
+                return []
             r = requests.get(f"{self.base_url}/trading/account",
-                             headers=self.headers, timeout=10)
+                             headers=headers, timeout=10)
             r.raise_for_status()
             positions = []
             for p in r.json().get("positions", []):
@@ -920,6 +1018,9 @@ class PublicTradingService:
                     time_in_force: str = "day", limit_price: Optional[float] = None,
                     stop_price: Optional[float] = None) -> Optional[dict]:
         try:
+            headers = self._auth_headers()
+            if headers is None:
+                return None
             acc_id = self.account_id
             data = {
                 "symbol": symbol.upper(),
@@ -933,7 +1034,7 @@ class PublicTradingService:
             if stop_price:
                 data["stopPrice"] = str(stop_price)
             r = requests.post(f"{self.base_url}/trading/{acc_id}/order",
-                              headers=self.headers, json=data, timeout=10)
+                              headers=headers, json=data, timeout=10)
             r.raise_for_status()
             result = r.json()
             return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
@@ -948,8 +1049,11 @@ class PublicTradingService:
 
     def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
         try:
+            headers = self._auth_headers()
+            if headers is None:
+                return []
             r = requests.get(f"{self.base_url}/trading/account",
-                             headers=self.headers, timeout=10)
+                             headers=headers, timeout=10)
             r.raise_for_status()
             return r.json().get("orders", [])[:limit]
         except Exception as e:
@@ -963,8 +1067,11 @@ class PublicTradingService:
 
     def cancel_order(self, order_id: str) -> bool:
         try:
+            headers = self._auth_headers()
+            if headers is None:
+                return False
             r = requests.delete(f"{self.base_url}/trading/{self.account_id}/order/{order_id}",
-                                headers=self.headers, timeout=10)
+                                headers=headers, timeout=10)
             r.raise_for_status()
             return True
         except Exception as e:
