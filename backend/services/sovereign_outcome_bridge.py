@@ -126,6 +126,40 @@ async def enqueue_outcome(
             "[outcome_bridge] enqueued %s brain=%s symbol=%s outcome=%s",
             trade_id, brain, symbol, outcome_label,
         )
+
+        # MC2 wire-in (Phase A — 2026-06-09): mirror outcomes into
+        # ``mc2_outcomes`` whenever standalone is on. This is the
+        # collection ``/api/admin/mc2/scorecard`` rolls up — and
+        # the permanent fix for the ``total_resolved=0`` pain
+        # since it no longer depends on a remote MC ingest path
+        # that may be 502'ing.
+        #
+        # Mirror not replace: ``sovereign_outcomes_inbox`` keeps
+        # accumulating for legacy drainers/auditors. MC2 is an
+        # ADDITIONAL sink, not a substitute, so flipping the env
+        # var back and forth doesn't lose outcomes either way.
+        try:
+            from services.mc2 import is_standalone, record_outcome_local
+            if is_standalone():
+                await record_outcome_local({
+                    "brain": doc["brain"],
+                    "trade_id": doc["trade_id"],
+                    "symbol": doc["symbol"],
+                    "action": doc["action"],
+                    "confidence": doc["confidence"],
+                    "outcome_label": doc["outcome_label"],
+                    "outcome": doc["outcome"],
+                    "notional": doc["notional"],
+                    "extras": doc["extras"],
+                    "sovereign_decision_id": doc["sovereign_decision_id"],
+                    "prediction_id": doc["prediction_id"],
+                    "source_signal": doc["source_signal"],
+                })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[outcome_bridge] mc2 mirror failed (non-fatal): %s", exc,
+            )
+
         return {"ok": True, "deduped": False}
     except Exception as exc:  # noqa: BLE001
         logger.warning(

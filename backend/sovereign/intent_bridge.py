@@ -406,10 +406,31 @@ async def emit_opinion_from_consensus(
     verdicts including HOLD — "no opinion" is itself an opinion worth
     publishing to the discussion layer so peer brains can see Alpha
     was awake and chose to stand pat.
+
+    2026-06-09 MC2 wire: when ``RISEDUAL_STANDALONE_MODE=1`` the
+    opinion is persisted to MC2's local ``mc2_opinions`` collection
+    INSTEAD of POSTing to Original MC. The wire path stays alive in
+    code so unsetting the env var snaps back to the legacy flow.
     """
     payload = _build_opinion_payload(receipt, notes=notes, trace_id=trace_id)
     if payload is None:
         return None
+
+    # MC2 wire-in (Phase A — 2026-06-09): when standalone, route the
+    # opinion to the local in-process MC2 surface and skip the remote
+    # POST entirely. This is the entire severance contract for opinions.
+    try:
+        from services.mc2 import is_standalone, post_opinion_local
+        if is_standalone():
+            return await post_opinion_local(payload)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "mc2 standalone opinion write failed (non-fatal): symbol=%s err=%s",
+            receipt.get("symbol"), exc,
+        )
+        # Fall through to legacy wire path on MC2 failure — better to
+        # ship the opinion to Original MC than drop it entirely.
+
     try:
         from services import risedual_monorepo_client as _mc_opinion
         return await _mc_opinion.post_opinion(**payload)
@@ -478,6 +499,36 @@ async def emit_intent_from_consensus(
             kwargs.get("trace_id", "--------"),
             kwargs.get("symbol"), exc,
         )
+
+    # MC2 wire-in (Phase A — 2026-06-09): when standalone, persist
+    # the intent to the local in-process MC2 surface and skip the
+    # remote POST entirely. This is the entire severance contract
+    # for intents — same enrichment, same payload shape, different
+    # destination. ``client.post_intent`` is NOT called when
+    # standalone, so a misconfigured ``RISEDUAL_MC_URL`` no longer
+    # blocks Alpha's emission cadence.
+    try:
+        from services.mc2 import is_standalone, post_intent_local
+        if is_standalone():
+            result = await post_intent_local(kwargs)
+            if emit_opinion:
+                try:
+                    await emit_opinion_from_consensus(
+                        receipt, notes=notes,
+                        trace_id=kwargs.get("trace_id"),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "intent_bridge opinion side-channel failed (non-fatal): %s",
+                        exc,
+                    )
+            return result
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "mc2 standalone intent write failed (non-fatal): symbol=%s err=%s",
+            receipt.get("symbol"), exc,
+        )
+        # Fall through to legacy wire path so the intent isn't dropped.
 
     loop = asyncio.get_running_loop()
     try:

@@ -165,6 +165,15 @@ from routes.admin_crypto_live_status import router as crypto_live_status_router,
 app.include_router(crypto_live_status_router)
 _set_crypto_live_status_db(db)
 
+# MC2 — in-process Mission Control surface (Phase A, 2026-06-09).
+# Owner-only diagnostic endpoints + module-level db handle so MC2
+# writers (intent / opinion / outcome) can persist to local Mongo
+# collections when ``RISEDUAL_STANDALONE_MODE=1``.
+from routes.admin_mc2 import router as mc2_router
+from services.mc2 import set_db as _set_mc2_db
+app.include_router(mc2_router)
+_set_mc2_db(db)
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,

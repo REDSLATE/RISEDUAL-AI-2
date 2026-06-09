@@ -219,15 +219,30 @@ async def checkin_now(timeout_seconds: float = 10.0) -> Dict[str, Any]:
     Raises on transport/auth errors so the caller can decide whether to
     block boot or just log. The recommended boot-time policy is "log,
     don't block" — Alpha keeps running, but the operator sees the drift.
+
+    2026-06-09 MC2 wire: when ``RISEDUAL_STANDALONE_MODE=1`` the
+    outbound POST is skipped entirely. The stamp is still built and
+    cached locally so the runtime-stamp diagnostic remains accurate,
+    but no HTTP egress hits Original MC. This eliminates the entire
+    8h-silence failure class (502s, 401s, hung sockets) caused by
+    the remote dependency.
     """
+    # MC2 severance — when standalone, build the stamp but don't ship it.
+    try:
+        from services.mc2 import is_standalone
+        _standalone = is_standalone()
+    except Exception:  # noqa: BLE001
+        _standalone = False
+
     stamp = RuntimeStamp.current()
     # Stamp-debug breadcrumb (2026-02-27): one line per checkin so the
     # operator can see exactly what env_name / db_name / git_sha the
     # running process is POSTing to MC, without needing to dig through
     # validator output. Aligns with the per-cycle MC diagnose response.
     log.info(
-        "[stamp-debug] checkin posting: env_name=%r db_name=%r "
+        "[stamp-debug] checkin %s: env_name=%r db_name=%r "
         "broker_mode=%r git_sha=%r mc_url=%r",
+        "BUILDING (standalone, no POST)" if _standalone else "posting",
         stamp.env_name, stamp.db_name, stamp.broker_mode,
         stamp.git_sha, stamp.mc_url,
     )
@@ -238,6 +253,21 @@ async def checkin_now(timeout_seconds: float = 10.0) -> Dict[str, Any]:
     global _LAST_POSTED_STAMP, _LAST_POSTED_AT
     _LAST_POSTED_STAMP = asdict(stamp)
     _LAST_POSTED_AT = _utc_iso()
+
+    if _standalone:
+        # Standalone short-circuit. Return a synthetic local verdict so
+        # callers (server boot, periodic loop) see a well-formed response.
+        return {
+            "ok": True,
+            "verdict": "standalone_local",
+            "runtime": stamp.env_name,
+            "destination": "mc2_local",
+            "note": (
+                "RISEDUAL_STANDALONE_MODE=1 — Original MC wire severed. "
+                "Stamp cached locally; no HTTP POST issued."
+            ),
+        }
+
     # Process identity (2026-02-27 — duplicate-checkin diagnosis).
     # When two pods POST as the same brain_id (e.g., preview + prod
     # both holding the same ALPHA_MC_INGEST_TOKEN), MC sees alternating

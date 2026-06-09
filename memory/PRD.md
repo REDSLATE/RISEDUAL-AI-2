@@ -4,6 +4,84 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-09 (MC2 Phase A — in-process Mission Control)
+
+### 🏗 Severance from Original MC — RISEDUAL is now self-sufficient
+
+**Architectural pivot** (operator directive from this session): Alpha
+will no longer depend on `mission.risedual.ai`. The remote MC has
+been the source of every major outage:
+- 8h Alpha silence (Cloudflare 502 → hung sockets → scheduler death)
+- MC identity 401 (`X-Runtime-Token` rejected, doctrine drift)
+- MC Scorecard `total_resolved=0` (outcome ingest path not wired)
+
+**Phase A scope (shipped this session — backend only, no frontend yet)**:
+
+1. **New module `services/mc2/`** — in-process Mission Control surface
+   with five files: `standalone.py` (env toggle), `state.py` (db handle
+   + state snapshot), `intents.py` (`mc2_intents` writer), `opinions.py`
+   (`mc2_opinions` writer), `outcomes.py` (`mc2_outcomes` writer),
+   `scorecard.py` (local rollup).
+
+2. **Master kill switch**: `RISEDUAL_STANDALONE_MODE=1` (default OFF).
+   Flipping it on a deployed pod cuts the Original MC wire on the
+   next request — no code change needed for safe rollback.
+
+3. **Wire-in points** (3 modules touched):
+   - `sovereign/intent_bridge.emit_intent_from_consensus` — writes to
+     `mc2_intents` instead of POSTing to Original MC.
+   - `sovereign/intent_bridge.emit_opinion_from_consensus` — writes to
+     `mc2_opinions` instead of POSTing to Original MC.
+   - `services/sovereign_outcome_bridge.enqueue_outcome` — MIRRORS to
+     `mc2_outcomes` (additive — legacy inbox still written so flipping
+     standalone off doesn't lose outcomes).
+   - `services/mc_checkin.checkin_now` — short-circuits to synthetic
+     `standalone_local` verdict, no outbound HTTP POST.
+
+4. **New diagnostic surface**:
+   - `GET /api/admin/mc2/state` (owner-only) — collection volumes + last
+     10 rows per stream.
+   - `GET /api/admin/mc2/scorecard?brain=alpha` (owner-only) — local
+     win/loss/flat rollup. **Permanent fix for `total_resolved=0`.**
+
+5. **Doctrine pins**:
+   - Phase A has NO 12-gate chain. Every intent lands with
+     `gate_state="accepted_no_gates"`. Phase B ports the gates.
+   - `may_execute=False` is FORCED on every MC2 intent. RISEDUAL is
+     doctrinally headless in V3; Phase A does not change that.
+   - All MC2 writers no-op cleanly when `set_db` hasn't been called.
+   - Outcomes mirror with full provenance (`sovereign_decision_id`,
+     `prediction_id`, `source_signal`).
+
+6. **Test coverage** — 26 new tripwire tests across:
+   - `tests/test_mc2_phase_a.py` (24 tests) — env toggle, writers,
+     scorecard, state snapshot, intent_bridge routing, checkin
+     severance.
+   - `tests/test_mc2_outcome_mirror.py` (2 tests) — outcome bridge
+     mirror on/off.
+
+**Tests**: 4,270 → 4,296 (+26, zero regressions). Backend healthy on
+preview, 632 routes (+2 for MC2 endpoints).
+
+**To activate on prod**:
+1. Redeploy preview → prod.
+2. Add `RISEDUAL_STANDALONE_MODE=1` to prod's `backend/.env`.
+3. Restart backend (or wait for next deploy if env was set pre-deploy).
+4. Hit `GET /api/admin/mc2/state` to confirm collections start filling.
+5. After first paper close, `GET /api/admin/mc2/scorecard?brain=alpha`
+   shows real `total_resolved > 0`.
+
+**Phase B (next session, when ready)**:
+- Port the 12-gate chain into `services/mc2/gates/`.
+- Move `gate_state` from `accepted_no_gates` to per-gate outcomes.
+- Time-windowed scorecard (1d / 7d / 30d) + per-lane breakdowns.
+- Optional `/admin/mc2` frontend mirroring Original MC's dashboard.
+
+**Phase C (beta ramp)**:
+- Camaro / Chevelle / REDEYE personalities as in-process council
+  members under `services/brains/{camaro,chevelle,redeye}/`.
+
+
 ## Latest Update — 2026-06-09 (Public.com broker auth fix)
 
 ### 🔧 Public.com connect: 400 → working
