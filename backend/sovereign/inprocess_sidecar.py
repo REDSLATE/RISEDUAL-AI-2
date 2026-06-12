@@ -69,7 +69,19 @@ _sidecar_task: Optional[asyncio.Task] = None
 def _is_enabled() -> bool:
     """Default OFF. Operator flips ``ALPHA_INPROCESS_SIDECAR_ENABLED=1``
     in prod env after redeploy. Preview stays OFF so the supervisor
-    sidecar continues to own the wire there."""
+    sidecar continues to own the wire there.
+
+    2026-06-09 MC2 severance: also forced OFF when
+    ``RISEDUAL_STANDALONE_MODE=1``. The whole purpose of this
+    sidecar is contributing to Original MC; in standalone mode
+    there's no remote MC to contribute to.
+    """
+    try:
+        from services.mc2 import is_standalone
+        if is_standalone():
+            return False
+    except Exception:  # noqa: BLE001
+        pass
     v = (os.environ.get("ALPHA_INPROCESS_SIDECAR_ENABLED", "") or "").strip().lower()
     return v in {"1", "true", "yes", "on"}
 

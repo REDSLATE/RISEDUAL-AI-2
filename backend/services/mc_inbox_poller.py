@@ -387,7 +387,29 @@ async def _scorecard_loop() -> None:
 
 
 async def run_forever(db) -> None:
-    """Top-level entry — run all three loops concurrently."""
+    """Top-level entry — run all three loops concurrently.
+
+    2026-06-09 MC2 severance: when ``RISEDUAL_STANDALONE_MODE=1``,
+    all three loops (opinions / roles / scorecard) are skipped.
+    The whole point of MC inbox polling was to pull peer state from
+    Original MC — in standalone mode there's nothing remote to pull
+    from. Returns immediately so the scheduler stops trying to wake
+    these tasks.
+    """
+    try:
+        from services.mc2 import is_standalone
+        if is_standalone():
+            logger.info(
+                "[mc_inbox] RISEDUAL_STANDALONE_MODE=1 — Original MC inbox "
+                "polling SKIPPED (opinions / roles / scorecard loops dead)"
+            )
+            return
+    except Exception:  # noqa: BLE001
+        # If the MC2 module isn't importable for any reason, fall
+        # through to legacy behaviour — better to keep polling than
+        # silently break the inbox refresh.
+        pass
+
     logger.info(
         "[mc_inbox] starting: opinions=%ds roles=%ds scorecard=%ds state=%s",
         OPINIONS_POLL_SECONDS, ROLES_POLL_SECONDS, SCORECARD_POLL_SECONDS,

@@ -100,7 +100,24 @@ def fetch_market_data_keys(
     Returns the ``keys`` sub-dict on success, ``None`` on any failure.
     Never raises out — this is a best-effort enhancement, not a
     blocker.
+
+    2026-06-09 MC2 severance: in standalone mode the MC keys proxy
+    is skipped entirely. The pod runs on whatever Polygon/Finnhub
+    keys are in the local ``.env``; no outbound HTTP to Original MC
+    is issued. (You can still rotate keys by updating the env on
+    the deployed pod.)
     """
+    try:
+        from services.mc2 import is_standalone
+        if is_standalone():
+            logger.info(
+                "[mc_keys_proxy] RISEDUAL_STANDALONE_MODE=1 — Original MC "
+                "keys-proxy SKIPPED (local .env keys remain authoritative)"
+            )
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+
     if not _is_enabled():
         logger.info("[mc_keys_proxy] disabled via MC_KEYS_PROXY_ENABLED=false")
         return None

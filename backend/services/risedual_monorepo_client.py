@@ -20,7 +20,19 @@ log = logging.getLogger("risedual.monorepo_client")
 
 def _enabled() -> bool:
     """Sidecar is enabled only when all 3 env vars are set AND the
-    operator has not flipped the kill switch."""
+    operator has not flipped the kill switch.
+
+    2026-06-09 MC2 severance: also forced OFF when
+    ``RISEDUAL_STANDALONE_MODE=1`` — this client talks to
+    ``mission.risedual.ai``'s runtime-discussion endpoints, which
+    are exactly what standalone mode disconnects from.
+    """
+    try:
+        from services.mc2 import is_standalone
+        if is_standalone():
+            return False
+    except Exception:  # noqa: BLE001
+        pass
     if os.environ.get("MONOREPO_SIDECAR_ENABLED", "true").lower() == "false":
         return False
     return bool(

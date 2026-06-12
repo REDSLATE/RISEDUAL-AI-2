@@ -115,6 +115,38 @@ async def emit_crypto_intent(
     ):
         return None
 
+    # 2026-06-09 MC2 severance: when standalone, this emitter would
+    # try to instantiate an MCClient pointing at mission.risedual.ai
+    # and fall into the intent_bridge MC2-routing branch anyway. Cut
+    # the round trip earlier — the receipt is still useful for local
+    # audit, but we skip building the MCClient since the bridge will
+    # write to mc2_intents directly via the standalone path.
+    try:
+        from services.mc2 import is_standalone, post_intent_local
+        from sovereign.intent_bridge import _build_emission_kwargs
+        if is_standalone():
+            receipt = _build_receipt(trade, signal)
+            if receipt is None:
+                return None
+            qty_raw = trade.get("size") or trade.get("qty") or 1.0
+            try:
+                qty = float(qty_raw)
+                if not (qty > 0):
+                    qty = 1.0
+            except (TypeError, ValueError):
+                qty = 1.0
+            kwargs = _build_emission_kwargs(
+                receipt, qty=qty, notes="alpha crypto bot tick",
+            )
+            if kwargs is None:
+                return None
+            return await post_intent_local(kwargs)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[crypto-mc-emit] mc2 standalone path failed (non-fatal): %s", exc,
+        )
+        # fall through to legacy wire path
+
     receipt = _build_receipt(trade, signal)
     if receipt is None:
         return None

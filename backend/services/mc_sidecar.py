@@ -204,18 +204,59 @@ async def _heartbeat_loop(db) -> None:
     Owns its own client (its own connection pool) so a hung
     contribution can't starve it. The 2026-05-14 silent-freeze
     invariant — heartbeat MUST stay alive even when other paths hang.
+
+    2026-06-09 MC2 severance: when ``RISEDUAL_STANDALONE_MODE=1``
+    the HTTP POST to Original MC's ``/api/heartbeat-ping`` is
+    SKIPPED. The local liveness file is still touched every tick
+    so the in-process watchdog stays happy — we just never put
+    bytes on the wire to ``mission.risedual.ai``. This was the
+    actual phantom tick the operator caught at 30s cadence after
+    the rest of the wire was severed.
     """
     base = _mc_base()
     token = _runtime_token()
-    if not base:
+
+    # Resolve standalone state once per loop iteration — operators can
+    # flip the env var without a restart.
+    def _standalone() -> bool:
+        try:
+            from services.mc2 import is_standalone
+            return is_standalone()
+        except Exception:  # noqa: BLE001
+            return False
+
+    if not base and not _standalone():
         logger.warning("[mc_sidecar] heartbeat loop: MC_BASE_URL unset, idling")
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL_S)
 
-    url = f"{base}/api/heartbeat-ping/{BRAIN_NAME}"
+    url = f"{base}/api/heartbeat-ping/{BRAIN_NAME}" if base else None
     headers = {"X-Runtime-Token": token, "Content-Type": "application/json"}
     logger.info("[mc_sidecar] heartbeat loop starting: every %ds", HEARTBEAT_INTERVAL_S)
+    _logged_standalone = False
     while True:
+        if _standalone():
+            # No HTTP POST. Touch liveness so the watchdog stays
+            # green and update the heartbeat-state collection with a
+            # synthetic 'standalone_local' marker — the operator UI
+            # can show 'alive (severed)' instead of 'silent'.
+            _touch_liveness()
+            await _set_state(
+                db, last_heartbeat_at=_now_iso(),
+                last_heartbeat_error=None,
+                last_heartbeat_destination="standalone_local",
+            )
+            if not _logged_standalone:
+                logger.info(
+                    "[mc_sidecar] RISEDUAL_STANDALONE_MODE=1 — heartbeat "
+                    "PING SKIPPED (liveness still touched locally)"
+                )
+                _logged_standalone = True
+            await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+            continue
+
+        # Reset the standalone log latch when we flip back to wire mode.
+        _logged_standalone = False
         try:
             async with _async_client() as client:
                 r = await client.post(url, json={"ok": True}, headers=headers)

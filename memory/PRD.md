@@ -4,6 +4,79 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-12 (MC2 Phase A — phantom-tick severance)
+
+### 🎯 Operator caught a phantom tick still hitting Original MC
+
+After Phase A's initial wire-in (intent_bridge + opinion_bridge +
+outcome mirror + mc_checkin), FIVE OTHER outbound paths were still
+pointed at `mission.risedual.ai`. The smoking gun was
+`services/mc_sidecar._heartbeat_loop` — POSTing to
+`{MC_BASE_URL}/api/heartbeat-ping/alpha` **every 30 seconds**.
+
+**All five severance points patched this session**:
+
+1. **`services/mc_sidecar._heartbeat_loop`** — THE phantom tick.
+   When standalone, the loop now touches the local liveness file
+   (watchdog stays green) and stamps `last_heartbeat_destination=
+   "standalone_local"` on the state collection — but issues ZERO
+   outbound HTTP. Loops continue ticking, just locally.
+
+2. **`services/mc_inbox_poller.run_forever`** — three polling loops
+   (opinions every 60s, roles every 300s, scorecard every 600s).
+   Now returns immediately when standalone — entire async.gather
+   never spawns.
+
+3. **`services/mc_keys_proxy.fetch_market_data_keys`** — boot-time
+   key sync from MC. Now short-circuits before the httpx client
+   is constructed. Pod runs on local `.env` keys only.
+
+4. **`services/risedual_monorepo_client._enabled`** — single source
+   of truth gate for the opinion/scorecard/roles client. When
+   standalone, returns `False` → every `_post` / `_get` short-
+   circuits to `{"error": "sidecar_disabled"}`.
+
+5. **`sovereign/inprocess_sidecar._is_enabled`** — in-process
+   contribution loop. Forced OFF when standalone even if
+   `ALPHA_INPROCESS_SIDECAR_ENABLED=1` is set.
+
+6. **`services/crypto_mc_intent_emitter.emit_crypto_intent`** —
+   skips MCClient construction entirely, builds the kwargs locally
+   and writes straight to `mc2_intents`.
+
+**Doctrine pin**: every severance point reads `is_standalone()`
+from `services/mc2/standalone.py` — single source of truth. If
+the operator flips the env var live, every loop notices on its
+next iteration (no restart needed for heartbeat / inbox).
+
+**Test coverage**: 10 new tripwire tests in
+`tests/test_mc2_phantom_tick_severance.py`:
+- mc_inbox_poller skipped when standalone
+- mc_keys_proxy short-circuits before httpx
+- mc_keys_proxy NOT short-circuited when not standalone (symmetric)
+- monorepo_client `_enabled` False when standalone (with all env vars set)
+- monorepo_client `_enabled` True when not standalone
+- inprocess_sidecar disabled when standalone
+- inprocess_sidecar enabled when not standalone
+- crypto_mc_intent_emitter routes to MC2 (refuses MCClient construction)
+- **mc_sidecar heartbeat refuses _async_client when standalone**
+- mc_sidecar heartbeat uses wire when not standalone (symmetric)
+
+**Tests**: 4,296 → 4,306 passing (+10, zero regressions).
+Backend healthy on preview, 632 routes.
+
+**To activate on prod**:
+1. Redeploy preview → prod.
+2. Set `RISEDUAL_STANDALONE_MODE=1` in prod's `backend/.env`.
+3. Restart backend.
+4. Watch the logs — within 30s of startup you should see:
+   - `[mc_sidecar] RISEDUAL_STANDALONE_MODE=1 — heartbeat PING SKIPPED`
+   - `[mc_inbox] STANDALONE_MODE=1 — Original MC inbox polling SKIPPED`
+   - `[mc_keys_proxy] STANDALONE_MODE=1 — Original MC keys-proxy SKIPPED`
+5. Run `tcpdump`-equivalent or check MC operator dashboard — NO
+   inbound traffic from Alpha's pod IP.
+
+
 ## Latest Update — 2026-06-09 (MC2 Phase A — in-process Mission Control)
 
 ### 🏗 Severance from Original MC — RISEDUAL is now self-sufficient
