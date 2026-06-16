@@ -325,7 +325,12 @@ async def run_post_signal_pipeline(
                 log.warning("[orchestrator] Paper trader error: %s", exc)
                 result.errors.append(f"paper_error:{exc}")
 
-            # Also execute on Alpaca paper account if configured
+            # Also execute on Alpaca paper account if configured.
+            # 2026-06-12: ``maybe_execute_live`` now also consults
+            # ``BROKER_ALPACA_TRADING_ENABLED`` (default OFF) and
+            # short-circuits there if the operator hasn't re-armed
+            # Alpaca. Safe to leave this call wired — no env flag,
+            # no fill.
             try:
                 from services.ml_alpaca_broker import alpaca_keys_configured
                 if alpaca_keys_configured():
@@ -345,6 +350,46 @@ async def run_post_signal_pipeline(
             except Exception as exc:
                 log.warning("[orchestrator] Alpaca paper execution error: %s", exc)
                 result.errors.append(f"alpaca_paper_error:{exc}")
+
+            # ── 2026-06-12: Public.com live equity routing ────────────────
+            # Replaces Alpaca as Alpha's autonomous live broker.
+            # Best-effort by doctrine — every skip case returns None
+            # and never raises. Default OFF via
+            # ``RISEDUAL_PUBLIC_LIVE_EXEC`` env knob; the orchestrator
+            # just calls and trusts the executor's gate chain.
+            try:
+                from services.public_equity_live_executor import (
+                    maybe_route_live as _public_route_live,
+                )
+                # Translate the SignalResult into the intent dict shape
+                # the Public executor expects. ``confidence`` carries
+                # the signal's directional weight; provenance fields
+                # come from the snapshot if available.
+                pub_intent = {
+                    "symbol": ticker,
+                    "direction": (
+                        "BUY" if getattr(signal, "direction", None)
+                        and signal.direction.value == "up" else "SELL"
+                    ),
+                    "confidence": float(getattr(signal, "confidence", 0.0)),
+                    "source_signal": "alpha:ml_orchestrator:v1",
+                }
+                pub_row = await _public_route_live(db, intent=pub_intent)
+                if pub_row:
+                    log.info(
+                        "[orchestrator] Public.com live order placed for %s: %s",
+                        ticker, pub_row.get("broker_order_id"),
+                    )
+                    # Reuse the same field on the result envelope so
+                    # downstream telemetry doesn't need a new column.
+                    result.live_order_id = result.live_order_id or pub_row.get(
+                        "broker_order_id"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "[orchestrator] Public.com routing error: %s", exc,
+                )
+                result.errors.append(f"public_live_error:{exc}")
 
         # ── Tier 3: Live execution (kept for future live account) ─────────────
         if gate.tier3.unlocked:

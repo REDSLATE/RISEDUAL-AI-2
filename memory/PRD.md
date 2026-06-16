@@ -4,6 +4,85 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-16 (Drop Alpaca + Public.com autonomous routing)
+
+### 🔁 Equity broker swap: Alpaca → Public.com
+
+**Operator directive**: "Drop Alpaca. Not use it for trading anything.
+[Wire Public.com autonomous routing] B of course."
+
+#### Part 1 — Alpaca trading kill switch
+
+- New env knob `BROKER_ALPACA_TRADING_ENABLED` (default **OFF**).
+- Gate placed at `services/ml_alpaca_broker.maybe_execute_live` —
+  short-circuits BEFORE the existing `_LIVE_OPT_IN` check. Even if
+  someone re-arms `RISEDUAL_LIVE_EXECUTION=1`, the operator's
+  drop-Alpaca directive holds.
+- Alpaca **quote provider** untouched (`services/alpaca_equity_quotes.py`
+  still feeds equity quotes to the pipeline). Only order placement
+  is gated.
+- Position closer (`services/alpaca_position_closer.py`) already had
+  its own `ALPACA_POSITION_CLOSER_ENABLED=true` opt-in (default OFF),
+  so it's already inert.
+
+#### Part 2 — Public.com autonomous routing
+
+- New module `services/public_equity_live_executor.py` mirrors the
+  `crypto_live_executor` pattern for equity:
+  - Master switch: `RISEDUAL_PUBLIC_LIVE_EXEC=1` (default **OFF**)
+  - Fixed notional: `PUBLIC_LIVE_NOTIONAL_USD=25` (clamped to [1, 1000])
+  - Optional allowlist: `PUBLIC_LIVE_SYMBOLS=AAPL,MSFT,NVDA` for
+    operator-bounded first-connect
+  - LONG-only (no short-margin scaffold)
+  - Market orders at this phase; SL/TP brackets can layer once we
+    know Public's order-type behaviour in prod
+  - Connect-state gate: refuses to fire without an active
+    `broker_connections` row for `broker_id="public"`
+  - Idempotency: refuses 2nd live row for same open symbol
+  - Quote-probe with graceful skip when unavailable
+  - Doctrine pin: even if `place_order` raises, NO Mongo write occurs
+    — we never persist a fill we don't have
+
+- Wired into `services/ml_orchestrator.py` immediately after the
+  legacy Alpaca call (which is now a no-op by default). When Alpha's
+  consensus fires a BUY equity intent, the orchestrator calls
+  `public_equity_live_executor.maybe_route_live(db, intent=...)`.
+  All skip cases return `None` silently — Alpha's loop is never
+  blocked by Public.com being unreachable.
+
+- New Mongo collection: `equity_live_trades` (parallel to
+  `crypto_live_trades`). Live equity fills never pollute the
+  `paper_trades` ML training set.
+
+#### Activation steps (prod)
+
+1. Redeploy preview → prod.
+2. Connect Public.com via the broker-connect panel
+   (uses the auth-exchange fix from 2026-06-09 — secret → JWT).
+3. Add to prod's `backend/.env`:
+   - `BROKER_ALPACA_TRADING_ENABLED=false` (or just leave unset)
+   - `RISEDUAL_PUBLIC_LIVE_EXEC=1`
+   - Optional: `PUBLIC_LIVE_SYMBOLS=AAPL,...` for a starter allowlist
+   - Optional: `PUBLIC_LIVE_NOTIONAL_USD=25` (default already 25)
+4. Restart backend.
+5. On next equity consensus tick (BUY direction), Alpha autonomously
+   places a $25 market BUY on Public.com.
+
+#### Test coverage
+
+- 15 tests in `tests/test_alpaca_trading_disable.py` — pin the
+  gate behavior + source-level ordering (gate BEFORE opt-in).
+- 23 tests in `tests/test_public_equity_live_executor.py` — pin
+  every doctrine: env contract, sizing bounds, allowlist, connect
+  gate, idempotency, quote-fail, place_order returning None,
+  place_order raising, happy-path with full provenance.
+- Allowlist entry added to `test_no_local_direction_tuples.py`
+  with codebase-canonical justification.
+
+**Tests**: 4,306 → 4,344 passing (+38, zero regressions).
+Backend healthy on preview, 632 routes.
+
+
 ## Latest Update — 2026-06-12 (MC2 Phase A — phantom-tick severance)
 
 ### 🎯 Operator caught a phantom tick still hitting Original MC

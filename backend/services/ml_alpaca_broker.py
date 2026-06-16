@@ -92,6 +92,21 @@ _MIN_LIVE_CONFIDENCE: float = 0.50
 _IS_PAPER: bool = "paper" in os.getenv("ALPACA_BASE_URL", "paper").lower()
 _LIVE_OPT_IN: bool = _IS_PAPER or os.getenv("RISEDUAL_LIVE_EXECUTION", "0") == "1"
 
+
+def _alpaca_trading_enabled() -> bool:
+    """Operator-controlled master kill switch for Alpaca order placement.
+
+    2026-06-12 — Operator directive: "drop Alpaca. Not use it for
+    trading anything." Default OFF — explicit re-arm required.
+
+    This gate is checked BEFORE the Tier 3 opt-in flag so flipping
+    standalone mode OR this flag both shut Alpaca trading off.
+    Alpaca's QUOTE provider (services/alpaca_equity_quotes.py) is
+    untouched — only order placement is gated.
+    """
+    raw = (os.environ.get("BROKER_ALPACA_TRADING_ENABLED") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
 # Regimes eligible for execution
 _TRADEABLE_REGIMES: frozenset[str] = frozenset({"bull", "bear", "sideways", "trending_up", "trending_down", "unknown", ""})
 
@@ -306,6 +321,16 @@ async def maybe_execute_live(
     str | None
         Alpaca order ID on success, ``None`` otherwise.
     """
+    # ── 2026-06-12: Operator kill switch ─────────────────────────────────────
+    # Default OFF after operator directive to drop Alpaca trading.
+    # Quotes are unaffected — only ``maybe_execute_live`` is gated.
+    if not _alpaca_trading_enabled():
+        log.debug(
+            "[ml_alpaca] BROKER_ALPACA_TRADING_ENABLED unset — Alpaca "
+            "order placement disabled (operator directive 2026-06-12)."
+        )
+        return None
+
     # ── Opt-in guard ─────────────────────────────────────────────────────────
     if not _LIVE_OPT_IN:
         log.debug(

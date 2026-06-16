@@ -120,6 +120,12 @@ ALLOWLIST: dict[str, str] = {
     "services/crypto_paper_trading_service.py": (
         "Broker-side BUY/SELL validation."
     ),
+    "services/public_equity_live_executor.py": (
+        "Broker-side LONG-only validation — direction is already "
+        "canonicalised upstream in ml_orchestrator; the (BUY, LONG) "
+        "tuple is the accepted equity entry token set, mirroring "
+        "crypto_live_executor's broker-side gate."
+    ),
     "services/paper_trading_service.py": (
         "Broker-side BUY/SELL validation."
     ),
