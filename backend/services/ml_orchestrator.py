@@ -311,19 +311,33 @@ async def run_post_signal_pipeline(
 
         # ── Tier 2: Paper trading (MongoDB + Alpaca paper account) ────────────
         if gate.tier2.unlocked:
-            log.info("[orchestrator] Tier 2 unlocked — executing paper trade for %s", ticker)
-            try:
-                result.paper_trade_id = await maybe_paper_trade(
-                    ticker=ticker,
-                    signal=signal,
-                    snapshot=snapshot,
-                    regime=regime,
-                    db=db,
-                    http_client=client,
+            # 2026-06-16 Operator directive: paper trading removed
+            # (Public.com + Kraken — no paper sandbox on either).
+            # Default OFF; flip ``PAPER_TRADING_ENABLED=true`` only for
+            # historical backtests. Live execution path below is
+            # unaffected — Alpha keeps placing real Public.com orders.
+            _paper_on = (
+                os.environ.get("PAPER_TRADING_ENABLED") or ""
+            ).strip().lower() in ("1", "true", "yes", "on")
+            if not _paper_on:
+                log.debug(
+                    "[orchestrator] paper trading disabled — skipping Tier 2 "
+                    "paper write for %s (live path continues)", ticker,
                 )
-            except Exception as exc:
-                log.warning("[orchestrator] Paper trader error: %s", exc)
-                result.errors.append(f"paper_error:{exc}")
+            else:
+                log.info("[orchestrator] Tier 2 unlocked — executing paper trade for %s", ticker)
+                try:
+                    result.paper_trade_id = await maybe_paper_trade(
+                        ticker=ticker,
+                        signal=signal,
+                        snapshot=snapshot,
+                        regime=regime,
+                        db=db,
+                        http_client=client,
+                    )
+                except Exception as exc:
+                    log.warning("[orchestrator] Paper trader error: %s", exc)
+                    result.errors.append(f"paper_error:{exc}")
 
             # Also execute on Alpaca paper account if configured.
             # 2026-06-12: ``maybe_execute_live`` now also consults

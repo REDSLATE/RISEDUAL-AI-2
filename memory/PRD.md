@@ -4,6 +4,80 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-16 (Paper trading retired)
+
+### 🗑️ Paper trading removed
+
+**Operator directive**: "Paper needs to be removed. Public doesn't
+offer it, neither does Kraken."
+
+**Backend kill**:
+- New master env knob `PAPER_TRADING_ENABLED` (default **OFF**).
+- Gated at two paper-trade entry points:
+  - `services/crypto_paper_trader.run_crypto_symbol` — earliest
+    decision after `db is None`; returns
+    `{"reason": "paper_trading_disabled"}`.
+  - `services/ml_orchestrator` Tier-2 path — skips the
+    `maybe_paper_trade` call; the live Public.com path below is
+    untouched.
+- Existing closers untouched — they keep draining the historical
+  open paper rows so nothing rots.
+- Existing `paper_trades` / `crypto_paper_trades` collections
+  preserved for historical analysis + ML backtests (hot-transition
+  per the agreed scope).
+- Pytest conftest autouses `PAPER_TRADING_ENABLED=true` so the ~30
+  legacy crypto-paper pipeline tests keep their assertions. Default
+  OFF in production env stands.
+
+**Frontend kill**:
+- `components/TradingModePill.jsx` rewrite — Paper/Live toggle modal
+  removed (367 lines → 31 lines). The pill now renders a static
+  "LIVE · Public + Kraken" indicator. Same `data-testid` preserved
+  so e2e selectors keep working.
+- `components/TradingModeBanner.jsx` rewrite — mismatch/switch CTA
+  gone (90 lines → 51 lines). Always renders the live indicator.
+  Stale `expectedMode="paper"` call sites see an explicit
+  "live only" pill so the operator notices.
+- Trading-mode hooks / `/api/trading-mode/*` routes still wired in
+  the backend (untouched) — toggling them server-side is now a
+  no-op from the UI's perspective.
+
+**Test coverage**: 8 new tests in
+`tests/test_paper_trading_disable.py` pinning:
+- Default OFF behavior for crypto paper trader
+- Garbage env value coerces to OFF
+- Truthy values re-arm the gate (and downstream still runs)
+- Source-level pin: paper gate runs BEFORE the crypto-symbol firewall
+- Source-level pin: ml_orchestrator's Tier 2 branch consults the env
+
+**Tests**: 4,344 → 4,352 passing (+8, zero regressions).
+Backend healthy on preview, 632 routes. Frontend lint clean.
+
+**Activation steps (prod)**:
+1. Redeploy preview → prod.
+2. In prod's `backend/.env`, ensure `PAPER_TRADING_ENABLED` is unset
+   OR set to `false`. (Default is OFF, so unset suffices.)
+3. Restart backend.
+4. Verify: `tail` the logs — no `[crypto_paper] ... opened` lines
+   should appear on the next consensus tick. The crypto live wire
+   (`[crypto-live] FILL ...`) and the Public.com equity wire
+   (`[public-live] FILL ...`) keep operating normally.
+
+**Cold-start caveat**: ML retrain / Sovereign learning / dissent
+scorer continue eating from the historical paper corpus (hot
+transition). New training samples now come from `equity_live_trades`
++ `crypto_live_trades` only. Watch sample-size dashboards for the
+first few weeks — re-armable via `PAPER_TRADING_ENABLED=true` if
+needed.
+
+**Stale marketing copy (FYI, not auto-fixed)**: `LandingPage.jsx`,
+`LegalPages.jsx`, `HelpCenter.jsx`, and the OAuth demo pages still
+reference "autonomous paper trading" / "$100K paper capital" /
+"30-day paper gate". These are sales/copy decisions; updating
+them is a content refresh, not a technical change. Flag if you
+want them updated.
+
+
 ## Latest Update — 2026-06-16 (Drop Alpaca + Public.com autonomous routing)
 
 ### 🔁 Equity broker swap: Alpaca → Public.com

@@ -1,87 +1,47 @@
 import React from 'react';
-import { Beaker, Flame, AlertTriangle } from 'lucide-react';
-import { useTradingMode } from '../hooks/useTradingMode';
+import { Flame } from 'lucide-react';
 
 /**
- * TradingModeBanner — sticky context banner for any order-entry panel.
+ * TradingModeBanner — 2026-06-16 rewrite.
  *
- * Two visual states:
+ * Paper trading is retired (Public.com + Kraken — no paper sandbox).
+ * The mismatch / "switch mode" CTA branch no longer applies. Any
+ * call site that asks for ``expectedMode="paper"`` now sees a clear
+ * "LIVE only" indicator, and the order-entry path is already
+ * server-gated to refuse paper.
  *
- *   1. **Match** (current mode == panel's expected mode):
- *      A small confirmation pill so the user knows they're in the
- *      right context. Mint for paper, orange for live.
- *
- *   2. **Mismatch** (panel expects the opposite mode):
- *      A bright warning row with a "Switch" CTA that opens the
- *      navbar TradingModePill modal — implemented as a click event
- *      since that's the only entry point that goes through the
- *      cooldown + audit pipeline.
- *
- * Props:
- *   • expectedMode  — "paper" | "live". The mode this panel needs.
- *   • compact       — when true, render a tight single-row variant
- *                     (used inside dense modals / forms).
+ * We keep the component (and the data-testid shape) so existing call
+ * sites still render something sensible — they just always show the
+ * live badge now.
  */
-const TradingModeBanner = ({ expectedMode = 'paper', compact = false }) => {
-  const { mode } = useTradingMode();
-  const matches = mode === expectedMode;
-  const isPaper = expectedMode === 'paper';
+const TradingModeBanner = ({ expectedMode = 'live', compact = false }) => {
+  const isPaperRequest = expectedMode === 'paper';
 
-  const requestSwitch = () => {
-    // Two-channel switch trigger:
-    //   1. CustomEvent — primary path. TradingModePill listens for
-    //      this and opens its modal regardless of whether the pill
-    //      itself is in a hidden parent (mobile layout, where the
-    //      pill lives inside the navbar's ``hidden lg:flex`` wrapper).
-    //   2. Programmatic click fallback — kept so an older
-    //      TradingModePill bundle (pre-event-listener wire) still
-    //      responds. Harmless when both fire.
-    window.dispatchEvent(new CustomEvent('risedual:open-trading-mode-modal'));
-    const pill = document.querySelector('[data-testid="trading-mode-pill"]');
-    if (pill) pill.click();
-  };
-
-  if (matches) {
-    const Icon = isPaper ? Beaker : Flame;
-    const colorClasses = isPaper
-      ? 'text-[#3DE8D9] bg-[#3DE8D9]/10 border-[#3DE8D9]/25'
-      : 'text-orange-300 bg-orange-500/10 border-orange-500/25';
+  if (isPaperRequest) {
+    // Paper was requested but is no longer supported. Surface the
+    // change explicitly so the operator notices a stale call site.
     return (
       <div
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${colorClasses}`}
-        data-testid={`trading-mode-banner-${expectedMode}-active`}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/10 border-orange-500/25`}
+        data-testid="trading-mode-banner-paper-retired"
+        title="Paper trading retired — all orders route live to Public.com + Kraken"
       >
-        <Icon className="w-3 h-3" />
-        <span>{expectedMode} mode</span>
+        <Flame className="w-3 h-3" />
+        <span>live only</span>
       </div>
     );
   }
 
-  // Mismatch — the user needs to switch before they can place orders.
+  // Standard live indicator — the canonical, always-true state.
   return (
     <div
-      className={`flex items-start gap-3 rounded-lg border border-orange-500/40 bg-orange-500/10 ${
-        compact ? 'px-3 py-2' : 'px-4 py-3'
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/10 border-orange-500/25 ${
+        compact ? '' : 'px-2 py-1'
       }`}
-      data-testid={`trading-mode-banner-mismatch-${expectedMode}`}
-      data-current-mode={mode}
+      data-testid="trading-mode-banner-live-active"
     >
-      <AlertTriangle className="w-4 h-4 text-orange-300 flex-shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-orange-100 text-xs leading-snug">
-          You are in <span className="font-bold uppercase">{mode}</span> mode.
-          {' '}This panel needs <span className="font-bold uppercase">{expectedMode}</span>.
-          Orders submitted from here will be rejected until you switch.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={requestSwitch}
-        className="text-orange-200 text-xs font-semibold underline-offset-4 hover:text-orange-100 hover:underline whitespace-nowrap"
-        data-testid={`trading-mode-banner-switch-${expectedMode}`}
-      >
-        Switch to {expectedMode.toUpperCase()}
-      </button>
+      <Flame className="w-3 h-3" />
+      <span>live mode</span>
     </div>
   );
 };

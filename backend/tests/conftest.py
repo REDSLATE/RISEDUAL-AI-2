@@ -30,6 +30,31 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _enable_paper_trading_for_tests(monkeypatch):
+    """Enable paper trading for the entire test suite.
+
+    2026-06-16: Operator directive shipped `PAPER_TRADING_ENABLED=false`
+    as the default. Production behaviour is correct (no paper trades
+    generated). But ~50 existing tests in this suite exercise the
+    crypto paper trader pipeline behaviour (signal → sizing → audit
+    → trade insert), with the paper insert being load-bearing for
+    their assertions.
+
+    Rather than monkeypatch every test individually, we flip
+    `PAPER_TRADING_ENABLED=true` at fixture level so the pipeline
+    keeps running for tests. The tripwire test that pins the
+    DEFAULT-OFF contract (``test_paper_trading_disable.py``) is
+    annotated to skip / override this fixture as needed.
+
+    Any test that wants to assert the disable path explicitly
+    sets the env var to a falsy value via ``monkeypatch.setenv``
+    in the test body — that local setenv wins over this autouse
+    setenv.
+    """
+    monkeypatch.setenv("PAPER_TRADING_ENABLED", "true")
+
+
+@pytest.fixture(autouse=True)
 def _reset_kill_switch():
     """Isolate the module-level `ai_core.kill_switch.kill_switch`
     singleton between tests.

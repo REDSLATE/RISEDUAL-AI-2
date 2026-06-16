@@ -257,6 +257,22 @@ async def run_crypto_symbol(
     if db is None:
         return {"symbol": symbol, "skipped": True, "reason": "db_missing"}
 
+    # ── 2026-06-16 Operator directive: paper trading removed ──────────────
+    # Public.com (live-only) + Kraken (no paper sandbox) — paper-
+    # trade generation no longer reflects any real broker capability.
+    # Disabled by default; operator flips ``PAPER_TRADING_ENABLED=true``
+    # to re-arm (e.g., for historical backtests). Existing open paper
+    # rows continue draining via crypto_closer — only NEW entry is
+    # gated here. Live execution (crypto_live_executor) is unaffected.
+    _paper_enabled = (
+        os.environ.get("PAPER_TRADING_ENABLED") or ""
+    ).strip().lower() in ("1", "true", "yes", "on")
+    if not _paper_enabled:
+        return {
+            "symbol": symbol, "skipped": True,
+            "reason": "paper_trading_disabled",
+        }
+
     # Architectural firewall — never let a non-crypto symbol land
     # in crypto_paper_trades.
     if not is_crypto_symbol(symbol):
