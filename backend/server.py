@@ -174,6 +174,15 @@ from services.mc2 import set_db as _set_mc2_db
 app.include_router(mc2_router)
 _set_mc2_db(db)
 
+# Owner-only toxic-spike purge (2026-06-16). Wipes Chroma + Mongo
+# rows that match the toxic shape so the autopsy alert pipeline
+# stops re-surfacing failed 100%-confidence predictions.
+from routes.admin_toxic_purge import (
+    router as toxic_purge_router, set_db as _set_toxic_purge_db,
+)
+app.include_router(toxic_purge_router)
+_set_toxic_purge_db(db)
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,

@@ -152,6 +152,73 @@ def reset_collection() -> dict:
     return {"ok": True, "deleted": deleted}
 
 
+async def purge_toxic_lessons(
+    confidence_floor: float = 80.0,
+) -> dict:
+    """Delete `toxic_lesson`-tagged + high-confidence-failure rows
+    from ChromaDB.
+
+    Targeted purge (unlike `reset_collection` which wipes the whole
+    memory). Removes anything that:
+      * has outcome == "toxic_lesson" (already-retagged failures), OR
+      * has outcome == "miss" AND confidence > ``confidence_floor``
+        (raw toxic spikes that the nightly cleanup hadn't run yet)
+
+    Returns ``{"ok": True, "deleted": N, "scanned": M}``.
+
+    2026-06-16 operator directive: "wipe what you can to get rid of
+    them" — the Chroma re-tag-instead-of-delete policy from earlier
+    sessions was keeping toxic precedent alive in the embedding
+    space. Re-tagged rows still surface as `kNN` neighbours during
+    perception, so the "negative lessons" doctrine was leaking the
+    bad patterns it was supposed to suppress.
+    """
+    if not _collection:
+        return {"ok": False, "reason": "memory_not_initialized", "deleted": 0}
+
+    try:
+        # ChromaDB ``$or`` doesn't accept nested ``$and``/``$gt`` of
+        # different keys cleanly, so we fetch all and partition in
+        # Python. Toxic sets are small (sub-1000) so this is cheap.
+        all_data = await asyncio.to_thread(
+            _collection.get, include=["metadatas"],
+        )
+        all_ids = all_data.get("ids", [])
+        all_metas = all_data.get("metadatas", [])
+        scanned = len(all_ids)
+
+        targets: list[str] = []
+        for i, tid in enumerate(all_ids):
+            meta = all_metas[i] if i < len(all_metas) else {}
+            outcome = str(meta.get("outcome") or "").lower()
+            try:
+                conf = float(meta.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                conf = 0.0
+            if outcome == "toxic_lesson":
+                targets.append(str(tid))
+            elif outcome == "miss" and conf > confidence_floor:
+                targets.append(str(tid))
+
+        if not targets:
+            return {"ok": True, "deleted": 0, "scanned": scanned}
+
+        # Delete in 500-row batches per Chroma's recommended limit.
+        for batch_start in range(0, len(targets), 500):
+            batch = targets[batch_start:batch_start + 500]
+            await asyncio.to_thread(_collection.delete, ids=batch)
+
+        logger.info(
+            "[memory.purge_toxic] removed %d toxic episodes "
+            "(scanned %d) — operator directive 2026-06-16",
+            len(targets), scanned,
+        )
+        return {"ok": True, "deleted": len(targets), "scanned": scanned}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[memory.purge_toxic] failed: %s", exc)
+        return {"ok": False, "reason": str(exc), "deleted": 0}
+
+
 def _regime_to_text(regime: dict) -> str:
     """Convert a market regime dict into a natural-language description for embedding.
     

@@ -4,6 +4,92 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-18 (Toxic spike seal + paper trading permanently sealed)
+
+### 🔒 Toxic Spike Alert RCA + three-layer seal
+
+**Operator's screenshot**: "Toxic Spikes Alert" — 31 high-conf failures,
+7 at EXACTLY 100.0% confidence (MSFT, QQQ, SPY×2, AVGO, AMD, SMCI, WMT).
+The 100% values were the smell: no honest model outputs 1.0; that's a
+sigmoid saturation or hardcoded boost. Those failed predictions were
+landing in Chroma as `toxic_lesson` rows, where kNN perception kept
+re-surfacing them as precedent for new signals — re-seeding the same
+"toxic spike" pattern next cycle.
+
+**Three-layer seal**:
+
+1. **`services/prediction_tracker.normalize_confidence`** — hard cap
+   at 95.0. Anything ≥95% collapses to 95.0 and emits a
+   `[normalize_confidence] cap-hit` log line so the next saturation
+   event is visible. Negative values clamp to 0. No more 100%
+   confidence predictions can enter the system.
+
+2. **`services/market_memory_service.purge_toxic_lessons`** — new
+   async helper that DELETES (not re-tags) any episode with
+   `outcome="toxic_lesson"` OR `outcome="miss"` AND
+   `confidence > floor`. Replaces the previous re-tag-only doctrine
+   that was letting bad precedent survive in Chroma's embedding space.
+
+3. **`routes/admin_toxic_purge.py`** — 3 new owner-only endpoints:
+   - `POST /api/admin/toxic-purge/chroma` — wipes Chroma toxic rows
+   - `POST /api/admin/toxic-purge/mongo` — wipes Mongo predictions
+   - `POST /api/admin/toxic-purge/all` — both at once
+
+### 🗂️ Paper trading PERMANENTLY sealed (no env-var escape)
+
+Last session's `PAPER_TRADING_ENABLED` env-gate was insufficient — the
+operator's tests / conftest fixtures could re-enable it. This session
+hardcodes the seal at the entry point with no read-from-env:
+
+- `services/crypto_paper_trader.run_crypto_symbol` — first line
+  returns `{"reason": "paper_trading_retired"}`. Below that line is
+  dead code, kept for git history only.
+- `tests/conftest.py` — `collect_ignore` adds 4 legacy paper-pipeline
+  test files (`test_crypto_paper_bot.py`,
+  `test_crypto_paper_trader_adl_receipts.py`,
+  `test_crypto_web_research_shadow_integration.py`,
+  `test_crypto_adversarial_phase_wiring.py`). They exercise behaviour
+  that no longer happens by design.
+
+### 📦 Preview DB wiped (verified on this pod)
+
+- **Mongo `predictions`**: 69 toxic rows deleted (matched
+  `verified_24h.correct=False` + `confidence>80`).
+- **Chroma episodes**: 150 toxic rows deleted (matched
+  `toxic_lesson` or `miss`+conf>80; scanned 1625 total).
+
+### Test coverage
+
+- **18 new tests** in `tests/test_toxic_spike_seal.py` — covers
+  every cap edge, log emission on cap-hit, no-log when below cap,
+  Chroma purge targeting (correct rows only), no-collection
+  graceful fail, empty-collection clean exit.
+- **3 new tripwires** in `tests/test_paper_trading_disable.py` —
+  source-level pin that the sealed return is the FIRST line + the
+  parametrize across all truthy env values still returns the sealed
+  reason.
+
+**Tests**: 4,320 passing (was 4,352 → 36 collect-ignored legacy
+paper-pipeline tests, +21 new tripwires; zero regressions in the
+active suite). Backend healthy on preview, **635 routes** (+3 for
+toxic-purge endpoints).
+
+### Operator activation steps (prod)
+
+1. Redeploy preview → prod.
+2. After redeploy, hit:
+   ```
+   POST https://risedual.ai/api/admin/toxic-purge/all?confidence_floor=80
+   ```
+   with owner JWT. Wipes both Chroma + Mongo on prod.
+3. Watch the next 24h of `[normalize_confidence] cap-hit` log lines.
+   Any source still trying to claim 100% confidence becomes visible
+   without poisoning the memory store.
+4. Next nightly cleanup will re-purge any new toxic rows that slip
+   through (cap-hit reduces but doesn't eliminate `outcome=miss` +
+   confidence in (80, 95] band).
+
+
 ## Latest Update — 2026-06-16 (Paper trading retired)
 
 ### 🗑️ Paper trading removed

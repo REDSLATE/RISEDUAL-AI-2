@@ -25,31 +25,34 @@ except Exception:
     pass
 
 
+# 2026-06-16 — Paper trading was permanently sealed off (see
+# services/crypto_paper_trader.run_crypto_symbol's hardcoded return).
+# The test files below exercise the LEGACY paper-trade pipeline behaviour
+# (signal → sizing → audit → trade insert) and assert on outcomes that
+# no longer happen by design. They're kept on disk for archaeology but
+# skipped at collect-time so pytest's main suite stays green.
+collect_ignore = [
+    "test_crypto_paper_bot.py",
+    "test_crypto_paper_trader_adl_receipts.py",
+    "test_crypto_web_research_shadow_integration.py",
+    "test_crypto_adversarial_phase_wiring.py",
+]
+
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def _enable_paper_trading_for_tests(monkeypatch):
-    """Enable paper trading for the entire test suite.
+    """Legacy fixture — preserved for the few tests that still
+    exercise paper-trade auxiliary helpers (sizing math, regime
+    detection, etc.) which are pure functions not gated by the
+    seal. The seal itself in ``run_crypto_symbol`` ignores this
+    env var unconditionally.
 
-    2026-06-16: Operator directive shipped `PAPER_TRADING_ENABLED=false`
-    as the default. Production behaviour is correct (no paper trades
-    generated). But ~50 existing tests in this suite exercise the
-    crypto paper trader pipeline behaviour (signal → sizing → audit
-    → trade insert), with the paper insert being load-bearing for
-    their assertions.
-
-    Rather than monkeypatch every test individually, we flip
-    `PAPER_TRADING_ENABLED=true` at fixture level so the pipeline
-    keeps running for tests. The tripwire test that pins the
-    DEFAULT-OFF contract (``test_paper_trading_disable.py``) is
-    annotated to skip / override this fixture as needed.
-
-    Any test that wants to assert the disable path explicitly
-    sets the env var to a falsy value via ``monkeypatch.setenv``
-    in the test body — that local setenv wins over this autouse
-    setenv.
+    Kept set to truthy so tests of helpers that read the env var
+    directly don't get a surprise default-OFF on a flag that's
+    no longer load-bearing in production code.
     """
     monkeypatch.setenv("PAPER_TRADING_ENABLED", "true")
 

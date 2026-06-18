@@ -509,13 +509,40 @@ def normalize_confidence(confidence: float | int | None) -> float:
     Heuristic: any value in (0, 1] is treated as a fraction and scaled
     up. Anything >1 is already on the 0-100 scale. `None` degrades to
     0 so downstream math doesn't crash.
+
+    2026-06-16: Hard cap at 95.0. The Toxic Spike Alert showed 7 of the
+    last 8 high-confidence failures landing at EXACTLY 100.0% — that's
+    a sigmoid saturation or a hardcoded boost masquerading as
+    certainty. No honest model outputs 1.0, and 100%-confidence
+    failures poison the Chroma "toxic_lesson" pool because the
+    embedding lookup keeps re-surfacing them as "this looks identical
+    to what worked last time" precedent. Clamping at 95 makes the
+    next saturation event visible (cap-hit log line) instead of
+    silently entering the memory store.
     """
     if confidence is None:
         return 0.0
     c = float(confidence)
     if c <= 1.0:
-        return round(c * 100, 2)
-    return round(c, 2)
+        normalized = round(c * 100, 2)
+    else:
+        normalized = round(c, 2)
+    # Hard cap to bound toxic-spike generation. Anything that wanted
+    # to claim ≥95% certainty is collapsed to 95% — operator can
+    # grep `[normalize_confidence] cap-hit` for visibility.
+    if normalized >= 95.0:
+        try:
+            import logging
+            logging.getLogger(__name__).info(
+                "[normalize_confidence] cap-hit input=%.4f → 95.0 "
+                "(2026-06-16 toxic-spike seal)", c,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return 95.0
+    if normalized < 0.0:
+        return 0.0
+    return normalized
 
 
 # Sliding cache / dedup windows make the prices embedded in predictions

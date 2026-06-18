@@ -254,24 +254,24 @@ async def run_crypto_symbol(
     out — the multi-symbol runner above catches and converts to
     ``errors`` entries.
     """
+    # ── 2026-06-16 Operator directive: paper trading PERMANENTLY ──────────
+    # SEALED. Paper-trade generation produced the "toxic spikes" the
+    # operator caught after the multi-brain peer veto and Tier-3 evidence
+    # gate stopped acting as natural filters. This is now hard-coded
+    # OFF — no env var, no fixture, no backdoor. Existing closers
+    # continue draining open rows; new entries refuse.
+    return {
+        "symbol": symbol, "skipped": True,
+        "reason": "paper_trading_retired",
+    }
+
+    # Below this point is unreachable. Kept for git history + future
+    # archaeology only. Do NOT remove the early return without a new
+    # operator directive — restoring paper writes by deleting the
+    # return statement is exactly the regression the seal is designed
+    # to prevent.
     if db is None:
         return {"symbol": symbol, "skipped": True, "reason": "db_missing"}
-
-    # ── 2026-06-16 Operator directive: paper trading removed ──────────────
-    # Public.com (live-only) + Kraken (no paper sandbox) — paper-
-    # trade generation no longer reflects any real broker capability.
-    # Disabled by default; operator flips ``PAPER_TRADING_ENABLED=true``
-    # to re-arm (e.g., for historical backtests). Existing open paper
-    # rows continue draining via crypto_closer — only NEW entry is
-    # gated here. Live execution (crypto_live_executor) is unaffected.
-    _paper_enabled = (
-        os.environ.get("PAPER_TRADING_ENABLED") or ""
-    ).strip().lower() in ("1", "true", "yes", "on")
-    if not _paper_enabled:
-        return {
-            "symbol": symbol, "skipped": True,
-            "reason": "paper_trading_disabled",
-        }
 
     # Architectural firewall — never let a non-crypto symbol land
     # in crypto_paper_trades.

@@ -29,65 +29,75 @@ import services.ml_orchestrator as orch
 
 
 def test_crypto_run_skips_when_paper_disabled(monkeypatch):
-    """Default OFF — no env var means crypto paper does NOT execute.
-
-    Local ``delenv`` overrides the autouse fixture's ``setenv`` for
-    just this test.
-    """
+    """Hardcoded seal — paper trading is PERMANENTLY retired.
+    No env-var path can re-enable it. The autouse conftest
+    fixture sets ``PAPER_TRADING_ENABLED=true`` for legacy
+    pipeline tests, but the seal ignores it."""
     import asyncio
 
-    monkeypatch.delenv("PAPER_TRADING_ENABLED", raising=False)
+    # Even with the autouse fixture setting truthy, the result is
+    # the sealed reason — not the legacy "paper_trading_disabled".
     out = asyncio.run(paper_trader.run_crypto_symbol(
-        db=object(),  # would be touched on any non-skip path
+        db=object(),
         symbol="BTC",
         bars=[100.0] * 50,
         quote_provider=None,
     ))
     assert out["skipped"] is True
-    assert out["reason"] == "paper_trading_disabled"
+    assert out["reason"] == "paper_trading_retired"
 
 
 def test_crypto_run_skips_for_unknown_env_value(monkeypatch):
+    """Even with garbage env values, the seal is unconditional."""
     import asyncio
-    # Override the autouse "true" with garbage.
     monkeypatch.setenv("PAPER_TRADING_ENABLED", "garbage")
     out = asyncio.run(paper_trader.run_crypto_symbol(
         db=object(), symbol="BTC", bars=[100.0] * 50, quote_provider=None,
     ))
-    assert out["reason"] == "paper_trading_disabled"
+    assert out["reason"] == "paper_trading_retired"
+
+
+def test_crypto_run_refuses_even_when_env_truthy(monkeypatch):
+    """The seal is hardcoded — setting the env var to true does
+    NOT re-enable paper trading. Pin so a future operator-or-AI
+    cannot 'fix' the seal by re-adding env handling."""
+    import asyncio
+    for val in ("1", "true", "yes", "on", "TRUE"):
+        monkeypatch.setenv("PAPER_TRADING_ENABLED", val)
+        out = asyncio.run(paper_trader.run_crypto_symbol(
+            db=object(), symbol="BTC", bars=[100.0] * 50, quote_provider=None,
+        ))
+        assert out["reason"] == "paper_trading_retired", (
+            f"env={val!r} should NOT re-enable paper trading"
+        )
 
 
 @pytest.mark.parametrize("val", ["1", "true", "yes", "on"])
-def test_crypto_run_passes_gate_when_paper_enabled(monkeypatch, val):
-    """When explicitly re-armed, the paper gate falls through to the
-    rest of the pipeline. We don't assert on the downstream result
-    (it depends on bars/quotes), only that the early gate is NOT the
-    reason for any skip."""
+def test_env_truthy_does_not_unseal(monkeypatch, val):
+    """Pin: setting the env var truthy MUST NOT un-seal paper.
+    This is the entire point of the 2026-06-16 hardcoded seal."""
     import asyncio
     monkeypatch.setenv("PAPER_TRADING_ENABLED", val)
-    # db=None falls into the prior 'db_missing' guard, proving we
-    # got PAST the new paper gate.
     out = asyncio.run(paper_trader.run_crypto_symbol(
         db=None, symbol="BTC", bars=[100.0] * 50, quote_provider=None,
     ))
-    assert out["reason"] != "paper_trading_disabled"
+    assert out["reason"] == "paper_trading_retired"
 
 
 # ── Source-level pins ────────────────────────────────────────────────
 
 
-def test_crypto_paper_gate_runs_before_db_missing_guard():
-    """Pin: the paper gate is the FIRST decision after ``db is None``
-    so re-arming the env var is the operator's only way to bring the
-    paper writes back."""
+def test_crypto_paper_returns_sealed_reason_first():
+    """Pin: the sealed early-return is the FIRST line of executable
+    code in run_crypto_symbol. Regression would silently re-enable
+    paper writes."""
     src = inspect.getsource(paper_trader.run_crypto_symbol)
-    paper_pos = src.find("paper_trading_disabled")
-    crypto_check_pos = src.find("not_crypto_symbol")
-    assert paper_pos > 0 and crypto_check_pos > 0
-    assert paper_pos < crypto_check_pos, (
-        "PAPER_TRADING_ENABLED gate must short-circuit BEFORE the "
-        "is_crypto_symbol firewall — keeps the kill-switch as the "
-        "primary contract."
+    sealed_pos = src.find("paper_trading_retired")
+    db_check_pos = src.find("db_missing")
+    assert sealed_pos > 0 and db_check_pos > 0
+    assert sealed_pos < db_check_pos, (
+        "paper_trading_retired return MUST appear before any other "
+        "decision (regression of 2026-06-16 toxic-spike seal)."
     )
 
 
