@@ -266,7 +266,10 @@ def apply_sovereign_contribution(
     unchanged with ``reason="no_contribution"``.
     """
     try:
-        base = max(0.0, min(1.0, float(production_confidence)))
+        # 2026-06-18: cap at 0.95 to match Sovereign + normalize_confidence
+        # contract. Production confidence can land at 1.0 from legacy
+        # writers; clamp at the boundary instead of propagating saturation.
+        base = max(0.0, min(0.95, float(production_confidence)))
         prod_action = (production_action or "").upper()
 
         meta: dict[str, Any] = {

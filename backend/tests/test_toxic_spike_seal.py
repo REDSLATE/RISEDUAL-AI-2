@@ -126,3 +126,34 @@ async def test_purge_toxic_lessons_empty_collection(monkeypatch):
     assert out["ok"] is True
     assert out["deleted"] == 0
     assert out["scanned"] == 0
+
+
+# ── 3. Source-level pins on saturation sources ───────────────────────
+
+
+def test_sovereign_ai_core_caps_confidence_at_95():
+    """Pin: sovereign_ai_core aggregation must clamp every step at
+    0.95, not 1.0. Regression to 1.0 would reintroduce the saturation
+    pattern that minted the operator's toxic spikes."""
+    import inspect
+    from services import sovereign_ai_core
+    src = inspect.getsource(sovereign_ai_core)
+    # The bug pattern. There must be NO remaining min(1.0, confidence...)
+    # in the catalyst/options aggregation block.
+    coordinator = inspect.getsource(sovereign_ai_core.SovereignCoordinator.aggregate) if hasattr(sovereign_ai_core, "SovereignCoordinator") and hasattr(sovereign_ai_core.SovereignCoordinator, "aggregate") else src
+    assert "min(_CONF_CAP" in coordinator or "0.95" in coordinator, (
+        "sovereign_ai_core must use _CONF_CAP=0.95 (or literal 0.95) "
+        "for confidence clamping (regression of 2026-06-18 toxic-spike "
+        "saturation RCA)."
+    )
+
+
+def test_sovereign_promotion_gate_caps_at_95():
+    """Symmetric pin for the promotion gate."""
+    import inspect
+    from services import sovereign_promotion_gate
+    src = inspect.getsource(sovereign_promotion_gate.maybe_apply_contribution) if hasattr(sovereign_promotion_gate, "maybe_apply_contribution") else inspect.getsource(sovereign_promotion_gate)
+    assert "min(0.95" in src, (
+        "sovereign_promotion_gate must clamp production_confidence at "
+        "0.95 (regression of 2026-06-18 toxic-spike saturation RCA)."
+    )

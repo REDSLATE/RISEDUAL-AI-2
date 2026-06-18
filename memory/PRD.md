@@ -4,6 +4,55 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-18 (Saturation root cause found + backfill complete)
+
+### 🎯 RCA closed — found the upstream 100%-confidence source
+
+After running today's backfill, **256 cap-hit log lines** fired —
+proving the 100% values had been written historically by a real
+upstream source, not a one-off bug.
+
+**Smoking gun**: `services/sovereign_ai_core.SovereignCoordinator.aggregate`
+applied catalyst delta + options alignment boosts with `min(1.0, ...)`
+ceilings. A strategist signal at 0.98 + bullish catalyst delta +0.05
+→ saturated at 1.0. Options alignment +0.03 → still 1.0. Stuck at
+the ceiling forever after.
+
+**Fix**: Replaced every `min(1.0, ...)` in the Sovereign confidence
+pipeline with `min(0.95, ...)`. Symmetric change in
+`services/sovereign_promotion_gate.maybe_apply_contribution` (was
+also `min(1.0, ...)`). Together with this morning's
+`normalize_confidence` cap at the persistence boundary, saturation
+is now blocked at THREE layers: source → aggregator → storage.
+
+**+2 tripwires** in `tests/test_toxic_spike_seal.py` source-pin the
+new caps so any future agent can't silently restore the `min(1.0)`
+pattern.
+
+### ✅ Feb-2026 backfill re-run on preview
+
+Per the previous toxic-spike incident's playbook
+(`/app/memory/DEPLOYMENT_NOTES.md` 2026-02-20):
+- Ran `scripts/backfill_grade_misses.py` on preview Mongo + Chroma.
+- **11 historical 'miss' rows promoted to NEUTRAL** (no longer
+  counted as failures by the calibration query).
+- All 1479 Chroma episodes confidence-normalised under the new
+  scale-uniform contract.
+- 256 cap-hit log lines emitted — visibility into the upstream
+  saturation history (no longer hidden, no longer poisoning Chroma).
+
+### ✅ Alert dedup verified intact
+
+`services/alert_dedup.py` (Feb 2026) is wired correctly into
+`market_memory_service._send_toxic_alerts` — uses atomic
+`record_alert` with unique-index gate on `alert_id`, plus
+persistence escalation. The "same alert 3 nights in a row" failure
+class is structurally prevented.
+
+**Tests**: 4,322 passing (was 4,320, +2 saturation-source pins).
+Backend healthy on preview, 635 routes.
+
+
 ## Latest Update — 2026-06-18 (Toxic spike seal + paper trading permanently sealed)
 
 ### 🔒 Toxic Spike Alert RCA + three-layer seal

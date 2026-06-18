@@ -373,18 +373,28 @@ async def sovereign_decide(
         reasons: list[str] = [f"strategist:{action}@{confidence:.2f}"]
         vetoes: list[str] = []
 
+        # 2026-06-18 toxic-spike RCA: cap confidence at 0.95 throughout
+        # the Sovereign aggregation pipeline. Previously every boost
+        # pegged at 1.0 and stuck there (catalyst delta + options
+        # alignment + ... all saturated). The 100% confidence values
+        # in the operator's Toxic Spike Alert were generated here —
+        # downstream ``normalize_confidence`` now hard-caps at 95.0,
+        # but the honest fix is to never let the model claim certainty
+        # it doesn't have in the first place.
+        _CONF_CAP = 0.95
+
         # Catalyst delta
-        confidence = max(0.0, min(1.0, confidence + float(catalyst["delta"])))
+        confidence = max(0.0, min(_CONF_CAP, confidence + float(catalyst["delta"])))
         if catalyst["delta"]:
             reasons.append(f"catalyst_delta:{catalyst['delta']:+.2f}")
 
         # Options alignment resolution (coordinator owns the alignment check
         # because it needs the final action)
         if options.get("bullish_flow") and action == "LONG":
-            confidence = min(1.0, confidence + 0.03)
+            confidence = min(_CONF_CAP, confidence + 0.03)
             reasons.append("options_aligned_bull")
         elif options.get("bearish_flow") and action == "SHORT":
-            confidence = min(1.0, confidence + 0.03)
+            confidence = min(_CONF_CAP, confidence + 0.03)
             reasons.append("options_aligned_bear")
         elif options.get("bullish_flow") and action == "SHORT":
             confidence = max(0.0, confidence - 0.05)
