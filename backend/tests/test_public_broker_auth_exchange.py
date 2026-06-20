@@ -73,12 +73,19 @@ def test_exchange_called_on_first_get_account(monkeypatch):
         account_get_calls.append({"url": url, "headers": headers})
         resp = MagicMock()
         resp.status_code = 200
+        # 2026-06-18: get_account now hits /trading/{accountId}/portfolio/v2
+        # which returns nested buyingPower + equity list.
         resp.json.return_value = {
             "accountId": "ACCOUNT-ID-123",
-            "cashAvailable": 100.0,
-            "buyingPower": 100.0,
-            "equity": 100.0,
-            "portfolioValue": 100.0,
+            "buyingPower": {
+                "cashOnlyBuyingPower": "100.00",
+                "buyingPower": "100.00",
+                "optionsBuyingPower": "100.00",
+            },
+            "equity": [
+                {"type": "CASH", "value": "100.00"},
+            ],
+            "positions": [],
         }
         resp.raise_for_status.return_value = None
         return resp

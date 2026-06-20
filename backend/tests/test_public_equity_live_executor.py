@@ -186,6 +186,11 @@ async def test_place_order_failure_no_mongo_write(monkeypatch):
 @pytest.mark.asyncio
 async def test_happy_path_inserts_row_with_provenance(monkeypatch):
     monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    # Force $25 notional regardless of any preview env override
+    # (preview ships with PUBLIC_LIVE_NOTIONAL_USD=1 for safer canary
+    # trades; this test pins the legacy $25/0.125 math).
+    monkeypatch.setenv("PUBLIC_LIVE_NOTIONAL_USD", "25")
+    monkeypatch.delenv("PUBLIC_LIVE_SYMBOLS", raising=False)
     db = _FakeDB()
     db.broker_connections._find_one_response = {
         "api_key": "secret", "api_secret": "acct",

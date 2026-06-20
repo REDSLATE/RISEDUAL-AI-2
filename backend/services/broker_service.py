@@ -959,21 +959,52 @@ class PublicTradingService:
         }
 
     def get_account(self) -> Optional[dict]:
+        """Fetch the trading account's balance + buying power.
+
+        2026-06-18 fix: was hitting ``/trading/account`` which actually
+        returns a LIST of accounts (not balances). The correct endpoint
+        is ``/userapigateway/trading/{accountId}/portfolio/v2`` which
+        returns ``buyingPower`` + ``equity`` (cash + stock breakdown).
+        """
         try:
             headers = self._auth_headers()
             if headers is None:
                 return None
-            r = requests.get(f"{self.base_url}/trading/account",
-                             headers=headers, timeout=10)
+            r = requests.get(
+                f"{self.base_url}/trading/{self.account_id}/portfolio/v2",
+                headers=headers, timeout=10,
+            )
             r.raise_for_status()
             data = r.json()
+            # ``buyingPower`` is a nested dict in Public's response
+            bp = data.get("buyingPower") or {}
+            cash_bp = float(bp.get("cashOnlyBuyingPower") or 0.0)
+            full_bp = float(bp.get("buyingPower") or cash_bp)
+            # ``equity`` is a list of {type, value, percentageOfPortfolio}
+            equity_list = data.get("equity") or []
+            cash_val = 0.0
+            stock_val = 0.0
+            for entry in equity_list:
+                etype = (entry.get("type") or "").upper()
+                try:
+                    val = float(entry.get("value") or 0.0)
+                except (TypeError, ValueError):
+                    val = 0.0
+                if etype == "CASH":
+                    cash_val = val
+                elif etype == "STOCK":
+                    stock_val = val
+            total_equity = cash_val + stock_val
             return {
                 "account_number": data.get("accountId", self.account_id),
                 "id": data.get("accountId", self.account_id),
-                "cash": float(data.get("cashAvailable", data.get("cash", 0))),
-                "buying_power": float(data.get("buyingPower", data.get("cashAvailable", 0))),
-                "equity": float(data.get("equity", data.get("totalValue", 0))),
-                "portfolio_value": float(data.get("portfolioValue", data.get("equity", 0))),
+                "cash": cash_val,
+                "buying_power": full_bp,
+                "equity": total_equity,
+                "portfolio_value": total_equity,
+                # Pass-through for callers that want the raw shape.
+                "_raw_buying_power": bp,
+                "_positions_count": len(data.get("positions") or []),
             }
         except Exception as e:
             log_error(logger, {
@@ -989,20 +1020,45 @@ class PublicTradingService:
             headers = self._auth_headers()
             if headers is None:
                 return []
-            r = requests.get(f"{self.base_url}/trading/account",
-                             headers=headers, timeout=10)
+            r = requests.get(
+                f"{self.base_url}/trading/{self.account_id}/portfolio/v2",
+                headers=headers, timeout=10,
+            )
             r.raise_for_status()
             positions = []
             for p in r.json().get("positions", []):
+                inst = p.get("instrument") or {}
+                last_price_dict = p.get("lastPrice") or {}
+                gain = p.get("instrumentGain") or {}
+                try:
+                    qty = float(p.get("quantity") or 0.0)
+                except (TypeError, ValueError):
+                    qty = 0.0
+                try:
+                    last_price = float(last_price_dict.get("lastPrice") or 0.0)
+                except (TypeError, ValueError):
+                    last_price = 0.0
+                try:
+                    market_value = float(p.get("currentValue") or 0.0)
+                except (TypeError, ValueError):
+                    market_value = 0.0
+                try:
+                    unrealized_pl = float(gain.get("gainValue") or 0.0)
+                except (TypeError, ValueError):
+                    unrealized_pl = 0.0
+                try:
+                    unrealized_plpc = float(gain.get("gainPercentage") or 0.0)
+                except (TypeError, ValueError):
+                    unrealized_plpc = 0.0
                 positions.append({
-                    "symbol": p.get("symbol", p.get("instrument", {}).get("symbol", "")),
-                    "qty": abs(float(p.get("quantity", 0))),
-                    "side": "long" if float(p.get("quantity", 0)) > 0 else "short",
-                    "avg_entry_price": float(p.get("averageCost", p.get("avgPrice", 0))),
-                    "current_price": float(p.get("currentPrice", p.get("lastPrice", 0))),
-                    "market_value": float(p.get("marketValue", 0)),
-                    "unrealized_pl": float(p.get("unrealizedPnl", 0)),
-                    "unrealized_plpc": float(p.get("unrealizedPnlPercent", 0)),
+                    "symbol": inst.get("symbol", ""),
+                    "qty": abs(qty),
+                    "side": "long" if qty > 0 else "short",
+                    "avg_entry_price": 0.0,  # not on portfolio/v2; needs order history
+                    "current_price": last_price,
+                    "market_value": market_value,
+                    "unrealized_pl": unrealized_pl,
+                    "unrealized_plpc": unrealized_plpc,
                 })
             return positions
         except Exception as e:

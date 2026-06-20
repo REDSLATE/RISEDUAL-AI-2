@@ -58,6 +58,20 @@ def _enable_paper_trading_for_tests(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _disable_standalone_mode_for_tests(monkeypatch):
+    """2026-06-18: ``RISEDUAL_STANDALONE_MODE=1`` was added to preview
+    .env so Alpha trades without phantom-ticking Original MC. The
+    standalone severance changes the behaviour of intent_bridge,
+    monorepo_client, mc_sidecar etc — but ~40 legacy tests in this
+    suite were written before that severance and expect the wire
+    path. Default OFF here so the wire-path tests pass; the
+    dedicated standalone-mode tests explicitly setenv it on for
+    their own assertions.
+    """
+    monkeypatch.delenv("RISEDUAL_STANDALONE_MODE", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _reset_kill_switch():
     """Isolate the module-level `ai_core.kill_switch.kill_switch`
     singleton between tests.
